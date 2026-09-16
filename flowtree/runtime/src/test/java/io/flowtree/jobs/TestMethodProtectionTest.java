@@ -23,19 +23,22 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.util.Set;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for {@link TestMethodProtection}: the test-method-granularity
  * guardrail that replaced whole-file blocking for Java test sources.
  *
- * <p>Each test installs the repository's real
- * {@code tools/ci/agent-protection/test-method-lines.awk} script into a temp
- * working directory (rather than a copy), so these tests exercise the exact
- * logic the CI gate uses, not a re-implementation of it.</p>
+ * <p>Each test reads the repository's real
+ * {@code tools/ci/agent-protection/test-method-lines.awk} script's content
+ * (rather than a copy) and feeds it through the fake
+ * {@link FileStager.GitOperations} as the merge-base's version of the
+ * script, so these tests exercise the exact logic the CI gate uses, not a
+ * re-implementation of it.</p>
  */
 public class TestMethodProtectionTest extends TestSuiteBase {
 
@@ -43,6 +46,8 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     private static final String FAKE_MERGE_BASE = "abc1234def5678901234567890abcdef1234567";
     /** The protected test file path used across tests. */
     private static final String FILE = "src/test/java/FooTest.java";
+    /** Path of the shared method-extraction script, relative to the repository root. */
+    private static final String AWK_SCRIPT_PATH = "tools/ci/agent-protection/test-method-lines.awk";
 
     /** Fixture: a base-branch test file with one {@code @Test} method and one helper. */
     private static final String BASE_ONE_METHOD =
@@ -59,31 +64,37 @@ public class TestMethodProtectionTest extends TestSuiteBase {
             "}\n";
 
     /**
-     * Creates a temp working directory with the repository's real
-     * {@code test-method-lines.awk} installed at its expected repo-relative
-     * path.
+     * Creates a plain temp working directory for a test's current (post-edit)
+     * file content, with no awk script installed in it — the fix under test
+     * is that {@link TestMethodProtection} no longer reads the extractor
+     * from the working tree at all.
      *
      * @return the temp working directory
-     * @throws IOException if the script cannot be copied
+     * @throws IOException if the directory cannot be created
      */
-    private Path installAwkScript() throws IOException {
-        Path tempDir = Files.createTempDirectory("test-method-protection-test");
-        Path scriptDir = Files.createDirectories(tempDir.resolve("tools/ci/agent-protection"));
-        Path realScript = locateRealAwkScript();
-        Files.copy(realScript, scriptDir.resolve("test-method-lines.awk"), StandardCopyOption.REPLACE_EXISTING);
-        return tempDir;
+    private Path tempWorkingDirectory() throws IOException {
+        return Files.createTempDirectory("test-method-protection-test");
     }
 
     /**
-     * Locates the repository's real {@code test-method-lines.awk}, searching
-     * upward from the JVM working directory so the test is independent of
-     * whether Maven runs from the module directory or the repo root.
+     * Reads the repository's real {@code test-method-lines.awk} content,
+     * searching upward from the JVM working directory so the test is
+     * independent of whether Maven runs from the module directory or the
+     * repo root.
+     *
+     * @return the script's content
      */
-    private Path locateRealAwkScript() {
+    private String realAwkScriptContent() {
         File dir = new File("").getAbsoluteFile();
         for (int i = 0; i < 6 && dir != null; i++) {
             File candidate = new File(dir, "tools/ci/agent-protection/test-method-lines.awk");
-            if (candidate.isFile()) return candidate.toPath();
+            if (candidate.isFile()) {
+                try {
+                    return Files.readString(candidate.toPath());
+                } catch (IOException e) {
+                    throw new IllegalStateException("Could not read " + candidate, e);
+                }
+            }
             dir = dir.getParentFile();
         }
         throw new IllegalStateException("Could not locate tools/ci/agent-protection/test-method-lines.awk"
@@ -106,29 +117,38 @@ public class TestMethodProtectionTest extends TestSuiteBase {
 
     /**
      * Builds a fake {@link FileStager.GitOperations} that reports a fixed
-     * merge-base, a fixed existence result at that merge-base, and fixed
-     * {@code git show} content.
+     * merge-base and fixed {@code git show} content for {@link #FILE} and
+     * the shared awk extractor, both read at that merge-base.
      *
-     * @param existsAtMergeBase whether {@code cat-file -e} should report the
-     *                          file present at the merge-base
-     * @param baseContent       the content {@code git show} should return
+     * @param baseContent      the content {@code git show} should return for
+     *                         {@link #FILE} at the merge-base, or
+     *                         {@code null} to simulate it being unreadable
+     *                         there
+     * @param awkScriptContent the content {@code git show} should return for
+     *                         the shared awk script at the merge-base, or
+     *                         {@code null} to simulate it being unreadable
+     *                         there
      * @return the fake git operations
      */
-    private static FileStager.GitOperations gitOps(boolean existsAtMergeBase, String baseContent) {
+    private static FileStager.GitOperations gitOps(String baseContent, String awkScriptContent) {
         return new FileStager.GitOperations() {
             @Override
             public int execute(String... args) {
-                if (args.length == 3 && "cat-file".equals(args[0]) && "-e".equals(args[1])) {
-                    return existsAtMergeBase ? 0 : 1;
-                }
-                return 1;
+                return targetContent(args) != null ? 0 : 1;
             }
 
             @Override
             public String executeWithOutput(String... args) {
                 if (args.length >= 1 && "merge-base".equals(args[0])) return FAKE_MERGE_BASE;
-                if (args.length >= 1 && "show".equals(args[0])) return baseContent;
-                return "";
+                String content = targetContent(args);
+                return content != null ? content : "";
+            }
+
+            private String targetContent(String[] args) {
+                if (args.length != 2 || !"show".equals(args[0])) return null;
+                if ((FAKE_MERGE_BASE + ":" + FILE).equals(args[1])) return baseContent;
+                if ((FAKE_MERGE_BASE + ":" + AWK_SCRIPT_PATH).equals(args[1])) return awkScriptContent;
+                return null;
             }
         };
     }
@@ -152,14 +172,14 @@ public class TestMethodProtectionTest extends TestSuiteBase {
         Files.deleteIfExists(path);
     }
 
-    /** A file absent from the merge-base is allowed regardless of content. */
+    /** A file absent from the merge-base is allowed regardless of content, without consulting the awk script at all. */
     @Test(timeout = 30000)
     public void branchNewFileAllowed() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             writeCurrent(tempDir, BASE_ONE_METHOD);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(false, ""));
+                    FILE, FAKE_MERGE_BASE, Set.of(), tempDir.toFile(), gitOps(null, null));
             assertTrue(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -169,7 +189,7 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Adding a brand-new {@code @Test} method to a base-branch file is allowed. */
     @Test(timeout = 30000)
     public void addingNewMethodToBaseFileAllowed() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current = BASE_ONE_METHOD.replace(
                     "    private void helper()",
@@ -180,7 +200,8 @@ public class TestMethodProtectionTest extends TestSuiteBase {
                     + "    private void helper()");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertTrue(verdict.isAllowed());
             assertTrue(verdict.getReason().contains("testBar"));
         } finally {
@@ -191,7 +212,7 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Editing a test method that was itself absent from the merge-base is allowed. */
     @Test(timeout = 30000)
     public void editingBranchAddedMethodAllowed() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             // "testBar" never existed at the merge-base -- any content the
             // branch has since given it (including edits after its own
@@ -206,7 +227,8 @@ public class TestMethodProtectionTest extends TestSuiteBase {
                     + "    private void helper()");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertTrue(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -216,13 +238,41 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Modifying the body of a pre-existing test method is blocked. */
     @Test(timeout = 30000)
     public void modifyingPreExistingMethodBlocked() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current = BASE_ONE_METHOD.replace("assertEquals(1, 1);", "assertEquals(2, 2);");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
+            assertTrue(verdict.getReason().contains("testFoo"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * A working-tree awk script that has been tampered with to always report
+     * "no methods" must not defeat the guardrail: the extractor is read from
+     * the merge-base, not the working tree, so a modified body is still
+     * blocked.
+     */
+    @Test(timeout = 30000)
+    public void tamperedWorkingTreeAwkScriptIsIgnored() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = BASE_ONE_METHOD.replace("assertEquals(1, 1);", "assertEquals(2, 2);");
+            writeCurrent(tempDir, current);
+            Path tamperedScript = Files.createDirectories(tempDir.resolve("tools/ci/agent-protection"))
+                    .resolve("test-method-lines.awk");
+            Files.writeString(tamperedScript, "BEGIN { exit 0 }\n");
+
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
+            assertFalse("The merge-base's real extractor must still catch the modified method, "
+                    + "regardless of the working tree's tampered copy", verdict.isAllowed());
             assertTrue(verdict.getReason().contains("testFoo"));
         } finally {
             deleteRecursively(tempDir);
@@ -232,7 +282,7 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Deleting a pre-existing test method entirely is blocked. */
     @Test(timeout = 30000)
     public void deletingPreExistingMethodBlocked() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current =
                     "package com.example;\n\nimport org.junit.Test;\n\n"
@@ -243,7 +293,8 @@ public class TestMethodProtectionTest extends TestSuiteBase {
                     + "}\n";
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -253,14 +304,15 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Adding an {@code @Ignore} annotation to a pre-existing test method is blocked. */
     @Test(timeout = 30000)
     public void annotatingPreExistingMethodBlocked() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current = BASE_ONE_METHOD.replace(
                     "    @Test\n    public void testFoo() {",
                     "    @Test\n    @Ignore\n    public void testFoo() {");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -270,14 +322,15 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Inserting an early return into a pre-existing test method is blocked, even though the diff is additions only. */
     @Test(timeout = 30000)
     public void earlyReturnInsertedIntoPreExistingMethodBlocked() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current = BASE_ONE_METHOD.replace(
                     "    public void testFoo() {\n        assertEquals(1, 1);",
                     "    public void testFoo() {\n        if (true) return;\n        assertEquals(1, 1);");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -287,12 +340,13 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** Editing only fixtures/helpers, with every test method untouched, is allowed. */
     @Test(timeout = 30000)
     public void supportOnlyChangesAllowed() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             String current = BASE_ONE_METHOD.replace("int value = 1;", "int value = 2;");
             writeCurrent(tempDir, current);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertTrue(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -302,10 +356,11 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** A file that existed at the merge-base but was deleted on the branch is blocked. */
     @Test(timeout = 30000)
     public void deletedFileThatExistedAtMergeBaseBlocked() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
@@ -315,25 +370,42 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** A null merge-base (unresolvable) fails closed. */
     @Test(timeout = 30000)
     public void nullMergeBaseFailsClosed() throws IOException {
-        Path tempDir = installAwkScript();
+        Path tempDir = tempWorkingDirectory();
         try {
             writeCurrent(tempDir, BASE_ONE_METHOD);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, null, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, null, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
             assertFalse(verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
         }
     }
 
-    /** A missing shared awk script fails closed rather than silently allowing everything. */
+    /** A null merge-base file listing (unresolvable) fails closed. */
     @Test(timeout = 30000)
-    public void missingAwkScriptFailsClosed() throws IOException {
-        Path tempDir = Files.createTempDirectory("test-method-protection-test-no-awk");
+    public void nullMergeBaseFilesFailsClosed() throws IOException {
+        Path tempDir = tempWorkingDirectory();
         try {
             writeCurrent(tempDir, BASE_ONE_METHOD);
             TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
-                    FILE, FAKE_MERGE_BASE, tempDir.toFile(), gitOps(true, BASE_ONE_METHOD));
+                    FILE, FAKE_MERGE_BASE, null, tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, realAwkScriptContent()));
+            assertFalse(verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /** A shared awk script missing from the merge-base fails closed rather than silently allowing everything. */
+    @Test(timeout = 30000)
+    public void missingAwkScriptFailsClosed() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_ONE_METHOD);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE), tempDir.toFile(),
+                    gitOps(BASE_ONE_METHOD, null));
             assertFalse(verdict.isAllowed());
             assertTrue(verdict.getReason().contains("not found"));
         } finally {
@@ -380,8 +452,71 @@ public class TestMethodProtectionTest extends TestSuiteBase {
     /** {@link TestMethodProtection#resolveMergeBase} accepts a well-formed abbreviated or full SHA. */
     @Test(timeout = 30000)
     public void resolveMergeBaseAcceptsValidSha() {
-        FileStager.GitOperations ops = gitOps(true, BASE_ONE_METHOD);
+        FileStager.GitOperations ops = gitOps(BASE_ONE_METHOD, realAwkScriptContent());
         String result = new TestMethodProtection().resolveMergeBase("master", ops);
         assertTrue(FAKE_MERGE_BASE.equals(result));
+    }
+
+    /** {@link TestMethodProtection#resolveMergeBaseFiles} returns the listed paths on success. */
+    @Test(timeout = 30000)
+    public void resolveMergeBaseFilesListsTree() {
+        FileStager.GitOperations ops = new FileStager.GitOperations() {
+            @Override
+            public int execute(String... args) {
+                return isLsTree(args) ? 0 : 1;
+            }
+
+            @Override
+            public String executeWithOutput(String... args) {
+                return isLsTree(args) ? FILE + "\n" + AWK_SCRIPT_PATH + "\n" : "";
+            }
+
+            private boolean isLsTree(String[] args) {
+                return args.length == 4 && "ls-tree".equals(args[0]) && FAKE_MERGE_BASE.equals(args[3]);
+            }
+        };
+        Set<String> result = new TestMethodProtection().resolveMergeBaseFiles(FAKE_MERGE_BASE, ops);
+        assertTrue(result.contains(FILE));
+        assertTrue(result.contains(AWK_SCRIPT_PATH));
+    }
+
+    /**
+     * {@link TestMethodProtection#resolveMergeBaseFiles} fails closed
+     * ({@code null}) when the listing command itself exits non-zero, rather
+     * than silently treating every file as absent from the merge-base.
+     */
+    @Test(timeout = 30000)
+    public void resolveMergeBaseFilesFailsClosedOnNonZeroExit() {
+        FileStager.GitOperations failing = new FileStager.GitOperations() {
+            @Override
+            public int execute(String... args) {
+                return 128;
+            }
+
+            @Override
+            public String executeWithOutput(String... args) {
+                return "fatal: unable to read tree object";
+            }
+        };
+        Set<String> result = new TestMethodProtection().resolveMergeBaseFiles(FAKE_MERGE_BASE, failing);
+        assertNull(result);
+    }
+
+    /** {@link TestMethodProtection#resolveMergeBaseFiles} returns null when the git call throws. */
+    @Test(timeout = 30000)
+    public void resolveMergeBaseFilesFailsClosedOnError() {
+        FileStager.GitOperations throwing = new FileStager.GitOperations() {
+            @Override
+            public int execute(String... args) throws IOException {
+                throw new IOException("git executable not found");
+            }
+
+            @Override
+            public String executeWithOutput(String... args) {
+                return "";
+            }
+        };
+        Set<String> result = new TestMethodProtection().resolveMergeBaseFiles(FAKE_MERGE_BASE, throwing);
+        assertNull(result);
     }
 }

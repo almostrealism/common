@@ -45,9 +45,13 @@ import java.util.regex.Pattern;
  * <p>Method extraction is delegated to
  * {@code tools/ci/agent-protection/test-method-lines.awk} — the exact awk
  * script {@code validate-agent-commit.sh} uses — invoked as a subprocess
- * against the working tree's own copy of the script. The harness-side
- * guardrail and the CI-side gate therefore always agree, because they run
- * the identical logic rather than two independent re-implementations of it.
+ * against the script's content <em>at the merge-base</em>, not the working
+ * tree's own copy. Reading it from the mutable working tree would let a
+ * branch that edits {@code test-method-lines.awk} alongside a modified test
+ * method run the comparison against its own altered extractor and defeat
+ * the guardrail; the merge-base copy is outside the branch's control. The
+ * harness-side guardrail and the CI-side gate still always agree, because
+ * both ultimately run the base branch's own version of the identical logic.
  * Only {@code @Test}-annotated methods are compared; fixtures, helpers,
  * fields, constructors and nested classes are never locked — see the awk
  * script's header for why.</p>
@@ -60,11 +64,12 @@ import java.util.regex.Pattern;
  * later edits to the agent's branch.</p>
  *
  * <h2>Fail-safe behavior</h2>
- * <p>Any failure — the merge-base cannot be resolved, the base revision or
- * current content cannot be read, the shared awk script is missing from the
- * working tree, or the awk subprocess itself fails — makes the file fail
- * closed: it is treated as protected in full, exactly as it was before this
- * class existed. The verdict's reason always says which step failed.</p>
+ * <p>Any failure — the merge-base cannot be resolved, its file listing
+ * cannot be read, the base revision or current content cannot be read, the
+ * shared awk script is missing at the merge-base, or the awk subprocess
+ * itself fails — makes the file fail closed: it is treated as protected in
+ * full, exactly as it was before this class existed. The verdict's reason
+ * always says which step failed.</p>
  */
 class TestMethodProtection implements ConsoleFeatures {
 
@@ -160,42 +165,76 @@ class TestMethodProtection implements ConsoleFeatures {
     }
 
     /**
+     * Resolves the full set of file paths present at {@code mergeBase}, once
+     * per {@link FileStager#evaluateFiles} call rather than once per
+     * candidate file.
+     *
+     * <p>Replaces a per-file {@code git cat-file -e <mergeBase>:<file>}
+     * existence probe. For the {@code <rev>:<path>} object-name form, git's
+     * revision parser reports the identical exit code and message whether a
+     * path is genuinely absent from that tree or the lookup itself failed
+     * for an unrelated reason (a corrupt object, a transient read error) —
+     * the two cases cannot be told apart from the probe's own exit code.
+     * Listing the merge-base tree once removes the ambiguity: whether the
+     * {@code git ls-tree} invocation itself succeeded is judged exactly
+     * once, by {@link FileStager.GitOperations#executeOrNull}, and every
+     * later membership check ({@link #evaluate} and
+     * {@link FileStager#evaluateFiles}) is then a plain
+     * {@link Set#contains}, with no exit-code interpretation left to get
+     * wrong.</p>
+     *
+     * @param mergeBase the merge-base commit id from {@link #resolveMergeBase}
+     * @param gitOps    git operations interface
+     * @return the set of file paths present at {@code mergeBase}, or
+     *         {@code null} if the listing could not be read (any file
+     *         evaluation must then fail closed)
+     */
+    Set<String> resolveMergeBaseFiles(String mergeBase, FileStager.GitOperations gitOps) {
+        try {
+            String output = gitOps.executeOrNull("ls-tree", "-r", "--name-only", mergeBase);
+            if (output == null) {
+                warn("Could not list files at merge-base " + shortSha(mergeBase));
+                return null;
+            }
+            Set<String> files = new LinkedHashSet<>();
+            for (String line : output.split("\n", -1)) {
+                if (!line.isEmpty()) files.add(line);
+            }
+            return files;
+        } catch (Exception e) {
+            warn("Could not list files at merge-base " + shortSha(mergeBase) + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Evaluates whether {@code file} may be staged, given its content at
      * {@code mergeBase} and its current content in {@code workingDirectory}.
      *
-     * <p>The merge-base existence check reads {@code cat-file -e}'s exit
-     * code as a plain exists/absent boolean. For the {@code <rev>:<path>}
-     * form used here, git resolves the path through revision parsing, which
-     * dies with exit code 128 the moment the path is missing from that
-     * tree — not the exit code 1 documented for looking up a raw object id,
-     * which this form never produces. Revision parsing cannot distinguish
-     * "path absent" from "rev itself unresolvable" by exit code alone, but
-     * {@code mergeBase} is always the already-validated output of a prior
-     * {@link #resolveMergeBase} call, so the rev is trusted by the time this
-     * method runs: any non-zero exit is read as "absent at the merge-base."
-     * Only the subprocess itself failing (a thrown exception) fails
-     * closed.</p>
+     * <p>The shared awk extractor is read from {@code mergeBase}, not the
+     * working tree: the working tree is the very thing under evaluation, so
+     * a branch that edits {@code test-method-lines.awk} alongside a
+     * modified test method could otherwise run this comparison against its
+     * own altered extractor and defeat the guardrail.</p>
      *
      * @param file             the file path to evaluate, relative to
      *                         {@code workingDirectory}
      * @param mergeBase        the merge-base commit id from
      *                         {@link #resolveMergeBase}, or {@code null}
+     * @param mergeBaseFiles   the files present at {@code mergeBase}, from
+     *                         {@link #resolveMergeBaseFiles}, or
+     *                         {@code null}
      * @param workingDirectory the git working directory
      * @param gitOps           git operations interface
      * @return the verdict for this file
      */
-    Verdict evaluate(String file, String mergeBase, File workingDirectory, FileStager.GitOperations gitOps) {
-        if (mergeBase == null) {
+    Verdict evaluate(String file, String mergeBase, Set<String> mergeBaseFiles,
+                      File workingDirectory, FileStager.GitOperations gitOps) {
+        if (mergeBase == null || mergeBaseFiles == null) {
             return Verdict.blocked("exists on base branch; merge-base could not be resolved");
         }
 
-        boolean existedAtMergeBase;
-        try {
-            existedAtMergeBase = gitOps.execute("cat-file", "-e", mergeBase + ":" + file) == 0;
-        } catch (Exception e) {
-            return Verdict.blocked("exists on base branch; could not check merge-base content: " + e.getMessage());
-        }
-        if (!existedAtMergeBase) {
+        if (!mergeBaseFiles.contains(file)) {
             return Verdict.allowed("branch-new file (absent at merge-base " + shortSha(mergeBase) + ")");
         }
 
@@ -204,11 +243,28 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("file existed at merge-base " + shortSha(mergeBase) + " and was deleted");
         }
 
+        String awkScriptContent;
+        try {
+            awkScriptContent = mergeBaseFiles.contains(AWK_SCRIPT_PATH)
+                    ? gitOps.executeOrNull("show", mergeBase + ":" + AWK_SCRIPT_PATH)
+                    : null;
+        } catch (Exception e) {
+            return Verdict.blocked("exists on base branch; could not read " + AWK_SCRIPT_PATH
+                    + " at merge-base: " + e.getMessage());
+        }
+        if (awkScriptContent == null) {
+            return Verdict.blocked("exists on base branch; " + AWK_SCRIPT_PATH
+                    + " not found at merge-base " + shortSha(mergeBase));
+        }
+
         String baseContent;
         try {
-            baseContent = gitOps.executeWithOutput("show", mergeBase + ":" + file);
+            baseContent = gitOps.executeOrNull("show", mergeBase + ":" + file);
         } catch (Exception e) {
             return Verdict.blocked("exists on base branch; could not read merge-base content: " + e.getMessage());
+        }
+        if (baseContent == null) {
+            return Verdict.blocked("exists on base branch; could not read merge-base content for " + file);
         }
 
         String currentContent;
@@ -218,16 +274,11 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("exists on base branch; could not read current content: " + e.getMessage());
         }
 
-        File awkScript = new File(workingDirectory, AWK_SCRIPT_PATH);
-        if (!awkScript.isFile()) {
-            return Verdict.blocked("exists on base branch; " + AWK_SCRIPT_PATH + " not found in working tree");
-        }
-
         Set<String> baseMethods;
         Set<String> currentMethods;
         try {
-            baseMethods = extractTestMethodRecords(awkScript, baseContent);
-            currentMethods = extractTestMethodRecords(awkScript, currentContent);
+            baseMethods = extractTestMethodRecords(awkScriptContent, baseContent);
+            currentMethods = extractTestMethodRecords(awkScriptContent, currentContent);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Verdict.blocked("exists on base branch; test-method analysis failed: " + e.getMessage());
@@ -258,21 +309,24 @@ class TestMethodProtection implements ConsoleFeatures {
      * addition like an inserted early return — makes its record disappear
      * from the set on the other side.
      *
-     * @param awkScript the shared {@code test-method-lines.awk} script
-     * @param content   the Java source to analyze
+     * @param awkScriptContent the shared {@code test-method-lines.awk}
+     *                         script's content, read from the merge-base
+     * @param content          the Java source to analyze
      * @return the set of {@code "name\tbody"} records found
      * @throws IOException          if the awk subprocess cannot be started or its
-     *                               temporary input file cannot be written
+     *                               temporary input files cannot be written
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
-    private Set<String> extractTestMethodRecords(File awkScript, String content)
+    private Set<String> extractTestMethodRecords(String awkScriptContent, String content)
             throws IOException, InterruptedException {
-        File tmp = File.createTempFile("test-method-protection-", ".java");
+        File scriptTmp = File.createTempFile("test-method-protection-script-", ".awk");
+        File contentTmp = File.createTempFile("test-method-protection-", ".java");
         try {
-            Files.writeString(tmp.toPath(), content, StandardCharsets.UTF_8);
+            Files.writeString(scriptTmp.toPath(), awkScriptContent, StandardCharsets.UTF_8);
+            Files.writeString(contentTmp.toPath(), content, StandardCharsets.UTF_8);
 
             ProcessBuilder pb = new ProcessBuilder(
-                    "awk", "-f", awkScript.getAbsolutePath(), "-v", "mode=methods", tmp.getAbsolutePath());
+                    "awk", "-f", scriptTmp.getAbsolutePath(), "-v", "mode=methods", contentTmp.getAbsolutePath());
             pb.redirectErrorStream(false);
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             Process process = pb.start();
@@ -288,7 +342,8 @@ class TestMethodProtection implements ConsoleFeatures {
             }
             return records;
         } finally {
-            Files.deleteIfExists(tmp.toPath());
+            Files.deleteIfExists(scriptTmp.toPath());
+            Files.deleteIfExists(contentTmp.toPath());
         }
     }
 

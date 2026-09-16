@@ -106,6 +106,40 @@ public class FileStager implements ConsoleFeatures {
             throw new UnsupportedOperationException(
                     "executeWithOutput is not implemented by this GitOperations");
         }
+
+        /**
+         * Runs a git command and returns its output only if the command
+         * itself succeeded (exit code {@code 0}), or {@code null} otherwise.
+         *
+         * <p>{@link #executeWithOutput} alone cannot tell a command that
+         * legitimately produced empty output apart from one that failed and
+         * printed nothing usable to stdout — for the {@code <rev>:<path>}
+         * object-name form in particular, git's revision parser reports the
+         * identical exit code and message whether a path is genuinely
+         * absent from a tree or the lookup itself failed for an unrelated
+         * reason (a corrupt object, a transient read error). Checking the
+         * exit code with {@link #execute} first, and trusting the output
+         * only when that exit code was zero, keeps those two cases from
+         * being conflated.</p>
+         *
+         * <p>Runs the command twice — once through each method — rather
+         * than once, since {@link #execute} and {@link #executeWithOutput}
+         * are independent abstractions with no shared subprocess to reuse.
+         * Callers on this path invoke it a small, fixed number of times per
+         * {@link #evaluateFiles} call, not once per candidate file, so the
+         * extra process is not a meaningful cost.</p>
+         *
+         * @param args the git subcommand and its arguments
+         * @return the command's output, or {@code null} if it exited non-zero
+         * @throws IOException if either process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default String executeOrNull(String... args) throws IOException, InterruptedException {
+            if (execute(args) != 0) {
+                return null;
+            }
+            return executeWithOutput(args);
+        }
     }
 
     /**
@@ -132,6 +166,9 @@ public class FileStager implements ConsoleFeatures {
         String mergeBase = config.isProtectTestFiles()
                 ? testMethodProtection.resolveMergeBase(config.getBaseBranch(), gitOps)
                 : null;
+        Set<String> mergeBaseFiles = mergeBase != null
+                ? testMethodProtection.resolveMergeBaseFiles(mergeBase, gitOps)
+                : null;
 
         for (String file : changedFiles) {
             File f = new File(workingDirectory, file);
@@ -148,7 +185,7 @@ public class FileStager implements ConsoleFeatures {
             if (config.isProtectTestFiles()
                     && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
                 if (isCiWorkflowFile(file) || !file.endsWith(".java")) {
-                    if (existsOnBaseBranch(file, mergeBase, gitOps)) {
+                    if (existsOnBaseBranch(file, mergeBaseFiles)) {
                         log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
                         skippedFiles.add(file + " (protected - exists on base branch)");
                         continue;
@@ -157,7 +194,7 @@ public class FileStager implements ConsoleFeatures {
                     }
                 } else {
                     TestMethodProtection.Verdict verdict = testMethodProtection.evaluate(
-                            file, mergeBase, workingDirectory, gitOps);
+                            file, mergeBase, mergeBaseFiles, workingDirectory, gitOps);
                     if (!verdict.isAllowed()) {
                         log("Blocked (" + verdict.getReason() + "): " + file);
                         skippedFiles.add(file + " (protected - " + verdict.getReason() + ")");
@@ -326,45 +363,31 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Checks whether a file exists at the merge-base by invoking
-     * {@code git cat-file -e <mergeBase>:<file>}.
+     * Checks whether a file exists at the merge-base.
      *
-     * <p>Checked against the merge-base rather than the live tip of the base
-     * branch, for the same reason {@link TestMethodProtection} is: the base
-     * branch keeps moving after a feature branch forks from it, and a
-     * tip-based check would misattribute the base branch's own later edits
-     * to the agent's branch.</p>
+     * <p>Answered from {@code mergeBaseFiles} — the one-time listing built
+     * by {@link TestMethodProtection#resolveMergeBaseFiles} — rather than a
+     * per-file {@code git cat-file -e <mergeBase>:<file>} probe. For the
+     * {@code <rev>:<path>} object-name form, git's revision parser reports
+     * the identical exit code and message whether the path is genuinely
+     * absent from that tree or the lookup itself failed for an unrelated
+     * reason (a corrupt object, a transient read error); a plain set lookup
+     * has no exit code to misread.</p>
      *
-     * <p>Reads {@code cat-file -e}'s exit code as a plain exists/absent
-     * boolean: for the {@code <rev>:<path>} form used here, git's revision
-     * parsing dies with exit code 128 the moment the path is missing from
-     * that tree, not the exit code 1 documented for a raw object id lookup,
-     * which this form never produces. Revision parsing cannot distinguish
-     * "path absent" from "rev itself unresolvable" by exit code alone, but
-     * {@code mergeBase} is only ever the already-validated output of
-     * {@link TestMethodProtection#resolveMergeBase}, so the rev is trusted
-     * by the time this method runs and any non-zero exit is read as
-     * absent.</p>
+     * <p>Fails safe: returns {@code true} (protected) if the merge-base
+     * listing is unavailable — preventing accidental modifications to test
+     * files.</p>
      *
-     * <p>Fails safe: returns {@code true} (protected) if the merge-base is
-     * unresolved, or if the check itself errors out — preventing accidental
-     * modifications to test files.</p>
-     *
-     * @param file      the file path to check
-     * @param mergeBase the merge-base commit id, or {@code null} if it could
-     *                  not be resolved
-     * @param gitOps    git operations interface
+     * @param file           the file path to check
+     * @param mergeBaseFiles the files present at the merge-base, or
+     *                       {@code null} if the listing could not be
+     *                       resolved
      * @return true if the file exists at the merge-base
      */
-    private boolean existsOnBaseBranch(String file, String mergeBase, GitOperations gitOps) {
-        if (mergeBase == null) {
-            return true; // Fail safe: protect if merge-base could not be resolved
+    private boolean existsOnBaseBranch(String file, Set<String> mergeBaseFiles) {
+        if (mergeBaseFiles == null) {
+            return true; // Fail safe: protect if the merge-base listing could not be resolved
         }
-        try {
-            return gitOps.execute("cat-file", "-e", mergeBase + ":" + file) == 0;
-        } catch (Exception e) {
-            warn("Could not check base branch for " + file + ": " + e.getMessage());
-            return true; // Fail safe: protect if uncertain
-        }
+        return mergeBaseFiles.contains(file);
     }
 }

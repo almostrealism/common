@@ -837,6 +837,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     outputs:
+      # TODO(review): deception-audit.sh also sets an `audit_error=true`
+      # output when the merge-base (or its file listing) cannot be
+      # resolved, but that output is never surfaced here or read by
+      # check-quality-gates.sh, so a merge-base failure leaves
+      # has_findings unset and silently reads as "no deception findings".
       has_findings: ${{ steps.audit.outputs.has_findings }}
       finding_count: ${{ steps.audit.outputs.finding_count }}
     steps:

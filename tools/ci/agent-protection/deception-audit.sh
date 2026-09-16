@@ -82,6 +82,37 @@ if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
     exit 1
 fi
 
+# ── Merge-base file listing ─────────────────────────────────────────
+#
+# Every "does this file exist at the merge-base" question below is
+# answered from this one-time listing rather than a per-file
+# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
+# for why that probe cannot distinguish "path absent" from "the lookup
+# itself failed" by exit code alone. A listing failure is an audit
+# error, not evidence that a file is branch-new.
+if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
+    echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be audited:" >&2
+    echo "$MERGE_BASE_FILE_LIST" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "audit_error=true" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+declare -A MERGE_BASE_FILE_SET
+while IFS= read -r f; do
+    [ -n "$f" ] && MERGE_BASE_FILE_SET["$f"]=1
+done <<< "$MERGE_BASE_FILE_LIST"
+
+# Reports whether $1 exists at the merge-base. Membership only -- the
+# listing's own success was already checked above, so this can never
+# confuse "absent" with "lookup failed".
+merge_base_has_file() {
+    [ -n "${MERGE_BASE_FILE_SET[$1]:-}" ]
+}
+
 FINDING_COUNT=0
 FINDINGS=""
 
@@ -113,7 +144,7 @@ BASE_BRANCH_TEST_FILES=""
 if [ -n "$ALL_BRANCH_TEST_FILES" ]; then
     while IFS= read -r TEST_FILE; do
         [ -z "$TEST_FILE" ] && continue
-        if git cat-file -e "${MERGE_BASE}:${TEST_FILE}" 2>/dev/null; then
+        if merge_base_has_file "$TEST_FILE"; then
             BASE_BRANCH_TEST_FILES="${BASE_BRANCH_TEST_FILES}${TEST_FILE}\n"
         fi
     done <<< "$ALL_BRANCH_TEST_FILES"
@@ -164,7 +195,7 @@ if [ -n "$BRANCH_COMMITS" ]; then
             TOTAL_FILES=$((TOTAL_FILES + 1))
 
             if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
-                if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
+                if merge_base_has_file "$FILE"; then
                     HAS_BASE_TEST=true
                 else
                     HAS_BRANCH_TEST=true

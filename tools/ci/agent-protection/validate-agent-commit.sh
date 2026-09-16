@@ -149,6 +149,43 @@ if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
     exit 1
 fi
 
+# ── Merge-base file listing ─────────────────────────────────────────
+#
+# Every "does this file exist at the merge-base" question below is
+# answered from this one-time listing rather than a per-file
+# `git cat-file -e <rev>:<path>` probe. For that <rev>:<path> object-name
+# form, git's revision parser reports the identical exit code and
+# message whether the path is genuinely absent from the tree or the
+# lookup itself failed for an unrelated reason (a corrupt object, a
+# transient read error) -- the two cases cannot be told apart from the
+# probe's own exit code. Listing the tree once removes the ambiguity:
+# whether the listing itself succeeded is judged exactly once, here, and
+# every later membership check is a plain array lookup with no exit-code
+# interpretation left to get wrong.
+if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
+    echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be validated:" >&2
+    echo "$MERGE_BASE_FILE_LIST" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "blocked=true" >> "$GITHUB_OUTPUT"
+        echo "block_reason=merge_base_unavailable" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+declare -A MERGE_BASE_FILE_SET
+while IFS= read -r f; do
+    [ -n "$f" ] && MERGE_BASE_FILE_SET["$f"]=1
+done <<< "$MERGE_BASE_FILE_LIST"
+
+# Reports whether $1 exists at the merge-base. Membership only -- the
+# listing's own success was already checked above, so this can never
+# confuse "absent" with "lookup failed".
+merge_base_has_file() {
+    [ -n "${MERGE_BASE_FILE_SET[$1]:-}" ]
+}
+
 # ── Reports whether the branch carries a signed bypass ──────────────
 #
 # Each commit on the branch is verified separately rather than the
@@ -320,7 +357,7 @@ while IFS= read -r FILE; do
     if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
         # Distinguish between tests that exist on the base branch (protected)
         # and tests introduced on this branch (modifiable by the agent)
-        if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
+        if merge_base_has_file "$FILE"; then
             # Only changes reaching an existing test method are locked;
             # added test methods, fixtures and helpers are ordinary code
             case "$(classify_test_file "$FILE")" in
@@ -333,7 +370,7 @@ while IFS= read -r FILE; do
         fi
     # Python tests: test_*.py, *_test.py, or any module under a tests/ directory
     elif echo "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|/tests/[^/]*\.py$'; then
-        if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
+        if merge_base_has_file "$FILE"; then
             case "$(classify_python_test_file "$FILE")" in
                 modified) BASE_TEST_FILES="${BASE_TEST_FILES}${FILE}\n" ;;
                 added)    BASE_ADDED_FILES="${BASE_ADDED_FILES}${FILE}\n" ;;
