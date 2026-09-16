@@ -34,13 +34,23 @@ import java.io.IOException;
  */
 public class T5GemmaEncoderParityTest extends TestSuiteBase {
 
-	/** Candidate locations for the extracted weight directory (first existing wins). */
+	/**
+	 * Candidate locations for the extracted weight directory (first existing wins). The system
+	 * property is checked first so a sandbox without a writable {@code /workspace} (no env-var
+	 * passthrough to the forked test JVM) can still point at it via the MCP test runner's
+	 * {@code jvm_args}, e.g. {@code -DAR_T5GEMMA_WEIGHTS=/tmp/t5gemma-weights} (same pattern as
+	 * {@code DiffusionTransformerTests#ditWeightsDir}); the env var remains supported for callers
+	 * that can set it directly.
+	 */
 	private static final String[] WEIGHT_DIRS = {
 			System.getProperty("AR_T5GEMMA_WEIGHTS", System.getenv("AR_T5GEMMA_WEIGHTS")),
 			"/workspace/t5gemma-weights"
 	};
 
-	/** Candidate locations for the reference directory (first existing wins). */
+	/**
+	 * Candidate locations for the reference directory (first existing wins). See
+	 * {@link #WEIGHT_DIRS} for why the system property is checked first.
+	 */
 	private static final String[] REFERENCE_DIRS = {
 			System.getProperty("AR_T5GEMMA_REFERENCES", System.getenv("AR_T5GEMMA_REFERENCES")),
 			"target/test-classes/t5gemma-references",
