@@ -58,6 +58,26 @@ if [ -n "$BRANCH" ] && echo "$BRANCH" | grep -qE '^ci/'; then
     CI_BRANCH=true
 fi
 
+# ── Merge-base with the base branch ─────────────────────────────────
+#
+# Base-branch file existence is read from this commit, not from the live
+# tip of $BASE_BRANCH — see validate-agent-commit.sh for why comparing
+# against a moving base branch misattributes master's own later edits to
+# the agent's branch. A merge-base that cannot be computed means the
+# audit has no reliable base to compare against, so it exits rather than
+# silently reporting "no findings".
+if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
+    echo "Cannot compute merge-base of ${BASE_BRANCH} and HEAD — the branch cannot be audited:" >&2
+    echo "$MERGE_BASE" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "finding_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_findings=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
 FINDING_COUNT=0
 FINDINGS=""
 
@@ -89,7 +109,7 @@ BASE_BRANCH_TEST_FILES=""
 if [ -n "$ALL_BRANCH_TEST_FILES" ]; then
     while IFS= read -r TEST_FILE; do
         [ -z "$TEST_FILE" ] && continue
-        if git cat-file -e "${BASE_BRANCH}:${TEST_FILE}" 2>/dev/null; then
+        if git cat-file -e "${MERGE_BASE}:${TEST_FILE}" 2>/dev/null; then
             BASE_BRANCH_TEST_FILES="${BASE_BRANCH_TEST_FILES}${TEST_FILE}\n"
         fi
     done <<< "$ALL_BRANCH_TEST_FILES"
@@ -140,7 +160,7 @@ if [ -n "$BRANCH_COMMITS" ]; then
             TOTAL_FILES=$((TOTAL_FILES + 1))
 
             if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
-                if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+                if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
                     HAS_BASE_TEST=true
                 else
                     HAS_BRANCH_TEST=true

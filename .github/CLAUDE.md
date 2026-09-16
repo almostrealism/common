@@ -137,6 +137,19 @@ deployment to the default-branch context instead, keeping it off the PR while
 preserving the required-reviewers approval gate. `auto-resolve` is excluded from
 `all-checks`; neither it nor the submit workflow is a quality signal.
 
+**Every "Stage submit request" step sets `PROTECT_TEST_FILES: "true"`,
+including the green-pipeline "general review" step.** Test-file protection
+is method-level, not whole-file (see
+`flowtree/runtime/docs/file-staging.md`), so an agent may still add new test
+methods or edit ones it introduced on the branch — there is no tradeoff left
+between enabling the flag and letting an agent write tests. Before this, the
+general-review path ran unprotected; a job on that path once added test
+methods to an existing base-branch file, one of them was broken, and the
+guardrail of the day (whole-file blocking) silently discarded the entire
+file including the fix. Keep every new "Stage submit request" step — in this
+job and in `master-agent-dispatch.yaml`'s QA rounds — setting the flag unless
+you can document a specific reason not to.
+
 **A gate is reported to an agent only when its cause is known.** The message
 `auto-resolve` builds becomes an instruction, and an agent handed "this branch
 weakened its tests" will act on it. `test-integrity-check` therefore publishes

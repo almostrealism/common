@@ -23,7 +23,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
-| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels |
+| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"true"` — every caller here is an automated job, and test-file protection is method-level (see `flowtree/runtime/docs/file-staging.md`), so it costs a caller nothing to leave it on |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Coverage (`coverage/`)
@@ -53,12 +53,12 @@ it knowingly does not cover are in
 | `detect-test-hiding.sh` | Detect modifications to base-branch tests that hide failures |
 | `exfil_guard_registration.py` | Shared `invokes_adapter()` helper imported by `verify-exfiltration-guard.sh`'s CHECK 2 and CHECK 3 |
 | `test-check-quality-gates.sh` | Regression tests for `check-quality-gates.sh` |
-| `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body |
+| `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body. Shared with the harness: `io.flowtree.jobs.TestMethodProtection` (flowtree/runtime) invokes this exact script as a subprocess so the CI gate and the harness-side staging guardrail can never disagree about which methods changed |
 | `test-validate-agent-commit.sh` | Regression tests for `validate-agent-commit.sh` |
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
 | `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
 | `test_exfil_guard_registration.py` | Regression tests for `exfil_guard_registration.py` |
-| `validate-agent-commit.sh` | Block agent commits that change base-branch test methods or CI files |
+| `validate-agent-commit.sh` | Block agent commits that change or remove a base-branch test method (compared against the merge-base with the base branch, not its live tip) or that modify CI/workflow files |
 | `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
 | `verify-sensitive-bypass.sh` | Verify a controller-signed `Sensitive-File-Bypass` commit trailer |

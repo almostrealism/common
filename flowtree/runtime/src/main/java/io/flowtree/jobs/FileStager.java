@@ -81,6 +81,31 @@ public class FileStager implements ConsoleFeatures {
          * @throws InterruptedException if the process is interrupted
          */
         int execute(String... args) throws IOException, InterruptedException;
+
+        /**
+         * Executes a git command and returns its output, regardless of exit
+         * code. Used by {@link TestMethodProtection} to resolve the
+         * merge-base commit and to read file content at that commit —
+         * information {@link #execute} cannot report because it only
+         * returns an exit code.
+         *
+         * <p>The default implementation always throws. Most guardrails only
+         * need an exit code, so most {@code GitOperations} implementations
+         * and test fakes never need to override this. A caller that enables
+         * {@code protectTestFiles} for Java test sources must supply a real
+         * implementation, or every such file will fail closed (see
+         * {@link TestMethodProtection}'s fail-safe behavior).</p>
+         *
+         * @param args the git subcommand and its arguments
+         *             (e.g., {@code "show", "abc123:path/to/File.java"})
+         * @return the combined standard output and standard error
+         * @throws IOException if the process cannot be started
+         * @throws InterruptedException if the process is interrupted
+         */
+        default String executeWithOutput(String... args) throws IOException, InterruptedException {
+            throw new UnsupportedOperationException(
+                    "executeWithOutput is not implemented by this GitOperations");
+        }
     }
 
     /**
@@ -103,6 +128,10 @@ public class FileStager implements ConsoleFeatures {
                                        File workingDirectory, GitOperations gitOps) {
         List<String> stagedFiles = new ArrayList<>();
         List<String> skippedFiles = new ArrayList<>();
+        TestMethodProtection testMethodProtection = new TestMethodProtection();
+        String mergeBase = config.isProtectTestFiles()
+                ? testMethodProtection.resolveMergeBase(config.getBaseBranch(), gitOps)
+                : null;
 
         for (String file : changedFiles) {
             File f = new File(workingDirectory, file);
@@ -118,12 +147,25 @@ public class FileStager implements ConsoleFeatures {
             // Guardrail 2: Test file protection
             if (config.isProtectTestFiles()
                     && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
-                if (existsOnBaseBranch(file, config.getBaseBranch(), gitOps)) {
-                    log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
-                    skippedFiles.add(file + " (protected - exists on base branch)");
-                    continue;
+                if (isCiWorkflowFile(file) || !file.endsWith(".java")) {
+                    // TODO(review): still checks origin/<baseBranch> tip, not mergeBase (see memory)
+                    if (existsOnBaseBranch(file, config.getBaseBranch(), gitOps)) {
+                        log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
+                        skippedFiles.add(file + " (protected - exists on base branch)");
+                        continue;
+                    } else {
+                        log("Allowed (branch-new file): " + file);
+                    }
                 } else {
-                    log("Allowed (branch-new file): " + file);
+                    TestMethodProtection.Verdict verdict = testMethodProtection.evaluate(
+                            file, mergeBase, workingDirectory, gitOps);
+                    if (!verdict.isAllowed()) {
+                        log("Blocked (" + verdict.getReason() + "): " + file);
+                        skippedFiles.add(file + " (protected - " + verdict.getReason() + ")");
+                        continue;
+                    } else {
+                        log("Allowed (" + verdict.getReason() + "): " + file);
+                    }
                 }
             }
 
@@ -251,6 +293,24 @@ public class FileStager implements ConsoleFeatures {
             // If we can't read it, assume it might be binary
             return true;
         }
+    }
+
+    /**
+     * Returns whether {@code file} is a GitHub Actions workflow or action
+     * definition ({@code .github/workflows/**} or {@code .github/actions/**}).
+     *
+     * <p>These paths keep whole-file protection rather than the test-method
+     * granularity {@link TestMethodProtection} applies to Java test sources:
+     * a workflow file has no "test method" structure to reason about, and
+     * CI/workflow configuration is locked in full by design (see RULE 3 in
+     * {@code validate-agent-commit.sh}).</p>
+     *
+     * @param file the file path to test
+     * @return true if the path is a protected CI/workflow path
+     */
+    private static boolean isCiWorkflowFile(String file) {
+        return matchesGlobPattern(file, ".github/workflows/**")
+                || matchesGlobPattern(file, ".github/actions/**");
     }
 
     /**

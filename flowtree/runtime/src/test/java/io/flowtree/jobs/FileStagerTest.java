@@ -183,7 +183,12 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
-	/** Verifies that new test files introduced on the branch (not on base) are allowed to be staged. */
+	/**
+	 * Verifies that new test files introduced on the branch (absent at the
+	 * merge-base) are allowed to be staged. Uses a full {@link FileStager.GitOperations}
+	 * fake (not just an exit-code lambda) because guardrail 2 now resolves the
+	 * merge-base via {@code executeWithOutput} before checking existence.
+	 */
 	@Test(timeout = 30000)
 	public void allowsBranchNewTestFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -198,12 +203,23 @@ public class FileStagerTest extends TestSuiteBase {
 				.build();
 
 			FileStager stager = new FileStager();
-			// Git returns exit code 1 meaning file does NOT exist on base branch
+			// merge-base resolves fine, but the file does not exist there (exit 1).
+			FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+				@Override
+				public int execute(String... args) {
+					return 1;
+				}
+
+				@Override
+				public String executeWithOutput(String... args) {
+					return "abc1234def5678901234567890abcdef1234567";
+				}
+			};
 			StagingResult result = stager.evaluateFiles(
 				Collections.singletonList("src/test/java/NewTest.java"),
 				config,
 				tempDir.toFile(),
-				(String... args) -> 1
+				gitOps
 			);
 
 			assertEquals(1, result.getStagedFiles().size());

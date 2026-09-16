@@ -46,6 +46,26 @@ if [ -z "$BASE_BRANCH" ]; then
     exit 1
 fi
 
+# ── Merge-base with the base branch ─────────────────────────────────
+#
+# Base-branch file existence and content are read from this commit, not
+# from the live tip of $BASE_BRANCH — see validate-agent-commit.sh for
+# why comparing against a moving base branch misattributes master's own
+# later edits to the agent's branch. A merge-base that cannot be
+# computed is treated as "nothing can be checked", the same fail-closed
+# posture the diff-unavailable case below already takes.
+if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
+    echo "Cannot compute merge-base of ${BASE_BRANCH} and HEAD — the branch cannot be checked:" >&2
+    echo "$MERGE_BASE" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "violation_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_violations=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
 VIOLATION_COUNT=0
 VIOLATIONS=""
 
@@ -361,8 +381,8 @@ FILE_COUNT=$(echo "$MODIFIED_TEST_FILES" | wc -l)
 echo "Checking ${FILE_COUNT} modified test file(s) for test-hiding patterns..."
 
 for FILE in $MODIFIED_TEST_FILES; do
-    # Verify the file actually existed on the base branch (belt-and-suspenders)
-    if ! git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+    # Verify the file actually existed at the merge-base (belt-and-suspenders)
+    if ! git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
         continue
     fi
 
@@ -374,7 +394,7 @@ for FILE in $MODIFIED_TEST_FILES; do
     # that lines inside brand-new test methods (or between methods, leading
     # into a new one) are not attributed to a previous existing method.
     BASE_FILE_TMP=$(mktemp)
-    git show "${BASE_BRANCH}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null || true
+    git show "${MERGE_BASE}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null || true
     BASE_METHOD_NAMES=$(list_method_spans "$BASE_FILE_TMP" | cut -f3 | sort -u)
     HEAD_SPANS=$(list_method_spans "$FILE")
     OWNS_RANGES=$(compute_owns_ranges "$HEAD_SPANS")

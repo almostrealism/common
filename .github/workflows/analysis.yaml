@@ -2542,6 +2542,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
@@ -2813,6 +2814,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
@@ -2842,6 +2844,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
@@ -2890,6 +2893,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
@@ -2915,6 +2919,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
@@ -2939,6 +2944,13 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          # This is the all-checks-green path: PR #492 reached CI because a
+          # job here ran without this flag, added new test methods to an
+          # existing base-branch file, and one of them was broken. Test-file
+          # protection now permits branch-introduced test methods (see
+          # flowtree/runtime/docs/file-staging.md), so there is no longer a
+          # tradeoff between protection and adding tests here.
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |

@@ -124,6 +124,31 @@ current_branch() {
 
 CURRENT_BRANCH="$(current_branch)"
 
+# ── Merge-base with the base branch ─────────────────────────────────
+#
+# Every base-branch existence check and content comparison below is
+# taken against this commit, not against the live tip of $BASE_BRANCH.
+# The base branch keeps moving after a feature branch forks from it; if
+# master itself edits a test method after the fork point, comparing
+# against master's current tip would misattribute that edit to the
+# agent's branch. The merge-base is the commit the branch actually forked
+# from, so only changes the branch itself introduced are ever compared.
+#
+# A merge-base that cannot be computed (unknown ref, shallow clone
+# without the fork point) is treated the same as an undiffable branch
+# below: no evidence is a reason to stop, not a reason to pass.
+if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
+    echo "Cannot compute merge-base of ${BASE_BRANCH} and HEAD — the branch cannot be validated:" >&2
+    echo "$MERGE_BASE" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "blocked=true" >> "$GITHUB_OUTPUT"
+        echo "block_reason=merge_base_unavailable" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
 # ── Reports whether the branch carries a signed bypass ──────────────
 #
 # Each commit on the branch is verified separately rather than the
@@ -199,7 +224,7 @@ python_assertions() {
 classify_python_test_file() {
     local file="$1" base head base_assertions head_assertions
 
-    base=$(python_test_names "$BASE_BRANCH" "$file")
+    base=$(python_test_names "$MERGE_BASE" "$file")
     head=$(python_test_names HEAD "$file")
 
     if [ -n "$base" ] && LC_ALL=C comm -23 \
@@ -209,7 +234,7 @@ classify_python_test_file() {
         return
     fi
 
-    base_assertions=$(python_assertions "$BASE_BRANCH" "$file")
+    base_assertions=$(python_assertions "$MERGE_BASE" "$file")
     head_assertions=$(python_assertions HEAD "$file")
 
     if [ "$head_assertions" -lt "$base_assertions" ]; then
@@ -238,7 +263,7 @@ classify_python_test_file() {
 classify_test_file() {
     local file="$1" base head
 
-    base=$(test_methods "$BASE_BRANCH" "$file")
+    base=$(test_methods "$MERGE_BASE" "$file")
     head=$(test_methods HEAD "$file")
 
     if [ -n "$base" ] && LC_ALL=C comm -23 \
@@ -295,7 +320,7 @@ while IFS= read -r FILE; do
     if echo "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)'; then
         # Distinguish between tests that exist on the base branch (protected)
         # and tests introduced on this branch (modifiable by the agent)
-        if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+        if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
             # Only changes reaching an existing test method are locked;
             # added test methods, fixtures and helpers are ordinary code
             case "$(classify_test_file "$FILE")" in
@@ -308,7 +333,7 @@ while IFS= read -r FILE; do
         fi
     # Python tests: test_*.py, *_test.py, or any module under a tests/ directory
     elif echo "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|/tests/[^/]*\.py$'; then
-        if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+        if git cat-file -e "${MERGE_BASE}:${FILE}" 2>/dev/null; then
             case "$(classify_python_test_file "$FILE")" in
                 modified) BASE_TEST_FILES="${BASE_TEST_FILES}${FILE}\n" ;;
                 added)    BASE_ADDED_FILES="${BASE_ADDED_FILES}${FILE}\n" ;;

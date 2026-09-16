@@ -216,8 +216,38 @@ public class GitOperations implements ConsoleFeatures {
      *         {@code false} on no changes or I/O error
      */
     public static boolean hasUncommittedChanges(String workingDirectory) {
+        for (String file : getChangedFiles(workingDirectory)) {
+            if (!isExcludedPath(file)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns every file reported as changed by
+     * {@code git status --porcelain -uall} in {@code workingDirectory}:
+     * modified, added, deleted, and untracked files. Untracked files are
+     * listed individually ({@code -uall}) rather than collapsed to their
+     * containing directory, so that each one can be evaluated on its own by
+     * a staging guardrail. For a renamed file, only the post-rename path is
+     * returned (the part after {@code " -> "}).
+     *
+     * <p>Returns every changed path verbatim, with no exclusions applied —
+     * callers that only care whether <em>meaningful</em> work exists filter
+     * the result themselves with {@link #isExcludedPath(String)}, as
+     * {@link #hasUncommittedChanges(String)} does.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the changed file paths, in the order git reported them; empty
+     *         (never {@code null}) on any I/O error, since this is a
+     *         read-only status query used for previews and summaries
+     */
+    public static List<String> getChangedFiles(String workingDirectory) {
+        List<String> files = new ArrayList<>();
         try {
-            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain");
+            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain", "-uall");
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
@@ -229,7 +259,7 @@ public class GitOperations implements ConsoleFeatures {
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                return false;
+                return files;
             }
 
             for (String line : statusOutput.split("\n")) {
@@ -238,18 +268,17 @@ public class GitOperations implements ConsoleFeatures {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!isExcludedPath(file)) {
-                        return true;
+                    if (!file.isEmpty()) {
+                        files.add(file);
                     }
                 }
             }
-            return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
         } catch (IOException e) {
-            return false;
+            // fail quiet: an unreadable status is reported as "no changes"
         }
+        return files;
     }
 
     /**
