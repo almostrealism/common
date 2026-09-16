@@ -39,6 +39,30 @@ See `tools/coverage-data/coverage-exclusions.txt` / `tools/coverage-data/coverag
 for the selector's data files — kept outside `tools/ci/` because they are mutable data an
 agent round appends to, not pipeline logic.
 
+### Auto-resolve's required-test-job coverage
+
+`analysis.yaml`'s `auto-resolve` job only auto-resolves a test-execution job's
+failure when two things are true for that job: its raw `needs.<job>.result`
+is checked in the `Check for incomplete test execution` step (so a `failure`
+result without parseable Surefire XML still routes to the build-failure path
+instead of falling through to the quality-gate/general-review prompts, which
+report that all tests passed), and its Surefire artifact name is kept by the
+`Filter to resolvable surefire reports` allowlist (so a genuine test failure
+is actually parsed and described, not silently deleted before
+`parse-surefire-failures.sh` ever sees it). `test-flowtree` originally had
+neither — it uploaded no Surefire artifact at all — so a failure there was
+never auto-resolved with a specific fix; it fell through to prompts claiming
+every test had passed.
+
+The required set is `analysis.needs` minus `build` (kept in lockstep with
+`all-checks` by design — see `.github/CLAUDE.md`, "What the `analysis` job
+does"), except the CL lanes (`test-cl`, `test-media-cl`), which are
+deliberately not part of the merge gate and upload neither coverage nor
+Surefire. `tools/tests/test_auto_resolve_test_job_coverage.py` asserts every
+job in that set is wired into both the failure-detection step and the
+Surefire allowlist — add a new test-execution job to `analysis.needs` and
+this test fails until it is wired into both places.
+
 ## Agent Protection (`agent-protection/`)
 
 The exfiltration guard's scripts here are the CI half of a hook that runs in

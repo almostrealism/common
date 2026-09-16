@@ -163,11 +163,18 @@ class TestMethodProtection implements ConsoleFeatures {
      * Evaluates whether {@code file} may be staged, given its content at
      * {@code mergeBase} and its current content in {@code workingDirectory}.
      *
-     * <p>The merge-base existence check distinguishes {@code cat-file -e}'s
-     * documented "object does not exist" exit code (1) from any other
-     * non-zero exit code (e.g. a bad merge-base ref): only exit code 1 is
-     * read as "absent"; every other non-zero result is a failed check and
-     * fails closed rather than being read as a negative answer.</p>
+     * <p>The merge-base existence check reads {@code cat-file -e}'s exit
+     * code as a plain exists/absent boolean. For the {@code <rev>:<path>}
+     * form used here, git resolves the path through revision parsing, which
+     * dies with exit code 128 the moment the path is missing from that
+     * tree — not the exit code 1 documented for looking up a raw object id,
+     * which this form never produces. Revision parsing cannot distinguish
+     * "path absent" from "rev itself unresolvable" by exit code alone, but
+     * {@code mergeBase} is always the already-validated output of a prior
+     * {@link #resolveMergeBase} call, so the rev is trusted by the time this
+     * method runs: any non-zero exit is read as "absent at the merge-base."
+     * Only the subprocess itself failing (a thrown exception) fails
+     * closed.</p>
      *
      * @param file             the file path to evaluate, relative to
      *                         {@code workingDirectory}
@@ -182,17 +189,13 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("exists on base branch; merge-base could not be resolved");
         }
 
-        int existsExitCode;
+        boolean existedAtMergeBase;
         try {
-            existsExitCode = gitOps.execute("cat-file", "-e", mergeBase + ":" + file);
+            existedAtMergeBase = gitOps.execute("cat-file", "-e", mergeBase + ":" + file) == 0;
         } catch (Exception e) {
             return Verdict.blocked("exists on base branch; could not check merge-base content: " + e.getMessage());
         }
-        if (existsExitCode != 0 && existsExitCode != 1) {
-            return Verdict.blocked(
-                    "exists on base branch; merge-base content check failed with exit code " + existsExitCode);
-        }
-        if (existsExitCode == 1) {
+        if (!existedAtMergeBase) {
             return Verdict.allowed("branch-new file (absent at merge-base " + shortSha(mergeBase) + ")");
         }
 

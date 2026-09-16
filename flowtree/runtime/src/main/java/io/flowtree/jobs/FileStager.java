@@ -335,10 +335,20 @@ public class FileStager implements ConsoleFeatures {
      * tip-based check would misattribute the base branch's own later edits
      * to the agent's branch.</p>
      *
+     * <p>Reads {@code cat-file -e}'s exit code as a plain exists/absent
+     * boolean: for the {@code <rev>:<path>} form used here, git's revision
+     * parsing dies with exit code 128 the moment the path is missing from
+     * that tree, not the exit code 1 documented for a raw object id lookup,
+     * which this form never produces. Revision parsing cannot distinguish
+     * "path absent" from "rev itself unresolvable" by exit code alone, but
+     * {@code mergeBase} is only ever the already-validated output of
+     * {@link TestMethodProtection#resolveMergeBase}, so the rev is trusted
+     * by the time this method runs and any non-zero exit is read as
+     * absent.</p>
+     *
      * <p>Fails safe: returns {@code true} (protected) if the merge-base is
-     * unresolved, if {@code cat-file} exits with anything other than its
-     * documented 0 (exists) or 1 (absent) result, or if the check errors
-     * out — preventing accidental modifications to test files.</p>
+     * unresolved, or if the check itself errors out — preventing accidental
+     * modifications to test files.</p>
      *
      * @param file      the file path to check
      * @param mergeBase the merge-base commit id, or {@code null} if it could
@@ -351,14 +361,7 @@ public class FileStager implements ConsoleFeatures {
             return true; // Fail safe: protect if merge-base could not be resolved
         }
         try {
-            int exitCode = gitOps.execute("cat-file", "-e", mergeBase + ":" + file);
-            if (exitCode == 1) {
-                return false;
-            }
-            if (exitCode != 0) {
-                warn("Could not check merge-base content for " + file + ": cat-file exited " + exitCode);
-            }
-            return true; // exit code 0 (exists), or any other code, fails safe
+            return gitOps.execute("cat-file", "-e", mergeBase + ":" + file) == 0;
         } catch (Exception e) {
             warn("Could not check base branch for " + file + ": " + e.getMessage());
             return true; // Fail safe: protect if uncertain
