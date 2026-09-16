@@ -31,6 +31,8 @@ import org.almostrealism.layers.Component;
 import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -374,5 +376,28 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 	@Override
 	default String describe() {
 		return getInputShape().toStringDetail() + " -> " + getOutputShape().toStringDetail();
+	}
+
+	/**
+	 * Attaches compute requirements to this block. The default implementation does nothing;
+	 * a block that carries its own compute-target state (such as
+	 * {@link org.almostrealism.layers.DefaultCellularLayer}) overrides it to record the
+	 * requirements directly, and a block that is a container of other blocks (such as
+	 * {@link SequentialBlock}) overrides it to propagate the requirements to every block
+	 * it contains.
+	 *
+	 * @param requirements the compute requirements to attach
+	 */
+	default void setComputeRequirements(List<ComputeRequirement> requirements) { }
+
+	/**
+	 * Attaches compute requirements to this block.
+	 *
+	 * @param requirements the compute requirements to attach
+	 * @see #setComputeRequirements(List)
+	 */
+	default void setComputeRequirements(ComputeRequirement... requirements) {
+		setComputeRequirements(requirements.length == 0
+				? Collections.emptyList() : List.of(requirements));
 	}
 }

@@ -326,10 +326,9 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 * @param requirements the list of {@link ComputeRequirement} constraints, or {@code null}
 	 *                     to use the defaults
 	 */
+	@Override
 	public void setComputeRequirements(List<ComputeRequirement> requirements) {
-		if (delegate instanceof DefaultCellularLayer) {
-			((DefaultCellularLayer) delegate).setComputeRequirements(requirements);
-		}
+		delegate.setComputeRequirements(requirements);
 	}
 
 	/**

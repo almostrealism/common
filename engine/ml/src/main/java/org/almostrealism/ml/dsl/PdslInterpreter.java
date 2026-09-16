@@ -17,6 +17,7 @@
 package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.io.Console;
@@ -277,6 +278,21 @@ public class PdslInterpreter {
 	 */
 	public Block buildLayer(String name, TraversalPolicy inputShape,
 							Map<String, Object> args) {
+		return buildLayer(name, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Block} from a named layer definition, applying {@code requirements} to
+	 * every layer the definition constructs, via {@link SequentialBlock#setComputeRequirements}.
+	 *
+	 * @param name         the layer name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape for the block
+	 * @param args         parameter bindings (name to value)
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Block
+	 */
+	public Block buildLayer(String name, TraversalPolicy inputShape,
+							Map<String, Object> args, ComputeRequirement... requirements) {
 		PdslNode.LayerDef def = layerDefs.get(name);
 		if (def == null) {
 			throw new PdslParseException("Layer '" + name + "' not found");
@@ -296,6 +312,9 @@ public class PdslInterpreter {
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
 		interpretBody(def.getBody(), block, env);
+		if (requirements.length > 0) {
+			block.setComputeRequirements(requirements);
+		}
 		return block;
 	}
 

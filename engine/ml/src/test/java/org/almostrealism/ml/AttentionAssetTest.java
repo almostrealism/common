@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -174,6 +175,24 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
+	 * A non-empty {@link ComputeRequirement} is applied to every layer the asset builds
+	 * rather than rejected: {@code attention(...)} used to throw {@link IllegalArgumentException}
+	 * for any caller that supplied one (as every {@code transformer(...)} overload does when
+	 * its own caller supplies requirements), even though nothing about the requirement is
+	 * incompatible with an asset-built block. Forcing {@link ComputeRequirement#CPU} must not
+	 * throw and must not change the result.
+	 */
+	@Test(timeout = 300000)
+	public void computeRequirementsAreAppliedNotRejected() {
+		Weights w = new Weights(2, 2, 4, false, false, 7L);
+		PackedCollection position = new PackedCollection(shape(1));
+		Block block = attention(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+				w.bk, w.bv, w.bq, w.qkNormQ, w.qkNormK, cp(w.freqCis), p(position), EPSILON,
+				ComputeRequirement.CPU);
+		assertMatchesGolden(STANDARD_GOLDEN, run(w, block, position, step -> { }), "standard with CPU requirement");
+	}
+
+	/**
 	 * Grouped-query attention with projection biases: four query heads served by two KV
 	 * heads, so the cache write depends on the per-head duplication of keys and values.
 	 */
@@ -253,7 +272,8 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 				groups, p(position), EPSILON);
 		return run(w, block, position, step -> {
 			for (int g = 0; g < groupPositions.length; g++) {
-				groupPositions[g].fill(w.groupPosition(g, step));
+				double groupPosition = w.groupPosition(g, step);
+				groupPositions[g].fill(groupPosition);
 			}
 		});
 	}

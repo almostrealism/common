@@ -203,6 +203,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @return CellularLayer that transforms to split-half format
 	 */
 	default CellularLayer reshapeToSplitHalfRope(int flatDim, int heads, int headSize) {
+		if (headSize <= 0 || headSize % 2 != 0) {
+			throw new IllegalArgumentException("headSize must be a positive even number, got " + headSize);
+		}
+
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(1, flatDim);
 		TraversalPolicy outputShape = shape(heads, freqDim, 2);
@@ -232,6 +236,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @return CellularLayer that transforms from split-half format to flat
 	 */
 	default CellularLayer reshapeFromSplitHalfRope(int heads, int headSize) {
+		if (headSize <= 0 || headSize % 2 != 0) {
+			throw new IllegalArgumentException("headSize must be a positive even number, got " + headSize);
+		}
+
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(heads, freqDim, 2);
 		TraversalPolicy outputShape = shape(heads, headSize);
@@ -723,7 +731,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param freqCis RoPE frequency embeddings
 	 * @param position Current position in sequence
 	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements; none can be attached to an asset-defined block
+	 * @param requirements compute requirements, applied to every layer the attention asset builds
 	 * @return Attention block
 	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given
 	 */
@@ -743,19 +751,19 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		}
 
 		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				freqCis.getShape().length(0), position, epsilon, requirements);
+				freqCis.getShape().length(0), position, epsilon);
 		args.put("bq", bq);
 		args.put("bk", bk);
 		args.put("bv", bv);
 		args.put("freq_cis", freqCis);
 
 		if (qkNormQ == null) {
-			return attentionLayer("attention", args);
+			return attentionLayer("attention", args, requirements);
 		}
 
 		args.put("qk_norm_q", qkNormQ);
 		args.put("qk_norm_k", qkNormK);
-		return attentionLayer("attention_qk_norm", args);
+		return attentionLayer("attention_qk_norm", args, requirements);
 	}
 
 	/**
@@ -785,7 +793,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
 	 * @param position sequential position for KV cache indexing and causal masking
 	 * @param epsilon RMSNorm epsilon
-	 * @param requirements compute requirements; none can be attached to an asset-defined block
+	 * @param requirements compute requirements, applied to every layer the attention asset builds
 	 * @return attention block with MRA
 	 */
 	default Block attention(int heads, int kvHeads,
@@ -797,10 +805,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							double epsilon,
 							ComputeRequirement... requirements) {
 		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				headGroups[0].freqCis.getShape().length(0), position, epsilon, requirements);
+				headGroups[0].freqCis.getShape().length(0), position, epsilon);
 		args.put("q_head_groups", headGroups);
 		args.put("kv_head_groups", HeadGroupConfig.forKvHeads(headGroups, heads / kvHeads));
-		return attentionLayer("attention_mra", args);
+		return attentionLayer("attention_mra", args, requirements);
 	}
 
 	/**
@@ -828,22 +836,15 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param seqLen number of cache rows (the maximum sequence length)
 	 * @param position producer of the current position
 	 * @param epsilon RMSNorm epsilon
-	 * @param requirements compute requirements; none can be attached to an asset-defined block
 	 * @return the argument bindings, to be completed with the layer-specific weights
-	 * @throws IllegalArgumentException if compute requirements are given, or the model
-	 *                                  dimension is not a multiple of the head count
+	 * @throws IllegalArgumentException if the model dimension is not a multiple of the head count
 	 */
 	default Map<String, Object> attentionArguments(int heads, int kvHeads,
 												   PackedCollection rmsAttWeight,
 												   PackedCollection wk, PackedCollection wv,
 												   PackedCollection wq, PackedCollection wo,
 												   int seqLen, Producer<PackedCollection> position,
-												   double epsilon, ComputeRequirement... requirements) {
-		if (requirements.length > 0) {
-			throw new IllegalArgumentException(
-					"Compute requirements cannot be attached to the attention asset");
-		}
-
+												   double epsilon) {
 		int dim = rmsAttWeight.getShape().length(0);
 		if (dim % heads != 0) {
 			throw new IllegalArgumentException("Model dimension " + dim
@@ -873,12 +874,14 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 *              {@code attention_mra}
 	 * @param args the bindings from {@link #attentionArguments}, completed with the
 	 *             layer's own weights
+	 * @param requirements compute requirements, applied to every layer {@link #ATTENTION_ASSET}
+	 *                     constructs for {@code layer}
 	 * @return the attention block
 	 */
-	default Block attentionLayer(String layer, Map<String, Object> args) {
+	default Block attentionLayer(String layer, Map<String, Object> args, ComputeRequirement... requirements) {
 		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
 		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResource(ATTENTION_ASSET), layer, shape(1, dim), args);
+		return loader.buildLayer(loader.parseResource(ATTENTION_ASSET), layer, shape(1, dim), args, requirements);
 	}
 
 	/**

@@ -95,7 +95,8 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	/** {@code repeat_each(n)} places the {@code n} copies of a row next to each other. */
 	@Test(timeout = 120000)
 	public void repeatEachDuplicatesRowsConsecutively() {
-		PackedCollection input = pack(shape(2, 3), 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+		TraversalPolicy inputShape = shape(2, 3);
+		PackedCollection input = pack(inputShape, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 		double[] actual = run("repeat_rows", shape(2, 3),
 				args("rows", 2, "size", 3, "n", 2), input);
 		assertClose("repeat_each(2)", new double[] {
@@ -118,10 +119,11 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 		args.put("row_cache", cache);
 		CompiledModel model = compile("write_row", shape(1, 3), args);
 
+		TraversalPolicy rowShape = shape(1, 3);
 		PackedCollection[] rows = {
-				pack(shape(1, 3), 1.0, 2.0, 3.0),
-				pack(shape(1, 3), 4.0, 5.0, 6.0),
-				pack(shape(1, 3), 7.0, 8.0, 9.0) };
+				pack(rowShape, 1.0, 2.0, 3.0),
+				pack(rowShape, 4.0, 5.0, 6.0),
+				pack(rowShape, 7.0, 8.0, 9.0) };
 		for (int step = 0; step < rows.length; step++) {
 			position.fill(step);
 			double[] output = model.forward(rows[step]).toArray();
@@ -131,7 +133,7 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 0.0, 0.0, 0.0 }, cache.toArray());
 
 		position.fill(1);
-		model.forward(pack(shape(1, 3), 10.0, 11.0, 12.0));
+		model.forward(pack(rowShape, 10.0, 11.0, 12.0));
 		assertClose("row 1 rewritten", new double[] {
 				1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 7.0, 8.0, 9.0, 0.0, 0.0, 0.0 }, cache.toArray());
 	}
@@ -191,8 +193,10 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 
 		int[][] groupPositions = { { 0, 5 }, { 3, 1 }, { 2, 2 } };
 		for (int[] pair : groupPositions) {
-			positions[0].fill(pair[0]);
-			positions[1].fill(pair[1]);
+			int pos0 = pair[0];
+			int pos1 = pair[1];
+			positions[0].fill(pos0);
+			positions[1].fill(pos1);
 			double[] actual = model.forward(input).toArray();
 			double[] expected = x.clone();
 			rotate(expected, 0, headSize, tables[0], pair[0]);
@@ -270,7 +274,8 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	 */
 	@Test(timeout = 120000)
 	public void softmaxIsPerRowAndStable() {
-		PackedCollection input = pack(shape(3, 4),
+		TraversalPolicy inputShape = shape(3, 4);
+		PackedCollection input = pack(inputShape,
 				1.0, 2.0, 3.0, 4.0,
 				1000.0, 1000.0, 999.0, 998.0,
 				-5.0, 0.0, 5.0, 0.0);
@@ -320,7 +325,8 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	/** {@code sqrt} is evaluated in configuration arithmetic. */
 	@Test(timeout = 120000)
 	public void sqrtEvaluatesInConfigurationArithmetic() {
-		PackedCollection input = pack(shape(1, 4), 4.0, 8.0, -12.0, 0.0);
+		TraversalPolicy inputShape = shape(1, 4);
+		PackedCollection input = pack(inputShape, 4.0, 8.0, -12.0, 0.0);
 		double[] actual = run("scaled_by_inverse_root", shape(1, 4), args("size", 4, "n", 16), input);
 		assertClose("scale(1 / sqrt(16))", new double[] { 1.0, 2.0, -3.0, 0.0 }, actual);
 	}
@@ -334,8 +340,10 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	public void rmsnormWithPerHeadWeightsNormalizesEachHead() {
 		int heads = 2;
 		int headSize = 4;
-		PackedCollection weights = pack(shape(heads, headSize), 0.5, 1.0, 1.5, 2.0, 2.0, 1.5, 1.0, 0.5);
-		PackedCollection input = pack(shape(1, heads * headSize), 10.0, -20.0, 30.0, -40.0, 1.0, 2.0, -3.0, 4.0);
+		TraversalPolicy weightsShape = shape(heads, headSize);
+		TraversalPolicy inputShape = shape(1, heads * headSize);
+		PackedCollection weights = pack(weightsShape, 0.5, 1.0, 1.5, 2.0, 2.0, 1.5, 1.0, 0.5);
+		PackedCollection input = pack(inputShape, 10.0, -20.0, 30.0, -40.0, 1.0, 2.0, -3.0, 4.0);
 		double[] x = input.toArray();
 		double[] scale = weights.toArray();
 		double[] actual = run("head_norm", shape(1, heads * headSize),
@@ -356,8 +364,10 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	/** {@code dense(w, b)} with {@code b} bound to {@code null} is the projection without a bias. */
 	@Test(timeout = 120000)
 	public void denseWithNullBiasProjectsWithoutBias() {
-		PackedCollection w = pack(shape(3, 2), 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-		PackedCollection input = pack(shape(1, 2), 1.0, -1.0);
+		TraversalPolicy wShape = shape(3, 2);
+		TraversalPolicy inputShape = shape(1, 2);
+		PackedCollection w = pack(wShape, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+		PackedCollection input = pack(inputShape, 1.0, -1.0);
 		Map<String, Object> args = args("in_size", 2, "w", w);
 		args.put("b", null);
 		double[] actual = run("projection", shape(1, 2), args, input);
