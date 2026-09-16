@@ -84,7 +84,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection mid = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Submittable op1 = copyKernel(src, mid, n, ComputeRequirement.MTL);
 			Submittable op2 = copyKernel(mid, dst, n, ComputeRequirement.MTL);
@@ -96,7 +96,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			Semaphore s2 = op2.submit(s1);
 
 			long issued = runner.getCommitCount();
-			assertEquals((double) (baseline + 1), (double) issued);
+			assertEquals((double) baseline, (double) issued);
 
 			if (s2 != null) {
 				s2.waitFor();
@@ -105,6 +105,8 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			for (int i = 0; i < n; i++) {
 				assertEquals(src.toDouble(i), dst.toDouble(i));
 			}
+
+			assertEquals((double) (baseline + 1), (double) runner.getCommitCount());
 		} finally {
 			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
 		}
@@ -136,7 +138,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Submittable op = copyKernel(src, dst, n, ComputeRequirement.MTL);
 

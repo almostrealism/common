@@ -594,6 +594,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * we need to create the AcceleratedProcessDetails first.
 		 */
 		boolean[] evaluateAhead = new boolean[arguments.size()];
+		boolean[] dispatchBacked = new boolean[arguments.size()];
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
@@ -618,9 +619,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				if (!Hardware.getLocalHardware().isAsync() ||
-						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
-						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
+				dispatchBacked[i] = kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
+						kernelArgEvaluables[i] instanceof HardwareEvaluable;
+
+				if (!Hardware.getLocalHardware().isAsync() || dispatchBacked[i]) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
@@ -670,6 +672,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
+			dispatchBacked[i] = true;
 		}
 
 		/*
@@ -698,7 +701,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 
-			asyncEvaluables[i].request(prepared.args, dependsOn);
+			asyncEvaluables[i].request(prepared.args, dispatchBacked[i] ? dependsOn : null);
 		}
 
 		/* The details are ready */
