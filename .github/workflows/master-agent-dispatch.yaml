@@ -199,6 +199,7 @@ jobs:
           BASE_BRANCH: master
           DESCRIPTION: "Plan new work branch"
           AUTO_CREATE_PR: "true"
+          PROTECT_TEST_FILES: "true"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
