@@ -1067,27 +1067,33 @@ jobs:
   #
   # auto-resolve already creates a workstream on demand
   # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
-  # `analysis`, which needs the whole self-hosted test matrix (`test`,
-  # `test-flowtree`, `test-media`, `test-mac`, `test-media-mac`) — and those
-  # lanes are long. That leaves a branch with no workstream for the whole
+  # `analysis`, which waits on `build`, `test`, `test-flowtree`, `test-media`,
+  # `test-mac` and `test-media-mac` (any may be skipped) — and those lanes are
+  # long. (The ROCm lane, `test-cl` and `test-media-cl`, is also self-hosted
+  # and long, but uploads no coverage, so `analysis` does not wait on it — see
+  # .github/CLAUDE.md.) That leaves a branch with no workstream for the whole
   # wait — so no workstream ID to submit other improvement jobs against, and
   # nothing for another session to address memory to. Registering here
   # closes that gap.
   #
   # This job is deliberately independent of the validation gates
   # (code-policy-check, test-timeout-check, duplicate-code-check,
-  # test-integrity-check, checkstyle). None of them gate the test jobs —
-  # every test job's `needs` chain runs back to `build` alone — so a
-  # validation-only failure does not stop the test matrix, and auto-resolve
-  # still cannot start until that matrix finishes. checkstyle in particular
-  # used to be treated as a fast-fail fallback for this job, but it is not a
-  # prerequisite of any test job either: a branch that only trips checkstyle
-  # still runs the full matrix, and register-workstream being skipped in
-  # that case left the branch with no workstream for as long as the matrix
-  # took (observed: 90+ minutes on PR #500, still waiting on queued test-cl
-  # lanes with no workstream to submit against). Registering unconditionally
-  # once `build` succeeds removes that gap regardless of which gate, if any,
-  # eventually fails.
+  # test-integrity-check, checkstyle). None of them gate the jobs `analysis`
+  # waits on — `test`, `test-flowtree`, `test-media`, `test-mac` and
+  # `test-media-mac` each have a `needs` chain that runs back to `build`
+  # alone. (`test-cl` and `test-media-cl` are the one exception: they do gate
+  # on the validation checks directly, but `analysis` — and therefore
+  # auto-resolve — does not wait on them either way.) So a validation-only
+  # failure does not stop the lanes `analysis` is waiting for, and
+  # auto-resolve still cannot start until they finish. checkstyle in
+  # particular used to be treated as a fast-fail fallback for this job, but
+  # it is not a prerequisite of `test`/`test-flowtree`/`test-media` either: a
+  # branch that only trips checkstyle still runs those lanes in full, and
+  # register-workstream being skipped in that case left the branch with no
+  # workstream for as long as the lanes took (observed: 90+ minutes on PR
+  # #500, still waiting on queued test-cl lanes with no workstream to submit
+  # against). Registering unconditionally once `build` succeeds removes that
+  # gap regardless of which gate, if any, eventually fails.
   #
   # Running both this job and auto-resolve's own registration is harmless:
   # registration is idempotent on the controller (an existing workstream is
@@ -1120,6 +1126,11 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
 
       - name: Determine branch context
         id: ctx
@@ -1132,7 +1143,39 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
+      # This job no longer waits on test-integrity-check, so nothing else in
+      # the pipeline has verified by this point that tools/ci/register-workstream.sh
+      # is the trusted copy before it runs with FLOWTREE_CF_ACCESS_CLIENT_SECRET in
+      # its environment. The checkout above is the PR's own tree, so a branch that
+      # modified the script would have that modified copy executed with the secret
+      # attached — the script is the thing being asked to run, not just code it
+      # happens to sit next to. Refuse to run a script that differs from the trusted
+      # copy on origin/master, with the same ci/... carve-out the
+      # "Check for enforcement infrastructure tampering" step of
+      # test-integrity-check (below) uses for branches that declare the
+      # pipeline itself as their subject.
+      - name: Verify registration script integrity
+        id: script_integrity
+        run: |
+          BRANCH="${{ steps.ctx.outputs.branch }}"
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          # A script that does not exist on origin/master yet is new, not modified —
+          # there is no trusted copy to compare against, so trust the checkout as-is.
+          if ! git cat-file -e origin/master:tools/ci/register-workstream.sh 2>/dev/null; then
+            exit 0
+          fi
+
+          if git diff --name-only origin/master...HEAD -- tools/ci/register-workstream.sh | grep -q .; then
+            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Register workstream
+        if: steps.script_integrity.outputs.skip != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
