@@ -336,7 +336,10 @@ CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
 
 ### RMS Normalization
 
-RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering:
+RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering.
+`weights` determines the row size: each contiguous run of `weights.getShape().getTotalSize()`
+features in the input is treated as one row and normalized by its own root-mean-square, so a
+batch of multiple rows (e.g. a sequence of token positions) normalizes each row independently:
 
 ```java
 // RMSNorm with weights
@@ -345,6 +348,24 @@ CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
 // RMSNorm with explicit size
 CellularLayer layer = rmsnorm(shape, size, weights, eps);
 ```
+
+### Selecting Normalization by Checkpoint Family
+
+When a builder assembles blocks from checkpoint weights and the checkpoint may use either
+family, pass a `NormalizationType` instead of calling `norm()`/`rmsnorm()` directly:
+
+```java
+import org.almostrealism.layers.NormalizationType;
+
+// Routes to rmsnorm() or norm() depending on the checkpoint's normalization family
+Function<TraversalPolicy, CellularLayer> factory =
+        norm(NormalizationType.RMS, weights, biases, eps);
+CellularLayer layer = factory.apply(shape);
+```
+
+`NormalizationType.LAYER` centers features on their mean before dividing by the standard
+deviation; `NormalizationType.RMS` divides by the root mean square without centering. See
+`NormalizationLayerFeatures#norm(NormalizationType, PackedCollection, PackedCollection, double, ComputeRequirement...)`.
 
 ### Common Pitfalls
 

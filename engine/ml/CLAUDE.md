@@ -179,8 +179,9 @@ public class Qwen3 implements AttentionFeatures {
 
             // Use generalized attention method, not model-specific copy
             transformer.add(attention(
-                config.headCount, config.kvHeadCount, config.headSize,
-                wq, wk, wv, wo,
+                config.headCount, config.kvHeadCount,
+                rmsAttWeight, wk, wv, wq, wo,
+                bk, bv, bq,
                 qkNormQ, qkNormK,  // Optional parameters for QK-Norm
                 freqCis, position, requirements
             ));
@@ -338,14 +339,18 @@ public void compareLogits() throws Exception {
 // In AttentionFeatures.java
 
 // GOOD: Generalized method with optional parameters
-default Block attention(int heads, int kvHeads, int headSize,
-                       PackedCollection<?> wq,
+default Block attention(int heads, int kvHeads,
+                       PackedCollection<?> rmsAttWeight,   // Pre-attention RMSNorm weights
                        PackedCollection<?> wk,
                        PackedCollection<?> wv,
+                       PackedCollection<?> wq,
                        PackedCollection<?> wo,
-                       PackedCollection<?> qkNormQ,  // Optional: null if not using
-                       PackedCollection<?> qkNormK,  // Optional: null if not using
-                       PackedCollection<?> freqCis,
+                       PackedCollection<?> bk,             // Optional: null if unused
+                       PackedCollection<?> bv,
+                       PackedCollection<?> bq,
+                       PackedCollection<?> qkNormQ,        // Optional: null if not using
+                       PackedCollection<?> qkNormK,        // Optional: null if not using
+                       CollectionProducer<?> freqCis,
                        Producer<PackedCollection<?>> position,
                        ComputeRequirement... requirements) {
     // Unified implementation

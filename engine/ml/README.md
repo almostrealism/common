@@ -71,33 +71,34 @@ host before any kernel runs.
 ### 2. Transformer Attention
 
 ```java
-import org.almostrealism.layers.AttentionFeatures;
-import static org.almostrealism.layers.LayerFeatures.*;
+import org.almostrealism.ml.AttentionFeatures;
+import static org.almostrealism.ml.AttentionFeatures.*;
 
 // Multi-Head Attention with GQA and QK-Norm
 Block attnBlock = attention(
-    nHeads,           // Number of query heads (e.g., 32)
-    kvHeads,          // Number of KV heads (e.g., 8 for GQA)
-    headSize,         // Dimension per head
-    wq, wk, wv, wo,   // Weight matrices
-    qkNormQ, qkNormK, // Optional QK normalization weights
-    freqCis,          // RoPE frequencies
-    requirements      // Computation requirements
+    nHeads, kvHeads,          // Query heads, KV heads (GQA when kvHeads < nHeads)
+    rmsAttWeight,             // Pre-attention RMSNorm weights
+    wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
+    bk, bv, bq,               // Optional bias terms (null if unused)
+    qkNormQ, qkNormK,         // Optional QK-Norm weights (null to skip)
+    freqCis,                  // RoPE frequencies
+    position,                 // Current position in sequence
+    requirements              // Computation requirements
 );
 
 // Feed-Forward Network with SwiGLU activation
 Block ffnBlock = feedForward(
-    wGate,  // Gate projection (W1)
-    wUp,    // Up projection (W3)
-    wDown   // Down projection (W2)
+    rmsFfnWeight,  // Pre-FFN RMSNorm weights
+    w1,            // Gate projection
+    w2,            // Down projection
+    w3             // Up projection
 );
 
-// Complete transformer block
+// Complete transformer block (attention + feed-forward in one call)
 Block transformerLayer = transformer(
-    attnBlock,
-    ffnBlock,
-    attnNormWeights,
-    ffnNormWeights
+    nHeads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+    freqCis, rmsFfnWeight, w1, w2, w3, position,
+    requirements
 );
 ```
 
@@ -200,23 +201,31 @@ public class StateDictionary implements Destroyable {
 ### AttentionFeatures
 
 ```java
-public interface AttentionFeatures extends LayerFeatures {
-    // Multi-head attention with optional GQA and QK-Norm
-    default Block attention(int heads, int kvHeads, int headSize,
-                           PackedCollection<?> wq, wk, wv, wo,
+public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
+    // Multi-head attention with optional GQA, bias terms, and QK-Norm
+    default Block attention(int heads, int kvHeads,
+                           PackedCollection<?> rmsAttWeight,
+                           PackedCollection<?> wk, wv, wq, wo,
+                           PackedCollection<?> bk, bv, bq,
                            PackedCollection<?> qkNormQ, qkNormK,
                            PackedCollection<?> freqCis,
+                           Producer<PackedCollection<?>> position,
                            ComputeRequirement... requirements);
 
-    // Feed-forward with SwiGLU activation
-    default Block feedForward(PackedCollection<?> wGate,
-                             PackedCollection<?> wUp,
-                             PackedCollection<?> wDown);
+    // Feed-forward with SwiGLU activation (from FeedForwardFeatures)
+    default Block feedForward(PackedCollection<?> rms,
+                             PackedCollection<?> w1, w2, w3,
+                             ComputeRequirement... requirements);
 
-    // Complete transformer layer
-    default Block transformer(Block attention, Block ffn,
-                             PackedCollection<?> attnNorm,
-                             PackedCollection<?> ffnNorm);
+    // Complete transformer layer (attention + feed-forward)
+    default Block transformer(int heads, int kvHeads,
+                             PackedCollection<?> rmsAttWeight,
+                             PackedCollection<?> wk, wv, wq, wo,
+                             CollectionProducer<?> freqCis,
+                             PackedCollection<?> rmsFfnWeight,
+                             PackedCollection<?> w1, w2, w3,
+                             Producer<PackedCollection<?>> position,
+                             ComputeRequirement... requirements);
 }
 ```
 
@@ -537,6 +546,41 @@ into (an inpainting mask concatenated with the masked latent, for example) befor
 block projects it to the transformer width and adds it to the hidden state between the self-attention
 and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local
 conditioning. The buffer starts zero-filled, which is the value plain generation supplies.
+
+### Stable Audio 3 Conditioning and Codec
+
+`StableAudio3Conditioner` (package `org.almostrealism.ml.audio`) builds the cross-attention and
+global conditioning that `DiffusionTransformer` expects, from a text prompt and a duration:
+
+```java
+import org.almostrealism.ml.audio.AudioAttentionConditioner.ConditionerOutput;
+import org.almostrealism.ml.audio.StableAudio3Conditioner;
+import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
+
+StableAudio3Conditioner conditioner = new StableAudio3Conditioner(
+        t5GemmaEncoder,      // T5GemmaEncoder — encodes the prompt
+        paddingEmbedding,    // learned embedding substituted at padded prompt positions
+        durationConditioner  // NumberConditioner — embeds the requested duration
+);
+
+ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationSeconds);
+```
+
+The prompt itself is encoded by `T5GemmaEncoder` (package `org.almostrealism.ml.t5gemma`), a
+T5Gemma text encoder configured by `T5GemmaConfig` and loaded from a `StateDictionary` the same
+way as the other model weights in this module.
+
+Other Stable Audio 3 building blocks:
+- **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
+  (with optional adaptive projected guidance); wired into sampling via
+  `DiffusionSampler#setGuidance(ClassifierFreeGuidance, PackedCollection, PackedCollection)`.
+- **`DistributionShift`** (`LogSNRShift`, `FluxDistributionShift`, `LogitDistributionShift`) —
+  warps the rectified-flow sampler's uniform timestep schedule so more steps land at the noise
+  levels where structure emerges, shifting with the generated sequence length.
+- **`OobleckCodec`** (`OobleckEncoder`/`OobleckDecoder`) and **`SAMEAutoEncoder`** — latent audio
+  autoencoders that compress waveforms to and from the diffusion model's latent space.
+- **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
+  runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
 
 ## Integration with Other Modules
 
