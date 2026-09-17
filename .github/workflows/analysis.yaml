@@ -1078,22 +1078,29 @@ jobs:
   #
   # This job is deliberately independent of the validation gates
   # (code-policy-check, test-timeout-check, duplicate-code-check,
-  # test-integrity-check, checkstyle). None of them gate the jobs `analysis`
-  # waits on — `test`, `test-flowtree`, `test-media`, `test-mac` and
-  # `test-media-mac` each have a `needs` chain that runs back to `build`
-  # alone. (`test-cl` and `test-media-cl` are the one exception: they do gate
-  # on the validation checks directly, but `analysis` — and therefore
-  # auto-resolve — does not wait on them either way.) So a validation-only
-  # failure does not stop the lanes `analysis` is waiting for, and
-  # auto-resolve still cannot start until they finish. checkstyle in
-  # particular used to be treated as a fast-fail fallback for this job, but
-  # it is not a prerequisite of `test`/`test-flowtree`/`test-media` either: a
-  # branch that only trips checkstyle still runs those lanes in full, and
-  # register-workstream being skipped in that case left the branch with no
-  # workstream for as long as the lanes took (observed: 90+ minutes on PR
-  # #500, still waiting on queued test-cl lanes with no workstream to submit
-  # against). Registering unconditionally once `build` succeeds removes that
-  # gap regardless of which gate, if any, eventually fails.
+  # test-integrity-check, checkstyle). Four of those five DO gate the lanes
+  # `analysis` waits on: `test`, `test-flowtree`, `test-media`, `test-mac`
+  # and `test-media-mac` (and, for that matter, `test-cl`/`test-media-cl`)
+  # all list code-policy-check, test-timeout-check, duplicate-code-check and
+  # test-integrity-check directly in `needs` — see .github/CLAUDE.md. So a
+  # failure in any of those four already skip-fails the lanes `analysis`
+  # waits on just as fast as it would skip-fail this job if it kept the same
+  # `needs`; decoupling from them buys nothing on that failure path. What it
+  # does buy is not waiting on them when they are going to pass: those four
+  # checks run in parallel with `build` and can still take real time to
+  # finish, and this job has no functional dependency on their outcome, so
+  # there is no reason to sit idle until they report before registering.
+  #
+  # checkstyle is the actual outlier: it is NOT a prerequisite of `test`,
+  # `test-flowtree`, `test-media`, `test-mac` or `test-media-mac` — unlike
+  # the four checks above, none of the test-matrix jobs list it in `needs`.
+  # A branch that only trips checkstyle therefore runs the full matrix to
+  # completion while register-workstream — back when it still depended on
+  # checkstyle as a "fast-fail fallback" — sat skipped the whole time
+  # (observed: 90+ minutes on PR #500, still waiting on queued test-cl lanes
+  # with no workstream to submit against). Registering unconditionally once
+  # `build` succeeds removes that gap regardless of which gate, if any,
+  # eventually fails.
   #
   # Running both this job and auto-resolve's own registration is harmless:
   # registration is idempotent on the controller (an existing workstream is
@@ -1114,6 +1121,13 @@ jobs:
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
   # below reports a notice or warning and exits 0.
+  # TODO(review): "every failure path... exits 0" is no longer true for the
+  # "Fetch base branch" and "Verify registration script integrity" steps
+  # added below — neither has `continue-on-error` or its own failure
+  # handling, so e.g. a transient `git fetch origin master` network error
+  # fails the step (GitHub Actions default `-eo pipefail`) and the whole job
+  # goes red, contradicting this comment. See review-followup memory on
+  # workstream 3e52f5d6-13d4-45b2-93a7-a776d5af7045 for detail.
   register-workstream:
     needs: [changes, build]
     if: >-
@@ -1156,8 +1170,19 @@ jobs:
       # pipeline itself as their subject.
       - name: Verify registration script integrity
         id: script_integrity
+        env:
+          # Passed via env, not interpolated into the script body: the
+          # branch name is attacker-controlled (github.head_ref on a
+          # pull_request run) and git refs permit shell metacharacters
+          # (backticks, `$()`, `;`, quotes). Template-substituting it
+          # directly into `run:` would let a crafted branch name inject
+          # commands into this step — which runs, in the same job and
+          # workspace, immediately before the step that executes
+          # tools/ci/register-workstream.sh with the registration secret
+          # attached. That would defeat the very check this step exists
+          # to perform.
+          BRANCH: ${{ steps.ctx.outputs.branch }}
         run: |
-          BRANCH="${{ steps.ctx.outputs.branch }}"
           if echo "$BRANCH" | grep -qE '^ci/'; then
             echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
             exit 0

@@ -75,6 +75,28 @@ class RegisterWorkstreamWiringTests(unittest.TestCase):
         script = _step(_INTEGRITY_STEP)["run"]
         self.assertTrue(re.search(r"\^ci/", script), "no ci/... branch carve-out found")
 
+    def test_the_integrity_step_does_not_interpolate_the_branch_name_into_the_script(self):
+        """Regression guard for script injection via a crafted branch name.
+
+        `steps.ctx.outputs.branch` derives from `github.head_ref`, which is
+        attacker-controlled on a pull_request run and may contain shell
+        metacharacters (git refs permit backticks, `$()`, `;`, quotes).
+        Template-substituting it directly into the `run:` body would let a
+        crafted branch name inject commands into this step, which runs
+        immediately before the step that executes
+        tools/ci/register-workstream.sh with the registration secret
+        attached in the same job/workspace. The branch name must be passed
+        through `env:` and referenced as a shell variable instead.
+        """
+        step = _step(_INTEGRITY_STEP)
+        self.assertNotIn("${{", step["run"],
+                          "the script body must not contain a GitHub Actions "
+                          "expression — untrusted values belong in env:, not "
+                          "interpolated into the shell script")
+        self.assertEqual(step.get("env", {}).get("BRANCH"),
+                          "${{ steps.ctx.outputs.branch }}")
+        self.assertIn("BRANCH", step["run"])
+
     def test_the_checkout_fetches_enough_history_to_diff_against_master(self):
         checkout = _step("Checkout Code")
         self.assertEqual(checkout.get("with", {}).get("fetch-depth"), 0)
