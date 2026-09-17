@@ -55,8 +55,8 @@ import java.util.stream.Stream;
  * framework. It composes the themed feature interfaces into a single mixin, so implementing it grants
  * access to the entire factory-method vocabulary - creation, slicing, arithmetic, aggregation,
  * comparison, and gradients - through simple method calls. {@link CollectionFeatures} itself declares
- * only the operations that span those categories (concatenation, element indexing, assignment, and
- * the generic {@code compute} factories).
+ * only the operations that span those categories (concatenation, element indexing, assignment,
+ * broadcasting a per-position value across a shape, and the generic {@code compute} factories).
  * </p>
  *
  * <h2>Design Pattern</h2>
@@ -100,8 +100,8 @@ import java.util.stream.Stream;
  *       {@code multiplyGradient}</li>
  *   <li>{@link CollectionFeatures} (this interface) - {@code concat}, element indexing
  *       ({@code c(collection, index)}, {@code index}, {@code sizeOf}), {@code a} (assignment),
- *       the generic {@code compute} factories, and host-side utilities
- *       ({@code argmax}, {@code topK})</li>
+ *       {@code broadcast} (expanding a per-position value across a shape), the generic
+ *       {@code compute} factories, and host-side utilities ({@code argmax}, {@code topK})</li>
  * </ul>
  *
  * <h2>Usage Examples</h2>
@@ -330,6 +330,32 @@ public interface CollectionFeatures extends GradientFeatures {
 		}
 
 		return concat(new TraversalPolicy(dims), producers);
+	}
+
+	/**
+	 * Expands one value per position along the given axis of a batched shape to the whole
+	 * shape, repeating the value across every other non-batch axis, so it can be combined
+	 * element-wise with a collection of that shape.
+	 *
+	 * @param shape  the target shape, whose first axis is the batch
+	 * @param axis   the axis the values index (never the batch axis)
+	 * @param values the values, shape {@code (batch, shape.length(axis))}
+	 * @return a producer of the values expanded to {@code shape}
+	 * @throws IllegalArgumentException if {@code axis} is the batch axis or beyond the shape
+	 */
+	default CollectionProducer broadcast(TraversalPolicy shape, int axis, Producer<PackedCollection> values) {
+		if (axis <= 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not a non-batch axis of " + shape);
+		}
+
+		CollectionProducer expanded = c(values).reshape(shape.length(0), shape.length(axis));
+		for (int k = 1; k < shape.getDimensions(); k++) {
+			if (k != axis) {
+				expanded = expanded.repeat(k, shape.length(k));
+			}
+		}
+
+		return expanded.reshape(shape);
 	}
 
 	/**

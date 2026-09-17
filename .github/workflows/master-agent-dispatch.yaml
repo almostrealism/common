@@ -6,8 +6,8 @@ name: "Master Agent Dispatch"
 # Defect Hunt) with byte-identical triggers. They are one workflow because a
 # workflow per lifecycle event keeps the Actions UI navigable; a separate file
 # per job multiplies the sidebar without separating anything. Every job added
-# since — test coverage, consolidation, performance — belongs here for the
-# same reason.
+# since — test coverage, consolidation, performance, PDSL migration — belongs
+# here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
 # independently rather than queueing behind each other. Cadence and cleanup for
@@ -37,6 +37,7 @@ on:
           - "coverage"
           - "consolidation"
           - "performance"
+          - "pdsl"
       force:
         description: "Submit even if at capacity or one ran recently"
         required: false
@@ -1076,6 +1077,168 @@ jobs:
             case "${{ steps.decide.outputs.reason }}" in
               pr-open) echo "Skipped: a previous performance PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last performance round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
+
+  # ── Quality Assurance — PDSL Migration ───────────────────────────────
+  # Submits a FlowTree coding-agent job that finds one piece of
+  # compute-pipeline structure still assembled in Java — a Block, Layer,
+  # Model or Cell chain, or a Features method that strings such things
+  # together — moves that structure into a .pdsl asset, deletes the Java
+  # assembly, and pins the behavior with parity tests written while both
+  # versions still exist.
+  #
+  # The platform's direction is that Java defines basic building blocks
+  # and PDSL combines them into readable assets showing how data flows.
+  # The failure mode this round has to avoid is the one that looks most
+  # like success: registering a primitive that wraps the Java class and
+  # writing a one-line asset that calls it. The prompt spends most of its
+  # length on telling that apart from a migration, and on what to do when
+  # the language genuinely cannot express a candidate yet (report the gap
+  # precisely; do not alias around it). Defects surfaced by the parity
+  # work are in scope and fixed in the same round.
+  #
+  # The primary phase is pinned to claude/opus at maximum effort, as the
+  # performance round is. Deciding whether an operation is a building
+  # block or a composition, writing the target asset before the Java
+  # changes, and classifying every gap honestly is judgment throughout,
+  # and the cheap answer (a wrapper primitive) is always available to a
+  # model that stops thinking early. Runner, model, effort and provider
+  # are set together — see the defect hunt's note above for what happens
+  # when only one of them is overridden. No REQUIRED_LABELS: parity is a
+  # correctness property, not a measurement, and the merged tests run on
+  # every backend the pipeline covers.
+  #
+  # PROTECT_TEST_FILES stays "true": a migration adds parity tests and
+  # rewrites production code, and the prompt treats "this can only be
+  # done by editing an existing test" as a signal to pick a different
+  # candidate. An honestly empty-handed round, or a precise language-gap
+  # report, is a valid outcome (hence no ENFORCE_CHANGES, matching the
+  # defect hunt).
+  #
+  # Cadence and cleanup are shared with the other QA-style jobs through
+  # tools/ci/qa-cadence.sh and tools/ci/archive-stale-workstreams.sh:
+  # skip while a previous round's PR is still open, otherwise run at most
+  # once per MIN_INTERVAL_DAYS.
+  pdsl-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'pdsl'
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: pdsl-qa
+      cancel-in-progress: false
+
+    env:
+      BRANCH_PREFIX: "qa/pdsl-"
+      MIN_INTERVAL_DAYS: "7"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether to submit
+        id: decide
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them has an open
+      # PR: anything still registered has been merged, closed, or
+      # abandoned. Archiving is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      - name: Create PDSL migration branch
+        if: steps.decide.outputs.run == 'true'
+        id: branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build PDSL migration prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          chmod +x ./tools/ci/prompts/build-pdsl-migration-prompt.sh
+          ./tools/ci/prompts/build-pdsl-migration-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # "effort": "max" is the Claude Code --effort level, the top of the
+      # runner's accepted range.
+      - name: Submit PDSL migration agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Move one piece of pipeline structure from Java into a PDSL asset"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}'
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — PDSL Migration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a PDSL migration job" >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus at max effort (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              pr-open) echo "Skipped: a previous PDSL migration PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last PDSL migration round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
