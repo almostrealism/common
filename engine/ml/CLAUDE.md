@@ -340,18 +340,18 @@ public void compareLogits() throws Exception {
 
 // GOOD: Generalized method with optional parameters
 default Block attention(int heads, int kvHeads,
-                       PackedCollection<?> rmsAttWeight,   // Pre-attention RMSNorm weights
-                       PackedCollection<?> wk,
-                       PackedCollection<?> wv,
-                       PackedCollection<?> wq,
-                       PackedCollection<?> wo,
-                       PackedCollection<?> bk,             // Optional: null if unused
-                       PackedCollection<?> bv,
-                       PackedCollection<?> bq,
-                       PackedCollection<?> qkNormQ,        // Optional: null if not using
-                       PackedCollection<?> qkNormK,        // Optional: null if not using
-                       CollectionProducer<?> freqCis,
-                       Producer<PackedCollection<?>> position,
+                       PackedCollection rmsAttWeight,   // Pre-attention RMSNorm weights
+                       PackedCollection wk,
+                       PackedCollection wv,
+                       PackedCollection wq,
+                       PackedCollection wo,
+                       PackedCollection bk,             // Optional: null if unused
+                       PackedCollection bv,
+                       PackedCollection bq,
+                       PackedCollection qkNormQ,        // Optional: null if not using
+                       PackedCollection qkNormK,        // Optional: null if not using
+                       CollectionProducer freqCis,
+                       Producer<PackedCollection> position,
                        ComputeRequirement... requirements) {
     // Unified implementation
     // Apply QK-Norm only if weights provided

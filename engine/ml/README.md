@@ -79,15 +79,15 @@ import org.almostrealism.ml.AttentionFeatures;
 
 class TransformerLayerBuilder implements AttentionFeatures {
     Block buildLayer(int nHeads, int kvHeads,
-                      PackedCollection<?> rmsAttWeight,
-                      PackedCollection<?> wk, PackedCollection<?> wv,
-                      PackedCollection<?> wq, PackedCollection<?> wo,
-                      PackedCollection<?> bk, PackedCollection<?> bv, PackedCollection<?> bq,
-                      PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
-                      CollectionProducer<?> freqCis,
-                      PackedCollection<?> rmsFfnWeight,
-                      PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-                      Producer<PackedCollection<?>> position,
+                      PackedCollection rmsAttWeight,
+                      PackedCollection wk, PackedCollection wv,
+                      PackedCollection wq, PackedCollection wo,
+                      PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                      PackedCollection qkNormQ, PackedCollection qkNormK,
+                      CollectionProducer freqCis,
+                      PackedCollection rmsFfnWeight,
+                      PackedCollection w1, PackedCollection w2, PackedCollection w3,
+                      Producer<PackedCollection> position,
                       ComputeRequirement... requirements) {
         // Multi-Head Attention with GQA and QK-Norm
         Block attnBlock = attention(
@@ -222,29 +222,29 @@ public class StateDictionary implements Destroyable {
 public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
     // Multi-head attention with optional GQA, bias terms, and QK-Norm
     default Block attention(int heads, int kvHeads,
-                           PackedCollection<?> rmsAttWeight,
-                           PackedCollection<?> wk, wv, wq, wo,
-                           PackedCollection<?> bk, bv, bq,
-                           PackedCollection<?> qkNormQ, qkNormK,
-                           PackedCollection<?> freqCis,
-                           Producer<PackedCollection<?>> position,
+                           PackedCollection rmsAttWeight,
+                           PackedCollection wk, wv, wq, wo,
+                           PackedCollection bk, bv, bq,
+                           PackedCollection qkNormQ, qkNormK,
+                           PackedCollection freqCis,
+                           Producer<PackedCollection> position,
                            ComputeRequirement... requirements);
 
     // Feed-forward with SwiGLU activation (from FeedForwardFeatures)
-    default Block feedForward(PackedCollection<?> rms,
-                             PackedCollection<?> w1, w2, w3,
+    default Block feedForward(PackedCollection rms,
+                             PackedCollection w1, w2, w3,
                              ComputeRequirement... requirements);
 
     // Complete transformer layer (attention + feed-forward)
     default Block transformer(int heads, int kvHeads,
-                             PackedCollection<?> rmsAttWeight,
-                             PackedCollection<?> wk, wv, wq, wo,
-                             PackedCollection<?> bk, bv, bq,
-                             PackedCollection<?> qkNormQ, qkNormK,
-                             CollectionProducer<?> freqCis,
-                             PackedCollection<?> rmsFfnWeight,
-                             PackedCollection<?> w1, w2, w3,
-                             Producer<PackedCollection<?>> position,
+                             PackedCollection rmsAttWeight,
+                             PackedCollection wk, wv, wq, wo,
+                             PackedCollection bk, bv, bq,
+                             PackedCollection qkNormQ, qkNormK,
+                             CollectionProducer freqCis,
+                             PackedCollection rmsFfnWeight,
+                             PackedCollection w1, w2, w3,
+                             Producer<PackedCollection> position,
                              ComputeRequirement... requirements);
 }
 ```

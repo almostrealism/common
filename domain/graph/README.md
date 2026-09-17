@@ -345,8 +345,8 @@ batch of multiple rows (e.g. a sequence of token positions) normalizes each row 
 // RMSNorm with weights
 CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
 
-// RMSNorm with explicit size
-CellularLayer layer = rmsnorm(shape, size, weights, eps);
+// RMSNorm with explicit epsilon
+CellularLayer layer = rmsnorm(shape, weights, eps);
 ```
 
 ### Selecting Normalization by Checkpoint Family

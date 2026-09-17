@@ -68,8 +68,14 @@ For a Qwen3-4B model (32 query heads, 8 KV heads, headSize=112, seqLen=131072):
 
 ### Zero-Initialization
 
-Caches are zero-initialized by `PackedCollection`'s allocating constructor itself — no explicit
-clearing call is needed after `new PackedCollection(seqLen, heads, headSize)` above.
+`PackedCollection` delegates allocation to the active `MemoryProvider`, and zero-initialization
+is backend-dependent. The pure-Java `JVMMemoryProvider` backs each allocation with a `new
+double[len]`, which the JVM zero-fills, so `new PackedCollection(seqLen, heads, headSize)` above
+needs no explicit clearing call under that provider. OpenCL allocations (`CLMemoryProvider`,
+via `clCreateBuffer` with no host pointer), heap-carved allocations (`Heap`'s bump-pointer
+allocator, whose backing block is reused across allocations), and file-backed shared memory are
+documented exceptions where contents are not guaranteed to be zero — a cache backed by one of
+those providers still needs an explicit `clear()` after allocation.
 
 **Why this matters:** Without zero-initialization, unwritten cache positions contain
 garbage values. During attention, the softmax over all positions (including unwritten
@@ -783,8 +789,10 @@ if (seqLen > audioSeqLen) {
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
 `DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(`AttentionFeatures.java:962`, with further overloads through line 1234 adding a
-customizable `ProjectionFactory` and a selectable query/key `NormalizationType`):
+(`AttentionFeatures.java:962-1106`, with further overloads adding a customizable
+`ProjectionFactory` and a selectable query/key `NormalizationType`; the parenthetical
+description at lines 1204-1234 is the Javadoc for the separate `sequenceCrossAttention`
+method that follows):
 
 - Processes all positions simultaneously with fused QKV projection
 - Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
