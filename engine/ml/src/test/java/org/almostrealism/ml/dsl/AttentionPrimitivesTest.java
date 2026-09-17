@@ -514,6 +514,25 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 		assertClose("per-head rmsnorm", expected, actual);
 	}
 
+	/**
+	 * {@code rmsnorm(shape, weights, biases, epsilon)} rejects biases whose element count does
+	 * not match the weights, rather than silently normalizing with a mismatched bias shape.
+	 */
+	@Test(timeout = 120000)
+	public void rmsnormRejectsMismatchedBiases() {
+		TraversalPolicy normShape = shape(1, 4);
+		TraversalPolicy weightsShape = shape(4);
+		TraversalPolicy biasesShape = shape(3);
+		PackedCollection weights = pack(weightsShape, 1.0, 1.0, 1.0, 1.0);
+		PackedCollection biases = pack(biasesShape, 0.0, 0.0, 0.0);
+		try {
+			rmsnorm(normShape, weights, biases, 1e-6);
+			Assert.fail("rmsnorm should reject biases that do not match the weights element count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
 	/** {@code dense(w, b)} with {@code b} bound to {@code null} is the projection without a bias. */
 	@Test(timeout = 120000)
 	public void denseWithNullBiasProjectsWithoutBias() {
