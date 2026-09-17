@@ -18,6 +18,7 @@ package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
@@ -108,6 +109,43 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	}
 
 	/**
+	 * Both {@link org.almostrealism.layers.LayerFeatures#repeatEach} overloads reject shapes
+	 * that would make the duplication ambiguous or silently mismatched: a non-2-D input, fewer
+	 * than one copy, a run length the input does not divide into evenly, and an output that
+	 * does not hold exactly {@code n} copies of the input.
+	 */
+	@Test(timeout = 60000)
+	public void repeatEachRejectsInvalidInput() {
+		try {
+			repeatEach(shape(2, 3, 1), 2);
+			Assert.fail("repeatEach should reject an input that is not [rows, size]");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			repeatEach(shape(1, 4), shape(1, 8), 4, 0);
+			Assert.fail("repeatEach should reject fewer than one copy");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			repeatEach(shape(1, 5), shape(1, 10), 2, 2);
+			Assert.fail("repeatEach should reject a run length the input does not divide into evenly");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			repeatEach(shape(1, 4), shape(1, 6), 2, 2);
+			Assert.fail("repeatEach should reject an output that does not hold n copies of the input");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * {@code cache_write} replaces row {@code position} of the caller-owned cache on every
 	 * forward pass, keeps every other row, and passes its input through unchanged.
 	 */
@@ -136,6 +174,31 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 		model.forward(pack(rowShape, 10.0, 11.0, 12.0));
 		assertClose("row 1 rewritten", new double[] {
 				1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 7.0, 8.0, 9.0, 0.0, 0.0, 0.0 }, cache.toArray());
+	}
+
+	/**
+	 * {@code cacheWrite} rejects a cache that is not {@code [rows, rowSize]} and an input that
+	 * does not fill exactly one row of the cache it is given.
+	 */
+	@Test(timeout = 60000)
+	public void cacheWriteRejectsInvalidInput() {
+		Producer<PackedCollection> position = p(new PackedCollection(shape(1)));
+
+		try {
+			CollectionProducer cache = cp(new PackedCollection(shape(2, 3, 4)));
+			cacheWrite(shape(1, 3), cache, position);
+			Assert.fail("cacheWrite should reject a cache that is not [rows, rowSize]");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			CollectionProducer cache = cp(new PackedCollection(shape(4, 3)));
+			cacheWrite(shape(1, 5), cache, position);
+			Assert.fail("cacheWrite should reject an input that does not fill one cache row");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 
 	/**
@@ -208,6 +271,34 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	}
 
 	/**
+	 * {@link HeadGroupConfig#forKvHeads(int)} covers the group's heads for the KV heads that
+	 * serve them, dividing the head count evenly, and rejects a {@code headsPerKvGroup} that
+	 * does not divide the group's heads into whole KV heads. The array overload applies this
+	 * to every group in order.
+	 */
+	@Test(timeout = 60000)
+	public void headGroupConfigForKvHeadsDividesOrRejects() {
+		Producer<PackedCollection> position = p(new PackedCollection(shape(1)));
+		CollectionProducer freqCis = cp(new PackedCollection(shape(4, 2, 2)));
+		HeadGroupConfig group = new HeadGroupConfig(6, freqCis, position);
+
+		HeadGroupConfig kv = group.forKvHeads(3);
+		Assert.assertEquals("6 heads served 3 at a time cover 2 KV heads", 2, kv.headCount);
+
+		try {
+			group.forKvHeads(4);
+			Assert.fail("forKvHeads should reject a headsPerKvGroup that does not divide the group evenly");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		HeadGroupConfig[] groups = { group, new HeadGroupConfig(4, freqCis, position) };
+		HeadGroupConfig[] kvGroups = HeadGroupConfig.forKvHeads(groups, 2);
+		Assert.assertEquals("first group covers 3 KV heads", 3, kvGroups[0].headCount);
+		Assert.assertEquals("second group covers 2 KV heads", 2, kvGroups[1].headCount);
+	}
+
+	/**
 	 * {@code attention_scores} is every head's query dotted with that head's slice of every
 	 * cached row, without scaling.
 	 */
@@ -233,6 +324,31 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 				}
 			}
 			assertClose("scores heads=" + heads, expected, actual);
+		}
+	}
+
+	/**
+	 * {@code attentionScores} rejects a query that is not {@code [heads, headSize]} and a key
+	 * cache whose element count does not divide evenly into whole rows of {@code heads} heads
+	 * of {@code headSize}.
+	 */
+	@Test(timeout = 60000)
+	public void attentionScoresRejectsInvalidInput() {
+		Producer<PackedCollection> keys = p(new PackedCollection(shape(4, 8)));
+
+		try {
+			attentionScores(shape(2, 4, 1), keys);
+			Assert.fail("attentionScores should reject a query that is not [heads, headSize]");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			Producer<PackedCollection> oddCache = p(new PackedCollection(shape(5, 5)));
+			attentionScores(shape(2, 4), oddCache);
+			Assert.fail("attentionScores should reject a key cache that does not hold whole rows");
+		} catch (IllegalArgumentException expected) {
+			// expected
 		}
 	}
 
@@ -265,6 +381,18 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 				}
 			}
 			assertClose("masked softmax at " + pos, expected, actual);
+		}
+	}
+
+	/** {@code causalMask} rejects a score matrix that is not {@code [heads, seqLength]}. */
+	@Test(timeout = 60000)
+	public void causalMaskRejectsInvalidShape() {
+		Producer<PackedCollection> position = p(new PackedCollection(shape(1)));
+		try {
+			causalMask(shape(2, 4, 1), position);
+			Assert.fail("causalMask should reject a shape that is not [heads, seqLength]");
+		} catch (IllegalArgumentException expected) {
+			// expected
 		}
 	}
 
@@ -319,6 +447,31 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 				}
 			}
 			assertClose("weighted values heads=" + heads, expected, actual);
+		}
+	}
+
+	/**
+	 * {@code weightedValues} rejects an attention-weight input that is not
+	 * {@code [heads, seqLength]} and a value cache whose element count does not divide evenly
+	 * into {@code seqLength} rows of {@code heads} heads.
+	 */
+	@Test(timeout = 60000)
+	public void weightedValuesRejectsInvalidInput() {
+		Producer<PackedCollection> values = p(new PackedCollection(shape(4, 8)));
+
+		try {
+			weightedValues(shape(2, 4, 1), values);
+			Assert.fail("weightedValues should reject weights that are not [heads, seqLength]");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			Producer<PackedCollection> oddCache = p(new PackedCollection(shape(5, 5)));
+			weightedValues(shape(2, 4), oddCache);
+			Assert.fail("weightedValues should reject a value cache that does not hold whole rows");
+		} catch (IllegalArgumentException expected) {
+			// expected
 		}
 	}
 

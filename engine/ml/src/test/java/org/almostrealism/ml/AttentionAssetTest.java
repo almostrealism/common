@@ -193,6 +193,53 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
+	 * {@code attention(...)} requires both QK-Norm weights or neither: a caller that supplies
+	 * only one (for example, a partially wired model builder) gets a clear rejection instead
+	 * of a normalization silently applied to just the query or just the key.
+	 */
+	@Test(timeout = 60000)
+	public void qkNormRequiresBothWeights() {
+		Weights w = new Weights(2, 2, 4, false, true, 41L);
+		PackedCollection position = new PackedCollection(shape(1));
+
+		try {
+			attention(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					w.bk, w.bv, w.bq, w.qkNormQ, null, cp(w.freqCis), p(position), EPSILON);
+			Assert.fail("attention() should reject a query QK-Norm weight without a matching key weight");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			attention(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					w.bk, w.bv, w.bq, null, w.qkNormK, cp(w.freqCis), p(position), EPSILON);
+			Assert.fail("attention() should reject a key QK-Norm weight without a matching query weight");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * {@code attention(...)} rejects a {@code rmsAttWeight} whose length is not a multiple of
+	 * the head count: the asset divides the model dimension evenly across heads, so such a
+	 * configuration cannot be built.
+	 */
+	@Test(timeout = 60000)
+	public void attentionRejectsModelDimensionNotDivisibleByHeads() {
+		Weights w = new Weights(2, 2, 4, false, false, 43L);
+		PackedCollection badRms = new PackedCollection(shape(w.dim + 1));
+		PackedCollection position = new PackedCollection(shape(1));
+
+		try {
+			attention(w.heads, w.kvHeads, badRms, w.wk, w.wv, w.wq, w.wo,
+					w.bk, w.bv, w.bq, w.qkNormQ, w.qkNormK, cp(w.freqCis), p(position), EPSILON);
+			Assert.fail("attention() should reject a model dimension not divisible by the head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Grouped-query attention with projection biases: four query heads served by two KV
 	 * heads, so the cache write depends on the per-head duplication of keys and values.
 	 */
