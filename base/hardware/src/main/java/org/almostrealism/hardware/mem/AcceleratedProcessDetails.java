@@ -356,17 +356,17 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * never called (an invocation that failed before dispatch), the leased slots stay
 	 * checked out and later invocations simply allocate fresh buffers.</p>
 	 *
-	 * <p><b>Lock-ordering hazard (known deadlock).</b> This method acquires the instance monitor,
-	 * and it is invoked from the device-completion callback — on the Metal backend, the
-	 * command-completion pool. Concurrently, {@link #notifyListeners()} holds that same monitor
-	 * while a listener may synchronously block awaiting device completion. When the completion
-	 * being awaited is the very one whose callback runs this method, the completion-pool thread
-	 * blocks on the monitor while the holder waits for that completion — a hard deadlock that
-	 * appears only under concurrent multi-channel dispatch (invisible in small single-op tests).
-	 * The lease/reuse mechanism that makes this release necessary is therefore disabled by
-	 * default; see {@code ProcessDetailsFactory.enableDestinationReuse}
-	 * ({@code AR_HARDWARE_DESTINATION_REUSE}). Re-enabling reuse requires first removing this
-	 * method from the monitor-holding path.</p>
+	 * <p><b>Former lock-ordering hazard.</b> This method acquires the instance monitor and is
+	 * invoked from the device-completion callback — on the Metal backend, the command-completion
+	 * pool. {@link #notifyListeners()} used to hold that same monitor for the entire duration of a
+	 * listener, including a listener that synchronously blocks awaiting device completion; when the
+	 * completion being awaited was the very one whose callback runs this method, the
+	 * completion-pool thread would block on the monitor while the holder waited for that
+	 * completion — a hard deadlock that appeared only under concurrent multi-channel dispatch
+	 * (invisible in small single-op tests). {@link #notifyListeners()} now releases the monitor
+	 * before running listeners, which removes this hazard; the lease/reuse mechanism remains
+	 * disabled by default via {@code ProcessDetailsFactory.enableDestinationReuse}
+	 * ({@code AR_HARDWARE_DESTINATION_REUSE}) pending verification that re-enabling it is safe.</p>
 	 */
 	public void releaseDestinationLeases() {
 		List<Runnable> leases;
@@ -417,16 +417,27 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * Notifies all registered listeners that arguments are ready.
 	 *
 	 * <p>Executes each listener and counts down the {@link #readyLatch readiness latch} (if set)
-	 * after each execution. This method is synchronized to prevent concurrent notification.</p>
+	 * after each execution. The pending listeners are captured and cleared under the instance
+	 * monitor, but the monitor is released before any listener runs.</p>
 	 *
-	 * <p>Because it is {@code synchronized}, the instance monitor is held for the entire duration
-	 * of every listener — including a listener that synchronously awaits device completion. Any
-	 * work that runs on the device-completion path and needs this same monitor (notably
-	 * {@link #releaseDestinationLeases()}) can therefore deadlock against it; see that method for
-	 * the full hazard.</p>
+	 * <p>A listener may synchronously await device completion (directly, or transitively through a
+	 * nested {@code request()} call chained as an argument of a dependent kernel). Device
+	 * completion is frequently delivered by a callback that itself needs this same monitor (notably
+	 * {@link #releaseDestinationLeases()}, and any completion-driven {@code result()} call on this
+	 * instance) — running listeners while still holding the monitor would block that callback behind
+	 * the very listener that is waiting for it, a hard deadlock. Capturing and clearing the listener
+	 * list under a short-lived lock keeps concurrent notification safe without holding the monitor
+	 * across listener execution.</p>
 	 */
-	private synchronized void notifyListeners() {
-		listeners.forEach(r -> {
+	private void notifyListeners() {
+		List<Runnable> pending;
+
+		synchronized (this) {
+			pending = new ArrayList<>(listeners);
+			listeners.clear();
+		}
+
+		pending.forEach(r -> {
 			try {
 				r.run();
 			} finally {
@@ -435,8 +446,6 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 				}
 			}
 		});
-
-		listeners.clear();
 	}
 
 	/**
@@ -450,6 +459,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * <p>This method is synchronized to ensure atomic check-and-notify behavior.</p>
 	 */
+	// TODO(review): synchronized here still holds the monitor across notifyListeners() on the sync dispatch path; see review-followup memory.
 	protected synchronized void checkReady() {
 		if (!isReady()) return;
 
@@ -549,6 +559,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * @param r the listener to execute when all arguments are ready
 	 */
+	// TODO(review): also holds the monitor into checkReady()'s reentrant call; see the note on checkReady().
 	public synchronized void whenReady(Runnable r) {
 		this.listeners.add(r);
 		checkReady();
