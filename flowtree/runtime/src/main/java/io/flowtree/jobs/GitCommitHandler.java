@@ -214,37 +214,26 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
-     * Returns all files reported as changed by {@code git status --porcelain}.
+     * Returns all files reported as changed by {@code git status --porcelain -uall},
+     * via {@link GitOperations#requireChangedFiles}.
      *
-     * <p>Includes modified, added, deleted, and untracked files. For renamed
-     * files, the post-rename path is returned (the part after {@code " -> "}).
-     * Untracked files are listed individually ({@code -uall}) rather than
-     * collapsed to their containing directory, so that each candidate — in
-     * particular each file under {@link FlowtreeArtifacts#DIRECTORY} — passes
-     * through the staging guardrails on its own and the commit-time
-     * {@code .flowtree/} gate can act per file.</p>
+     * <p>Includes modified, added, deleted, and untracked files. Untracked
+     * files are listed individually rather than collapsed to their containing
+     * directory, so that each candidate — in particular each file under
+     * {@link FlowtreeArtifacts#DIRECTORY} — passes through the staging
+     * guardrails on its own and the commit-time {@code .flowtree/} gate can
+     * act per file.</p>
+     *
+     * <p>Uses the throwing query rather than {@link GitOperations#getChangedFiles},
+     * because {@link #handle} reads an empty result as "nothing to commit" and
+     * reports success — a failed {@code git status} query must surface as a
+     * failure here rather than being mistaken for a clean tree.</p>
      *
      * @return list of changed file paths relative to the working directory
-     * @throws IOException if a git command fails to execute
-     * @throws InterruptedException if a git command is interrupted
+     * @throws IOException if the underlying {@code git status} query fails
      */
-    private List<String> findChangedFiles() throws IOException, InterruptedException {
-        List<String> files = new ArrayList<>();
-
-        String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-uall");
-        for (String line : statusOutput.split("\n")) {
-            if (line.length() > 3) {
-                String file = line.substring(3).trim();
-                // Handle renamed files: "old/path -> new/path" — take the new path.
-                if (file.contains(" -> ")) {
-                    file = file.split(" -> ")[1];
-                }
-                if (!file.isEmpty()) {
-                    files.add(file);
-                }
-            }
-        }
-
+    private List<String> findChangedFiles() throws IOException {
+        List<String> files = GitOperations.requireChangedFiles(job.getWorkingDirectory());
         log("Found " + files.size() + " changed files");
         return files;
     }
@@ -272,7 +261,7 @@ class GitCommitHandler implements ConsoleFeatures {
                 // disables the guardrail — they are ANDed, not ORed, so a
                 // default-default job (both true) gets the full protection.
                 .protectTestFiles(job.isProtectTestFiles()
-                        && isSensitiveFileProtectionEnabled(job))
+                        && GitCommitHandler.isSensitiveFileProtectionEnabled(job))
                 .baseBranch(job.getBaseBranch())
                 .maxFileSizeBytes(job.getMaxFileSizeBytes())
                 .build();
@@ -282,7 +271,7 @@ class GitCommitHandler implements ConsoleFeatures {
                 ? new File(job.getWorkingDirectory())
                 : new File(".");
 
-        StagingResult result = stager.evaluateFiles(files, config, workDir, job::executeGit);
+        StagingResult result = stager.evaluateFiles(files, config, workDir, job.asGitOperations());
 
         // Stage each approved file.
         for (String file : result.getStagedFiles()) {
@@ -570,7 +559,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @param job the job whose protection state is being queried
      * @return {@code true} when the protection is active
      */
-    private static boolean isSensitiveFileProtectionEnabled(GitManagedJob job) {
+    static boolean isSensitiveFileProtectionEnabled(GitManagedJob job) {
         if (job instanceof CodingAgentJob caj) {
             return caj.isSensitiveFileProtectionEnabled();
         }

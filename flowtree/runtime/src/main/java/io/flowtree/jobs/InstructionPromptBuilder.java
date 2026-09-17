@@ -789,11 +789,17 @@ public class InstructionPromptBuilder {
         // Test integrity policy -only when protectTestFiles is enabled
         if (protectTestFiles) {
             sb.append("## Test Integrity Policy\n");
-            sb.append("You MUST NOT modify test files that exist on the base branch (");
+            sb.append("You MUST NOT modify or remove a test method that exists on the base ");
+            sb.append("branch (");
             sb.append(baseBranch != null ? baseBranch : "master");
-            sb.append("). Fix the production code instead. ");
-            sb.append("Tests you introduced on this branch may be modified. ");
-            sb.append("The commit harness will reject changes to protected test files.\n\n");
+            sb.append("), even by only adding lines to it — an inserted early return, a new ");
+            sb.append("assumption, an @Ignore/@TestDepth-style annotation, or a changed timeout ");
+            sb.append("all count as a modification. Fix the production code instead. ");
+            sb.append("You MAY add new test methods to an existing test file, edit test methods ");
+            sb.append("you introduced on this branch, and freely edit fixtures, helpers, and ");
+            sb.append("fields in any test file. The commit harness enforces this at test-method ");
+            sb.append("granularity and will reject a change that touches an existing base-branch ");
+            sb.append("test method.\n\n");
         }
 
         // Git commit instructions -conditional on git management being active

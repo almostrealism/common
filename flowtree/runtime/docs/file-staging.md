@@ -14,6 +14,8 @@ approved files.
 - `FileStagingConfig` -- Immutable configuration (builder pattern)
 - `StagingResult` -- Immutable result container
 - `GitJobConfig` -- Provides default exclusion and protection patterns
+- `TestMethodProtection` -- Test-method-granularity analysis for guardrail 2's
+  `.java` protected-path check (see [Guardrail 2](#guardrail-2-test-file-protection))
 
 ### Design Principles
 
@@ -49,7 +51,8 @@ invaluable for debugging why a particular file was or was not committed.
 5. [Default Exclusion Patterns](#default-exclusion-patterns)
 6. [Protected Path Patterns](#protected-path-patterns)
 7. [StagingResult Structure](#stagingresult-structure)
-8. [Usage Examples](#usage-examples)
+8. [Discarded Changes Are Reported, Not Silent](#discarded-changes-are-reported-not-silent)
+9. [Usage Examples](#usage-examples)
 
 ---
 
@@ -69,13 +72,25 @@ without concern for accumulated state or resource leaks.
 ```java
 public interface GitOperations {
     int execute(String... args) throws IOException, InterruptedException;
+
+    default String executeWithOutput(String... args) throws IOException, InterruptedException {
+        throw new UnsupportedOperationException(
+                "executeWithOutput is not implemented by this GitOperations");
+    }
 }
 ```
 
-This functional interface abstracts over git command execution for the
-base-branch existence check (guardrail 2). Callers provide their own
-implementation -- typically a lambda or method reference wrapping the
-concrete `GitOperations` class or `GitManagedJob`'s internal executor.
+This interface abstracts over git command execution for guardrail 2:
+`execute` reports an exit code, `executeWithOutput` reports command output
+(merge-base resolution, the merge-base file listing, and reading file content
+at the merge-base for `TestMethodProtection`). Only `execute` is abstract, so
+this remains a valid functional interface for guardrails that never enable
+`protectTestFiles`. `evaluateFiles` resolves the merge-base and its file
+listing once per call whenever `protectTestFiles` is set, before it knows
+whether any candidate file is under a protected path — so any caller that
+enables `protectTestFiles` must supply a real `executeWithOutput`, or every
+guardrail-2 file (whole-file paths and `.java` protected sources alike) fails
+closed. See `GitManagedJob.asGitOperations()` for the production adapter.
 
 ### `evaluateFiles`
 
@@ -306,29 +321,55 @@ enter the repository. The default patterns provided by
 ### Guardrail 2: Test File Protection
 
 **Check:** Is `config.isProtectTestFiles()` true AND does the file path match
-any pattern in `config.getProtectedPathPatterns()` AND does the file exist on
-the base branch?
+any pattern in `config.getProtectedPathPatterns()`?
 
-**Effect:** If all three conditions are true, the file is blocked with reason
-`"(protected - exists on base branch)"`.
+**Granularity:** The check is **whole-file** for `.github/workflows/**` and
+`.github/actions/**` (CI/workflow configuration has no "method" structure and
+is locked in full), and for any non-`.java` file matching a protected pattern
+(e.g. a test resource file). For a `.java` file it is **test-method-level**,
+delegated to `TestMethodProtection`:
 
-**Applies to:** All files matching protected patterns that already exist on
-the base branch. New test files (not present on the base branch) are allowed
-through.
+- If the file did not exist at the merge-base of `origin/<baseBranch>` and
+  `HEAD`, it is a branch-new file and is allowed through in full.
+- Otherwise its `@Test`-annotated methods at the merge-base are compared
+  against its current content. A file is blocked only when an existing test
+  method's exact content (annotations through the closing brace) differs or
+  the method is gone — "differs" includes a pure addition, such as an early
+  `return` or a newly added `@Ignore`/`@TestDepth` annotation on an existing
+  method, since an addition-only diff can still hide a test. Adding a new
+  `@Test` method, and editing fixtures, helpers, fields, or a method that was
+  itself absent at the merge-base, are all allowed.
 
-**Base branch check:** Uses `git cat-file -e origin/<baseBranch>:<file>` to
-determine whether the file exists on the base branch. This is executed through
-the `GitOperations` interface.
+**Effect:** A blocked file is skipped with reason
+`"(protected - <detail>)"`, where `<detail>` names why — e.g. `"exists on
+base branch"` (whole-file path), or `"existing test method(s) changed or
+removed: testFoo"` (method-level path).
 
-**Fail-safe behavior:** If the `git cat-file` command throws an exception
-(e.g., the remote is unreachable), the method returns `true` (protected).
-This prevents accidental modifications to test files when the check cannot
-be performed.
+**Merge-base, not base-branch tip:** Every existence and content check is
+against the merge-base of `origin/<baseBranch>` and `HEAD`, not the live tip
+of the base branch. The base branch keeps moving after a feature branch
+forks from it; comparing against its current tip would misattribute the base
+branch's own later edits to the agent's branch.
+
+**Shared implementation:** The method-level check invokes
+`tools/ci/agent-protection/test-method-lines.awk` — the exact awk script the
+CI gate (`validate-agent-commit.sh`) uses — as a subprocess, so the
+harness-side guardrail and the CI-side gate can never disagree about which
+methods changed.
+
+**Fail-safe behavior:** Any failure along the way — the merge-base cannot be
+resolved, the merge-base file listing cannot be read, base or current content
+cannot be read, the shared awk script is missing from the merge-base, or the
+awk subprocess itself fails — makes the file fail closed: it is treated as
+protected in full, the same as the whole-file check. A warning names which
+step failed.
 
 **Rationale:** This guardrail prevents automated agents from hiding test
-failures by modifying existing tests instead of fixing production code. New
-test files are allowed because agents may legitimately need to create tests
-for new functionality.
+failures by modifying existing tests instead of fixing production code, while
+still letting an agent add new test methods (or edit ones it introduced on
+the branch) to an existing test class — see `TestMethodProtection` and
+`tools/ci/agent-protection/validate-agent-commit.sh` (RULE 1) for the full
+rationale, including why fixtures/helpers/fields are never locked.
 
 ### Guardrail 3: File Size Limit
 
@@ -390,11 +431,19 @@ for each file in changedFiles:
         continue
 
     if protectTestFiles AND matchesAnyPattern(file, protectedPathPatterns):
-        if existsOnBaseBranch(file):
-            skip("protected - exists on base branch")
-            continue
+        if isCiWorkflowFile(file) OR NOT file.endsWith(".java"):
+            if existsOnBaseBranch(file, mergeBase):
+                skip("protected - exists on base branch")
+                continue
+            else:
+                log("ALLOWED (branch-new file)")
         else:
-            log("ALLOWED (branch-new file)")
+            verdict = TestMethodProtection.evaluate(file, mergeBase)
+            if NOT verdict.allowed:
+                skip("protected - " + verdict.reason)
+                continue
+            else:
+                log("ALLOWED (" + verdict.reason + ")")
 
     if NOT is_deleted AND file.size > maxFileSizeBytes:
         skip("exceeds <size>")
@@ -583,8 +632,16 @@ seven categories.
 |---------|-----------|
 | `claude-output/**` | Directory where the Claude Code agent writes its output artifacts. |
 | `commit.txt` | Temporary file used to pass commit messages to the git operations step. Cleaned up after commit. |
-| `.claude/**` | Claude Code project settings and session data. |
-| `settings.local.json` | Local settings file (may contain user-specific configuration). |
+| `.claude/projects/**` | Per-project local memory/session state Claude Code writes under `<project>/.claude/projects/<id>/`. Genuinely machine-local. |
+| `.claude/*.local.json` | Machine-local settings (per-user overrides of `settings.json`). |
+| `.claude/scheduled_tasks.lock` | Lock file regenerated on every Claude Code run. |
+| `settings.local.json` | Local settings file (may contain user-specific configuration; matches `.gitignore`'s bare-machine-local settings.json at the project root, outside `.claude/`). |
+
+The remaining contents of `.claude/` — `hooks/`, `agents/`, `commands/`,
+`settings.json` — are project-shared and MUST be committable. A blanket
+`.claude/**` exclusion previously dropped them silently; the narrow patterns
+above replaced it and are covered by `FileStagerTest.allowsProjectSharedClaudeContent`
+and `FileStagerTest.excludesMachineLocalClaudeContent`.
 
 ### Extending the Default Patterns
 
@@ -655,51 +712,86 @@ that receive special protection when `protectTestFiles` is enabled.
 
 ### Protection Logic
 
-When `protectTestFiles` is `true`:
+When `protectTestFiles` is `true` and a file matches a protected path
+pattern, one of two checks applies, chosen by `isCiWorkflowFile(file)` and
+the file's extension:
 
-1. If a file matches a protected path pattern AND already exists on the base
-   branch, it is **blocked** from staging.
-2. If a file matches a protected path pattern but does NOT exist on the base
-   branch, it is **allowed** through (it is a new file).
+**Whole-file** (`.github/workflows/**`, `.github/actions/**`, and any
+non-`.java` protected file, e.g. a test resource):
+
+1. If the file already exists at the merge-base of `origin/<baseBranch>` and
+   `HEAD`, it is **blocked** from staging.
+2. If it does not, it is **allowed** through (it is a branch-new file).
+
+**Test-method-level** (any `.java` file under a protected path), delegated to
+`TestMethodProtection`:
+
+1. If the file did not exist at the merge-base, it is **allowed** through in
+   full (branch-new file) — no method comparison is needed.
+2. Otherwise, its `@Test` methods at the merge-base are compared against its
+   current content via the shared
+   `tools/ci/agent-protection/test-method-lines.awk` script. If any existing
+   method's record (name + full annotated body) is missing from the current
+   set — because it was edited, even by a pure addition, or removed
+   entirely — the file is **blocked**. If every existing method's record is
+   unchanged (whether or not new methods were added, and whatever else in
+   the file changed), it is **allowed**.
 3. If a file does not match any protected path pattern, this guardrail does
    not apply.
 
-The base branch existence check uses `git cat-file -e origin/<baseBranch>:<file>`.
-An exit code of `0` means the file exists on the base branch; any other exit
-code means it does not.
+The merge-base existence check is answered from a one-time
+`git ls-tree -r --name-only <mergeBase>` listing (`TestMethodProtection.
+resolveMergeBaseFiles`), not a per-file `git cat-file -e <mergeBase>:<file>`
+probe: for the `<rev>:<path>` object-name form, git's revision parser reports
+the identical exit code and message whether a path is genuinely absent from
+that tree or the lookup itself failed for an unrelated reason, so a per-file
+exit-code probe cannot tell the two apart. Listing the tree once turns
+"does file X exist at the merge-base" into a plain set-membership check, with
+the listing's own success judged exactly once.
 
 ### Rationale
 
 This guardrail exists to prevent automated coding agents from modifying
 existing tests or CI workflows to make failing tests pass. The correct
 response to a test failure is to fix the production code, not to weaken the
-test. New test files are allowed because agents may legitimately need to add
-tests for new functionality.
+test. New test files, new test methods, and edits to fixtures/helpers/fields
+are all allowed because agents may legitimately need to add or extend
+coverage for new functionality — see `TestMethodProtection` and
+`validate-agent-commit.sh` RULE 1 for the full reasoning, including why the
+lock is scoped to test methods rather than whole test classes.
 
 ### Determining "New" vs "Existing" Files
 
 The distinction between new and existing test files is determined by checking
-whether the file exists on the remote base branch using `git cat-file -e`:
+whether the file is present in a listing of the merge-base commit's tree:
 
 ```
-git cat-file -e origin/<baseBranch>:<file>
+git merge-base origin/<baseBranch> HEAD
+git ls-tree -r --name-only <mergeBase>
 ```
 
-- Exit code `0`: the file exists on the base branch (it is an "existing" file
-  and is protected).
-- Non-zero exit code: the file does not exist on the base branch (it is a
+- Present in the listing: the file exists at the merge-base (it is an
+  "existing" file and is protected — in full for non-`.java`/CI paths, at
+  method granularity for `.java` test sources).
+- Absent from the listing: the file does not exist at the merge-base (it is a
   "new" file and is allowed through).
+- Listing unreadable (the `ls-tree` command itself fails): the file is treated
+  as protected, the same as "present" — a listing failure must never be read
+  as "every file is branch-new."
 
-This check runs against the remote ref (`origin/<baseBranch>`), not the local
-ref. This means the check reflects the state of the base branch as of the last
-`git fetch`, which is guaranteed to be recent because `prepareWorkingDirectory()`
-fetches before any work begins.
+The merge-base, not the base branch's current tip, is what "existing" is
+measured against: the base branch keeps moving after a feature branch forks
+from it, and comparing against its live tip would misattribute the base
+branch's own later edits to the agent's branch. `TestMethodProtection`
+resolves the merge-base and its file listing once per `evaluateFiles()` call,
+not once per file.
 
-The fail-safe behavior is critical: if `git cat-file` throws an exception (due
-to network issues, missing refs, or other errors), `existsOnBaseBranch()`
-returns `true`, which blocks the file. A warning is logged explaining why the
-check failed. This prevents a transient error from allowing modifications to
-protected test files.
+The fail-safe behavior is critical: if any step of the check throws (network
+issues, missing refs, an unreadable merge-base listing, an unreadable file, a
+missing or failing `test-method-lines.awk` subprocess), the file is treated
+as protected in full. A warning is logged explaining why the check failed.
+This prevents a
+transient error from allowing modifications to protected test files.
 
 ---
 
@@ -777,6 +869,48 @@ individual file decisions.
 
 ---
 
+## Discarded Changes Are Reported, Not Silent
+
+A guardrail skip used to be visible only after the fact, in the completion
+event's `skippedFiles` list — easy to miss, and invisible to the agent
+itself, whose session had already ended by the time `GitCommitHandler`
+staged anything. Two mechanisms close that gap.
+
+**Mid-session correction.** `StagingSkipRule` (an `EnforcementRule`) runs
+`GitManagedJob.previewStaging()` — the same `FileStager` guardrails
+`GitCommitHandler` will eventually apply, evaluated against the working
+tree's current uncommitted changes without staging anything — during the
+agent's enforcement retry loop, while the session can still react. When any
+file would be skipped, the agent gets a correction turn naming the skipped
+files and reasons, so it can find another approach (for a protected test
+file: add a new method, or edit only one it introduced on the branch) or say
+explicitly that a human needs to intervene. It is active for every
+git-enabled job, not only those with `protectTestFiles` set, since any
+guardrail — pattern exclusion, size, binary detection — can silently discard
+a real fix.
+
+**Non-success completion status.** `GitManagedJob.hasAllChangesDropped()`
+returns `true` when the working tree had changes to stage but every one of
+them was skipped, so nothing was staged or committed. `createEvent()` (and,
+for Claude Code jobs, `CodingAgentJobEvent.forJob()`) checks this and returns
+`Status.DEGRADED` instead of `Status.SUCCESS`, with an error message naming
+the skipped files. This is what PR #492 was missing: a job whose only change
+was silently dropped by guardrail 2 reported `SUCCESS`, so nothing in the
+job's own status said the fix never landed. A partial drop (some files
+staged, some skipped) still reports `SUCCESS`, but `skippedFiles` is part of
+every completion event, so the job summary and status message always list
+what was dropped, whether the run succeeded, was degraded, or failed.
+
+**`ENFORCE_CHANGES` reads the same preview.** `EnforceChangesRule` used to
+check `git status` on the raw working tree, which is fooled by a guardrail-
+doomed change: the file sits there uncommitted (so `git status` is dirty)
+and yet will never be staged. `EnforceChangesRule.isViolated()` now checks
+`previewStaging().getStagedFiles().isEmpty()` instead, so "no real change yet"
+is judged by what would actually survive staging, not by working-tree
+dirtiness.
+
+---
+
 ## Usage Examples
 
 ### Basic Evaluation with Default Configuration
@@ -823,15 +957,19 @@ FileStagingConfig config = FileStagingConfig.builder()
     .build();
 
 List<String> changedFiles = Arrays.asList(
-    "ml/src/main/java/Fix.java",           // Production code -- allowed
-    "ml/src/test/java/ExistingTest.java",   // Existing test -- blocked
-    "ml/src/test/java/NewFeatureTest.java"  // New test (not on master) -- allowed
+    "ml/src/main/java/Fix.java",            // Production code -- allowed
+    "ml/src/test/java/ExistingTest.java",    // Existing method edited -- blocked
+    "ml/src/test/java/ExistingTest.java",    // New method added to it -- allowed
+    "ml/src/test/java/NewFeatureTest.java"   // New file (absent at merge-base) -- allowed
 );
 
+// The .java protected-path check needs BOTH execute() (exit codes) and
+// executeWithOutput() (merge-base resolution, `git show` content) -- a bare
+// exit-code lambda is not enough; see "Testing with a Mock GitOperations".
 StagingResult result = stager.evaluateFiles(
     changedFiles, config,
     new File("/path/to/repo"),
-    gitOps::execute
+    gitOps
 );
 ```
 
@@ -868,49 +1006,101 @@ boolean binary = FileStager.isBinaryFile(new File("/path/to/image.dat"));
 
 ### Integration with GitManagedJob
 
-Within `GitManagedJob`, file staging is performed by the `stageFiles()` method
-which applies the same guardrails inline. The extracted `FileStager` class
-provides the same logic in a reusable, testable form. The `GitOperations`
-interface parameter allows callers to bridge between `FileStager` and any
-git command executor:
+Within `GitManagedJob`, file staging is performed by `GitCommitHandler.stageFiles()`
+which applies the same guardrails via `FileStager`. `GitManagedJob.asGitOperations()`
+is the production bridge: it returns a `FileStager.GitOperations` adapter bound
+to the job's own `executeGit`/`executeGitWithOutput`, implementing both interface
+methods so content-based checks (merge-base resolution, `git show`) work, not
+just exit-code ones:
 
 ```java
-// Using the concrete GitOperations class
-io.flowtree.jobs.GitOperations git =
-    new io.flowtree.jobs.GitOperations("/repo", "task-1");
-
+// Production usage (GitCommitHandler.stageFiles / GitManagedJob.previewStaging)
 StagingResult result = stager.evaluateFiles(
     changedFiles, config,
-    new File("/repo"),
-    git::execute    // Method reference satisfies the functional interface
+    workDir,
+    job.asGitOperations()
 );
+```
+
+`FileStager.GitOperations` also has a `public` constructor-free concrete
+implementation, `io.flowtree.jobs.GitOperations`, that wraps a real git
+process:
+
+```java
+io.flowtree.jobs.GitOperations git =
+    new io.flowtree.jobs.GitOperations("/repo", "task-1");
+// git::execute alone only satisfies the exit-code half of the interface --
+// wrap both methods to get content-based checks too:
+FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+    @Override public int execute(String... args) throws IOException, InterruptedException {
+        return git.execute(args);
+    }
+    @Override public String executeWithOutput(String... args) throws IOException, InterruptedException {
+        return git.executeWithOutput(args);
+    }
+};
 ```
 
 ### Testing with a Mock GitOperations
 
-Because `FileStager.GitOperations` is a functional interface, you can use
-a lambda for testing without requiring an actual git repository:
+`FileStager.GitOperations` has one abstract method (`execute`) and one
+`default` method (`executeWithOutput`, which throws
+`UnsupportedOperationException` unless overridden), so a bare exit-code
+lambda still type-checks but silently loses content-based checks. Because
+`evaluateFiles` resolves the merge-base and its file listing once per call
+whenever `protectTestFiles` is set — before it knows whether any candidate
+file is under a protected path — this is not limited to `.java` files: every
+guardrail-2 file, whole-file paths included, will fail closed under such a
+lambda. Only guardrails that never enable `protectTestFiles` at all (pattern
+exclusion, size, binary detection) are unaffected:
 
 ```java
-// Mock that says all files exist on the base branch
-FileStager.GitOperations allExist = args -> 0;
+// Fine as long as protectTestFiles is false; with it true, every
+// guardrail-2 file fails closed (merge-base cannot be resolved).
+FileStager.GitOperations noOutputSupport = args -> 0;
+```
 
-// Mock that says no files exist on the base branch
-FileStager.GitOperations noneExist = args -> 1;
+For a test that exercises test file protection — whole-file or
+method-level — implement both methods, matching how `TestMethodProtection`
+actually resolves the merge-base and its file listing:
 
-// Mock that selectively responds based on the file path
-FileStager.GitOperations selective = args -> {
-    String ref = args[2]; // "origin/master:path/to/file"
-    if (ref.endsWith("ExistingTest.java")) return 0;
-    return 1;
+```java
+FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+    @Override
+    public int execute(String... args) {
+        return 0;
+    }
+
+    @Override
+    public String executeWithOutput(String... args) {
+        if (args.length >= 1 && "merge-base".equals(args[0])) {
+            return "abc1234def5678901234567890abcdef1234567";
+        }
+        if (args.length >= 1 && "ls-tree".equals(args[0])) {
+            return "path/to/ExistingTest.java\n"; // files present at the merge-base
+        }
+        if (args.length >= 1 && "show".equals(args[0])) {
+            return baseFileContent; // content at the merge-base
+        }
+        return "";
+    }
 };
 
 StagingResult result = stager.evaluateFiles(
     changedFiles, config,
     tempDir.toFile(),
-    selective
+    gitOps
 );
 ```
+
+A merge-base listing failure is simulated by making `execute` return non-zero
+for `ls-tree` (`executeOrNull` then returns `null` regardless of what
+`executeWithOutput` would produce), which exercises the fail-closed path.
+
+See `TestMethodProtectionTest` and `FileStagerTest` for the full set of
+scenarios this pattern covers (branch-new file, added method, modified
+method, deleted method, annotation added to an existing method, merge-base
+unresolvable, merge-base listing unreadable, missing awk script).
 
 This pattern makes it straightforward to unit test the guardrail logic
 without starting git processes, creating repositories, or setting up remote

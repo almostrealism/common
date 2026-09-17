@@ -17,8 +17,17 @@
 package io.flowtree.jobs;
 
 /**
- * Enforcement rule that verifies the agent produced at least one uncommitted
- * file change.  Used when {@link CodingAgentJob#isEnforceChanges()} is {@code true}.
+ * Enforcement rule that verifies the agent produced at least one file change
+ * that would actually survive staging. Used when
+ * {@link CodingAgentJob#isEnforceChanges()} is {@code true}.
+ *
+ * <p>Evaluated against {@link GitManagedJob#previewStaging()} rather than raw
+ * working-tree dirtiness: a file that {@link FileStager}'s guardrails would
+ * reject is not a real change for this rule's purposes, even though it still
+ * shows up as "uncommitted" in {@code git status}. Checking the raw working
+ * tree let a run report satisfied when every changed file was actually
+ * doomed to be dropped by a protection guardrail — the agent's fix never
+ * reached the branch, but nothing here noticed.</p>
  *
  * <p>{@link #buildCorrectionPrompt} returns {@code null} so the framework
  * re-runs the agent with the existing prompt; the {@code enforceChanges}
@@ -31,7 +40,8 @@ class EnforceChangesRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        return !job.hasUncommittedChanges() && !job.hasAgentCommitted();
+        if (job.hasAgentCommitted()) return false;
+        return job.previewStaging().getStagedFiles().isEmpty();
     }
 
     @Override

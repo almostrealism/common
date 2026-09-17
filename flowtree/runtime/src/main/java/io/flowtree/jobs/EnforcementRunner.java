@@ -97,8 +97,11 @@ class EnforcementRunner implements ConsoleFeatures {
             rules.add(new MavenDependencyProtectionRule());
         }
         rules.addAll(job.getCustomEnforcementRules());
-        // Always last: verifies commit.txt is present and agent-authored.
         if (job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()) {
+            // Checked after the content rules above, right before the final
+            // commit-message check -- see StagingSkipRule's class javadoc.
+            rules.add(new StagingSkipRule());
+            // Always last: verifies commit.txt is present and agent-authored.
             rules.add(new CommitMessageRule());
         }
         return rules;
