@@ -43,6 +43,15 @@
 #                       have the controller reject such a submission instead.
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
+#   PROTECT_TEST_FILES - block edits to pre-existing test-method content on
+#                       the base branch (default: true). Test-file protection
+#                       is method-level, not whole-file: an agent may still
+#                       add new test methods or edit ones it introduced on
+#                       this branch (see flowtree/runtime/docs/file-staging.md).
+#                       Every caller here is an automated (unattended) job, so
+#                       this defaults on; set to "false" only for a path that
+#                       has a documented reason to allow unrestricted test
+#                       edits (e.g. a bypass-signed job).
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
@@ -126,7 +135,7 @@ PAYLOAD=$(jq -n \
     --arg prompt "$PROMPT" \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
-    --argjson protect "${PROTECT_TEST_FILES:-false}" \
+    --argjson protect "${PROTECT_TEST_FILES:-true}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
     --argjson automated true \

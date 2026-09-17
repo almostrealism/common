@@ -81,6 +81,71 @@ public class FileStager implements ConsoleFeatures {
          * @throws InterruptedException if the process is interrupted
          */
         int execute(String... args) throws IOException, InterruptedException;
+
+        /**
+         * Executes a git command and returns its output, regardless of exit
+         * code. Used by {@link TestMethodProtection} to resolve the
+         * merge-base commit and to read file content at that commit —
+         * information {@link #execute} cannot report because it only
+         * returns an exit code.
+         *
+         * <p>The default implementation always throws. Guardrails that never
+         * enable {@code protectTestFiles} never need this method, so those
+         * {@code GitOperations} implementations and test fakes can skip it.
+         * {@link #evaluateFiles} resolves the merge-base and its file listing
+         * once per call whenever {@code protectTestFiles} is set — before it
+         * knows whether any candidate file is under a protected path — so
+         * this method is required for every guardrail-2 file, not only
+         * {@code .java} protected sources: a whole-file check (a CI workflow
+         * file, a non-{@code .java} protected resource) fails closed exactly
+         * like a method-level one if the caller cannot supply the merge-base
+         * listing (see {@link TestMethodProtection}'s fail-safe
+         * behavior).</p>
+         *
+         * @param args the git subcommand and its arguments
+         *             (e.g., {@code "show", "abc123:path/to/File.java"})
+         * @return the combined standard output and standard error
+         * @throws IOException if the process cannot be started
+         * @throws InterruptedException if the process is interrupted
+         */
+        default String executeWithOutput(String... args) throws IOException, InterruptedException {
+            throw new UnsupportedOperationException(
+                    "executeWithOutput is not implemented by this GitOperations");
+        }
+
+        /**
+         * Runs a git command and returns its output only if the command
+         * itself succeeded (exit code {@code 0}), or {@code null} otherwise.
+         *
+         * <p>{@link #executeWithOutput} alone cannot tell a command that
+         * legitimately produced empty output apart from one that failed and
+         * printed nothing usable to stdout — for the {@code <rev>:<path>}
+         * object-name form in particular, git's revision parser reports the
+         * identical exit code and message whether a path is genuinely
+         * absent from a tree or the lookup itself failed for an unrelated
+         * reason (a corrupt object, a transient read error). Checking the
+         * exit code with {@link #execute} first, and trusting the output
+         * only when that exit code was zero, keeps those two cases from
+         * being conflated.</p>
+         *
+         * <p>Runs the command twice — once through each method — rather
+         * than once, since {@link #execute} and {@link #executeWithOutput}
+         * are independent abstractions with no shared subprocess to reuse.
+         * Callers on this path invoke it a small, fixed number of times per
+         * {@link #evaluateFiles} call, not once per candidate file, so the
+         * extra process is not a meaningful cost.</p>
+         *
+         * @param args the git subcommand and its arguments
+         * @return the command's output, or {@code null} if it exited non-zero
+         * @throws IOException if either process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default String executeOrNull(String... args) throws IOException, InterruptedException {
+            if (execute(args) != 0) {
+                return null;
+            }
+            return executeWithOutput(args);
+        }
     }
 
     /**
@@ -103,6 +168,13 @@ public class FileStager implements ConsoleFeatures {
                                        File workingDirectory, GitOperations gitOps) {
         List<String> stagedFiles = new ArrayList<>();
         List<String> skippedFiles = new ArrayList<>();
+        TestMethodProtection testMethodProtection = new TestMethodProtection();
+        String mergeBase = config.isProtectTestFiles()
+                ? testMethodProtection.resolveMergeBase(config.getBaseBranch(), gitOps)
+                : null;
+        Set<String> mergeBaseFiles = mergeBase != null
+                ? testMethodProtection.resolveMergeBaseFiles(mergeBase, gitOps)
+                : null;
 
         for (String file : changedFiles) {
             File f = new File(workingDirectory, file);
@@ -118,12 +190,24 @@ public class FileStager implements ConsoleFeatures {
             // Guardrail 2: Test file protection
             if (config.isProtectTestFiles()
                     && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
-                if (existsOnBaseBranch(file, config.getBaseBranch(), gitOps)) {
-                    log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
-                    skippedFiles.add(file + " (protected - exists on base branch)");
-                    continue;
+                if (isCiWorkflowFile(file) || !file.endsWith(".java")) {
+                    if (existsOnBaseBranch(file, mergeBaseFiles)) {
+                        log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
+                        skippedFiles.add(file + " (protected - exists on base branch)");
+                        continue;
+                    } else {
+                        log("Allowed (branch-new file): " + file);
+                    }
                 } else {
-                    log("Allowed (branch-new file): " + file);
+                    TestMethodProtection.Verdict verdict = testMethodProtection.evaluate(
+                            file, mergeBase, mergeBaseFiles, workingDirectory, gitOps);
+                    if (!verdict.isAllowed()) {
+                        log("Blocked (" + verdict.getReason() + "): " + file);
+                        skippedFiles.add(file + " (protected - " + verdict.getReason() + ")");
+                        continue;
+                    } else {
+                        log("Allowed (" + verdict.getReason() + "): " + file);
+                    }
                 }
             }
 
@@ -254,6 +338,24 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether {@code file} is a GitHub Actions workflow or action
+     * definition ({@code .github/workflows/**} or {@code .github/actions/**}).
+     *
+     * <p>These paths keep whole-file protection rather than the test-method
+     * granularity {@link TestMethodProtection} applies to Java test sources:
+     * a workflow file has no "test method" structure to reason about, and
+     * CI/workflow configuration is locked in full by design (see RULE 3 in
+     * {@code validate-agent-commit.sh}).</p>
+     *
+     * @param file the file path to test
+     * @return true if the path is a protected CI/workflow path
+     */
+    private static boolean isCiWorkflowFile(String file) {
+        return matchesGlobPattern(file, ".github/workflows/**")
+                || matchesGlobPattern(file, ".github/actions/**");
+    }
+
+    /**
      * Formats a byte count into a human-readable string using B, KB, or MB
      * units.
      *
@@ -267,24 +369,31 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Checks whether a file exists on the base branch by invoking
-     * {@code git cat-file -e origin/<baseBranch>:<file>}.
+     * Checks whether a file exists at the merge-base.
      *
-     * <p>Fails safe: returns {@code true} (protected) if the check errors
-     * out, preventing accidental modifications to test files.</p>
+     * <p>Answered from {@code mergeBaseFiles} — the one-time listing built
+     * by {@link TestMethodProtection#resolveMergeBaseFiles} — rather than a
+     * per-file {@code git cat-file -e <mergeBase>:<file>} probe. For the
+     * {@code <rev>:<path>} object-name form, git's revision parser reports
+     * the identical exit code and message whether the path is genuinely
+     * absent from that tree or the lookup itself failed for an unrelated
+     * reason (a corrupt object, a transient read error); a plain set lookup
+     * has no exit code to misread.</p>
      *
-     * @param file       the file path to check
-     * @param baseBranch the base branch name
-     * @param gitOps     git operations interface
-     * @return true if the file exists on the base branch
+     * <p>Fails safe: returns {@code true} (protected) if the merge-base
+     * listing is unavailable — preventing accidental modifications to test
+     * files.</p>
+     *
+     * @param file           the file path to check
+     * @param mergeBaseFiles the files present at the merge-base, or
+     *                       {@code null} if the listing could not be
+     *                       resolved
+     * @return true if the file exists at the merge-base
      */
-    private boolean existsOnBaseBranch(String file, String baseBranch, GitOperations gitOps) {
-        try {
-            String ref = "origin/" + baseBranch;
-            return gitOps.execute("cat-file", "-e", ref + ":" + file) == 0;
-        } catch (Exception e) {
-            warn("Could not check base branch for " + file + ": " + e.getMessage());
-            return true; // Fail safe: protect if uncertain
+    private boolean existsOnBaseBranch(String file, Set<String> mergeBaseFiles) {
+        if (mergeBaseFiles == null) {
+            return true; // Fail safe: protect if the merge-base listing could not be resolved
         }
+        return mergeBaseFiles.contains(file);
     }
 }

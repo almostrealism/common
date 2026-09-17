@@ -46,6 +46,59 @@ if [ -z "$BASE_BRANCH" ]; then
     exit 1
 fi
 
+# ── Merge-base with the base branch ─────────────────────────────────
+#
+# Base-branch file existence and content are read from this commit, not
+# from the live tip of $BASE_BRANCH — see validate-agent-commit.sh for
+# why comparing against a moving base branch misattributes master's own
+# later edits to the agent's branch. A merge-base that cannot be
+# computed is treated as "nothing can be checked", the same fail-closed
+# posture the diff-unavailable case below already takes.
+if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
+    echo "Cannot compute merge-base of ${BASE_BRANCH} and HEAD — the branch cannot be checked:" >&2
+    echo "$MERGE_BASE" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "violation_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_violations=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+# ── Merge-base file listing ─────────────────────────────────────────
+#
+# Every "does this file exist at the merge-base" question below is
+# answered from this one-time listing rather than a per-file
+# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
+# for why that probe cannot distinguish "path absent" from "the lookup
+# itself failed" by exit code alone. A listing failure is treated the
+# same as the diff-unavailable case above: no evidence is a reason to
+# stop, not a reason to report a clean audit.
+if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
+    echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be checked:" >&2
+    echo "$MERGE_BASE_FILE_LIST" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "violation_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_violations=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+declare -A MERGE_BASE_FILE_SET
+while IFS= read -r f; do
+    [ -n "$f" ] && MERGE_BASE_FILE_SET["$f"]=1
+done <<< "$MERGE_BASE_FILE_LIST"
+
+# Reports whether $1 exists at the merge-base. Membership only -- the
+# listing's own success was already checked above, so this can never
+# confuse "absent" with "lookup failed".
+merge_base_has_file() {
+    [ -n "${MERGE_BASE_FILE_SET[$1]:-}" ]
+}
+
 VIOLATION_COUNT=0
 VIOLATIONS=""
 
@@ -361,9 +414,20 @@ FILE_COUNT=$(echo "$MODIFIED_TEST_FILES" | wc -l)
 echo "Checking ${FILE_COUNT} modified test file(s) for test-hiding patterns..."
 
 for FILE in $MODIFIED_TEST_FILES; do
-    # Verify the file actually existed on the base branch (belt-and-suspenders)
-    if ! git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
-        continue
+    # Verify the file actually existed at the merge-base (belt-and-suspenders).
+    # git already reported this file with "M" status against the merge-base,
+    # so its absence from our own tree listing means the listing itself
+    # cannot be trusted here -- not that the file is legitimately new.
+    if ! merge_base_has_file "$FILE"; then
+        echo "Modified test file ${FILE} was not found at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+        echo "git reported it as modified relative to the base branch, which is inconsistent with it being absent there." >&2
+
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+            echo "violation_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit 1
     fi
 
     # Get only the additions and deletions for this file
@@ -374,7 +438,17 @@ for FILE in $MODIFIED_TEST_FILES; do
     # that lines inside brand-new test methods (or between methods, leading
     # into a new one) are not attributed to a previous existing method.
     BASE_FILE_TMP=$(mktemp)
-    git show "${BASE_BRANCH}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null || true
+    if ! git show "${MERGE_BASE}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null; then
+        echo "Could not read ${FILE} at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+        rm -f "$BASE_FILE_TMP"
+
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+            echo "violation_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit 1
+    fi
     BASE_METHOD_NAMES=$(list_method_spans "$BASE_FILE_TMP" | cut -f3 | sort -u)
     HEAD_SPANS=$(list_method_spans "$FILE")
     OWNS_RANGES=$(compute_owns_ranges "$HEAD_SPANS")

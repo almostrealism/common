@@ -193,10 +193,10 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 	/**
 	 * The principle does not contradict the existing Test Integrity
 	 * Policy section: that one is project-policy ("you MUST NOT
-	 * modify test files that exist on the base branch"), and the new
-	 * one is meta-policy ("never weaken enforcement config").  Both
-	 * are present, and the new one does not re-state the test
-	 * integrity policy verbatim.
+	 * modify or remove a test method that exists on the base
+	 * branch"), and the new one is meta-policy ("never weaken
+	 * enforcement config"). Both are present, and the new one does
+	 * not re-state the test integrity policy verbatim.
 	 */
 	@Test(timeout = 30000)
 	public void enforcementConfigPrincipleDoesNotContradictTestIntegrityPolicy() {
@@ -208,11 +208,9 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 			result.contains("## Enforcement Configuration"));
 		assertTrue("Test Integrity Policy section must still be present",
 			result.contains("## Test Integrity Policy"));
-		// The new principle's wording about "test integrity checks"
-		// is the meta-rule (abandon-before-tamper), not a duplicate
-		// of the project rule (don't modify test files).  We assert
-		// the new principle is intact and the project rule is intact.
+		// The meta-rule (abandon-before-tamper) is distinct from the
+		// project rule (don't modify an existing test method); assert both.
 		assertTrue("Project rule text must still be present",
-			result.contains("You MUST NOT modify test files that exist on the base branch"));
+			result.contains("You MUST NOT modify or remove a test method that exists on the base branch"));
 	}
 }

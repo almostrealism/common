@@ -837,6 +837,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     outputs:
+      # audit_error=true when deception-audit.sh could not resolve the
+      # merge-base (or its file listing) and never ran the audit --
+      # distinct from has_findings=false, which means the audit ran and
+      # found nothing. Surfaced here so check-quality-gates.sh (via
+      # DECEPTION_AUDIT_ERROR) can tell the two apart instead of a
+      # merge-base failure silently reading as "no deception findings".
+      audit_error: ${{ steps.audit.outputs.audit_error }}
       has_findings: ${{ steps.audit.outputs.has_findings }}
       finding_count: ${{ steps.audit.outputs.finding_count }}
     steps:
@@ -867,7 +874,11 @@ jobs:
         run: |
           echo "## Deception Audit" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
+          if [ "${{ steps.audit.outputs.audit_error }}" = "true" ]; then
+            echo "**ERROR: the audit could not resolve the merge-base (or its file listing) and did not run.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "This is not a clean result. A human should investigate the job log." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
@@ -1458,6 +1469,20 @@ jobs:
            -pl flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_TEST_PROFILE=pipeline
+
+      - name: Upload Surefire Reports
+        # Without this, a test-flowtree failure has no parseable surefire XML for
+        # auto-resolve to read, and falls through to a generic/no-op resolution
+        # path instead of the specific test-failure prompt. See the "surefire-flowtree"
+        # entry in auto-resolve's "Filter to resolvable surefire reports" step.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-flowtree
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Collect Coverage Data
         if: always()
@@ -2542,6 +2567,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
@@ -2584,16 +2610,19 @@ jobs:
       - name: Filter to resolvable surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # Keep artifacts from the linux test jobs and the Metal mac jobs:
-          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media,
-          #   surefire-mac-group-*, surefire-media-mac-group-*
+          # Keep artifacts from every required test job (the set `analysis.needs`
+          # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
+          # which fails a new test lane until it is added here):
+          #   surefire-utils-group-*, surefire-ml-group-* (test),
+          #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
+          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac)
           # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
           # so CL results are never parsed here — CL remains the only ignored case.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media|surefire-mac-group-*|surefire-media-mac-group-*)
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
@@ -2640,9 +2669,15 @@ jobs:
           MEDIA_RESULT="${{ needs.test-media.result }}"
           MAC_RESULT="${{ needs.test-mac.result }}"
           MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
-          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT}"
+          TEST_FLOWTREE_RESULT="${{ needs.test-flowtree.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT}"
 
-          # Check for genuine failures (job ran but failed without surefire XML)
+          # Check for genuine failures (job ran but failed without surefire XML).
+          # Every job in `analysis.needs` other than `build` (the required
+          # test-execution jobs; see tools/tests/test_auto_resolve_test_job_coverage.py)
+          # must be checked here: this is the invariant that keeps a required job's
+          # "failure" result from ever falling through to the quality-gate or
+          # general-review paths, which report that all tests passed.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
@@ -2654,6 +2689,10 @@ jobs:
           if [ "$MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$TEST_FLOWTREE_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-flowtree job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
@@ -2813,6 +2852,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
@@ -2842,6 +2882,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
@@ -2861,6 +2902,7 @@ jobs:
           TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
@@ -2890,6 +2932,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
@@ -2915,6 +2958,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
@@ -2939,6 +2983,13 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          # This is the all-checks-green path: PR #492 reached CI because a
+          # job here ran without this flag, added new test methods to an
+          # existing base-branch file, and one of them was broken. Test-file
+          # protection now permits branch-introduced test methods (see
+          # flowtree/runtime/docs/file-staging.md), so there is no longer a
+          # tradeoff between protection and adding tests here.
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -3115,7 +3166,7 @@ jobs:
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deception-audit | ${{ needs.deception-audit.result }} (audit_error=${{ needs.deception-audit.outputs.audit_error }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
