@@ -549,17 +549,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * Constructs an {@link AcceleratedProcessDetails} from the given argument snapshot,
 	 * ordering dispatch-backed argument evaluations after the given completion.
 	 *
-	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
-	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
-	 * through the provider, so an argument kernel never reads memory written by the work
-	 * {@code dependsOn} represents before that work has completed — without any host wait.
-	 * Plain host evaluables are handle-producers (they return {@link MemoryData} handles;
-	 * the kernel reads the contents on the device, ordered by its own chained dispatch)
-	 * and disregard {@code dependsOn}, evaluating immediately: blocking them on it would
-	 * violate the non-blocking submission contract (a submit with an outstanding foreign
-	 * dependency must return, and a same-provider dependency must remain free), so a
-	 * host function that reads memory <em>contents</em> rather than returning a handle
-	 * is responsible for its own ordering.</p>
+	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn} when
+	 * {@link StreamingEvaluable#isDispatchBacked()} reports that it orders its own work after
+	 * a supplied dependency — chaining through the provider for a device dispatch, or waiting
+	 * on a worker thread before reading memory otherwise — so that argument never reads memory
+	 * written by the work {@code dependsOn} represents before that work has completed. An
+	 * evaluable that is not dispatch-backed (a plain reference producer, not itself a
+	 * {@link StreamingEvaluable}) receives {@code null} instead: blocking it on {@code dependsOn}
+	 * would violate the non-blocking submission contract (a submit with an outstanding foreign
+	 * dependency must return, and a same-provider dependency must remain free), and it disregards
+	 * the dependency anyway, evaluating immediately.</p>
 	 *
 	 * <p>All working state lives in locals of this method, so overlapping
 	 * constructions (whether from another thread or from an argument evaluation
@@ -619,8 +618,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				dispatchBacked[i] = kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
-						kernelArgEvaluables[i] instanceof HardwareEvaluable;
+				dispatchBacked[i] = kernelArgEvaluables[i] instanceof StreamingEvaluable &&
+						((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 
 				if (!Hardware.getLocalHardware().isAsync() || dispatchBacked[i]) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);

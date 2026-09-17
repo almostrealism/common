@@ -440,7 +440,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null && getShape().isRegular()) {
+		if (getMemOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);

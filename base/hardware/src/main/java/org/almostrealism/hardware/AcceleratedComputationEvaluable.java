@@ -467,6 +467,19 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: this evaluable compiles and dispatches a kernel that reads
+	 * its own arguments, so a non-null {@code dependsOn} must order that dispatch (or, when
+	 * wrapped for a host-side request, the wrapper's read of this evaluable's result) after
+	 * whatever wrote the memory it depends on.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return true;
+	}
+
+	/**
 	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
 	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
 	 * is stored on this evaluable, so a compiled kernel that is reached through several

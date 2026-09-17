@@ -385,11 +385,7 @@ public class HardwareEvaluable<T> implements
 			throw new IllegalArgumentException("Embedded array provided to evaluate");
 		}
 
-		if (shortCircuit != null) {
-			return shortCircuit.evaluate(args);
-		}
-
-		T result = getKernel().getValue().evaluate(args);
+		T result = shortCircuit != null ? shortCircuit.evaluate(args) : getKernel().getValue().evaluate(args);
 		return resultProcessor == null ? result : resultProcessor.apply(result);
 	}
 
@@ -404,6 +400,18 @@ public class HardwareEvaluable<T> implements
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
 		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} chains a
+	 * non-null {@code dependsOn} into the underlying kernel's dispatch when it can, and
+	 * otherwise waits for it before the host-side fallback evaluation.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return true;
 	}
 
 	/**

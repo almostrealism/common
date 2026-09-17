@@ -147,4 +147,25 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * @see #request(Object[])
 	 */
 	void setDownstream(Consumer<T> consumer);
+
+	/**
+	 * Reports whether {@link #request(Object[], Semaphore)} honors a non-null
+	 * {@code dependsOn} by ordering this evaluable's own work after it &mdash;
+	 * whether by chaining the dependency into a device dispatch, or by waiting
+	 * for it before reading memory on a worker thread.
+	 *
+	 * <p>Callers that thread a {@code dependsOn} through several independent
+	 * {@link StreamingEvaluable} arguments (such as {@code ProcessDetailsFactory}
+	 * preparing a kernel's arguments) use this to decide which of them may
+	 * actually be given the dependency: forwarding it to an implementation that
+	 * returns {@code false} here would be discarded, while withholding it from
+	 * one that returns {@code true} risks that implementation reading memory a
+	 * prior dispatch has not finished writing.</p>
+	 *
+	 * @return {@code true} if this evaluable orders its work after a supplied
+	 *         {@code dependsOn}; {@code false} if it disregards it
+	 */
+	default boolean isDispatchBacked() {
+		return false;
+	}
 }
