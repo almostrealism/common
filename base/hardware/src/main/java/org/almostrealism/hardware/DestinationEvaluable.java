@@ -379,6 +379,18 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} chains
+	 * {@code dependsOn} into the accelerated operation's own dispatch and never blocks
+	 * on it directly.</p>
+	 */
+	@Override
+	public boolean isSharedExecutorSafe() {
+		return true;
+	}
+
+	/**
 	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
 	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
 	 * is stored on this evaluable, so a destination evaluable that is reached through several

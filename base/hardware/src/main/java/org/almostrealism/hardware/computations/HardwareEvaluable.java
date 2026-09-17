@@ -415,6 +415,19 @@ public class HardwareEvaluable<T> implements
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: the kernel path chains {@code dependsOn} into the
+	 * provider without blocking, and the short-circuit/non-chaining fallbacks in
+	 * {@link #request(Object[], Semaphore, Consumer)} only ever wait on {@code
+	 * dependsOn} itself, never on this evaluable's own dispatch.</p>
+	 */
+	@Override
+	public boolean isSharedExecutorSafe() {
+		return true;
+	}
+
+	/**
 	 * Initiates evaluation ordered after the given completion. The dependency is
 	 * delegated to the underlying kernel evaluable, which chains it through the
 	 * provider without blocking, and the result is delivered to {@code downstream}
@@ -441,7 +454,8 @@ public class HardwareEvaluable<T> implements
 
 		if (shortCircuit != null) {
 			if (dependsOn != null) dependsOn.waitFor();
-			downstream.accept(shortCircuit.evaluate(args));
+			T result = shortCircuit.evaluate(args);
+			downstream.accept(resultProcessor == null ? result : resultProcessor.apply(result));
 			return;
 		}
 

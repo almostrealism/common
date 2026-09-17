@@ -168,4 +168,27 @@ public interface StreamingEvaluable<T> extends Computable {
 	default boolean isDispatchBacked() {
 		return false;
 	}
+
+	/**
+	 * Reports whether {@link #request(Object[], Semaphore, Consumer)} dispatches this
+	 * evaluable's work through a provider (a device queue, command buffer, or other
+	 * non-blocking chain) rather than completing the request by blocking the calling
+	 * thread &mdash; on a synchronous evaluation, or on {@code dependsOn} before reading
+	 * memory. {@link #isDispatchBacked()} reports both of those strategies as ordering
+	 * the work after {@code dependsOn}; this method distinguishes the one that never
+	 * blocks the calling thread.
+	 *
+	 * <p>A caller that submits a request to a bounded, shared thread pool (a {@code
+	 * ComputeContext}'s own executor, for example) uses this to decide whether that pool
+	 * is safe for this request: an evaluable that returns {@code true} here returns
+	 * control to the pool thread immediately, while one that returns {@code false} may
+	 * tie up a pool thread for the duration of a blocking computation &mdash; which a
+	 * bounded pool may refuse outright, or simply be starved by. Such an evaluable should
+	 * instead be requested on a dedicated thread.</p>
+	 *
+	 * @return {@code true} if this evaluable's request never blocks the calling thread
+	 */
+	default boolean isSharedExecutorSafe() {
+		return false;
+	}
 }

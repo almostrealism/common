@@ -144,4 +144,16 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 			downstream.accept(evaluable.evaluate(args));
 		});
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: as documented on {@link #request(Object[], Semaphore, Consumer)},
+	 * the submitted task waits for a non-null {@code dependsOn} before reading {@code args}, so
+	 * this adapter orders its work after a supplied dependency instead of disregarding it.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return true;
+	}
 }

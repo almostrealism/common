@@ -457,13 +457,20 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * <li>Notifies listeners either synchronously or asynchronously based on {@link Hardware#isAsync()}</li>
 	 * </ol>
 	 *
-	 * <p>This method is synchronized to ensure atomic check-and-notify behavior.</p>
+	 * <p>The readiness check and argument processing are performed under the instance
+	 * monitor for atomicity, but that monitor is released before {@link #notifyListeners()}
+	 * is invoked &mdash; including on the synchronous ({@code Hardware.isAsync() == false})
+	 * path, where it would otherwise still be held by this method for the whole duration of
+	 * listener execution, reintroducing the same deadlock hazard {@link #notifyListeners()}
+	 * itself already avoids.</p>
 	 */
-	protected synchronized void checkReady() {
-		if (!isReady()) return;
+	protected void checkReady() {
+		synchronized (this) {
+			if (!isReady()) return;
 
-		if (arguments == null) {
-			arguments = replacementManager.processArguments(originalArguments);
+			if (arguments == null) {
+				arguments = replacementManager.processArguments(originalArguments);
+			}
 		}
 
 		if (Hardware.getLocalHardware().isAsync()) {
@@ -558,8 +565,11 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * @param r the listener to execute when all arguments are ready
 	 */
-	public synchronized void whenReady(Runnable r) {
-		this.listeners.add(r);
+	public void whenReady(Runnable r) {
+		synchronized (this) {
+			this.listeners.add(r);
+		}
+
 		checkReady();
 	}
 

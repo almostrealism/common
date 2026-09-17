@@ -560,6 +560,15 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * dependency must return, and a same-provider dependency must remain free), and it disregards
 	 * the dependency anyway, evaluating immediately.</p>
 	 *
+	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is submitted
+	 * to this factory's own executor only when {@link StreamingEvaluable#isSharedExecutorSafe()}
+	 * confirms the request itself never blocks the calling thread. {@code isDispatchBacked()} is
+	 * not sufficient for that decision, since it also covers an evaluable that honors {@code
+	 * dependsOn} by blocking a worker thread rather than chaining into a non-blocking dispatch;
+	 * submitting that kind of evaluation to the {@code ComputeContext}'s own executor risks it
+	 * blocking one of that executor's own threads, which {@code AcceleratedComputationOperation}
+	 * refuses to allow. Such an evaluable is instead requested on a dedicated thread.</p>
+	 *
 	 * <p>All working state lives in locals of this method, so overlapping
 	 * constructions (whether from another thread or from an argument evaluation
 	 * that reenters this factory) each operate on their own state and deliver
@@ -618,10 +627,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				dispatchBacked[i] = kernelArgEvaluables[i] instanceof StreamingEvaluable &&
-						((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
+				boolean streaming = kernelArgEvaluables[i] instanceof StreamingEvaluable;
+				dispatchBacked[i] = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 
-				if (!Hardware.getLocalHardware().isAsync() || dispatchBacked[i]) {
+				// See this method's javadoc: isSharedExecutorSafe(), not isDispatchBacked(),
+				// decides whether this factory's own executor may be used here.
+				boolean executorSafe = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isSharedExecutorSafe();
+
+				if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
