@@ -417,7 +417,7 @@ pattern produced ~17 million native readbacks during
 
 This section traces data flow through a single attention layer during autoregressive
 inference. The public `AttentionFeatures.attention()` overloads (starting at
-`AttentionFeatures.java:768`) delegate to the private `attentionImpl()` helper
+`AttentionFeatures.java:649`) delegate to the private `attentionImpl()` helper
 (`AttentionFeatures.java:792-936`), which holds the KV-cache logic traced below.
 
 ### Step-by-Step Flow

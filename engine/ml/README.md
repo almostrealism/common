@@ -70,36 +70,54 @@ host before any kernel runs.
 
 ### 2. Transformer Attention
 
+`attention`, `feedForward`, and `transformer` are default instance methods on
+`AttentionFeatures`, so a caller implements the interface (as model classes such
+as `Qwen3` do) rather than importing them statically:
+
 ```java
 import org.almostrealism.ml.AttentionFeatures;
-import static org.almostrealism.ml.AttentionFeatures.*;
 
-// Multi-Head Attention with GQA and QK-Norm
-Block attnBlock = attention(
-    nHeads, kvHeads,          // Query heads, KV heads (GQA when kvHeads < nHeads)
-    rmsAttWeight,             // Pre-attention RMSNorm weights
-    wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
-    bk, bv, bq,               // Optional bias terms (null if unused)
-    qkNormQ, qkNormK,         // Optional QK-Norm weights (null to skip)
-    freqCis,                  // RoPE frequencies
-    position,                 // Current position in sequence
-    requirements              // Computation requirements
-);
+class TransformerLayerBuilder implements AttentionFeatures {
+    Block buildLayer(int nHeads, int kvHeads,
+                      PackedCollection<?> rmsAttWeight,
+                      PackedCollection<?> wk, PackedCollection<?> wv,
+                      PackedCollection<?> wq, PackedCollection<?> wo,
+                      PackedCollection<?> bk, PackedCollection<?> bv, PackedCollection<?> bq,
+                      PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
+                      CollectionProducer<?> freqCis,
+                      PackedCollection<?> rmsFfnWeight,
+                      PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+                      Producer<PackedCollection<?>> position,
+                      ComputeRequirement... requirements) {
+        // Multi-Head Attention with GQA and QK-Norm
+        Block attnBlock = attention(
+            nHeads, kvHeads,          // Query heads, KV heads (GQA when kvHeads < nHeads)
+            rmsAttWeight,             // Pre-attention RMSNorm weights
+            wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
+            bk, bv, bq,               // Optional bias terms (null if unused)
+            qkNormQ, qkNormK,         // Optional QK-Norm weights (null to skip)
+            freqCis,                  // RoPE frequencies
+            position,                 // Current position in sequence
+            requirements              // Computation requirements
+        );
 
-// Feed-Forward Network with SwiGLU activation
-Block ffnBlock = feedForward(
-    rmsFfnWeight,  // Pre-FFN RMSNorm weights
-    w1,            // Gate projection
-    w2,            // Down projection
-    w3             // Up projection
-);
+        // Feed-Forward Network with SwiGLU activation
+        Block ffnBlock = feedForward(
+            rmsFfnWeight,  // Pre-FFN RMSNorm weights
+            w1,            // Gate projection
+            w2,            // Down projection
+            w3             // Up projection
+        );
 
-// Complete transformer block (attention + feed-forward in one call)
-Block transformerLayer = transformer(
-    nHeads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-    freqCis, rmsFfnWeight, w1, w2, w3, position,
-    requirements
-);
+        // Complete transformer block (attention + feed-forward in one call)
+        return transformer(
+            nHeads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+            bk, bv, bq, qkNormQ, qkNormK,
+            freqCis, rmsFfnWeight, w1, w2, w3, position,
+            requirements
+        );
+    }
+}
 ```
 
 ### 3. Qwen3 Model Implementation
@@ -221,6 +239,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
     default Block transformer(int heads, int kvHeads,
                              PackedCollection<?> rmsAttWeight,
                              PackedCollection<?> wk, wv, wq, wo,
+                             PackedCollection<?> bk, bv, bq,
+                             PackedCollection<?> qkNormQ, qkNormK,
                              CollectionProducer<?> freqCis,
                              PackedCollection<?> rmsFfnWeight,
                              PackedCollection<?> w1, w2, w3,
