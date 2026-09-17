@@ -216,8 +216,82 @@ public class GitOperations implements ConsoleFeatures {
      *         {@code false} on no changes or I/O error
      */
     public static boolean hasUncommittedChanges(String workingDirectory) {
+        for (String file : getChangedFiles(workingDirectory)) {
+            if (!isExcludedPath(file)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns every file reported as changed by
+     * {@code git status --porcelain -uall} in {@code workingDirectory}:
+     * modified, added, deleted, and untracked files. Untracked files are
+     * listed individually ({@code -uall}) rather than collapsed to their
+     * containing directory, so that each one can be evaluated on its own by
+     * a staging guardrail. For a renamed file, only the post-rename path is
+     * returned (the part after {@code " -> "}).
+     *
+     * <p>Returns every changed path verbatim, with no exclusions applied —
+     * callers that only care whether <em>meaningful</em> work exists filter
+     * the result themselves with {@link #isExcludedPath(String)}, as
+     * {@link #hasUncommittedChanges(String)} does.</p>
+     *
+     * <p>Empty (never {@code null}) on any I/O error, since this is a
+     * read-only status query used for previews and summaries where
+     * under-reporting is harmless. A caller that is about to treat an empty
+     * result as license to skip real work — as the commit path does — must
+     * use {@link #requireChangedFiles(String)} instead, which distinguishes
+     * a genuinely clean tree from a failed status query.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the changed file paths, in the order git reported them
+     */
+    public static List<String> getChangedFiles(String workingDirectory) {
+        return queryChangedFiles(workingDirectory).getFiles();
+    }
+
+    /**
+     * Returns every file reported as changed, exactly like
+     * {@link #getChangedFiles(String)}, but throws rather than returning an
+     * empty list when the underlying {@code git status} query itself fails.
+     *
+     * <p>Use this where an empty result is about to be read as "nothing to
+     * commit" and short-circuit real work: a status query that failed (bad
+     * working directory, git not on {@code PATH}, process interrupted) must
+     * not be indistinguishable from a tree with no changes, or a real,
+     * uncommitted fix can disappear silently while the job reports success.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the changed file paths, in the order git reported them
+     * @throws IOException if the {@code git status} query could not be run
+     *                      or exited with a non-zero code
+     */
+    public static List<String> requireChangedFiles(String workingDirectory) throws IOException {
+        ChangedFilesResult result = queryChangedFiles(workingDirectory);
+        if (!result.isQuerySucceeded()) {
+            throw new IOException("git status query failed in "
+                    + (workingDirectory != null ? workingDirectory : "."));
+        }
+        return result.getFiles();
+    }
+
+    /**
+     * Runs {@code git status --porcelain -uall} in {@code workingDirectory}
+     * and parses its output, recording whether the query itself succeeded
+     * separately from whether any changed files were found.
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the parsed files and whether the underlying query succeeded
+     */
+    private static ChangedFilesResult queryChangedFiles(String workingDirectory) {
+        List<String> files = new ArrayList<>();
         try {
-            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain");
+            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain", "-uall");
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
@@ -229,7 +303,7 @@ public class GitOperations implements ConsoleFeatures {
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                return false;
+                return new ChangedFilesResult(files, false);
             }
 
             for (String line : statusOutput.split("\n")) {
@@ -238,17 +312,58 @@ public class GitOperations implements ConsoleFeatures {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!isExcludedPath(file)) {
-                        return true;
+                    if (!file.isEmpty()) {
+                        files.add(file);
                     }
                 }
             }
-            return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
+            return new ChangedFilesResult(files, false);
         } catch (IOException e) {
-            return false;
+            return new ChangedFilesResult(files, false);
+        }
+        return new ChangedFilesResult(files, true);
+    }
+
+    /**
+     * The outcome of a {@code git status --porcelain} query: the files it
+     * found, and whether the query itself completed successfully. A failed
+     * query always carries an empty file list, but an empty file list does
+     * not by itself mean the query failed — the two are tracked separately
+     * so callers can tell a clean tree from a query that never ran.
+     */
+    private static final class ChangedFilesResult {
+        /** The changed file paths the query found; empty when the query failed. */
+        private final List<String> files;
+        /** Whether the underlying {@code git status} process ran and exited zero. */
+        private final boolean querySucceeded;
+
+        /**
+         * @param files          the changed file paths found, if any
+         * @param querySucceeded whether the underlying query completed successfully
+         */
+        private ChangedFilesResult(List<String> files, boolean querySucceeded) {
+            this.files = files;
+            this.querySucceeded = querySucceeded;
+        }
+
+        /**
+         * Returns the changed file paths found by this query.
+         *
+         * @return the changed file paths found by this query
+         */
+        List<String> getFiles() {
+            return files;
+        }
+
+        /**
+         * Returns whether the underlying {@code git status} query succeeded.
+         *
+         * @return whether the underlying {@code git status} query succeeded
+         */
+        boolean isQuerySucceeded() {
+            return querySucceeded;
         }
     }
 

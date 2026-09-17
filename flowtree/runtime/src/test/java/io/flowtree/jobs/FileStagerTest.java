@@ -183,7 +183,13 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
-	/** Verifies that new test files introduced on the branch (not on base) are allowed to be staged. */
+	/**
+	 * Verifies that new test files introduced on the branch (absent at the
+	 * merge-base) are allowed to be staged. Uses a full {@link FileStager.GitOperations}
+	 * fake (not just an exit-code lambda) because guardrail 2 now resolves the
+	 * merge-base and its file listing via {@code executeWithOutput}/{@code execute}
+	 * before checking membership.
+	 */
 	@Test(timeout = 30000)
 	public void allowsBranchNewTestFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -198,17 +204,133 @@ public class FileStagerTest extends TestSuiteBase {
 				.build();
 
 			FileStager stager = new FileStager();
-			// Git returns exit code 1 meaning file does NOT exist on base branch
+			// merge-base and its tree listing both resolve fine, but the
+			// listing is empty -- the new file has no entry there.
+			FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+				@Override
+				public int execute(String... args) {
+					return 0;
+				}
+
+				@Override
+				public String executeWithOutput(String... args) {
+					if (args.length >= 1 && "merge-base".equals(args[0])) {
+						return "abc1234def5678901234567890abcdef1234567";
+					}
+					return "";
+				}
+			};
 			StagingResult result = stager.evaluateFiles(
 				Collections.singletonList("src/test/java/NewTest.java"),
 				config,
 				tempDir.toFile(),
-				(String... args) -> 1
+				gitOps
 			);
 
 			assertEquals(1, result.getStagedFiles().size());
 			assertTrue(result.getStagedFiles().contains("src/test/java/NewTest.java"));
 			assertTrue(result.getSkippedFiles().isEmpty());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that a non-Java protected file (a CI workflow file, which
+	 * keeps whole-file protection) present in the merge-base's tree listing
+	 * is blocked, while a merge-base tree listing that fails outright (not
+	 * merely empty) also fails closed and blocks it.
+	 */
+	@Test(timeout = 30000)
+	public void protectsCiWorkflowFileByMergeBaseListing() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Path workflowDir = Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(workflowDir.resolve("analysis.yaml"), "name: analysis\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectTestFiles(true)
+				.protectedPathPatterns(new HashSet<>(Collections.singletonList(".github/workflows/**")))
+				.baseBranch("master")
+				.build();
+
+			FileStager stager = new FileStager();
+			FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+				@Override
+				public int execute(String... args) {
+					return 0;
+				}
+
+				@Override
+				public String executeWithOutput(String... args) {
+					if (args.length >= 1 && "merge-base".equals(args[0])) {
+						return "abc1234def5678901234567890abcdef1234567";
+					}
+					if (args.length >= 1 && "ls-tree".equals(args[0])) {
+						return ".github/workflows/analysis.yaml\n";
+					}
+					return "";
+				}
+			};
+			StagingResult result = stager.evaluateFiles(
+				Collections.singletonList(".github/workflows/analysis.yaml"),
+				config,
+				tempDir.toFile(),
+				gitOps
+			);
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("protected"));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that a merge-base tree listing that fails outright (the
+	 * {@code ls-tree} command itself exits non-zero, not merely an empty
+	 * result) fails closed and blocks a protected file, rather than
+	 * conflating "listing failed" with "file absent."
+	 */
+	@Test(timeout = 30000)
+	public void protectsFileWhenMergeBaseListingFails() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Path workflowDir = Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(workflowDir.resolve("analysis.yaml"), "name: analysis\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectTestFiles(true)
+				.protectedPathPatterns(new HashSet<>(Collections.singletonList(".github/workflows/**")))
+				.baseBranch("master")
+				.build();
+
+			FileStager stager = new FileStager();
+			FileStager.GitOperations gitOps = new FileStager.GitOperations() {
+				@Override
+				public int execute(String... args) {
+					return args.length >= 1 && "ls-tree".equals(args[0]) ? 128 : 0;
+				}
+
+				@Override
+				public String executeWithOutput(String... args) {
+					if (args.length >= 1 && "merge-base".equals(args[0])) {
+						return "abc1234def5678901234567890abcdef1234567";
+					}
+					return "fatal: unable to read tree object";
+				}
+			};
+			StagingResult result = stager.evaluateFiles(
+				Collections.singletonList(".github/workflows/analysis.yaml"),
+				config,
+				tempDir.toFile(),
+				gitOps
+			);
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("protected"));
 		} finally {
 			deleteRecursively(tempDir);
 		}

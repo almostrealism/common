@@ -137,6 +137,49 @@ deployment to the default-branch context instead, keeping it off the PR while
 preserving the required-reviewers approval gate. `auto-resolve` is excluded from
 `all-checks`; neither it nor the submit workflow is a quality signal.
 
+**Every "Stage submit request" step sets `PROTECT_TEST_FILES: "true"`,
+including the green-pipeline "general review" step.** Test-file protection
+is method-level, not whole-file (see
+`flowtree/runtime/docs/file-staging.md`), so an agent may still add new test
+methods or edit ones it introduced on the branch — there is no tradeoff left
+between enabling the flag and letting an agent write tests. Before this, the
+general-review path ran unprotected; a job on that path once added test
+methods to an existing base-branch file, one of them was broken, and the
+guardrail of the day (whole-file blocking) silently discarded the entire
+file including the fix. Keep every new "Stage submit request" step — in this
+job and in `master-agent-dispatch.yaml`'s QA rounds — setting the flag unless
+you can document a specific reason not to.
+
+**A required test job's `failure` result must never reach the quality-gate or
+general-review prompts.** Those prompts tell the agent all tests are passing;
+they must only run when every required test job (see below) succeeded or was
+skipped by the layer gates. This is enforced by the `Check for incomplete
+test execution` step: it reads every required job's raw `needs.<job>.result`
+and, if any is `failure`, routes to the build-failure-style path regardless
+of whether Surefire XML was parsed, before the quality-gate/general-review
+steps' `if:` conditions are even evaluated. `test-flowtree` originally had no
+`needs.test-flowtree.result` check here at all — a `test-flowtree` failure
+fell straight through to a prompt claiming everything had passed.
+
+**Every required test job must upload a Surefire artifact the allowlist
+keeps.** The "required" set is `analysis.needs` minus `build` — the same set
+`all-checks` waits on (see "What the `analysis` job does" below) — except the
+CL lanes (`test-cl`, `test-media-cl`), which are excluded from both `analysis`
+and the merge gate by design and upload neither coverage nor Surefire.
+`Filter to resolvable surefire reports` keeps only artifact names the
+allowlist recognises and deletes the rest before
+`parse-surefire-failures.sh` ever runs, so a job whose artifact name the
+allowlist does not match has its real failures silently discarded — it still
+routes correctly (via the `needs.<job>.result` check above), but through the
+generic crash prompt instead of one naming the actual failing tests.
+`test-flowtree` uploaded no Surefire artifact at all until this was fixed;
+`test-media`'s (`surefire-media-${{ matrix.group }}`) was uploaded under a
+name the allowlist's `surefire-media` entry (no wildcard) could never match.
+`tools/tests/test_auto_resolve_test_job_coverage.py` (see `tools/ci/README.md`)
+pins both wirings for the full required set, so adding a job to
+`analysis.needs` without wiring it into the failure-detection step and the
+allowlist fails that test.
+
 **A gate is reported to an agent only when its cause is known.** The message
 `auto-resolve` builds becomes an instruction, and an agent handed "this branch
 weakened its tests" will act on it. `test-integrity-check` therefore publishes
@@ -223,6 +266,11 @@ validation prerequisites as the `test` matrix (`code-policy-check`,
 `test-timeout-check`, `duplicate-code-check`, `test-integrity-check`) and runs in
 parallel with `test`. Extracted from `build` because flowtree tests are slow and
 would otherwise block every other job.
+
+Also uploads Surefire reports as `surefire-flowtree` with `if: always()`, so a
+`test-flowtree` failure is auto-resolved with the specific failing tests named,
+not just a generic crash prompt. See "Auto-resolve's required-test-job
+coverage" above and `tools/ci/README.md`.
 
 ### What the `test` job covers
 

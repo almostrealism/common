@@ -600,6 +600,11 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
         }
+        if (job.hasAllChangesDropped()) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "All changes were dropped by staging guardrails: "
+                    + String.join("; ", job.getSkippedFiles()));
+        }
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(
                 job.getWorkingDirectory(), job.getSessionStartedAt());
         if (abandoned.isEmpty()) {

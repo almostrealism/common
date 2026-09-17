@@ -31,10 +31,13 @@ import java.nio.file.Path;
  * <p>The script inspects the branch diff for the documented test-hiding
  * deception patterns (TestDepth escalation, tolerance weakening, dimension
  * reduction, net assertion loss, and so on). An exit code of {@code 2} means
- * a violation was detected and the commit must be blocked; any other exit code
- * (including the script being absent on minimal checkouts) is treated as
- * "no violation found" so the gate never blocks a job for infrastructural
- * reasons.</p>
+ * a violation was detected. Any other non-zero exit code is an
+ * infrastructure failure (an unresolvable merge-base, an undiffable branch,
+ * a modified test file the script could not re-read at the merge-base) and
+ * is treated the same as a violation — a check that could not run is not
+ * evidence of a clean audit. The one exception is the script being entirely
+ * absent from a minimal checkout, which is handled separately before the
+ * script is even invoked.</p>
  *
  * <p>A dependency-free, runtime-agnostic helper: it needs only a working
  * directory, a base branch, and a {@link ConsoleFeatures} sink, so it lives in
@@ -68,8 +71,11 @@ public final class TestHidingAudit {
      * @param baseBranch       the base branch to diff against; {@code null}
      *                         defaults to {@code "master"}
      * @param logger           sink for {@code log}/{@code warn} diagnostics
-     * @return {@code false} only when the script reports a violation
-     *         (exit code {@value #VIOLATION_EXIT_CODE}); {@code true} otherwise
+     * @return {@code false} when the script reports a violation (exit code
+     *         {@value #VIOLATION_EXIT_CODE}) or fails for an infrastructure
+     *         reason (any other non-zero exit code); {@code true} only on a
+     *         clean exit-{@code 0} pass, or when the script itself is absent
+     *         from a minimal checkout
      * @throws IOException          if the audit process cannot be started
      * @throws InterruptedException if the current thread is interrupted while
      *                              waiting for the audit process to exit
@@ -101,7 +107,9 @@ public final class TestHidingAudit {
             logger.warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
             return false;
         } else if (code != 0) {
-            logger.warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
+            logger.warn("detect-test-hiding.sh exited with code " + code
+                    + " (infrastructure error) - treating as a failed validation: " + auditOutput);
+            return false;
         }
 
         logger.log("Test integrity check passed");

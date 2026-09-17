@@ -231,7 +231,7 @@ This phase is handled entirely by `GitManagedJob.run()` before `doWork()` is cal
 
 1. **Repository resolution and cloning** -- If `repoUrl` is set but no working directory exists, the repo is cloned into a resolved workspace path. The resolution follows a priority chain: if `defaultWorkspacePath` is set, it is used directly; otherwise, if `/workspace/project` exists (typical in container environments), it is used; as a final fallback, a directory is created under `/tmp/flowtree-workspaces/` using the repository name extracted from the URL. The clone uses `git clone <repoUrl> <path>` and is logged with the destination path for operator visibility.
 
-2. **Uncommitted change detection** -- The working directory is checked for uncommitted changes (excluding ignored patterns like `claude-output/**`, `.claude/**`, `commit.txt`). If found, they are discarded with `git checkout .` and `git clean -fd`, since agent workers should never have manual edits.
+2. **Uncommitted change detection** -- The working directory is checked for uncommitted changes (excluding ignored patterns like `claude-output/**`, `.claude/projects/**`, `.claude/*.local.json`, `.claude/scheduled_tasks.lock`, `commit.txt`; project-shared `.claude/hooks/**`, `.claude/agents/**`, and `.claude/commands/**` are NOT excluded — see [file-staging.md](file-staging.md#default-exclusion-patterns)). If found, they are discarded with `git checkout .` and `git clean -fd`, since agent workers should never have manual edits.
 
 3. **Fetch from origin** -- `git fetch origin` brings remote refs up to date.
 
@@ -326,7 +326,7 @@ Commit messages must not attribute authorship of the work: no `Co-Authored-By` (
 
 ### Validation: detect-test-hiding.sh
 
-When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
+When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip, so an unrelated change master made to a test file after the branch forked is never misattributed to the agent) for changes that might "hide" test failures, such as:
 
 - Removing or commenting out existing test methods
 - Changing assertions to make failing tests pass trivially
@@ -384,7 +384,7 @@ The file staging process applies multiple layers of filtering to prevent uninten
 
 **Excluded Patterns** -- A comprehensive set of glob patterns covering secrets (`.env`, `*.pem`, `*.key`), build outputs (`target/**`, `build/**`), IDE files (`.idea/**`, `.vscode/**`), binary files (`*.exe`, `*.jar`, `*.png`), databases (`*.db`, `*.sqlite`), logs (`*.log`), AR-specific outputs (`Extensions/**`, `*.cl`, `*.metal`), and agent outputs (`claude-output/**`, `commit.txt`, `.claude/**`).
 
-**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, or `.github/actions/**` are checked against the base branch. If the file exists on `origin/<baseBranch>`, it is blocked from staging. Files that are new to the branch (not present on the base) are allowed. This check uses `git cat-file -e` for existence testing and fails safe (blocks on error).
+**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, or `.github/actions/**` are checked against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip). A file absent at the merge-base is a branch-new file and is allowed through in full. For `.github/workflows/**`, `.github/actions/**`, and any non-`.java` file, protection is whole-file: existing at the merge-base blocks it outright. For a `.java` file it is test-method-level (`TestMethodProtection`, which shells out to the shared `tools/ci/agent-protection/test-method-lines.awk`): the file is blocked only if an existing `@Test` method's content changed (even by addition, e.g. an inserted early return) or was removed; new test methods, and edits to fixtures, helpers, fields, or methods the branch itself introduced, are all allowed. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection) for the full algorithm. Every existence/content check fails safe (blocks on error).
 
 **File Size Limit** -- Files larger than `maxFileSizeBytes` (default: 1MB) are skipped. This prevents accidentally committing large generated files or data dumps.
 
@@ -418,7 +418,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 6. **GitHub PR Instructions** -- Present when `gitHubMcpEnabled` is true (in the builder) or always present (in `ClaudeCodeJob`'s inline version, since the ar-manager allowlist always grants the GitHub tools). Lists the available GitHub MCP tools: `github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`, plus the ar-manager additions (`github_list_open_prs`, `github_create_pr`, `github_request_copilot_review`, `github_read_file`, `github_pr_check_status`).
 
-7. **Test Integrity Policy** -- Present only when `protectTestFiles` is true. Tells the agent not to modify test files that exist on the base branch and to fix production code instead. Notes that tests introduced on the current branch may be modified, and that the commit harness will reject changes to protected test files.
+7. **Test Integrity Policy** -- Present only when `protectTestFiles` is true. Tells the agent not to modify a test method that exists on the base branch and to fix production code instead, and that the commit harness will reject such a change even when the diff only adds lines (an inserted early return, a new `@Ignore`/`@TestDepth`-style annotation). Notes that new test methods, tests introduced on the current branch, and fixtures/helpers/fields may be modified freely.
 
 8. **Git Commit Instructions** -- Always present, but with two variants:
    - When `targetBranch` is set: Tells the agent not to make git commits and that the harness will commit. If the agent wants to control the commit message, it should write to `commit.txt`.
