@@ -590,16 +590,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
 	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
 	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
-	 *   taken to be the only result of interest, and the kernel is assumed to have written to it
-	 *   directly); {@code output != null} with
+	 *   taken to be the only result of interest); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
-	 *   overwritten by the stale read copy of {@code x}). Both of those {@code output != null}
-	 *   policies assume the kernel wrote directly to {@code output}'s own memory, which is false
-	 *   when {@code output} was itself small enough to be folded into the aggregate: the kernel
-	 *   then wrote only into the aggregate's slice, so that one slice is copied back regardless of
-	 *   the policy above (as the sole slice under the default policy, alongside every other slice
-	 *   under strict side-effects) &mdash; see {@link MemoryDataArgumentMap#isFolded}.</li>
+	 *   overwritten by the stale read copy of {@code x}). Both {@code output != null} policies rely
+	 *   on the kernel having written {@code output}'s own memory, and it always has: the explicit
+	 *   {@code output} is bound directly at the output argument index (see
+	 *   {@link ProcessDetailsFactory}), and that argument is the operation's own destination,
+	 *   which is never folded. A slice of the aggregate that happens to alias {@code output} is
+	 *   therefore only ever the pre-kernel read copy of an input, and copying it back would
+	 *   discard the result &mdash; which is why the aliasing slice is skipped, never copied.</li>
 	 * </ul>
 	 *
 	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
@@ -659,9 +659,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Execution operator = setupOperator(process);
 
 				boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
-				boolean outputFolded = aggregating && output != null && argumentMap.isFolded((MemoryData) output);
 				boolean aggregateCopyOut = aggregating
-						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects || outputFolded);
+						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
 				// Copy-in groups chain on one another, and the kernel chains on the last of them.
@@ -697,16 +696,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					List<Submittable> copyOutOperations;
-
-					if (output == null || MemoryDataArgumentMap.enableStrictSideEffects) {
-						copyOutOperations = argumentMap.getPostprocessOperations(outputFolded ? null : (MemoryData) output);
-					} else {
-						// output != null, non-strict, reached only because outputFolded is true.
-						copyOutOperations = argumentMap.getOutputPostprocessOperations((MemoryData) output);
-					}
-
-					Semaphore copyOut = Submittable.submit(copyOutOperations, completion);
+					Semaphore copyOut = Submittable.submit(output == null ?
+							argumentMap.getPostprocessOperations(null) :
+							argumentMap.getPostprocessOperations((MemoryData) output), completion);
 					if (copyOut != null) {
 						completion = copyOut;
 					}
