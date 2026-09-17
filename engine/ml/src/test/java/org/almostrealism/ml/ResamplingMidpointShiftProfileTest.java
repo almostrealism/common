@@ -34,8 +34,8 @@ import java.io.IOException;
  * resampling block: a {@code numChunks=2} layer, a reshape/shift/reshape into {@code numChunks=3}
  * chunks, and a {@code numChunks=3} layer, at {@link SAMEResamplingTestBase#smallConfig(boolean)}
  * dimensions with synthetic weights. It exists to keep the compiled operation tree small enough to
- * read in full with {@code ar-profile-analyzer} (see {@code docs/plans/METAL_RESAMPLING_NAN_PLAN.md}),
- * unlike the full block {@link TransformerResamplingShapeTest} exercises. It writes an
+ * read in full with {@code ar-profile-analyzer}, unlike the full block
+ * {@link TransformerResamplingShapeTest} exercises. It writes an
  * {@link OperationProfileNode} to {@code results/} and logs whether the forward output contains any
  * non-finite values; it does not assert finiteness itself, since it exists to characterize the
  * failure, not (yet) to guard against a regression of it.
@@ -113,7 +113,7 @@ public class ResamplingMidpointShiftProfileTest extends SAMEResamplingTestBase {
 
 		String profilePath = RESULTS_DIR + "/resampling_midpoint_shift.xml";
 		profile.save(profilePath);
-		log("Profile saved to: " + profilePath);
+		log("profilePath=" + profilePath);
 
 		weights.destroy();
 	}
