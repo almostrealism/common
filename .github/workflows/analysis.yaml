@@ -1073,32 +1073,55 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as the early validation
-  # jobs pass, rather than waiting for auto-resolve at the end of the run.
+  # Registers a workstream for this branch as soon as `build` succeeds,
+  # rather than waiting for auto-resolve at the end of the run.
   #
   # auto-resolve already creates a workstream on demand
-  # (createWorkstreamIfMissing in submit-agent-job.sh), but it cannot run
-  # until every test job has reported, and the self-hosted test lanes are
-  # long. That leaves a branch with no workstream for the whole wait — so no
-  # workstream ID to submit other improvement jobs against, and nothing for
-  # another session to address memory to. Registering here closes that gap.
+  # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
+  # `analysis`, which waits on `build`, `test`, `test-flowtree`, `test-media`,
+  # `test-mac` and `test-media-mac` (any may be skipped) — and those lanes are
+  # long. (The ROCm lane, `test-cl` and `test-media-cl`, is also self-hosted
+  # and long, but uploads no coverage, so `analysis` does not wait on it — see
+  # .github/CLAUDE.md.) That leaves a branch with no workstream for the whole
+  # wait — so no workstream ID to submit other improvement jobs against, and
+  # nothing for another session to address memory to. Registering here
+  # closes that gap.
   #
-  # The two outcomes are both wanted. If a validation job fails, this is
-  # skipped and auto-resolve fires almost immediately, registering by its
-  # normal path. If they all pass, the tests are about to run for a long
-  # time and the workstream exists from the start.
+  # This job is deliberately independent of the validation gates
+  # (code-policy-check, test-timeout-check, duplicate-code-check,
+  # test-integrity-check, checkstyle). Four of those five DO gate the lanes
+  # `analysis` waits on: `test`, `test-flowtree`, `test-media`, `test-mac`
+  # and `test-media-mac` (and, for that matter, `test-cl`/`test-media-cl`)
+  # all list code-policy-check, test-timeout-check, duplicate-code-check and
+  # test-integrity-check directly in `needs` — see .github/CLAUDE.md. So a
+  # failure in any of those four already skip-fails the lanes `analysis`
+  # waits on just as fast as it would skip-fail this job if it kept the same
+  # `needs`; decoupling from them buys nothing on that failure path. What it
+  # does buy is not waiting on them when they are going to pass: those four
+  # checks run in parallel with `build` and can still take real time to
+  # finish, and this job has no functional dependency on their outcome, so
+  # there is no reason to sit idle until they report before registering.
   #
-  # checkstyle is one of the gates for that reason and no other: it is not a
-  # prerequisite of the test jobs, but it fails fast and hard, so a branch
-  # that trips it reaches auto-resolve without a long wait — exactly the
-  # case this job exists to avoid duplicating.
+  # checkstyle is the actual outlier: it is NOT a prerequisite of `test`,
+  # `test-flowtree`, `test-media`, `test-mac` or `test-media-mac` — unlike
+  # the four checks above, none of the test-matrix jobs list it in `needs`.
+  # A branch that only trips checkstyle therefore runs the full matrix to
+  # completion while register-workstream — back when it still depended on
+  # checkstyle as a "fast-fail fallback" — sat skipped the whole time
+  # (observed: 90+ minutes on PR #500, still waiting on queued test-cl lanes
+  # with no workstream to submit against). Registering unconditionally once
+  # `build` succeeds removes that gap regardless of which gate, if any,
+  # eventually fails.
   #
-  # Gating on those jobs also handles the docs-only case with no extra
-  # condition: they all declare `needs: build`, and `build` is gated on
-  # code_changed, so a docs-only PR skips them and therefore skips this.
-  # The code_changed check below is what expresses "some test job will
-  # actually run" — test-flowtree gates on code_changed alone, so whenever
-  # it is true at least one test job follows.
+  # Running both this job and auto-resolve's own registration is harmless:
+  # registration is idempotent on the controller (an existing workstream is
+  # returned with `existing: true`), so there is nothing to avoid by
+  # narrowing this job's `needs`.
+  #
+  # The code_changed check handles the docs-only case: `build` itself is
+  # gated on code_changed, so a docs-only PR skips it and therefore skips
+  # this job too. The explicit check documents that dependency rather than
+  # relying on it silently.
   #
   # Deliberately NOT declaring `environment:`. A job with an environment in
   # a pull_request run attaches a GitHub Deployment to the PR head, and a
@@ -1109,16 +1132,18 @@ jobs:
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
   # below reports a notice or warning and exits 0.
+  # TODO(review): "every failure path... exits 0" is no longer true for the
+  # "Fetch base branch" and "Verify registration script integrity" steps
+  # added below — neither has `continue-on-error` or its own failure
+  # handling, so e.g. a transient `git fetch origin master` network error
+  # fails the step (GitHub Actions default `-eo pipefail`) and the whole job
+  # goes red, contradicting this comment. See review-followup memory on
+  # workstream 3e52f5d6-13d4-45b2-93a7-a776d5af7045 for detail.
   register-workstream:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
+    needs: [changes, build]
     if: >-
       github.ref != 'refs/heads/master' &&
       needs.build.result == 'success' &&
-      needs.code-policy-check.result == 'success' &&
-      needs.test-timeout-check.result == 'success' &&
-      needs.duplicate-code-check.result == 'success' &&
-      needs.test-integrity-check.result == 'success' &&
-      needs.checkstyle.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -1126,6 +1151,11 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
 
       - name: Determine branch context
         id: ctx
@@ -1138,7 +1168,50 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
+      # This job no longer waits on test-integrity-check, so nothing else in
+      # the pipeline has verified by this point that tools/ci/register-workstream.sh
+      # is the trusted copy before it runs with FLOWTREE_CF_ACCESS_CLIENT_SECRET in
+      # its environment. The checkout above is the PR's own tree, so a branch that
+      # modified the script would have that modified copy executed with the secret
+      # attached — the script is the thing being asked to run, not just code it
+      # happens to sit next to. Refuse to run a script that differs from the trusted
+      # copy on origin/master, with the same ci/... carve-out the
+      # "Check for enforcement infrastructure tampering" step of
+      # test-integrity-check (below) uses for branches that declare the
+      # pipeline itself as their subject.
+      - name: Verify registration script integrity
+        id: script_integrity
+        env:
+          # Passed via env, not interpolated into the script body: the
+          # branch name is attacker-controlled (github.head_ref on a
+          # pull_request run) and git refs permit shell metacharacters
+          # (backticks, `$()`, `;`, quotes). Template-substituting it
+          # directly into `run:` would let a crafted branch name inject
+          # commands into this step — which runs, in the same job and
+          # workspace, immediately before the step that executes
+          # tools/ci/register-workstream.sh with the registration secret
+          # attached. That would defeat the very check this step exists
+          # to perform.
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+        run: |
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          # A script that does not exist on origin/master yet is new, not modified —
+          # there is no trusted copy to compare against, so trust the checkout as-is.
+          if ! git cat-file -e origin/master:tools/ci/register-workstream.sh 2>/dev/null; then
+            exit 0
+          fi
+
+          if git diff --name-only origin/master...HEAD -- tools/ci/register-workstream.sh | grep -q .; then
+            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Register workstream
+        if: steps.script_integrity.outputs.skip != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
