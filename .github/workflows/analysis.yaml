@@ -837,11 +837,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     outputs:
-      # TODO(review): deception-audit.sh also sets an `audit_error=true`
-      # output when the merge-base (or its file listing) cannot be
-      # resolved, but that output is never surfaced here or read by
-      # check-quality-gates.sh, so a merge-base failure leaves
-      # has_findings unset and silently reads as "no deception findings".
+      # audit_error=true when deception-audit.sh could not resolve the
+      # merge-base (or its file listing) and never ran the audit --
+      # distinct from has_findings=false, which means the audit ran and
+      # found nothing. Surfaced here so check-quality-gates.sh (via
+      # DECEPTION_AUDIT_ERROR) can tell the two apart instead of a
+      # merge-base failure silently reading as "no deception findings".
+      audit_error: ${{ steps.audit.outputs.audit_error }}
       has_findings: ${{ steps.audit.outputs.has_findings }}
       finding_count: ${{ steps.audit.outputs.finding_count }}
     steps:
@@ -872,7 +874,11 @@ jobs:
         run: |
           echo "## Deception Audit" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
+          if [ "${{ steps.audit.outputs.audit_error }}" = "true" ]; then
+            echo "**ERROR: the audit could not resolve the merge-base (or its file listing) and did not run.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "This is not a clean result. A human should investigate the job log." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
@@ -2896,6 +2902,7 @@ jobs:
           TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
@@ -3159,7 +3166,7 @@ jobs:
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deception-audit | ${{ needs.deception-audit.result }} (audit_error=${{ needs.deception-audit.outputs.audit_error }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
