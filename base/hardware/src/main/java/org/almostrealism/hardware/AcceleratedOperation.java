@@ -590,16 +590,35 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
 	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
 	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
-	 *   taken to be the only result of interest); {@code output != null} with
+	 *   taken to be the only result of interest, and the kernel is assumed to have written to it
+	 *   directly); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
-	 *   overwritten by the stale read copy of {@code x}).</li>
+	 *   overwritten by the stale read copy of {@code x}). Both of those {@code output != null}
+	 *   policies assume the kernel wrote directly to {@code output}'s own memory, which is false
+	 *   when {@code output} was itself small enough to be folded into the aggregate: the kernel
+	 *   then wrote only into the aggregate's slice, so that one slice is copied back regardless of
+	 *   the policy above (as the sole slice under the default policy, alongside every other slice
+	 *   under strict side-effects) &mdash; see {@link MemoryDataArgumentMap#isFolded}.</li>
 	 * </ul>
 	 *
 	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
 	 * {@code postprocess} (temp&rarr;aggregate) must run BEFORE aggregation's de-aggregation
 	 * (aggregate&rarr;originals), otherwise the de-aggregation reads a stale aggregate and the
 	 * result reads as zero.</p>
+	 *
+	 * <p><strong>Thread-local propagation.</strong> The dispatch below is registered as a
+	 * {@link AcceleratedProcessDetails#whenReady(Runnable) whenReady} listener, which runs
+	 * on the calling thread only when every argument is already available; when an argument's
+	 * completion is delivered asynchronously, the listener runs on the {@code ComputeContext}
+	 * executor thread that delivered it instead. The active {@link ComputeRequirement}s and
+	 * the active {@link Heap} are both thread-local, so both are captured on the calling
+	 * thread and re-established inside the listener. Skipping the {@link Heap} half of this
+	 * would make {@link Heap#addPendingKernel(Semaphore)} a silent no-op whenever the listener
+	 * runs on the executor thread (its {@link Heap#getDefault()} is unset there), so the
+	 * dispatched kernel's completion would never be registered with the {@link Heap.HeapStage}
+	 * that owns its argument memory, and that memory could be freed and reused while the
+	 * kernel is still running.</p>
 	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
@@ -623,10 +642,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
-		// Requirements are thread-local, and the listener below may run on another
-		// thread when dispatch is asynchronous; capture them here to re-establish there
+		// See the class/method javadoc above for why both of these are captured here.
 		List<ComputeRequirement> activeRequirements =
 				Hardware.getLocalHardware().getComputer().getActiveRequirements();
+		Heap.HeapStage activeHeapStage = Heap.getDefault() == null ? null : Heap.getDefault().getStage();
 
 		process.whenReady(() -> {
 			if (!activeRequirements.isEmpty()) {
@@ -640,8 +659,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Execution operator = setupOperator(process);
 
 				boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
+				boolean outputFolded = aggregating && output != null && argumentMap.isFolded((MemoryData) output);
 				boolean aggregateCopyOut = aggregating
-						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
+						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects || outputFolded);
 				boolean processing = !process.isEmpty();
 
 				// Copy-in groups chain on one another, and the kernel chains on the last of them.
@@ -665,9 +685,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
 				Semaphore nextSemaphore = operator.accept(input, ready);
 
-				// Register kernel semaphore with the active heap stage so
-				// that pop() waits for kernel completion before destroying memory
-				Heap.addPendingKernel(nextSemaphore);
+				// activeHeapStage avoids Heap.addPendingKernel()'s thread-local lookup; see javadoc above.
+				if (activeHeapStage != null) activeHeapStage.addPendingKernel(nextSemaphore);
 
 				Semaphore completion = nextSemaphore;
 
@@ -678,9 +697,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					Semaphore copyOut = Submittable.submit(output == null ?
-							argumentMap.getPostprocessOperations(null) :
-							argumentMap.getPostprocessOperations((MemoryData) output), completion);
+					List<Submittable> copyOutOperations;
+
+					if (output == null || MemoryDataArgumentMap.enableStrictSideEffects) {
+						copyOutOperations = argumentMap.getPostprocessOperations(outputFolded ? null : (MemoryData) output);
+					} else {
+						// output != null, non-strict, reached only because outputFolded is true.
+						copyOutOperations = argumentMap.getOutputPostprocessOperations((MemoryData) output);
+					}
+
+					Semaphore copyOut = Submittable.submit(copyOutOperations, completion);
 					if (copyOut != null) {
 						completion = copyOut;
 					}
@@ -693,9 +719,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// unchanged.
 				process.setSemaphore(completion);
 
-				if (completion != null && completion != nextSemaphore) {
+				if (completion != null && completion != nextSemaphore && activeHeapStage != null) {
 					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
-					Heap.addPendingKernel(completion);
+					activeHeapStage.addPendingKernel(completion);
 				}
 
 				if (process.hasDestinationLeases()) {

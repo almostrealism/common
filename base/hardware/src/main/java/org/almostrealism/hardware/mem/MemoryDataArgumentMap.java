@@ -35,6 +35,7 @@ import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -396,6 +397,57 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			result.add(copyOutOperations.get(i));
 		}
 		return result;
+	}
+
+	/**
+	 * Returns true if the given memory's root delegate was folded into this map's aggregate
+	 * buffer.
+	 *
+	 * <p>A folded argument never receives a kernel write directly: only the aggregate's slice
+	 * does. A caller deciding whether an aggregate copy-back is needed for an explicit
+	 * {@code output} (see {@link org.almostrealism.hardware.AcceleratedOperation#apply}) must
+	 * check this before relying on the "the kernel already wrote directly to output" assumption
+	 * that governs the ordinary, non-aggregated case &mdash; that assumption is false whenever
+	 * {@code output} itself was small enough to be folded.</p>
+	 *
+	 * @param data the memory to test, or null
+	 * @return true if {@code data}'s root delegate is one of the folded replacements
+	 */
+	public boolean isFolded(MemoryData data) {
+		if (data == null) return false;
+
+		Memory mem = data.getRootDelegate().getMem();
+		for (Replacement r : replacements) {
+			if (r.getRoot().getRootDelegate().getMem() == mem) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Returns the copy-out operation for the single replacement whose source is the given
+	 * memory's root delegate, as a single-element list, or an empty list if it was not folded.
+	 *
+	 * <p>Used when an operation's write destination was itself folded into the aggregate: the
+	 * kernel never touches the destination's real memory, only the aggregate's slice, so that
+	 * one slice must be copied back for the result to be visible even when the side-effect
+	 * policy would otherwise skip every aggregated slice for an explicit output (see
+	 * {@link org.almostrealism.hardware.AcceleratedOperation#apply}).</p>
+	 *
+	 * @param output the write destination to locate within the aggregate
+	 * @return a single-element list with that replacement's copy-out operation, or an empty list
+	 */
+	public List<Submittable> getOutputPostprocessOperations(MemoryData output) {
+		ensureCopyOperations();
+
+		Memory mem = output.getRootDelegate().getMem();
+		for (int i = 0; i < replacements.size(); i++) {
+			if (replacements.get(i).getRoot().getRootDelegate().getMem() == mem) {
+				return Collections.singletonList(copyOutOperations.get(i));
+			}
+		}
+
+		return Collections.emptyList();
 	}
 
 	/**
