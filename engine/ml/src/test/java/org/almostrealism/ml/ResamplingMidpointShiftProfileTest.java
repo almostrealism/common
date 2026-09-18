@@ -36,9 +36,11 @@ import java.io.IOException;
  * dimensions with synthetic weights. It exists to keep the compiled operation tree small enough to
  * read in full with {@code ar-profile-analyzer}, unlike the full block
  * {@link TransformerResamplingShapeTest} exercises. It writes an
- * {@link OperationProfileNode} to {@code results/} and logs whether the forward output contains any
- * non-finite values; it does not assert finiteness itself, since it exists to characterize the
- * failure, not (yet) to guard against a regression of it.
+ * {@link OperationProfileNode} to {@code results/}, logs the count of non-finite output elements on
+ * every iteration, and asserts that count is zero: the resampling stack must produce finite output
+ * on every backend. On CPU/OpenCL this holds unconditionally; on Metal it is the executable guard
+ * against a regression of the dispatch/kernel defects this branch fixes (the height-zero threadgroup
+ * split, the {@code tanh} fast-math overflow, and the cross-thread heap registration loss).
  */
 public class ResamplingMidpointShiftProfileTest extends SAMEResamplingTestBase {
 
@@ -52,8 +54,9 @@ public class ResamplingMidpointShiftProfileTest extends SAMEResamplingTestBase {
 
 	/**
 	 * Builds and forwards the two-chunk-count midpoint-shift stack {@value #ITERATIONS} times against
-	 * the same compiled {@link Model}, writing an operation profile from the first pass and logging
-	 * the count of non-finite output elements on every iteration.
+	 * the same compiled {@link Model}, writing an operation profile from the first pass, logging the
+	 * count of non-finite output elements on every iteration, and asserting that every iteration
+	 * produces fully finite output.
 	 *
 	 * @throws IOException if the profile cannot be written
 	 */
@@ -102,10 +105,12 @@ public class ResamplingMidpointShiftProfileTest extends SAMEResamplingTestBase {
 
 				log("iteration=" + iteration + " outputElements=" + values.length + " nonFiniteCount=" + nanCount);
 				assertEquals(segmentedShape.getTotalSize(), values.length);
+				assertEquals("non-finite output on iteration " + iteration, 0, nanCount);
 				totalNonFinite += nanCount;
 			}
 
 			log("iterations=" + ITERATIONS + " totalNonFiniteCount=" + totalNonFinite);
+			assertEquals("resampling stack produced non-finite output", 0, totalNonFinite);
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
 			compiled.destroy();
