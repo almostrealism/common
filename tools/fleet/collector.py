@@ -176,6 +176,13 @@ def parse_proc_stat_cpu_line(text: str) -> Optional[Tuple[int, int]]:
     :func:`cpu_pct_from_proc_stat_samples`) to get a rate. ``idle`` is
     ``idle + iowait`` (the ``iowait`` field is absent on very old kernels,
     hence the length check), matching how ``top``/``mpstat`` define "busy".
+
+    The trailing ``guest``/``guest_nice`` fields (indices 8 and 9, present on
+    kernels new enough to track virtualised guest time) are excluded from
+    *total*: the kernel already folds guest time into ``user``/``nice``
+    respectively, so summing all ten fields double-counts it. On a host
+    running VMs that would inflate *total* without inflating *busy* by the
+    same amount, understating ``cpu_pct``.
     """
     for line in text.splitlines():
         if line.startswith("cpu "):
@@ -183,7 +190,7 @@ def parse_proc_stat_cpu_line(text: str) -> Optional[Tuple[int, int]]:
             if len(fields) < 4:
                 return None
             idle = fields[3] + (fields[4] if len(fields) > 4 else 0)
-            total = sum(fields)
+            total = sum(fields[:8]) if len(fields) >= 8 else sum(fields)
             return total - idle, total
     return None
 
@@ -428,7 +435,7 @@ def discover_macos_agent_pid(
 
 
 def sample_and_write(
-    host: str, jsonl_path: str, agent_domain_target: Optional[str] = None,
+    host: str, jsonl_path: str, agent_domain_target: Optional[str] = None, disk_path: str = "/",
 ) -> Dict:
     """Take one live sample and append it to the local JSONL fallback file.
 
@@ -436,6 +443,11 @@ def sample_and_write(
     set it to the agent's launchd domain (e.g. ``"gui/501"``) when the
     collector runs under a separate identity from the agent (see that
     function's docstring); leave it ``None`` when they share an identity.
+
+    *disk_path* is forwarded to :func:`collect_disk_usage`. The design
+    defines disk capacity on the runner work volume, not necessarily the root
+    filesystem — a host with a separate work disk must pass that mount point
+    explicitly, or disk utilization is reported for the wrong filesystem.
     """
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ps_text = _run_ps()
@@ -444,7 +456,7 @@ def sample_and_write(
     agent_root_pids = frozenset() if agent_pid is None else frozenset({agent_pid})
     cpu_pct = collect_host_cpu_pct()
     mem_used_mb, mem_total_mb = collect_host_memory_mb()
-    disk_used_gb, disk_total_gb = collect_disk_usage()
+    disk_used_gb, disk_total_gb = collect_disk_usage(disk_path)
     record = build_record(
         ts, host, ps_text, load1, load5, load15,
         agent_root_pids=agent_root_pids,

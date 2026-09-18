@@ -190,6 +190,17 @@ class ProcStatCpuParsingTests(unittest.TestCase):
     def test_cpu_pct_is_none_when_total_did_not_advance(self):
         self.assertIsNone(collector.cpu_pct_from_proc_stat_samples((150, 1000), (150, 1000)))
 
+    def test_guest_and_guest_nice_are_not_double_counted_in_total(self):
+        """`guest`/`guest_nice` (fields 8/9) are already folded into
+        `user`/`nice` by the kernel; summing all ten fields would count guest
+        time twice and understate `cpu_pct` on a host running VMs."""
+        # user=100 nice=0 system=50 idle=850 iowait=0 irq=0 softirq=0 steal=0
+        # guest=300 (already included in user) guest_nice=0
+        text = "cpu  100 0 50 850 0 0 0 0 300 0\n"
+        busy, total = collector.parse_proc_stat_cpu_line(text)
+        self.assertEqual(total, 1000)
+        self.assertEqual(busy, 150)
+
 
 class MacosTopCpuParsingTests(unittest.TestCase):
 
@@ -246,6 +257,36 @@ class DiskUsageTests(unittest.TestCase):
         used_gb, total_gb = collector.collect_disk_usage("/no/such/path/at/all")
         self.assertIsNone(used_gb)
         self.assertIsNone(total_gb)
+
+
+class SampleAndWriteDiskPathTests(unittest.TestCase):
+    """`sample_and_write` must sample the caller-supplied disk path (the
+    runner work volume per the design), not silently default to the root
+    filesystem on every host."""
+
+    def test_disk_path_is_forwarded_to_collect_disk_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl_path = os.path.join(tmp, "sample.jsonl")
+            with mock.patch("tools.fleet.collector._run_ps", return_value=PS_TEXT), \
+                 mock.patch("tools.fleet.collector._run_uptime_loads", return_value=[0.1, 0.2, 0.3]), \
+                 mock.patch("tools.fleet.collector.discover_macos_agent_pid", return_value=None), \
+                 mock.patch("tools.fleet.collector.collect_host_cpu_pct", return_value=1.0), \
+                 mock.patch("tools.fleet.collector.collect_host_memory_mb", return_value=(1.0, 2.0)), \
+                 mock.patch("tools.fleet.collector.collect_disk_usage", return_value=(3.0, 4.0)) as disk_usage:
+                collector.sample_and_write("mac-studio", jsonl_path, disk_path="/mnt/work")
+            disk_usage.assert_called_once_with("/mnt/work")
+
+    def test_disk_path_defaults_to_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl_path = os.path.join(tmp, "sample.jsonl")
+            with mock.patch("tools.fleet.collector._run_ps", return_value=PS_TEXT), \
+                 mock.patch("tools.fleet.collector._run_uptime_loads", return_value=[0.1, 0.2, 0.3]), \
+                 mock.patch("tools.fleet.collector.discover_macos_agent_pid", return_value=None), \
+                 mock.patch("tools.fleet.collector.collect_host_cpu_pct", return_value=1.0), \
+                 mock.patch("tools.fleet.collector.collect_host_memory_mb", return_value=(1.0, 2.0)), \
+                 mock.patch("tools.fleet.collector.collect_disk_usage", return_value=(3.0, 4.0)) as disk_usage:
+                collector.sample_and_write("mac-studio", jsonl_path)
+            disk_usage.assert_called_once_with("/")
 
 
 class BuildRecordHostMetricsTests(unittest.TestCase):

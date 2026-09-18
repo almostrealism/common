@@ -24,10 +24,27 @@ Run with:
     python -m unittest discover -v -s tools/tests -p "test_fleet_github_poller.py"
 """
 
+import email.message
+import json
 import unittest
+import urllib.error
 from unittest import mock
 
-from tools.fleet.github_poller import compute_job_metrics, fetch_run_jobs, fetch_runs
+from tools.fleet.github_poller import (
+    _get_json,
+    compute_job_metrics,
+    fetch_run_jobs,
+    fetch_runs,
+    poll_and_store,
+)
+from tools.fleet.store import FleetStore
+
+
+def _http_error(code, headers=None):
+    hdrs = email.message.Message()
+    for key, value in (headers or {}).items():
+        hdrs[key] = value
+    return urllib.error.HTTPError("https://api.github.com/x", code, "error", hdrs, None)
 
 
 class ComputeJobMetricsTests(unittest.TestCase):
@@ -121,6 +138,104 @@ class FetchRunsPaginationTests(unittest.TestCase):
         with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
             with self.assertRaises(RuntimeError):
                 fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=2)
+
+
+class RateLimitRetryTests(unittest.TestCase):
+    """A rate-limited (403/429) response must be retried with backoff, not
+    surfaced to a periodic poller as an immediate, unrecoverable failure."""
+
+    def _response(self, payload):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(payload).encode("utf-8")
+        return response
+
+    def test_retries_on_429_with_retry_after_then_succeeds(self):
+        error = _http_error(429, {"Retry-After": "0"})
+        success = self._response({"ok": True})
+        with mock.patch(
+            "tools.fleet.github_poller.urllib.request.urlopen", side_effect=[error, success],
+        ), mock.patch("tools.fleet.github_poller.time.sleep") as sleep_mock:
+            result = _get_json("https://api.github.com/x", "tok")
+        self.assertEqual(result, {"ok": True})
+        sleep_mock.assert_called_once_with(0.0)
+
+    def test_gives_up_after_max_retries_exhausted(self):
+        errors = [_http_error(403, {"Retry-After": "0"}) for _ in range(3)]
+        with mock.patch(
+            "tools.fleet.github_poller.urllib.request.urlopen", side_effect=errors,
+        ), mock.patch("tools.fleet.github_poller.time.sleep"):
+            with self.assertRaises(urllib.error.HTTPError):
+                _get_json("https://api.github.com/x", "tok", max_retries=2)
+
+    def test_non_rate_limit_error_is_not_retried(self):
+        error = _http_error(500)
+        with mock.patch(
+            "tools.fleet.github_poller.urllib.request.urlopen", side_effect=[error],
+        ) as urlopen, mock.patch("tools.fleet.github_poller.time.sleep") as sleep_mock:
+            with self.assertRaises(urllib.error.HTTPError):
+                _get_json("https://api.github.com/x", "tok")
+        sleep_mock.assert_not_called()
+        self.assertEqual(urlopen.call_count, 1)
+
+
+class PollAndStoreTests(unittest.TestCase):
+    """`poll_and_store` is the poll-cycle entry point that actually persists
+    fetched jobs/steps - without it, job_event/job_step never receive data
+    from production code, only from tests calling the lower-level pieces
+    directly."""
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_poll_and_store_persists_job_event_and_job_step(self):
+        run = {"id": 1}
+        job = {
+            "id": 42,
+            "name": "test",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-09-18T00:00:00Z",
+            "started_at": "2026-09-18T00:05:00Z",
+            "completed_at": "2026-09-18T00:10:00Z",
+            "labels": ["self-hosted", "macos", "ar-ci"],
+            "runner_name": "runner-1",
+            "runner_group_name": "Default",
+            "steps": [
+                {
+                    "number": 1, "name": "checkout",
+                    "started_at": "2026-09-18T00:05:00Z",
+                    "completed_at": "2026-09-18T00:06:00Z",
+                    "conclusion": "success",
+                },
+            ],
+        }
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]):
+            count = poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(count, 1)
+        self.assertEqual(self.store.job_event_count(), 1)
+        self.assertEqual(self.store.job_step_count(), 1)
+        row = self.store._conn.execute(
+            "SELECT run_id, repo, labels, pre_start_latency_seconds FROM job_event WHERE job_id = ?",
+            ("42",),
+        ).fetchone()
+        self.assertEqual(row[0], "1")
+        self.assertEqual(row[1], "acme/repo")
+        self.assertEqual(row[2], "self-hosted,macos,ar-ci")
+        self.assertAlmostEqual(row[3], 300.0)
+
+    def test_poll_and_store_is_idempotent_across_poll_cycles(self):
+        run = {"id": 1}
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]):
+            poll_and_store("acme/repo", "tok", self.store)
+            poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(self.store.job_event_count(), 1)
 
 
 if __name__ == "__main__":

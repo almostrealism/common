@@ -723,12 +723,17 @@ GitHub scope, Grafana exposure) have a first implementation under
 `tools/fleet/` (see that directory's `README.md`), tested in
 `tools/tests/test_fleet_*.py`: process-tree attribution with the corrected
 non-residual `other` class, a `sqlite3`-backed version of the Appendix B
-schema with the idempotency keys this review added, GitHub-job metrics with
-the corrected `pre_start_latency`/`queue_wait` distinction, and the two
-read-only CLI verbs. Not yet implemented: the push transport, Docker-API
-attribution for a virtualized container runtime's processes, Grafana
-dashboards, and every control verb — each needs either a live target to
-validate against or an operator decision this document defers to §9.
+schema with the idempotency keys this review added, a GitHub poller that
+computes the corrected `pre_start_latency`/`queue_wait` distinction and a
+poll-cycle entry point (`poll_and_store`) that persists `job_event`/
+`job_step` rows into the store, and the two read-only CLI verbs. The poller
+does not yet parse `needs:` from the workflow YAML, so `queue_wait_seconds`
+is populated only for the entry-point case (§5.4 option 1) — the
+dependency-adjusted calculation (option 2) needs that parsing as a follow-up.
+Not yet implemented: the push transport, Docker-API attribution for a
+virtualized container runtime's processes, Grafana dashboards, and every
+control verb — each needs either a live target to validate against or an
+operator decision this document defers to §9.
 
 **Phase A — read-only visibility (the MVP, §6):**
 
