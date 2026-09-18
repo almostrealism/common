@@ -47,8 +47,8 @@ import java.util.Map;
  *
  * <p>Both endpoints share the same field surface ({@code defaultBranch},
  * {@code baseBranch}, {@code repoUrl}, {@code planningDocument},
- * {@code channelName}, {@code requiredLabels}, {@code dependentRepos},
- * {@code defaultPhaseConfig}, {@code phaseConfigs}).
+ * {@code planInstructions}, {@code channelName}, {@code requiredLabels},
+ * {@code dependentRepos}, {@code defaultPhaseConfig}, {@code phaseConfigs}).
  * Registration additionally derives the target workspace from
  * {@code workspaceId}, the GitHub org of {@code repoUrl}, or the
  * primary notifier in single-workspace mode, then auto-creates a Slack
@@ -445,6 +445,7 @@ final class WorkstreamRegistrationHandler {
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String repoUrl = JsonFieldExtractor.extractString(body, "repoUrl");
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");
+        String planInstructions = JsonFieldExtractor.extractString(body, "planInstructions");
         String channelName = JsonFieldExtractor.extractString(body, "channelName");
         if (channelName == null || channelName.isEmpty()) {
             if (defaultBranch.endsWith("/")) {
@@ -546,6 +547,10 @@ final class WorkstreamRegistrationHandler {
 
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+
+        if (planInstructions != null && !planInstructions.isEmpty()) {
+            workstream.setPlanInstructions(planInstructions);
         }
 
         if (!requiredLabels.isEmpty()) {
@@ -658,7 +663,8 @@ final class WorkstreamRegistrationHandler {
      *
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
-     * {@code planningDocument}, {@code requiredLabels}, {@code dependentRepos},
+     * {@code planningDocument}, {@code planInstructions}, {@code requiredLabels},
+     * {@code dependentRepos},
      * {@code defaultPhaseConfig}, {@code phaseConfigs}.</p>
      *
      * <p>Runner / model / effort defaults are configured through
@@ -691,6 +697,7 @@ final class WorkstreamRegistrationHandler {
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String repoUrl = JsonFieldExtractor.extractString(body, "repoUrl");
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");
+        String planInstructions = JsonFieldExtractor.extractString(body, "planInstructions");
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         boolean hasCompletionListeners = JsonFieldExtractor.hasField(body, "completionListeners");
@@ -714,6 +721,9 @@ final class WorkstreamRegistrationHandler {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
+        }
+        if (planInstructions != null && !planInstructions.isEmpty()) {
+            workstream.setPlanInstructions(planInstructions);
         }
         String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
         if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);

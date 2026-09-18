@@ -92,6 +92,46 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * POST /api/workstreams persists planInstructions alongside
+     * planningDocument, as a record of the intent that seeded the work.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamWithPlanInstructions() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"project/plan-20260918-instructions-test\","
+                + "\"baseBranch\":\"master\","
+                + "\"planInstructions\":\"Investigate and fix the flaky retry loop.\","
+                + "\"channelName\":\"w-project-plan-20260918-instructions-test\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+
+            Workstream registered = notifier.findWorkstreamByBranch("project/plan-20260918-instructions-test");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertEquals("Investigate and fix the flaky retry loop.", registered.getPlanInstructions());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
     /** POST /api/workstreams requires defaultBranch and returns 400 when absent. */
     @Test(timeout = 10000)
     public void testApiRegisterWorkstreamMissingBranch() throws Exception {

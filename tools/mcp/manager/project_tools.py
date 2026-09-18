@@ -149,10 +149,19 @@ def project_verify_branch(
     This triggers a GitHub Actions workflow that checks whether the work
     on a branch meets the criteria defined in the planning document.
 
+    Verification is always against the planning *document* — never against
+    the workstream's stored ``planInstructions`` (a record of original
+    intent, not a specification; see ``workstream_register``). The
+    document is what an operator or agent can revise as work legitimately
+    proceeds, so it is what the agent is instructed to check the branch
+    against.
+
     Args:
         workstream_id: Workstream to verify (from workstream_list).
         branch: Branch to verify (default: workstream's defaultBranch).
-        plan_file: Path to plan file for verification criteria (optional).
+        plan_file: Path to plan file for verification criteria. Defaults
+            to the workstream's configured ``planningDocument`` when
+            omitted.
 
     Returns:
         Dictionary confirming the workflow was dispatched.
@@ -197,9 +206,11 @@ def project_verify_branch(
             "next_steps": ["Provide the branch parameter explicitly"],
         }
 
+    effective_plan_file = plan_file or ws.get("planningDocument", "")
+
     inputs = {}
-    if plan_file:
-        inputs["plan_file"] = plan_file
+    if effective_plan_file:
+        inputs["plan_file"] = effective_plan_file
 
     # The workflow uses github.ref_name as the branch, so we dispatch
     # on the target branch (not baseBranch). Inputs only has plan_file.
@@ -242,13 +253,20 @@ def project_commit_plan(
     local clone. Useful for creating planning documents that agents will
     reference during their work.
 
-    If no path is provided, one is auto-generated as:
-    ``docs/plans/PLAN-YYYYMMDD-<slug>.md``
+    If no path is provided, it defaults to the workstream's configured
+    ``planningDocument``. If the workstream has none either, one is
+    auto-generated as ``docs/plans/PLAN-YYYYMMDD-<slug>.md``. When the
+    workstream had no ``planningDocument`` configured, a successful commit
+    also sets it to the resolved path, so ``project_read_plan`` and
+    ``project_verify_branch`` find the document without a separate
+    ``workstream_update_config`` call.
 
     Args:
         workstream_id: Workstream with repo_url (from workstream_list).
         content: The markdown content of the plan document.
-        path: File path in the repository (auto-generated if omitted).
+        path: File path in the repository. Defaults to the workstream's
+            configured ``planningDocument``; auto-generated if that is
+            also unset.
         branch: Branch to commit to (default: workstream's defaultBranch).
         commit_message: Git commit message (auto-generated if omitted).
 
@@ -299,7 +317,11 @@ def project_commit_plan(
             "next_steps": ["Provide the branch parameter explicitly"],
         }
 
-    # Auto-generate path if not provided
+    # Default to the workstream's configured planning document; only
+    # auto-generate a new path when the workstream has neither.
+    had_planning_document = bool(ws.get("planningDocument"))
+    if not path:
+        path = ws.get("planningDocument", "")
     if not path:
         date_str = server.datetime.now(server.timezone.utc).strftime("%Y%m%d")
         slug = (
@@ -352,6 +374,11 @@ def project_commit_plan(
 
     if result.get("content"):
         commit_sha = result.get("commit", {}).get("sha", "")
+        if not had_planning_document:
+            server._controller_post(
+                f"/api/workstreams/{quote(workstream_id, safe='')}/update",
+                {"planningDocument": path},
+            )
         return {
             "ok": True,
             "path": path,
@@ -360,7 +387,6 @@ def project_commit_plan(
             "repo": f"{owner}/{repo}",
             "next_steps": [
                 f"Plan committed to {path} on branch '{effective_branch}'",
-                "Use workstream_update_config to set planning_document if not already set",
                 "Use workstream_submit_task to send an agent to work on the plan",
             ],
         }

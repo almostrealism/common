@@ -54,6 +54,10 @@ def workstream_list(
     - baseBranch: the base branch for new branch creation
     - repoUrl: the git repository URL
     - hasPlanningDocument: whether a plan doc is configured
+    - planInstructions: the natural-language record of the intent that
+      originally seeded the workstream, if one was supplied at
+      registration or update time (omitted when not set). A record of
+      how the work began, not a specification to verify against.
     - pipelineCapable: whether Tier 2 pipeline tools will work
     - dependentRepos: list of additional repo URLs cloned alongside the
       primary repo (omitted if none configured)

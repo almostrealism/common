@@ -153,6 +153,22 @@ class TestProjectVerifyBranch(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("not found", result["error"])
 
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_defaults_plan_file_to_planning_document(self, mock_gh, mock_find):
+        """An omitted plan_file falls back to the workstream's configured
+        planningDocument rather than dispatching with no plan_file at all."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+            "planningDocument": "docs/plans/EXISTING.md",
+        }
+        mock_gh.return_value = {"status": 204}
+        server.project_verify_branch(workstream_id="ws-test")
+        payload = mock_gh.call_args[0][2]
+        self.assertEqual("docs/plans/EXISTING.md", payload["inputs"]["plan_file"])
+
 class TestProjectCommitPlan(unittest.TestCase):
 
     @patch.object(server, "_find_workstream")
@@ -193,6 +209,55 @@ class TestProjectCommitPlan(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertIn("PLAN-", result["path"])
         self.assertIn("feature-my-plan", result["path"])
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_defaults_path_to_configured_planning_document(
+            self, mock_gh, mock_find, mock_post):
+        """An omitted path uses the workstream's planningDocument instead of
+        auto-generating a new one."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+            "planningDocument": "docs/plans/EXISTING.md",
+        }
+        mock_gh.side_effect = [
+            {"sha": "abc123"},
+            {"content": {"sha": "new"}, "commit": {"sha": "def456"}},
+        ]
+        result = server.project_commit_plan(
+            workstream_id="ws-test", content="# Plan")
+        self.assertTrue(result["ok"])
+        self.assertEqual("docs/plans/EXISTING.md", result["path"])
+        # The workstream already had a planningDocument, so no update call.
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_sets_planning_document_when_workstream_has_none(
+            self, mock_gh, mock_find, mock_post):
+        """A successful commit sets planningDocument when it was unset."""
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        mock_gh.side_effect = [
+            {"sha": "abc123"},
+            {"content": {"sha": "new"}, "commit": {"sha": "def456"}},
+        ]
+        result = server.project_commit_plan(
+            workstream_id="ws-test",
+            content="# Plan",
+            path="docs/plans/NEW.md",
+        )
+        self.assertTrue(result["ok"])
+        update_path, update_payload = mock_post.call_args[0]
+        self.assertIn("ws-test", update_path)
+        self.assertEqual("docs/plans/NEW.md", update_payload["planningDocument"])
 
     @patch.object(server, "_find_workstream")
     def test_path_traversal_blocked(self, mock_find):

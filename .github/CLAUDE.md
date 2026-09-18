@@ -569,6 +569,14 @@ alone.
 `tools/mcp/manager/project_tools.py` dispatches this workflow by filename with
 `agent: project-manager` (the `project_create_branch` MCP tool). Renaming the
 file or the input breaks that tool — update it in the same change.
+`project_create_branch`'s `plan_title`/`plan_content` inputs only ever reach
+this job's `plan-next-task` steps (`Create planning branch` /
+`Seed plan document`); an operator starting deliberate work on purpose should
+prefer `workstream_register`'s `plan_instructions`/`plan_content` parameters
+instead (see `tools/mcp/manager/README.md`, "Starting deliberate work") —
+`project_create_branch` dispatches the same merge-triggered automation that
+maintains the fixed pool of active project branches, which is not the same
+thing as starting a specific piece of work.
 
 The policy this reflects: **one workflow per lifecycle event**, with two
 deliberate exemptions. `workflow_dispatch`-only workflows stay separate because

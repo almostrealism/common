@@ -101,10 +101,22 @@ def workstream_register(
             registration itself still succeeds and the response's ``plan``
             field contains ``mode="failed"`` with ``fallback_instructions``.
         plan_instructions: Natural-language specification of what the plan
-            document should describe. When provided, a coding job is
-            submitted to the newly-registered workstream with a prompt that
-            asks the agent to write and commit the plan document. Mutually
+            document should describe. When provided, it is persisted on the
+            workstream as ``planInstructions`` (returned by ``workstream_list``
+            and settable later via ``workstream_update_config``), and a coding
+            job is submitted to the newly-registered workstream with a prompt
+            that asks the agent to write and commit the plan document. Mutually
             exclusive with ``plan_content``.
+
+            ``planInstructions`` is a record of the intent that originally
+            seeded the workstream, not a specification the branch must
+            conform to — work legitimately drifts from it as it proceeds.
+            Nothing compares current work against this value, gates on it,
+            warns about divergence from it, or treats it as verification
+            acceptance criteria (see ``project_verify_branch``, which
+            verifies against the planning *document* instead). It exists
+            purely as context for a human or an agent reading back how the
+            work began.
         plan_path: File path for the plan document in the repo. Optional —
             if omitted, the controller auto-generates a path under
             ``docs/plans/``. Used by both the direct-commit and job-submit
@@ -277,6 +289,8 @@ def workstream_register(
         # against a document that demonstrably existed until a second
         # workstream_update_config call was made to say so.
         payload["planningDocument"] = plan_path
+    if plan_instructions:
+        payload["planInstructions"] = plan_instructions
     if channel_name:
         payload["channelName"] = channel_name
     if workspace_id:
@@ -374,6 +388,7 @@ def workstream_update_config(
     base_branch: str = "",
     repo_url: str = "",
     planning_document: str = "",
+    plan_instructions: str = "",
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
@@ -404,6 +419,13 @@ def workstream_update_config(
         base_branch: New base branch for branch creation.
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
+        plan_instructions: Natural-language record of the intent that
+            originally seeded this workstream, persisted as
+            ``planInstructions`` (returned by ``workstream_list``). This is
+            a record of how the work began, not a specification the branch
+            must conform to — nothing compares current work against it,
+            gates on it, or treats it as verification acceptance criteria.
+            Empty string leaves the existing value unchanged.
         channel_name: New Slack channel name.
         required_labels: Node labels that all jobs in this workstream must
             match by default. Accepts either comma-separated key:value pairs
@@ -490,6 +512,9 @@ def workstream_update_config(
     )
     if err:
         return err
+    err = server._check_length(plan_instructions, "plan_instructions", server.MAX_CONTENT_LEN)
+    if err:
+        return err
     parsed_default_phase_config, default_pc_err = server._parse_default_phase_config_json(default_phase_config)
     if default_pc_err:
         return default_pc_err
@@ -508,6 +533,8 @@ def workstream_update_config(
         payload["repoUrl"] = repo_url
     if planning_document:
         payload["planningDocument"] = planning_document
+    if plan_instructions:
+        payload["planInstructions"] = plan_instructions
     if channel_name:
         payload["channelName"] = channel_name
     if required_labels:
@@ -561,8 +588,9 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, channel_name, required_labels, "
-                "dependent_repos, default_phase_config, or phase_configs",
+                "repo_url, planning_document, plan_instructions, channel_name, "
+                "required_labels, dependent_repos, default_phase_config, "
+                "or phase_configs",
             ],
         }
 

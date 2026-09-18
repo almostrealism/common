@@ -34,6 +34,9 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
       - name: Detect plan file
         id: detect
         run: |
@@ -74,9 +77,16 @@ jobs:
           echo "::notice::Detected plan file: $PLAN"
 
   # ── Phase 2: Register workstream (conditional) ────────────────────
+  #
+  # Runs whenever a NEW plan document was detected (registers the
+  # workstream that doesn't exist yet) OR the caller passed an explicit
+  # plan_file (so an already-registered workstream's planningDocument is
+  # synced to it before the verify agent runs — otherwise the agent would
+  # silently keep consulting whichever document was configured before,
+  # ignoring the caller's explicit choice).
   register-workstream:
     needs: detect-plan
-    if: needs.detect-plan.outputs.is_new_plan == 'true'
+    if: needs.detect-plan.outputs.is_new_plan == 'true' || github.event.inputs.plan_file != ''
     runs-on: [self-hosted, macos, ar-ci]
 
     steps:

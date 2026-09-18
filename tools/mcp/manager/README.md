@@ -52,13 +52,36 @@ is a thin orchestration facade that:
 | `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
 
+### Starting deliberate work
+
+Work an operator starts on purpose — as opposed to the merge-triggered
+`plan-next-task` automation that maintains a fixed number of active project
+branches — goes through `workstream_register` directly:
+
+- `workstream_register(..., plan_content=...)` when the operator already knows
+  what the plan document should say: it is committed to the new branch
+  immediately.
+- `workstream_register(..., plan_instructions=...)` when the operator wants an
+  agent to write the plan from a natural-language brief: a coding job is
+  submitted to draft and commit it. `plan_instructions` is also persisted on
+  the workstream (returned by `workstream_list`, updatable via
+  `workstream_update_config`) as a record of the intent that seeded the
+  work — not a specification anything verifies against.
+
+Either way, follow up with `workstream_submit_task` to send further work to
+the branch once it exists. `project_create_branch` (below) dispatches the
+same merge-triggered `plan-next-task` job the automation uses and is not the
+recommended way to start deliberate work — it exists for the automation path,
+which still accepts and forwards the `plan_title`/`plan_content` dispatch
+inputs `project_create_branch` sends it.
+
 ### Tier 2: Pipeline-capable workstreams only
 
 | Tool | Scope | Description |
 |------|-------|-------------|
-| `project_create_branch` | pipeline | Create branch + dispatch project-manager |
-| `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
-| `project_commit_plan` | pipeline | Commit a plan document to a branch |
+| `project_create_branch` | pipeline | Dispatch the merge-triggered `plan-next-task` job on demand. Prefer `workstream_register` with `plan_instructions`/`plan_content` for deliberately-started work (see above). |
+| `project_verify_branch` | pipeline | Dispatch verify-completion workflow against a workstream's planning document |
+| `project_commit_plan` | pipeline | Commit a plan document to a branch (defaults the path to the workstream's configured planning document) |
 
 **Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
 code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on

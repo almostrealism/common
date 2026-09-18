@@ -494,6 +494,26 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         self.assertIn("No fields to update", result["error"])
 
     @patch.object(server, "_controller_post")
+    def test_update_plan_instructions(self, mock_post):
+        """plan_instructions is forwarded as planInstructions on the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        result = server.workstream_update_config(
+            workstream_id="ws-test",
+            plan_instructions="Build a thing that does X.",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["planInstructions"], "Build a thing that does X.")
+        self.assertTrue(result["ok"])
+
+    def test_update_plan_instructions_rejects_oversized_content(self):
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test", plan_instructions="x" * 100_001)
+        self.assertFalse(result["ok"])
+        self.assertIn("maximum length", result["error"])
+
+    @patch.object(server, "_controller_post")
     def test_update_with_repo_includes_pipeline_hint(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True}
@@ -1169,6 +1189,23 @@ class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
         self.assertEqual("w-1", submit_kwargs["workstream_id"])
         self.assertIn("docs/plans/foo.md", submit_kwargs["prompt"])
         self.assertIn("refactor the foo subsystem", submit_kwargs["prompt"])
+
+    @patch.object(server, "workstream_submit_task")
+    @patch.object(server, "_controller_post")
+    def test_plan_instructions_persisted_on_registration_payload(self, mock_post, mock_submit):
+        """plan_instructions is persisted as planInstructions, not just used
+        to seed the one-shot plan-writing job."""
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        mock_submit.return_value = {"ok": True, "jobId": "j-42"}
+        server.workstream_register(
+            default_branch="feature/x",
+            plan_instructions="Describe how we will refactor the foo subsystem.",
+        )
+        register_payload = mock_post.call_args_list[0][0][1]
+        self.assertEqual(
+            "Describe how we will refactor the foo subsystem.",
+            register_payload["planInstructions"],
+        )
 
     @patch.object(server, "workstream_submit_task")
     @patch.object(server, "_controller_post")

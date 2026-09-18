@@ -89,11 +89,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Count open PRs targeting master via the GitHub CLI. The previous
-          # ar-github MCP CLI mode was retired when the tool was consolidated
-          # into ar-manager; ar-manager is an HTTP MCP server and is not
-          # invokable from a CI shell step.
-          OPEN_PR_COUNT=$(gh pr list --base master --state open --json number --jq 'length')
+          # Count open PRs targeting master via the GitHub REST API directly,
+          # the same curl+jq pattern tools/ci/qa-cadence.sh uses for its own
+          # open-PR check. This job previously used `gh pr list`, but `gh` is
+          # not guaranteed to be installed on every self-hosted runner — it
+          # has been missing on the macOS fleet (gh: command not found, exit
+          # 127) since at least 2026-09-15, silently failing every run.
+          PER_PAGE=100
+          MAX_PAGES=20
+          PAGE=1
+          OPEN_PR_COUNT=0
+          while [ "$PAGE" -le "$MAX_PAGES" ]; do
+            PR_JSON=$(curl -sS -f \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls?state=open&base=master&per_page=${PER_PAGE}&page=${PAGE}") \
+                || {
+                    echo "::error::Could not list open PRs via the GitHub API"
+                    exit 1
+                }
+            PAGE_COUNT=$(echo "$PR_JSON" | jq 'length')
+            OPEN_PR_COUNT=$((OPEN_PR_COUNT + PAGE_COUNT))
+            [ "$PAGE_COUNT" -lt "$PER_PAGE" ] && break
+            PAGE=$((PAGE + 1))
+          done
+
+          if [ "$PAGE" -gt "$MAX_PAGES" ]; then
+            echo "::warning::Stopped after ${MAX_PAGES} pages of open PRs without reaching the end — count may be a lower bound"
+          fi
+
           echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
           echo "target=$PROJECT_BRANCH_TARGET" >> "$GITHUB_OUTPUT"
 
