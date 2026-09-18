@@ -95,6 +95,11 @@ enough — a zero score is not a negligible one after softmax — so the causal 
 positions ~0 probability. Both mechanisms are visible as stages of the asset
 (`causal_mask(position)` followed by `softmax()`).
 
+Zero-initialization of a freshly allocated `PackedCollection` is a property of the active
+`MemoryProvider`, not of `PackedCollection` itself: `JVMMemoryProvider` backs each allocation
+with a `new double[len]`, which the JVM zero-fills, but the mechanism is provider-specific
+rather than a guarantee documented on `PackedCollection`.
+
 ### GQA Expansion Strategy: Expand at Write Time
 
 The caches use **expanded** shape `(seqLen, heads, headSize)` rather than compact
@@ -655,7 +660,7 @@ reshape([1, heads * head_size])
 
 ### Complete Transformer Layer
 
-The `transformer()` method (`AttentionFeatures.java:1711-1731`) wraps attention and
+The `transformer()` method (`AttentionFeatures.java:1460-1480`) wraps attention and
 feed-forward with residual connections using `accum()`:
 
 ```java
@@ -716,11 +721,14 @@ In self-attention, Q, K, and V all come from the same input. In cross-attention:
 - **Keys (K) and Values (V)** come from the external context (e.g., text embeddings)
 
 ```java
-// AttentionFeatures.java:1066-1126 — sequenceCrossAttention
+// AttentionFeatures.java:1312-1373 — sequenceCrossAttention
 // 1. Project main input to queries
 crossAttention.add(projectionFactory.create(queryShape, toQWeight, ...));
 
-// 2. Process context input through separate branch for K and V
+// 2. Apply Q normalization
+crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
+
+// 3. Process context input through separate branch for K and V
 SequentialBlock contextBranch = contextInput.branch();
 contextBranch.add(projectionFactory.create(contextInput.getOutputShape(), toKvWeight, ...));
 // Split into K and V
@@ -730,7 +738,7 @@ List<Block> kv = contextBranch.split(shape(batch, contextSeqLen, 1, dim), 0);
 Key differences from self-attention:
 - **No RoPE on context:** Cross-attention keys/values do not receive rotary
   position embeddings because the context positions are independent of the
-  audio sequence positions (`AttentionFeatures.java:1102-1103`)
+  audio sequence positions (`AttentionFeatures.java:1349-1350`)
 - **Separate sequence lengths:** The query sequence length may differ from the
   context sequence length
 - **No causal mask:** Cross-attention allows attending to all context positions
@@ -740,7 +748,7 @@ Key differences from self-attention:
 In `DiffusionTransformer`, cross-attention uses fused KV projection for the context:
 
 ```java
-// DiffusionTransformer.java:367-368
+// DiffusionTransformer.java:803
 crossKv = createWeight("...cross_attn.to_kv.weight", 2 * dim, dim);
 ```
 
@@ -748,7 +756,7 @@ The fused KV weight projects the context to `2 * dim`, which is then split into
 separate K and V tensors:
 
 ```java
-// AttentionFeatures.java:1092-1096
+// AttentionFeatures.java:1339-1343
 contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
 List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
 SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
@@ -759,7 +767,7 @@ K and V are stored in intermediate `PackedCollection` tensors for the attention
 computation:
 
 ```java
-// AttentionFeatures.java:1106-1110
+// AttentionFeatures.java:1353-1357
 PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 k.andThen(into(kTensor));
@@ -773,15 +781,14 @@ Instead of adaptive layer normalization (AdaLayerNorm), `DiffusionTransformer` u
 prepended as extra tokens to the audio sequence:
 
 ```java
-// DiffusionTransformer.java:284-296
-default Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
+// DiffusionTransformer.java:620-632
+protected Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
     // ...
     return layer("prependConditioning",
         shape(batchSize, audioSeqLen, embedDim),
         shape(batchSize, audioSeqLen + 1, embedDim),
-        in -> concat(1,
-            add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim),
-            c(in)));
+        in ->
+            concat(1, add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim), c(in)));
 }
 ```
 
@@ -790,7 +797,7 @@ global conditioning), increasing the sequence length from `audioSeqLen` to
 `audioSeqLen + 1`. After the transformer blocks, the prepended token is removed:
 
 ```java
-// DiffusionTransformer.java:243-247
+// DiffusionTransformer.java:558-562
 if (seqLen > audioSeqLen) {
     int prependedLength = seqLen - audioSeqLen;
     main.reshape(batchSize, seqLen, ioChannels)
@@ -802,7 +809,10 @@ if (seqLen > audioSeqLen) {
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
 `DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(`AttentionFeatures.java:942-997`):
+(`AttentionFeatures.java:962-1106`, with further overloads adding a customizable
+`ProjectionFactory` and a selectable query/key `NormalizationType`; the parenthetical
+description at lines 1204-1234 is the Javadoc for the separate `sequenceCrossAttention`
+method that follows):
 
 - Processes all positions simultaneously with fused QKV projection
 - Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
