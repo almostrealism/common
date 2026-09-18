@@ -364,9 +364,12 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * completion-pool thread would block on the monitor while the holder waited for that
 	 * completion — a hard deadlock that appeared only under concurrent multi-channel dispatch
 	 * (invisible in small single-op tests). {@link #notifyListeners()} now releases the monitor
-	 * before running listeners, which removes this hazard; the lease/reuse mechanism remains
-	 * disabled by default via {@code ProcessDetailsFactory.enableDestinationReuse}
-	 * ({@code AR_HARDWARE_DESTINATION_REUSE}) pending verification that re-enabling it is safe.</p>
+	 * before running listeners, and its callers {@link #checkReady()} and {@link #whenReady(Runnable)}
+	 * likewise release it before invoking {@link #notifyListeners()} instead of holding it
+	 * reentrantly across the call, which removes this hazard on both the synchronous and
+	 * asynchronous dispatch paths; the lease/reuse mechanism remains disabled by default via
+	 * {@code ProcessDetailsFactory.enableDestinationReuse} ({@code AR_HARDWARE_DESTINATION_REUSE})
+	 * pending verification that re-enabling it is safe.</p>
 	 */
 	public void releaseDestinationLeases() {
 		List<Runnable> leases;
@@ -457,14 +460,20 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * <li>Notifies listeners either synchronously or asynchronously based on {@link Hardware#isAsync()}</li>
 	 * </ol>
 	 *
-	 * <p>This method is synchronized to ensure atomic check-and-notify behavior.</p>
+	 * <p>The readiness check and argument processing are performed under the instance
+	 * monitor for atomicity, but that monitor is released before {@link #notifyListeners()}
+	 * is invoked &mdash; including on the synchronous ({@code Hardware.isAsync() == false})
+	 * path, where it would otherwise still be held by this method for the whole duration of
+	 * listener execution, reintroducing the same deadlock hazard {@link #notifyListeners()}
+	 * itself already avoids.</p>
 	 */
-	// TODO(review): synchronized here still holds the monitor across notifyListeners() on the sync dispatch path; see review-followup memory.
-	protected synchronized void checkReady() {
-		if (!isReady()) return;
+	protected void checkReady() {
+		synchronized (this) {
+			if (!isReady()) return;
 
-		if (arguments == null) {
-			arguments = replacementManager.processArguments(originalArguments);
+			if (arguments == null) {
+				arguments = replacementManager.processArguments(originalArguments);
+			}
 		}
 
 		if (Hardware.getLocalHardware().isAsync()) {
@@ -559,9 +568,11 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * @param r the listener to execute when all arguments are ready
 	 */
-	// TODO(review): also holds the monitor into checkReady()'s reentrant call; see the note on checkReady().
-	public synchronized void whenReady(Runnable r) {
-		this.listeners.add(r);
+	public void whenReady(Runnable r) {
+		synchronized (this) {
+			this.listeners.add(r);
+		}
+
 		checkReady();
 	}
 
