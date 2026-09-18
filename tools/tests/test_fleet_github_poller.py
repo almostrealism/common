@@ -26,6 +26,7 @@ Run with:
 
 import email.message
 import json
+import time as _time
 import unittest
 import urllib.error
 from unittest import mock
@@ -139,6 +140,22 @@ class FetchRunsPaginationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=2)
 
+    def test_fetch_runs_allow_partial_returns_instead_of_raising(self):
+        """A caller that deliberately wants a bounded recent window (e.g.
+        `poll_and_store`) sets `allow_partial=True` and must get back
+        whatever was fetched, not a RuntimeError, when more data exists
+        beyond the cap."""
+        pages = [{"workflow_runs": [{"id": 1}, {"id": 2}]} for _ in range(3)]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            runs = fetch_runs("acme/repo", "tok", per_page=2, max_pages=3, allow_partial=True)
+        self.assertEqual([r["id"] for r in runs], [1, 2, 1, 2, 1, 2])
+
+    def test_fetch_run_jobs_allow_partial_returns_instead_of_raising(self):
+        pages = [{"jobs": [{"id": 1}, {"id": 2}]} for _ in range(2)]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            jobs = fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=2, allow_partial=True)
+        self.assertEqual([j["id"] for j in jobs], [1, 2, 1, 2])
+
 
 class RateLimitRetryTests(unittest.TestCase):
     """A rate-limited (403/429) response must be retried with backoff, not
@@ -176,6 +193,32 @@ class RateLimitRetryTests(unittest.TestCase):
                 _get_json("https://api.github.com/x", "tok")
         sleep_mock.assert_not_called()
         self.assertEqual(urlopen.call_count, 1)
+
+    def test_permission_denied_403_is_not_retried(self):
+        """A 403 with neither `Retry-After` nor `X-RateLimit-Remaining: 0` is
+        a permission error (bad/expired token, wrong scope), not a rate
+        limit — retrying it would only delay an unrecoverable failure."""
+        error = _http_error(403)
+        with mock.patch(
+            "tools.fleet.github_poller.urllib.request.urlopen", side_effect=[error],
+        ) as urlopen, mock.patch("tools.fleet.github_poller.time.sleep") as sleep_mock:
+            with self.assertRaises(urllib.error.HTTPError):
+                _get_json("https://api.github.com/x", "tok")
+        sleep_mock.assert_not_called()
+        self.assertEqual(urlopen.call_count, 1)
+
+    def test_403_with_rate_limit_remaining_zero_is_retried(self):
+        """The primary hourly quota exhausted is signalled by
+        `X-RateLimit-Remaining: 0` on a 403 with no `Retry-After` header —
+        this must still be retried, not mistaken for permission-denied."""
+        error = _http_error(403, {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(int(_time.time()))})
+        success = self._response({"ok": True})
+        with mock.patch(
+            "tools.fleet.github_poller.urllib.request.urlopen", side_effect=[error, success],
+        ), mock.patch("tools.fleet.github_poller.time.sleep") as sleep_mock:
+            result = _get_json("https://api.github.com/x", "tok")
+        self.assertEqual(result, {"ok": True})
+        sleep_mock.assert_called_once()
 
 
 class PollAndStoreTests(unittest.TestCase):
@@ -225,7 +268,7 @@ class PollAndStoreTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(row[0], "1")
         self.assertEqual(row[1], "acme/repo")
-        self.assertEqual(row[2], "self-hosted,macos,ar-ci")
+        self.assertEqual(row[2], "ar-ci,macos,self-hosted")
         self.assertAlmostEqual(row[3], 300.0)
 
     def test_poll_and_store_is_idempotent_across_poll_cycles(self):
@@ -236,6 +279,54 @@ class PollAndStoreTests(unittest.TestCase):
             poll_and_store("acme/repo", "tok", self.store)
             poll_and_store("acme/repo", "tok", self.store)
         self.assertEqual(self.store.job_event_count(), 1)
+
+    def test_poll_and_store_canonicalizes_labels_regardless_of_api_order(self):
+        """The same conceptual label set must serialize identically no
+        matter what order the API happens to return it in on a given poll -
+        `pre_start_latency_by_label` groups on this exact string, and an
+        unsorted join would split one label set into separate buckets
+        across polls."""
+        run = {"id": 1}
+        job_a = {"id": 42, "labels": ["macos", "ar-ci", "self-hosted"]}
+        job_b = {"id": 43, "labels": ["self-hosted", "ar-ci", "macos"]}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job_a, job_b]):
+            poll_and_store("acme/repo", "tok", self.store)
+        rows = self.store._conn.execute("SELECT DISTINCT labels FROM job_event").fetchall()
+        self.assertEqual([r[0] for r in rows], ["ar-ci,macos,self-hosted"])
+
+    def test_poll_and_store_bounds_runs_fetched_per_cycle(self):
+        """`max_runs` must cap how many of the fetched runs get their jobs
+        polled this cycle - without a bound, a long-lived repository would
+        force one jobs request per run on every poll."""
+        runs = [{"id": i} for i in range(5)]
+        job_calls = []
+
+        def _fake_fetch_run_jobs(repo, run_id, token, **kwargs):
+            job_calls.append(run_id)
+            return []
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=runs) as fetch_runs_mock, \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", side_effect=_fake_fetch_run_jobs):
+            poll_and_store("acme/repo", "tok", self.store, max_runs=2)
+        self.assertEqual(job_calls, ["0", "1"])
+        # fetch_runs itself is still called with allow_partial=True, since a
+        # periodic poller wants a bounded recent window, not a guarantee
+        # that the full run history was returned.
+        self.assertTrue(fetch_runs_mock.call_args.kwargs.get("allow_partial"))
+
+    def test_poll_and_store_max_runs_none_processes_every_fetched_run(self):
+        runs = [{"id": i} for i in range(3)]
+        job_calls = []
+
+        def _fake_fetch_run_jobs(repo, run_id, token, **kwargs):
+            job_calls.append(run_id)
+            return []
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=runs), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", side_effect=_fake_fetch_run_jobs):
+            poll_and_store("acme/repo", "tok", self.store, max_runs=None)
+        self.assertEqual(job_calls, ["0", "1", "2"])
 
 
 if __name__ == "__main__":

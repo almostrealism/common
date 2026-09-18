@@ -29,12 +29,16 @@ not only time waiting for a free runner, so it is only a faithful
 job). ``compute_job_metrics`` requires the caller to state which case
 applies — it will not guess.
 
-**Rate limits.** GitHub's API returns HTTP 403/429 with a ``Retry-After`` or
-``X-RateLimit-Reset`` header when a caller is rate-limited. ``_get_json``
-retries such a response with the server-directed delay (bounded by
+**Rate limits.** GitHub's API returns HTTP 429, or HTTP 403 with a
+``Retry-After`` or ``X-RateLimit-Remaining: 0`` header, when a caller is
+rate-limited (see :func:`_is_retryable_rate_limit`). ``_get_json`` retries
+such a response with the server-directed delay (bounded by
 ``RATE_LIMIT_MAX_RETRIES``) rather than surfacing it as an immediate failure
-— a periodic poller that gives up on the first transient 403/429 would stop
-collecting data long before the rate limit actually clears.
+— a periodic poller that gives up on the first transient rate limit would
+stop collecting data long before it actually clears. A 403 with neither
+header is a permission error (bad/expired token, wrong scope), not a rate
+limit, and is raised immediately instead of being retried against a token
+that will never succeed.
 
 **Persistence.** ``poll_and_store`` is the poll-cycle entry point: it
 composes :func:`fetch_runs`/:func:`fetch_run_jobs`/:func:`compute_job_metrics`
@@ -124,6 +128,31 @@ def compute_job_metrics(
     }
 
 
+def _is_retryable_rate_limit(exc: "urllib.error.HTTPError") -> bool:
+    """Whether *exc* is a rate limit that should be retried, not a hard failure.
+
+    A 429 is always a rate limit. A 403 is ambiguous on the GitHub API: it is
+    returned both for a secondary rate limit and for permission-denied (a
+    bad/expired token or a token missing the required scope) — the two share
+    a status code, so the status alone cannot distinguish them. A 403 is only
+    treated as a rate limit when its headers say so: a ``Retry-After`` header
+    (used for secondary rate limits) or ``X-RateLimit-Remaining: 0`` (the
+    primary hourly quota exhausted). A permission-denied 403 carries neither
+    header and is therefore raised immediately instead of being retried
+    ``RATE_LIMIT_MAX_RETRIES`` times against a token that will never succeed.
+    """
+    if exc.code == 429:
+        return True
+    if exc.code != 403:
+        return False
+    headers = exc.headers
+    if headers is None:
+        return False
+    if headers.get("Retry-After") is not None:
+        return True
+    return headers.get("X-RateLimit-Remaining") == "0"
+
+
 def _rate_limit_delay_seconds(exc: "urllib.error.HTTPError") -> float:
     """Derive a retry delay from a rate-limited response's headers.
 
@@ -154,20 +183,12 @@ def _rate_limit_delay_seconds(exc: "urllib.error.HTTPError") -> float:
 def _get_json(url: str, token: str, max_retries: int = RATE_LIMIT_MAX_RETRIES) -> Dict:
     """Fetch and parse one JSON response from the GitHub API.
 
-    Retries a rate-limited response (HTTP 403 or 429) up to *max_retries*
-    times, sleeping for the delay the response itself directs (see
-    :func:`_rate_limit_delay_seconds`) between attempts, before giving up and
-    letting the error propagate to the caller as any other failure would.
-    Any other HTTP status, or a retry-budget exhaustion, raises normally.
-
-    # TODO(review): a plain permission-denied 403 (bad/expired token, wrong
-    # scope) is retried the same as a rate-limit 403 here, since both share
-    # the same status code and this function does not check
-    # X-RateLimit-Remaining before deciding to retry. Worst case is a slower
-    # failure (up to RATE_LIMIT_MAX_RETRIES delays) rather than wrong data,
-    # but distinguishing the two cases would fail fast on a bad token
-    # instead of retrying it. Left for a follow-up since it touches retry
-    # policy and needs a decision on which header to key off.
+    Retries a rate-limited response (see :func:`_is_retryable_rate_limit`) up
+    to *max_retries* times, sleeping for the delay the response itself
+    directs (see :func:`_rate_limit_delay_seconds`) between attempts, before
+    giving up and letting the error propagate to the caller as any other
+    failure would. A permission-denied 403 and any other HTTP status raise
+    immediately, without consuming a retry.
     """
     request = urllib.request.Request(
         url,
@@ -182,20 +203,32 @@ def _get_json(url: str, token: str, max_retries: int = RATE_LIMIT_MAX_RETRIES) -
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            if exc.code in (403, 429) and attempt < max_retries:
+            if _is_retryable_rate_limit(exc) and attempt < max_retries:
                 time.sleep(_rate_limit_delay_seconds(exc))
                 attempt += 1
                 continue
             raise
 
 
-def fetch_runs(repo: str, token: str, per_page: int = PER_PAGE, max_pages: int = MAX_PAGES) -> List[Dict]:
+def fetch_runs(
+    repo: str,
+    token: str,
+    per_page: int = PER_PAGE,
+    max_pages: int = MAX_PAGES,
+    allow_partial: bool = False,
+) -> List[Dict]:
     """Fetch recent workflow runs for *repo* (``owner/name``), paged.
 
     Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
     page is still coming back — silently returning at that point would hand
     the caller a truncated list that looks complete. A caller that hits this
     should raise *max_pages*, since there is more data than promised.
+
+    *allow_partial* opts out of that guarantee for a caller that deliberately
+    wants only a bounded, most-recent window rather than the full run
+    history (see :func:`poll_and_store`) — such a caller sets a small
+    *max_pages* on purpose and a "more data exists beyond the cap" condition
+    is exactly what it expects, not an error.
 
     Least-privilege note: *token* should be a read-only Actions-scoped
     credential, never logged or embedded in a returned error message.
@@ -213,18 +246,28 @@ def fetch_runs(repo: str, token: str, per_page: int = PER_PAGE, max_pages: int =
         if len(batch) < per_page:
             return runs
         page += 1
+    if allow_partial:
+        return runs
     raise RuntimeError(
         "workflow runs for %s exceeded max_pages=%d (%d per page); "
         "raise max_pages to fetch the full list" % (repo, max_pages, per_page)
     )
 
 
-def fetch_run_jobs(repo: str, run_id: str, token: str, per_page: int = PER_PAGE, max_pages: int = MAX_PAGES) -> List[Dict]:
+def fetch_run_jobs(
+    repo: str,
+    run_id: str,
+    token: str,
+    per_page: int = PER_PAGE,
+    max_pages: int = MAX_PAGES,
+    allow_partial: bool = False,
+) -> List[Dict]:
     """Fetch every job for one workflow run, paged.
 
     Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
     page is still coming back, for the same reason as :func:`fetch_runs`:
     silently stopping there would drop steps and metrics with no signal.
+    *allow_partial* opts out of that guarantee; see :func:`fetch_runs`.
     """
     jobs: List[Dict] = []
     page = 1
@@ -241,13 +284,28 @@ def fetch_run_jobs(repo: str, run_id: str, token: str, per_page: int = PER_PAGE,
         if len(batch) < per_page:
             return jobs
         page += 1
+    if allow_partial:
+        return jobs
     raise RuntimeError(
         "jobs for run %s exceeded max_pages=%d (%d per page); "
         "raise max_pages to fetch the full list" % (run_id, max_pages, per_page)
     )
 
 
-def poll_and_store(repo: str, token: str, store: FleetStore) -> int:
+DEFAULT_POLL_MAX_RUNS = 100
+DEFAULT_POLL_RUN_MAX_PAGES = 2
+
+
+def poll_and_store(
+    repo: str,
+    token: str,
+    store: FleetStore,
+    max_runs: Optional[int] = DEFAULT_POLL_MAX_RUNS,
+    run_per_page: int = PER_PAGE,
+    run_max_pages: int = DEFAULT_POLL_RUN_MAX_PAGES,
+    job_per_page: int = PER_PAGE,
+    job_max_pages: int = MAX_PAGES,
+) -> int:
     """One poll cycle: fetch recent runs and their jobs for *repo*, compute
     job metrics, and upsert every job/step into *store*.
 
@@ -266,20 +324,39 @@ def poll_and_store(repo: str, token: str, store: FleetStore) -> int:
     dependent jobs is the dependency-adjusted follow-up the design document
     describes and is not implemented here.
 
+    Every call re-fetches and re-upserts recent runs/jobs (idempotent, since
+    every write here is a natural-key upsert), rather than tracking what
+    changed since the last poll — a periodic poller re-reading a bounded
+    recent window on every cycle does not need that finer-grained
+    incremental fetch. The window is bounded two ways so a repository with a
+    long run history cannot force one jobs request per run every cycle, or
+    exceed ``fetch_runs``'s own hard cap (2,000 runs at the defaults):
+    *run_max_pages* keeps the *fetch* itself to a small number of pages
+    (fetched with ``allow_partial=True``, since a periodic poller wants a
+    bounded recent window, not a guarantee that no run exists beyond it —
+    unlike a caller of :func:`fetch_runs` directly), and *max_runs* then
+    truncates the result further before the (per-run) jobs fetch, since the
+    GitHub API returns runs newest-first. *run_per_page*/*job_per_page* and
+    *job_max_pages* are passed straight through to :func:`fetch_runs`/
+    :func:`fetch_run_jobs`.
+
     Returns the number of job_event rows upserted.
     """
-    # Every call re-fetches and re-upserts *all* runs/jobs fetch_runs
-    # returns (idempotent, but not bounded to what changed since the last
-    # poll). Fine while run history is small; once it grows this risks
-    # exceeding a modest per-poll request budget. Needs a since/cursor
-    # param or a run-status filter — a design decision, not a one-line fix.
+    runs = fetch_runs(repo, token, per_page=run_per_page, max_pages=run_max_pages, allow_partial=True)
+    if max_runs is not None:
+        runs = runs[:max_runs]
     jobs_stored = 0
-    for run in fetch_runs(repo, token):
+    for run in runs:
         run_id = str(run.get("id"))
-        for job in fetch_run_jobs(repo, run_id, token):
+        for job in fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages):
             job_id = str(job.get("id"))
             metrics = compute_job_metrics(job)
-            labels = job.get("labels") or []
+            # Sorted so the same label set always serializes identically
+            # regardless of the order the API happens to return it in —
+            # `job_event` is grouped by this string (see
+            # `FleetStore.pre_start_latency_by_label`), and an unsorted join
+            # would split one label set into separate buckets across polls.
+            labels = sorted(job.get("labels") or [])
             store.upsert_job_event(
                 job_id=job_id,
                 run_id=run_id,
