@@ -206,6 +206,13 @@ public class HardwareEvaluable<T> implements
 	private Consumer<T> downstream;
 
 	/**
+	 * Optional executor used to dispatch {@link #request(Object[], Semaphore, Consumer)}.
+	 * When set, request work runs on this executor instead of the calling thread, so a
+	 * blocking dispatch (see {@link #isSharedExecutorSafe()}) never ties up the caller.
+	 */
+	private Executor executor;
+
+	/**
 	 * Creates a hardware evaluable without an executor.
 	 *
 	 * @param ev          Supplier for the underlying evaluable
@@ -235,6 +242,7 @@ public class HardwareEvaluable<T> implements
 		this.destination = destination;
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
+		this.executor = executor;
 		this.kernel = new DefaultContextSpecific<>(() -> ev.get(), Destroyable::destroy);
 	}
 
@@ -445,6 +453,11 @@ public class HardwareEvaluable<T> implements
 	 * reading. A kernel evaluable that is not a {@link StreamingEvaluable} (a plain
 	 * host function, for example) cannot chain either, and is evaluated the same way.
 	 *
+	 * <p>When this instance carries an {@link #async(Executor) executor}, all of the above
+	 * runs on that executor instead of the calling thread, so this method itself returns
+	 * immediately: a blocking wait (see {@link #isSharedExecutorSafe()}) lands on the
+	 * executor's thread, never on the caller's.</p>
+	 *
 	 * @param args       the arguments for the evaluation
 	 * @param dependsOn  completion this evaluation must be ordered after, or
 	 *                   {@code null} when there is no dependency
@@ -456,6 +469,25 @@ public class HardwareEvaluable<T> implements
 			throw new IllegalArgumentException("Embedded array provided to request");
 		}
 
+		if (executor != null) {
+			executor.execute(() -> requestNow(args, dependsOn, downstream));
+			return;
+		}
+
+		requestNow(args, dependsOn, downstream);
+	}
+
+	/**
+	 * Performs the work described by {@link #request(Object[], Semaphore, Consumer)} on
+	 * whichever thread calls it &mdash; either the caller, when no {@link #executor} is
+	 * set, or the executor's own thread otherwise.
+	 *
+	 * @param args       the arguments for the evaluation
+	 * @param dependsOn  completion this evaluation must be ordered after, or
+	 *                   {@code null} when there is no dependency
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (shortCircuit != null) {
 			if (dependsOn != null) dependsOn.waitFor();
 			T result = shortCircuit.evaluate(args);
