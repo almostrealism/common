@@ -159,6 +159,15 @@ def _get_json(url: str, token: str, max_retries: int = RATE_LIMIT_MAX_RETRIES) -
     :func:`_rate_limit_delay_seconds`) between attempts, before giving up and
     letting the error propagate to the caller as any other failure would.
     Any other HTTP status, or a retry-budget exhaustion, raises normally.
+
+    # TODO(review): a plain permission-denied 403 (bad/expired token, wrong
+    # scope) is retried the same as a rate-limit 403 here, since both share
+    # the same status code and this function does not check
+    # X-RateLimit-Remaining before deciding to retry. Worst case is a slower
+    # failure (up to RATE_LIMIT_MAX_RETRIES delays) rather than wrong data,
+    # but distinguishing the two cases would fail fast on a bad token
+    # instead of retrying it. Left for a follow-up since it touches retry
+    # policy and needs a decision on which header to key off.
     """
     request = urllib.request.Request(
         url,

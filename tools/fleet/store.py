@@ -47,6 +47,7 @@ class FleetStore:
         self._conn.execute("PRAGMA foreign_keys = ON")
 
     def close(self) -> None:
+        """Close the underlying sqlite3 connection."""
         self._conn.close()
 
     def __enter__(self) -> "FleetStore":
@@ -56,6 +57,7 @@ class FleetStore:
         self.close()
 
     def init_schema(self) -> None:
+        """Create every table declared in :mod:`schema`, if not already present."""
         for statement in schema.ALL_STATEMENTS:
             self._conn.execute(statement)
         self._conn.commit()
@@ -77,6 +79,7 @@ class FleetStore:
         thermal_c: Optional[float] = None,
         throttled: Optional[bool] = None,
     ) -> None:
+        """Insert or replace one ``host_sample`` row, keyed on ``(ts, host)``."""
         self._conn.execute(
             """
             INSERT OR REPLACE INTO host_sample
@@ -93,6 +96,7 @@ class FleetStore:
         self._conn.commit()
 
     def upsert_class_sample(self, ts: str, host: str, cls: str, cpu_pct: float, rss_mb: float) -> None:
+        """Insert or replace one ``class_sample`` row, keyed on ``(ts, host, class)``."""
         self._conn.execute(
             """
             INSERT OR REPLACE INTO class_sample (ts, host, class, cpu_pct, rss_mb)
@@ -125,6 +129,7 @@ class FleetStore:
         job_id: str = "",
         agent_version: str = "",
     ) -> None:
+        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name)``."""
         self._conn.execute(
             """
             INSERT OR REPLACE INTO runner_state
@@ -155,6 +160,7 @@ class FleetStore:
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
     ) -> None:
+        """Insert or replace one ``job_event`` row, keyed on ``job_id``."""
         self._conn.execute(
             """
             INSERT OR REPLACE INTO job_event
@@ -182,6 +188,7 @@ class FleetStore:
         completed_at: Optional[str] = None,
         conclusion: str = "",
     ) -> None:
+        """Insert or replace one ``job_step`` row, keyed on ``(job_id, number)``."""
         self._conn.execute(
             """
             INSERT OR REPLACE INTO job_step
@@ -254,7 +261,9 @@ class FleetStore:
         return list(self._conn.execute(query.format(label_filter="")))
 
     def job_event_count(self) -> int:
+        """Return the total number of rows in ``job_event``."""
         return self._conn.execute("SELECT COUNT(*) FROM job_event").fetchone()[0]
 
     def job_step_count(self) -> int:
+        """Return the total number of rows in ``job_step``."""
         return self._conn.execute("SELECT COUNT(*) FROM job_step").fetchone()[0]

@@ -65,14 +65,17 @@ def format_status(rows: Sequence[tuple]) -> str:
 
 
 def run_list(store: FleetStore, host: Optional[str]) -> str:
+    """Render the ``list`` verb: the latest state of every runner, optionally filtered to one host."""
     return format_list(store.latest_runner_states(host))
 
 
 def run_status(store: FleetStore, host: Optional[str]) -> str:
+    """Render the ``status`` verb: per-host/per-class utilization averages, optionally filtered to one host."""
     return format_status(store.utilization_by_class(host))
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the ``fleetctl`` argument parser with its ``list``/``status`` subcommands."""
     parser = argparse.ArgumentParser(
         prog="fleetctl",
         description="Read-only visibility into the GitHub Actions runner fleet.",
@@ -90,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    """Parse *argv*, open the sqlite store, dispatch to ``list``/``status``, and return an exit code."""
     args = build_parser().parse_args(argv)
     store = FleetStore(args.db)
     try:

@@ -116,6 +116,7 @@ def build_record(
 
 
 def write_jsonl(record: Dict, path: str) -> None:
+    """Append *record* as one JSON line to *path*, matching the existing monitor's JSONL format."""
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True))
         handle.write("\n")

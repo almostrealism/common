@@ -27,6 +27,7 @@ Run with:
 
 import unittest
 
+from tools.fleet.attribution import ClassMetrics
 from tools.fleet.store import FleetStore
 
 
@@ -86,6 +87,21 @@ class FleetStoreIdempotencyTests(unittest.TestCase):
         self.store.upsert_runner_state("2026-09-18T00:00:00Z", "mac-studio", "runner-1", state="busy")
         count = self.store._conn.execute("SELECT COUNT(*) FROM runner_state").fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_class_samples_upsert_writes_one_row_per_class(self):
+        metrics = {
+            "runner": ClassMetrics(cpu_pct=12.5, rss_mb=256.0, process_count=2),
+            "agent": ClassMetrics(cpu_pct=3.0, rss_mb=64.0, process_count=1),
+        }
+        self.store.upsert_class_samples("2026-09-18T00:00:00Z", "mac-studio", metrics)
+        rows = dict(
+            (cls, (cpu_pct, rss_mb))
+            for cls, cpu_pct, rss_mb in self.store._conn.execute(
+                "SELECT class, cpu_pct, rss_mb FROM class_sample WHERE ts = ? AND host = ?",
+                ("2026-09-18T00:00:00Z", "mac-studio"),
+            )
+        )
+        self.assertEqual(rows, {"runner": (12.5, 256.0), "agent": (3.0, 64.0)})
 
 
 class FleetStoreQueryTests(unittest.TestCase):
