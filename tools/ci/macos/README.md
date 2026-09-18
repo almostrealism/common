@@ -209,6 +209,12 @@ PLIST
 launchctl load ~/Library/LaunchAgents/com.almostrealism.ci-runner.plist
 ```
 
+This is a LaunchAgent, so it loads when the account logs in and only then. For
+a runner that has to run as an account nobody logs in as — the `worker` runner
+for the native agent — that never happens; use a LaunchDaemon instead, as in
+"Keeping the runner up across reboots" under "Deploying the native macOS
+agent" below.
+
 ## Configuration
 
 All configuration is via the `.env` file (see `.env.example`).
@@ -388,27 +394,51 @@ the `FLOWTREE_DEPLOY_AGENTS` variable) and asks for
 `[self-hosted, macos, ar-deploy-agent]`.
 
 That is a **third label and a third runner**, and the reason is the account.
-The job installs the agent by writing a launchd plist into
-`~/Library/LaunchAgents` and loading it into the session of *whoever runs the
-runner*. It never elevates or switches user, so:
+The agent is a launchd service that runs as the `worker` service account, and
+a redeploy swaps the JARs under `~worker/flowtree-agent` and restarts the
+agent's process. Both of those need the job to *be* `worker`: only the owner
+of the install directory can write it, and only the owner of a process can
+signal it. The job never elevates or switches user, so:
 
-- The agent runs as the account the runner runs as. It is meant to run as the
-  `worker` service account, so the runner must be started as `worker`.
-- The Docker deploy runner (`ar-deploy`) is a different account — the one
-  that administers Docker — and cannot do this job. Do not add
-  `ar-deploy-agent` to it: the job would fail the account check below rather
-  than install anything for it.
-- A runner registered as the wrong account would install the agent for the
-  wrong account. The job's first step prints `Installing the native agent as
-  <account> on <host>` and then fails the job if `<account>` does not match
-  the expected service account (`worker` by default, overridable with the
-  repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`), so a mis-registered
-  runner is caught rather than silently installing in the wrong place.
+- The runner must be started as `worker`. The Docker deploy runner
+  (`ar-deploy`) is a different account — the one that administers Docker —
+  and cannot do this job. Do not add `ar-deploy-agent` to it: the job would
+  fail the account check below rather than install anything for it.
+- The job's first step prints `Installing the native agent as <account> on
+  <host>` and then fails the job if `<account>` does not match the expected
+  service account (`worker` by default, overridable with the repository
+  variable `FLOWTREE_MACOS_AGENT_ACCOUNT`), so a mis-registered runner is
+  caught rather than silently installing in the wrong place.
+
+What the job does **not** need is any launchd privilege, and that is
+deliberate. The agent is a **LaunchDaemon** in the system domain
+(`/Library/LaunchDaemons/com.almostrealism.flowtree-agent.plist`, with
+`UserName` set to `worker`), registered once by an administrator. It is not a
+LaunchAgent in worker's own `gui/<uid>` or `user/<uid>` domain, and the
+difference matters on exactly the kind of host this runs on:
+
+- A per-user domain exists only while the account has a login session.
+  `worker` is a service account that nobody logs in as, so after a reboot
+  there is no domain to load anything into until someone does.
+- On a host where `worker` is only ever reached through `su - worker` from
+  another user's terminal, the per-user domain that `su` creates refuses
+  every bootstrap: `launchctl bootstrap user/<uid> …` answers
+  `Bootstrap failed: 5: Input/output error` to worker, to root, and to root
+  via `launchctl asuser`. Nothing short of a real login session (or a reboot)
+  changes that, and the first version of this job — which bootstrapped a
+  LaunchAgent from inside the CI job — failed on it every time.
+
+The system domain has neither problem: root may bootstrap into it from any
+session, it is present from boot with nobody logged in, and a service running
+there as `worker` can be inspected (`launchctl print system/<label>`) and
+signalled by `worker` without root. `KeepAlive` does the restart, so a redeploy
+is "swap the JARs, `kill` the JVM, wait for the new one to connect".
 
 ### Setting up the `worker` runner
 
-Everything below is done **as `worker`**. If you are logged in as someone
-else, start with `sudo -iu worker` and stay there.
+Everything below is done **as `worker`** unless it says `sudo`. A
+`sudo su - worker` shell is fine for all of it — nothing here bootstraps into
+worker's own launchd domain.
 
 ```bash
 # as worker
@@ -421,57 +451,161 @@ $EDITOR ~/flowtree-agent/agent.env    # CLAUDE_CODE_OAUTH_TOKEN, FLOWTREE_ROOT_H
 
 # 2. The runner env file. The labels are what route the job here, and the
 #    absolute RUNNER_DIR keeps the runner in worker's home whoever launches it.
-cat > ~/.runner-deploy-agent.env <<'ENV'
+#    Keeping it beside .env in the checkout is fine: tools/ci/.gitignore
+#    ignores every *.env there.
+cat > /path/to/common/tools/ci/macos/deploy-agent.env <<'ENV'
 GITHUB_PAT=ghp_your_token_here
 GITHUB_OWNER=almostrealism
 GITHUB_REPO=common
 RUNNER_NAME=mac-studio-deploy-agent
 RUNNER_LABELS=self-hosted,macos,ar-deploy-agent
 RUNNER_DIR=/Users/worker/actions-runner-deploy-agent
+RUNNER_WORKDIR=/Users/worker/actions-runner-deploy-agent/_work
 ENV
 
 # 3. Start the runner — as worker, with that env file and directory.
-/path/to/common/tools/ci/macos/runner.sh ~/.runner-deploy-agent.env /Users/worker/actions-runner-deploy-agent
+/path/to/common/tools/ci/macos/runner.sh /path/to/common/tools/ci/macos/deploy-agent.env /Users/worker/actions-runner-deploy-agent
 ```
 
 The startup banner should show `Labels: self-hosted,macos,ar-deploy-agent
-[from ~/.runner-deploy-agent.env]` and a runner directory under
-`/Users/worker`. If either says `[from built-in default]`, the runner is about
-to advertise the test-lane labels or install into the wrong home; fix the env
-file before it registers.
+[from .../deploy-agent.env]` and a runner directory under `/Users/worker`. If
+either says `[from built-in default]`, the runner is about to advertise the
+test-lane labels or install into the wrong home; fix the env file before it
+registers.
+
+The same checkout can run this runner and the `ar-deploy` one (as the Docker
+account, from `.env`) at the same time: `runner.sh` keeps all of a runner's
+state under its `RUNNER_DIR`, and the two carry different labels, so they
+neither collide nor take each other's jobs.
 
 The runner's own account needs, on PATH for a non-interactive shell: JDK 17,
 Maven and `lsof` (ships with macOS). The **agent** it installs additionally
 needs the Claude Code CLI, Node.js, git and python3 — launchd starts services
 with almost no PATH, so `bin/run.sh` puts Homebrew and `~/.npm-global/bin`
 ahead of it by default; set `FLOWTREE_AGENT_PATH` in `agent.env` if worker's
-tools live elsewhere.
+tools live elsewhere (a `claude` under `~/.local/bin`, for instance).
 
-To keep the runner itself up across reboots, use the launchd service under
-"launchd Service (Auto-Start on Boot)" above, installed **as worker** and
-pointing at the two arguments in step 3.
+### Registering the agent daemon (once, as an administrator)
+
+The first deploy — or `install.sh` run by hand — stages the JARs, `run.sh`
+and the rendered service definition under `~worker/flowtree-agent`, then stops
+with the exact commands for this step, because worker cannot perform it:
+
+```bash
+sudo install -o root -g wheel -m 644 \
+    /Users/worker/flowtree-agent/conf/com.almostrealism.flowtree-agent.plist \
+    /Library/LaunchDaemons/com.almostrealism.flowtree-agent.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.almostrealism.flowtree-agent.plist
+```
+
+Run them from any administrator shell; the session it is in does not matter.
+The agent starts immediately (`RunAtLoad`) on the staged JARs, and every
+deploy from then on is unprivileged. The rendered plist is regenerated on each
+install and compared with the registered copy; if the install directory, env
+file path or account ever changes, `install.sh` fails with the same three
+commands (preceded by a `sudo launchctl bootout system/…`), rather than
+reporting success against a definition launchd is no longer running.
+
+Hosts that ran the earlier LaunchAgent version are migrated by the first
+daemon-era install: it boots out `com.almostrealism.flowtree-agent` from
+`gui/<uid>` and `user/<uid>` if either has it, and deletes
+`~/Library/LaunchAgents/com.almostrealism.flowtree-agent.plist` so a later GUI
+login cannot load it and put a second agent with the same node identity on the
+controller.
+
+### Keeping the runner up across reboots
+
+The runner has the same problem the agent had — worker has no login session
+in which a LaunchAgent could load — and the same answer. Render a LaunchDaemon
+for it and register it once as an administrator. Unlike the agent's, this
+definition is not generated by any script; keep it where the runner lives:
+
+```bash
+# as worker
+cat > /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.almostrealism.deploy-agent-runner</string>
+    <key>UserName</key>
+    <string>worker</string>
+    <key>GroupName</key>
+    <string>staff</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/path/to/common/tools/ci/macos/runner.sh</string>
+        <string>/path/to/common/tools/ci/macos/deploy-agent.env</string>
+        <string>/Users/worker/actions-runner-deploy-agent</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd gives a daemon almost no PATH and no HOME. runner.sh
+             needs java, mvn, curl and jq; the job needs git, mvn and lsof. -->
+        <key>PATH</key>
+        <string>/Users/worker/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/worker</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/path/to/common</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/worker/actions-runner-deploy-agent/runner.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/worker/actions-runner-deploy-agent/runner.log</string>
+</dict>
+</plist>
+PLIST
+```
+
+```bash
+# as an administrator
+sudo install -o root -g wheel -m 644 \
+    /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist \
+    /Library/LaunchDaemons/com.almostrealism.deploy-agent-runner.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.almostrealism.deploy-agent-runner.plist
+launchctl print system/com.almostrealism.deploy-agent-runner | grep -E 'state|pid'
+tail -f /Users/worker/actions-runner-deploy-agent/runner.log
+```
+
+Stop it with `sudo launchctl bootout system/com.almostrealism.deploy-agent-runner`
+(not `pkill`, or `KeepAlive` relaunches it), which also lets the wrapper's
+cleanup trap deregister the runner from GitHub. A runner started by hand
+(step 3 above) and one started this way must not run at once: they share a
+`RUNNER_NAME`, and the second registration replaces the first.
 
 ### Where the agent lives, and how to check on it
 
 `install.sh` (`flowtree/runtime/agent/macos/install.sh`) installs into
-`~/flowtree-agent` by default — `lib/` (the JARs), `conf/`, `bin/run.sh`,
-`logs/agent.log`, and `workspace/` for checkouts. Override the location with
-the repository variable `FLOWTREE_MACOS_AGENT_HOME`, and the env file path with
+`~/flowtree-agent` by default — `lib/` (the JARs), `conf/` (`agent.properties`
+and the rendered plist), `bin/run.sh`, `logs/agent.log`, and `workspace/` for
+checkouts. Override the location with the repository variable
+`FLOWTREE_MACOS_AGENT_HOME`, and the env file path with
 `FLOWTREE_MACOS_AGENT_ENV`; both are read by the workflow and passed through.
+Changing either means re-registering the daemon (`install.sh` says so).
 
-The service label is `com.almostrealism.flowtree-agent`. As worker:
+The service label is `com.almostrealism.flowtree-agent`, in the system domain.
+As worker, or anyone else:
 
 ```bash
-launchctl print gui/$(id -u)/com.almostrealism.flowtree-agent | grep -E 'state|pid'
-tail -f ~/flowtree-agent/logs/agent.log
+launchctl print system/com.almostrealism.flowtree-agent | grep -E 'state|pid|last exit'
+tail -f ~worker/flowtree-agent/logs/agent.log
 ```
 
-If `gui/<uid>` reports no such service, the runner had no window-server
-session when it installed (started over SSH, for instance) and the service is
-in `user/<uid>` instead; `install.sh` picks whichever domain accepts a
-bootstrap and prints it. The job fails unless the new process is running
-**and** holds a connection to the controller port within three minutes, so a
-green run means the agent is actually on the network, not merely started.
+The job fails unless the new process is running **and** holds a connection to
+the controller port within three minutes, so a green run means the agent is
+actually on the network, not merely started. A redeploy identifies the new
+process by pid — it must differ from the one that was signalled — so a JVM
+that ignores the restart cannot pass as the new one.
 
 You can run `install.sh` by hand as worker from a checkout to do the same
 thing outside CI — it is the whole deployment, not a helper the workflow wraps.

@@ -499,17 +499,31 @@ racing would let one job reopen intake while the other is still rebuilding),
 is gated on the same `DEPLOY_AGENTS` decision, and shares the `production`
 environment (one approval covers both jobs). It asks for
 `[self-hosted, macos, ar-deploy-agent]` — **not** `ar-deploy` — because the
-agent must run as the `worker` account and the job installs the launchd
-service for whichever account the runner runs as. A runner registered as the
-Docker owner would install the agent for the Docker owner, so the job checks
-`id -un` against the expected account (`worker` by default, overridable with
-the repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before
-`install.sh` runs if they do not match. Never add `ar-deploy-agent` to the
-`ar-deploy` runner; register a separate runner as `worker` (see
-`tools/ci/macos/README.md`, "Deploying the native macOS agent"). The job also
-fails unless the new agent process holds a connection to the controller port —
-there is no controller endpoint listing connected agents, so that check is
-made from the agent's side with `lsof`.
+agent runs as the `worker` account and the job writes that account's install
+directory and restarts that account's process; only the owner can do either.
+A runner registered as the Docker owner would install into the Docker owner's
+home, so the job checks `id -un` against the expected account (`worker` by
+default, overridable with the repository variable
+`FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before `install.sh` runs if they do
+not match. Never add `ar-deploy-agent` to the `ar-deploy` runner; register a
+separate runner as `worker` (see `tools/ci/macos/README.md`, "Deploying the
+native macOS agent").
+
+The agent is a **LaunchDaemon in the system domain** (`UserName: worker`),
+registered once by an administrator, and the job needs no launchd privilege:
+`install.sh` swaps the JARs, signals the running JVM, and `KeepAlive` starts it
+again on the new classpath. It is not a LaunchAgent in worker's own domain
+because that domain is absent after a reboot (nobody logs in as `worker`) and,
+on a host where `worker` is only reached through `su`, refuses every
+bootstrap with `Bootstrap failed: 5: Input/output error` — from worker, from
+root, and from root via `launchctl asuser`. The first version of the job
+bootstrapped a LaunchAgent from inside the CI job and failed on exactly that.
+`install.sh` re-renders the daemon plist on every run and fails, printing the
+`sudo` commands, when the daemon is not registered or the registered copy
+differs from the rendered one. The job also fails unless the new agent process
+— identified by a pid different from the one signalled — holds a connection to
+the controller port; there is no controller endpoint listing connected agents,
+so that check is made from the agent's side with `lsof`.
 
 ### What the `Master Agent Dispatch` workflow does
 
