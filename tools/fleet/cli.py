@@ -19,7 +19,7 @@ adapters, but read-only visibility is the useful thing to have before any
 control verb exists. This module implements the two read verbs that matter
 first: ``list`` (runners on a host: name, labels, state, current job) and
 ``status`` (per-host/per-class utilization). Both read from
-:class:`tools.ci.fleet.store.FleetStore`; neither touches any runner process.
+:class:`tools.fleet.store.FleetStore`; neither touches any runner process.
 
 Control verbs (``start``/``stop``/``restart``/``register``/``label``) are
 deliberately not implemented here — they need platform-specific adapters
@@ -33,7 +33,7 @@ import argparse
 import sys
 from typing import List, Optional, Sequence
 
-from tools.ci.fleet.store import FleetStore
+from tools.fleet.store import FleetStore
 
 
 def format_list(rows: Sequence[tuple]) -> str:

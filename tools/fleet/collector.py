@@ -36,7 +36,7 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from tools.ci.fleet import attribution
+from tools.fleet import attribution
 
 
 def build_record(
@@ -48,15 +48,19 @@ def build_record(
     load15: Optional[float] = None,
     runner_root_comms=attribution.DEFAULT_RUNNER_ROOT_COMMS,
     agent_root_comms=attribution.DEFAULT_AGENT_ROOT_COMMS,
+    agent_root_pids=frozenset(),
 ) -> Dict:
     """Build one sample record from already-captured ``ps`` output.
 
     Pure with respect to the host: given the same *ps_text* this always
     produces the same record, so it is exercised directly in tests without
-    shelling out.
+    shelling out. *agent_root_pids* is how a caller that discovered the
+    agent's real root PID by some other means (see
+    :func:`parse_launchctl_list`) identifies it, since neither launcher gives
+    it a distinctive ``comm`` (see :mod:`attribution`).
     """
     samples = attribution.parse_ps_output(ps_text)
-    classes = attribution.classify_processes(samples, runner_root_comms, agent_root_comms)
+    classes = attribution.classify_processes(samples, runner_root_comms, agent_root_comms, agent_root_pids)
     metrics = attribution.class_metrics(samples, classes)
     return {
         "ts": ts,
@@ -97,12 +101,15 @@ def _run_ps() -> str:
     return result.stdout
 
 
-def _run_uptime_loads() -> List[Optional[float]]:
-    try:
-        result = subprocess.run(["uptime"], capture_output=True, text=True, check=True)
-    except (OSError, subprocess.CalledProcessError):
-        return [None, None, None]
-    text = result.stdout
+def parse_uptime_loads(text: str) -> List[Optional[float]]:
+    """Parse the 1/5/15-minute load averages out of ``uptime`` output.
+
+    The three numbers are comma-separated on Linux (``load average: 0.10,
+    0.05, 0.01``) but space-separated on macOS (``load averages: 1.23 1.10
+    0.95``, also plural). Splitting only on commas leaves the whole
+    space-separated macOS tail as one unparsable token; normalising commas to
+    whitespace first handles both formats with a single split.
+    """
     marker = "load average"
     idx = text.lower().find(marker)
     if idx < 0:
@@ -110,7 +117,7 @@ def _run_uptime_loads() -> List[Optional[float]]:
     tail = text[idx:].split(":", 1)
     if len(tail) < 2:
         return [None, None, None]
-    parts = [p.strip().rstrip(",") for p in tail[1].split(",")]
+    parts = tail[1].replace(",", " ").split()
     loads: List[Optional[float]] = []
     for part in parts[:3]:
         try:
@@ -122,11 +129,56 @@ def _run_uptime_loads() -> List[Optional[float]]:
     return loads
 
 
+def _run_uptime_loads() -> List[Optional[float]]:
+    try:
+        result = subprocess.run(["uptime"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return [None, None, None]
+    return parse_uptime_loads(result.stdout)
+
+
+def parse_launchctl_list(text: str, label: str = "com.almostrealism.flowtree-agent") -> Optional[int]:
+    """Find the PID of a launchd service from ``launchctl list`` output.
+
+    ``ps`` cannot identify the native macOS FlowTree agent by ``comm`` (see
+    :mod:`attribution`'s module docstring on ``DEFAULT_AGENT_ROOT_COMMS``):
+    both the container entrypoint and the native launcher ``exec java``, so
+    the process is indistinguishable from any other JVM by name alone.
+    launchd itself knows the PID it started for a given service label, and
+    ``launchctl list`` (no argument) reports every job as one
+    tab-separated ``PID\\tStatus\\tLabel`` line — ``PID`` is ``-`` for a
+    label that is registered but not currently running.
+    """
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[2] == label and parts[0].isdigit():
+            return int(parts[0])
+    return None
+
+
+def discover_macos_agent_pid(label: str = "com.almostrealism.flowtree-agent") -> Optional[int]:
+    """Discover the native macOS agent's PID via ``launchctl``, if present.
+
+    Returns ``None`` on any failure (not macOS, ``launchctl`` missing, the
+    service not registered or not currently running) rather than raising —
+    this is a best-effort enrichment, not a requirement for sampling to work.
+    """
+    try:
+        result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return parse_launchctl_list(result.stdout, label)
+
+
 def sample_and_write(host: str, jsonl_path: str) -> Dict:
     """Take one live sample and append it to the local JSONL fallback file."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ps_text = _run_ps()
     load1, load5, load15 = _run_uptime_loads()
-    record = build_record(ts, host, ps_text, load1, load5, load15)
+    agent_pid = discover_macos_agent_pid()
+    agent_root_pids = frozenset() if agent_pid is None else frozenset({agent_pid})
+    record = build_record(
+        ts, host, ps_text, load1, load5, load15, agent_root_pids=agent_root_pids
+    )
     write_jsonl(record, jsonl_path)
     return record

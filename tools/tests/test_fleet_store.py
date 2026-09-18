@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for ``tools.ci.fleet.store``.
+"""Tests for ``tools.fleet.store``.
 
 Both ingest paths this store serves are at-least-once: a push transport
 retries on timeout, and a GitHub poller re-reads the same run/job on its next
@@ -27,7 +27,7 @@ Run with:
 
 import unittest
 
-from tools.ci.fleet.store import FleetStore
+from tools.fleet.store import FleetStore
 
 
 class FleetStoreIdempotencyTests(unittest.TestCase):
@@ -138,6 +138,23 @@ class FleetStoreQueryTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         labels, avg_latency, count = rows[0]
         self.assertEqual(labels, "ar-ci")
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(avg_latency, 10.0)
+
+    def test_pre_start_latency_by_label_count_excludes_unstarted_jobs(self):
+        """A queued entry-point job has no `pre_start_latency_seconds` yet
+        (it is NULL until the job starts). `COUNT(*)` would include that row
+        even though `AVG` skips it, making the reported count describe a
+        different set of rows than the average it sits beside."""
+        self.store.upsert_job_event(
+            job_id="entry-1", labels="ar-ci", pre_start_latency_seconds=10.0, is_entry_point=True,
+        )
+        self.store.upsert_job_event(
+            job_id="entry-2", labels="ar-ci", pre_start_latency_seconds=None, is_entry_point=True,
+        )
+        rows = self.store.pre_start_latency_by_label()
+        self.assertEqual(len(rows), 1)
+        labels, avg_latency, count = rows[0]
         self.assertEqual(count, 1)
         self.assertAlmostEqual(avg_latency, 10.0)
 

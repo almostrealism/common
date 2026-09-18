@@ -43,14 +43,19 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Set
 # already using this signal for busy detection).
 DEFAULT_RUNNER_ROOT_COMMS = frozenset({"Runner.Listener", "Runner.Worker"})
 
-# Process names that mark the root of a FlowTree coding-agent subtree. On
-# macOS this is the launchd-managed native agent process; in the Docker pool
-# it is the container's own PID 1. Neither name is authoritative on every
-# platform, so callers on a host with different naming should pass their own
-# set. Note that a container's process tree is not always visible to a native
-# host `ps` at all (e.g. containers running inside a Docker Desktop VM on
-# macOS) — that class must be attributed through the container runtime's own
-# API instead of this function; passing a root name here does not help.
+# Process names that would mark the root of a FlowTree coding-agent subtree,
+# if either launcher set one. Neither does: both `entrypoint.sh` (Docker) and
+# `macos/run.sh` (native launchd) end in `exec java ...`, so the agent's own
+# `comm` is always `java` on every platform — indistinguishable by name from
+# any other JVM on the host. This default therefore never matches a real
+# deployment; it exists only for a future or custom launcher that does set a
+# distinctive `comm`. The operative mechanism today is `agent_root_pids`
+# (see `classify_processes`): a caller with a reliable, non-`ps`-based way to
+# learn the agent's actual root PID (e.g. `launchctl list` on macOS) passes it
+# there instead of relying on a name match. Note that a container's process
+# tree is not always visible to a native host `ps` at all (e.g. containers
+# running inside a Docker Desktop VM on macOS) — that class must be
+# attributed through the container runtime's own API instead of this module.
 DEFAULT_AGENT_ROOT_COMMS = frozenset({"flowtree-agent"})
 
 RUNNER = "runner"
@@ -120,17 +125,22 @@ def classify_processes(
     samples: Iterable[ProcessSample],
     runner_root_comms: Set[str] = DEFAULT_RUNNER_ROOT_COMMS,
     agent_root_comms: Set[str] = DEFAULT_AGENT_ROOT_COMMS,
+    agent_root_pids: Set[int] = frozenset(),
 ) -> Dict[int, str]:
     """Classify every process into exactly one of runner / agent / other.
 
     Each process is tagged by walking down from every recognised class root
-    (a process whose ``comm`` is in *runner_root_comms* or *agent_root_comms*)
-    through its full descendant subtree via ``ppid``. A process reachable from
-    more than one root keeps the class of whichever root's walk reaches it
-    first (roots are walked runner-then-agent, so a runner subtree that
-    happens to spawn something matching an agent root name is classified as
-    runner — the outer boundary wins, since it is the more specific match).
-    Every process not reached by either walk is ``other``.
+    through its full descendant subtree via ``ppid``. A runner root is a
+    process whose ``comm`` is in *runner_root_comms*. An agent root is a
+    process whose ``comm`` is in *agent_root_comms* **or** whose ``pid`` is in
+    *agent_root_pids* — the latter is how a caller that knows the agent's real
+    root PID by some other means (not a name match against ``comm``, which
+    cannot distinguish the agent's JVM from any other) identifies it. A
+    process reachable from more than one root keeps the class of whichever
+    root's walk reaches it first (roots are walked runner-then-agent, so a
+    runner subtree that happens to spawn something matching an agent root is
+    classified as runner — the outer boundary wins, since it is the more
+    specific match). Every process not reached by either walk is ``other``.
 
     Returns ``{pid: class}`` covering every pid in *samples*.
     """
@@ -152,7 +162,7 @@ def classify_processes(
         if sample.comm in runner_root_comms and sample.pid not in classes:
             _tag_subtree(sample.pid, RUNNER)
     for sample in sample_list:
-        if sample.comm in agent_root_comms and sample.pid not in classes:
+        if (sample.comm in agent_root_comms or sample.pid in agent_root_pids) and sample.pid not in classes:
             _tag_subtree(sample.pid, AGENT)
     for sample in sample_list:
         classes.setdefault(sample.pid, OTHER)

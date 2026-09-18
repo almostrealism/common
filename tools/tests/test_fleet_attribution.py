@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for ``tools.ci.fleet.attribution``.
+"""Tests for ``tools.fleet.attribution``.
 
 Covers two properties that matter for making sense of shared-host CPU/memory
 numbers: computing ``other`` as a residual (``total - runner - agent``) is
@@ -26,7 +26,7 @@ Run with:
 
 import unittest
 
-from tools.ci.fleet import attribution
+from tools.fleet import attribution
 
 
 class ParsePsLineTests(unittest.TestCase):
@@ -134,6 +134,25 @@ class ClassifyProcessesTests(unittest.TestCase):
         classes = attribution.classify_processes(samples, agent_root_comms={"custom-agent-root"})
         self.assertEqual(classes[2], attribution.AGENT)
         self.assertEqual(classes[3], attribution.AGENT)
+
+    def test_agent_root_pid_is_honoured_when_comm_is_generic(self):
+        """Both launchers `exec java`, so the agent's `comm` is always
+        `java` — indistinguishable by name from any other JVM (e.g. a
+        runner's build). A caller that discovered the real root PID by some
+        other means (`launchctl list` on macOS) must still get the whole
+        subtree tagged `agent`, and the unrelated `java` process elsewhere
+        on the host must not be swept in by name."""
+        samples = [
+            attribution.ProcessSample(1, 0, "root", 0.0, 0.0, "launchd"),
+            attribution.ProcessSample(500, 1, "worker", 2.0, 512.0, "java"),
+            attribution.ProcessSample(501, 500, "worker", 8.0, 256.0, "claude"),
+            # An unrelated `java` process elsewhere on the host.
+            attribution.ProcessSample(600, 1, "other-user", 1.0, 128.0, "java"),
+        ]
+        classes = attribution.classify_processes(samples, agent_root_pids={500})
+        self.assertEqual(classes[500], attribution.AGENT)
+        self.assertEqual(classes[501], attribution.AGENT)
+        self.assertEqual(classes[600], attribution.OTHER)
 
 
 if __name__ == "__main__":

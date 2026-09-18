@@ -36,7 +36,7 @@ from __future__ import annotations
 import sqlite3
 from typing import List, Optional, Tuple
 
-from tools.ci.fleet import schema
+from tools.fleet import schema
 
 
 class FleetStore:
@@ -236,9 +236,13 @@ class FleetStore:
         blocked on upstream jobs. A caller wanting the dependency-adjusted
         metric for non-entry-point jobs should read ``queue_wait_seconds``
         directly instead of this aggregate.
+
+        The count column counts non-``NULL`` ``pre_start_latency_seconds``
+        rows (matching what the average is actually computed over), not
+        every row in the group — a queued entry-point job has no latency yet.
         """
         query = """
-            SELECT labels, AVG(pre_start_latency_seconds), COUNT(*)
+            SELECT labels, AVG(pre_start_latency_seconds), COUNT(pre_start_latency_seconds)
             FROM job_event
             WHERE is_entry_point = 1
             {label_filter}

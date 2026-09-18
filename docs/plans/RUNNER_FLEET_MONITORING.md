@@ -720,7 +720,7 @@ repo already provides.
 **Implementation status.** The pieces of tasks 1, 2, 5, and 6 that do not
 depend on the §9 human decisions (host inventory, store-engine confirmation,
 GitHub scope, Grafana exposure) have a first implementation under
-`tools/ci/fleet/` (see that directory's `README.md`), tested in
+`tools/fleet/` (see that directory's `README.md`), tested in
 `tools/tests/test_fleet_*.py`: process-tree attribution with the corrected
 non-residual `other` class, a `sqlite3`-backed version of the Appendix B
 schema with the idempotency keys this review added, GitHub-job metrics with
@@ -801,11 +801,11 @@ validate against or an operator decision this document defers to §9.
 7. **Retention/resolution** (§5.8): confirm the tiers and the default 15 s
    interval; disk is not the constraint, signal quality and how far back the
    purchasing analysis must look are.
-8. **CLI name and code location** under `tools/` (e.g. `tools/ci/fleet/`), and —
-   consequentially — whether its Python tests live in `tools/tests/` (no CI
-   change) or in a new directory that requires adding a discover step to the
-   `python-tests` job (a workflow change, normally an agent-locked file except on
-   a `ci/...` branch — §1.4).
+8. **CLI name**, and whether the code should eventually move out of
+   `tools/fleet/` (its first-implementation home — chosen over `tools/ci/fleet/`
+   because `tools/ci/` is agent-locked outside a `ci/...` branch, §1.4). Its
+   Python tests live in `tools/tests/`, so no `python-tests` job change was
+   needed.
 9. **Confirm no new Maven module is implied** (root `CLAUDE.md` forbids agents
    creating one). The design intends none; flag immediately if any task appears
    to need one.

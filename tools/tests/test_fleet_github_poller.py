@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for ``tools.ci.fleet.github_poller.compute_job_metrics``.
+"""Tests for ``tools.fleet.github_poller.compute_job_metrics``.
 
 ``started_at - created_at`` is not queue wait for a job gated behind
 ``needs:`` — it also includes time blocked on upstream jobs. These tests pin
@@ -26,7 +26,7 @@ Run with:
 
 import unittest
 
-from tools.ci.fleet.github_poller import compute_job_metrics
+from tools.fleet.github_poller import compute_job_metrics
 
 
 class ComputeJobMetricsTests(unittest.TestCase):

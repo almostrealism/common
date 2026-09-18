@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the read-only fleet CLI verbs (``tools.ci.fleet.cli``).
+"""Tests for the read-only fleet CLI verbs (``tools.fleet.cli``).
 
 This CLI has exactly two verbs — ``list`` and ``status`` — and both are
 read-only against the store. These tests populate an in-memory store and
@@ -25,8 +25,8 @@ Run with:
 
 import unittest
 
-from tools.ci.fleet import cli
-from tools.ci.fleet.store import FleetStore
+from tools.fleet import cli
+from tools.fleet.store import FleetStore
 
 
 class FleetCliTests(unittest.TestCase):
