@@ -44,6 +44,7 @@ import org.almostrealism.heredity.TemporalFactor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
@@ -617,7 +618,8 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 		if (enableSourcesOnly) {
 			List<Receptor<PackedCollection>> r = new ArrayList<>();
-			r.add(output.getMaster(audioChannel));
+			Receptor<PackedCollection> master = output.getMaster(audioChannel);
+			if (master != null) r.add(master);
 			r.addAll(output.getMeasures(audioChannel));
 
 			return cells
@@ -702,15 +704,18 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		if (enableEfx) {
 			main = createEfx(main, efx, reverbActive ? reverb : null, riser,
 					sources.size(), output, audioChannel, channelIndex);
-		} else if (output.isMeasuresActive()) {
-			// Deliver main to the output and measure for MAIN and WET
-			main = main.map(i -> new ReceptorCell<>(Receptor.to(
-					output.getMaster(audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.WET, audioChannel))));
 		} else {
-			// Deliver main to the output
-			main = main.map(i -> new ReceptorCell<>(output.getMaster(audioChannel)));
+			// Deliver main to the output and, when active, the MAIN and WET measures.
+			// A destination without a receptor for this stereo channel (a mono master)
+			// contributes nothing to the list, so the signal is delivered to the rest.
+			List<Receptor<PackedCollection>> destinations = new ArrayList<>();
+			destinations.add(output.getMaster(audioChannel));
+			if (output.isMeasuresActive()) {
+				destinations.add(output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel));
+				destinations.add(output.getMeasure(ChannelInfo.Voicing.WET, audioChannel));
+			}
+			destinations.removeIf(Objects::isNull);
+			main = main.map(i -> new ReceptorCell<>(Receptor.to(destinations.stream())));
 		}
 
 		return main;
