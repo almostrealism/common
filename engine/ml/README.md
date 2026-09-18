@@ -75,7 +75,12 @@ host before any kernel runs.
 as `Qwen3` do) rather than importing them statically:
 
 ```java
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.model.Block;
 
 class TransformerLayerBuilder implements AttentionFeatures {
     Block buildLayer(int nHeads, int kvHeads,
@@ -218,32 +223,38 @@ public class StateDictionary implements Destroyable {
 
 ### AttentionFeatures
 
+The signatures below are a reference summary, not compilable Java — each `default` method
+body is omitted (shown as `;`) since these are the real implementations' parameter shapes,
+not a copy-pasteable interface:
+
 ```java
 public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
     // Multi-head attention with optional GQA, bias terms, and QK-Norm
     default Block attention(int heads, int kvHeads,
                            PackedCollection rmsAttWeight,
-                           PackedCollection wk, wv, wq, wo,
-                           PackedCollection bk, bv, bq,
-                           PackedCollection qkNormQ, qkNormK,
-                           PackedCollection freqCis,
+                           PackedCollection wk, PackedCollection wv,
+                           PackedCollection wq, PackedCollection wo,
+                           PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                           PackedCollection qkNormQ, PackedCollection qkNormK,
+                           CollectionProducer freqCis,
                            Producer<PackedCollection> position,
                            ComputeRequirement... requirements);
 
     // Feed-forward with SwiGLU activation (from FeedForwardFeatures)
     default Block feedForward(PackedCollection rms,
-                             PackedCollection w1, w2, w3,
+                             PackedCollection w1, PackedCollection w2, PackedCollection w3,
                              ComputeRequirement... requirements);
 
     // Complete transformer layer (attention + feed-forward)
     default Block transformer(int heads, int kvHeads,
                              PackedCollection rmsAttWeight,
-                             PackedCollection wk, wv, wq, wo,
-                             PackedCollection bk, bv, bq,
-                             PackedCollection qkNormQ, qkNormK,
+                             PackedCollection wk, PackedCollection wv,
+                             PackedCollection wq, PackedCollection wo,
+                             PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                             PackedCollection qkNormQ, PackedCollection qkNormK,
                              CollectionProducer freqCis,
                              PackedCollection rmsFfnWeight,
-                             PackedCollection w1, w2, w3,
+                             PackedCollection w1, PackedCollection w2, PackedCollection w3,
                              Producer<PackedCollection> position,
                              ComputeRequirement... requirements);
 }
@@ -570,7 +581,8 @@ conditioning. The buffer starts zero-filled, which is the value plain generation
 ### Stable Audio 3 Conditioning and Codec
 
 `StableAudio3Conditioner` (package `org.almostrealism.ml.audio`) builds the cross-attention and
-global conditioning that `DiffusionTransformer` expects, from a text prompt and a duration:
+global conditioning that `DiffusionTransformer` expects, from pre-tokenized prompt IDs and a
+duration:
 
 ```java
 import org.almostrealism.ml.audio.AudioAttentionConditioner.ConditionerOutput;
@@ -596,7 +608,10 @@ Other Stable Audio 3 building blocks:
   `DiffusionSampler#setGuidance(ClassifierFreeGuidance, PackedCollection, PackedCollection)`.
 - **`DistributionShift`** (`LogSNRShift`, `FluxDistributionShift`, `LogitDistributionShift`) —
   warps the rectified-flow sampler's uniform timestep schedule so more steps land at the noise
-  levels where structure emerges, shifting with the generated sequence length.
+  levels where structure emerges. Some implementations and configurations shift with the
+  generated sequence length (`isLengthDependent()` reports which); `DistributionShift.identity()`
+  and a `FluxDistributionShift` constructed with a single constant `alpha` ignore sequence length
+  entirely.
 - **`OobleckCodec`** (`OobleckEncoder`/`OobleckDecoder`) and **`SAMEAutoEncoder`** — latent audio
   autoencoders that compress waveforms to and from the diffusion model's latent space.
 - **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
@@ -628,7 +643,9 @@ Other Stable Audio 3 building blocks:
 - **KV Caching** - Attention keys/values cached to avoid recomputation
 - **Grouped-Query Attention** - Reduces KV cache size by 4x
 - **Hardware Compilation** - JIT compilation to native/GPU code
-- **Memory Efficiency** - Zero-initialized caches prevent numerical issues
+- **Memory Efficiency** - KV caches rely on zero-fill at allocation to avoid numerical issues;
+  see [ml-inference-pipeline.md](../../docs/internals/ml-inference-pipeline.md#zero-initialization)
+  for which memory providers this currently holds for
 - **Batch Processing** - Support for processing multiple sequences
 
 ## Testing

@@ -74,8 +74,13 @@ double[len]`, which the JVM zero-fills, so `new PackedCollection(seqLen, heads, 
 needs no explicit clearing call under that provider. OpenCL allocations (`CLMemoryProvider`,
 via `clCreateBuffer` with no host pointer), heap-carved allocations (`Heap`'s bump-pointer
 allocator, whose backing block is reused across allocations), and file-backed shared memory are
-documented exceptions where contents are not guaranteed to be zero — a cache backed by one of
-those providers still needs an explicit `clear()` after allocation.
+documented exceptions where contents are not guaranteed to be zero.
+
+`attentionImpl()` does not call `clear()` on either cache after allocation — it relies entirely
+on the allocator zero-filling the memory, and no such call exists in the current implementation.
+Cache correctness for unwritten positions therefore currently depends on running under
+`JVMMemoryProvider`; under `CLMemoryProvider`, `Heap`, or file-backed providers, unwritten cache
+positions can hold undefined data because nothing clears them before use.
 
 **Why this matters:** Without zero-initialization, unwritten cache positions contain
 garbage values. During attention, the softmax over all positions (including unwritten
@@ -707,6 +712,9 @@ In self-attention, Q, K, and V all come from the same input. In cross-attention:
 // AttentionFeatures.java:1312-1373 — sequenceCrossAttention
 // 1. Project main input to queries
 crossAttention.add(projectionFactory.create(queryShape, toQWeight, ...));
+
+// 2. Apply Q normalization
+crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
 
 // 3. Process context input through separate branch for K and V
 SequentialBlock contextBranch = contextInput.branch();
