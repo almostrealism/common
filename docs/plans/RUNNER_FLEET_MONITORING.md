@@ -83,9 +83,14 @@ Common design across all three (verified in each script):
   deregisters, and is restarted to register again (`--ephemeral`; see
   `tools/ci/macos/runner.sh:350-361`, `tools/ci/rocm/README.md:300-319`,
   `tools/ci/docker/README.md:54-63`).
-- **Self-assigning names**: containers claim the lowest free `<prefix>-N` from
-  the GitHub API (`tools/ci/rocm/README.md:236-242`,
-  `tools/ci/docker/README.md:54-59`).
+- **Self-assigning names — container fleets only.** The Docker and ROCm fleets
+  claim the lowest free `<prefix>-N` from the GitHub API
+  (`tools/ci/rocm/README.md:236-242`, `tools/ci/docker/README.md:54-59`). The
+  macOS fleet does **not** do this: `tools/ci/macos/runner.sh` defaults the
+  runner name to `$(hostname)-macos` and passes it through unchanged — it never
+  queries GitHub for a free suffix. The host manifest and any historical join
+  on `runner_name` must treat macOS names as explicit/hostname-derived, not as
+  instances of the same self-assigning scheme the container fleets use.
 - **Label-based routing**: GitHub schedules a job on any runner whose labels are
   a *superset* of the job's `runs-on`; a single-purpose runner *omits* the
   labels of jobs it should ignore (`tools/ci/macos/README.md:317-342`,
@@ -334,8 +339,21 @@ Why Python, not Go or more bash:
 - It is **already the project's tooling language** (`tools/mcp`, `tools/ci`
   Python), and the `python-tests` CI gate exists, so the CLI passes gates with
   no new infrastructure (§1.4).
-- Python 3.10+ is present on every host (the runners require it; the monitor's
-  companion tooling assumes it).
+- **Correction — Python is NOT already guaranteed on every runner host.**
+  `tools/ci/macos/runner.sh` lists Java, Maven, curl, and jq as prerequisites
+  and says nothing about Python; the Docker and ROCm runner images
+  (`tools/ci/docker/`, `tools/ci/rocm/`) do not install a Python interpreter
+  either. A Python collector or CLI can therefore fail on a valid, currently
+  working host. This design makes Python provisioning an **explicit rollout
+  step**, not an assumption: each platform's installer (§7, §8 task 10) must
+  either (a) install/verify `python3` as a stated prerequisite alongside the
+  existing Java/Maven/curl/jq checks (macOS via Homebrew, Linux via the
+  distro's package manager or the container image), or (b) package the
+  collector as a self-contained runtime (e.g. a `zipapp`/PyInstaller build)
+  that does not depend on a host interpreter at all. Option (a) is simpler and
+  is the default; option (b) is the fallback if a host's platform team refuses
+  to add a runtime dependency. Either way, the rollout script must fail loudly
+  (not silently skip sampling) when the prerequisite is missing.
 - The GitHub-API + join + report logic is real program logic that outgrows
   shell; bash remains fine for the thin per-host *collector loop* but not for the
   analysis.
@@ -371,20 +389,55 @@ Collected per sample (extends `tools/ci/monitor`):
 
 **Attribution mechanism** (the core constraint): on each host, classify every
 process's CPU/RSS into one of three buckets by **process tree**, not by a name
-match alone:
+match alone, and **measure `other` directly rather than as a residual**:
 
 - `runner` = the subtree under each runner's `Runner.Listener` (its
   `Runner.Worker` and that worker's `mvn`/`java` children).
 - `agent` = the FlowTree agent: on macOS the launchd service
   `com.almostrealism.flowtree-agent` running as `worker`
   (`tools/ci/macos/README.md:462`) and its `claude`/`node`/`java` children; in
-  the Docker pool, the `agent-N` containers (clean cgroup boundary on Linux).
-- `other` = total − runner − agent (interactive work, the shared services, OS).
+  the Docker pool, the `agent-N` containers.
+- `other` = every remaining process on the host, tagged by the same walk, not
+  computed by subtracting two aggregates from a host total.
+
+**Why not `other = total − runner − agent` (corrected from an earlier draft):**
+host CPU% (from `uptime`/`vm_stat`-style host counters) and summed per-process
+`ps %cpu` are not guaranteed to share a denominator or sampling window — a
+residual computed by subtracting one from the other can come out negative or
+otherwise misleading. Summing per-process RSS is a second, independent problem:
+shared library and shared-memory pages are double-counted across processes, so
+"runner RSS + agent RSS + other RSS" does not reconstruct host memory used
+either. The fix is to make every class a **direct measurement**, not an
+arithmetic difference: walk the full process list once, tag every PID
+`runner`/`agent`/`other`, and sum each class's own processes independently —
+`other` is then just "everything not tagged `runner` or `agent`," with the same
+accounting basis (and the same double-counting caveat) as the other two
+classes, not a derived correction term. Where the host total and the sum of
+classified processes disagree (kernel threads, zombie processes, `ps` sampling
+races), report the discrepancy as its own diagnostic field rather than folding
+it silently into `other`.
 
 To make this a pure post-processing step, the collector must additionally record
 **`ppid` and the owning user** per process (the current monitor records neither).
 On Linux, the **cgroup path** gives clean per-container attribution for free and
 should be preferred there.
+
+**macOS caveat: the Docker pool's `agent-N` containers are invisible to a
+native host collector.** On the Mac Studio, `agent-N` runs inside Docker
+Desktop's Linux VM; a native macOS process lists its own host's processes and
+cannot see the VM's cgroups or the `claude`/`node`/`java` children running
+inside it (`ps` on the host shows only the VM's own hypervisor process, not
+what runs inside it). Only the launchd-based FlowTree agent
+(`com.almostrealism.flowtree-agent`) is directly visible via host `ps`. The
+collector must therefore attribute the containerised `agent-N` class through
+the **Docker API/`docker stats`** (reachable from the macOS host through the
+Docker Desktop CLI socket, which already reports clean per-container CPU/RSS)
+rather than through the host process tree — this is a *different* collection
+path for the same `agent` class, not an extension of the `ps`-based walk used
+for `runner` and the native agent. A design that assumes one `ps`-based walk
+covers all three classes on every host will silently omit Docker-pool agent
+load on macOS and misstate capacity there; §12 tracks validating this against
+a real Mac Studio.
 
 macOS caveat worth a spike: multiple `ar-ci` runners can share one `$HOME` and
 run as the **same account** (`analysis.yaml:1961-1971` isolates only the Maven
@@ -427,21 +480,35 @@ Per-job fields to persist: `id`, `run_id`, `name`, `status`, `conclusion`,
 `runner_id`, `runner_name`, `runner_group_name`, and `steps[]`
 (each with `started_at`/`completed_at`). From these:
 
-- **Queue wait** ≈ `started_at − created_at`, bucketed by `labels[]`.
+- **`pre_start_latency` ≈ `started_at − created_at`**, bucketed by `labels[]`.
+  This is **not** the same thing as runner-availability queue wait, and the
+  design must not conflate the two — see the correction below.
 - **Utilization** from `[started_at, completed_at]` busy windows per
   `runner_name`, joined to host metrics via the host manifest.
 - **CI run time breakdown** from `steps[]` (checkout / build / test).
 
-**Honest caveat (validate before trusting the headline number):** for a job
-gated behind `needs:`, `started_at − created_at` includes time waiting on
-*upstream jobs*, not only time waiting for a *free runner*. To isolate
-runner-availability wait, the poller should subtract the completion time of the
-job's last dependency (derivable from the run's job graph) — or, more simply,
-focus the label-level queue-wait metric on **entry-point** test jobs that have no
-CI dependency. The exact `created_at` semantics of the workflow-job object should
-be confirmed against live API responses on this repo before the panel is treated
-as authoritative (§12). Rate limits are a non-issue at this scale (5000
-req/hr authenticated; a few dozen requests per poll every 5–15 min).
+**Correction: `started_at − created_at` is not a queue-wait measurement for a
+dependent job, and Phase A must not present it as the headline number
+unqualified.** For a job gated behind `needs:`, that interval includes time
+blocked on upstream jobs, not only time waiting for a free runner — so the raw
+value is **pre-start latency**, not queue wait, and the two are named
+differently in the schema and every panel that shows them. The Phase A poller
+and dashboard MUST do one of the following before the queue-wait panel is
+treated as authoritative for the purchasing decision, not merely note it as a
+caveat to revisit later:
+  1. **Restrict the label-level queue-wait metric to entry-point jobs** — jobs
+     whose workflow-run job graph shows no `needs` dependency — where
+     `pre_start_latency` and runner-availability wait coincide; or
+  2. **Subtract the completion time of the job's last dependency** (derivable
+     from the run's job graph, persisted alongside `job_event`) to compute a
+     dependency-adjusted `queue_wait` field distinct from `pre_start_latency`.
+Option 1 is the simpler Phase A implementation and is what the poller and
+schema in this document assume by default (`job_event` carries both
+`pre_start_latency` and an `is_entry_point` flag); option 2 is the more precise
+follow-up. The exact `created_at` semantics of the workflow-job object should
+still be confirmed against live API responses on this repo before either panel
+is treated as authoritative (§12). Rate limits are a non-issue at this scale
+(5000 req/hr authenticated; a few dozen requests per poll every 5–15 min).
 
 ### 5.5 The store — Q4
 
@@ -495,7 +562,11 @@ build and maintain and buys nothing here.
 auth. Bind it to the **tailnet only** (mirroring how the controller stack is
 reached), or, if remote access is needed, put it behind Tailscale Funnel +
 Grafana's own auth/OAuth. Never publish it on a public port. (Reverse-proxy
-choice is a §11 decision.)
+choice is a §11 decision.) **Correction — "bind to the tailnet" must be an
+explicit bind, not an aspiration**: see §5.7 below; the existing compose
+services' `ports:` mappings (e.g. `ar-memory`'s `"${AR_MEMORY_PORT:-8020}:8020"`)
+publish on every interface by default, which is exactly what the new metrics
+services must NOT copy unmodified.
 
 ### 5.7 Security — Q (constraint)
 
@@ -509,15 +580,52 @@ choice is a §11 decision.)
 - **Preserve `comm` basenames; never record full argv** in samples (§1.2): argv
   can carry a token (a runner registration command line), so recording it would
   leak secrets into the store. This is a design invariant, not a nicety.
-- **Transport**: agents reach the Mac Studio over **Tailscale** (already in use).
-  The ingest endpoint / DB port is bound to the tailnet, not public, and the
-  ingest endpoint authenticates with a bearer token using the established
-  `AR_*_AUTH_TOKEN` pattern (`docker-compose.yml:56-58`).
+- **Transport, corrected — an explicit bind and fail-closed auth, not the
+  existing services' pattern.** The existing compose services publish their
+  ports with no bind address (`"${AR_MEMORY_PORT:-8020}:8020"` maps to every
+  interface on the host, and `AR_*_AUTH_TOKEN` defaults to the **empty
+  string** — `AR_MEMORY_AUTH_TOKEN=${AR_MEMORY_AUTH_TOKEN:-}` — so an operator
+  who forgets to set it gets an unauthenticated, non-tailnet-scoped service
+  that happens to work because the host's own firewall/Tailscale ACLs are
+  doing the real enforcement out of band). The new ingest endpoint, DB port,
+  and Grafana port must not rely on that same implicit safety net:
+  - Bind the published port to the **tailnet interface's address** explicitly
+    in the compose port mapping (e.g. `"${TAILSCALE_IP}:8443:8443"`, not a
+    bare `"8443:8443"`), so the service is unreachable from any other
+    interface even if the host firewall is misconfigured.
+  - The ingest process MUST **refuse to start** — exit non-zero at startup,
+    not silently accept unauthenticated requests — when its bearer-token
+    environment variable is unset or empty. This inverts the existing
+    `AR_*_AUTH_TOKEN=${VAR:-}` default-to-empty-and-run pattern deliberately;
+    do not copy that pattern for the new services.
 - **Least privilege for the poller token**: read-only Actions scope; prefer a
   fine-grained PAT or a GitHub App over a classic `admin:org` PAT. Note the
   standing warning that self-hosted runners on a **public** repo can run
-  fork-PR code (`tools/ci/rocm/README.md:330-335`); the metrics agent must not
-  widen that exposure (host-scoped, outbound-only, no inbound execution path).
+  fork-PR code (`tools/ci/rocm/README.md:330-335`).
+- **Correction: "outbound-only, no inbound execution path" does not, by
+  itself, protect the collector's push token from fork-PR code running on the
+  same host/account.** A malicious job checked out from a fork PR executes
+  with the same OS-level permissions as the runner's own account; if the
+  collector's bearer token is readable by that account (an environment
+  variable the shell inherits, or a token file the job's user can open), the
+  fork-PR job can read or exfiltrate it and forge metrics, regardless of which
+  direction the *collector's own* connections point. The mitigation is an
+  **isolation boundary between the token and the job's execution context**,
+  not the outbound-only property:
+  - Run the collector under a **separate OS identity** from the runner/job
+    process where the platform allows it (a dedicated service account on
+    Linux/systemd; a separate launchd service identity on macOS), with the
+    token file mode `600` and owned by that identity — mirroring how runner
+    `.env` files are already kept outside the checkout (§1.1).
+  - Where a separate identity is not available today (the container fleets
+    run the collector, the runner, and the job under converging container
+    boundaries), scope the token to the **narrowest possible capability**
+    (this ingest endpoint only, revocable, short-lived if the transport
+    supports rotation) so a leak's blast radius is bounded to forged metrics,
+    never to GitHub or infrastructure credentials.
+  - This is tracked as an explicit residual risk, not a solved problem, until
+    validated per host in §12; the design must not claim the exposure is
+    unwidened without stating the mitigation above.
 
 ### 5.8 Retention, resolution, and disk on the Mac Studio — Q7
 
@@ -609,6 +717,19 @@ Each is intended to be independently reviewable and mostly independently
 mergeable. They map onto the suggested ordering in the brief, refined by what the
 repo already provides.
 
+**Implementation status.** The pieces of tasks 1, 2, 5, and 6 that do not
+depend on the §9 human decisions (host inventory, store-engine confirmation,
+GitHub scope, Grafana exposure) have a first implementation under
+`tools/ci/fleet/` (see that directory's `README.md`), tested in
+`tools/tests/test_fleet_*.py`: process-tree attribution with the corrected
+non-residual `other` class, a `sqlite3`-backed version of the Appendix B
+schema with the idempotency keys this review added, GitHub-job metrics with
+the corrected `pre_start_latency`/`queue_wait` distinction, and the two
+read-only CLI verbs. Not yet implemented: the push transport, Docker-API
+attribution for a virtualized container runtime's processes, Grafana
+dashboards, and every control verb — each needs either a live target to
+validate against or an operator decision this document defers to §9.
+
 **Phase A — read-only visibility (the MVP, §6):**
 
 1. **Store service + schema.** Add Postgres(+TimescaleDB) and Grafana to the
@@ -622,14 +743,22 @@ repo already provides.
    keep `comm` basenames. Unit tests for the parser + attribution in
    `tools/tests/`. *No dependency (can emit JSONL before the store exists).*
 3. **Push transport.** Collector batches and POSTs to the ingest endpoint with
-   bearer auth; retry/backpressure; never log tokens. *Depends on 1.*
+   bearer auth; retry/backpressure; never log tokens. **Retries make this
+   transport at-least-once, so every batched row carries the natural key
+   declared in Appendix B and the ingest endpoint upserts (`INSERT ...
+   ON CONFLICT DO NOTHING`/`DO UPDATE`) rather than plain-inserts — a retried
+   batch after an ingest-side timeout must not double-count CPU/RSS in the
+   rollups.** *Depends on 1.*
 4. **Runner-state detection.** Cross-platform idle/busy + current-job via
    `Runner.Worker` presence and process tree; map `runner_name → host` via an
    operator manifest. *Depends on 2.*
-5. **GitHub job poller.** Pull runs+jobs, compute queue wait (with the
-   dependency-wait caveat of §5.4), per-label aggregates, and step breakdown;
-   reuse the `qa-cadence.sh` curl/jq/date patterns; handle pagination + rate
-   limits. Tests in `tools/tests/`. *Depends on 1.*
+5. **GitHub job poller.** Pull runs+jobs, compute `pre_start_latency` and
+   `is_entry_point` per §5.4's corrected definition, per-label aggregates, and
+   step breakdown; reuse the `qa-cadence.sh` curl/jq/date patterns; handle
+   pagination + rate limits. **The poller re-reads recent runs/jobs every
+   cycle, so `job_event`/`job_step` upserts on the primary/unique keys in
+   Appendix B — a naive insert would duplicate events and inflate queue and
+   utilization aggregates.** Tests in `tools/tests/`. *Depends on 1.*
 6. **CLI read verbs.** `list` and `status` reading the store (Python). *Depends
    on 1; useful once 3/5 populate data.*
 7. **Grafana dashboards.** Utilization per host/runner, queue wait per label,
@@ -700,11 +829,12 @@ repo already provides.
   size, so the *conclusions* are robust even though the *numbers* are estimates.
 - **Thermal availability** differs per host and per permission model (§5.9); it
   is best-effort, not guaranteed, on macOS without sudo.
-- **Greenfield assumption.** `workstream_context` shows no prior work on this
-  branch and there is no existing fleet-monitoring plan in `docs/plans/`, so I
-  treat this as greenfield — but the `consult` documentation backend was
-  unreachable during this session (degraded), so a design note I could not see is
-  a small residual risk.
+- **Greenfield assumption.** `grep -ril 'runner fleet' docs/plans/` finds only
+  this file, and earlier commits touching a `*RUNNER*`-named plan document
+  (e.g. the AMD/ROCm runner setup plan) are about installing an individual
+  fleet's runner, not about fleet-wide monitoring. Both checks are repeatable
+  by any maintainer against the checked-in history, independent of any
+  particular tool session.
 
 ---
 
@@ -720,16 +850,33 @@ From `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` (`.jobs[]`):
 
 ## Appendix B — proposed tables (sketch, not final)
 
+**Every table below declares its natural key explicitly, because the push
+transport (§8 task 3) is at-least-once and the GitHub poller (§8 task 5)
+re-reads the same runs/jobs every cycle — without a declared key, a retried
+push or a repeated poll duplicates rows and inflates every rollup the
+purchasing decision depends on.**
+
 ```
 host_sample(ts, host, cpu_pct, mem_used_mb, mem_total_mb, disk_used_gb,
-            disk_total_gb, load1, load5, load15, thermal_c, throttled)
-class_sample(ts, host, class /*runner|agent|other*/, cpu_pct, rss_mb)
+            disk_total_gb, load1, load5, load15, thermal_c, throttled,
+            PRIMARY KEY (ts, host))
+class_sample(ts, host, class /*runner|agent|other*/, cpu_pct, rss_mb,
+             PRIMARY KEY (ts, host, class))
 runner_state(ts, host, runner_name, labels, state /*idle|busy*/,
-             repo, workflow, job_id, agent_version)
-job_event(job_id, run_id, repo, name, labels, created_at, started_at,
-          completed_at, status, conclusion, runner_name, runner_group)
-job_step(job_id, number, name, started_at, completed_at, conclusion)
+             repo, workflow, job_id, agent_version,
+             PRIMARY KEY (ts, host, runner_name))
+job_event(job_id PRIMARY KEY, run_id, repo, name, labels, created_at,
+          started_at, completed_at, status, conclusion, runner_name,
+          runner_group, pre_start_latency_seconds, is_entry_point,
+          queue_wait_seconds /* nullable; populated only when is_entry_point
+          or a dependency-adjusted value has been derived, per §5.4 */)
+job_step(job_id, number, name, started_at, completed_at, conclusion,
+         UNIQUE (job_id, number))
 ```
+
+Every ingest path upserts on the declared key
+(`INSERT ... ON CONFLICT (...) DO UPDATE`, or the SQLite/Postgres equivalent)
+rather than plain-inserting, per the corrections in §8 tasks 3 and 5.
 
 Rollups (`*_1m`, `*_1h`) are continuous aggregates over `host_sample` /
 `class_sample`. No table holds a credential of any kind (§5.7).
