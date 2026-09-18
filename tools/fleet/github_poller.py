@@ -120,6 +120,11 @@ def _get_json(url: str, token: str) -> Dict:
 def fetch_runs(repo: str, token: str, per_page: int = PER_PAGE, max_pages: int = MAX_PAGES) -> List[Dict]:
     """Fetch recent workflow runs for *repo* (``owner/name``), paged.
 
+    Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
+    page is still coming back — silently returning at that point would hand
+    the caller a truncated list that looks complete. A caller that hits this
+    should raise *max_pages*, since there is more data than promised.
+
     Least-privilege note: *token* should be a read-only Actions-scoped
     credential, never logged or embedded in a returned error message.
     """
@@ -134,13 +139,21 @@ def fetch_runs(repo: str, token: str, per_page: int = PER_PAGE, max_pages: int =
         batch = payload.get("workflow_runs", [])
         runs.extend(batch)
         if len(batch) < per_page:
-            break
+            return runs
         page += 1
-    return runs
+    raise RuntimeError(
+        "workflow runs for %s exceeded max_pages=%d (%d per page); "
+        "raise max_pages to fetch the full list" % (repo, max_pages, per_page)
+    )
 
 
 def fetch_run_jobs(repo: str, run_id: str, token: str, per_page: int = PER_PAGE, max_pages: int = MAX_PAGES) -> List[Dict]:
-    """Fetch every job for one workflow run, paged."""
+    """Fetch every job for one workflow run, paged.
+
+    Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
+    page is still coming back, for the same reason as :func:`fetch_runs`:
+    silently stopping there would drop steps and metrics with no signal.
+    """
     jobs: List[Dict] = []
     page = 1
     while page <= max_pages:
@@ -154,6 +167,9 @@ def fetch_run_jobs(repo: str, run_id: str, token: str, per_page: int = PER_PAGE,
         batch = payload.get("jobs", [])
         jobs.extend(batch)
         if len(batch) < per_page:
-            break
+            return jobs
         page += 1
-    return jobs
+    raise RuntimeError(
+        "jobs for run %s exceeded max_pages=%d (%d per page); "
+        "raise max_pages to fetch the full list" % (run_id, max_pages, per_page)
+    )

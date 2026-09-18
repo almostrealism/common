@@ -26,6 +26,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from tools.fleet import collector
 
@@ -120,6 +121,164 @@ class LaunchctlListParsingTests(unittest.TestCase):
     def test_unregistered_label_yields_none(self):
         text = "1\t0\tcom.apple.something\n"
         self.assertIsNone(collector.parse_launchctl_list(text))
+
+
+class LaunchctlPrintParsingTests(unittest.TestCase):
+    """`launchctl print <domain>/<label>` addresses a specific launchd
+    domain explicitly - required when the collector runs under a separate
+    identity from the agent (a plain `launchctl list` only ever sees the
+    caller's own domain)."""
+
+    def test_running_service_pid_is_found(self):
+        text = "\n".join([
+            "gui/501/com.almostrealism.flowtree-agent = {",
+            "\tactive count = 1",
+            "\tpid = 5678",
+            "\tstate = running",
+            "}",
+        ])
+        self.assertEqual(collector.parse_launchctl_print(text), 5678)
+
+    def test_stopped_service_has_no_pid_line(self):
+        text = "\n".join([
+            "gui/501/com.almostrealism.flowtree-agent = {",
+            "\tstate = not running",
+            "}",
+        ])
+        self.assertIsNone(collector.parse_launchctl_print(text))
+
+    def test_discover_macos_agent_pid_uses_print_when_domain_target_given(self):
+        result = mock.Mock(stdout="\tpid = 42\n")
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=result) as run:
+            pid = collector.discover_macos_agent_pid(domain_target="gui/501")
+        self.assertEqual(pid, 42)
+        args = run.call_args[0][0]
+        self.assertEqual(args[:2], ["launchctl", "print"])
+        self.assertEqual(args[2], "gui/501/com.almostrealism.flowtree-agent")
+
+    def test_discover_macos_agent_pid_uses_list_when_no_domain_target(self):
+        result = mock.Mock(stdout="99\t0\tcom.almostrealism.flowtree-agent\n")
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=result) as run:
+            pid = collector.discover_macos_agent_pid()
+        self.assertEqual(pid, 99)
+        self.assertEqual(run.call_args[0][0], ["launchctl", "list"])
+
+
+class ProcStatCpuParsingTests(unittest.TestCase):
+    """Linux `/proc/stat` reports cumulative jiffies, not a percentage - two
+    snapshots must be subtracted to get a rate."""
+
+    def test_parses_busy_and_total_jiffies(self):
+        text = "cpu  100 0 50 850 0 0 0 0 0 0\ncpu0 100 0 50 850 0 0 0 0 0 0\n"
+        busy, total = collector.parse_proc_stat_cpu_line(text)
+        self.assertEqual(total, 1000)
+        self.assertEqual(busy, 150)
+
+    def test_missing_cpu_line_yields_none(self):
+        self.assertIsNone(collector.parse_proc_stat_cpu_line("nonsense\n"))
+
+    def test_cpu_pct_from_two_samples(self):
+        first = (150, 1000)
+        second = (200, 1100)
+        # busy delta 50 over total delta 100 = 50%.
+        self.assertAlmostEqual(collector.cpu_pct_from_proc_stat_samples(first, second), 50.0)
+
+    def test_cpu_pct_is_none_when_either_sample_missing(self):
+        self.assertIsNone(collector.cpu_pct_from_proc_stat_samples(None, (200, 1100)))
+        self.assertIsNone(collector.cpu_pct_from_proc_stat_samples((150, 1000), None))
+
+    def test_cpu_pct_is_none_when_total_did_not_advance(self):
+        self.assertIsNone(collector.cpu_pct_from_proc_stat_samples((150, 1000), (150, 1000)))
+
+
+class MacosTopCpuParsingTests(unittest.TestCase):
+
+    def test_parses_user_and_sys_percentages(self):
+        text = "CPU usage: 12.34% user, 3.45% sys, 84.21% idle\n"
+        self.assertAlmostEqual(collector.parse_macos_top_cpu_line(text), 12.34 + 3.45)
+
+    def test_missing_line_yields_none(self):
+        self.assertIsNone(collector.parse_macos_top_cpu_line("nothing here\n"))
+
+
+class ProcMeminfoParsingTests(unittest.TestCase):
+
+    def test_used_is_total_minus_available(self):
+        text = "MemTotal:       16777216 kB\nMemAvailable:    8388608 kB\n"
+        used_mb, total_mb = collector.parse_proc_meminfo(text)
+        self.assertAlmostEqual(total_mb, 16384.0)
+        self.assertAlmostEqual(used_mb, 8192.0)
+
+    def test_missing_fields_yield_none(self):
+        self.assertEqual(collector.parse_proc_meminfo("nothing here\n"), (None, None))
+
+
+class MacosVmStatParsingTests(unittest.TestCase):
+
+    def test_parses_page_size_and_pages_free(self):
+        text = "\n".join([
+            "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+            "Pages free:                               1000.",
+            "Pages active:                             2000.",
+        ])
+        self.assertEqual(collector.parse_macos_vm_stat(text), (4096, 1000))
+
+    def test_missing_header_yields_none(self):
+        text = "Pages free: 1000.\n"
+        self.assertIsNone(collector.parse_macos_vm_stat(text))
+
+    def test_missing_pages_free_yields_none(self):
+        text = "Mach Virtual Memory Statistics: (page size of 4096 bytes)\n"
+        self.assertIsNone(collector.parse_macos_vm_stat(text))
+
+
+class DiskUsageTests(unittest.TestCase):
+
+    def test_reports_used_and_total_for_an_existing_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            used_gb, total_gb = collector.collect_disk_usage(tmp)
+        self.assertIsNotNone(used_gb)
+        self.assertIsNotNone(total_gb)
+        self.assertGreater(total_gb, 0)
+        self.assertGreaterEqual(total_gb, used_gb)
+
+    def test_missing_path_yields_none(self):
+        used_gb, total_gb = collector.collect_disk_usage("/no/such/path/at/all")
+        self.assertIsNone(used_gb)
+        self.assertIsNone(total_gb)
+
+
+class BuildRecordHostMetricsTests(unittest.TestCase):
+    """`build_record` carries the host_sample counters (§schema) collected
+    independently of the ps-based process walk."""
+
+    def test_host_metrics_are_carried_through_when_supplied(self):
+        record = collector.build_record(
+            "2026-09-18T00:00:00Z", "mac-studio", PS_TEXT,
+            cpu_pct=12.5, mem_used_mb=1024.0, mem_total_mb=2048.0,
+            disk_used_gb=10.0, disk_total_gb=100.0,
+        )
+        self.assertEqual(record["host_metrics"], {
+            "cpu_pct": 12.5,
+            "mem_used_mb": 1024.0,
+            "mem_total_mb": 2048.0,
+            "disk_used_gb": 10.0,
+            "disk_total_gb": 100.0,
+            "thermal_c": None,
+            "throttled": None,
+        })
+
+    def test_host_metrics_default_to_none(self):
+        record = collector.build_record("2026-09-18T00:00:00Z", "mac-studio", PS_TEXT)
+        self.assertEqual(record["host_metrics"], {
+            "cpu_pct": None,
+            "mem_used_mb": None,
+            "mem_total_mb": None,
+            "disk_used_gb": None,
+            "disk_total_gb": None,
+            "thermal_c": None,
+            "throttled": None,
+        })
 
 
 if __name__ == "__main__":

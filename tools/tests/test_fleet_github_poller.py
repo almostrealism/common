@@ -25,8 +25,9 @@ Run with:
 """
 
 import unittest
+from unittest import mock
 
-from tools.fleet.github_poller import compute_job_metrics
+from tools.fleet.github_poller import compute_job_metrics, fetch_run_jobs, fetch_runs
 
 
 class ComputeJobMetricsTests(unittest.TestCase):
@@ -82,6 +83,44 @@ class ComputeJobMetricsTests(unittest.TestCase):
         metrics = compute_job_metrics(job, needs=[])
         self.assertIsNone(metrics["pre_start_latency_seconds"])
         self.assertIsNone(metrics["queue_wait_seconds"])
+
+
+class FetchRunsPaginationTests(unittest.TestCase):
+    """`fetch_runs`/`fetch_run_jobs` must fetch every page or raise - never
+    silently return a truncated list once `max_pages` is reached."""
+
+    def test_fetch_runs_collects_every_page_below_the_cap(self):
+        pages = [
+            {"workflow_runs": [{"id": 1}, {"id": 2}]},
+            {"workflow_runs": [{"id": 3}]},
+        ]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            runs = fetch_runs("acme/repo", "tok", per_page=2, max_pages=5)
+        self.assertEqual([r["id"] for r in runs], [1, 2, 3])
+
+    def test_fetch_runs_raises_when_max_pages_exhausted_with_a_full_page(self):
+        """A run of full pages all the way to max_pages means there may be
+        more data beyond the cap - returning silently would misrepresent a
+        truncated list as complete."""
+        pages = [{"workflow_runs": [{"id": 1}, {"id": 2}]} for _ in range(3)]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            with self.assertRaises(RuntimeError):
+                fetch_runs("acme/repo", "tok", per_page=2, max_pages=3)
+
+    def test_fetch_run_jobs_collects_every_page_below_the_cap(self):
+        pages = [
+            {"jobs": [{"id": 1}, {"id": 2}]},
+            {"jobs": [{"id": 3}]},
+        ]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            jobs = fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=5)
+        self.assertEqual([j["id"] for j in jobs], [1, 2, 3])
+
+    def test_fetch_run_jobs_raises_when_max_pages_exhausted_with_a_full_page(self):
+        pages = [{"jobs": [{"id": 1}, {"id": 2}]} for _ in range(2)]
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=pages):
+            with self.assertRaises(RuntimeError):
+                fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=2)
 
 
 if __name__ == "__main__":
