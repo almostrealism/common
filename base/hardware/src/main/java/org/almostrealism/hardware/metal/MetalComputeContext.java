@@ -76,7 +76,15 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	private static final OperationMetadata BLIT_COPY =
 			new OperationMetadata("mtlBlitCopy", "Metal blit copy");
 
-	/** Standard Metal Shading Language includes prepended to every compiled kernel. */
+	/**
+	 * Standard Metal Shading Language includes prepended to every compiled kernel.
+	 *
+	 * <p>Kernels are compiled with fast math (see {@code MTL.cpp}), under which the plain
+	 * {@code metal::tanh} evaluates through an exponential that overflows for arguments beyond
+	 * roughly 44 in magnitude, returning NaN where the true value is &plusmn;1. The precise variant
+	 * is selected for {@code tanh} so that saturating activations stay finite for every input,
+	 * matching the native backends.</p>
+	 */
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
 									"using metal::max;\n" +
@@ -91,7 +99,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::cos;\n" +
 									"using metal::acos;\n" +
 									"using metal::tan;\n" +
-									"using metal::tanh;\n";
+									// TODO(review): only tanh is precise; audit whether the other fast-math functions above (exp, log, pow, tan) need the same treatment
+									"using metal::precise::tanh;\n";
 
 	/** The primary Metal device used for kernel compilation and execution. */
 	private MTLDevice mainDevice;

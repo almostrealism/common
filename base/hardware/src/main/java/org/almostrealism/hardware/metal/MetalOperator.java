@@ -168,17 +168,27 @@ public class MetalOperator extends HardwareOperator {
 	 *
 	 * <p>If {@link #enableDispatchThreadgroups} is enabled, returns {@code [workgroupSize, 1, 1]}.
 	 * Otherwise, splits workgroup size across X and Y dimensions based on SIMD width:
-	 * {@code [simdWidth, workgroupSize/simdWidth, 1]}.</p>
+	 * {@code [simdWidth, workgroupSize/simdWidth, 1]}. A workgroup narrower than one SIMD group
+	 * (which {@link #getWorkgroupSize()} produces for small work sizes that are not multiples of
+	 * the SIMD width, such as 144 or 216) cannot be split this way: its height would be zero,
+	 * which is not a valid threadgroup, so it is dispatched one-dimensional as
+	 * {@code [workgroupSize, 1, 1]} instead.</p>
 	 *
 	 * @return 3-element array of [width, height, depth] dimensions
 	 */
 	public int[] getWorkgroupDimensions() {
+		int workgroupSize = getWorkgroupSize();
+
 		if (enableDispatchThreadgroups) {
-			return new int[] { getWorkgroupSize(), 1, 1 };
-		} else {
-			int simdWidth = kernel.threadExecutionWidth();
-			return new int[]{simdWidth, getWorkgroupSize() / simdWidth, 1};
+			return new int[] { workgroupSize, 1, 1 };
 		}
+
+		int simdWidth = kernel.threadExecutionWidth();
+		if (workgroupSize < simdWidth) {
+			return new int[] { workgroupSize, 1, 1 };
+		}
+
+		return new int[] { simdWidth, workgroupSize / simdWidth, 1 };
 	}
 
 	/**
