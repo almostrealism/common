@@ -110,10 +110,17 @@ public class HeadGroupConfig {
 	 *
 	 * @param headsPerKvGroup number of query heads served by each KV head
 	 * @return the group's key/value-side configuration
-	 * @throws IllegalArgumentException if the group's heads do not divide into whole KV heads
+	 * @throws IllegalArgumentException if {@code headsPerKvGroup} is not positive, is larger
+	 *         than the group's head count, or the group's heads do not divide into whole KV heads
 	 */
 	public HeadGroupConfig forKvHeads(int headsPerKvGroup) {
-		if (headCount % headsPerKvGroup != 0) {
+		if (headsPerKvGroup <= 0) {
+			throw new IllegalArgumentException("Heads served per KV head must be positive, not "
+					+ headsPerKvGroup);
+		} else if (headsPerKvGroup > headCount) {
+			throw new IllegalArgumentException("A group of " + headCount
+					+ " heads cannot serve KV heads with a ratio of " + headsPerKvGroup);
+		} else if (headCount % headsPerKvGroup != 0) {
 			throw new IllegalArgumentException("A group of " + headCount
 					+ " heads does not divide into KV heads serving " + headsPerKvGroup + " each");
 		}

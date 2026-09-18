@@ -22,6 +22,12 @@ layer repeat_rows(rows: int, size: int, n: int) -> [rows, size] {
     repeat_each(n)
 }
 
+/** repeat_each(1) must reject a non-[rows, size] shape on its pass-through fast path too. */
+layer repeat_each_one_after_split(heads: int, head_size: int) -> [heads, head_size / 2, 2] {
+    split_half_rope(heads, head_size)
+    repeat_each(1)
+}
+
 /** A caller-owned [rows, size] cache that write_row fills one row per forward pass. */
 state row_cache_state {
     row_cache: weight

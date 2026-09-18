@@ -240,6 +240,36 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
+	 * {@code attentionArguments(...)} rejects a KV head count that does not evenly divide
+	 * the query head count, and a non-positive KV head count, before the asset's PDSL layer
+	 * ever computes {@code heads / kv_heads} for the GQA {@code repeat_each} stage: a silent
+	 * integer-division truncation there would build a cache-mismatched block instead of
+	 * failing at construction time, and a zero KV head count would reach the division as an
+	 * uncaught {@link ArithmeticException} instead of the documented rejection.
+	 */
+	@Test(timeout = 60000)
+	public void attentionArgumentsRejectsInvalidGqaHeadRatio() {
+		Weights w = new Weights(3, 2, 4, false, false, 47L);
+		PackedCollection position = new PackedCollection(shape(1));
+
+		try {
+			attentionArguments(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON);
+			Assert.fail("attentionArguments() should reject a query head count not divisible by the KV head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			attentionArguments(w.heads, 0, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON);
+			Assert.fail("attentionArguments() should reject a non-positive KV head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Grouped-query attention with projection biases: four query heads served by two KV
 	 * heads, so the cache write depends on the per-head duplication of keys and values.
 	 */

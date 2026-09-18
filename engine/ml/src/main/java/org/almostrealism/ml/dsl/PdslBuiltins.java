@@ -388,7 +388,13 @@ final class PdslBuiltins {
 		}
 		int n = toInt(args.get(0));
 		if (n == 1) {
-			return FEATURES::passThrough;
+			return inputShape -> {
+				if (inputShape.getDimensions() != 2) {
+					throw new PdslParseException(
+							"repeat_each() expects a [rows, size] input shape, got " + inputShape);
+				}
+				return FEATURES.passThrough(inputShape);
+			};
 		}
 		return inputShape -> FEATURES.repeatEach(inputShape, n);
 	}

@@ -109,6 +109,23 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 	}
 
 	/**
+	 * The {@code repeat_each(1)} pass-through fast path must apply the same
+	 * {@code [rows, size]} shape check as the general case: a copy count of one does not
+	 * exempt the input from the contract every other copy count enforces.
+	 */
+	@Test(timeout = 60000)
+	public void repeatEachOnePassThroughRejectsNonRowsSizeShape() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.buildLayer(loader.parse(fixture()), "repeat_each_one_after_split",
+					shape(1, 2 * 4), args("heads", 2, "head_size", 4));
+			Assert.fail("repeat_each(1) should reject a non-[rows, size] input shape");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Both {@link org.almostrealism.layers.LayerFeatures#repeatEach} overloads reject shapes
 	 * that would make the duplication ambiguous or silently mismatched: a non-2-D input, fewer
 	 * than one copy, a run length the input does not divide into evenly, and an output that
@@ -296,6 +313,40 @@ public class AttentionPrimitivesTest extends TestSuiteBase implements AttentionF
 		HeadGroupConfig[] kvGroups = HeadGroupConfig.forKvHeads(groups, 2);
 		Assert.assertEquals("first group covers 3 KV heads", 3, kvGroups[0].headCount);
 		Assert.assertEquals("second group covers 2 KV heads", 2, kvGroups[1].headCount);
+	}
+
+	/**
+	 * {@link HeadGroupConfig#forKvHeads(int)} rejects a non-positive ratio before the
+	 * modulo/division reaches it (a zero ratio would otherwise throw {@link ArithmeticException}
+	 * rather than the documented {@link IllegalArgumentException}), and rejects a ratio larger
+	 * than the group's head count, which would otherwise silently cover zero KV heads.
+	 */
+	@Test(timeout = 60000)
+	public void headGroupConfigForKvHeadsRejectsNonPositiveOrOversizedRatio() {
+		Producer<PackedCollection> position = p(new PackedCollection(shape(1)));
+		CollectionProducer freqCis = cp(new PackedCollection(shape(4, 2, 2)));
+		HeadGroupConfig group = new HeadGroupConfig(6, freqCis, position);
+
+		try {
+			group.forKvHeads(0);
+			Assert.fail("forKvHeads should reject a zero headsPerKvGroup");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			group.forKvHeads(-1);
+			Assert.fail("forKvHeads should reject a negative headsPerKvGroup");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			group.forKvHeads(7);
+			Assert.fail("forKvHeads should reject a headsPerKvGroup larger than the group's head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 
 	/**
