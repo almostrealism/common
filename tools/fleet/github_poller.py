@@ -259,12 +259,11 @@ def poll_and_store(repo: str, token: str, store: FleetStore) -> int:
 
     Returns the number of job_event rows upserted.
     """
-    # TODO(review): every call re-fetches and re-upserts *all* runs/jobs
-    # fetch_runs returns (idempotent, but not bounded to what changed since
-    # the last poll). Fine while run history is small; once it grows this
-    # risks exceeding the "a few dozen requests per poll" budget in
-    # docs/plans/RUNNER_FLEET_MONITORING.md §5.4. Needs a since/cursor param
-    # or a run-status filter — a design decision, not a one-line fix.
+    # Every call re-fetches and re-upserts *all* runs/jobs fetch_runs
+    # returns (idempotent, but not bounded to what changed since the last
+    # poll). Fine while run history is small; once it grows this risks
+    # exceeding a modest per-poll request budget. Needs a since/cursor
+    # param or a run-status filter — a design decision, not a one-line fix.
     jobs_stored = 0
     for run in fetch_runs(repo, token):
         run_id = str(run.get("id"))

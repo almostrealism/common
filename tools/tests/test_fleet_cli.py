@@ -23,6 +23,10 @@ Run with:
     python -m unittest discover -v -s tools/tests -p "test_fleet_cli.py"
 """
 
+import contextlib
+import io
+import os
+import tempfile
 import unittest
 
 from tools.fleet import cli
@@ -80,6 +84,41 @@ class FleetCliTests(unittest.TestCase):
         args = parser.parse_args(["list", "--host", "mac-studio"])
         self.assertEqual(args.command, "list")
         self.assertEqual(args.host, "mac-studio")
+
+
+class MainEntryPointTests(unittest.TestCase):
+    """Drive ``cli.main`` itself (not just the ``run_*``/formatting helpers
+    the other tests exercise), so the argument parsing, file-backed store
+    lifecycle, and stdout wiring that only ``main`` performs are covered
+    too."""
+
+    def test_main_runs_list_command_against_a_file_backed_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "fleet.db")
+            store = FleetStore(db_path)
+            store.init_schema()
+            store.upsert_runner_state(
+                "2026-09-18T00:00:00Z", "mac-studio", "runner-1",
+                state="busy", job_id="job-1",
+            )
+            store.close()
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["--db", db_path, "list"])
+            self.assertEqual(exit_code, 0)
+            self.assertIn("runner-1", buf.getvalue())
+            self.assertIn("busy", buf.getvalue())
+
+    def test_main_runs_status_command_and_initializes_schema_on_a_fresh_db(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "fleet.db")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["--db", db_path, "status"])
+            self.assertEqual(exit_code, 0)
+            self.assertIn("No utilization data recorded", buf.getvalue())
+            self.assertTrue(os.path.exists(db_path))
 
 
 if __name__ == "__main__":
