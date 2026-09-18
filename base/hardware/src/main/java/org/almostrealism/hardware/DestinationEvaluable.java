@@ -381,13 +381,15 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} chains
-	 * {@code dependsOn} into the accelerated operation's own dispatch and never blocks
-	 * on it directly.</p>
+	 * <p>Always {@code false}: {@link #request(Object[], Semaphore, Consumer)} calls
+	 * {@link AcceleratedProcessDetails#awaitReady()} before returning, which blocks the
+	 * calling thread while argument preparation is still pending. Submitting this to a
+	 * bounded, shared executor risks starving or deadlocking it; it must instead be
+	 * requested on a dedicated thread.</p>
 	 */
 	@Override
 	public boolean isSharedExecutorSafe() {
-		return true;
+		return false;
 	}
 
 	/**

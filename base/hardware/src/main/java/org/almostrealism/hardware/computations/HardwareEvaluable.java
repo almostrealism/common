@@ -417,14 +417,18 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Always {@code true}: the kernel path chains {@code dependsOn} into the
-	 * provider without blocking, and the short-circuit/non-chaining fallbacks in
-	 * {@link #request(Object[], Semaphore, Consumer)} only ever wait on {@code
-	 * dependsOn} itself, never on this evaluable's own dispatch.</p>
+	 * <p>Always {@code false}: {@link #request(Object[], Semaphore, Consumer)} can still
+	 * block the calling thread. The short-circuit path waits on {@code dependsOn} directly,
+	 * the non-chaining fallback does the same, and the kernel path's delegation to the
+	 * underlying {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)} blocks
+	 * whenever that implementation waits for its own dispatch to be issued (as {@code
+	 * org.almostrealism.hardware.AcceleratedComputationEvaluable#request(Object[], Semaphore,
+	 * Consumer)} does via {@code awaitReady()}). Submitting this to a bounded, shared executor
+	 * risks starving or deadlocking it; it must instead be requested on a dedicated thread.</p>
 	 */
 	@Override
 	public boolean isSharedExecutorSafe() {
-		return true;
+		return false;
 	}
 
 	/**
