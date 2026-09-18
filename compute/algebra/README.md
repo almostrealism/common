@@ -401,6 +401,10 @@ CollectionProducer traversed = traverse(1, myProducer);
 
 // Reshape
 CollectionProducer reshaped = reshape(shape(200, 30), myProducer);
+
+// Expand one value per position along a non-batch axis to a whole batched shape,
+// repeating it across every other axis so it combines element-wise with that shape
+CollectionProducer expanded = broadcast(shape(batch, seqLen, dim), 1, perPositionValues);
 ```
 
 #### Arithmetic Factory Methods
