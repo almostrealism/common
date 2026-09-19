@@ -39,7 +39,6 @@ import org.almostrealism.raytrace.LightingEngineAggregator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.texture.Texture;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -148,13 +147,8 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		
 		p.addReflection();
 		
-		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>();
-		allSurfaces.add(p.getSurface());
-		for (int i = 0; i < p.getOtherSurfaces().length; i++) { allSurfaces.add(p.getOtherSurfaces()[i]); }
-		
-		List<Light> allLights = new ArrayList<>();
-		allLights.add(p.getLight());
-		for (Light l : p.getOtherLights()) { allLights.add(l); }
+		Iterable<Curve<PackedCollection>> allSurfaces = (Iterable<Curve<PackedCollection>>) p.getAllSurfaces();
+		List<Light> allLights = p.getAllLights();
 
 		Producer<PackedCollection> r = getReflectiveColor();
 		if (size() > 0) {
