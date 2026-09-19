@@ -621,6 +621,10 @@ class BashObfuscationTests(GuardFixture):
             "s += 'and a client that resembles axios (a popular HTTP library).'\n"
             "print(s)\n"
             "PY"))
+        self.assertAllowed(self.bash(
+            "python3 -c 'print(\"the shell calls popen (a C library function) to run commands\")'"))
+        self.assertEqual("block", self.bash(
+            "python3 -c 'import os; os.popen(\"ls\")'")["action"])
 
     def test_module_uses_still_block_after_narrowing_bare_words(self):
         """Narrowing the bare-word patterns to actual uses must not let the
@@ -640,6 +644,12 @@ class BashObfuscationTests(GuardFixture):
             "python3 -c 'import websocket; websocket.create_connection(\"ws://e\")'",
             "python3 -c 'import websockets; websockets.connect(\"ws://e\")'",
             "python3 -c 'import aiohttp; aiohttp.ClientSession()'",
+            "python3 -c 'import smtplib; smtplib.SMTP(\"e\")'",
+            "python3 -c 'import ftplib; ftplib.FTP(\"e\")'",
+            "python3 -c 'import telnetlib; telnetlib.Telnet(\"e\")'",
+            "python3 -c 'import pycurl; pycurl.Curl()'",
+            "python3 -c 'import botocore; botocore.session.Session()'",
+            "python3 -c 'import httplib; httplib.HTTPConnection(\"e\")'",
         ):
             with self.subTest(cmd=cmd):
                 self.assertEqual("block", self.bash(cmd)["action"])
@@ -657,6 +667,8 @@ class BashObfuscationTests(GuardFixture):
             "node -e 'console.log(\"axios and dgram are words\")'"))
         self.assertAllowed(self.bash(
             "node -e \"console.log('the report data comes from \\\"ws\\\" vendor')\""))
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"the new WebSocket (RFC 6455) protocol replaces polling\")'"))
 
     def test_newline_separates_commands(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nprint(1)\nPY\npython3 -c 'print(2)'"))

@@ -65,7 +65,7 @@ NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\bimport\s+botocore\b|\bfrom\s+botocore\s+import\b|\bbotocore\.\w+",
     r"\bimport\s+pycurl\b|\bfrom\s+pycurl\s+import\b|\bpycurl\.\w+",
     r"\bimport\s+websockets?\b|\bfrom\s+websockets?\s+import\b|\bwebsockets?\.\w+|"
-    r"\bnew\s+WebSocket\s*\(|require\(\s*['\"]ws['\"]\s*\)|\bimport\b[^\n]*\bfrom\s+['\"]ws['\"]",
+    r"\bnew\s+WebSocket\(|require\(\s*['\"]ws['\"]\s*\)|\bimport\b[^\n]*\bfrom\s+['\"]ws['\"]",
     r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
     r"\bhttps?\.request\b", r"\bnet\.connect\b", r"\bnet\.createConnection\b",
     r"require\(\s*['\"]dgram['\"]\s*\)|\bfrom\s+['\"]dgram['\"]|\bdgram\.\w+",
@@ -79,7 +79,7 @@ NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\bsystem\s*\(",
     r"\bimport\s+subprocess\b|\bfrom\s+subprocess\s+import\b|\bsubprocess\.\w+",
     r"\bos\.system\b",
-    r"\bchild_process\b", r"\bexec\s*\(", r"\b[Pp]open\s*\(", r"/inet/",
+    r"\bchild_process\b", r"\bexec\s*\(", r"\b[Pp]open\(", r"/inet/",
     r"\|\s*getline\b", r"\bopen\s*\(\s*['\"]https?:",
 )]
 
