@@ -35,6 +35,12 @@
 #     /private/var/root, held to root-only ownership, mode and ACL, with any
 #     inherited ACL stripped) before anything reads it, so what is validated is what gets
 #     installed, and nothing can be swapped in between.
+#   - The plist speaks for its owner and for nobody else, so it must be
+#     writable by root and the owner alone: the file and every directory
+#     above it are held to the same ownership, mode and ACL checks as this
+#     script's own path, with the owner in the administrator's place. A
+#     group-writable home directory fails that, because every member of the
+#     group could otherwise hand root a definition to run as the owner.
 #   - The daemon must run as the account that owns the plist, with that
 #     account's primary group: UserName is required and must name the owner,
 #     GroupName if present must be the owner's primary group, and the owner
@@ -144,19 +150,21 @@ acl_allows() {
     ls -lde "$1" | awk -v rights="$2" 'NR > 1 && $3 == "allow" && $4 ~ ("(^|,)(" rights ")(,|$)")'
 }
 
-# Fails unless the path is a trusted component — owned by root or the
-# administrator, not writable by anyone else, by mode or by ACL, and not a
-# symlink; the reason is printed.
-trusted_path() {
-    local path="$1" owner mode acl
+# Fails unless the path can be changed only by root and the given uid —
+# owned by one of the two, not writable by anyone else by mode or by ACL,
+# and not a symlink; the reason is printed. With the administrator's uid
+# this is what makes a component of the script's path trustworthy; with the
+# plist owner's uid, what makes the plist theirs and nobody else's.
+writable_only_by() {
+    local uid="$1" path="$2" owner mode acl
     if [ -L "${path}" ]; then
         echo "${path} is a symlink" >&2
         return 1
     fi
     owner="$(stat -f '%u' "${path}")"
     mode="$(stat -f '%Lp' "${path}")"
-    if [ "${owner}" != "0" ] && [ "${owner}" != "${ADMIN_UID}" ]; then
-        echo "${path} is owned by uid ${owner}, not root or the invoking administrator" >&2
+    if [ "${owner}" != "0" ] && [ "${owner}" != "${uid}" ]; then
+        echo "${path} is owned by uid ${owner}, not root or uid ${uid}" >&2
         return 1
     fi
     if [ $(( 8#${mode} & 8#022 )) -ne 0 ]; then
@@ -168,6 +176,10 @@ trusted_path() {
         echo "${path} has an ACL entry granting write access:${acl}" >&2
         return 1
     fi
+}
+
+trusted_path() {
+    writable_only_by "${ADMIN_UID}" "$1"
 }
 
 # Stricter: root's and nobody else's — owner root, no group or world bits at
@@ -200,20 +212,21 @@ root_only_path() {
 # split on "/" alone — a component containing spaces is one component — so
 # what is checked is exactly what the kernel will open.
 check_path_components() {
-    local check="$1" path="$2" prefix="" component
+    local path="$1" prefix="" component
+    shift
     local -a components
     IFS='/' read -r -a components <<< "${path#/}"
-    "${check}" / || return 1
+    "$@" / || return 1
     for component in "${components[@]}"; do
         prefix="${prefix}/${component}"
-        "${check}" "${prefix}" || return 1
+        "$@" "${prefix}" || return 1
     done
 }
 
 # The path as invoked (logical, so a symlinked component is seen as one and
 # refused, rather than resolved to wherever it points at this moment).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)/$(basename "${BASH_SOURCE[0]}")"
-if ! check_path_components trusted_path "${SELF}"; then
+if ! check_path_components "${SELF}" trusted_path; then
     echo "ERROR: refusing to run from ${SELF}." >&2
     echo "  Root must not execute a file the service account can edit or replace, and" >&2
     echo "  every directory on the way to it counts. Run this script from a checkout" >&2
@@ -231,7 +244,7 @@ fi
 
 # The directories above the staging root need only be trusted (root-owned,
 # nobody else may write); the root itself must be root's alone.
-if ! check_path_components trusted_path "$(dirname "${STAGING_ROOT}")" \
+if ! check_path_components "$(dirname "${STAGING_ROOT}")" trusted_path \
    || ! root_only_path "${STAGING_ROOT}"; then
     echo "ERROR: ${STAGING_ROOT} is not a root-only directory on a trusted path; refusing to stage there." >&2
     exit 1
@@ -246,6 +259,22 @@ OWNER_NAME="$(id -un "${OWNER_UID}")"
 OWNER_GROUP="$(id -gn "${OWNER_UID}")"
 if [ "${OWNER_UID}" = "0" ]; then
     echo "ERROR: ${SOURCE} is owned by root; this script registers services for service accounts." >&2
+    exit 1
+fi
+
+# The plist is trusted to speak for its owner and for nobody else. That
+# holds only if no other account can edit it or swap it in — the file and
+# every directory above it must be writable by root and the owner alone.
+# A home directory that is group-writable fails this, and rightly: every
+# member of the group could then hand root a definition to run as the
+# owner.
+SOURCE_ABS="$(cd "$(dirname "${SOURCE}")" && pwd -L)/$(basename "${SOURCE}")"
+if ! check_path_components "${SOURCE_ABS}" writable_only_by "${OWNER_UID}"; then
+    echo "ERROR: ${SOURCE} can be changed by an account other than root and ${OWNER_NAME}; refusing to register it." >&2
+    echo "  Every directory from / down to the plist must be owned by root or ${OWNER_NAME}, have no group" >&2
+    echo "  or world write bit and no write-granting ACL entry, and not be a symlink. For a" >&2
+    echo "  group-writable home directory the fix is, as an administrator:" >&2
+    echo "    sudo chmod g-w $(dirname "${SOURCE_ABS}" | sed 's|^\(/Users/[^/]*\).*|\1|')" >&2
     exit 1
 fi
 

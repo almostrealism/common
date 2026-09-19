@@ -523,7 +523,13 @@ The plist is worker's, and it is treated that way. `register-daemon.sh`
 as its first argument — you say which service you are registering, and the
 plist must carry exactly that `Label`; it cannot name some other daemon on
 the host and have you boot that out and overwrite it, and the label must be
-under `com.almostrealism.`, so no system service can be named at all. It
+under `com.almostrealism.`, so no system service can be named at all. The
+plist speaks for its owner and for nobody else, so it must be writable by
+root and the owner alone: the file and every directory above it get the
+same ownership, mode and ACL checks as the script's own path, with worker
+in your place. **A group-writable home directory fails this** — every
+member of the group could otherwise hand root a definition to run as worker
+— and the fix is `sudo chmod g-w /Users/worker`. It then
 copies the plist into a fresh directory only root can enter (under
 `/private/var/root` — checked to be root's alone by ownership, mode and ACL,
 with any inherited ACL stripped from the new directory — not the inherited
@@ -655,9 +661,12 @@ tail -f ~worker/flowtree-agent/logs/agent.log
 
 The job fails unless the new process is running **and** holds a connection to
 the controller port within three minutes, so a green run means the agent is
-actually on the network, not merely started. A redeploy identifies the new
-process by pid — it must differ from the one that was signalled — so a JVM
-that ignores the restart cannot pass as the new one.
+actually on the network, not merely started. A redeploy identifies the
+process it stopped by pid *and* start time, and accepts the service's
+process as new only when that identity differs — a JVM that ignores the
+restart cannot pass as the new one, and a replacement that happens to be
+handed the same pid number is still recognised as new. The same identity
+gates every signal the restart sends, so a reused pid is never signalled.
 
 You can run `install.sh` by hand as worker from a checkout to do the same
 thing outside CI — it is the whole deployment, not a helper the workflow wraps.

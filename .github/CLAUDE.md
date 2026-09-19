@@ -524,7 +524,8 @@ validates that the worker-written plist runs the service as worker and nothing
 else, and waits for a replaced service to stop
 before loading the new definition), when the daemon is not registered or the registered copy
 differs from the rendered one. The job also fails unless the new agent process
-— identified by a pid different from the one signalled — holds a connection to
+— identified by process identity, pid plus start time, so it is a different
+process from the one signalled even if it received the same pid number — holds a connection to
 the controller port; there is no controller endpoint listing connected agents,
 so that check is made from the agent's side with `lsof`.
 
