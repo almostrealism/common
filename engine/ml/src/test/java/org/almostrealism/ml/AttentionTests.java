@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.MonitorReceptor;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -90,6 +91,54 @@ public class AttentionTests extends TestSuiteBase implements TransformerBlockFea
 
 				log("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
 				assertEquals(score, att.valueAt(h, t));
+			}
+		}
+	}
+
+	/**
+	 * {@code attentionKeys()} must tile the query across every cached row even when the head
+	 * count equals the sequence length: with a {@code (heads, headSize)} query multiplied
+	 * directly against a {@code (seqLength, heads, headSize)} cache, the broadcast matches
+	 * leading dimensions instead of repeating the whole query, so each query element would be
+	 * spread across a run of cache elements rather than every query being dotted with every
+	 * cached row. Repeating the query explicitly before the multiply (as {@code attentionKeys}
+	 * now does) avoids that collision.
+	 */
+	@Test(timeout = 120000)
+	public void attentionKeysWithHeadsEqualToSequenceLength() {
+		int seqLength = 4;
+		int heads = 4;
+		int headSize = 8;
+
+		TraversalPolicy inputShape = shape(heads, headSize);
+		TraversalPolicy keyShape = shape(seqLength, heads, headSize);
+
+		PackedCollection q = new PackedCollection(inputShape);
+		PackedCollection keyCache = new PackedCollection(keyShape);
+
+		q.randFill();
+		keyCache.randFill();
+
+		CellularLayer layer = attentionKeys(inputShape, p(keyCache));
+
+		Model model = new Model(inputShape);
+		model.add(layer);
+		CompiledModel compiled = model.compile();
+		PackedCollection actual = compiled.forward(q);
+
+		for (int h = 0; h < heads; h++) {
+			for (int t = 0; t < seqLength; t++) {
+				double score = 0.0;
+
+				for (int i = 0; i < headSize; i++) {
+					score += q.valueAt(h, i) * keyCache.valueAt(t, h, i);
+				}
+
+				score /= Math.sqrt(headSize);
+
+				log("attentionKeysWithHeadsEqualToSequenceLength[" + h + "," + t + "]: "
+						+ score + " vs " + actual.valueAt(h, t));
+				assertEquals(score, actual.valueAt(h, t));
 			}
 		}
 	}

@@ -283,6 +283,7 @@ Configuration is split by what it governs:
 | `RUNNER_PREFIX` | `amd-halo` | Runners register as `<prefix>-1`, `<prefix>-2`, … |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `ROCM_OPENCL_LIB` | `/opt/rocm/lib/opencl/libamdocl64.so` | Absolute path baked into the ICD at build time |
+| `RUNNER_VERSION` | *(resolved from the GitHub API at build time)* | GitHub Actions agent release to bake into the image; pin to reproduce a specific build |
 
 Set in `ar-ci-cl-runner@.container` rather than `.env`, because systemd unit
 files do not interpolate environment variables into these fields. The limits are
