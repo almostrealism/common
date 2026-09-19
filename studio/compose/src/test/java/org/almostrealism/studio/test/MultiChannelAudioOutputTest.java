@@ -81,4 +81,20 @@ public class MultiChannelAudioOutputTest extends TestSuiteBase {
 			Assert.assertNull(out.getStem(0, ChannelInfo.StereoChannel.RIGHT));
 		}
 	}
+
+	/**
+	 * When measure monitoring is disabled, {@link MultiChannelAudioOutput#getMeasures}
+	 * must return an empty list rather than dereferencing the absent backing map, so
+	 * callers that build a destination list (e.g. {@code MixdownManager.createEfx}'s
+	 * {@code disableClean} branch) don't fail before reaching the null-filtering
+	 * Receptor factories.
+	 */
+	@Test(timeout = 60000)
+	public void measuresInactiveReturnsEmptyList() {
+		try (WaveOutput master = output(false)) {
+			MultiChannelAudioOutput out = new MultiChannelAudioOutput(master);
+			Assert.assertFalse(out.isMeasuresActive());
+			Assert.assertTrue(out.getMeasures(ChannelInfo.StereoChannel.LEFT).isEmpty());
+		}
+	}
 }

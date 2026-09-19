@@ -35,6 +35,7 @@ import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -123,5 +124,96 @@ public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, 
 				WaveData.load(testAudio1),
 				WaveData.load(testAudio2));
 		run("mixdown1", time, mixdown, cells);
+	}
+
+	/**
+	 * Builds a {@link MixdownManager} wired the same way as {@link #mixdown1()},
+	 * for use by the mono-output regression tests below.
+	 */
+	private MixdownManager mono(GlobalTimeManager time, ProjectedGenome genome, int params) {
+		AutomationManager automation = new AutomationManager(
+				genome.addChromosome(), time.getClock(), () -> 1.0, sampleRate);
+		MixdownManager mixdown = new MixdownManager(genome.addChromosome(), 2, 3,
+										automation, time.getClock(), sampleRate);
+		mixdown.setReverbChannels(List.of(0, 1));
+		genome.assignTo(new PackedCollection(params).randFill());
+		return mixdown;
+	}
+
+	/**
+	 * A mono {@link MultiChannelAudioOutput} exposes no master receptor for the
+	 * RIGHT stereo channel. Building the EFX graph for that channel must not throw,
+	 * even though {@link MixdownManager#createEfx} feeds {@code output.getMaster}
+	 * into every one of its Receptor delivery sites.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(1)
+	public void efxRoutingWithMonoOutput() throws IOException {
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableReverb = true;
+		// Transmission delay lines allocate large native buffers sized from
+		// per-gene delay durations; disabled here since this test targets
+		// Receptor null-filtering, not the delay network.
+		MixdownManager.enableTransmission = false;
+		MixdownManager.enableWetInAdjustment = true;
+		MixdownManager.enableMasterFilterDown = true;
+		MixdownManager.disableClean = false;
+		MixdownManager.enableSourcesOnly = false;
+
+		GlobalTimeManager time = new GlobalTimeManager(measure -> 0);
+		int params = 8;
+		ProjectedGenome genome = new ProjectedGenome(params);
+		MixdownManager mixdown = mono(time, genome, params);
+
+		CellList cells = w(0, c(0.0), c(1.0),
+				WaveData.load(getTestWavFile(440.0, 0.1)),
+				WaveData.load(getTestWavFile(880.0, 0.1)));
+
+		try (WaveOutput master = new WaveOutput(() -> null, 24, sampleRate, 1024, false)) {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(master);
+			CellList result = mixdown.cells(cells, output, ChannelInfo.StereoChannel.RIGHT);
+			Assert.assertNotNull("EFX graph should build against a mono (null-master) " +
+					"destination without throwing", result);
+		}
+	}
+
+	/**
+	 * Same as {@link #efxRoutingWithMonoOutput()}, but with {@code disableClean}
+	 * enabled so the {@code createEfx} branch that delivers directly to the master
+	 * and measure receptors (bypassing the clean main mix) is also exercised
+	 * against a mono, null-master destination.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(1)
+	public void efxRoutingWithMonoOutputAndDisableClean() throws IOException {
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableReverb = true;
+		MixdownManager.enableTransmission = false;
+		MixdownManager.enableWetInAdjustment = true;
+		MixdownManager.enableMasterFilterDown = true;
+		MixdownManager.disableClean = true;
+		MixdownManager.enableSourcesOnly = false;
+
+		GlobalTimeManager time = new GlobalTimeManager(measure -> 0);
+		int params = 8;
+		ProjectedGenome genome = new ProjectedGenome(params);
+		MixdownManager mixdown = mono(time, genome, params);
+
+		CellList cells = w(0, c(0.0), c(1.0),
+				WaveData.load(getTestWavFile(440.0, 0.1)),
+				WaveData.load(getTestWavFile(880.0, 0.1)));
+
+		try (WaveOutput master = new WaveOutput(() -> null, 24, sampleRate, 1024, false)) {
+			MultiChannelAudioOutput output = new MultiChannelAudioOutput(master);
+			CellList result = mixdown.cells(cells, output, ChannelInfo.StereoChannel.RIGHT);
+			Assert.assertNotNull("EFX graph should build against a mono (null-master) " +
+					"destination without throwing, even with disableClean routing", result);
+		} finally {
+			MixdownManager.disableClean = false;
+		}
 	}
 }

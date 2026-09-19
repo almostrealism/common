@@ -161,9 +161,11 @@ public class MultiChannelAudioOutput {
 	 * Returns all measure receptors for the given stereo channel.
 	 *
 	 * @param audioChannel the stereo channel to filter by
-	 * @return a list of matching receptors
+	 * @return a list of matching receptors, empty if measure monitoring is disabled
 	 */
 	public List<Receptor<PackedCollection>> getMeasures(ChannelInfo.StereoChannel audioChannel) {
+		if (measures == null) return List.of();
+
 		return measures.keySet().stream()
 				.filter(match(audioChannel))
 				.map(measures::get)
