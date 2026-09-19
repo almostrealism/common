@@ -24,6 +24,7 @@ Run with:
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -162,6 +163,189 @@ class LaunchctlPrintParsingTests(unittest.TestCase):
             pid = collector.discover_macos_agent_pid()
         self.assertEqual(pid, 99)
         self.assertEqual(run.call_args[0][0], ["launchctl", "list"])
+
+    def test_discover_macos_agent_pid_returns_none_when_launchctl_list_fails(self):
+        """`launchctl` missing, or the caller lacking permission to query it,
+        must be a best-effort None - not an exception - since PID discovery
+        is an enrichment, not a requirement for sampling to work."""
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=FileNotFoundError()):
+            self.assertIsNone(collector.discover_macos_agent_pid())
+
+    def test_discover_macos_agent_pid_returns_none_when_launchctl_print_fails(self):
+        """A `domain_target` naming a service that is not registered makes
+        `launchctl print` exit non-zero - still a best-effort None, not a
+        raised CalledProcessError."""
+        error = subprocess.CalledProcessError(1, ["launchctl", "print"])
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=error):
+            self.assertIsNone(collector.discover_macos_agent_pid(domain_target="gui/501"))
+
+
+class RunPsAndUptimeTests(unittest.TestCase):
+    """The thin subprocess wrappers around `ps`/`uptime` themselves - not
+    just the pure text parsers they feed."""
+
+    def test_run_ps_invokes_the_documented_column_set_and_returns_stdout(self):
+        result = mock.Mock(stdout=PS_TEXT)
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=result) as run:
+            output = collector._run_ps()
+        self.assertEqual(output, PS_TEXT)
+        self.assertEqual(run.call_args[0][0], ["ps", "-eo", "pid,ppid,user,pcpu,rss,comm"])
+
+    def test_run_uptime_loads_parses_a_real_subprocess_result(self):
+        result = mock.Mock(stdout="10:00  up 3 days, load average: 0.10, 0.05, 0.01\n")
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=result):
+            self.assertEqual(collector._run_uptime_loads(), [0.10, 0.05, 0.01])
+
+    def test_run_uptime_loads_returns_all_none_when_uptime_is_missing(self):
+        """`uptime` not being on PATH (a minimal container image) must
+        degrade to `[None, None, None]`, not raise out of the sampling loop."""
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=FileNotFoundError()):
+            self.assertEqual(collector._run_uptime_loads(), [None, None, None])
+
+
+class HostCpuMemoryDispatchTests(unittest.TestCase):
+    """`collect_host_cpu_pct`/`collect_host_memory_mb` dispatch by
+    `platform.system()` - each branch must reach the right platform-specific
+    implementation, and an unrecognised platform must degrade to `None`
+    rather than guessing."""
+
+    def test_collect_host_cpu_pct_dispatches_to_linux_on_linux(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Linux"), \
+                mock.patch("tools.fleet.collector._linux_cpu_pct", return_value=42.0) as linux_impl, \
+                mock.patch("tools.fleet.collector._macos_cpu_pct") as macos_impl:
+            self.assertEqual(collector.collect_host_cpu_pct(), 42.0)
+        linux_impl.assert_called_once()
+        macos_impl.assert_not_called()
+
+    def test_collect_host_cpu_pct_dispatches_to_macos_on_darwin(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Darwin"), \
+                mock.patch("tools.fleet.collector._linux_cpu_pct") as linux_impl, \
+                mock.patch("tools.fleet.collector._macos_cpu_pct", return_value=7.0) as macos_impl:
+            self.assertEqual(collector.collect_host_cpu_pct(), 7.0)
+        macos_impl.assert_called_once()
+        linux_impl.assert_not_called()
+
+    def test_collect_host_cpu_pct_is_none_on_an_unrecognised_platform(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Windows"):
+            self.assertIsNone(collector.collect_host_cpu_pct())
+
+    def test_collect_host_memory_mb_dispatches_to_linux_on_linux(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Linux"), \
+                mock.patch("tools.fleet.collector._linux_memory_mb", return_value=(1.0, 2.0)) as linux_impl, \
+                mock.patch("tools.fleet.collector._macos_memory_mb") as macos_impl:
+            self.assertEqual(collector.collect_host_memory_mb(), (1.0, 2.0))
+        linux_impl.assert_called_once()
+        macos_impl.assert_not_called()
+
+    def test_collect_host_memory_mb_dispatches_to_macos_on_darwin(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Darwin"), \
+                mock.patch("tools.fleet.collector._linux_memory_mb") as linux_impl, \
+                mock.patch("tools.fleet.collector._macos_memory_mb", return_value=(3.0, 4.0)) as macos_impl:
+            self.assertEqual(collector.collect_host_memory_mb(), (3.0, 4.0))
+        macos_impl.assert_called_once()
+        linux_impl.assert_not_called()
+
+    def test_collect_host_memory_mb_is_none_pair_on_an_unrecognised_platform(self):
+        with mock.patch("tools.fleet.collector.platform.system", return_value="Windows"):
+            self.assertEqual(collector.collect_host_memory_mb(), (None, None))
+
+
+class LinuxCpuPctSamplingTests(unittest.TestCase):
+    """`_linux_cpu_pct` takes two `/proc/stat` snapshots a sample interval
+    apart; `_read_proc_stat_cpu` must degrade to `None` rather than raise
+    when `/proc/stat` cannot be read (a non-Linux sandbox, a permission
+    issue)."""
+
+    def test_read_proc_stat_cpu_returns_none_on_oserror(self):
+        with mock.patch("builtins.open", side_effect=OSError()):
+            self.assertIsNone(collector._read_proc_stat_cpu())
+
+    def test_linux_cpu_pct_takes_two_samples_a_sample_interval_apart(self):
+        samples = [(100, 1000), (150, 1100)]
+        with mock.patch("tools.fleet.collector._read_proc_stat_cpu", side_effect=samples), \
+                mock.patch("tools.fleet.collector.time.sleep") as sleep_mock:
+            pct = collector._linux_cpu_pct(sample_interval=0.25)
+        self.assertAlmostEqual(pct, 50.0)
+        sleep_mock.assert_called_once_with(0.25)
+
+    def test_linux_cpu_pct_is_none_when_proc_stat_is_unreadable(self):
+        with mock.patch("tools.fleet.collector._read_proc_stat_cpu", return_value=None), \
+                mock.patch("tools.fleet.collector.time.sleep") as sleep_mock:
+            self.assertIsNone(collector._linux_cpu_pct())
+        sleep_mock.assert_not_called()
+
+
+class MacosCpuPctSamplingTests(unittest.TestCase):
+    """`_macos_cpu_pct` shells out to `top -l 1 -n 0`; any failure to run it
+    (missing binary, timeout, non-zero exit) must yield `None`, not raise."""
+
+    def test_macos_cpu_pct_parses_a_successful_run(self):
+        result = mock.Mock(stdout="CPU usage: 10.00% user, 5.00% sys, 85.00% idle\n")
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=result):
+            self.assertAlmostEqual(collector._macos_cpu_pct(), 15.0)
+
+    def test_macos_cpu_pct_is_none_when_top_times_out(self):
+        with mock.patch(
+            "tools.fleet.collector.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="top", timeout=10),
+        ):
+            self.assertIsNone(collector._macos_cpu_pct())
+
+    def test_macos_cpu_pct_is_none_when_top_is_missing(self):
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=OSError()):
+            self.assertIsNone(collector._macos_cpu_pct())
+
+
+class LinuxMemoryMbSamplingTests(unittest.TestCase):
+
+    def test_linux_memory_mb_returns_none_pair_when_meminfo_is_unreadable(self):
+        with mock.patch("builtins.open", side_effect=OSError()):
+            self.assertEqual(collector._linux_memory_mb(), (None, None))
+
+    def test_linux_memory_mb_parses_a_readable_file(self):
+        text = "MemTotal:       16777216 kB\nMemAvailable:    8388608 kB\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=text)):
+            used_mb, total_mb = collector._linux_memory_mb()
+        self.assertAlmostEqual(total_mb, 16384.0)
+        self.assertAlmostEqual(used_mb, 8192.0)
+
+
+class MacosMemoryMbSamplingTests(unittest.TestCase):
+    """`_macos_memory_mb` shells out twice (`sysctl` then `vm_stat`); either
+    call failing must yield `(None, None)` rather than a partial result that
+    looks complete."""
+
+    def test_macos_memory_mb_combines_sysctl_and_vm_stat(self):
+        sysctl_result = mock.Mock(stdout="17179869184\n")  # 16 GiB
+        vm_stat_result = mock.Mock(stdout="\n".join([
+            "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+            "Pages free:                               1000.",
+        ]))
+        with mock.patch(
+            "tools.fleet.collector.subprocess.run", side_effect=[sysctl_result, vm_stat_result],
+        ):
+            used_mb, total_mb = collector._macos_memory_mb()
+        self.assertAlmostEqual(total_mb, 16384.0)
+        self.assertLess(used_mb, total_mb)
+
+    def test_macos_memory_mb_is_none_pair_when_sysctl_fails(self):
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=OSError()):
+            self.assertEqual(collector._macos_memory_mb(), (None, None))
+
+    def test_macos_memory_mb_is_none_pair_when_sysctl_output_is_unparsable(self):
+        sysctl_result = mock.Mock(stdout="not-a-number\n")
+        with mock.patch("tools.fleet.collector.subprocess.run", return_value=sysctl_result):
+            self.assertEqual(collector._macos_memory_mb(), (None, None))
+
+    def test_macos_memory_mb_returns_total_only_when_vm_stat_is_unparsable(self):
+        sysctl_result = mock.Mock(stdout="17179869184\n")
+        vm_stat_result = mock.Mock(stdout="unexpected output\n")
+        with mock.patch(
+            "tools.fleet.collector.subprocess.run", side_effect=[sysctl_result, vm_stat_result],
+        ):
+            used_mb, total_mb = collector._macos_memory_mb()
+        self.assertIsNone(used_mb)
+        self.assertAlmostEqual(total_mb, 16384.0)
 
 
 class ProcStatCpuParsingTests(unittest.TestCase):

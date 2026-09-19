@@ -156,6 +156,45 @@ class FetchRunsPaginationTests(unittest.TestCase):
             jobs = fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=2, allow_partial=True)
         self.assertEqual([j["id"] for j in jobs], [1, 2, 1, 2])
 
+    def test_fetch_runs_wraps_a_url_error_as_a_runtime_error(self):
+        """A transport-level failure (DNS, connection refused, timeout) must
+        surface as a RuntimeError naming the page it failed on, not the raw
+        URLError - `poll_and_store` and any other caller should be able to
+        catch one exception type for every fetch failure."""
+        with mock.patch(
+            "tools.fleet.github_poller._get_json", side_effect=urllib.error.URLError("connection refused"),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                fetch_runs("acme/repo", "tok", per_page=2, max_pages=3)
+        self.assertIn("page 1", str(ctx.exception))
+
+    def test_fetch_run_jobs_wraps_a_url_error_as_a_runtime_error(self):
+        with mock.patch(
+            "tools.fleet.github_poller._get_json", side_effect=urllib.error.URLError("connection refused"),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=3)
+        self.assertIn("page 1", str(ctx.exception))
+
+    def test_fetch_runs_and_fetch_run_jobs_request_distinct_endpoints(self):
+        """The refactor sharing a pagination loop between `fetch_runs` and
+        `fetch_run_jobs` must still address the two distinct GitHub API
+        endpoints - a caller for one must never end up polling the other."""
+        with mock.patch(
+            "tools.fleet.github_poller._get_json", return_value={"workflow_runs": []},
+        ) as get_json:
+            fetch_runs("acme/repo", "tok", per_page=2, max_pages=1, allow_partial=True)
+        self.assertEqual(get_json.call_args[0][0], "https://api.github.com/repos/acme/repo/actions/runs?per_page=2&page=1")
+
+        with mock.patch(
+            "tools.fleet.github_poller._get_json", return_value={"jobs": []},
+        ) as get_json:
+            fetch_run_jobs("acme/repo", "42", "tok", per_page=2, max_pages=1, allow_partial=True)
+        self.assertEqual(
+            get_json.call_args[0][0],
+            "https://api.github.com/repos/acme/repo/actions/runs/42/jobs?per_page=2&page=1",
+        )
+
 
 class RateLimitRetryTests(unittest.TestCase):
     """A rate-limited (403/429) response must be retried with backoff, not

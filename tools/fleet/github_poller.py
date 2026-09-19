@@ -210,6 +210,52 @@ def _get_json(url: str, token: str, max_retries: int = RATE_LIMIT_MAX_RETRIES) -
             raise
 
 
+def _fetch_paginated(
+    base_url: str,
+    item_key: str,
+    description: str,
+    token: str,
+    per_page: int,
+    max_pages: int,
+    allow_partial: bool,
+) -> List[Dict]:
+    """Page through one GitHub list endpoint, collecting *item_key* from each response.
+
+    Shared pagination loop for :func:`fetch_runs`/:func:`fetch_run_jobs`: both
+    walk ``per_page``-sized pages of *base_url* up to *max_pages*, stopping
+    early on a short page (the API's signal that no more data follows) and
+    otherwise raising :class:`RuntimeError` once the cap is hit while a full
+    page is still coming back — silently returning at that point would hand
+    the caller a truncated list that looks complete.
+
+    *allow_partial* opts out of that guarantee for a caller that deliberately
+    wants only a bounded, most-recent window rather than the full history
+    (see :func:`poll_and_store`) — such a caller sets a small *max_pages* on
+    purpose and a "more data exists beyond the cap" condition is exactly what
+    it expects, not an error. *description* names the resource being fetched
+    for both the URLError-wrapping message and the exhausted-cap message.
+    """
+    items: List[Dict] = []
+    page = 1
+    while page <= max_pages:
+        url = "%s?per_page=%d&page=%d" % (base_url, per_page, page)
+        try:
+            payload = _get_json(url, token)
+        except urllib.error.URLError as exc:
+            raise RuntimeError("failed to fetch %s (page %d): %s" % (description, page, exc)) from exc
+        batch = payload.get(item_key, [])
+        items.extend(batch)
+        if len(batch) < per_page:
+            return items
+        page += 1
+    if allow_partial:
+        return items
+    raise RuntimeError(
+        "%s exceeded max_pages=%d (%d per page); "
+        "raise max_pages to fetch the full list" % (description, max_pages, per_page)
+    )
+
+
 def fetch_runs(
     repo: str,
     token: str,
@@ -219,38 +265,14 @@ def fetch_runs(
 ) -> List[Dict]:
     """Fetch recent workflow runs for *repo* (``owner/name``), paged.
 
-    Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
-    page is still coming back — silently returning at that point would hand
-    the caller a truncated list that looks complete. A caller that hits this
-    should raise *max_pages*, since there is more data than promised.
-
-    *allow_partial* opts out of that guarantee for a caller that deliberately
-    wants only a bounded, most-recent window rather than the full run
-    history (see :func:`poll_and_store`) — such a caller sets a small
-    *max_pages* on purpose and a "more data exists beyond the cap" condition
-    is exactly what it expects, not an error.
+    See :func:`_fetch_paginated` for the raise/*allow_partial* contract.
 
     Least-privilege note: *token* should be a read-only Actions-scoped
     credential, never logged or embedded in a returned error message.
     """
-    runs: List[Dict] = []
-    page = 1
-    while page <= max_pages:
-        url = "%s/repos/%s/actions/runs?per_page=%d&page=%d" % (GITHUB_API_BASE, repo, per_page, page)
-        try:
-            payload = _get_json(url, token)
-        except urllib.error.URLError as exc:
-            raise RuntimeError("failed to fetch workflow runs (page %d): %s" % (page, exc)) from exc
-        batch = payload.get("workflow_runs", [])
-        runs.extend(batch)
-        if len(batch) < per_page:
-            return runs
-        page += 1
-    if allow_partial:
-        return runs
-    raise RuntimeError(
-        "workflow runs for %s exceeded max_pages=%d (%d per page); "
-        "raise max_pages to fetch the full list" % (repo, max_pages, per_page)
+    base_url = "%s/repos/%s/actions/runs" % (GITHUB_API_BASE, repo)
+    return _fetch_paginated(
+        base_url, "workflow_runs", "workflow runs for %s" % repo, token, per_page, max_pages, allow_partial,
     )
 
 
@@ -264,31 +286,11 @@ def fetch_run_jobs(
 ) -> List[Dict]:
     """Fetch every job for one workflow run, paged.
 
-    Raises :class:`RuntimeError` if *max_pages* is exhausted while a full
-    page is still coming back, for the same reason as :func:`fetch_runs`:
-    silently stopping there would drop steps and metrics with no signal.
-    *allow_partial* opts out of that guarantee; see :func:`fetch_runs`.
+    See :func:`_fetch_paginated` for the raise/*allow_partial* contract.
     """
-    jobs: List[Dict] = []
-    page = 1
-    while page <= max_pages:
-        url = "%s/repos/%s/actions/runs/%s/jobs?per_page=%d&page=%d" % (
-            GITHUB_API_BASE, repo, run_id, per_page, page,
-        )
-        try:
-            payload = _get_json(url, token)
-        except urllib.error.URLError as exc:
-            raise RuntimeError("failed to fetch jobs for run %s (page %d): %s" % (run_id, page, exc)) from exc
-        batch = payload.get("jobs", [])
-        jobs.extend(batch)
-        if len(batch) < per_page:
-            return jobs
-        page += 1
-    if allow_partial:
-        return jobs
-    raise RuntimeError(
-        "jobs for run %s exceeded max_pages=%d (%d per page); "
-        "raise max_pages to fetch the full list" % (run_id, max_pages, per_page)
+    base_url = "%s/repos/%s/actions/runs/%s/jobs" % (GITHUB_API_BASE, repo, run_id)
+    return _fetch_paginated(
+        base_url, "jobs", "jobs for run %s" % run_id, token, per_page, max_pages, allow_partial,
     )
 
 
