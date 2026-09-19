@@ -226,12 +226,23 @@ echo "Installed $(ls "${AGENT_HOME}/lib" | wc -l | tr -d ' ') JARs to ${AGENT_HO
 # install: a redeploy must not report success against a definition that no
 # longer describes what was installed.
 
-sed -e "s|@AGENT_HOME@|${AGENT_HOME}|g" \
-    -e "s|@ENV_FILE@|${ENV_FILE}|g" \
-    -e "s|@AGENT_USER@|$(id -un)|g" \
-    -e "s|@AGENT_GROUP@|$(id -gn)|g" \
-    -e "s|@AGENT_USER_HOME@|${HOME}|g" \
+# The values land inside XML text, by way of a sed replacement, and are
+# configurable paths: each must be escaped for both. XML first (& < >), then
+# the characters sed reads in a replacement (\ & and the | delimiter).
+plist_value() {
+    printf '%s' "$1" \
+        | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+        | sed -e 's/[\\&|]/\\&/g'
+}
+
+sed -e "s|@AGENT_HOME@|$(plist_value "${AGENT_HOME}")|g" \
+    -e "s|@ENV_FILE@|$(plist_value "${ENV_FILE}")|g" \
+    -e "s|@AGENT_USER@|$(plist_value "$(id -un)")|g" \
+    -e "s|@AGENT_GROUP@|$(plist_value "$(id -gn)")|g" \
+    -e "s|@AGENT_USER_HOME@|$(plist_value "${HOME}")|g" \
     "${SCRIPT_DIR}/${LABEL}.plist" > "${PLIST}"
+# A definition launchd would reject is caught here, not when root loads it.
+plutil -lint -s "${PLIST}"
 
 # Printed whenever the administrator has to act. Root may bootstrap into the
 # system domain from any session, which is the whole reason the service
@@ -311,20 +322,41 @@ fi
 # service that is registered but has no process right now (in launchd's
 # throttle back-off after a crash, say) comes back on its own; nothing
 # needs to be sent to it.
+#
+# A pid alone does not identify a process: once the JVM exits, the number
+# can be handed to its replacement or to anything else this account runs,
+# and a signal sent to the number would then land on the wrong process.
+# launchd will not signal a system-domain service for a non-root owner
+# (`launchctl kill` answers "Not privileged"), so the process is identified
+# by pid AND start time, and nothing is signalled unless both still match.
 
 service_pid() {
     launchctl print "${SERVICE}" 2>/dev/null | awk '/^[[:space:]]*pid = /{print $3; exit}'
 }
+process_start() {
+    ps -o lstart= -p "$1" 2>/dev/null | sed 's/[[:space:]]*$//'
+}
 
 OLD_PID="$(service_pid)"
+OLD_START=""
 if [ -n "${OLD_PID}" ]; then
-    echo "Restarting the agent (${SERVICE}, pid ${OLD_PID})..."
-    # The pid was read a moment ago; the process may have exited on its own
-    # since (and KeepAlive may already be starting its replacement). That is
-    # the state the signal was meant to produce, so it is not a failure. A
-    # process that is still there and cannot be signalled is: it means the
-    # service is not running as this account.
-    if ! kill -TERM "${OLD_PID}" 2>/dev/null && kill -0 "${OLD_PID}" 2>/dev/null; then
+    OLD_START="$(process_start "${OLD_PID}")"
+fi
+# True while the process that was found at the start is still the one
+# holding that pid.
+old_process_alive() {
+    [ -n "${OLD_START}" ] && [ "$(process_start "${OLD_PID}")" = "${OLD_START}" ]
+}
+
+if [ -n "${OLD_PID}" ] && old_process_alive; then
+    echo "Restarting the agent (${SERVICE}, pid ${OLD_PID}, started ${OLD_START})..."
+    # Identity is re-checked immediately before each signal. The process may
+    # have exited on its own since it was found (and KeepAlive may already be
+    # starting its replacement); that is the state the signal was meant to
+    # produce, so it is not a failure. A process that is still there and
+    # cannot be signalled is: it means the service is not running as this
+    # account.
+    if old_process_alive && ! kill -TERM "${OLD_PID}" 2>/dev/null && old_process_alive; then
         echo "ERROR: pid ${OLD_PID} is running but cannot be signalled by $(id -un)." >&2
         echo "  ${SERVICE} is not running as this account; check UserName in ${DAEMON_PLIST}." >&2
         exit 1
@@ -332,15 +364,18 @@ if [ -n "${OLD_PID}" ]; then
     # KeepAlive respawns only after the process is gone; wait for that so the
     # new process does not race the old one for the controller connection.
     for _ in $(seq 1 30); do
-        if ! kill -0 "${OLD_PID}" 2>/dev/null; then
+        if ! old_process_alive; then
             break
         fi
         sleep 1
     done
-    if kill -0 "${OLD_PID}" 2>/dev/null; then
+    if old_process_alive; then
         echo "  pid ${OLD_PID} ignored SIGTERM for 30s; sending SIGKILL."
-        kill -KILL "${OLD_PID}" || true
+        old_process_alive && kill -KILL "${OLD_PID}" 2>/dev/null || true
     fi
+elif [ -n "${OLD_PID}" ]; then
+    echo "The agent's process (pid ${OLD_PID}) exited while this install ran; launchd will start it..."
+    OLD_PID=""
 else
     echo "Starting the agent (${SERVICE} is registered but has no process; launchd will start it)..."
 fi
@@ -349,16 +384,21 @@ fi
 #
 # There is no controller endpoint that lists connected agents, so the
 # check is made from this side: the service must have a live process that
-# is not the one just stopped, and that process must hold an established
-# TCP connection to the controller port. The Server's reconnect loop makes
-# its first attempt about thirty seconds after start, hence the generous
-# default timeout.
+# is not the one just stopped — by identity, not pid, since the number can
+# be reused — and that process must hold an established TCP connection to
+# the controller port. The Server's reconnect loop makes its first attempt
+# about thirty seconds after start, hence the generous default timeout.
+
+# True when the service's current process is not the one that was stopped.
+new_process() {
+    [ "$1" != "${OLD_PID}" ] || [ "$(process_start "$1")" != "${OLD_START}" ]
+}
 
 echo "Waiting up to ${CONNECT_TIMEOUT_SECONDS}s for the agent to connect to ${ROOT_HOST}:${ROOT_PORT}..."
 DEADLINE=$(( $(date +%s) + CONNECT_TIMEOUT_SECONDS ))
 while [ "$(date +%s)" -lt "${DEADLINE}" ]; do
     PID="$(service_pid)"
-    if [ -n "${PID}" ] && [ "${PID}" != "${OLD_PID}" ] \
+    if [ -n "${PID}" ] && new_process "${PID}" \
        && lsof -nP -a -p "${PID}" -iTCP -sTCP:ESTABLISHED 2>/dev/null | grep -q ":${ROOT_PORT}"; then
         echo "Agent is running (pid ${PID}) and connected to the controller."
         echo "  Logs: ${AGENT_HOME}/logs/agent.log"

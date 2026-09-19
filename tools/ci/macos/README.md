@@ -594,9 +594,12 @@ cat > /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-r
     <key>EnvironmentVariables</key>
     <dict>
         <!-- launchd gives a daemon almost no PATH and no HOME. runner.sh
-             needs java, mvn, curl and jq; the job needs git, mvn and lsof. -->
+             needs java, mvn, curl and jq; the job needs git, mvn and lsof.
+             Homebrew's openjdk@17 is keg-only, so its bin is listed
+             explicitly, as the agent's run.sh does; a JDK installed under
+             /Library/Java is found through /usr/bin/java either way. -->
         <key>PATH</key>
-        <string>/Users/worker/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>/Users/worker/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
         <string>/Users/worker</string>
     </dict>
