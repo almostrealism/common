@@ -774,8 +774,15 @@ public class InstructionPromptBuilder {
         // GitHub and memory tools — available via ar-manager
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
             sb.append("You can read and respond to GitHub PR review comments using ");
-            sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
-            sb.append("Use these to check for code review feedback and address it.\n\n");
+            sb.append("github_pr_find, github_pr_review_comments, github_pr_reviews, ");
+            sb.append("github_pr_conversation, and github_pr_reply. ");
+            sb.append("Use these to check for code review feedback and address it. ");
+            sb.append("Pass include_resolved=true to github_pr_review_comments to also see ");
+            sb.append("comments on threads that have already been marked resolved -- the default ");
+            sb.append("view only returns unresolved threads. Use github_pr_reviews to read the ");
+            sb.append("top-level review verdicts and their bodies (a reviewer's overview text, or ");
+            sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
+            sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
 
             sb.append("## When to Post PR Replies\n");
             sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
