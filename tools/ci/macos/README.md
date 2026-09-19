@@ -487,24 +487,33 @@ tools live elsewhere (a `claude` under `~/.local/bin`, for instance).
 
 ### Registering the agent daemon (once, as an administrator)
 
-The first deploy — or `install.sh` run by hand — stages the JARs, `run.sh`
-and the rendered service definition under `~worker/flowtree-agent`, then stops
-with the exact commands for this step, because worker cannot perform it:
+The first deploy — or `install.sh` run by hand — stages the JARs, `run.sh`,
+`register-daemon.sh` and the rendered service definition under
+`~worker/flowtree-agent`, then stops with the exact command for this step,
+because worker cannot perform it:
 
 ```bash
-sudo install -o root -g wheel -m 644 \
-    /Users/worker/flowtree-agent/conf/com.almostrealism.flowtree-agent.plist \
-    /Library/LaunchDaemons/com.almostrealism.flowtree-agent.plist
-sudo launchctl bootstrap system /Library/LaunchDaemons/com.almostrealism.flowtree-agent.plist
+sudo /Users/worker/flowtree-agent/bin/register-daemon.sh \
+    /Users/worker/flowtree-agent/conf/com.almostrealism.flowtree-agent.plist
 ```
 
-Run them from any administrator shell; the session it is in does not matter.
+Run it from any administrator shell; the session it is in does not matter.
+`register-daemon.sh` (`flowtree/runtime/agent/macos/register-daemon.sh`)
+lints the plist, reads its `Label`, installs it under `/Library/LaunchDaemons`
+as root:wheel 644, bootstraps it into the system domain, and prints the
+service's state and pid. When a service with that label is already
+registered it boots that out first and **waits for launchd to stop listing
+it** before loading the new definition — `launchctl bootout` returns before
+the process is gone, and a bootstrap that landed in that window would run two
+agents with the same node identity — failing instead if the old one will not
+stop.
+
 The agent starts immediately (`RunAtLoad`) on the staged JARs, and every
 deploy from then on is unprivileged. The rendered plist is regenerated on each
 install and compared with the registered copy; if the install directory, env
-file path or account ever changes, `install.sh` fails with the same three
-commands (preceded by a `sudo launchctl bootout system/…`), rather than
-reporting success against a definition launchd is no longer running.
+file path or account ever changes, `install.sh` fails with the same command,
+rather than reporting success against a definition launchd is no longer
+running.
 
 Hosts that ran the earlier LaunchAgent version are migrated by the first
 daemon-era install: it boots out `com.almostrealism.flowtree-agent` from
@@ -573,12 +582,9 @@ PLIST
 ```
 
 ```bash
-# as an administrator
-sudo install -o root -g wheel -m 644 \
-    /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist \
-    /Library/LaunchDaemons/com.almostrealism.deploy-agent-runner.plist
-sudo launchctl bootstrap system /Library/LaunchDaemons/com.almostrealism.deploy-agent-runner.plist
-launchctl print system/com.almostrealism.deploy-agent-runner | grep -E 'state|pid'
+# as an administrator — the same script that registers the agent
+sudo /path/to/common/flowtree/runtime/agent/macos/register-daemon.sh \
+    /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist
 tail -f /Users/worker/actions-runner-deploy-agent/runner.log
 ```
 

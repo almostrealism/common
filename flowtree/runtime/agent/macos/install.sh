@@ -208,8 +208,10 @@ fi
 mv "${STAGING}" "${AGENT_HOME}/lib"
 
 cp "${MODULE_DIR}/conf/agent.properties" "${AGENT_HOME}/conf/agent.properties"
-cp "${SCRIPT_DIR}/run.sh" "${AGENT_HOME}/bin/run.sh"
-chmod +x "${AGENT_HOME}/bin/run.sh"
+# register-daemon.sh goes beside run.sh so the registration command printed
+# below still exists after the checkout that ran this install is gone.
+cp "${SCRIPT_DIR}/run.sh" "${SCRIPT_DIR}/register-daemon.sh" "${AGENT_HOME}/bin/"
+chmod +x "${AGENT_HOME}/bin/run.sh" "${AGENT_HOME}/bin/register-daemon.sh"
 
 echo "Installed $(ls "${AGENT_HOME}/lib" | wc -l | tr -d ' ') JARs to ${AGENT_HOME}/lib"
 
@@ -232,14 +234,13 @@ sed -e "s|@AGENT_HOME@|${AGENT_HOME}|g" \
 
 # Printed whenever the administrator has to act. Root may bootstrap into the
 # system domain from any session, which is the whole reason the service
-# lives there; replacing a registered definition is a bootout first.
+# lives there. register-daemon.sh does the whole sequence — and, when a
+# definition is being replaced, waits for the old service to be gone before
+# loading the new one, so two agents never run at once — which is why the
+# instruction is that one command and not the launchctl calls it makes.
 registration_steps() {
-    echo "  As an administrator (the plist must be owned by root:wheel, mode 644):" >&2
-    if daemon_registered; then
-        echo "    sudo launchctl bootout ${SERVICE}" >&2
-    fi
-    echo "    sudo install -o root -g wheel -m 644 ${PLIST} ${DAEMON_PLIST}" >&2
-    echo "    sudo launchctl bootstrap system ${DAEMON_PLIST}" >&2
+    echo "  As an administrator:" >&2
+    echo "    sudo ${AGENT_HOME}/bin/register-daemon.sh ${PLIST}" >&2
     echo "  Then run this script again (or re-run the deploy workflow)." >&2
 }
 

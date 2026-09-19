@@ -519,7 +519,8 @@ bootstrap with `Bootstrap failed: 5: Input/output error` — from worker, from
 root, and from root via `launchctl asuser`. The first version of the job
 bootstrapped a LaunchAgent from inside the CI job and failed on exactly that.
 `install.sh` re-renders the daemon plist on every run and fails, printing the
-`sudo` commands, when the daemon is not registered or the registered copy
+`sudo register-daemon.sh` command (which waits for a replaced service to stop
+before loading the new definition), when the daemon is not registered or the registered copy
 differs from the rendered one. The job also fails unless the new agent process
 — identified by a pid different from the one signalled — holds a connection to
 the controller port; there is no controller endpoint listing connected agents,

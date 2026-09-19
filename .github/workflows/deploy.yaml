@@ -329,7 +329,7 @@ jobs:
       # copy, restarts the agent (signal the JVM; launchd's KeepAlive starts
       # it on the new classpath), and fails unless the new process opens its
       # connection to the controller. On a host where the daemon was never
-      # registered it fails with the one-time `sudo` commands instead — that
+      # registered it fails with the one-time `sudo register-daemon.sh` instead — that
       # step is an administrator's, and the runner account cannot do it.
       # Empty FLOWTREE_AGENT_HOME / FLOWTREE_AGENT_ENV fall through to the
       # script's defaults under the runner account's home.
