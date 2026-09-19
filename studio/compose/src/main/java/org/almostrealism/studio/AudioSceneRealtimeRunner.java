@@ -415,11 +415,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Throwaway pass to capture the stable output handle the streaming loop reads
 		PackedCollection masterOutput = compiled.forward(pdslInput);
 
-		Receptor<PackedCollection> masterLeft = output.getMaster(ChannelInfo.StereoChannel.LEFT);
-		Receptor<PackedCollection> masterRight = output.getMaster(ChannelInfo.StereoChannel.RIGHT);
+		// The mixdown renders one signal per frame; a stereo destination receives it
+		// on both channels, while a mono destination (or one with the master disabled)
+		// has no receptor for the channels it lacks and those are simply not written
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
-		outputLoopBody.add(masterLeft.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
-		outputLoopBody.add(masterRight.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
+		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
+			Receptor<PackedCollection> master = output.getMaster(stereo);
+			if (master != null) {
+				outputLoopBody.add(master.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
+			}
+		}
 
 		// The health computation ends a render early from what these meters see
 		// (clipping, sustained silence); without them every genome runs full length

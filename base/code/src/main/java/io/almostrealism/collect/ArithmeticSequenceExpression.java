@@ -153,6 +153,8 @@ public class ArithmeticSequenceExpression extends CollectionExpressionAdapter {
 	 * <p>This method provides special handling for arithmetic sequences:
 	 * <ul>
 	 *   <li>If both initial and rate are zero, all values are zero, so returns false</li>
+	 *   <li>If the rate is zero but the initial value is non-zero, the sequence is a
+	 *       non-zero constant, so every index is a member and this returns true</li>
 	 *   <li>If the sequence crosses zero at an integer index n (where n = -initial/rate),
 	 *       returns true only when index equals n</li>
 	 *   <li>Otherwise, assumes all indices contain non-zero values and returns true</li>
@@ -163,8 +165,8 @@ public class ArithmeticSequenceExpression extends CollectionExpressionAdapter {
 	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
-		if (initial == 0 && rate == 0)
-			return new BooleanConstant(false);
+		if (rate == 0)
+			return new BooleanConstant(initial != 0);
 
 		double n = -initial / rate;
 		if (n == Math.floor(n)) {

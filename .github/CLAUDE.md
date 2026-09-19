@@ -324,8 +324,8 @@ layer-gated stage without it.
 
 ### Three lanes: CPU (linux), GPU (macOS), and CL (linux/ROCm)
 
-The self-hosted test jobs run as three independent, parallel lanes, each
-serialised internally so heavy suites do not contend on their fleet:
+The self-hosted test jobs run as three lanes, each serialised internally so
+heavy suites do not contend on their fleet:
 
 - **CPU lane (linux, `ar-ci`):** `test` → `test-media`.
 - **GPU lane (macOS, `ar-ci`):** `test-mac` → `test-media-mac`.
@@ -335,12 +335,24 @@ serialised internally so heavy suites do not contend on their fleet:
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
 
+The CPU and GPU lanes run in parallel. The CL lane starts only after the whole
+GPU lane has finished: `test-cl` gates on `test-mac` and `test-media-mac`
+(success-or-skipped), and `test-media-cl` gates on `test-cl`. This is
+admission control, not GPU serialisation — the fleets are different machines.
+The CL lane is sixteen matrix jobs on a single host, the most expensive thing
+a pipeline schedules, and a branch that cannot pass the Metal suites will not
+pass their OpenCL duplicates either. Holding the CL lane until the Metal lane
+is green spends the ROCm runners only on branches that have already cleared
+the equivalent tests, and keeps them free for the pipelines that can use a
+green CL result. The trade is that a healthy pipeline's CL lane starts later
+than it otherwise would.
+
 The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
 moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
-real, non-deprecated OpenCL implementation. The cross-lane gates on `test-mac`
-and `test-media-mac` went with it: they existed only to serialise the macOS
-GPUs, so keeping them would have left the CL lane idle waiting on unrelated
-Metal work.
+real, non-deprecated OpenCL implementation. The gates on `test-mac` and
+`test-media-mac` were dropped at that point, because their original purpose
+(serialising the macOS GPUs) no longer applied, and were later restored for the
+admission-control reason above.
 
 The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
 also carried `ar-ci` it would start picking up general CPU test jobs, putting

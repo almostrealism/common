@@ -617,7 +617,8 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 		if (enableSourcesOnly) {
 			List<Receptor<PackedCollection>> r = new ArrayList<>();
-			r.add(output.getMaster(audioChannel));
+			Receptor<PackedCollection> master = output.getMaster(audioChannel);
+			if (master != null) r.add(master);
 			r.addAll(output.getMeasures(audioChannel));
 
 			return cells
@@ -692,7 +693,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		}
 
 		if (output.isStemsActive()) {
-			main = main.branch(i -> new ReceptorCell<>(output.getStem(i, audioChannel)),
+			main = main.branch(i -> new ReceptorCell<>(Receptor.toPresent(output.getStem(i, audioChannel))),
 								i -> new PassThroughCell<>())[1];
 		}
 
@@ -702,15 +703,14 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		if (enableEfx) {
 			main = createEfx(main, efx, reverbActive ? reverb : null, riser,
 					sources.size(), output, audioChannel, channelIndex);
-		} else if (output.isMeasuresActive()) {
-			// Deliver main to the output and measure for MAIN and WET
-			main = main.map(i -> new ReceptorCell<>(Receptor.to(
-					output.getMaster(audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.WET, audioChannel))));
 		} else {
-			// Deliver main to the output
-			main = main.map(i -> new ReceptorCell<>(output.getMaster(audioChannel)));
+			// Deliver main to the output and, when active, the MAIN and WET measures.
+			// A destination without a receptor for this stereo channel (a mono master)
+			// contributes nothing to the list, so the signal is delivered to the rest.
+			main = main.map(i -> new ReceptorCell<>(Receptor.toPresent(
+					output.getMaster(audioChannel),
+					output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel) : null,
+					output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.WET, audioChannel) : null)));
 		}
 
 		return main;
@@ -776,11 +776,11 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		if (disableClean) {
 			List<Receptor<PackedCollection>> measures = output.getMeasures(audioChannel);
 
-			Receptor[] r = new Receptor[measures.size() + 1];
-			r[0] = output.getMaster(audioChannel);
-			for (int i = 0; i < measures.size(); i++) r[i + 1] = measures.get(i);
+			List<Receptor<PackedCollection>> r = new ArrayList<>(measures.size() + 1);
+			r.add(output.getMaster(audioChannel));
+			r.addAll(measures);
 
-			efx.get(0).setReceptor(Receptor.to(r));
+			efx.get(0).setReceptor(Receptor.toPresent(r.stream()));
 			return efx;
 		}
 
@@ -793,7 +793,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			efxReceptors.add(output.getStem(sourceCount, audioChannel));
 		}
 
-		efx.get(0).setReceptor(Receptor.to(efxReceptors.toArray(Receptor[]::new)));
+		efx.get(0).setReceptor(Receptor.toPresent(efxReceptors.stream()));
 
 		if (enableMasterFilterDown) {
 			// Apply dynamic low pass filter
@@ -824,14 +824,10 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 							bound(multiply(in, c(gain)), -1.0, 1.0)));
 		}
 
-		// Deliver main to the output and measure #1
-		if (!output.isMeasuresActive()) {
-			main = main.map(i -> new ReceptorCell<>(output.getMaster(audioChannel)));
-		} else {
-			main = main.map(i -> new ReceptorCell<>(Receptor.to(
-					output.getMaster(audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel))));
-		}
+		// Deliver main to the output and, when active, measure #1
+		main = main.map(i -> new ReceptorCell<>(Receptor.toPresent(
+				output.getMaster(audioChannel),
+				output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel) : null)));
 
 		return cells(main, efx);
 	}

@@ -106,6 +106,49 @@ class RegisterWorkstreamWiringTests(unittest.TestCase):
         self.assertIn("Fetch base branch", names)
         self.assertLess(names.index("Fetch base branch"), names.index(_INTEGRITY_STEP))
 
+    def test_the_fetch_step_never_fails_the_job(self):
+        """Regression guard: a bare `git fetch` fails the step under the
+        default `-eo pipefail` shell flags, which would turn the whole job
+        red on a transient network error and contradict the job's own
+        "never fails the pipeline" invariant. The fetch must be wrapped so a
+        failure is reported and exits 0 instead.
+        """
+        step = _step("Fetch base branch")
+        script = step["run"]
+        self.assertNotEqual(script.strip(), "git fetch origin master:refs/remotes/origin/master --no-tags")
+        self.assertIn("git fetch", script)
+        self.assertIn("::warning::", script)
+
+    def test_the_fetch_step_has_the_id_the_integrity_step_references(self):
+        self.assertEqual(_step("Fetch base branch").get("id"), "fetch_base")
+
+    def test_a_failed_fetch_is_treated_as_unverifiable_not_trusted(self):
+        """Regression guard: if origin/master could not be fetched, the
+        integrity step must fail closed (skip registration) rather than
+        falling through to the "script is new on master" trust-as-is branch,
+        which would let an unverifiable — possibly modified — script run
+        with the registration secret attached.
+
+        The fetch-failure flag is passed via `env:` (like BRANCH), not
+        interpolated directly as a GitHub Actions expression, matching the
+        existing script-injection guard on this step.
+        """
+        step = _step(_INTEGRITY_STEP)
+        self.assertEqual(step.get("env", {}).get("FETCH_FAILED"),
+                          "${{ steps.fetch_base.outputs.failed }}")
+        script = step["run"]
+        self.assertIn("FETCH_FAILED", script)
+        lines = script.splitlines()
+        failed_check_index = next(
+            i for i, line in enumerate(lines) if "FETCH_FAILED" in line
+        )
+        cat_file_index = next(
+            i for i, line in enumerate(lines) if "git cat-file" in line
+        )
+        self.assertLess(failed_check_index, cat_file_index,
+                         "the fetch-failure check must be evaluated before the "
+                         "cat-file existence check trusts a missing base copy")
+
     def test_the_job_still_does_not_gate_on_the_validation_jobs(self):
         """This job is deliberately independent of code-policy/checkstyle/etc.
 
