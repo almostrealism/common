@@ -607,6 +607,8 @@ The following scripts enforce invariants mechanically:
 - `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss. **Java only** — it selects `**/*Test*.java` and `**/test/**/*.java`, so no Python test is examined by it.
 - `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
 
+`validate-agent-commit.sh` is not the only place the base-branch test-method lock is enforced. `flowtree/runtime`'s `TestMethodProtection` (used by `FileStager`) applies the identical rule at test-method granularity on the harness side, before a commit exists, so a job cannot even stage a change that would later fail the CI gate. Both enforcement points delegate method extraction to the same `tools/ci/agent-protection/test-method-lines.awk`, read from the merge-base rather than the working tree, so the two always agree.
+
 ## Rules That Cannot Be Bypassed
 
 1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.

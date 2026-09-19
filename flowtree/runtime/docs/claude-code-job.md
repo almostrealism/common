@@ -398,13 +398,19 @@ The `InstructionPromptBuilder` class extracts the prompt-assembly logic from `Cl
 
 ### Section Assembly Order
 
-All setters support chaining. The `build()` method assembles sections in this fixed order. The first three sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all three are emitted in order.
+All setters support chaining. The `build()` method assembles sections in this fixed order. The first six sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all are emitted in order.
 
 0a. **Git Tampering Violation Warning** -- Present when `gitTamperingViolation` is set. Heading: `## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!`. Explains that the previous session was terminated and its changes destroyed because the agent ran a forbidden git command (commit, checkout, switch, branch, merge, rebase, reset, stash). Lists the exact rules and warns that another violation will result in another forced reset.
 
-0b. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+0b. **Binary File Litter Warning** -- Present when `invalidFilesViolation` is set. Heading: `## !! SESSION RESTARTED -- BINARY FILE LITTER !!`. Explains that the previous session was blocked because it left `.bin` files (see `InvalidFileDetector`) in the working tree, lists exactly which files must be deleted, and warns that they poison the repository whether or not they were staged or committed. A path prefixed with a repository directory name identifies litter in a dependent repository checked out beside the primary one.
 
-0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+0c. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+
+0d. **Conversation Catch-Up** -- Present when `conversationCatchUp` is non-empty. Heading: `## !! SESSION RESTARTED -- MESSAGES ARRIVED WHILE YOU WERE DOWN !!`. Rendered by `ConversationCatchUp#render()` from the workstream mailbox: quotes every message that arrived after the job's own last message, oldest first, and tells the relaunched session to act on the newest instruction rather than redo preparatory work it was told to skip.
+
+0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+
+0f. **Falsification Refutation Warning** -- Present when `falsificationFindings` is non-empty. Heading: `## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM DID NOT PASS FALSIFICATION !!`. Used when the falsification phase bounced the job back to primary because a load-bearing behavioural claim the prior attempt relied on was not confirmed by the evidence captured during that attempt. Includes the claim, the dependent code, and the captured evidence.
 
 1. **Opening paragraph** -- Always present. Establishes that the agent is autonomous with no TTY and no interactive session.
 
@@ -464,7 +470,11 @@ All setters support chaining. The `build()` method assembles sections in this fi
 | `setTaskId(String)` | `String` | Non-null enables section 14. |
 | `setPlanningDocument(String)` | `String` | Non-null/non-empty enables section 15. |
 | `setGitTamperingViolation(String)` | `String` | Non-null/non-empty enables section 0a. |
-| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0b. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
+| `setInvalidFilesViolation(String)` | `String` | Non-null/non-empty enables section 0b. Comma-separated list of `.bin` litter paths from `InvalidFileDetector`. |
+| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0c. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
+| `setConversationCatchUp(String)` | `String` | Non-null/non-empty enables section 0d. Rendered by `ConversationCatchUp#render()`. |
+| `setCorrectionSession(boolean)` | `boolean` | `true` suppresses section 0e (enforcement retry warning) and the outer `enforce_changes` pressure, since a rule-specific correction prompt may legitimately accept "no changes needed". |
+| `setFalsificationFindings(String)` | `String` | Non-null/non-empty enables section 0f. |
 
 ### Relationship Between Builder and Inline Method
 

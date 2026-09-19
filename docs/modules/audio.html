@@ -163,8 +163,16 @@
                 <p>Signal generators and source aggregation.</p>
                 <div class="class-list">
                     <div class="class-item">
+                        <h4>OscillatorCell</h4>
+                        <p>Shared base class for the geometric waveform oscillators. Owns parameter storage, setup, envelope handling, and per-sample position advancement; subclasses provide only the waveform shape.</p>
+                    </div>
+                    <div class="class-item">
                         <h4>SineWaveCell</h4>
-                        <p>Sine wave oscillator extending <code>CollectionTemporalCellAdapter</code>. Configurable frequency and amplitude via Producer pattern.</p>
+                        <p>Sine wave oscillator extending <code>OscillatorCell</code>. Configurable frequency and amplitude via Producer pattern.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>SquareWaveCell / SawtoothWaveCell / TriangleWaveCell</h4>
+                        <p>Additional <code>OscillatorCell</code> subclasses. Square and sawtooth apply PolyBLEP anti-aliasing at their waveform discontinuities via <code>SamplingFeatures.polyBlep</code>; triangle has no discontinuity and needs none.</p>
                     </div>
                     <div class="class-item">
                         <h4>NoiseGenerator</h4>

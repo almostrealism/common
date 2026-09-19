@@ -260,6 +260,39 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 }
 ```
 
+### TransformerBlockFeatures
+
+`TransformerBlockFeatures` (extends `AttentionFeatures`) assembles complete pre-norm
+transformer blocks — self-attention, optional cross-attention, and a gated feed-forward,
+each in a residual branch — for the sequence-based (non-KV-cached) models such as
+`DiffusionTransformer` and `T5GemmaEncoder`. Every overload delegates to one fully
+specified `transformerBlock(...)` that accepts an `AttentionVariant`, optional adaLN
+modulation, optional per-position additive conditioning, and a `NormalizationType`, so
+all callers share one block assembly:
+
+```java
+Block block = transformerBlock(
+    batchSize, dim, seqLen, heads, crossAttend,
+    contextSeqLen, context,
+    preNormWeight, preNormBias,
+    selfQkv, selfWo,
+    selfQNormWeight, selfQNormBias, selfKNormWeight, selfKNormBias,
+    invFreq,
+    crossAttPreNormWeight, crossAttPreNormBias,
+    crossWq, crossKv, crossWo,
+    crossQNormWeight, crossQNormBias, crossKNormWeight, crossKNormBias,
+    ffnNormWeight, ffnNormBias, w1, w2, w1Bias, w2Bias,
+    attentionScores,       // optional Receptor to capture cross-attention scores, or null
+    projectionFactory,     // ProjectionFactory.dense() or a LoRA-wrapped factory
+    AttentionVariant.STANDARD,
+    diffLambda,            // learned lambda for variants that need it, or null
+    modulation,            // adaLN scale/shift/gate, shape [batch, 6, dim], or null for prepend-style conditioning
+    localAddition,         // per-position additive conditioning, shape [batch, seqLen, dim], or null
+    NormalizationType.RMS,
+    paddingMask            // per-position validity, or null for no masking
+);
+```
+
 ### AutoregressiveModel
 
 ```java
