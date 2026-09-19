@@ -26,10 +26,13 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -53,36 +56,73 @@ import java.util.function.Function;
  */
 public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures, AdaptiveLayerNormFeatures {
 	/**
-	 * Creates a SwiGLU feed-forward block with RMSNorm (simplified version without biases).
-	 * Delegates to the full feedForward method with null biases.
+	 * Classpath location of the asset describing the SwiGLU feed-forward structure. Its
+	 * {@code swiglu_ffn} layer is what the {@link #feedForward} methods build; the asset is the
+	 * single definition of how the residual-stream vector flows through the pre-FFN
+	 * normalization, the gate and up projections, the SiLU gate, the element-wise product and
+	 * the down projection.
+	 */
+	String FEED_FORWARD_ASSET = "/pdsl/feed_forward.pdsl";
+
+	/**
+	 * Binds the arguments the {@code swiglu_ffn} layer of {@link #FEED_FORWARD_ASSET} takes: the
+	 * pre-FFN RMSNorm weights, the gate/up/down projection weights and the RMSNorm epsilon.
+	 *
+	 * @param rms pre-FFN RMSNorm weights, whose length is the model dimension
+	 * @param w1 gate projection weights, shape {@code [hidden_dim, dim]}
+	 * @param w2 down projection weights, shape {@code [dim, hidden_dim]}
+	 * @param w3 up projection weights, shape {@code [hidden_dim, dim]}
+	 * @param epsilon RMSNorm epsilon (e.g. 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @return the argument bindings for the {@code swiglu_ffn} layer
+	 */
+	default Map<String, Object> feedForwardArguments(
+			PackedCollection rms,
+			PackedCollection w1, PackedCollection w2, PackedCollection w3,
+			double epsilon) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("norm_weights", rms);
+		args.put("w1", w1);
+		args.put("w2", w2);
+		args.put("w3", w3);
+		args.put("epsilon", epsilon);
+		return args;
+	}
+
+	/**
+	 * Creates a SwiGLU feed-forward block with the default RMSNorm epsilon (1e-5). Delegates to
+	 * {@link #feedForward(PackedCollection, PackedCollection, PackedCollection, PackedCollection,
+	 * double, ComputeRequirement...)}.
 	 *
 	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
+	 * @param w1 gate projection weights
+	 * @param w2 down projection weights
+	 * @param w3 up projection weights
+	 * @param requirements compute requirements applied to every layer the asset builds
+	 * @return feed-forward block
 	 */
 	default Block feedForward(
 			PackedCollection rms,
 			PackedCollection w1, PackedCollection w2, PackedCollection w3,
 			ComputeRequirement... requirements) {
-		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null,
-				requirements);
+		return feedForward(rms, w1, w2, w3, 1e-5, requirements);
 	}
 
 	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
+	 * Creates a SwiGLU feed-forward block from the {@code swiglu_ffn} layer of
+	 * {@link #FEED_FORWARD_ASSET}.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-FFN RMSNorm, the gate
+	 * and up projections, the SiLU gate, the element-wise product and the down projection. This
+	 * method only binds the weights and epsilon, loads the asset and builds the layer for a
+	 * {@code (1, dim)} input, where {@code dim} is the down projection's output dimension.</p>
 	 *
 	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
+	 * @param w1 gate projection weights, shape {@code [hidden_dim, dim]}
+	 * @param w2 down projection weights, shape {@code [dim, hidden_dim]}
+	 * @param w3 up projection weights, shape {@code [hidden_dim, dim]}
+	 * @param epsilon RMSNorm epsilon (e.g. 1e-5 for Llama, 1e-6 for Qwen3)
+	 * @param requirements compute requirements applied to every layer the asset builds
+	 * @return feed-forward block
 	 */
 	default Block feedForward(
 			PackedCollection rms,
@@ -90,72 +130,9 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 			double epsilon,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null, epsilon,
-				requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with optional biases.
-	 *
-	 * <p>Implements the SwiGLU activation: FFN(x) = (SiLU(x @ W1 + b1) * (x @ W3 + b3)) @ W2 + b2
-	 * This is the standard feed-forward layer used in modern transformers.</p>
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			ComputeRequirement... requirements) {
-		return feedForward(shape, normWeights, normBiases, w1, w2, w3,
-				w1Bias, w2Bias, w3Bias, 1e-5, requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			double epsilon,
-			ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(shape, normWeights, normBiases, epsilon, requirements));
-
-		SequentialBlock hidden = new SequentialBlock(shape);
-		hidden.add(dense(w1, w1Bias));
-		hidden.add(silu());
-
-		feedForward.product(dense(w3, w3Bias), hidden);
-		feedForward.add(dense(w2, w2Bias));
-		return feedForward;
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET), "swiglu_ffn",
+				shape(1, dim), feedForwardArguments(rms, w1, w2, w3, epsilon), requirements);
 	}
 
 	/**

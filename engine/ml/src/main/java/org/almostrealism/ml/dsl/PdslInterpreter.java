@@ -76,8 +76,7 @@ import java.util.function.Function;
  *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
  *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
- *   <li>{@code attention(...)}, {@code transformer(...)},
- *       {@code feed_forward(...)}</li>
+ *   <li>{@code attention(...)}, {@code transformer(...)}</li>
  * </ul>
  *
  * <p>Domain-specific primitives (audio DSP, multi-channel routing, etc.) are not
