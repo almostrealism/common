@@ -487,26 +487,41 @@ tools live elsewhere (a `claude` under `~/.local/bin`, for instance).
 
 ### Registering the agent daemon (once, as an administrator)
 
-The first deploy — or `install.sh` run by hand — stages the JARs, `run.sh`,
-`register-daemon.sh` and the rendered service definition under
-`~worker/flowtree-agent`, then stops with the exact command for this step,
-because worker cannot perform it:
+The first deploy — or `install.sh` run by hand — stages the JARs, `run.sh`
+and the rendered service definition under `~worker/flowtree-agent`, then stops
+with the command for this step, because worker cannot perform it:
 
 ```bash
-sudo /Users/worker/flowtree-agent/bin/register-daemon.sh \
+# from a checkout of this repository that YOU own — not worker's
+sudo /path/to/your/common/flowtree/runtime/agent/macos/register-daemon.sh \
     /Users/worker/flowtree-agent/conf/com.almostrealism.flowtree-agent.plist
 ```
 
 Run it from any administrator shell; the session it is in does not matter.
-`register-daemon.sh` (`flowtree/runtime/agent/macos/register-daemon.sh`)
-lints the plist, reads its `Label`, installs it under `/Library/LaunchDaemons`
-as root:wheel 644, bootstraps it into the system domain, and prints the
-service's state and pid. When a service with that label is already
-registered it boots that out first and **waits for launchd to stop listing
-it** before loading the new definition — `launchctl bootout` returns before
-the process is gone, and a bootstrap that landed in that window would run two
-agents with the same node identity — failing instead if the old one will not
-stop.
+Where the script comes from does: `worker` executes code it did not write
+(that is what a coding-agent job is), so root must not run anything worker
+can edit. `register-daemon.sh` is therefore never staged under
+`~worker/flowtree-agent`, the checkout the deploy job runs from is not
+trusted either, and the script refuses to run from a file that is not owned
+by root or by the administrator behind `sudo`, or that is group- or
+world-writable.
+
+The plist is worker's, and it is treated that way. `register-daemon.sh`
+(`flowtree/runtime/agent/macos/register-daemon.sh`) copies it to a root-owned
+temporary file, lints that copy, and checks it before root acts on it: the
+service must run as the account that owns the plist (`UserName` is required
+and must name the owner, `GroupName` if present must be the owner's primary
+group, and the owner must not be root), and only the keys a plain service
+needs are accepted. A plist can register a service that runs as whoever wrote
+it, and nothing else — no more than that account could already do with a
+LaunchAgent, minus the login-session requirement. It then installs the copy
+under `/Library/LaunchDaemons` as root:wheel 644, bootstraps it into the
+system domain, and prints the service's state and pid. When a service with
+that label is already registered it boots that out first and **waits for
+launchd to stop listing it** before loading the new definition — `launchctl
+bootout` returns before the process is gone, and a bootstrap that landed in
+that window would run two agents with the same node identity — failing
+instead if the old one will not stop.
 
 The agent starts immediately (`RunAtLoad`) on the staged JARs, and every
 deploy from then on is unprivileged. The rendered plist is regenerated on each
@@ -582,8 +597,9 @@ PLIST
 ```
 
 ```bash
-# as an administrator — the same script that registers the agent
-sudo /path/to/common/flowtree/runtime/agent/macos/register-daemon.sh \
+# as an administrator, from a checkout YOU own — the same script, and the
+# same checks, as for the agent: the plist must run the service as worker
+sudo /path/to/your/common/flowtree/runtime/agent/macos/register-daemon.sh \
     /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist
 tail -f /Users/worker/actions-runner-deploy-agent/runner.log
 ```

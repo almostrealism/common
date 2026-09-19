@@ -190,8 +190,9 @@ deployed by the same workflow that rebuilds the pool:
 # as the account the agent should run as
 cp agent/macos/agent.env.example ~/flowtree-agent/agent.env   # then fill it in
 ./agent/macos/install.sh
-# first time only: it stops and prints the one `sudo` command (register-daemon.sh)
-# that registers the service; run it as an administrator, then run install.sh again
+# first time only: it stops and prints the one `sudo` command (register-daemon.sh,
+# run from a checkout the administrator owns) that registers the service;
+# run it as an administrator, then run install.sh again
 ```
 
 `install.sh` builds the JARs, installs them under `~/flowtree-agent`, and
@@ -263,7 +264,7 @@ flowtree/
     macos/                  # Native macOS agent (launchd service)
       install.sh
       run.sh
-      register-daemon.sh    # root-only registration of the LaunchDaemon (agent or runner)
+      register-daemon.sh    # root-only registration of the LaunchDaemon (agent or runner); run from an admin-owned checkout
       com.almostrealism.flowtree-agent.plist
       agent.env.example
   bin/                      # Bare-metal startup scripts

@@ -23,7 +23,10 @@
 #      that runs as this account, registered ONCE by root; this script never
 #      needs launchd privileges and never has them. When the daemon is not
 #      registered, or the registered definition is stale, the script fails
-#      and prints the exact commands the administrator has to run.
+#      and prints the one command the administrator has to run —
+#      register-daemon.sh, from a checkout the administrator owns, which
+#      validates the plist before root acts on it (see that script's header
+#      for the trust boundary).
 #   5. Restarts the agent by signalling the running process. launchd's
 #      KeepAlive starts it again on the new classpath, so the process is
 #      owned by launchd from boot onward: it survives the end of the CI job
@@ -208,10 +211,8 @@ fi
 mv "${STAGING}" "${AGENT_HOME}/lib"
 
 cp "${MODULE_DIR}/conf/agent.properties" "${AGENT_HOME}/conf/agent.properties"
-# register-daemon.sh goes beside run.sh so the registration command printed
-# below still exists after the checkout that ran this install is gone.
-cp "${SCRIPT_DIR}/run.sh" "${SCRIPT_DIR}/register-daemon.sh" "${AGENT_HOME}/bin/"
-chmod +x "${AGENT_HOME}/bin/run.sh" "${AGENT_HOME}/bin/register-daemon.sh"
+cp "${SCRIPT_DIR}/run.sh" "${AGENT_HOME}/bin/run.sh"
+chmod +x "${AGENT_HOME}/bin/run.sh"
 
 echo "Installed $(ls "${AGENT_HOME}/lib" | wc -l | tr -d ' ') JARs to ${AGENT_HOME}/lib"
 
@@ -234,13 +235,19 @@ sed -e "s|@AGENT_HOME@|${AGENT_HOME}|g" \
 
 # Printed whenever the administrator has to act. Root may bootstrap into the
 # system domain from any session, which is the whole reason the service
-# lives there. register-daemon.sh does the whole sequence — and, when a
-# definition is being replaced, waits for the old service to be gone before
-# loading the new one, so two agents never run at once — which is why the
-# instruction is that one command and not the launchctl calls it makes.
+# lives there. register-daemon.sh does the whole sequence — validates the
+# plist (it must run the service as the account that wrote it, and nothing
+# else), and when a definition is being replaced waits for the old service to
+# be gone before loading the new one, so two agents never run at once.
+#
+# The script is deliberately NOT staged under AGENT_HOME and the command
+# does not point at this checkout: both are writable by this account, and
+# this account runs code it did not write. Root must execute the script from
+# a checkout the administrator owns; register-daemon.sh refuses otherwise.
 registration_steps() {
-    echo "  As an administrator:" >&2
-    echo "    sudo ${AGENT_HOME}/bin/register-daemon.sh ${PLIST}" >&2
+    echo "  As an administrator, from a checkout of this repository that YOU own" >&2
+    echo "  (not this one, and nothing under ${AGENT_HOME} — root must not run files $(id -un) can edit):" >&2
+    echo "    sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh ${PLIST}" >&2
     echo "  Then run this script again (or re-run the deploy workflow)." >&2
 }
 
