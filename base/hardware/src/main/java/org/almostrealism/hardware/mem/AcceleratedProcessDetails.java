@@ -364,9 +364,12 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * completion-pool thread would block on the monitor while the holder waited for that
 	 * completion — a hard deadlock that appeared only under concurrent multi-channel dispatch
 	 * (invisible in small single-op tests). {@link #notifyListeners()} now releases the monitor
-	 * before running listeners, which removes this hazard; the lease/reuse mechanism remains
-	 * disabled by default via {@code ProcessDetailsFactory.enableDestinationReuse}
-	 * ({@code AR_HARDWARE_DESTINATION_REUSE}) pending verification that re-enabling it is safe.</p>
+	 * before running listeners, and its callers {@link #checkReady()} and {@link #whenReady(Runnable)}
+	 * likewise release it before invoking {@link #notifyListeners()} instead of holding it
+	 * reentrantly across the call, which removes this hazard on both the synchronous and
+	 * asynchronous dispatch paths; the lease/reuse mechanism remains disabled by default via
+	 * {@code ProcessDetailsFactory.enableDestinationReuse} ({@code AR_HARDWARE_DESTINATION_REUSE})
+	 * pending verification that re-enabling it is safe.</p>
 	 */
 	public void releaseDestinationLeases() {
 		List<Runnable> leases;

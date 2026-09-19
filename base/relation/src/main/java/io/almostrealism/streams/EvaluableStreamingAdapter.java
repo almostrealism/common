@@ -156,4 +156,6 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	public boolean isDispatchBacked() {
 		return true;
 	}
+
+	// TODO(review): request() never blocks the caller (only submits to executor) -- isSharedExecutorSafe() may be able to return true here
 }
