@@ -25,6 +25,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -95,6 +96,37 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected Map<String, int[]> blockWeightShapes(ResamplingConfig config, String prefix) {
 		return config.weightShapes(prefix);
+	}
+
+	/**
+	 * Generates a complete set of synthetic weights for a resampling block under the given key prefix,
+	 * using {@link #blockWeightShapes} so the synthetic key set matches the real one exactly.
+	 *
+	 * @param config the block configuration
+	 * @param prefix the weight key prefix
+	 * @return a {@link StateDictionary} holding randomly-initialized weights for every key the block reads
+	 */
+	protected StateDictionary syntheticWeights(ResamplingConfig config, String prefix) {
+		Map<String, PackedCollection> w = new HashMap<>();
+		blockWeightShapes(config, prefix).forEach((key, dims) ->
+				w.put(key, new PackedCollection(shape(dims)).randnFill()));
+		return new StateDictionary(w);
+	}
+
+	/**
+	 * Builds a small configuration that still exercises the full resampling machinery (segmentation,
+	 * learned tokens, midpoint-shifted chunking, differential attention, SwiGLU) at dimensions cheap
+	 * enough for fast, in-CI tests.
+	 *
+	 * @param encoder {@code true} for an encoder (downsampling) config
+	 * @return the small configuration
+	 */
+	protected ResamplingConfig smallConfig(boolean encoder) {
+		int inChannels = encoder ? 4 : 8;
+		int outChannels = encoder ? 8 : 4;
+		int mappingKernel = encoder ? 1 : 3;
+		return new ResamplingConfig(inChannels, outChannels, 2, 4, 2, 4, 2,
+				encoder, true, true, 2.0, mappingKernel, ResamplingConfig.AttentionWindow.CHUNKED);
 	}
 
 	/**

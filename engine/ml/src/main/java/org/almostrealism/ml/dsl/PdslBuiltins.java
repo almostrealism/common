@@ -28,6 +28,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
@@ -43,8 +44,10 @@ import java.util.function.Supplier;
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
  * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
- * scale, repeat, sum_channels, capture, rope_rotation, attention, transformer,
- * feed_forward, shape, range). {@link PdslInterpreter} evaluates a call's
+ * scale, repeat, repeat_each, sum_channels, capture, cache_write, rope_rotation,
+ * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
+ * causal_mask, weighted_values, sqrt, attention, transformer, feed_forward,
+ * shape, range). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
  * {@link PdslInterpreter#registerPrimitive} instead of extending this class.
@@ -85,9 +88,18 @@ final class PdslBuiltins {
 			case "identity": return callIdentity(args);
 			case "scale": return callScale(args);
 			case "repeat": return callRepeat(args);
+			case "repeat_each": return callRepeatEach(args);
 			case "sum_channels": return callSumChannels(args);
 			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
+			case "cache_write": return callCacheWrite(args);
 			case "rope_rotation": return callRopeRotation(args);
+			case "mra_rope_rotation": return callMraRopeRotation(args);
+			case "split_half_rope": return callSplitHalfRope(args);
+			case "merge_half_rope": return callMergeHalfRope(args);
+			case "attention_scores": return callAttentionScores(producerArg(args, 0, 1, "attention_scores"));
+			case "causal_mask": return callCausalMask(args);
+			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
+			case "sqrt": return callSqrt(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
 			case "feed_forward": return callFeedForward(args);
@@ -339,17 +351,201 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds a softmax activation block.
+	 * Builds a softmax activation block: one distribution per row of a {@code [rows, size]}
+	 * input, computed over the last axis with the per-row maximum subtracted first so large
+	 * logits (attention scores, vocabulary logits) do not overflow.
 	 *
 	 * @param args Must be empty
-	 * @return A softmax {@link Block}
+	 * @return A factory that creates the row-wise softmax layer for any input of at least two dimensions
 	 */
 	private static Function<TraversalPolicy, CellularLayer> callSoftmax(List<Object> args) {
-		if (args.isEmpty()) {
-			return FEATURES.softmax();
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"softmax() expects 0 arguments, got " + args.size());
 		}
-		throw new PdslParseException(
-				"softmax() expects 0 arguments, got " + args.size());
+		return shape -> {
+			if (shape.getDimensions() < 2) {
+				throw new PdslParseException(
+						"softmax() expects a [rows, size] input shape, got " + shape);
+			}
+			return FEATURES.softmax(shape, true);
+		};
+	}
+
+	/**
+	 * Builds a block factory that duplicates every row of a {@code [rows, size]} input
+	 * {@code n} consecutive times, producing {@code [rows * n, size]}. With {@code n == 1}
+	 * the stage is a pass-through and adds no computation.
+	 *
+	 * @param args one argument: the integer copy count {@code n}
+	 * @return a factory that creates the duplication for any 2-D input shape
+	 * @see org.almostrealism.layers.LayerFeatures#repeatEach
+	 */
+	private static Function<TraversalPolicy, Block> callRepeatEach(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"repeat_each() expects 1 argument (n), got " + args.size());
+		}
+		int n = toInt(args.get(0));
+		if (n == 1) {
+			return inputShape -> {
+				if (inputShape.getDimensions() != 2) {
+					throw new PdslParseException(
+							"repeat_each() expects a [rows, size] input shape, got " + inputShape);
+				}
+				return FEATURES.passThrough(inputShape);
+			};
+		}
+		return inputShape -> FEATURES.repeatEach(inputShape, n);
+	}
+
+	/**
+	 * Builds a block factory that writes the stage input into row {@code position} of a
+	 * caller-owned {@code [rows, size]} cache and passes the input through unchanged. The
+	 * cache is state declared in a {@code state} block; the row persists across forward
+	 * passes, so this is how a key/value cache is filled one token at a time.
+	 *
+	 * @param args two arguments: the cache collection and the row position (shape {@code [1]})
+	 * @return a factory that creates the cache write for the input shape of one row
+	 * @see org.almostrealism.layers.LayerFeatures#cacheWrite
+	 */
+	private static Function<TraversalPolicy, Block> callCacheWrite(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"cache_write() expects 2 arguments (cache, position), got " + args.size());
+		}
+		CollectionProducer cache = PdslInterpreter.normalizeToProducer(args.get(0), null,
+				"cache_write() cache");
+		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(1),
+				FEATURES.shape(1), "cache_write() position");
+		return inputShape -> FEATURES.cacheWrite(inputShape, cache, position);
+	}
+
+	/**
+	 * Builds the split-half rotary layout: {@code [1, heads * head_size]} becomes
+	 * {@code [heads, head_size / 2, 2]} where element {@code i} of a head is paired with
+	 * element {@code i + head_size / 2}, the pairing {@code rope_rotation} rotates.
+	 *
+	 * @param args two integer arguments: heads, head_size
+	 * @return a factory that creates the permutation for a flat input of {@code heads * head_size}
+	 */
+	private static Function<TraversalPolicy, Block> callSplitHalfRope(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"split_half_rope() expects 2 arguments (heads, head_size), got " + args.size());
+		}
+		int heads = toInt(args.get(0));
+		int headSize = toInt(args.get(1));
+		return inputShape -> {
+			if (inputShape.getTotalSize() != heads * headSize) {
+				throw new PdslParseException("split_half_rope() input " + inputShape
+						+ " does not hold " + heads + " heads of " + headSize);
+			}
+			return FEATURES.reshapeToSplitHalfRope(heads * headSize, heads, headSize);
+		};
+	}
+
+	/**
+	 * Builds the inverse of {@code split_half_rope}: {@code [heads, head_size / 2, 2]}
+	 * back to the per-head layout {@code [heads, head_size]}.
+	 *
+	 * @param args two integer arguments: heads, head_size
+	 * @return the merging permutation {@link Block}
+	 */
+	private static Block callMergeHalfRope(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"merge_half_rope() expects 2 arguments (heads, head_size), got " + args.size());
+		}
+		return FEATURES.reshapeFromSplitHalfRope(toInt(args.get(0)), toInt(args.get(1)));
+	}
+
+	/**
+	 * Builds a rotary position embedding block with one frequency table and one position per
+	 * head group (multidimensional relative attention). The groups partition the heads of the
+	 * {@code [heads, head_size / 2, 2]} input in order.
+	 *
+	 * @param args two arguments: the input shape and the head groups
+	 *             ({@link HeadGroupConfig HeadGroupConfig[]}, each naming its head count,
+	 *             frequency table and position producer)
+	 * @return the rotation {@link Block}
+	 * @see org.almostrealism.ml.RotationFeatures#mraRopeRotation
+	 */
+	private static Block callMraRopeRotation(List<Object> args) {
+		if (args.size() != 2 || !(args.get(0) instanceof TraversalPolicy)
+				|| !(args.get(1) instanceof HeadGroupConfig[])) {
+			throw new PdslParseException(
+					"mra_rope_rotation() expects 2 arguments (shape, head_groups), got " + args);
+		}
+		TraversalPolicy shape = (TraversalPolicy) args.get(0);
+		if (shape.getDimensions() != 3 || shape.length(2) != 2) {
+			throw new PdslParseException(
+					"mra_rope_rotation() expects a [heads, head_size / 2, 2] shape, got " + shape);
+		}
+		HeadGroupConfig[] groups = (HeadGroupConfig[]) args.get(1);
+		int[] headsInGroup = new int[groups.length];
+		for (int g = 0; g < groups.length; g++) {
+			headsInGroup[g] = groups[g].headCount;
+		}
+		return FEATURES.mraRopeRotation(shape.length(0), shape.length(1) * 2, headsInGroup, groups);
+	}
+
+	/**
+	 * Builds the attention-score stage: the {@code [heads, head_size]} input holds one query
+	 * per head, and the result {@code [heads, seq_len]} is every query's unscaled dot product
+	 * with each row of the {@code [seq_len, heads * head_size]} key cache.
+	 *
+	 * @param keys the key cache, one {@code head_size} slice per head in every row
+	 * @return a factory that creates the score layer for the query shape
+	 * @see org.almostrealism.ml.AttentionFeatures#attentionScores
+	 */
+	private static Function<TraversalPolicy, Block> callAttentionScores(CollectionProducer keys) {
+		return inputShape -> FEATURES.attentionScores(inputShape, keys);
+	}
+
+	/**
+	 * Builds the causal-mask stage: on a {@code [heads, seq_len]} score matrix, every column
+	 * after {@code position} receives a penalty large enough that its softmax weight vanishes.
+	 *
+	 * @param args one argument: the current position (shape {@code [1]})
+	 * @return a factory that creates the mask layer for the score shape
+	 * @see org.almostrealism.ml.AttentionFeatures#causalMask
+	 */
+	private static Function<TraversalPolicy, Block> callCausalMask(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"causal_mask() expects 1 argument (position), got " + args.size());
+		}
+		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(0),
+				FEATURES.shape(1), "causal_mask() position");
+		return shape -> FEATURES.causalMask(shape, position);
+	}
+
+	/**
+	 * Builds the weighted-sum stage: the {@code [heads, seq_len]} input holds one attention
+	 * distribution per head, and the result {@code [1, heads * head_size]} is each head's
+	 * weighted sum of its slice of the {@code [seq_len, heads * head_size]} value cache.
+	 *
+	 * @param values the value cache, one {@code head_size} slice per head in every row
+	 * @return a factory that creates the weighted-sum layer for the weight shape
+	 * @see org.almostrealism.ml.AttentionFeatures#weightedValues
+	 */
+	private static Function<TraversalPolicy, Block> callWeightedValues(CollectionProducer values) {
+		return inputShape -> FEATURES.weightedValues(inputShape, values);
+	}
+
+	/**
+	 * Evaluates a square root in configuration arithmetic, for expressions such as
+	 * {@code scale(1 / sqrt(head_size))}.
+	 *
+	 * @param args one numeric argument
+	 * @return the square root as a {@link Double}
+	 */
+	private static Double callSqrt(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException("sqrt() expects 1 argument, got " + args.size());
+		}
+		return Math.sqrt(toDouble(args.get(0)));
 	}
 
 	/**
@@ -449,6 +645,12 @@ final class PdslBuiltins {
 
 	/**
 	 * Builds an attention block from 8, 14, or 15 evaluated arguments.
+	 *
+	 * <p>The structure is not assembled here: {@link org.almostrealism.ml.AttentionFeatures#attention}
+	 * allocates the key/value caches and builds the {@code attention} or
+	 * {@code attention_qk_norm} layer of {@code /pdsl/attention.pdsl}, where the stages are
+	 * written out. This built-in remains for assets that take the attention block as one
+	 * stage (the asset's own caches cannot be declared from their parameter lists).</p>
 	 *
 	 * @param args Evaluated arguments matching one of the supported
 	 *             {@link org.almostrealism.ml.AttentionFeatures#attention} overloads

@@ -594,13 +594,32 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   taken to be the only result of interest); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
-	 *   overwritten by the stale read copy of {@code x}).</li>
+	 *   overwritten by the stale read copy of {@code x}). Both {@code output != null} policies rely
+	 *   on the kernel having written {@code output}'s own memory, and it always has: the explicit
+	 *   {@code output} is bound directly at the output argument index (see
+	 *   {@link ProcessDetailsFactory}), and that argument is the operation's own destination,
+	 *   which is never folded. A slice of the aggregate that happens to alias {@code output} is
+	 *   therefore only ever the pre-kernel read copy of an input, and copying it back would
+	 *   discard the result &mdash; which is why the aliasing slice is skipped, never copied.</li>
 	 * </ul>
 	 *
 	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
 	 * {@code postprocess} (temp&rarr;aggregate) must run BEFORE aggregation's de-aggregation
 	 * (aggregate&rarr;originals), otherwise the de-aggregation reads a stale aggregate and the
 	 * result reads as zero.</p>
+	 *
+	 * <p><strong>Thread-local propagation.</strong> The dispatch below is registered as a
+	 * {@link AcceleratedProcessDetails#whenReady(Runnable) whenReady} listener, which runs
+	 * on the calling thread only when every argument is already available; when an argument's
+	 * completion is delivered asynchronously, the listener runs on the {@code ComputeContext}
+	 * executor thread that delivered it instead. The active {@link ComputeRequirement}s and
+	 * the active {@link Heap} are both thread-local, so both are captured on the calling
+	 * thread and re-established inside the listener. Skipping the {@link Heap} half of this
+	 * would make {@link Heap#addPendingKernel(Semaphore)} a silent no-op whenever the listener
+	 * runs on the executor thread (its {@link Heap#getDefault()} is unset there), so the
+	 * dispatched kernel's completion would never be registered with the {@link Heap.HeapStage}
+	 * that owns its argument memory, and that memory could be freed and reused while the
+	 * kernel is still running.</p>
 	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
@@ -624,10 +643,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
-		// Requirements are thread-local, and the listener below may run on another
-		// thread when dispatch is asynchronous; capture them here to re-establish there
+		// See the class/method javadoc above for why both of these are captured here.
 		List<ComputeRequirement> activeRequirements =
 				Hardware.getLocalHardware().getComputer().getActiveRequirements();
+		Heap.HeapStage activeHeapStage = Heap.getDefault() == null ? null : Heap.getDefault().getStage();
 
 		process.whenReady(() -> {
 			if (!activeRequirements.isEmpty()) {
@@ -666,9 +685,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
 				Semaphore nextSemaphore = operator.accept(input, ready);
 
-				// Register kernel semaphore with the active heap stage so
-				// that pop() waits for kernel completion before destroying memory
-				Heap.addPendingKernel(nextSemaphore);
+				// activeHeapStage avoids Heap.addPendingKernel()'s thread-local lookup; see javadoc above.
+				if (activeHeapStage != null) activeHeapStage.addPendingKernel(nextSemaphore);
 
 				Semaphore completion = nextSemaphore;
 
@@ -694,9 +712,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// unchanged.
 				process.setSemaphore(completion);
 
-				if (completion != null && completion != nextSemaphore) {
+				if (completion != null && completion != nextSemaphore && activeHeapStage != null) {
 					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
-					Heap.addPendingKernel(completion);
+					activeHeapStage.addPendingKernel(completion);
 				}
 
 				if (process.hasDestinationLeases()) {

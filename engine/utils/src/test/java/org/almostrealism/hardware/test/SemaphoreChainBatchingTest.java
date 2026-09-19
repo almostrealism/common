@@ -569,8 +569,8 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	 * @param requirement backend the kernel must compile for
 	 * @return the compiled, submittable copy kernel
 	 */
-	private static Submittable copyKernel(PackedCollection from, PackedCollection to, int len,
-										  ComputeRequirement requirement) {
+	static Submittable copyKernel(PackedCollection from, PackedCollection to, int len,
+								  ComputeRequirement requirement) {
 		Assignment<MemoryData> assign = new Assignment<>(len,
 				() -> (Evaluable<MemoryData>) args -> to,
 				() -> (Evaluable<MemoryData>) args -> from,

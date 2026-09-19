@@ -168,17 +168,48 @@ public class MetalOperator extends HardwareOperator {
 	 *
 	 * <p>If {@link #enableDispatchThreadgroups} is enabled, returns {@code [workgroupSize, 1, 1]}.
 	 * Otherwise, splits workgroup size across X and Y dimensions based on SIMD width:
-	 * {@code [simdWidth, workgroupSize/simdWidth, 1]}.</p>
+	 * {@code [simdWidth, workgroupSize/simdWidth, 1]}. A workgroup narrower than one SIMD group
+	 * (which {@link #getWorkgroupSize()} produces for small work sizes that are not multiples of
+	 * the SIMD width, such as 144 or 216) cannot be split this way: its height would be zero,
+	 * which is not a valid threadgroup, so it is dispatched one-dimensional as
+	 * {@code [workgroupSize, 1, 1]} instead.</p>
 	 *
 	 * @return 3-element array of [width, height, depth] dimensions
 	 */
 	public int[] getWorkgroupDimensions() {
+		int workgroupSize = getWorkgroupSize();
+
 		if (enableDispatchThreadgroups) {
-			return new int[] { getWorkgroupSize(), 1, 1 };
-		} else {
-			int simdWidth = kernel.threadExecutionWidth();
-			return new int[]{simdWidth, getWorkgroupSize() / simdWidth, 1};
+			return new int[] { workgroupSize, 1, 1 };
 		}
+
+		return splitWorkgroupDimensions(workgroupSize, kernel.threadExecutionWidth());
+	}
+
+	/**
+	 * Splits a threadgroup of {@code workgroupSize} threads into {@code [width, height, 1]}
+	 * dimensions for a {@code dispatchThreads} launch, using the kernel's SIMD group width.
+	 *
+	 * <p>The intent is a threadgroup one SIMD group wide and {@code workgroupSize / simdWidth}
+	 * high. That split is only valid when the workgroup spans at least one full SIMD group; for a
+	 * smaller workgroup &mdash; which {@link #getWorkgroupSize()} produces for small work sizes that
+	 * are not multiples of the SIMD width, such as a global work size of 144 or 216 &mdash; the
+	 * height would round to zero, which is not a valid threadgroup and on Metal leaves the
+	 * dispatched region partly unwritten (read later as uninitialised memory). Such a workgroup is
+	 * therefore dispatched one-dimensional as {@code [workgroupSize, 1, 1]} instead. The returned
+	 * dimensions always have a non-zero product equal to {@code workgroupSize} when
+	 * {@code simdWidth} divides it, and never contain a zero.</p>
+	 *
+	 * @param workgroupSize total threads per threadgroup (from {@link #getWorkgroupSize()})
+	 * @param simdWidth     the kernel's SIMD group width ({@code threadExecutionWidth})
+	 * @return 3-element array of {@code [width, height, depth]} threadgroup dimensions
+	 */
+	public static int[] splitWorkgroupDimensions(int workgroupSize, int simdWidth) {
+		if (workgroupSize < simdWidth) {
+			return new int[] { workgroupSize, 1, 1 };
+		}
+
+		return new int[] { simdWidth, workgroupSize / simdWidth, 1 };
 	}
 
 	/**

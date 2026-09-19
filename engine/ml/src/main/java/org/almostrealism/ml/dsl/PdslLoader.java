@@ -17,6 +17,7 @@
 package org.almostrealism.ml.dsl;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
@@ -140,8 +141,25 @@ public class PdslLoader {
 	 */
 	public Block buildLayer(PdslNode.Program program, String layerName,
 							TraversalPolicy inputShape, Map<String, Object> args) {
+		return buildLayer(program, layerName, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Block} from a named layer definition, applying compute requirements
+	 * to every layer the definition constructs.
+	 *
+	 * @param program      the parsed PDSL program
+	 * @param layerName    the name of the layer to build
+	 * @param inputShape   the input tensor shape
+	 * @param args         parameter bindings (name to value)
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Block
+	 */
+	public Block buildLayer(PdslNode.Program program, String layerName,
+							TraversalPolicy inputShape, Map<String, Object> args,
+							ComputeRequirement... requirements) {
 		PdslInterpreter interpreter = newInterpreter(program);
-		return interpreter.buildLayer(layerName, inputShape, args);
+		return interpreter.buildLayer(layerName, inputShape, args, requirements);
 	}
 
 	/**

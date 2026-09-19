@@ -168,4 +168,33 @@ public class InterpolateTest extends TestSuiteBase {
 			assertEquals(0.0, dest.toDouble(3));
 		}
 	}
+
+	/**
+	 * A position inside the final interval of the series has a left sample but no
+	 * right one. The series reads as zero-padded there, so the result is a blend
+	 * toward zero rather than whatever memory follows the buffer, and a position
+	 * at or past the end yields zero. Every evaluation must agree on this, which
+	 * is what a resample of the last frame of a note relies on.
+	 */
+	@Test(timeout = 10000)
+	public void interpolateFinalIntervalIsZeroPadded() {
+		PackedCollection series = pack(2.0, 4.0, 6.0, 8.0);
+		PackedCollection cursors = pack(2.5, 3.5, 4.0, 5.5).reshape(shape(4, 1));
+		PackedCollection rate = new PackedCollection(4, 1).fill(1.0);
+
+		Interpolate interpolate = new Interpolate(cp(series), traverse(1, cp(cursors)), cp(rate));
+		Evaluable<PackedCollection> eval = interpolate.get();
+
+		PackedCollection first = eval.evaluate();
+		PackedCollection second = eval.evaluate();
+
+		assertEquals(7.0, first.toDouble(0));
+		assertEquals(4.0, first.toDouble(1));
+		assertEquals(0.0, first.toDouble(2));
+		assertEquals(0.0, first.toDouble(3));
+
+		for (int i = 0; i < 4; i++) {
+			assertEquals(first.toDouble(i), second.toDouble(i));
+		}
+	}
 }
