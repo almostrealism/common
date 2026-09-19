@@ -26,6 +26,7 @@ import org.almostrealism.Ops;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionReceptor;
@@ -73,7 +74,10 @@ import java.util.function.Supplier;
  * shape-manipulation block factories ({@link #passThrough(TraversalPolicy) passThrough},
  * {@link #flattened()}, {@link #reshape(TraversalPolicy, TraversalPolicy) reshape},
  * {@link #subset(TraversalPolicy, TraversalPolicy, int...) subset},
- * {@link #pad(TraversalPolicy, TraversalPolicy, int...) pad}).</p>
+ * {@link #pad(TraversalPolicy, TraversalPolicy, int...) pad},
+ * {@link #repeatEach(TraversalPolicy, int, ComputeRequirement...) repeatEach}) and the
+ * {@link #cacheWrite(TraversalPolicy, CollectionProducer, Producer) cacheWrite} block that
+ * records a forward pass in caller-owned state.</p>
  *
  * <h2>Layer Categories</h2>
  *
@@ -608,6 +612,121 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 		return new DefaultBlock(inputShape, outputShape,
 				Cell.of((in, next) -> next.push(reshape(outputShape, in))),
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
+	}
+
+	/**
+	 * Creates a layer that duplicates every row of a {@code [rows, size]} input {@code n}
+	 * consecutive times, producing {@code [rows * n, size]} with
+	 * {@code output[r * n + k] = input[r]} for {@code 0 <= k < n}.
+	 *
+	 * <p>This is the interleaved counterpart of tiling the whole input {@code n} times: the
+	 * copies of one row are adjacent. Grouped-query attention uses it to give every query head
+	 * the key or value row of the KV head that serves it. The duplication is a single
+	 * {@link #gather gather} whose indices are computed by the graph.</p>
+	 *
+	 * @param inputShape   the {@code [rows, size]} input shape
+	 * @param n            the number of consecutive copies of each row
+	 * @param requirements optional compute requirements
+	 * @return a layer producing the {@code [rows * n, size]} duplication
+	 * @throws IllegalArgumentException if the input is not 2-D or {@code n < 1}
+	 */
+	default CellularLayer repeatEach(TraversalPolicy inputShape, int n,
+									 ComputeRequirement... requirements) {
+		if (inputShape.getDimensions() != 2) {
+			throw new IllegalArgumentException("repeatEach expects a [rows, size] input, got " + inputShape);
+		}
+
+		int rows = inputShape.length(0);
+		int size = inputShape.length(1);
+		return repeatEach(inputShape, shape(rows * n, size), size, n, requirements);
+	}
+
+	/**
+	 * Creates a layer that duplicates every consecutive run of {@code size} input elements
+	 * {@code n} times, with the input and output declared in whatever shapes the caller sees
+	 * them in: the rows of a {@code [rows, size]} tensor may equally be stored as one flat
+	 * {@code [1, rows * size]} vector, as a per-position key or value projection is. The
+	 * output holds {@code n} times the input's elements, with the copies of each run adjacent:
+	 * {@code output[(r * n + k) * size + i] = input[r * size + i]} for {@code 0 <= k < n}.
+	 *
+	 * @param inputShape   the input shape, holding a whole number of runs
+	 * @param outputShape  the output shape, holding {@code n} times the input's elements
+	 * @param size         the run length
+	 * @param n            the number of consecutive copies of each run
+	 * @param requirements optional compute requirements
+	 * @return a layer producing the duplication
+	 * @throws IllegalArgumentException if {@code n < 1}, the input does not hold whole runs,
+	 *                                  or the output does not hold {@code n} copies of the input
+	 */
+	default CellularLayer repeatEach(TraversalPolicy inputShape, TraversalPolicy outputShape,
+									 int size, int n, ComputeRequirement... requirements) {
+		int inputSize = inputShape.getTotalSize();
+		if (n < 1) {
+			throw new IllegalArgumentException("repeatEach requires at least one copy of each run");
+		} else if (size < 1 || inputSize % size != 0) {
+			throw new IllegalArgumentException("repeatEach input " + inputShape
+					+ " does not hold whole runs of " + size);
+		} else if (outputShape.getTotalSize() != inputSize * n) {
+			throw new IllegalArgumentException("repeatEach output " + outputShape
+					+ " does not hold " + n + " copies of " + inputShape);
+		}
+
+		CollectionProducer index = integers(0, inputSize * n);
+		CollectionProducer sourceRun = floor(floor(index.divide(size)).divide(n));
+		return gather("repeatEach", inputShape, outputShape,
+				sourceRun.multiply(size).add(index.mod(size)), requirements);
+	}
+
+	/**
+	 * Creates a block that writes its input into one row of a caller-owned 2-D cache and
+	 * passes the input downstream unchanged.
+	 *
+	 * <p>The cache is {@code [rows, rowSize]} state that persists across forward passes; on
+	 * every pass the row selected by {@code position} is replaced with the current input and
+	 * all other rows are kept. The write is a
+	 * {@link org.almostrealism.collect.computations.CollectionSlotUpdateComputation slot update}
+	 * assigned back into the cache through {@link #into(String, Producer, Producer, boolean, ComputeRequirement...)},
+	 * so it is part of the compiled operation order rather than a host-side copy — the
+	 * Producer form of {@link #into(PackedCollection, Producer)}. This is the mechanism
+	 * behind a key/value cache: the row written here is read by later stages of the same
+	 * forward pass and by every following pass.</p>
+	 *
+	 * <p>The backward cell passes gradients through unchanged, as the block is the identity
+	 * on its signal path; nothing propagates into the cache.</p>
+	 *
+	 * @param inputShape the input (and output) shape, with {@code rowSize} elements in total
+	 * @param cache      the {@code [rows, rowSize]} cache to write
+	 * @param position   producer of the row index, shape {@code [1]}
+	 * @return a pass-through block that records its input in the cache
+	 * @throws IllegalArgumentException if the cache is not 2-D or its rows do not hold one input
+	 */
+	default Block cacheWrite(TraversalPolicy inputShape, CollectionProducer cache,
+							 Producer<PackedCollection> position) {
+		TraversalPolicy cacheShape = shape(cache);
+		if (cacheShape.getDimensions() != 2) {
+			throw new IllegalArgumentException("cacheWrite expects a [rows, rowSize] cache, got " + cacheShape);
+		}
+
+		int rows = cacheShape.length(0);
+		int rowSize = cacheShape.length(1);
+		if (inputShape.getTotalSize() != rowSize) {
+			throw new IllegalArgumentException("cacheWrite input " + inputShape
+					+ " does not fill one row of " + cacheShape);
+		}
+
+		CollectionProducer offset = c(position).multiply(c((double) rowSize));
+		String name = "cacheWrite-" + rows + "x" + rowSize;
+		return new DefaultBlock(inputShape, inputShape,
+				Cell.of((in, next) -> {
+					OperationList ops = new OperationList(name);
+					ops.add(into(name,
+							new CollectionSlotUpdateComputation(cacheShape, 1, rows * rowSize, rowSize,
+									cache, c(in).reshape(shape(rowSize)), offset),
+							cache, false));
+					ops.add(next.push(in));
+					return ops;
+				}),
+				Cell.of((in, next) -> next.push(in)));
 	}
 
 	/**

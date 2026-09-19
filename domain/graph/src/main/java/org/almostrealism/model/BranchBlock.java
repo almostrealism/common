@@ -17,6 +17,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -34,9 +35,9 @@ import java.util.function.Supplier;
 
 /**
  * A {@link Block} that distributes a single forward input to multiple parallel child
- * {@link CellularPropagation} branches and aggregates their backward gradients.
+ * blocks and aggregates their backward gradients.
  *
- * <p>During the forward pass every {@link #append(CellularPropagation) appended} child
+ * <p>During the forward pass every {@link #append(Block) appended} child
  * receives the same input producer. Any downstream receptor set on the entry cell also
  * receives the input directly.</p>
  *
@@ -64,8 +65,8 @@ public class BranchBlock implements Block, Tracking {
 	/** The lazily constructed backward cell returned by {@link #getBackward()}. */
 	private Cell<PackedCollection> backwards;
 
-	/** The child propagation units whose forward cells receive input and backward cells provide gradients. */
-	private List<CellularPropagation<PackedCollection>> children;
+	/** The child blocks whose forward cells receive input and backward cells provide gradients. */
+	private List<Block> children;
 
 	/** Accumulated gradient sum from all child backward passes. */
 	private final PackedCollection gradient;
@@ -127,11 +128,11 @@ public class BranchBlock implements Block, Tracking {
 	}
 
 	/**
-	 * Returns an unmodifiable view of the child propagation units appended to this block.
+	 * Returns an unmodifiable view of the child blocks appended to this block.
 	 *
-	 * @return an unmodifiable list of child {@link CellularPropagation} instances
+	 * @return an unmodifiable list of child {@link Block} instances
 	 */
-	public List<CellularPropagation<PackedCollection>> getChildren() {
+	public List<Block> getChildren() {
 		return Collections.unmodifiableList(children);
 	}
 
@@ -203,19 +204,30 @@ public class BranchBlock implements Block, Tracking {
 	}
 
 	/**
-	 * Appends a child propagation unit to this branch.
+	 * Appends a child block to this branch.
 	 *
 	 * <p>The child's backward cell is wired to push its gradient into the shared
 	 * {@link #aggregator} for accumulation.</p>
 	 *
-	 * @param <T> the concrete type of the child propagation
+	 * @param <T> the concrete type of the child block
 	 * @param l   the child to append
 	 * @return {@code l}, for fluent chaining
 	 */
-	public <T extends CellularPropagation<PackedCollection>> T append(T l) {
+	public <T extends Block> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Propagates the requirements to every child block appended to this branch, so a
+	 * requirement applied to the branch point reaches the layers inside each branch.</p>
+	 */
+	@Override
+	public void setComputeRequirements(List<ComputeRequirement> requirements) {
+		children.forEach(child -> child.setComputeRequirements(requirements));
 	}
 
 	/**

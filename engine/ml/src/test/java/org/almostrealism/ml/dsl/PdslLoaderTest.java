@@ -19,6 +19,7 @@ package org.almostrealism.ml.dsl;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -325,20 +326,68 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Test that a {@code model} definition can be built from a named layer and
+	 * that the resulting {@link Model} has the input/output shapes of that layer.
+	 */
+	@Test(timeout = 60000)
+	public void testBuildModelFromDefinition() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(loadPdslSourceWithModels());
+
+		Map<String, Object> args = swigluFfnModelArgs();
+
+		Model model = loader.buildModel(program, "swiglu_ffn_model",
+				new TraversalPolicy(1, DIM), args);
+
+		Assert.assertNotNull("Model should not be null", model);
+		Assert.assertEquals("Model input size should match the layer's input size",
+				DIM, model.getInputShape().getTotalSize());
+		Assert.assertEquals("Model output size should match the layer's output size",
+				DIM, model.getOutputShape().getTotalSize());
+	}
+
+	/**
+	 * A {@code model} definition rejects an argument list that omits one of its declared
+	 * parameters, rather than binding it to a stale or unrelated value from an enclosing
+	 * scope.
+	 */
+	@Test(timeout = 60000)
+	public void testBuildModelRejectsMissingArgument() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse(loadPdslSourceWithModels());
+
+		Map<String, Object> args = swigluFfnModelArgs();
+		args.remove("epsilon");
+
+		try {
+			loader.buildModel(program, "swiglu_ffn_model", new TraversalPolicy(1, DIM), args);
+			Assert.fail("buildModel() should reject a missing 'epsilon' argument");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * Argument bindings for {@code swiglu_ffn_model}, matching the shapes
+	 * {@link #testSwigluFfnLayer()} uses for the underlying layer.
+	 */
+	private Map<String, Object> swigluFfnModelArgs() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("norm_weights", new PackedCollection(new TraversalPolicy(DIM)));
+		args.put("w1", new PackedCollection(new TraversalPolicy(HIDDEN_DIM, DIM)));
+		args.put("w2", new PackedCollection(new TraversalPolicy(DIM, HIDDEN_DIM)));
+		args.put("w3", new PackedCollection(new TraversalPolicy(HIDDEN_DIM, DIM)));
+		args.put("epsilon", EPSILON);
+		return args;
+	}
+
+	/**
 	 * Load the data-block PDSL test fixture from the classpath resource.
 	 *
 	 * @return the PDSL source text
 	 */
 	private String loadDataBlockSource() {
-		try (InputStream is = getClass().getResourceAsStream("/pdsl/test_data_block.pdsl")) {
-			if (is == null) {
-				throw new IllegalStateException(
-						"Test resource not found: /pdsl/test_data_block.pdsl");
-			}
-			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to load data block test fixture", e);
-		}
+		return loadPdslResource("/pdsl/test_data_block.pdsl");
 	}
 
 	/**
@@ -354,14 +403,34 @@ public class PdslLoaderTest extends TestSuiteBase {
 	 * @return the PDSL source text
 	 */
 	private String loadPdslSource() {
-		try (InputStream is = getClass().getResourceAsStream("/pdsl/test_layers.pdsl")) {
+		return loadPdslResource("/pdsl/test_layers.pdsl");
+	}
+
+	/**
+	 * Load {@link #loadPdslSource()} together with the {@code model} definitions
+	 * in {@code test_model_definitions.pdsl}. Those definitions reference layers
+	 * declared in {@code test_layers.pdsl} and so cannot be parsed on their own.
+	 *
+	 * @return the combined PDSL source text
+	 */
+	private String loadPdslSourceWithModels() {
+		return loadPdslSource() + loadPdslResource("/pdsl/test_model_definitions.pdsl");
+	}
+
+	/**
+	 * Load a PDSL test fixture from a classpath resource.
+	 *
+	 * @param path the classpath-relative resource path
+	 * @return the PDSL source text
+	 */
+	private String loadPdslResource(String path) {
+		try (InputStream is = getClass().getResourceAsStream(path)) {
 			if (is == null) {
-				throw new IllegalStateException(
-						"Test resource not found: /pdsl/test_layers.pdsl");
+				throw new IllegalStateException("Test resource not found: " + path);
 			}
 			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
 		} catch (IOException e) {
-			throw new IllegalStateException("Failed to load PDSL test fixture", e);
+			throw new IllegalStateException("Failed to load PDSL test fixture: " + path, e);
 		}
 	}
 }

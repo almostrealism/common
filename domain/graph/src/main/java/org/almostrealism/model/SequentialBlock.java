@@ -616,6 +616,17 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Propagates {@code requirements} to every child block in this chain, so a
+	 * requirement attached to the sequence reaches each layer it contains.</p>
+	 */
+	@Override
+	public void setComputeRequirements(List<ComputeRequirement> requirements) {
+		blocks.forEach(block -> block.setComputeRequirements(requirements));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Returns a lazily constructed entry cell that delegates pushes to the first child block
 	 * and exposes receptor set/get operations on the last child block.</p>
 	 */
