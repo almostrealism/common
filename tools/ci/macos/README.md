@@ -508,9 +508,14 @@ reporting success against a definition launchd is no longer running.
 
 Hosts that ran the earlier LaunchAgent version are migrated by the first
 daemon-era install: it boots out `com.almostrealism.flowtree-agent` from
-`gui/<uid>` and `user/<uid>` if either has it, and deletes
+`gui/<uid>` and `user/<uid>` if either has it, waits for launchd to stop
+listing it, and deletes
 `~/Library/LaunchAgents/com.almostrealism.flowtree-agent.plist` so a later GUI
-login cannot load it and put a second agent with the same node identity on the
+login cannot load it. If the service is still listed after the bootout —
+launchd can refuse that on the same hosts whose domains refuse a bootstrap —
+the install stops there rather than start the daemon beside it, and prints the
+`launchctl bootout` to run by hand (with `sudo` if worker's own is refused);
+two processes with the same node identity would both connect to the
 controller.
 
 ### Keeping the runner up across reboots

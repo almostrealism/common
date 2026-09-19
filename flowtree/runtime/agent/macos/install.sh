@@ -244,17 +244,32 @@ registration_steps() {
 }
 
 # Retire the per-user LaunchAgent from earlier installs, in whichever domain
-# it landed. Its bootout may be refused on the same hosts whose domains
-# refuse a bootstrap; the plist is removed regardless, so a later GUI login
-# cannot load it and put a second agent with this node identity on the
-# controller.
+# it landed. The daemon must not be started beside it: two processes with
+# the same node identity would both connect to the controller. bootout
+# returns before the service is gone, and on a host whose per-user domain
+# refuses a bootstrap it may refuse the bootout too, so the install goes on
+# only once launchd no longer lists the service, and fails otherwise —
+# removing the plist alone does not stop a loaded service.
 UID_NUM="$(id -u)"
 for legacy_domain in "gui/${UID_NUM}" "user/${UID_NUM}"; do
     legacy_service="${legacy_domain}/${LABEL}"
+    if ! launchctl print "${legacy_service}" >/dev/null 2>&1; then
+        continue
+    fi
+    echo "Stopping the per-user agent from an earlier install (${legacy_service})..."
+    launchctl bootout "${legacy_service}" || true
+    for _ in $(seq 1 30); do
+        if ! launchctl print "${legacy_service}" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
     if launchctl print "${legacy_service}" >/dev/null 2>&1; then
-        echo "Stopping the per-user agent from an earlier install (${legacy_service})..."
-        launchctl bootout "${legacy_service}" \
-            || echo "  launchd refused the bootout; stop it by hand if it is still running." >&2
+        echo "ERROR: ${legacy_service} is still loaded after bootout; the daemon cannot be started beside it." >&2
+        echo "  Stop it by hand, then run this script again:" >&2
+        echo "    launchctl bootout ${legacy_service}        # as $(id -un)" >&2
+        echo "    sudo launchctl bootout ${legacy_service}   # if launchd refuses the first" >&2
+        exit 1
     fi
 done
 if [ -f "${LEGACY_PLIST}" ]; then
@@ -293,7 +308,16 @@ service_pid() {
 OLD_PID="$(service_pid)"
 if [ -n "${OLD_PID}" ]; then
     echo "Restarting the agent (${SERVICE}, pid ${OLD_PID})..."
-    kill -TERM "${OLD_PID}"
+    # The pid was read a moment ago; the process may have exited on its own
+    # since (and KeepAlive may already be starting its replacement). That is
+    # the state the signal was meant to produce, so it is not a failure. A
+    # process that is still there and cannot be signalled is: it means the
+    # service is not running as this account.
+    if ! kill -TERM "${OLD_PID}" 2>/dev/null && kill -0 "${OLD_PID}" 2>/dev/null; then
+        echo "ERROR: pid ${OLD_PID} is running but cannot be signalled by $(id -un)." >&2
+        echo "  ${SERVICE} is not running as this account; check UserName in ${DAEMON_PLIST}." >&2
+        exit 1
+    fi
     # KeepAlive respawns only after the process is gone; wait for that so the
     # new process does not race the old one for the controller connection.
     for _ in $(seq 1 30); do
