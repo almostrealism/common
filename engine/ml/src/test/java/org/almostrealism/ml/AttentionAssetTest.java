@@ -21,14 +21,18 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.ml.midi.HeadGroupConfig;
+import org.almostrealism.model.BranchBlock;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Map;
 import java.util.Random;
 import java.util.function.IntConsumer;
 
@@ -190,6 +194,87 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 				w.bk, w.bv, w.bq, w.qkNormQ, w.qkNormK, cp(w.freqCis), p(position), EPSILON,
 				ComputeRequirement.CPU);
 		assertMatchesGolden(STANDARD_GOLDEN, run(w, block, position, step -> { }), "standard with CPU requirement");
+	}
+
+	/**
+	 * {@link BranchBlock#setComputeRequirements} propagates the requirement to every child
+	 * appended to the branch, matching {@code attention.pdsl}'s {@code branch keys}/
+	 * {@code branch values} bodies: those compile to exactly this shape (a
+	 * {@link SequentialBlock} that calls {@link SequentialBlock#branch(Block)} and appends a
+	 * dense layer to the returned branch), and the requirement set on the outer sequence must
+	 * reach the dense layer inside the branch rather than stopping at the default (no-op)
+	 * {@link Block#setComputeRequirements}.
+	 */
+	@Test(timeout = 60000)
+	public void branchBlockPropagatesComputeRequirementsToChildren() {
+		TraversalPolicy inputShape = shape(1, 4);
+		PackedCollection weights = new PackedCollection(shape(4, 4));
+
+		SequentialBlock root = new SequentialBlock(inputShape);
+		SequentialBlock keys = root.branch(new SequentialBlock(inputShape));
+		keys.add(dense(weights));
+		DefaultCellularLayer denseLayer = (DefaultCellularLayer) keys.lastBlock();
+
+		root.setComputeRequirements(ComputeRequirement.CPU);
+
+		Assert.assertTrue("expected the branch's dense layer to carry the CPU requirement",
+				denseLayer.getComputeRequirements().contains(ComputeRequirement.CPU));
+	}
+
+	/**
+	 * {@code attentionArguments(...)} rejects a non-positive head count with
+	 * {@link IllegalArgumentException} before the model-dimension check divides by it: with
+	 * {@code heads <= 0} the previous validation order reached {@code dim % heads} first and
+	 * threw an uncaught {@link ArithmeticException} for {@code heads == 0} instead of the
+	 * documented rejection.
+	 */
+	@Test(timeout = 60000)
+	public void attentionArgumentsRejectsNonPositiveHeadCount() {
+		Weights w = new Weights(2, 2, 4, false, false, 47L);
+		PackedCollection position = new PackedCollection(shape(1));
+
+		try {
+			attentionArguments(0, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON);
+			Assert.fail("attentionArguments() should reject a zero head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			attentionArguments(-1, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON);
+			Assert.fail("attentionArguments() should reject a negative head count");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * {@code attentionArguments(...)} zero-initializes the key and value caches it allocates:
+	 * {@link PackedCollection} allocates backing memory directly from the hardware provider
+	 * without guaranteeing zeroed contents, and the deleted Java assembly this asset replaced
+	 * relied on caches starting at zero so unwritten rows do not perturb the softmax/scale
+	 * numerics of the first few forward passes.
+	 */
+	@Test(timeout = 60000)
+	public void attentionArgumentsClearsCaches() {
+		Weights w = new Weights(2, 2, 4, false, false, 47L);
+		PackedCollection position = new PackedCollection(shape(1));
+
+		Map<String, Object> args = attentionArguments(w.heads, w.kvHeads, w.rms,
+				w.wk, w.wv, w.wq, w.wo, SEQ_LEN, p(position), EPSILON);
+
+		assertAllZero("key_cache", (PackedCollection) args.get("key_cache"));
+		assertAllZero("value_cache", (PackedCollection) args.get("value_cache"));
+	}
+
+	/** Asserts every element of {@code cache} is zero. */
+	private static void assertAllZero(String label, PackedCollection cache) {
+		double[] values = cache.toArray();
+		for (int i = 0; i < values.length; i++) {
+			Assert.assertEquals(label + " element " + i, 0.0, values[i], 0.0);
+		}
 	}
 
 	/**

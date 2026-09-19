@@ -837,8 +837,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param position producer of the current position
 	 * @param epsilon RMSNorm epsilon
 	 * @return the argument bindings, to be completed with the layer-specific weights
-	 * @throws IllegalArgumentException if the model dimension is not a multiple of the head count,
-	 *         or the query head count is not a positive multiple of the KV head count
+	 * @throws IllegalArgumentException if the head count is not positive, the model dimension
+	 *         is not a multiple of the head count, or the query head count is not a positive
+	 *         multiple of the KV head count
 	 */
 	default Map<String, Object> attentionArguments(int heads, int kvHeads,
 												   PackedCollection rmsAttWeight,
@@ -847,13 +848,20 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 												   int seqLen, Producer<PackedCollection> position,
 												   double epsilon) {
 		int dim = rmsAttWeight.getShape().length(0);
-		if (dim % heads != 0) {
+		if (heads <= 0) {
+			throw new IllegalArgumentException("Heads must be positive, got " + heads);
+		} else if (dim % heads != 0) {
 			throw new IllegalArgumentException("Model dimension " + dim
 					+ " is not a multiple of " + heads + " heads");
 		} else if (kvHeads <= 0 || heads % kvHeads != 0) {
 			throw new IllegalArgumentException(heads + " query heads is not a positive multiple of "
 					+ kvHeads + " KV heads");
 		}
+
+		PackedCollection keyCache = new PackedCollection(shape(seqLen, dim));
+		PackedCollection valueCache = new PackedCollection(shape(seqLen, dim));
+		keyCache.clear();
+		valueCache.clear();
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("heads", heads);
@@ -866,8 +874,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		args.put("wo", wo);
 		args.put("position", position);
 		args.put("epsilon", epsilon);
-		args.put("key_cache", new PackedCollection(shape(seqLen, dim)));
-		args.put("value_cache", new PackedCollection(shape(seqLen, dim)));
+		args.put("key_cache", keyCache);
+		args.put("value_cache", valueCache);
 		return args;
 	}
 
