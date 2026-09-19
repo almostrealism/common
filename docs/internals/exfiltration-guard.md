@@ -129,6 +129,19 @@ State these plainly; do not assume the guard closes them.
   in a string it writes to a file. A network API nobody listed, against a URL
   literal, passes. This was a deliberate relaxation: a guard that blocks prose
   teaches its way around itself.
+- **The inline-program scan matches uses, not mentions.** The Python-module
+  entries in `NETWORK_CODE_PATTERNS` (`socket`, `urllib`, `subprocess`, and the
+  rest of that family) require an import, a module-qualified call, or a
+  constructor — never a bare module or API name — for the same reason the URL
+  bullet above gives: a guard that blocks prose teaches its way around itself.
+  <!-- TODO(review): other entries in the same list (XMLHttpRequest,
+  HttpClient, URLConnection, child_process, fsockopen, Net::, LWP::, ...)
+  are still bare identifiers with no import/call/constructor requirement, so
+  "every entry" overstates what this change actually did. Also: the
+  \s*\( branches added for socket/websocket/axios still match a
+  parenthetical remark in prose ("engine socket (an open TCP port)"),
+  confirmed by direct regex test -- narrower than the bare word, but not
+  the "use, not mention" guarantee this bullet claims. -->
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.
