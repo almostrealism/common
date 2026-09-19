@@ -309,7 +309,9 @@ public class Interpolate extends CollectionProducerComputationBase {
 				return e(c.getShape().getSize());
 			}
 		}
-		// TODO(review): confirm this matches the totalSize == 1 "hack" case in getSeriesValue()
+		// The totalSize == 1 "hack" case in getSeriesValue() also falls through to here:
+		// var.length() renders as the runtime buffer size, not the declared shape size,
+		// so it still bounds the series correctly even though the shape reports 1.
 		return var.length();
 	}
 
