@@ -68,7 +68,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from tools.fleet.store import FleetStore
 
@@ -375,66 +375,76 @@ def poll_and_store(
     covering hundreds or thousands of jobs/steps commits (and fsyncs) once
     instead of once per row, and a concurrent reader of *store* never
     observes a poll cycle that is only partially written — it sees either
-    the previous cycle's rows or this cycle's rows in full.
+    the previous cycle's rows or this cycle's rows in full. That transaction
+    is opened only around the upserts, after every run's jobs have already
+    been fetched: opening it earlier would hold sqlite's write lock for the
+    duration of the GitHub requests (including any rate-limit sleep in
+    :func:`_get_json`), blocking a concurrent collector or poller writer on
+    network latency instead of on the brief span the local upserts take.
 
     Returns the number of job_event rows upserted.
     """
     runs = fetch_runs(repo, token, per_page=run_per_page, max_pages=run_max_pages, allow_partial=True)
     if max_runs is not None:
         runs = runs[:max_runs]
+
+    fetched: List[Tuple[Dict, str, Dict]] = []
+    for run in runs:
+        run_id = str(run.get("id"))
+        for job in fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages):
+            fetched.append((run, run_id, job))
+
     jobs_stored = 0
     with store.transaction():
-        for run in runs:
-            run_id = str(run.get("id"))
-            for job in fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages):
-                job_id = str(job.get("id"))
-                needs = resolve_needs(run, job) if resolve_needs is not None else None
-                metrics = compute_job_metrics(job, needs=needs)
-                # Sorted so the same label set always serializes identically
-                # regardless of the order the API happens to return it in —
-                # `job_event` is grouped by this string (see
-                # `FleetStore.pre_start_latency_by_label`), and an unsorted
-                # encoding would split one label set into separate buckets
-                # across polls. JSON-encoded rather than comma-joined: a raw
-                # comma join is not a lossless representation of a label set —
-                # `["a,b", "c"]` and `["a", "b,c"]` would both serialize to the
-                # same string and then be merged by `pre_start_latency_by_label`
-                # even though they are distinct sets. Any caller filtering
-                # `pre_start_latency_by_label(labels=...)` on an exact set must
-                # encode it the same way (`json.dumps(sorted(label_list))`).
-                #
-                # These are the *executing runner's* labels (the workflow-jobs
-                # API's own `labels` field), not the job's requested `runs-on:`
-                # set — a runner can carry extra/custom labels beyond what a job
-                # asked for. Resolving the requested set would require parsing
-                # the run's workflow YAML, which this module does not do (see
-                # `FleetStore.upsert_job_event`/`pre_start_latency_by_label`).
-                labels = sorted(job.get("labels") or [])
-                store.upsert_job_event(
+        for run, run_id, job in fetched:
+            job_id = str(job.get("id"))
+            needs = resolve_needs(run, job) if resolve_needs is not None else None
+            metrics = compute_job_metrics(job, needs=needs)
+            # Sorted so the same label set always serializes identically
+            # regardless of the order the API happens to return it in —
+            # `job_event` is grouped by this string (see
+            # `FleetStore.pre_start_latency_by_label`), and an unsorted
+            # encoding would split one label set into separate buckets
+            # across polls. JSON-encoded rather than comma-joined: a raw
+            # comma join is not a lossless representation of a label set —
+            # `["a,b", "c"]` and `["a", "b,c"]` would both serialize to the
+            # same string and then be merged by `pre_start_latency_by_label`
+            # even though they are distinct sets. Any caller filtering
+            # `pre_start_latency_by_label(labels=...)` on an exact set must
+            # encode it the same way (`json.dumps(sorted(label_list))`).
+            #
+            # These are the *executing runner's* labels (the workflow-jobs
+            # API's own `labels` field), not the job's requested `runs-on:`
+            # set — a runner can carry extra/custom labels beyond what a job
+            # asked for. Resolving the requested set would require parsing
+            # the run's workflow YAML, which this module does not do (see
+            # `FleetStore.upsert_job_event`/`pre_start_latency_by_label`).
+            labels = sorted(job.get("labels") or [])
+            store.upsert_job_event(
+                job_id=job_id,
+                run_id=run_id,
+                repo=repo,
+                name=job.get("name") or "",
+                labels=json.dumps(labels),
+                created_at=job.get("created_at"),
+                started_at=job.get("started_at"),
+                completed_at=job.get("completed_at"),
+                status=job.get("status") or "",
+                conclusion=job.get("conclusion") or "",
+                runner_name=job.get("runner_name") or "",
+                runner_group=job.get("runner_group_name") or "",
+                pre_start_latency_seconds=metrics["pre_start_latency_seconds"],
+                is_entry_point=metrics["is_entry_point"],
+                queue_wait_seconds=metrics["queue_wait_seconds"],
+            )
+            for step in job.get("steps") or []:
+                store.upsert_job_step(
                     job_id=job_id,
-                    run_id=run_id,
-                    repo=repo,
-                    name=job.get("name") or "",
-                    labels=json.dumps(labels),
-                    created_at=job.get("created_at"),
-                    started_at=job.get("started_at"),
-                    completed_at=job.get("completed_at"),
-                    status=job.get("status") or "",
-                    conclusion=job.get("conclusion") or "",
-                    runner_name=job.get("runner_name") or "",
-                    runner_group=job.get("runner_group_name") or "",
-                    pre_start_latency_seconds=metrics["pre_start_latency_seconds"],
-                    is_entry_point=metrics["is_entry_point"],
-                    queue_wait_seconds=metrics["queue_wait_seconds"],
+                    number=step.get("number"),
+                    name=step.get("name") or "",
+                    started_at=step.get("started_at"),
+                    completed_at=step.get("completed_at"),
+                    conclusion=step.get("conclusion") or "",
                 )
-                for step in job.get("steps") or []:
-                    store.upsert_job_step(
-                        job_id=job_id,
-                        number=step.get("number"),
-                        name=step.get("name") or "",
-                        started_at=step.get("started_at"),
-                        completed_at=step.get("completed_at"),
-                        conclusion=step.get("conclusion") or "",
-                    )
-                jobs_stored += 1
+            jobs_stored += 1
     return jobs_stored

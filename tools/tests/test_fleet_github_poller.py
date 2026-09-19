@@ -476,6 +476,32 @@ class PollAndStoreTests(unittest.TestCase):
             poll_and_store("acme/repo", "tok", self.store)
         batch.assert_called_once()
 
+    def test_poll_and_store_fetches_every_job_before_opening_the_transaction(self):
+        """`store.transaction()` must wrap only the local upserts. Opening it
+        before the GitHub fetches would hold sqlite's write lock for the
+        duration of every job request in the cycle (including any
+        rate-limit sleep in `_get_json`), blocking a concurrent
+        collector/poller writer on network latency instead of on the brief
+        span the local upserts actually take."""
+        runs = [{"id": 1}, {"id": 2}]
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        call_order = []
+        real_transaction = self.store.transaction
+
+        def _tracking_fetch_run_jobs(repo, run_id, token, **kwargs):
+            call_order.append("fetch_run_jobs:%s" % run_id)
+            return [job]
+
+        def _tracking_transaction():
+            call_order.append("transaction")
+            return real_transaction()
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=runs), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", side_effect=_tracking_fetch_run_jobs), \
+                mock.patch.object(self.store, "transaction", side_effect=_tracking_transaction):
+            poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(call_order, ["fetch_run_jobs:1", "fetch_run_jobs:2", "transaction"])
+
     def test_poll_and_store_rolls_back_the_whole_cycle_on_a_mid_cycle_failure(self):
         """If fetching a later run's jobs fails, the job_event rows already
         upserted for an earlier run in this same cycle must not be left

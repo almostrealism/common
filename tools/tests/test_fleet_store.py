@@ -268,6 +268,25 @@ class FleetStoreTransactionBatchingTests(unittest.TestCase):
         self.store.upsert_job_event(job_id="job-1")
         self.assertEqual(self._count_via_second_connection("job_event"), 1)
 
+    def test_nested_transaction_failure_caught_by_caller_does_not_silently_commit_partial_cycle(self):
+        """A nested `transaction()` block is scoped to a SAVEPOINT: its
+        rollback undoes only its own writes, not writes an enclosing block
+        already made. If a caller catches the nested block's exception and
+        keeps going, the outer block must still commit its own writes made
+        both before and after the nested failure - a connection-wide
+        rollback would have silently erased the earlier ones too."""
+        with self.store.transaction():
+            self.store.upsert_job_event(job_id="before")
+            try:
+                with self.store.transaction():
+                    self.store.upsert_job_event(job_id="nested")
+                    raise RuntimeError("simulated nested failure")
+            except RuntimeError:
+                pass
+            self.store.upsert_job_event(job_id="after")
+        ids = {row[0] for row in self.store._conn.execute("SELECT job_id FROM job_event")}
+        self.assertEqual(ids, {"before", "after"})
+
 
 if __name__ == "__main__":
     unittest.main()

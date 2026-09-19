@@ -80,19 +80,38 @@ class FleetStore:
         rows in full, never a mix of the two. Nesting is supported (only the
         outermost block commits) so a helper that already opens its own
         ``transaction()`` composes safely with a caller that wraps it in
-        another.
+        another. A nested block's failure is scoped to a ``SAVEPOINT``, not
+        the whole connection: rolling it back undoes only the writes made
+        inside that nested block, leaving writes made earlier in an
+        enclosing block intact. Without this, a caller that catches the
+        nested block's exception and keeps going would silently commit a
+        partial cycle at the outermost exit — a plain connection-wide
+        rollback would have erased the earlier writes too, with nothing
+        left to signal that the eventual commit no longer covers the whole
+        cycle.
         """
-        self._batch_depth += 1
+        depth = self._batch_depth
+        if depth == 0:
+            self._conn.execute("BEGIN")
+        else:
+            self._conn.execute("SAVEPOINT fleet_sp_%d" % depth)
+        self._batch_depth = depth + 1
         try:
             yield self
         except BaseException:
-            self._batch_depth -= 1
-            self._conn.rollback()
+            if depth == 0:
+                self._conn.rollback()
+            else:
+                self._conn.execute("ROLLBACK TO SAVEPOINT fleet_sp_%d" % depth)
+                self._conn.execute("RELEASE SAVEPOINT fleet_sp_%d" % depth)
+            self._batch_depth = depth
             raise
         else:
-            self._batch_depth -= 1
-            if self._batch_depth == 0:
+            if depth == 0:
                 self._conn.commit()
+            else:
+                self._conn.execute("RELEASE SAVEPOINT fleet_sp_%d" % depth)
+            self._batch_depth = depth
 
     def _commit_unless_batched(self) -> None:
         """Commit immediately, unless a :meth:`transaction` batch is open."""
