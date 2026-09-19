@@ -342,7 +342,7 @@ class PollAndStoreTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(row[0], "1")
         self.assertEqual(row[1], "acme/repo")
-        self.assertEqual(row[2], "ar-ci,macos,self-hosted")
+        self.assertEqual(row[2], json.dumps(["ar-ci", "macos", "self-hosted"]))
         self.assertAlmostEqual(row[3], 300.0)
 
     def test_poll_and_store_is_idempotent_across_poll_cycles(self):
@@ -358,7 +358,7 @@ class PollAndStoreTests(unittest.TestCase):
         """The same conceptual label set must serialize identically no
         matter what order the API happens to return it in on a given poll -
         `pre_start_latency_by_label` groups on this exact string, and an
-        unsorted join would split one label set into separate buckets
+        unsorted encoding would split one label set into separate buckets
         across polls."""
         run = {"id": 1}
         job_a = {"id": 42, "labels": ["macos", "ar-ci", "self-hosted"]}
@@ -367,7 +367,24 @@ class PollAndStoreTests(unittest.TestCase):
                 mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job_a, job_b]):
             poll_and_store("acme/repo", "tok", self.store)
         rows = self.store._conn.execute("SELECT DISTINCT labels FROM job_event").fetchall()
-        self.assertEqual([r[0] for r in rows], ["ar-ci,macos,self-hosted"])
+        self.assertEqual([r[0] for r in rows], [json.dumps(["ar-ci", "macos", "self-hosted"])])
+
+    def test_poll_and_store_encodes_labels_containing_a_comma_losslessly(self):
+        """A comma-joined encoding would collapse `["a,b", "c"]` and
+        `["a", "b,c"]` into the identical string `"a,b,c"`, silently merging
+        two distinct label sets in `pre_start_latency_by_label`'s grouping.
+        The JSON encoding must keep them distinct."""
+        run = {"id": 1}
+        job_a = {"id": 42, "labels": ["a,b", "c"]}
+        job_b = {"id": 43, "labels": ["a", "b,c"]}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job_a, job_b]):
+            poll_and_store("acme/repo", "tok", self.store)
+        rows = self.store._conn.execute("SELECT DISTINCT labels FROM job_event").fetchall()
+        self.assertEqual(
+            sorted(r[0] for r in rows),
+            sorted([json.dumps(sorted(["a,b", "c"])), json.dumps(sorted(["a", "b,c"]))]),
+        )
 
     def test_poll_and_store_bounds_runs_fetched_per_cycle(self):
         """`max_runs` must cap how many of the fetched runs get their jobs

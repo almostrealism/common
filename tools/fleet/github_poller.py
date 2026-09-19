@@ -362,8 +362,15 @@ def poll_and_store(
             # Sorted so the same label set always serializes identically
             # regardless of the order the API happens to return it in —
             # `job_event` is grouped by this string (see
-            # `FleetStore.pre_start_latency_by_label`), and an unsorted join
-            # would split one label set into separate buckets across polls.
+            # `FleetStore.pre_start_latency_by_label`), and an unsorted
+            # encoding would split one label set into separate buckets
+            # across polls. JSON-encoded rather than comma-joined: a raw
+            # comma join is not a lossless representation of a label set —
+            # `["a,b", "c"]` and `["a", "b,c"]` would both serialize to the
+            # same string and then be merged by `pre_start_latency_by_label`
+            # even though they are distinct sets. Any caller filtering
+            # `pre_start_latency_by_label(labels=...)` on an exact set must
+            # encode it the same way (`json.dumps(sorted(label_list))`).
             #
             # These are the *executing runner's* labels (the workflow-jobs
             # API's own `labels` field), not the job's requested `runs-on:`
@@ -377,7 +384,7 @@ def poll_and_store(
                 run_id=run_id,
                 repo=repo,
                 name=job.get("name") or "",
-                labels=",".join(labels),
+                labels=json.dumps(labels),
                 created_at=job.get("created_at"),
                 started_at=job.get("started_at"),
                 completed_at=job.get("completed_at"),

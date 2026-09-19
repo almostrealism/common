@@ -44,7 +44,11 @@ starts running.
   beyond what a job asked for, so grouping by this column measures
   actual-runner-label demand, not per-`runs-on` demand. Resolving the
   requested set has the same workflow-YAML-parsing dependency as the
-  `needs` gap above.
+  `needs` gap above. The set is JSON-encoded (`json.dumps(sorted(labels))`),
+  not comma-joined — a comma-joined encoding cannot distinguish
+  `["a,b", "c"]` from `["a", "b,c"]`; a caller filtering
+  `pre_start_latency_by_label(labels=...)` on an exact set must encode it
+  the same way.
 
 Tests live in `tools/tests/test_fleet_*.py` (not beside these modules) so the
 existing `python-tests` CI step, which already discovers

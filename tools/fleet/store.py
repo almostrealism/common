@@ -261,7 +261,13 @@ class FleetStore:
         :meth:`upsert_job_event`) — a caller cannot yet use this to answer
         "how long did jobs requesting `runs-on: [self-hosted, gpu]` wait",
         only "how long did jobs that happened to land on a runner carrying
-        this exact label set wait".
+        this exact label set wait". This method treats ``labels`` as an
+        opaque string and does no encoding/decoding itself — it matches
+        whatever encoding the producer used. ``tools.fleet.github_poller``
+        writes it JSON-encoded (``json.dumps(sorted(label_list))``), so a
+        caller passing the *labels* filter to match those rows must encode
+        it the same way rather than joining the label list with a plain
+        separator.
         """
         query = """
             SELECT labels, AVG(pre_start_latency_seconds), COUNT(pre_start_latency_seconds)
