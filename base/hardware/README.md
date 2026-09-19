@@ -159,7 +159,11 @@ The amalgamated metal-cpp single header is committed as
 no external metal-cpp installation is required. Both libraries are rebuilt with
 [`src/main/cpp/compile.sh`](src/main/cpp/compile.sh) (auto-discovers `JAVA_HOME`); the
 resulting `.dylib` files are written to `src/main/resources/` and packaged into the
-`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime.
+`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime. At load time, `MTL`
+extracts its bundled `libMTL.dylib` resource to a per-process file
+(`libMTL-<pid>.dylib`) in the OS temp directory before loading it, so that concurrent
+JVMs sharing that directory — such as parallel test forks on one CI machine — never
+delete or overwrite the file another process is mid-load on.
 
 **Command-buffer lifecycle (important).** metal-cpp factory methods such as
 `MTL::CommandQueue::commandBuffer()` and `MTL::CommandBuffer::computeCommandEncoder()`

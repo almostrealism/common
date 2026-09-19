@@ -1096,13 +1096,16 @@ chain to apply.
 `prepareWorkingDirectory` / `handleGitOperations` lifecycle), while
 `GitOperations` provides the low-level command execution.
 
-`GitManagedJob` still has its own private `executeGit()` and
-`executeGitWithOutput()` methods that mirror the behavior of
-`GitOperations.execute()` and `GitOperations.executeWithOutput()`. These
-exist because `GitManagedJob` predates `GitOperations` and has not yet been
-fully refactored to delegate to it. Both implementations configure processes
-identically: same working directory, same SSH command, same identity
-injection.
+`GitManagedJob` still has its own package-private `executeGit()`,
+`executeGitWithOutput()`, and `executeCommandWithOutput()` methods, but they
+are now thin delegates to `GitCommandExecutor` (`flowtree/runtime/src/main/java/io/flowtree/jobs/GitCommandExecutor.java`),
+a class extracted so `GitManagedJob` stays focused on job lifecycle and
+configuration rather than process plumbing. `GitCommandExecutor` configures
+processes the same way `GitOperations` does (same working directory, same
+SSH command, same identity injection via `GIT_AUTHOR_*`/`GIT_COMMITTER_*`),
+but the two classes remain independent: `GitCommandExecutor` reads its
+working directory and identity from the `GitManagedJob` it is bound to,
+rather than holding its own copies as `GitOperations` does.
 
 `FileStager` defines its own `GitOperations` interface (a functional interface
 with a single `execute` method) to decouple file staging from the concrete
@@ -1115,6 +1118,8 @@ implementation.
 GitOperations              -- Standalone process executor (reusable)
 GitManagedJob              -- Abstract job with git lifecycle
   +-- ClaudeCodeJob        -- Concrete job that runs Claude Code agent
+  GitCommandExecutor       -- Process plumbing extracted from GitManagedJob;
+                              bound to one GitManagedJob instance, not reusable
 FileStager                 -- Stateless file evaluation utility
   FileStager.GitOperations -- Functional interface for git commands
 GitJobConfig               -- Immutable configuration for GitManagedJob
