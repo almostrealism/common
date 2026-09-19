@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -301,6 +302,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private Executor executor;
 
 	/**
+	 * Reports whether the calling thread is one of the owning {@link io.almostrealism.code.ComputeContext}'s
+	 * own bounded executor threads. Used by {@link #construct(PreparedArguments, Semaphore)} to decide
+	 * whether a request that may block (see {@code StreamingEvaluable#isSharedExecutorSafe()}) can be
+	 * issued directly on the calling thread instead of a freshly spawned dedicated one.
+	 */
+	private BooleanSupplier isExecutorThread;
+
+	/**
 	 * Per-argument destination reuse slots, indexed like {@link #arguments}. Lazily
 	 * created on first use when {@link #enableDestinationReuse} is active.
 	 */
@@ -315,12 +324,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
 	 * @param replacements Supplier of the memory replacement manager
 	 * @param executor Executor for asynchronous kernel dispatch
+	 * @param isExecutorThread Reports whether the calling thread is one of the owning
+	 *                         {@link io.almostrealism.code.ComputeContext}'s own bounded
+	 *                         executor threads
 	 */
 	public ProcessDetailsFactory(boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
 								 Supplier<MemoryReplacementManager> replacements,
-								 Executor executor) {
+								 Executor executor,
+								 BooleanSupplier isExecutorThread) {
 		if (arguments == null) {
 			throw new IllegalArgumentException();
 		}
@@ -340,6 +353,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		this.replacements = replacements;
 		this.executor = executor;
+		this.isExecutorThread = isExecutorThread;
 	}
 
 	@Override
@@ -549,17 +563,41 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * Constructs an {@link AcceleratedProcessDetails} from the given argument snapshot,
 	 * ordering dispatch-backed argument evaluations after the given completion.
 	 *
-	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
-	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
-	 * through the provider, so an argument kernel never reads memory written by the work
-	 * {@code dependsOn} represents before that work has completed — without any host wait.
-	 * Plain host evaluables are handle-producers (they return {@link MemoryData} handles;
-	 * the kernel reads the contents on the device, ordered by its own chained dispatch)
-	 * and disregard {@code dependsOn}, evaluating immediately: blocking them on it would
-	 * violate the non-blocking submission contract (a submit with an outstanding foreign
-	 * dependency must return, and a same-provider dependency must remain free), so a
-	 * host function that reads memory <em>contents</em> rather than returning a handle
-	 * is responsible for its own ordering.</p>
+	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn} when
+	 * {@link StreamingEvaluable#isDispatchBacked()} reports that it orders its own work after
+	 * a supplied dependency — chaining through the provider for a device dispatch, or waiting
+	 * on a worker thread before reading memory otherwise — so that argument never reads memory
+	 * written by the work {@code dependsOn} represents before that work has completed. An
+	 * evaluable that is not dispatch-backed (a plain reference producer, not itself a
+	 * {@link StreamingEvaluable}) receives {@code null} instead: blocking it on {@code dependsOn}
+	 * would violate the non-blocking submission contract (a submit with an outstanding foreign
+	 * dependency must return, and a same-provider dependency must remain free), and it disregards
+	 * the dependency anyway, evaluating immediately.</p>
+	 *
+	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is submitted
+	 * to this factory's own executor only when {@link StreamingEvaluable#isSharedExecutorSafe()}
+	 * confirms the request itself never blocks the calling thread. {@code isDispatchBacked()} is
+	 * not sufficient for that decision, since it also covers an evaluable that honors {@code
+	 * dependsOn} by blocking a worker thread rather than chaining into a non-blocking dispatch;
+	 * submitting that kind of evaluation to the {@code ComputeContext}'s own executor risks it
+	 * blocking one of that executor's own threads, which {@code AcceleratedComputationOperation}
+	 * refuses to allow. Such an evaluable is instead requested on a dedicated thread. This same
+	 * {@code isSharedExecutorSafe()} check applies to an argument that needs a sized destination:
+	 * the evaluable returned by {@code Evaluable::into} is checked again there, since wrapping
+	 * with a destination can change which evaluable actually answers the request.</p>
+	 *
+	 * <p>An argument that is not shared-executor-safe still does not always need a dedicated
+	 * thread: {@link #isExecutorThread} reports whether the calling thread is itself one of
+	 * the owning {@code ComputeContext}'s bounded executor threads, the only thread this
+	 * blocking request must be kept off of. When it is not, the request is issued directly on
+	 * the calling thread instead of a freshly spawned one, avoiding a new OS thread (and a
+	 * blocking hand-off to it) at every level of a computation graph with several levels of
+	 * hoisted arguments, such as a chain of reshape- or repeat-wrapped kernel results. Because
+	 * the direct request reuses the argument's existing {@link StreamingEvaluable} rather than
+	 * a fresh wrapper, it is delivered through the three-argument {@link
+	 * StreamingEvaluable#request(Object[], Semaphore, Consumer) request} overload instead of
+	 * {@link StreamingEvaluable#setDownstream}, since the same evaluable instance may be reused
+	 * (and already carry a downstream) across overlapping or repeated constructions.</p>
 	 *
 	 * <p>All working state lives in locals of this method, so overlapping
 	 * constructions (whether from another thread or from an argument evaluation
@@ -594,6 +632,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * we need to create the AcceleratedProcessDetails first.
 		 */
 		boolean[] evaluateAhead = new boolean[arguments.size()];
+		boolean[] dispatchBacked = new boolean[arguments.size()];
+
+		// See this method's javadoc: marks the indices resolved directly on the calling thread.
+		boolean[] direct = new boolean[arguments.size()];
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
@@ -618,10 +660,18 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				if (!Hardware.getLocalHardware().isAsync() ||
-						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
-						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
+				boolean streaming = kernelArgEvaluables[i] instanceof StreamingEvaluable;
+				dispatchBacked[i] = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
+
+				// See this method's javadoc: isSharedExecutorSafe(), not isDispatchBacked(),
+				// decides whether this factory's own executor may be used here.
+				boolean executorSafe = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isSharedExecutorSafe();
+
+				if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
+				} else if (streaming && !isExecutorThread.getAsBoolean()) {
+					direct[i] = true;
+					asyncEvaluables[i] = (StreamingEvaluable) kernelArgEvaluables[i];
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
 				}
@@ -669,7 +719,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				Heap.addCreatedMemory(result);
 			}
 
-			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
+			Evaluable sized = kernelArgEvaluables[i].into(result);
+
+			// See this method's javadoc: this is the same isSharedExecutorSafe() check
+			// the first pass applies above, repeated here because into() can wrap the
+			// argument in a different evaluable.
+			boolean sizedStreaming = sized instanceof StreamingEvaluable;
+			boolean executorSafe = sizedStreaming && ((StreamingEvaluable<?>) sized).isSharedExecutorSafe();
+
+			if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
+				asyncEvaluables[i] = sized.async(this::execute);
+			} else if (sizedStreaming && !isExecutorThread.getAsBoolean()) {
+				direct[i] = true;
+				asyncEvaluables[i] = (StreamingEvaluable) sized;
+			} else {
+				asyncEvaluables[i] = sized.async();
+			}
+
+			dispatchBacked[i] = true;
 		}
 
 		/*
@@ -684,21 +751,31 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			leases.forEach(details::addDestinationLease);
 		}
 
-		/* Set downstream on all async evaluables, passing the specific details instance */
+		/*
+		 * Set downstream on every async evaluable that is not resolved directly (see this
+		 * method's javadoc), passing the specific details instance.
+		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
-			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
+			if (asyncEvaluables[i] == null || kernelArgs[i] != null || direct[i]) continue;
 			asyncEvaluables[i].setDownstream(result(i, details));
 		}
 
 		/*
 		 * Now that every StreamingEvaluable is configured to deliver
 		 * results to the new AcceleratedProcessDetails, their work
-		 * can be initiated via StreamingEvaluable#request
+		 * can be initiated via StreamingEvaluable#request. A direct evaluable delivers
+		 * through the three-argument overload instead, since it was not given a downstream above.
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 
-			asyncEvaluables[i].request(prepared.args, dependsOn);
+			Semaphore argDependsOn = dispatchBacked[i] ? dependsOn : null;
+
+			if (direct[i]) {
+				asyncEvaluables[i].request(prepared.args, argDependsOn, result(i, details));
+			} else {
+				asyncEvaluables[i].request(prepared.args, argDependsOn);
+			}
 		}
 
 		/* The details are ready */

@@ -110,6 +110,32 @@ public interface StreamingEvaluable<T> extends Computable {
 	void request(Object[] args, Semaphore dependsOn);
 
 	/**
+	 * Initiates an asynchronous computation request, ordered after {@code dependsOn} exactly as
+	 * {@link #request(Object[], Semaphore)} is, whose result is delivered to the given consumer
+	 * instead of the consumer configured via {@link #setDownstream(Consumer)}.
+	 *
+	 * <p>This is the form to use when one evaluable is reached by several independent
+	 * requesters &mdash; a compiled kernel that several wrappers forward to, for example. The
+	 * default implementation installs {@code downstream} with {@link #setDownstream(Consumer)}
+	 * and then requests, which is only appropriate for an evaluable that serves a single
+	 * consumer for its whole life; an implementation that may be shared should override this
+	 * to deliver to {@code downstream} directly, so that no request mutates state another
+	 * requester relies on.</p>
+	 *
+	 * @param args       the arguments required for computation, in the same format as
+	 *                   {@link #request(Object[])}
+	 * @param dependsOn  completion the dispatch must chain on, or {@code null} when there
+	 *                   is no dependency
+	 * @param downstream the consumer to receive the result of this request; must not be null
+	 *
+	 * @see #request(Object[], Semaphore)
+	 */
+	default void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		setDownstream(downstream);
+		request(args, dependsOn);
+	}
+
+	/**
 	 * Sets the downstream consumer that will receive computation results.
 	 *
 	 * <p>The consumer will be invoked asynchronously each time a computation
@@ -121,4 +147,48 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * @see #request(Object[])
 	 */
 	void setDownstream(Consumer<T> consumer);
+
+	/**
+	 * Reports whether {@link #request(Object[], Semaphore)} honors a non-null
+	 * {@code dependsOn} by ordering this evaluable's own work after it &mdash;
+	 * whether by chaining the dependency into a device dispatch, or by waiting
+	 * for it before reading memory on a worker thread.
+	 *
+	 * <p>Callers that thread a {@code dependsOn} through several independent
+	 * {@link StreamingEvaluable} arguments (such as {@code ProcessDetailsFactory}
+	 * preparing a kernel's arguments) use this to decide which of them may
+	 * actually be given the dependency: forwarding it to an implementation that
+	 * returns {@code false} here would be discarded, while withholding it from
+	 * one that returns {@code true} risks that implementation reading memory a
+	 * prior dispatch has not finished writing.</p>
+	 *
+	 * @return {@code true} if this evaluable orders its work after a supplied
+	 *         {@code dependsOn}; {@code false} if it disregards it
+	 */
+	default boolean isDispatchBacked() {
+		return false;
+	}
+
+	/**
+	 * Reports whether {@link #request(Object[], Semaphore, Consumer)} dispatches this
+	 * evaluable's work through a provider (a device queue, command buffer, or other
+	 * non-blocking chain) rather than completing the request by blocking the calling
+	 * thread &mdash; on a synchronous evaluation, or on {@code dependsOn} before reading
+	 * memory. {@link #isDispatchBacked()} reports both of those strategies as ordering
+	 * the work after {@code dependsOn}; this method distinguishes the one that never
+	 * blocks the calling thread.
+	 *
+	 * <p>A caller that submits a request to a bounded, shared thread pool (a {@code
+	 * ComputeContext}'s own executor, for example) uses this to decide whether that pool
+	 * is safe for this request: an evaluable that returns {@code true} here returns
+	 * control to the pool thread immediately, while one that returns {@code false} may
+	 * tie up a pool thread for the duration of a blocking computation &mdash; which a
+	 * bounded pool may refuse outright, or simply be starved by. Such an evaluable should
+	 * instead be requested on a dedicated thread.</p>
+	 *
+	 * @return {@code true} if this evaluable's request never blocks the calling thread
+	 */
+	default boolean isSharedExecutorSafe() {
+		return false;
+	}
 }

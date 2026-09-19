@@ -19,16 +19,19 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.streams.EvaluableStreamingAdapter;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.streams.StreamingEvaluable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
@@ -36,6 +39,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Validates the two guarantees that make {@link Semaphore} chaining safe to use everywhere,
@@ -262,6 +268,232 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		for (int i = 0; i < n; i++) {
 			assertEquals(2.0 * a.toDouble(i), result.toDouble(i));
 		}
+	}
+
+	/**
+	 * Verifies the {@link HardwareEvaluable#setResultProcessor(java.util.function.UnaryOperator)
+	 * result processor} contract that {@link org.almostrealism.collect.computations.PackedCollectionRepeat}
+	 * and {@link org.almostrealism.collect.computations.ReshapeProducer} rely on: wrapping a
+	 * kernel-backed evaluable and requesting it through the
+	 * {@link HardwareEvaluable#request(Object[], Semaphore, java.util.function.Consumer)} overload
+	 * must deliver the processed value together with the dispatch's completion, without forcing a
+	 * host wait (no command-buffer commit), and the processed value must match what the processor
+	 * would produce from a direct, synchronous evaluation.
+	 */
+	@Test(timeout = 60000)
+	public void resultProcessorDeliveryAvoidsCommit() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int n = 16;
+
+		PackedCollection a = new PackedCollection(n);
+		rand(a.getShape()).add(1.0).into(a.traverseEach()).evaluate();
+
+		Evaluable<PackedCollection> ev;
+		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
+
+		try {
+			ev = (Evaluable<PackedCollection>) (Evaluable) cp(a).multiply(2.0).get();
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
+		}
+
+		HardwareEvaluable<PackedCollection> wrapper = new HardwareEvaluable<>(() -> ev, null, null, false);
+		wrapper.setResultProcessor(out -> out.repeat(2));
+
+		Object[] delivered = new Object[1];
+		Semaphore[] completion = new Semaphore[1];
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		long baseline = runner.getCommitCount();
+
+		wrapper.request(new Object[0], null, (CompletionConsumer<PackedCollection>) (value, c) -> {
+			delivered[0] = value;
+			completion[0] = c;
+		});
+
+		assertEquals((double) baseline, (double) runner.getCommitCount());
+		assertTrue(delivered[0] instanceof PackedCollection);
+		assertTrue(completion[0] != null);
+
+		completion[0].waitFor();
+
+		PackedCollection direct = ev.evaluate(new Object[0]);
+		PackedCollection expected = direct.repeat(2);
+		PackedCollection result = (PackedCollection) delivered[0];
+
+		assertEquals((double) expected.getMemLength(), (double) result.getMemLength());
+		for (int i = 0; i < expected.getMemLength(); i++) {
+			assertEquals(expected.toDouble(i), result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Verifies that {@link HardwareEvaluable#withDestination(org.almostrealism.hardware.MemoryBank)}
+	 * (reached through {@link HardwareEvaluable#into(Object)}) carries the
+	 * {@link HardwareEvaluable#setResultProcessor(java.util.function.UnaryOperator) result processor}
+	 * forward instead of discarding it: the underlying kernel writes its unprocessed result into
+	 * the destination, and the value returned from {@code evaluate()} on the destination-bound
+	 * evaluable must be the processed re-view of that destination, matching a direct evaluation
+	 * followed by the same processor.
+	 */
+	@Test(timeout = 30000)
+	public void withDestinationAppliesResultProcessor() {
+		int n = 8;
+
+		PackedCollection a = new PackedCollection(n);
+		rand(a.getShape()).add(1.0).into(a.traverseEach()).evaluate();
+
+		Evaluable<PackedCollection> ev = (Evaluable<PackedCollection>) (Evaluable) cp(a).multiply(2.0).get();
+
+		HardwareEvaluable<PackedCollection> wrapper = new HardwareEvaluable<>(() -> ev, null, null, false);
+		wrapper.setResultProcessor(out -> out.repeat(2));
+
+		PackedCollection destination = new PackedCollection(n);
+		Evaluable<PackedCollection> withDestination = wrapper.into(destination);
+		PackedCollection result = withDestination.evaluate();
+
+		PackedCollection direct = ev.evaluate();
+		PackedCollection expected = direct.repeat(2);
+
+		assertEquals((double) expected.getMemLength(), (double) result.getMemLength());
+		for (int i = 0; i < expected.getMemLength(); i++) {
+			assertEquals(expected.toDouble(i), result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Verifies that a shared {@link DestinationEvaluable} kernel reached through two independent
+	 * {@link HardwareEvaluable} wrappers -- exactly as two separate
+	 * {@link org.almostrealism.collect.computations.ReshapeProducer}/
+	 * {@link org.almostrealism.collect.computations.PackedCollectionRepeat} instances would reach
+	 * a shared underlying kernel -- serves both wrappers'
+	 * {@link HardwareEvaluable#request(Object[], Semaphore, Consumer)} calls without either
+	 * throwing from {@link HardwareEvaluable#setDownstream}, and delivers each wrapper's own
+	 * processed result to its own consumer.
+	 */
+	@Test(timeout = 30000)
+	public void sharedDestinationEvaluableServesIndependentWrappers() {
+		int n = 8;
+
+		PackedCollection a = new PackedCollection(n);
+		rand(a.getShape()).add(1.0).into(a.traverseEach()).evaluate();
+
+		Evaluable<PackedCollection> kernel = (Evaluable<PackedCollection>) (Evaluable) cp(a).multiply(2.0).get();
+		PackedCollection destination = new PackedCollection(n);
+		Evaluable<PackedCollection> rawKernel = ((HardwareEvaluable<PackedCollection>) kernel).getKernel().getValue();
+		DestinationEvaluable<PackedCollection> shared = new DestinationEvaluable<>(rawKernel, destination);
+
+		HardwareEvaluable<PackedCollection> repeatWrapper = new HardwareEvaluable<>(() -> shared, null, null, false);
+		repeatWrapper.setResultProcessor(out -> out.repeat(2));
+
+		HardwareEvaluable<PackedCollection> reshapeWrapper = new HardwareEvaluable<>(() -> shared, null, null, false);
+		reshapeWrapper.setResultProcessor(out -> out.reshape(1, n));
+
+		PackedCollection direct = kernel.evaluate();
+		PackedCollection expectedRepeat = direct.repeat(2);
+		PackedCollection expectedReshape = direct.reshape(1, n);
+
+		Object[] repeatResult = new Object[1];
+		Semaphore[] repeatCompletion = new Semaphore[1];
+		repeatWrapper.request(new Object[0], null, (CompletionConsumer<PackedCollection>) (value, c) -> {
+			repeatResult[0] = value;
+			repeatCompletion[0] = c;
+		});
+		if (repeatCompletion[0] != null) repeatCompletion[0].waitFor();
+
+		Object[] reshapeResult = new Object[1];
+		Semaphore[] reshapeCompletion = new Semaphore[1];
+		reshapeWrapper.request(new Object[0], null, (CompletionConsumer<PackedCollection>) (value, c) -> {
+			reshapeResult[0] = value;
+			reshapeCompletion[0] = c;
+		});
+		if (reshapeCompletion[0] != null) reshapeCompletion[0].waitFor();
+
+		PackedCollection actualRepeat = (PackedCollection) repeatResult[0];
+		PackedCollection actualReshape = (PackedCollection) reshapeResult[0];
+
+		assertEquals((double) expectedRepeat.getMemLength(), (double) actualRepeat.getMemLength());
+		for (int i = 0; i < expectedRepeat.getMemLength(); i++) {
+			assertEquals(expectedRepeat.toDouble(i), actualRepeat.toDouble(i));
+		}
+
+		for (int i = 0; i < n; i++) {
+			assertEquals(expectedReshape.toDouble(i), actualReshape.toDouble(i));
+		}
+	}
+
+	/**
+	 * Verifies that {@link EvaluableStreamingAdapter#request(Object[], Semaphore, Consumer)} honors
+	 * a non-null {@code dependsOn}: submission to the executor must not block the caller, but the
+	 * submitted task must wait for {@code dependsOn} to complete before reading the arguments and
+	 * evaluating, rather than reading them immediately and racing the dependency. Without the wait,
+	 * the delivered value would already be captured from the state that existed at request time,
+	 * well before the state update below and the {@code dependsOn} completion that follows it.
+	 */
+	@Test(timeout = 10000)
+	public void streamingAdapterRequestWaitsForDependsOn() throws InterruptedException {
+		int[] sharedState = { 0 };
+
+		Evaluable<Integer> hostEvaluable = args -> sharedState[0];
+		EvaluableStreamingAdapter<Integer> adapter = new EvaluableStreamingAdapter<>(hostEvaluable);
+
+		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((Semaphore) null, 1);
+		CountDownLatch delivered = new CountDownLatch(1);
+		Integer[] result = new Integer[1];
+
+		Thread requester = new Thread(() ->
+				adapter.request(new Object[0], dependsOn, (Consumer<Integer>) value -> {
+					result[0] = value;
+					delivered.countDown();
+				}));
+		requester.start();
+
+		// Give the requester thread ample time to reach (and, if the dependency were
+		// disregarded, run straight past) the wait before the dependency is satisfied
+		Thread.sleep(200);
+		assertEquals(1L, delivered.getCount());
+
+		sharedState[0] = 42;
+		dependsOn.countDown();
+
+		assertTrue(delivered.await(5, TimeUnit.SECONDS));
+		requester.join(5000);
+		assertEquals(42, (int) result[0]);
+	}
+
+	/**
+	 * Verifies that a single {@link EvaluableStreamingAdapter} reached through two independent
+	 * requesters -- each calling {@link EvaluableStreamingAdapter#request(Object[], Semaphore,
+	 * Consumer)} with its own downstream consumer, as two separate {@link HardwareEvaluable}
+	 * wrappers over a shared host-evaluated kernel would -- delivers each request's result to its
+	 * own consumer without either contending for {@link EvaluableStreamingAdapter#setDownstream}.
+	 */
+	@Test(timeout = 10000)
+	public void sharedStreamingAdapterServesIndependentRequesters() throws InterruptedException {
+		Evaluable<Integer> hostEvaluable = args -> ((Integer) args[0]) * 2;
+		EvaluableStreamingAdapter<Integer> adapter = new EvaluableStreamingAdapter<>(hostEvaluable);
+
+		CountDownLatch delivered = new CountDownLatch(2);
+		Integer[] firstResult = new Integer[1];
+		Integer[] secondResult = new Integer[1];
+
+		adapter.request(new Object[] { 3 }, null, (Consumer<Integer>) value -> {
+			firstResult[0] = value;
+			delivered.countDown();
+		});
+		adapter.request(new Object[] { 5 }, null, (Consumer<Integer>) value -> {
+			secondResult[0] = value;
+			delivered.countDown();
+		});
+
+		assertTrue(delivered.await(5, TimeUnit.SECONDS));
+		assertEquals(6, (int) firstResult[0]);
+		assertEquals(10, (int) secondResult[0]);
 	}
 
 	/**

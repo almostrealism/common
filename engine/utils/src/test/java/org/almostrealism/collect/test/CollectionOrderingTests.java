@@ -111,4 +111,27 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(0.0, compact.valueAt(1, 0));
 		assertEquals(3.0, compact.valueAt(1, 1));
 	}
+
+	/**
+	 * Verifies that a delegated view with a non-idempotent {@link ExplicitIndexTraversalOrdering}
+	 * (a fixed-point-free permutation) round-trips every element correctly through
+	 * {@link PackedCollection#toDouble(int)}.
+	 *
+	 * <p>The ordering must be applied exactly once per logical index. Applying it twice
+	 * (mapping the already-physical index through the ordering a second time) silently
+	 * produces the wrong element instead of the value the permutation actually designates.</p>
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexOrderingAppliedOnce() {
+		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+		PackedCollection indices = pack(2, 0, 3, 1);
+
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+		PackedCollection permuted = new PackedCollection(shape(4), 1, values, 0, order);
+
+		assertEquals(30.0, permuted.toDouble(0));
+		assertEquals(10.0, permuted.toDouble(1));
+		assertEquals(40.0, permuted.toDouble(2));
+		assertEquals(20.0, permuted.toDouble(3));
+	}
 }

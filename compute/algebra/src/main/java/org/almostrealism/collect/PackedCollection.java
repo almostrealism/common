@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.collect.Collection;
-import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
@@ -405,11 +404,7 @@ public class PackedCollection extends MemoryDataAdapter
 
 	@Override
 	public TraversalOrdering getDelegateOrdering() {
-		if (getShape().getOrder() == null) return null;
-		return getShape().getOrder().getLength().stream()
-				.mapToObj(DefaultTraversalOrdering::new)
-				.findFirst()
-				.orElseGet(DefaultTraversalOrdering::new);
+		return getShape().getOrder();
 	}
 
 	@Override
@@ -445,7 +440,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null && getShape().isRegular()) {
+		if (getMemOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
