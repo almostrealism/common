@@ -462,6 +462,39 @@ class PollAndStoreTests(unittest.TestCase):
         self.assertIsNone(unknown_row[0])
         self.assertIsNone(unknown_row[1])
 
+    def test_poll_and_store_batches_the_whole_cycle_into_one_transaction(self):
+        """A poll cycle upserts one job_event per job plus one job_step per
+        step - potentially hundreds of statements. They must all land inside
+        a single `FleetStore.transaction()` batch, not commit one at a time,
+        so a failure partway through does not leave a partially written
+        cycle for a concurrent reader to observe."""
+        run = {"id": 1}
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]), \
+                mock.patch.object(self.store, "transaction", wraps=self.store.transaction) as batch:
+            poll_and_store("acme/repo", "tok", self.store)
+        batch.assert_called_once()
+
+    def test_poll_and_store_rolls_back_the_whole_cycle_on_a_mid_cycle_failure(self):
+        """If fetching a later run's jobs fails, the job_event rows already
+        upserted for an earlier run in this same cycle must not be left
+        behind half-committed - the next poll cycle will simply re-fetch and
+        re-upsert everything once the transient failure clears."""
+        runs = [{"id": 1}, {"id": 2}]
+        first_job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+
+        def _fake_fetch_run_jobs(repo, run_id, token, **kwargs):
+            if run_id == "1":
+                return [first_job]
+            raise RuntimeError("simulated transient failure")
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=runs), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", side_effect=_fake_fetch_run_jobs):
+            with self.assertRaises(RuntimeError):
+                poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(self.store.job_event_count(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

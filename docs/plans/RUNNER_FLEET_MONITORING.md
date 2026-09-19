@@ -278,6 +278,10 @@ quantities. Each becomes a dashboard panel and drives a schema requirement:
 2. **Queue wait per runner label** = time a job spends between "eligible" and
    "picked up by a runner", bucketed by its `runs-on` label set. This is the
    headline number for the purchasing decision.
+   <!-- TODO(review): this still states the aspirational runs-on bucketing
+   without the label-semantics caveat added to §5.4 and the appendix — the
+   Phase A implementation actually buckets by the executing runner's label
+   set. Reconcile this section with the §5.4 correction. -->
 3. **Concurrency headroom per host** = how many more concurrent jobs a host
    could take before CPU / memory / disk saturates. Needs host metrics attributed
    by class (§7.3): a host that looks "busy" because of a FlowTree agent has
@@ -476,13 +480,16 @@ GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs        # per-run jobs
 ```
 
 Per-job fields to persist: `id`, `run_id`, `name`, `status`, `conclusion`,
-`created_at`, `started_at`, `completed_at`, `labels[]` (the `runs-on` set),
-`runner_id`, `runner_name`, `runner_group_name`, and `steps[]`
-(each with `started_at`/`completed_at`). From these:
+`created_at`, `started_at`, `completed_at`, `labels[]` (see the correction
+below — this is the *executing runner's* label set, not the workflow's
+requested `runs-on` set), `runner_id`, `runner_name`, `runner_group_name`,
+and `steps[]` (each with `started_at`/`completed_at`). From these:
 
-- **`pre_start_latency` ≈ `started_at − created_at`**, bucketed by `labels[]`.
-  This is **not** the same thing as runner-availability queue wait, and the
-  design must not conflate the two — see the correction below.
+- **`pre_start_latency` ≈ `started_at − created_at`**, bucketed by `labels[]`
+  (the executing runner's actual labels, not the requested `runs-on` set —
+  see the label-semantics correction below). This is **not** the same thing
+  as runner-availability queue wait, and the design must not conflate the
+  two — see the queue-wait correction below.
 - **Utilization** from `[started_at, completed_at]` busy windows per
   `runner_name`, joined to host metrics via the host manifest.
 - **CI run time breakdown** from `steps[]` (checkout / build / test).
@@ -509,6 +516,30 @@ follow-up. The exact `created_at` semantics of the workflow-job object should
 still be confirmed against live API responses on this repo before either panel
 is treated as authoritative (§12). Rate limits are a non-issue at this scale
 (5000 req/hr authenticated; a few dozen requests per poll every 5–15 min).
+
+**Correction — `labels[]` as persisted is the executing runner's actual
+label set, not the workflow's requested `runs-on:` set, and this section
+must not be read as saying otherwise.** The Phase A implementation
+(`tools/fleet/github_poller.py`, documented in `tools/fleet/README.md`)
+deliberately persists `job.get("labels")` from the workflow-jobs API
+response — the labels of the runner that actually executed the job — because
+computing the *requested* set would require parsing the run's workflow YAML
+and matching each job's API `name` (a `name:` override or matrix-expanded
+label, not a YAML key) back to its `runs-on:` declaration, which the poller
+does not do. A runner can carry extra/custom labels beyond what a job asked
+for, so grouping `pre_start_latency`/`queue_wait` by this column measures
+**actual-runner-label demand** ("jobs that happened to land on a runner
+carrying this exact label set"), not **per-`runs-on` demand** ("jobs that
+requested this label set"). The two coincide only when every runner in the
+fleet carries exactly the labels its `runs-on:` lanes expect and nothing
+else — not guaranteed, and not validated here. A consumer of the
+label-level latency/queue-wait panels (§3 item 2, the Phase B
+`capacity-report`) must treat the `labels` column under this semantics
+until one of the following lands: (a) a workflow-YAML-derived mapping from
+job to its declared `runs-on:` set, persisted as a separate column so the
+two demand signals are never conflated, or (b) the panels and this document
+are relabelled throughout to say "executing-runner-label demand" rather
+than "requested-label demand."
 
 ### 5.5 The store — Q4
 
@@ -847,9 +878,11 @@ operator decision this document defers to §9.
 
 From `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` (`.jobs[]`):
 `id`, `run_id`, `name`, `status`, `conclusion`, `created_at`, `started_at`,
-`completed_at`, `labels` (the `runs-on` set), `runner_id`, `runner_name`,
-`runner_group_name`, `steps[]` (`name`, `status`, `conclusion`, `number`,
-`started_at`, `completed_at`). Registered-runner state from
+`completed_at`, `labels` (the *executing runner's* actual label set, not the
+workflow's requested `runs-on:` set — see §5.4's label-semantics
+correction), `runner_id`, `runner_name`, `runner_group_name`, `steps[]`
+(`name`, `status`, `conclusion`, `number`, `started_at`, `completed_at`).
+Registered-runner state from
 `GET /repos/{owner}/{repo}/actions/runners` (and the org variant):
 `name`, `os`, `status` (`online`/`offline`), `busy`, `labels[]`.
 

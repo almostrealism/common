@@ -25,6 +25,8 @@ Run with:
     python -m unittest discover -v -s tools/tests -p "test_fleet_store.py"
 """
 
+import os
+import tempfile
 import unittest
 
 from tools.fleet.attribution import ClassMetrics
@@ -205,6 +207,66 @@ class FleetStoreContextManagerTests(unittest.TestCase):
             store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=1.0)
         with self.assertRaises(Exception):
             store._conn.execute("SELECT 1")
+
+
+class FleetStoreTransactionBatchingTests(unittest.TestCase):
+    """`transaction()` exists so a poll cycle performing many upserts (one
+    `job_event` per job plus one `job_step` per step) commits once instead of
+    once per row. These tests exercise the batching contract directly against
+    a file-backed store, since a second connection to the same sqlite file is
+    the only way to observe whether an intermediate write was actually
+    committed rather than merely visible on the writer's own connection."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self._tmpdir.name, "fleet.db")
+        self.store = FleetStore(self.db_path)
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _count_via_second_connection(self, table):
+        other = FleetStore(self.db_path)
+        try:
+            return other._conn.execute("SELECT COUNT(*) FROM %s" % table).fetchone()[0]
+        finally:
+            other.close()
+
+    def test_writes_inside_a_transaction_are_not_visible_until_it_commits(self):
+        with self.store.transaction():
+            self.store.upsert_job_event(job_id="job-1")
+            self.store.upsert_job_event(job_id="job-2")
+            # Still inside the batch: nothing has been committed yet, so a
+            # second connection to the same file must see zero rows.
+            self.assertEqual(self._count_via_second_connection("job_event"), 0)
+        # The block exited normally: exactly one commit for the whole batch.
+        self.assertEqual(self._count_via_second_connection("job_event"), 2)
+
+    def test_transaction_rolls_back_every_write_in_the_block_on_exception(self):
+        """An error partway through a poll cycle must not leave a partially
+        written cycle behind for a concurrent reader to observe."""
+        with self.assertRaises(RuntimeError):
+            with self.store.transaction():
+                self.store.upsert_job_event(job_id="job-1")
+                raise RuntimeError("simulated failure mid-cycle")
+        self.assertEqual(self.store.job_event_count(), 0)
+        self.assertEqual(self._count_via_second_connection("job_event"), 0)
+
+    def test_nested_transactions_commit_once_at_the_outermost_exit(self):
+        with self.store.transaction():
+            with self.store.transaction():
+                self.store.upsert_job_event(job_id="job-1")
+            # Inner block exited but the outer one is still open.
+            self.assertEqual(self._count_via_second_connection("job_event"), 0)
+        self.assertEqual(self._count_via_second_connection("job_event"), 1)
+
+    def test_upserts_outside_a_transaction_still_commit_immediately(self):
+        """The default (no batch open) behaviour must be unchanged: a
+        standalone upsert is visible to another connection right away."""
+        self.store.upsert_job_event(job_id="job-1")
+        self.assertEqual(self._count_via_second_connection("job_event"), 1)
 
 
 if __name__ == "__main__":

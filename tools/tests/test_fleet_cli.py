@@ -56,6 +56,20 @@ class FleetCliTests(unittest.TestCase):
         self.assertIn("busy", output)
         self.assertIn("job-99", output)
 
+    def test_list_shows_workflow_and_agent_version(self):
+        """The Phase A CLI contract promises the runner listing includes the
+        current job *and version* — both fields FleetStore.latest_runner_states
+        already returns must actually reach the rendered output."""
+        self.store.upsert_runner_state(
+            "2026-09-18T00:00:00Z", "mac-studio", "runner-1",
+            state="busy", job_id="job-99", workflow="analysis.yaml", agent_version="2.320.0",
+        )
+        output = cli.run_list(self.store, None)
+        self.assertIn("analysis.yaml", output)
+        self.assertIn("2.320.0", output)
+        self.assertIn("WORKFLOW", output)
+        self.assertIn("VERSION", output)
+
     def test_list_host_filter_excludes_other_hosts(self):
         self.store.upsert_runner_state("2026-09-18T00:00:00Z", "host-a", "runner-1", state="idle")
         self.store.upsert_runner_state("2026-09-18T00:00:00Z", "host-b", "runner-2", state="idle")

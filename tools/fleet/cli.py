@@ -17,8 +17,9 @@
 A CLI for this fleet is one surface with platform-specific *control*
 adapters, but read-only visibility is the useful thing to have before any
 control verb exists. This module implements the two read verbs that matter
-first: ``list`` (runners on a host: name, labels, state, current job) and
-``status`` (per-host/per-class utilization). Both read from
+first: ``list`` (runners on a host: name, labels, state, current job and
+workflow, and agent version) and ``status`` (per-host/per-class
+utilization). Both read from
 :class:`tools.fleet.store.FleetStore`; neither touches any runner process.
 
 Control verbs (``start``/``stop``/``restart``/``register``/``label``) are
@@ -37,15 +38,28 @@ from tools.fleet.store import FleetStore
 
 
 def format_list(rows: Sequence[tuple]) -> str:
-    """Format :meth:`FleetStore.latest_runner_states` rows for display."""
+    """Format :meth:`FleetStore.latest_runner_states` rows for display.
+
+    Includes ``workflow`` and ``agent_version`` alongside the current job:
+    the Phase A CLI contract (see the design document's smallest-deliverable
+    section) promises the runner listing shows the current job *and*
+    version, and both are already persisted per row by
+    :meth:`FleetStore.latest_runner_states` — dropping them here would make
+    that data invisible to the operator even though the store has it.
+    """
     if not rows:
         return "No runner state recorded."
-    header = "%-20s %-20s %-24s %-10s %-8s %s" % ("HOST", "RUNNER", "LABELS", "STATE", "JOB", "REPO")
+    header = "%-20s %-20s %-24s %-10s %-8s %-20s %-10s %s" % (
+        "HOST", "RUNNER", "LABELS", "STATE", "JOB", "WORKFLOW", "VERSION", "REPO",
+    )
     lines = [header]
     for ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version in rows:
         lines.append(
-            "%-20s %-20s %-24s %-10s %-8s %s"
-            % (host, runner_name, labels or "", state or "", job_id or "-", repo or "")
+            "%-20s %-20s %-24s %-10s %-8s %-20s %-10s %s"
+            % (
+                host, runner_name, labels or "", state or "", job_id or "-",
+                workflow or "-", agent_version or "-", repo or "",
+            )
         )
     return "\n".join(lines)
 

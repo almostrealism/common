@@ -29,12 +29,22 @@ plain insert would raise on the second write of the same key rather than
 silently duplicating, but it would still be the wrong behaviour for a retried
 push or a re-polled job, so every ``upsert_*`` method here replaces the prior
 row for that key instead of erroring or accumulating duplicates.
+
+Each ``upsert_*`` method commits on its own by default, which is the right
+behaviour for a single, standalone write. A caller that performs many
+upserts as one logical unit of work — the GitHub poller upserts one
+``job_event`` per job plus one ``job_step`` per step, hundreds or thousands
+of statements across a single poll cycle — should instead wrap them in
+:meth:`FleetStore.transaction`, so the whole cycle commits (and fsyncs) once
+instead of once per row, and a concurrent reader never observes a poll cycle
+that is only partially written.
 """
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 from tools.fleet import schema
 
@@ -45,6 +55,7 @@ class FleetStore:
     def __init__(self, path: str = ":memory:"):
         self._conn = sqlite3.connect(path)
         self._conn.execute("PRAGMA foreign_keys = ON")
+        self._batch_depth = 0
 
     def close(self) -> None:
         """Close the underlying sqlite3 connection."""
@@ -55,6 +66,38 @@ class FleetStore:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
+
+    @contextlib.contextmanager
+    def transaction(self) -> Iterator["FleetStore"]:
+        """Batch every ``upsert_*`` call made inside this block into one commit.
+
+        While a batch is open, the individual ``upsert_*`` methods below
+        skip their own commit; the whole block commits once on successful
+        exit, or rolls back entirely if an exception propagates out of it.
+        This turns a poll cycle's per-row commit/fsync into a single one and
+        makes the cycle atomic to any concurrent reader of the same sqlite
+        file — it either sees the previous cycle's rows or the new cycle's
+        rows in full, never a mix of the two. Nesting is supported (only the
+        outermost block commits) so a helper that already opens its own
+        ``transaction()`` composes safely with a caller that wraps it in
+        another.
+        """
+        self._batch_depth += 1
+        try:
+            yield self
+        except BaseException:
+            self._batch_depth -= 1
+            self._conn.rollback()
+            raise
+        else:
+            self._batch_depth -= 1
+            if self._batch_depth == 0:
+                self._conn.commit()
+
+    def _commit_unless_batched(self) -> None:
+        """Commit immediately, unless a :meth:`transaction` batch is open."""
+        if self._batch_depth == 0:
+            self._conn.commit()
 
     def init_schema(self) -> None:
         """Create every table declared in :mod:`schema`, if not already present."""
@@ -93,7 +136,7 @@ class FleetStore:
                 None if throttled is None else int(bool(throttled)),
             ),
         )
-        self._conn.commit()
+        self._commit_unless_batched()
 
     def upsert_class_sample(self, ts: str, host: str, cls: str, cpu_pct: float, rss_mb: float) -> None:
         """Insert or replace one ``class_sample`` row, keyed on ``(ts, host, class)``."""
@@ -104,7 +147,7 @@ class FleetStore:
             """,
             (ts, host, cls, cpu_pct, rss_mb),
         )
-        self._conn.commit()
+        self._commit_unless_batched()
 
     def upsert_class_samples(self, ts: str, host: str, metrics: dict) -> None:
         """Bulk form of :meth:`upsert_class_sample` for one sampling round.
@@ -138,7 +181,7 @@ class FleetStore:
             """,
             (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version),
         )
-        self._conn.commit()
+        self._commit_unless_batched()
 
     # ---- job_event / job_step ---------------------------------------------
 
@@ -185,7 +228,7 @@ class FleetStore:
                 queue_wait_seconds,
             ),
         )
-        self._conn.commit()
+        self._commit_unless_batched()
 
     def upsert_job_step(
         self,
@@ -205,7 +248,7 @@ class FleetStore:
             """,
             (job_id, number, name, started_at, completed_at, conclusion),
         )
-        self._conn.commit()
+        self._commit_unless_batched()
 
     # ---- queries -----------------------------------------------------------
 
