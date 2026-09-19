@@ -140,6 +140,15 @@ class FleetStoreQueryTests(unittest.TestCase):
         self.assertAlmostEqual(avg_rss, 200.0)
         self.assertEqual(count, 2)
 
+    def test_utilization_by_class_filters_by_host(self):
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "host-a", "runner", 10.0, 100.0)
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "host-b", "runner", 90.0, 900.0)
+        rows = self.store.utilization_by_class(host="host-a")
+        self.assertEqual(len(rows), 1)
+        host, cls, avg_cpu, avg_rss, count = rows[0]
+        self.assertEqual(host, "host-a")
+        self.assertAlmostEqual(avg_cpu, 10.0)
+
     def test_pre_start_latency_by_label_only_counts_entry_point_jobs(self):
         """A non-entry-point job's `pre_start_latency` includes time blocked
         on its dependencies, so it must not be averaged into the queue-wait
@@ -173,6 +182,29 @@ class FleetStoreQueryTests(unittest.TestCase):
         labels, avg_latency, count = rows[0]
         self.assertEqual(count, 1)
         self.assertAlmostEqual(avg_latency, 10.0)
+
+    def test_pre_start_latency_by_label_filters_by_labels(self):
+        self.store.upsert_job_event(
+            job_id="entry-1", labels="ar-ci", pre_start_latency_seconds=10.0, is_entry_point=True,
+        )
+        self.store.upsert_job_event(
+            job_id="entry-2", labels="ar-ci-cl", pre_start_latency_seconds=40.0, is_entry_point=True,
+        )
+        rows = self.store.pre_start_latency_by_label(labels="ar-ci-cl")
+        self.assertEqual(len(rows), 1)
+        labels, avg_latency, count = rows[0]
+        self.assertEqual(labels, "ar-ci-cl")
+        self.assertAlmostEqual(avg_latency, 40.0)
+
+
+class FleetStoreContextManagerTests(unittest.TestCase):
+
+    def test_context_manager_closes_the_connection_on_exit(self):
+        with FleetStore(":memory:") as store:
+            store.init_schema()
+            store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=1.0)
+        with self.assertRaises(Exception):
+            store._conn.execute("SELECT 1")
 
 
 if __name__ == "__main__":

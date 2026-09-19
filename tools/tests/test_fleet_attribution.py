@@ -53,6 +53,9 @@ class ParsePsLineTests(unittest.TestCase):
     def test_malformed_line_is_ignored_not_raised(self):
         self.assertIsNone(attribution.parse_ps_line("not-a-number 1 user 0.0 100 comm"))
 
+    def test_line_with_too_few_fields_is_ignored(self):
+        self.assertIsNone(attribution.parse_ps_line("1 0 user 0.0"))
+
 
 class ClassifyProcessesTests(unittest.TestCase):
     """A synthetic tree: one runner subtree, one agent subtree, one bystander."""
@@ -134,6 +137,24 @@ class ClassifyProcessesTests(unittest.TestCase):
         classes = attribution.classify_processes(samples, agent_root_comms={"custom-agent-root"})
         self.assertEqual(classes[2], attribution.AGENT)
         self.assertEqual(classes[3], attribution.AGENT)
+
+    def test_pid_reached_by_two_walks_is_tagged_only_once(self):
+        """`ps` output order is not guaranteed to list a parent before its
+        child. If the child of a runner root is itself a recognised runner
+        root name (e.g. `Runner.Worker` under `Runner.Listener`) and happens
+        to be visited first, its subtree is tagged before the walk from the
+        parent root reaches it — the parent's walk must then skip the
+        already-tagged pid instead of re-tagging or double-counting it."""
+        samples = [
+            attribution.ProcessSample(101, 100, "runner-svc", 5.0, 200.0, "Runner.Worker"),
+            attribution.ProcessSample(100, 1, "runner-svc", 0.5, 50.0, "Runner.Listener"),
+        ]
+        classes = attribution.classify_processes(samples)
+        self.assertEqual(classes[100], attribution.RUNNER)
+        self.assertEqual(classes[101], attribution.RUNNER)
+        metrics = attribution.class_metrics(samples, classes)
+        self.assertAlmostEqual(metrics[attribution.RUNNER].cpu_pct, 5.5)
+        self.assertEqual(metrics[attribution.RUNNER].process_count, 2)
 
     def test_agent_root_pid_is_honoured_when_comm_is_generic(self):
         """Both launchers `exec java`, so the agent's `comm` is always

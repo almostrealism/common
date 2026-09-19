@@ -108,6 +108,17 @@ class UptimeLoadParsingTests(unittest.TestCase):
     def test_missing_marker_yields_all_none(self):
         self.assertEqual(collector.parse_uptime_loads("unexpected output"), [None, None, None])
 
+    def test_marker_without_a_colon_yields_all_none(self):
+        self.assertEqual(collector.parse_uptime_loads("up 3 days, load average"), [None, None, None])
+
+    def test_unparsable_values_yield_none_entries_not_a_raise(self):
+        text = "load average: not-a-number, 0.05, 0.01"
+        self.assertEqual(collector.parse_uptime_loads(text), [None, 0.05, 0.01])
+
+    def test_fewer_than_three_values_are_padded_with_none(self):
+        text = "load average: 0.10"
+        self.assertEqual(collector.parse_uptime_loads(text), [0.10, None, None])
+
 
 class LaunchctlListParsingTests(unittest.TestCase):
 
@@ -260,6 +271,11 @@ class LinuxCpuPctSamplingTests(unittest.TestCase):
         with mock.patch("builtins.open", side_effect=OSError()):
             self.assertIsNone(collector._read_proc_stat_cpu())
 
+    def test_read_proc_stat_cpu_parses_a_readable_file(self):
+        text = "cpu  100 0 50 850 0 0 0 0 0 0\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=text)):
+            self.assertEqual(collector._read_proc_stat_cpu(), (150, 1000))
+
     def test_linux_cpu_pct_takes_two_samples_a_sample_interval_apart(self):
         samples = [(100, 1000), (150, 1100)]
         with mock.patch("tools.fleet.collector._read_proc_stat_cpu", side_effect=samples), \
@@ -389,6 +405,9 @@ class ProcStatCpuParsingTests(unittest.TestCase):
 
     def test_missing_cpu_line_yields_none(self):
         self.assertIsNone(collector.parse_proc_stat_cpu_line("nonsense\n"))
+
+    def test_cpu_line_with_too_few_fields_yields_none(self):
+        self.assertIsNone(collector.parse_proc_stat_cpu_line("cpu  100 0\n"))
 
     def test_cpu_pct_from_two_samples(self):
         first = (150, 1000)

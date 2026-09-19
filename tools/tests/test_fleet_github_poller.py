@@ -32,7 +32,10 @@ import urllib.error
 from unittest import mock
 
 from tools.fleet.github_poller import (
+    RATE_LIMIT_DEFAULT_RETRY_SECONDS,
     _get_json,
+    _is_retryable_rate_limit,
+    _rate_limit_delay_seconds,
     compute_job_metrics,
     fetch_run_jobs,
     fetch_runs,
@@ -46,6 +49,14 @@ def _http_error(code, headers=None):
     for key, value in (headers or {}).items():
         hdrs[key] = value
     return urllib.error.HTTPError("https://api.github.com/x", code, "error", hdrs, None)
+
+
+def _http_error_no_headers(code):
+    """An HTTPError constructed with `hdrs=None`, as `urllib.request.urlopen`
+    can hand back when a response carries no headers at all — distinct from
+    `_http_error`'s always-present (possibly empty) `Message` object, and the
+    only way to exercise the ``headers is None`` guards below."""
+    return urllib.error.HTTPError("https://api.github.com/x", code, "error", None, None)
 
 
 class ComputeJobMetricsTests(unittest.TestCase):
@@ -258,6 +269,30 @@ class RateLimitRetryTests(unittest.TestCase):
             result = _get_json("https://api.github.com/x", "tok")
         self.assertEqual(result, {"ok": True})
         sleep_mock.assert_called_once()
+
+    def test_is_retryable_rate_limit_is_false_when_headers_are_absent(self):
+        """A 403 with no headers object at all (not even an empty one) must
+        be treated the same as permission-denied — there is no
+        `Retry-After`/`X-RateLimit-Remaining` to say otherwise."""
+        self.assertFalse(_is_retryable_rate_limit(_http_error_no_headers(403)))
+
+    def test_rate_limit_delay_prefers_retry_after_over_reset(self):
+        error = _http_error(429, {"Retry-After": "5", "X-RateLimit-Reset": str(int(_time.time()) + 999)})
+        self.assertEqual(_rate_limit_delay_seconds(error), 5.0)
+
+    def test_rate_limit_delay_falls_back_to_reset_when_retry_after_is_malformed(self):
+        reset_at = _time.time() + 30
+        error = _http_error(429, {"Retry-After": "not-a-number", "X-RateLimit-Reset": str(reset_at)})
+        self.assertAlmostEqual(_rate_limit_delay_seconds(error), 30.0, delta=1.0)
+
+    def test_rate_limit_delay_falls_back_to_default_when_both_headers_are_malformed(self):
+        error = _http_error(429, {"Retry-After": "nope", "X-RateLimit-Reset": "also-nope"})
+        self.assertEqual(_rate_limit_delay_seconds(error), RATE_LIMIT_DEFAULT_RETRY_SECONDS)
+
+    def test_rate_limit_delay_falls_back_to_default_when_headers_are_absent(self):
+        self.assertEqual(
+            _rate_limit_delay_seconds(_http_error_no_headers(429)), RATE_LIMIT_DEFAULT_RETRY_SECONDS,
+        )
 
 
 class PollAndStoreTests(unittest.TestCase):
