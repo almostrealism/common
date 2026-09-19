@@ -132,23 +132,27 @@ State these plainly; do not assume the guard closes them.
 - **The inline-program scan mostly matches uses, not mentions.** The
   module/API entries most prone to plain-English mentions in
   `NETWORK_CODE_PATTERNS` (`socket`, `urllib`, `subprocess`, `websocket(s)`,
-  and the rest of that family) require an import, a module-qualified call,
-  or a constructor — never a bare module or API name — for the same reason
-  the URL bullet above gives: a guard that blocks prose teaches its way
-  around itself. A handful of entries with no natural "qualified" form
-  (`XMLHttpRequest`, `HttpClient`, `URLConnection`, `child_process`,
-  `fsockopen`, `Net::`, `LWP`, and similar language built-ins) still match
+  `axios`, and the rest of that family) require an import, a
+  module-qualified call, or a constructor with no space before the
+  parenthesis — never a bare module or API name, and never a
+  parenthetical remark such as "the engine socket (an open TCP port)" —
+  for the same reason the URL bullet above gives: a guard that blocks
+  prose teaches its way around itself. `Net::` and `LWP::` are unaffected
+  by this: they already required the `::` module-path form before this
+  scan existed, so they were never a bare-word match.
+  <!-- TODO(review): this claim is wrong for LWP::. `git log --all -p --
+  .claude/hooks/lib/exfil_bash_network.py` shows `\bLWP\b` (a bare-word
+  match) was narrowed to `\bLWP::` by this same narrowing effort, not
+  before it -- only Net:: was already `::`-qualified beforehand. The
+  sentence should either drop LWP:: from this bullet or describe it
+  alongside the narrowed entries above instead of alongside Net::. -->
+  A handful of other
+  entries have no natural "qualified" form at all (`XMLHttpRequest`,
+  `HttpClient`, `URLConnection`, `child_process`, `node-fetch`,
+  `fsockopen`, `stream_socket_client`, `Invoke-WebRequest`,
+  `Invoke-RestMethod`, and similar language built-ins) and still match
   the bare identifier, on the same accepted-cost basis as everywhere else
   in this list.
-  <!-- TODO(review): the socket/websocket/axios entries' `\s*\(` branch
-  (`\bsocket\s*\(`, `\bwebsocket[s]?\s*\(`, `\baxios\s*\(`) matches a bare
-  word followed by any parenthesis, including a plain-English parenthetical
-  remark such as "the engine socket (an open TCP port)" -- confirmed by
-  direct regex test. That is a mention, not a use, so this bullet's "never
-  a bare module or API name" claim overstates what those three patterns
-  guarantee. Narrowing correctly (e.g. requiring the call target look like
-  `word(args)` with no space, or requiring a preceding `=`/`await`/`new`)
-  is a regex-design decision, not a one-line fix. -->
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.

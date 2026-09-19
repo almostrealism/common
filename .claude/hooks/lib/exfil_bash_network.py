@@ -42,10 +42,13 @@ from exfil_bash_lex import GuardError, normalize_host
 # API nobody listed, against a URL literal, now passes where the bare URL
 # would have caught it. That is the accepted cost of a guard people can
 # work with — one that blocks prose teaches its way around itself, which
-# buys nothing at all. For the same reason, every entry below matches a
+# buys nothing at all. For the same reason, most entries below match a
 # *use* of the module or API it names — an import, a module-qualified
 # call, a constructor — never the bare word on its own: a string literal
 # that happens to contain "socket" or "subprocess" is prose, not code.
+# A handful of entries with no natural qualified form still match a bare
+# identifier, on the same accepted-cost basis as everywhere else in this
+# list -- see docs/internals/exfiltration-guard.md for which ones.
 NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\brequests\.",
     r"\bimport\s+urllib\b|\bfrom\s+urllib\s+import\b|\burllib\.\w+",
@@ -53,7 +56,7 @@ NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\bimport\s+httplib\b|\bfrom\s+httplib\s+import\b|\bhttplib\.\w+",
     r"\bimport\s+httpx\b|\bfrom\s+httpx\s+import\b|\bhttpx\.\w+",
     r"\bimport\s+aiohttp\b|\bfrom\s+aiohttp\s+import\b|\baiohttp\.\w+",
-    r"\bimport\s+socket\b|\bfrom\s+socket\s+import\b|\bsocket\.\w+|\bsocket\s*\(",
+    r"\bimport\s+socket\b|\bfrom\s+socket\s+import\b|\bsocket\.\w+|\bsocket\(",
     r"\bimport\s+smtplib\b|\bfrom\s+smtplib\s+import\b|\bsmtplib\.\w+",
     r"\bimport\s+ftplib\b|\bfrom\s+ftplib\s+import\b|\bftplib\.\w+",
     r"\bimport\s+telnetlib\b|\bfrom\s+telnetlib\s+import\b|\btelnetlib\.\w+",
@@ -61,12 +64,13 @@ NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\bimport\s+boto3\b|\bfrom\s+boto3\s+import\b|\bboto3\.\w+",
     r"\bimport\s+botocore\b|\bfrom\s+botocore\s+import\b|\bbotocore\.\w+",
     r"\bimport\s+pycurl\b|\bfrom\s+pycurl\s+import\b|\bpycurl\.\w+",
-    r"\bwebsocket[s]?\s*\(|\bWebSocket\s*\(|require\(\s*['\"]ws['\"]\s*\)",
+    r"\bimport\s+websockets?\b|\bfrom\s+websockets?\s+import\b|\bwebsockets?\.\w+|"
+    r"\bnew\s+WebSocket\s*\(|require\(\s*['\"]ws['\"]\s*\)|\bfrom\s+['\"]ws['\"]",
     r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
     r"\bhttps?\.request\b", r"\bnet\.connect\b", r"\bnet\.createConnection\b",
     r"require\(\s*['\"]dgram['\"]\s*\)|\bfrom\s+['\"]dgram['\"]|\bdgram\.\w+",
     r"\bgot\s*\(",
-    r"require\(\s*['\"]axios['\"]\s*\)|\bfrom\s+['\"]axios['\"]|\baxios\.\w+|\baxios\s*\(",
+    r"require\(\s*['\"]axios['\"]\s*\)|\bfrom\s+['\"]axios['\"]|\baxios\.\w+|\baxios\(",
     r"\bnode-fetch\b", r"\bNet::", r"\bLWP::", r"\bIO::Socket\b",
     r"\bHTTP::Tiny\b", r"\bcurl_", r"\bfsockopen\b", r"\bstream_socket_client\b",
     r"\bInvoke-WebRequest\b", r"\bInvoke-RestMethod\b", r"\bNet\.WebClient\b",

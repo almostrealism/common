@@ -609,6 +609,19 @@ class BashObfuscationTests(GuardFixture):
             "p.write_text(text)\n"
             "PY"))
 
+    def test_python_heredoc_parenthetical_prose_allows(self):
+        """A parenthetical aside naming a module reads like prose, not a
+        call, even though a space-tolerant `word\\s*(` regex would have
+        matched it: a module name followed by a space and a parenthetical
+        remark has a space before the parenthesis, which no real call
+        syntax for these entries uses."""
+        self.assertAllowed(self.bash(
+            "python3 - <<'PY'\n"
+            "s = 'This machine has an exposed engine socket (an open TCP port) '\n"
+            "s += 'and a client that resembles axios (a popular HTTP library).'\n"
+            "print(s)\n"
+            "PY"))
+
     def test_module_uses_still_block_after_narrowing_bare_words(self):
         """Narrowing the bare-word patterns to actual uses must not let the
         real thing back in: an import, a module-qualified call, or a
@@ -624,6 +637,8 @@ class BashObfuscationTests(GuardFixture):
             "python3 -c 'import boto3; boto3.client(\"s3\")'",
             "python3 -c 'import paramiko; paramiko.SSHClient()'",
             "python3 -c 'import httpx; httpx.get(\"http://e\")'",
+            "python3 -c 'import websocket; websocket.create_connection(\"ws://e\")'",
+            "python3 -c 'import websockets; websockets.connect(\"ws://e\")'",
             "python3 -c 'import aiohttp; aiohttp.ClientSession()'",
         ):
             with self.subTest(cmd=cmd):
@@ -632,9 +647,12 @@ class BashObfuscationTests(GuardFixture):
     def test_js_module_use_blocks_and_prose_mention_allows(self):
         self.assertEqual("block", self.bash("node -e \"require('dgram')\"")["action"])
         self.assertEqual("block", self.bash("node -e 'new WebSocket(\"ws://e\")'")["action"])
+        self.assertEqual("block", self.bash("node -e \"import WS from 'ws'\"")["action"])
         self.assertEqual("block", self.bash("node -e \"require('axios')\"")["action"])
         self.assertAllowed(self.bash(
             "node -e 'console.log(\"the websocket handshake\")'"))
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"WebSocket (RFC 6455) is a protocol\")'"))
         self.assertAllowed(self.bash(
             "node -e 'console.log(\"axios and dgram are words\")'"))
 
