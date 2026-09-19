@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # Register (or replace) a LaunchDaemon in the system domain from a plist
 # rendered by the account the daemon will run as. This is the one step of a
@@ -20,7 +20,11 @@
 #     home, never from a checkout that account owns, and not from /tmp.
 #   - It runs with the base-system PATH only; nothing outside /usr/bin, /bin,
 #     /usr/sbin and /sbin is needed, so nothing another account could put on
-#     the administrator's PATH is consulted.
+#     the administrator's PATH is consulted. That starts with the interpreter:
+#     the shebang names /bin/bash outright, because `#!/usr/bin/env bash`
+#     would resolve bash through the inherited PATH before any line of this
+#     script could constrain it. The script is written for the bash macOS
+#     ships (3.2).
 #   - The administrator names the service on the command line, and the plist
 #     must carry exactly that Label. The plist decides nothing about WHICH
 #     service is replaced — otherwise it could name any daemon on the host
