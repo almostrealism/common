@@ -22,15 +22,46 @@ from server import mcp
 
 # GitHub renders a light/dark badge image via a <picture> element with
 # <source> variants in Copilot's PR overview review bodies. It carries no
-# information for an agent reading the body, only markup noise.
-_PICTURE_BADGE_RE = re.compile(r"<picture>.*?</picture>", re.DOTALL | re.IGNORECASE)
+# information for an agent reading the body, only markup noise. The badge's
+# shape is exactly two prefers-color-scheme <source> variants plus a
+# fallback <img>, nothing else — a <picture> wrapping anything more (a
+# reviewer's screenshot, descriptive text, extra images) is real content and
+# must survive verbatim.
+_PICTURE_RE = re.compile(r"<picture>(.*?)</picture>", re.DOTALL | re.IGNORECASE)
+_SOURCE_DARK_RE = re.compile(
+    r"<source\b[^>]*media=[\"']\(prefers-color-scheme:\s*dark\)[\"'][^>]*/?>",
+    re.IGNORECASE)
+_SOURCE_LIGHT_RE = re.compile(
+    r"<source\b[^>]*media=[\"']\(prefers-color-scheme:\s*light\)[\"'][^>]*/?>",
+    re.IGNORECASE)
+_IMG_RE = re.compile(r"<img\b[^>]*/?>", re.IGNORECASE)
+_ANY_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _is_picture_badge(inner: str) -> bool:
+    """True when a <picture> element's content is exactly the light/dark
+    badge shape GitHub embeds: a dark and a light source variant plus a
+    single fallback img, with no other tags or text.
+    """
+    if not _SOURCE_DARK_RE.search(inner) or not _SOURCE_LIGHT_RE.search(inner):
+        return False
+    if _ANY_TAG_RE.sub("", inner).strip():
+        return False
+    return (len(_ANY_TAG_RE.findall(inner)) == 3
+            and len(_IMG_RE.findall(inner)) == 1)
 
 
 def _strip_picture_badges(body: str) -> str:
-    """Remove ``<picture>...</picture>`` badge markup from a review body."""
+    """Remove ``<picture>...</picture>`` badge markup from a review body.
+
+    Only the specific light/dark badge shape is removed (see
+    ``_is_picture_badge``); a ``<picture>`` block carrying a screenshot or
+    other meaningful content is left untouched.
+    """
     if not isinstance(body, str):
         return body
-    return _PICTURE_BADGE_RE.sub("", body)
+    return _PICTURE_RE.sub(
+        lambda m: "" if _is_picture_badge(m.group(1)) else m.group(0), body)
 
 
 @mcp.tool()

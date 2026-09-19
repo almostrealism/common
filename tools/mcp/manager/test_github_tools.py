@@ -870,6 +870,29 @@ class TestGithubPrReviews(unittest.TestCase):
     @patch.object(server, "_resolve_github_repo",
                   return_value=("owner", "repo", "main", None))
     @patch.object(server, "_github_request")
+    def test_picture_markup_with_real_content_is_preserved(
+            self, mock_gh, mock_repo):
+        # A reviewer's own <picture>-wrapped screenshot must round-trip
+        # verbatim: only the exact badge shape (a dark/light source pair
+        # plus a bare fallback img, nothing else) is stripped.
+        body = (
+            "Here's what the bug looks like:\n\n"
+            "<picture><img alt=\"Broken layout on mobile\" "
+            "src=\"screenshot.png\"></picture>\n\n"
+            "Notice the overlapping buttons.\n"
+        )
+        mock_gh.return_value = [self._review(id=101, body=body)]
+
+        result = server.github_pr_reviews(pr_number=17)
+        review = result["reviews"][0]
+        self.assertIn("<picture>", review["body"])
+        self.assertIn("screenshot.png", review["body"])
+        self.assertIn("Broken layout on mobile", review["body"])
+        self.assertEqual(review["body"], body)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
     def test_head_only_filters_by_commit(self, mock_gh, mock_repo):
         old_review = self._review(id=1, commit_id="old-sha", body="stale")
         new_review = self._review(id=2, commit_id="head-sha", body="fresh")
