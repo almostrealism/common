@@ -1,0 +1,292 @@
+# Copyright 2026 Michael Murray
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tests for ``tools.fleet.store``.
+
+Both ingest paths this store serves are at-least-once: a push transport
+retries on timeout, and a GitHub poller re-reads the same run/job on its next
+cycle. A schema with no primary/unique keys would duplicate rows and inflate
+every rollup under either condition. These tests exercise exactly that: they
+write the same logical row twice (once as a plain repeat, as a retried batch
+or a repeated poll cycle would) and assert the store still holds exactly one
+row, not two.
+
+Run with:
+    python -m unittest discover -v -s tools/tests -p "test_fleet_store.py"
+"""
+
+import os
+import tempfile
+import unittest
+
+from tools.fleet.attribution import ClassMetrics
+from tools.fleet.store import FleetStore
+
+
+class FleetStoreIdempotencyTests(unittest.TestCase):
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_host_sample_upsert_is_idempotent_on_ts_host(self):
+        self.store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=10.0)
+        self.store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=10.0)
+        count = self.store._conn.execute("SELECT COUNT(*) FROM host_sample").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_host_sample_upsert_replaces_the_value(self):
+        self.store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=10.0)
+        self.store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=99.0)
+        row = self.store._conn.execute(
+            "SELECT cpu_pct FROM host_sample WHERE ts = ? AND host = ?",
+            ("2026-09-18T00:00:00Z", "mac-studio"),
+        ).fetchone()
+        self.assertEqual(row[0], 99.0)
+
+    def test_class_sample_upsert_is_idempotent_on_ts_host_class(self):
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "mac-studio", "runner", 5.0, 100.0)
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "mac-studio", "runner", 5.0, 100.0)
+        count = self.store._conn.execute("SELECT COUNT(*) FROM class_sample").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_job_event_upsert_is_idempotent_on_job_id_across_poll_cycles(self):
+        """A GitHub poller re-reading the same run/job on its next cycle must
+        not duplicate the job_event row."""
+        for _ in range(3):
+            self.store.upsert_job_event(
+                job_id="job-42",
+                run_id="run-7",
+                created_at="2026-09-18T00:00:00Z",
+                started_at="2026-09-18T00:05:00Z",
+                pre_start_latency_seconds=300.0,
+                is_entry_point=True,
+                queue_wait_seconds=300.0,
+            )
+        self.assertEqual(self.store.job_event_count(), 1)
+
+    def test_job_step_upsert_is_idempotent_on_job_id_and_number(self):
+        for _ in range(2):
+            self.store.upsert_job_step("job-42", 1, name="checkout")
+            self.store.upsert_job_step("job-42", 2, name="test")
+        self.assertEqual(self.store.job_step_count(), 2)
+
+    def test_runner_state_upsert_is_idempotent_on_ts_host_runner(self):
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "mac-studio", "runner-1", state="busy")
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "mac-studio", "runner-1", state="busy")
+        count = self.store._conn.execute("SELECT COUNT(*) FROM runner_state").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_class_samples_upsert_writes_one_row_per_class(self):
+        metrics = {
+            "runner": ClassMetrics(cpu_pct=12.5, rss_mb=256.0, process_count=2),
+            "agent": ClassMetrics(cpu_pct=3.0, rss_mb=64.0, process_count=1),
+        }
+        self.store.upsert_class_samples("2026-09-18T00:00:00Z", "mac-studio", metrics)
+        rows = dict(
+            (cls, (cpu_pct, rss_mb))
+            for cls, cpu_pct, rss_mb in self.store._conn.execute(
+                "SELECT class, cpu_pct, rss_mb FROM class_sample WHERE ts = ? AND host = ?",
+                ("2026-09-18T00:00:00Z", "mac-studio"),
+            )
+        )
+        self.assertEqual(rows, {"runner": (12.5, 256.0), "agent": (3.0, 64.0)})
+
+
+class FleetStoreQueryTests(unittest.TestCase):
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_latest_runner_states_picks_the_newest_sample_per_runner(self):
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "mac-studio", "runner-1", state="idle")
+        self.store.upsert_runner_state("2026-09-18T00:05:00Z", "mac-studio", "runner-1", state="busy")
+        rows = self.store.latest_runner_states()
+        self.assertEqual(len(rows), 1)
+        # (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version)
+        self.assertEqual(rows[0][4], "busy")
+
+    def test_latest_runner_states_filters_by_host(self):
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "host-a", "runner-1", state="idle")
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "host-b", "runner-2", state="busy")
+        rows = self.store.latest_runner_states(host="host-a")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], "host-a")
+
+    def test_utilization_by_class_averages_across_samples(self):
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "mac-studio", "runner", 10.0, 100.0)
+        self.store.upsert_class_sample("2026-09-18T00:01:00Z", "mac-studio", "runner", 30.0, 300.0)
+        rows = self.store.utilization_by_class()
+        self.assertEqual(len(rows), 1)
+        host, cls, avg_cpu, avg_rss, count = rows[0]
+        self.assertEqual(host, "mac-studio")
+        self.assertEqual(cls, "runner")
+        self.assertAlmostEqual(avg_cpu, 20.0)
+        self.assertAlmostEqual(avg_rss, 200.0)
+        self.assertEqual(count, 2)
+
+    def test_utilization_by_class_filters_by_host(self):
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "host-a", "runner", 10.0, 100.0)
+        self.store.upsert_class_sample("2026-09-18T00:00:00Z", "host-b", "runner", 90.0, 900.0)
+        rows = self.store.utilization_by_class(host="host-a")
+        self.assertEqual(len(rows), 1)
+        host, cls, avg_cpu, avg_rss, count = rows[0]
+        self.assertEqual(host, "host-a")
+        self.assertAlmostEqual(avg_cpu, 10.0)
+
+    def test_pre_start_latency_by_label_only_counts_entry_point_jobs(self):
+        """A non-entry-point job's `pre_start_latency` includes time blocked
+        on its dependencies, so it must not be averaged into the queue-wait
+        panel alongside jobs that have no dependency at all."""
+        self.store.upsert_job_event(
+            job_id="entry-1", labels="ar-ci", pre_start_latency_seconds=10.0, is_entry_point=True,
+        )
+        self.store.upsert_job_event(
+            job_id="dependent-1", labels="ar-ci", pre_start_latency_seconds=9999.0, is_entry_point=False,
+        )
+        rows = self.store.pre_start_latency_by_label()
+        self.assertEqual(len(rows), 1)
+        labels, avg_latency, count = rows[0]
+        self.assertEqual(labels, "ar-ci")
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(avg_latency, 10.0)
+
+    def test_pre_start_latency_by_label_count_excludes_unstarted_jobs(self):
+        """A queued entry-point job has no `pre_start_latency_seconds` yet
+        (it is NULL until the job starts). `COUNT(*)` would include that row
+        even though `AVG` skips it, making the reported count describe a
+        different set of rows than the average it sits beside."""
+        self.store.upsert_job_event(
+            job_id="entry-1", labels="ar-ci", pre_start_latency_seconds=10.0, is_entry_point=True,
+        )
+        self.store.upsert_job_event(
+            job_id="entry-2", labels="ar-ci", pre_start_latency_seconds=None, is_entry_point=True,
+        )
+        rows = self.store.pre_start_latency_by_label()
+        self.assertEqual(len(rows), 1)
+        labels, avg_latency, count = rows[0]
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(avg_latency, 10.0)
+
+    def test_pre_start_latency_by_label_filters_by_labels(self):
+        self.store.upsert_job_event(
+            job_id="entry-1", labels="ar-ci", pre_start_latency_seconds=10.0, is_entry_point=True,
+        )
+        self.store.upsert_job_event(
+            job_id="entry-2", labels="ar-ci-cl", pre_start_latency_seconds=40.0, is_entry_point=True,
+        )
+        rows = self.store.pre_start_latency_by_label(labels="ar-ci-cl")
+        self.assertEqual(len(rows), 1)
+        labels, avg_latency, count = rows[0]
+        self.assertEqual(labels, "ar-ci-cl")
+        self.assertAlmostEqual(avg_latency, 40.0)
+
+
+class FleetStoreContextManagerTests(unittest.TestCase):
+
+    def test_context_manager_closes_the_connection_on_exit(self):
+        with FleetStore(":memory:") as store:
+            store.init_schema()
+            store.upsert_host_sample("2026-09-18T00:00:00Z", "mac-studio", cpu_pct=1.0)
+        with self.assertRaises(Exception):
+            store._conn.execute("SELECT 1")
+
+
+class FleetStoreTransactionBatchingTests(unittest.TestCase):
+    """`transaction()` exists so a poll cycle performing many upserts (one
+    `job_event` per job plus one `job_step` per step) commits once instead of
+    once per row. These tests exercise the batching contract directly against
+    a file-backed store, since a second connection to the same sqlite file is
+    the only way to observe whether an intermediate write was actually
+    committed rather than merely visible on the writer's own connection."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self._tmpdir.name, "fleet.db")
+        self.store = FleetStore(self.db_path)
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _count_via_second_connection(self, table):
+        other = FleetStore(self.db_path)
+        try:
+            return other._conn.execute("SELECT COUNT(*) FROM %s" % table).fetchone()[0]
+        finally:
+            other.close()
+
+    def test_writes_inside_a_transaction_are_not_visible_until_it_commits(self):
+        with self.store.transaction():
+            self.store.upsert_job_event(job_id="job-1")
+            self.store.upsert_job_event(job_id="job-2")
+            # Still inside the batch: nothing has been committed yet, so a
+            # second connection to the same file must see zero rows.
+            self.assertEqual(self._count_via_second_connection("job_event"), 0)
+        # The block exited normally: exactly one commit for the whole batch.
+        self.assertEqual(self._count_via_second_connection("job_event"), 2)
+
+    def test_transaction_rolls_back_every_write_in_the_block_on_exception(self):
+        """An error partway through a poll cycle must not leave a partially
+        written cycle behind for a concurrent reader to observe."""
+        with self.assertRaises(RuntimeError):
+            with self.store.transaction():
+                self.store.upsert_job_event(job_id="job-1")
+                raise RuntimeError("simulated failure mid-cycle")
+        self.assertEqual(self.store.job_event_count(), 0)
+        self.assertEqual(self._count_via_second_connection("job_event"), 0)
+
+    def test_nested_transactions_commit_once_at_the_outermost_exit(self):
+        with self.store.transaction():
+            with self.store.transaction():
+                self.store.upsert_job_event(job_id="job-1")
+            # Inner block exited but the outer one is still open.
+            self.assertEqual(self._count_via_second_connection("job_event"), 0)
+        self.assertEqual(self._count_via_second_connection("job_event"), 1)
+
+    def test_upserts_outside_a_transaction_still_commit_immediately(self):
+        """The default (no batch open) behaviour must be unchanged: a
+        standalone upsert is visible to another connection right away."""
+        self.store.upsert_job_event(job_id="job-1")
+        self.assertEqual(self._count_via_second_connection("job_event"), 1)
+
+    def test_nested_transaction_failure_caught_by_caller_does_not_silently_commit_partial_cycle(self):
+        """A nested `transaction()` block is scoped to a SAVEPOINT: its
+        rollback undoes only its own writes, not writes an enclosing block
+        already made. If a caller catches the nested block's exception and
+        keeps going, the outer block must still commit its own writes made
+        both before and after the nested failure - a connection-wide
+        rollback would have silently erased the earlier ones too."""
+        with self.store.transaction():
+            self.store.upsert_job_event(job_id="before")
+            try:
+                with self.store.transaction():
+                    self.store.upsert_job_event(job_id="nested")
+                    raise RuntimeError("simulated nested failure")
+            except RuntimeError:
+                pass
+            self.store.upsert_job_event(job_id="after")
+        ids = {row[0] for row in self.store._conn.execute("SELECT job_id FROM job_event")}
+        self.assertEqual(ids, {"before", "after"})
+
+
+if __name__ == "__main__":
+    unittest.main()
