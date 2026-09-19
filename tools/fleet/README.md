@@ -9,7 +9,7 @@ starts running.
 | Module | What it does |
 |---|---|
 | `attribution.py` | Classifies host processes into `runner`/`agent`/`other` by process-tree ancestry. Every class is a direct sum of its own processes — never a `total - runner - agent` residual, which is ill-defined (differing `%cpu` accounting bases, RSS double-counted across shared pages). |
-| `collector.py` | Generalises `tools/ci/monitor/ar-host-monitor.sh`: records `ppid` and the owning user per process (the existing monitor records neither) and computes the attribution split. Writes local JSONL, matching the existing monitor's fallback-first design. |
+| `collector.py` | Generalises `tools/ci/monitor/ar-host-monitor.sh`: records `ppid` and the owning user per process (the existing monitor records neither) and computes the attribution split. Writes local JSONL, matching the existing monitor's fallback-first design. `run_sampling_loop`/`main` is the scheduled entry point — runnable as `python -m tools.fleet.collector --log-dir <dir>`, meant to be the body of a launchd/systemd service — and rotates its own JSONL output the same way `ar-host-monitor.sh` does (`cleanup_old_jsonl`, date-stamped files, retention-days cutoff). |
 | `schema.py` | The store schema, with an explicit primary/unique key on every table — needed because both ingest paths (batched pushes, repeated GitHub polling) are at-least-once. |
 | `store.py` | A `sqlite3`-backed implementation of that schema with upsert-on-natural-key semantics, plus the read queries the CLI uses. A Postgres/TimescaleDB deployment is expected to use the same schema and query shapes; only the connection and upsert syntax differ. |
 | `github_poller.py` | Computes `pre_start_latency_seconds` (the raw `started_at - created_at` interval) and, only when the caller supplies the job's dependency graph, a real `queue_wait_seconds` distinct from it — a job gated on a workflow `needs:` does not have its queue wait measured by the raw interval alone, since that also includes time blocked on upstream jobs. `poll_and_store` is the poll-cycle entry point: it fetches runs/jobs, computes metrics, and upserts `job_event`/`job_step` into a `FleetStore`, retrying rate-limited (403/429) responses with backoff. |
@@ -27,6 +27,24 @@ starts running.
 - **Control verbs** (`start`/`stop`/`restart`/`register`/`label`) and their
   platform adapters: these need an operator-supplied fleet inventory and
   should follow read-only visibility, not precede it.
+
+## Known scope gaps in `github_poller.py`
+
+- **`is_entry_point`/`queue_wait_seconds` are always `NULL` from
+  `poll_and_store`.** It calls `compute_job_metrics(job)` without a `needs`
+  argument, since the workflow-jobs API does not return the dependency graph
+  and this module does not parse workflow YAML to derive it. Only the
+  always-honest `pre_start_latency_seconds` is populated by the production
+  poll path; `FleetStore.pre_start_latency_by_label` therefore returns no
+  rows against data from `poll_and_store` until a caller supplies `needs`
+  (e.g. a future workflow-YAML-aware wrapper) directly to
+  `compute_job_metrics`.
+- **`job_event.labels` is the executing runner's actual label set, not the
+  job's requested `runs-on:` set.** A runner can carry extra/custom labels
+  beyond what a job asked for, so grouping by this column measures
+  actual-runner-label demand, not per-`runs-on` demand. Resolving the
+  requested set has the same workflow-YAML-parsing dependency as the
+  `needs` gap above.
 
 Tests live in `tools/tests/test_fleet_*.py` (not beside these modules) so the
 existing `python-tests` CI step, which already discovers

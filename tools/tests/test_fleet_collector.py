@@ -26,7 +26,9 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 from tools.fleet import collector
@@ -344,11 +346,11 @@ class MacosMemoryMbSamplingTests(unittest.TestCase):
         self.assertAlmostEqual(total_mb, 16384.0)
         self.assertLess(used_mb, total_mb)
 
-    def test_macos_memory_mb_treats_inactive_and_purgeable_pages_as_free(self):
+    def test_macos_memory_mb_treats_inactive_pages_as_free(self):
         """A host with little `Pages free` but a large reclaimable pool
         (the common steady state on macOS) must not be reported as nearly
         out of memory - regression test for treating `total - free` as
-        `used`, which ignored `Pages inactive`/`Pages purgeable` entirely."""
+        `used`, which ignored `Pages inactive`/`Pages speculative` entirely."""
         page_size = 4096
         total_pages = 4 * 1024 * 1024 * 1024 // page_size  # 16 GiB of pages
         sysctl_result = mock.Mock(stdout="%d\n" % (total_pages * page_size))
@@ -365,13 +367,45 @@ class MacosMemoryMbSamplingTests(unittest.TestCase):
             "tools.fleet.collector.subprocess.run", side_effect=[sysctl_result, vm_stat_result],
         ):
             used_mb, total_mb = collector._macos_memory_mb()
-        reclaimable_pages = 1000 + 600000 + 2000 + 50000
+        # `Pages purgeable` is deliberately excluded from the reclaimable
+        # sum - it overlaps the active/inactive/speculative queues instead
+        # of adding to them, so it must not appear in `expected_used_mb`.
+        reclaimable_pages = 1000 + 600000 + 2000
         expected_used_mb = (total_pages - reclaimable_pages) * page_size / (1024.0 * 1024.0)
         self.assertAlmostEqual(used_mb, expected_used_mb)
         # Counting only `Pages free` (1000 pages) would have reported almost
         # the entire host as used; the reclaimable pool here is >100x that.
         naive_used_mb = (total_pages - 1000) * page_size / (1024.0 * 1024.0)
         self.assertLess(used_mb, naive_used_mb * 0.5)
+
+    def test_macos_memory_mb_does_not_double_count_purgeable_pages(self):
+        """`Pages purgeable` overlaps the active/inactive/speculative queues
+        rather than adding to them - a purgeable-heavy sample must report
+        the same `used` figure whether or not `Pages purgeable` is present,
+        since it never contributes to the reclaimable total."""
+        page_size = 4096
+        total_pages = 4 * 1024 * 1024 * 1024 // page_size
+
+        def run_with(vm_stat_lines):
+            sysctl_result = mock.Mock(stdout="%d\n" % (total_pages * page_size))
+            vm_stat_result = mock.Mock(stdout="\n".join(vm_stat_lines))
+            with mock.patch(
+                "tools.fleet.collector.subprocess.run", side_effect=[sysctl_result, vm_stat_result],
+            ):
+                return collector._macos_memory_mb()
+
+        header = "Mach Virtual Memory Statistics: (page size of %d bytes)" % page_size
+        without_purgeable = [
+            header,
+            "Pages free:                               1000.",
+            "Pages inactive:                           600000.",
+        ]
+        with_large_purgeable = without_purgeable + [
+            "Pages purgeable:                          600000.",
+        ]
+        used_without, _ = run_with(without_purgeable)
+        used_with, _ = run_with(with_large_purgeable)
+        self.assertAlmostEqual(used_without, used_with)
 
     def test_macos_memory_mb_is_none_pair_when_sysctl_fails(self):
         with mock.patch("tools.fleet.collector.subprocess.run", side_effect=OSError()):
@@ -474,13 +508,13 @@ class MacosVmStatParsingTests(unittest.TestCase):
         text = "Mach Virtual Memory Statistics: (page size of 4096 bytes)\n"
         self.assertIsNone(collector.parse_macos_vm_stat(text))
 
-    def test_reclaimable_sums_free_inactive_speculative_and_purgeable(self):
+    def test_reclaimable_sums_free_inactive_and_speculative(self):
         """`Pages free` alone drastically understates macOS headroom: the
         kernel deliberately keeps recently-used file pages `inactive`
-        (and `speculative`/`purgeable`) rather than freeing them
-        immediately. Counting only `Pages free` would make a healthy host
-        look almost entirely out of memory - mirroring why
-        `_linux_memory_mb` uses `MemAvailable` rather than `MemFree`."""
+        (and `speculative`) rather than freeing them immediately. Counting
+        only `Pages free` would make a healthy host look almost entirely
+        out of memory - mirroring why `_linux_memory_mb` uses
+        `MemAvailable` rather than `MemFree`."""
         text = "\n".join([
             "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
             "Pages free:                               1000.",
@@ -492,7 +526,7 @@ class MacosVmStatParsingTests(unittest.TestCase):
         ])
         page_size, reclaimable_pages = collector.parse_macos_vm_stat(text)
         self.assertEqual(page_size, 4096)
-        self.assertEqual(reclaimable_pages, 1000 + 20000 + 3000 + 500)
+        self.assertEqual(reclaimable_pages, 1000 + 20000 + 3000)
 
     def test_reclaimable_ignores_unlisted_categories(self):
         """`Pages active`/`Pages wired down` are genuinely in use, not
@@ -505,6 +539,22 @@ class MacosVmStatParsingTests(unittest.TestCase):
             "Pages wired down:                         888888.",
         ])
         self.assertEqual(collector.parse_macos_vm_stat(text), (4096, 1000))
+
+    def test_reclaimable_excludes_purgeable_pages(self):
+        """`Pages purgeable` is not a disjoint LRU queue like `free`/
+        `inactive`/`speculative` - it is an attribute the kernel tracks on
+        pages that already live in one of those queues. Folding it into the
+        reclaimable sum would double-count the same physical pages, so it
+        must be ignored even when present."""
+        text = "\n".join([
+            "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+            "Pages free:                               1000.",
+            "Pages inactive:                           20000.",
+            "Pages purgeable:                          500000.",
+        ])
+        page_size, reclaimable_pages = collector.parse_macos_vm_stat(text)
+        self.assertEqual(page_size, 4096)
+        self.assertEqual(reclaimable_pages, 1000 + 20000)
 
 
 class DiskUsageTests(unittest.TestCase):
@@ -584,6 +634,123 @@ class BuildRecordHostMetricsTests(unittest.TestCase):
             "thermal_c": None,
             "throttled": None,
         })
+
+
+class DailyJsonlPathTests(unittest.TestCase):
+
+    def test_names_file_after_utc_date(self):
+        ts = datetime(2026, 9, 19, 3, 17, 0, tzinfo=timezone.utc)
+        self.assertEqual(collector.daily_jsonl_path("/var/log/fleet", ts), "/var/log/fleet/2026-09-19.jsonl")
+
+    def test_defaults_to_now(self):
+        path = collector.daily_jsonl_path("/var/log/fleet")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self.assertEqual(path, "/var/log/fleet/%s.jsonl" % today)
+
+
+class CleanupOldJsonlTests(unittest.TestCase):
+    """Mirrors `ar-host-monitor.sh`'s `cleanup_old_logs`: a `*.jsonl` file
+    older than the retention window is deleted; anything newer, or not a
+    `.jsonl` file, is left alone."""
+
+    def _touch(self, path, age_seconds):
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        mtime = time.time() - age_seconds
+        os.utime(path, (mtime, mtime))
+
+    def test_deletes_files_older_than_retention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_path = os.path.join(tmp, "2026-01-01.jsonl")
+            new_path = os.path.join(tmp, "2026-09-19.jsonl")
+            self._touch(old_path, age_seconds=20 * 86400)
+            self._touch(new_path, age_seconds=1 * 86400)
+            collector.cleanup_old_jsonl(tmp, retention_days=14)
+            self.assertFalse(os.path.exists(old_path))
+            self.assertTrue(os.path.exists(new_path))
+
+    def test_ignores_non_jsonl_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            other_path = os.path.join(tmp, "notes.txt")
+            self._touch(other_path, age_seconds=30 * 86400)
+            collector.cleanup_old_jsonl(tmp, retention_days=14)
+            self.assertTrue(os.path.exists(other_path))
+
+    def test_missing_directory_does_not_raise(self):
+        collector.cleanup_old_jsonl("/no/such/directory/at/all", retention_days=14)
+
+
+class RunSamplingLoopTests(unittest.TestCase):
+    """`run_sampling_loop` is the scheduled entry point `sample_and_write`
+    itself lacked - without it nothing in this repository ever calls
+    `sample_and_write` in production."""
+
+    def test_bounded_iterations_samples_that_many_times(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("tools.fleet.collector.sample_and_write") as sample_mock, \
+                 mock.patch("tools.fleet.collector.time.sleep") as sleep_mock:
+                collector.run_sampling_loop("mac-studio", tmp, interval_seconds=5, iterations=3)
+            self.assertEqual(sample_mock.call_count, 3)
+            # Sleeps between samples, not after the last one.
+            self.assertEqual(sleep_mock.call_count, 2)
+            sleep_mock.assert_called_with(5)
+
+    def test_writes_to_the_daily_path_for_the_configured_log_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("tools.fleet.collector.sample_and_write") as sample_mock, \
+                 mock.patch("tools.fleet.collector.time.sleep"):
+                collector.run_sampling_loop("mac-studio", tmp, iterations=1)
+            args, kwargs = sample_mock.call_args
+            self.assertEqual(args[0], "mac-studio")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            self.assertEqual(args[1], os.path.join(tmp, "%s.jsonl" % today))
+
+    def test_runs_cleanup_once_per_day_rollover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("tools.fleet.collector.sample_and_write"), \
+                 mock.patch("tools.fleet.collector.time.sleep"), \
+                 mock.patch("tools.fleet.collector.cleanup_old_jsonl") as cleanup_mock:
+                collector.run_sampling_loop("mac-studio", tmp, iterations=3, retention_days=7)
+            # Same UTC day for all three iterations in a fast test run, so
+            # cleanup should only fire on the first iteration's rollover.
+            cleanup_mock.assert_called_once_with(tmp, 7)
+
+    def test_forwards_agent_domain_target_and_disk_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("tools.fleet.collector.sample_and_write") as sample_mock, \
+                 mock.patch("tools.fleet.collector.time.sleep"):
+                collector.run_sampling_loop(
+                    "mac-studio", tmp, iterations=1, agent_domain_target="gui/501", disk_path="/mnt/work",
+                )
+            _, kwargs = sample_mock.call_args
+            self.assertEqual(kwargs["agent_domain_target"], "gui/501")
+            self.assertEqual(kwargs["disk_path"], "/mnt/work")
+
+
+class CollectorMainTests(unittest.TestCase):
+
+    def test_once_flag_runs_a_single_iteration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                exit_code = collector.main(["--host", "mac-studio", "--log-dir", log_dir, "--once"])
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(os.path.isdir(log_dir))
+            loop_mock.assert_called_once_with(
+                "mac-studio", log_dir,
+                interval_seconds=collector.DEFAULT_INTERVAL_SECONDS,
+                retention_days=collector.DEFAULT_RETENTION_DAYS,
+                agent_domain_target=None,
+                disk_path="/",
+                iterations=1,
+            )
+
+    def test_defaults_to_looping_forever(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                collector.main(["--log-dir", log_dir])
+            self.assertIsNone(loop_mock.call_args.kwargs["iterations"])
 
 
 if __name__ == "__main__":

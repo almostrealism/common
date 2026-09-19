@@ -46,6 +46,12 @@ and upserts the result into a :class:`tools.fleet.store.FleetStore`. The
 lower-level fetch/compute functions above are also useful standalone (e.g.
 for a caller that has already parsed the workflow graph and can supply
 ``needs``), so they remain independently callable.
+
+**Labels.** The ``labels`` persisted per job are the *executing runner's*
+actual label set (the workflow-jobs API's own ``labels`` field), not the
+workflow's requested ``runs-on:`` set — a runner can carry extra/custom
+labels beyond what a job asked for. Resolving the requested set would need
+the run's workflow YAML parsed, which this module does not do.
 """
 
 from __future__ import annotations
@@ -358,6 +364,13 @@ def poll_and_store(
             # `job_event` is grouped by this string (see
             # `FleetStore.pre_start_latency_by_label`), and an unsorted join
             # would split one label set into separate buckets across polls.
+            #
+            # These are the *executing runner's* labels (the workflow-jobs
+            # API's own `labels` field), not the job's requested `runs-on:`
+            # set — a runner can carry extra/custom labels beyond what a job
+            # asked for. Resolving the requested set would require parsing
+            # the run's workflow YAML, which this module does not do (see
+            # `FleetStore.upsert_job_event`/`pre_start_latency_by_label`).
             labels = sorted(job.get("labels") or [])
             store.upsert_job_event(
                 job_id=job_id,

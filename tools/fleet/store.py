@@ -160,7 +160,15 @@ class FleetStore:
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
     ) -> None:
-        """Insert or replace one ``job_event`` row, keyed on ``job_id``."""
+        """Insert or replace one ``job_event`` row, keyed on ``job_id``.
+
+        *labels* is the executing runner's actual label set (the
+        workflow-jobs API's own ``labels`` field), not the workflow's
+        requested ``runs-on:`` set — see :data:`tools.fleet.schema.JOB_EVENT`.
+        A runner can carry extra/custom labels beyond what a job asked for,
+        so a caller grouping on this column is measuring actual-runner-label
+        demand, not per-``runs-on`` demand.
+        """
         self._conn.execute(
             """
             INSERT OR REPLACE INTO job_event
@@ -247,6 +255,13 @@ class FleetStore:
         The count column counts non-``NULL`` ``pre_start_latency_seconds``
         rows (matching what the average is actually computed over), not
         every row in the group — a queued entry-point job has no latency yet.
+
+        ``labels`` groups by the *executing runner's* actual label set, not
+        the workflow's requested ``runs-on:`` set (see
+        :meth:`upsert_job_event`) — a caller cannot yet use this to answer
+        "how long did jobs requesting `runs-on: [self-hosted, gpu]` wait",
+        only "how long did jobs that happened to land on a runner carrying
+        this exact label set wait".
         """
         query = """
             SELECT labels, AVG(pre_start_latency_seconds), COUNT(pre_start_latency_seconds)

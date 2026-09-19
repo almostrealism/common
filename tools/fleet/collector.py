@@ -26,6 +26,15 @@ is not implemented here — it needs a running store to push to, which this
 module does not assume; this module's own JSONL output is already useful on
 its own before any such store exists.
 
+Runnable directly as ``python -m tools.fleet.collector --log-dir <dir>``
+(see :func:`main`/:func:`build_parser`): :func:`run_sampling_loop` is the
+scheduled entry point, meant to be the body of a launchd/systemd service, the
+same role ``ar-host-monitor.sh``'s own sampling loop plays for the existing
+shell-based monitor. It also owns this module's log rotation
+(:func:`cleanup_old_jsonl`), mirroring that script's ``MONITOR_RETENTION_DAYS``
+cleanup so the JSONL fallback directory stays bounded on a host that is
+disconnected from the ingest endpoint for a long time.
+
 ``thermal_c``/``throttled`` are never populated: reading them on macOS
 requires ``powermetrics`` under ``sudo``, and whether the collector may run
 with root is an operator decision that has not been made. CPU/memory/disk are
@@ -37,11 +46,14 @@ module calls :mod:`attribution`, which enforces that at parse time.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import platform
 import re
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -120,6 +132,45 @@ def write_jsonl(record: Dict, path: str) -> None:
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True))
         handle.write("\n")
+
+
+def daily_jsonl_path(log_dir: str, ts: Optional[datetime] = None) -> str:
+    """Return the date-stamped JSONL path for *ts* (default: now, UTC) under *log_dir*.
+
+    Matches ``ar-host-monitor.sh``'s ``${MONITOR_LOG_DIR}/${CURRENT_DATE}.jsonl``
+    naming (``tools/ci/monitor/ar-host-monitor.sh``): one file per UTC day, so
+    that :func:`cleanup_old_jsonl`'s file-age check can delete a whole day's
+    samples at once instead of needing to rewrite a single ever-growing file.
+    """
+    date = (ts or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    return os.path.join(log_dir, "%s.jsonl" % date)
+
+
+def cleanup_old_jsonl(log_dir: str, retention_days: int) -> None:
+    """Delete ``*.jsonl`` files under *log_dir* older than *retention_days*.
+
+    Mirrors ``ar-host-monitor.sh``'s ``cleanup_old_logs`` (``find
+    "${MONITOR_LOG_DIR}" -name "*.jsonl" -mtime "+${MONITOR_RETENTION_DAYS}"
+    -delete``): the JSONL fallback file this module writes is meant to be a
+    bounded local cache, not an unbounded append log, so a host left
+    disconnected from the ingest endpoint cannot grow this directory without
+    bound. Age is judged by file mtime, not the date encoded in the filename,
+    so a manually renamed or copied-in file is still subject to cleanup.
+    """
+    cutoff = time.time() - retention_days * 86400.0
+    try:
+        entries = os.listdir(log_dir)
+    except OSError:
+        return
+    for name in entries:
+        if not name.endswith(".jsonl"):
+            continue
+        path = os.path.join(log_dir, name)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            continue
 
 
 def _run_ps() -> str:
@@ -301,10 +352,16 @@ def _linux_memory_mb() -> Tuple[Optional[float], Optional[float]]:
 # `_linux_memory_mb` uses `MemAvailable` rather than `MemFree` above — on
 # macOS, "Pages free" alone is a poor proxy for headroom because the kernel
 # deliberately keeps recently-used file pages "inactive" (and read-ahead
-# pages "speculative", and discardable-on-demand pages "purgeable") rather
-# than freeing them immediately. Counting only "Pages free" would report a
-# healthy host as almost entirely out of memory.
-_MACOS_VM_STAT_RECLAIMABLE_LABELS = ("Pages free", "Pages inactive", "Pages speculative", "Pages purgeable")
+# pages "speculative") rather than freeing them immediately. Counting only
+# "Pages free" would report a healthy host as almost entirely out of memory.
+#
+# "Pages purgeable" is deliberately excluded here: unlike free/inactive/
+# speculative, it is not a disjoint LRU queue but an attribute the kernel
+# tracks on pages that already live in one of those queues (memory an app
+# marked volatile via `vm_purgable_control`). Adding it to those queues'
+# counts would double-count the same physical pages and could make
+# `mem_used_mb` artificially low, or even negative.
+_MACOS_VM_STAT_RECLAIMABLE_LABELS = ("Pages free", "Pages inactive", "Pages speculative")
 
 
 def parse_macos_vm_stat(text: str) -> Optional[Tuple[int, int]]:
@@ -315,7 +372,9 @@ def parse_macos_vm_stat(text: str) -> Optional[Tuple[int, int]]:
     not guaranteed to be 4096 on every Mac. ``reclaimable_pages`` sums every
     label in :data:`_MACOS_VM_STAT_RECLAIMABLE_LABELS` that is present
     (missing labels contribute 0, so a minimal ``vm_stat`` snapshot carrying
-    only ``Pages free`` still parses). Returns ``None`` if either the header
+    only ``Pages free`` still parses). ``Pages purgeable`` is intentionally
+    not one of those labels — it overlaps the active/inactive/speculative
+    queues rather than adding to them. Returns ``None`` if either the header
     or the ``Pages free`` line itself is missing.
     """
     header_match = re.search(r"page size of (\d+) bytes", text)
@@ -487,3 +546,100 @@ def sample_and_write(
     )
     write_jsonl(record, jsonl_path)
     return record
+
+
+DEFAULT_INTERVAL_SECONDS = 10
+DEFAULT_RETENTION_DAYS = 14
+
+
+def run_sampling_loop(
+    host: str,
+    log_dir: str,
+    interval_seconds: int = DEFAULT_INTERVAL_SECONDS,
+    retention_days: int = DEFAULT_RETENTION_DAYS,
+    agent_domain_target: Optional[str] = None,
+    disk_path: str = "/",
+    iterations: Optional[int] = None,
+) -> None:
+    """Sample forever (or *iterations* times), one call to :func:`sample_and_write` per cycle.
+
+    This is the scheduled entry point ``sample_and_write`` itself was missing:
+    without it, nothing in this repository ever calls ``sample_and_write`` in
+    production and the collector cannot generate samples once deployed. Meant
+    to run as the body of a launchd/systemd service (see the design's
+    ``tools/ci/monitor``-alike deployment convention) — this function owns the
+    sleep loop so the service unit only needs to keep one process alive, the
+    same role ``ar-host-monitor.sh``'s own ``while ... do ... sleep`` loop
+    plays for the existing shell-based monitor.
+
+    Each cycle writes to :func:`daily_jsonl_path`'s file for the current UTC
+    date, and runs :func:`cleanup_old_jsonl` whenever that date changes, so
+    the on-disk fallback log is naturally bounded to *retention_days* worth of
+    files exactly as ``ar-host-monitor.sh``'s ``cleanup_old_logs`` bounds the
+    shell monitor's own log directory.
+
+    *iterations* bounds the loop to a fixed number of samples instead of
+    running forever - used by tests, and by a caller that wants to run this
+    under an external scheduler (e.g. a systemd timer or cron entry) that
+    itself invokes one short-lived process per sample rather than keeping a
+    long-running service alive.
+    """
+    last_log_date: Optional[str] = None
+    count = 0
+    while iterations is None or count < iterations:
+        now = datetime.now(timezone.utc)
+        current_date = now.strftime("%Y-%m-%d")
+        if current_date != last_log_date:
+            cleanup_old_jsonl(log_dir, retention_days)
+            last_log_date = current_date
+        sample_and_write(
+            host, daily_jsonl_path(log_dir, now), agent_domain_target=agent_domain_target, disk_path=disk_path,
+        )
+        count += 1
+        if iterations is None or count < iterations:
+            time.sleep(interval_seconds)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for running this module as a service."""
+    parser = argparse.ArgumentParser(
+        prog="tools.fleet.collector",
+        description="Sample host/attribution metrics on an interval and append them to a local JSONL log.",
+    )
+    parser.add_argument("--host", default=platform.node(), help="Host label to record (default: platform.node()).")
+    parser.add_argument("--log-dir", required=True, help="Directory for the date-stamped JSONL fallback files.")
+    parser.add_argument(
+        "--interval-seconds", type=int, default=DEFAULT_INTERVAL_SECONDS,
+        help="Seconds between samples (default: %d)." % DEFAULT_INTERVAL_SECONDS,
+    )
+    parser.add_argument(
+        "--retention-days", type=int, default=DEFAULT_RETENTION_DAYS,
+        help="Delete JSONL files older than this many days (default: %d)." % DEFAULT_RETENTION_DAYS,
+    )
+    parser.add_argument(
+        "--agent-domain-target", default=None,
+        help="launchd domain (e.g. 'gui/501') to query for the agent's PID; omit if collector and agent share an identity.",
+    )
+    parser.add_argument("--disk-path", default="/", help="Filesystem path to sample disk usage for (default: /).")
+    parser.add_argument("--once", action="store_true", help="Take a single sample and exit, instead of looping.")
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Parse *argv* and run :func:`run_sampling_loop` (or a single sample with ``--once``)."""
+    args = build_parser().parse_args(argv)
+    os.makedirs(args.log_dir, exist_ok=True)
+    run_sampling_loop(
+        args.host,
+        args.log_dir,
+        interval_seconds=args.interval_seconds,
+        retention_days=args.retention_days,
+        agent_domain_target=args.agent_domain_target,
+        disk_path=args.disk_path,
+        iterations=1 if args.once else None,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
