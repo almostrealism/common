@@ -328,6 +328,35 @@ class MacosMemoryMbSamplingTests(unittest.TestCase):
         self.assertAlmostEqual(total_mb, 16384.0)
         self.assertLess(used_mb, total_mb)
 
+    def test_macos_memory_mb_treats_inactive_and_purgeable_pages_as_free(self):
+        """A host with little `Pages free` but a large reclaimable pool
+        (the common steady state on macOS) must not be reported as nearly
+        out of memory - regression test for treating `total - free` as
+        `used`, which ignored `Pages inactive`/`Pages purgeable` entirely."""
+        page_size = 4096
+        total_pages = 4 * 1024 * 1024 * 1024 // page_size  # 16 GiB of pages
+        sysctl_result = mock.Mock(stdout="%d\n" % (total_pages * page_size))
+        vm_stat_result = mock.Mock(stdout="\n".join([
+            "Mach Virtual Memory Statistics: (page size of %d bytes)" % page_size,
+            "Pages free:                               1000.",
+            "Pages active:                             500000.",
+            "Pages inactive:                           600000.",
+            "Pages speculative:                        2000.",
+            "Pages wired down:                         100000.",
+            "Pages purgeable:                          50000.",
+        ]))
+        with mock.patch(
+            "tools.fleet.collector.subprocess.run", side_effect=[sysctl_result, vm_stat_result],
+        ):
+            used_mb, total_mb = collector._macos_memory_mb()
+        reclaimable_pages = 1000 + 600000 + 2000 + 50000
+        expected_used_mb = (total_pages - reclaimable_pages) * page_size / (1024.0 * 1024.0)
+        self.assertAlmostEqual(used_mb, expected_used_mb)
+        # Counting only `Pages free` (1000 pages) would have reported almost
+        # the entire host as used; the reclaimable pool here is >100x that.
+        naive_used_mb = (total_pages - 1000) * page_size / (1024.0 * 1024.0)
+        self.assertLess(used_mb, naive_used_mb * 0.5)
+
     def test_macos_memory_mb_is_none_pair_when_sysctl_fails(self):
         with mock.patch("tools.fleet.collector.subprocess.run", side_effect=OSError()):
             self.assertEqual(collector._macos_memory_mb(), (None, None))
@@ -425,6 +454,38 @@ class MacosVmStatParsingTests(unittest.TestCase):
     def test_missing_pages_free_yields_none(self):
         text = "Mach Virtual Memory Statistics: (page size of 4096 bytes)\n"
         self.assertIsNone(collector.parse_macos_vm_stat(text))
+
+    def test_reclaimable_sums_free_inactive_speculative_and_purgeable(self):
+        """`Pages free` alone drastically understates macOS headroom: the
+        kernel deliberately keeps recently-used file pages `inactive`
+        (and `speculative`/`purgeable`) rather than freeing them
+        immediately. Counting only `Pages free` would make a healthy host
+        look almost entirely out of memory - mirroring why
+        `_linux_memory_mb` uses `MemAvailable` rather than `MemFree`."""
+        text = "\n".join([
+            "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+            "Pages free:                               1000.",
+            "Pages active:                             50000.",
+            "Pages inactive:                           20000.",
+            "Pages speculative:                        3000.",
+            "Pages wired down:                         4000.",
+            "Pages purgeable:                          500.",
+        ])
+        page_size, reclaimable_pages = collector.parse_macos_vm_stat(text)
+        self.assertEqual(page_size, 4096)
+        self.assertEqual(reclaimable_pages, 1000 + 20000 + 3000 + 500)
+
+    def test_reclaimable_ignores_unlisted_categories(self):
+        """`Pages active`/`Pages wired down` are genuinely in use, not
+        reclaimable, and must never be folded into the free-equivalent
+        total."""
+        text = "\n".join([
+            "Mach Virtual Memory Statistics: (page size of 4096 bytes)",
+            "Pages free:                               1000.",
+            "Pages active:                             999999.",
+            "Pages wired down:                         888888.",
+        ])
+        self.assertEqual(collector.parse_macos_vm_stat(text), (4096, 1000))
 
 
 class DiskUsageTests(unittest.TestCase):

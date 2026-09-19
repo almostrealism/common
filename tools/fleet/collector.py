@@ -296,25 +296,43 @@ def _linux_memory_mb() -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 
+# `vm_stat` line labels that count toward "reclaimable" memory: pages the
+# kernel can hand back to a new allocation without swapping. Mirrors why
+# `_linux_memory_mb` uses `MemAvailable` rather than `MemFree` above — on
+# macOS, "Pages free" alone is a poor proxy for headroom because the kernel
+# deliberately keeps recently-used file pages "inactive" (and read-ahead
+# pages "speculative", and discardable-on-demand pages "purgeable") rather
+# than freeing them immediately. Counting only "Pages free" would report a
+# healthy host as almost entirely out of memory.
+_MACOS_VM_STAT_RECLAIMABLE_LABELS = ("Pages free", "Pages inactive", "Pages speculative", "Pages purgeable")
+
+
 def parse_macos_vm_stat(text: str) -> Optional[Tuple[int, int]]:
-    """Parse macOS ``vm_stat`` output into ``(page_size_bytes, pages_free)``.
+    """Parse macOS ``vm_stat`` output into ``(page_size_bytes, reclaimable_pages)``.
 
     The page size is embedded in the header (``Mach Virtual Memory
     Statistics: (page size of 4096 bytes)``) rather than assumed, since it is
-    not guaranteed to be 4096 on every Mac. Returns ``None`` if either the
-    header or the ``Pages free`` line is missing.
+    not guaranteed to be 4096 on every Mac. ``reclaimable_pages`` sums every
+    label in :data:`_MACOS_VM_STAT_RECLAIMABLE_LABELS` that is present
+    (missing labels contribute 0, so a minimal ``vm_stat`` snapshot carrying
+    only ``Pages free`` still parses). Returns ``None`` if either the header
+    or the ``Pages free`` line itself is missing.
     """
     header_match = re.search(r"page size of (\d+) bytes", text)
     page_size = int(header_match.group(1)) if header_match else None
-    pages_free = None
+    counts: Dict[str, int] = {}
     for line in text.splitlines():
-        if line.strip().startswith("Pages free"):
-            digits = line.split(":", 1)[1].strip().rstrip(".")
-            if digits.isdigit():
-                pages_free = int(digits)
-    if page_size is None or pages_free is None:
+        stripped = line.strip()
+        for label in _MACOS_VM_STAT_RECLAIMABLE_LABELS:
+            if stripped.startswith(label + ":"):
+                digits = stripped.split(":", 1)[1].strip().rstrip(".")
+                if digits.isdigit():
+                    counts[label] = int(digits)
+                break
+    if page_size is None or "Pages free" not in counts:
         return None
-    return page_size, pages_free
+    reclaimable_pages = sum(counts.get(label, 0) for label in _MACOS_VM_STAT_RECLAIMABLE_LABELS)
+    return page_size, reclaimable_pages
 
 
 def _macos_memory_mb() -> Tuple[Optional[float], Optional[float]]:
@@ -333,8 +351,8 @@ def _macos_memory_mb() -> Tuple[Optional[float], Optional[float]]:
     parsed = parse_macos_vm_stat(vm_result.stdout)
     if parsed is None:
         return None, total_mb
-    page_size, pages_free = parsed
-    return (total_bytes - page_size * pages_free) / (1024.0 * 1024.0), total_mb
+    page_size, reclaimable_pages = parsed
+    return (total_bytes - page_size * reclaimable_pages) / (1024.0 * 1024.0), total_mb
 
 
 def collect_host_memory_mb() -> Tuple[Optional[float], Optional[float]]:
