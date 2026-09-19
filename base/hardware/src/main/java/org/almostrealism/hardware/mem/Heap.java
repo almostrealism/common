@@ -669,8 +669,15 @@ public class Heap {
 		 * pending kernel semaphores to complete, ensuring that no in-flight kernel
 		 * is still reading from or writing to memory owned by this stage.</p>
 		 *
-		 * <p>This list is only accessed from the thread that owns the heap stage
-		 * (heap stages are thread-local), so a plain {@link ArrayList} is sufficient.</p>
+		 * <p>A registration may arrive from a {@code ComputeContext} executor thread rather than
+		 * the thread that entered the stage, because the dispatch listener in
+		 * {@code AcceleratedOperation.apply} captures this stage on the calling thread but can run
+		 * off it when an argument completes asynchronously. That registration never races the
+		 * owning thread's {@link #destroy()}: the dispatching caller blocks on
+		 * {@code AcceleratedProcessDetails.awaitReady()} until the listener has run before the
+		 * stage can be popped, so every {@link #addPendingKernel(Semaphore)} happens-before the
+		 * {@link #destroy()} that drains this list. Access is therefore never concurrent and a
+		 * plain {@link ArrayList} is sufficient.</p>
 		 */
 		private List<Semaphore> pendingKernels;
 
