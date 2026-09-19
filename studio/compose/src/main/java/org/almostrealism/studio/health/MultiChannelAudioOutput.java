@@ -81,6 +81,11 @@ public class MultiChannelAudioOutput {
 	/**
 	 * Creates a multi-channel output with the given master, stem, and measures outputs.
 	 *
+	 * <p>A mono {@link WaveOutput} carries only the first channel, so the second
+	 * stereo channel of a rendered signal has nowhere to go: its receptor is absent
+	 * ({@code null}) rather than an error, and consumers skip an absent receptor
+	 * exactly as they skip a disabled one.</p>
+	 *
 	 * @param masterOut       the wave output for the master mix
 	 * @param stemsOut        per-channel stem outputs, or {@code null}
 	 * @param measuresFactory factory producing measure receptors for each channel
@@ -89,10 +94,13 @@ public class MultiChannelAudioOutput {
 			WaveOutput masterOut, List<WaveOutput> stemsOut,
 			Function<ChannelInfo, Receptor<PackedCollection>> measuresFactory) {
 		this(masterOut == null ? null :
-						(audioChannel) -> masterOut.getWriter(audioChannel.getIndex()),
+						(audioChannel) -> audioChannel.getIndex() < masterOut.getChannelCount() ?
+								masterOut.getWriter(audioChannel.getIndex()) : null,
 				stemsOut == null ? null :
-						(channelInfo) -> stemsOut.get(channelInfo.getPatternChannel())
-											.getWriter(channelInfo.getAudioChannel().getIndex()),
+						(channelInfo) -> channelInfo.getAudioChannel().getIndex() <
+								stemsOut.get(channelInfo.getPatternChannel()).getChannelCount() ?
+								stemsOut.get(channelInfo.getPatternChannel())
+										.getWriter(channelInfo.getAudioChannel().getIndex()) : null,
 				measuresFactory);
 	}
 
@@ -153,9 +161,11 @@ public class MultiChannelAudioOutput {
 	 * Returns all measure receptors for the given stereo channel.
 	 *
 	 * @param audioChannel the stereo channel to filter by
-	 * @return a list of matching receptors
+	 * @return a list of matching receptors, empty if measure monitoring is disabled
 	 */
 	public List<Receptor<PackedCollection>> getMeasures(ChannelInfo.StereoChannel audioChannel) {
+		if (measures == null) return List.of();
+
 		return measures.keySet().stream()
 				.filter(match(audioChannel))
 				.map(measures::get)

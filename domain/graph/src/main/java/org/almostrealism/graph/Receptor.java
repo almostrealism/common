@@ -107,4 +107,30 @@ public interface Receptor<T> {
 		List<Receptor<T>> receptors = downstream.collect(Collectors.toList());
 		return protein -> receptors.stream().map(r -> r.push(protein)).collect(OperationList.collector());
 	}
+
+	/**
+	 * Creates a receptor that broadcasts pushed data to the given downstream receptors,
+	 * silently dropping any that are {@code null}. Unlike {@link #to(Receptor[])}, a
+	 * {@code null} entry here is treated as a destination that is absent by design
+	 * (for example, a stereo channel a mono output has no receptor for) rather than
+	 * a programming error.
+	 *
+	 * @param <T> the data type
+	 * @param downstream the receptors to receive the broadcasted data, possibly containing {@code null}
+	 * @return a receptor that distributes data to every non-null downstream receptor
+	 */
+	static <T> Receptor<T> toPresent(Receptor<T>... downstream) {
+		return toPresent(Stream.of(downstream));
+	}
+
+	/**
+	 * Stream-accepting counterpart to {@link #toPresent(Receptor[])}.
+	 *
+	 * @param <T> the data type
+	 * @param downstream a stream of receptors to receive the broadcasted data, possibly containing {@code null}
+	 * @return a receptor that distributes data to every non-null downstream receptor
+	 */
+	static <T> Receptor<T> toPresent(Stream<Receptor<T>> downstream) {
+		return to(downstream.filter(Objects::nonNull));
+	}
 }
