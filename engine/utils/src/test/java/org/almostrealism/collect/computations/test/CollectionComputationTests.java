@@ -126,6 +126,32 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Rows gathered from a table with more elements than single precision can count are exact
+	 * copies of the table's rows: the flat element index of the last rows exceeds {@code 2^24},
+	 * where a floating-point index would already be rounded.
+	 */
+	@Test(timeout = 120000)
+	public void rowsBeyondSinglePrecision() {
+		int rowCount = 22000;
+		int rowLength = 768;
+		PackedCollection table = new PackedCollection(shape(rowCount, rowLength)).randnFill();
+		PackedCollection index = pack(21999, 5, 21000);
+
+		PackedCollection result = rows(shape(3, rowLength), p(table), p(index)).get().evaluate();
+		assertEquals(3 * rowLength, result.getShape().getTotalSize());
+
+		for (int r = 0; r < 3; r++) {
+			int row = (int) index.toDouble(r);
+			for (int f = 0; f < rowLength; f++) {
+				assertEquals(table.valueAt(row, f), result.valueAt(r, f));
+			}
+		}
+
+		table.destroy();
+		result.destroy();
+	}
+
+	/**
 	 * Tests integer index assignment.
 	 */
 	@Test(timeout = 30000)

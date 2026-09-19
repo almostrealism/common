@@ -33,6 +33,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -951,13 +952,39 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	/**
 	 * The per-position padding mask over the latent sequence, shape {@code [batch, audioSeqLen]},
 	 * or {@code null} when the model was configured without one. It starts filled with ones (every
-	 * position valid); a caller generating less than the full sequence writes zeros over the
-	 * padded tail before {@link #forward}, and self-attention then ignores those positions'
-	 * values. Any prepended conditioning or memory tokens are always treated as valid.
+	 * position valid); a caller generating less than the full sequence marks the padded tail with
+	 * {@link #setValidLength(int)} before {@link #forward}, and self-attention then ignores those
+	 * positions' values. Any prepended conditioning or memory tokens are always treated as valid.
 	 *
 	 * @return the padding mask buffer, or {@code null}
 	 */
 	public PackedCollection getPaddingMask() { return paddingMask; }
+
+	/**
+	 * Marks the first {@code frames} positions of every batch element's latent sequence as valid
+	 * and the rest as padding in the padding mask. A model configured without a padding mask
+	 * ignores the call.
+	 *
+	 * @param frames the number of valid positions, between zero and the latent sequence length
+	 */
+	public void setValidLength(int frames) {
+		if (frames < 0 || frames > audioSeqLen) {
+			throw new IllegalArgumentException("Valid length " + frames + " is outside [0, " + audioSeqLen + "]");
+		}
+
+		if (paddingMask == null) {
+			return;
+		}
+
+		ByteBuffer values = ByteBuffer.allocate(Double.BYTES * batchSize * audioSeqLen);
+		for (int b = 0; b < batchSize; b++) {
+			for (int i = 0; i < audioSeqLen; i++) {
+				values.putDouble(i < frames ? 1.0 : 0.0);
+			}
+		}
+
+		paddingMask.read(values.flip());
+	}
 
 	/**
 	 * Sets the pre-transformer state tensor (for use by subclasses or debugging hooks).

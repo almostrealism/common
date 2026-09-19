@@ -88,7 +88,9 @@ def run_t5gemma_reference(t5_dir, prompt, max_length):
     tokenizer = AutoTokenizer.from_pretrained(t5_dir)
     config = AutoConfig.from_pretrained(t5_dir)
     config.is_encoder_decoder = False
-    model = T5GemmaEncoderModel.from_pretrained(t5_dir, config=config)
+    # The checkpoint declares bfloat16; the Java encoder computes in float32, so the
+    # parity target is the float32 forward pass of the same weights.
+    model = T5GemmaEncoderModel.from_pretrained(t5_dir, config=config).float()
     model.eval()
 
     encoded = tokenizer(

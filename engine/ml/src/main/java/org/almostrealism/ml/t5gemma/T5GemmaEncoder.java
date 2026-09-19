@@ -206,28 +206,23 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 
 	/**
 	 * The scaled token embedding: each id selects its row of the table, and the rows are scaled
-	 * by the square root of the hidden width. The row selection is a gather whose indices are
-	 * computed inside the graph from the ids.
+	 * by the square root of the hidden width. The row selection is a row gather, whose element
+	 * addresses are computed in integer arithmetic inside the graph; a flat element index would
+	 * be rounded once it exceeds what single precision can represent, and the table is far larger
+	 * than that.
 	 *
 	 * @param table the embedding table, shape {@code [vocabulary, hiddenSize]}
 	 * @return the embedding block, {@code [batch, maxLength]} to {@code [batch, maxLength, hiddenSize]}
 	 */
-	private Block tokenEmbedding(PackedCollection table) {
+	Block tokenEmbedding(PackedCollection table) {
 		int hidden = config.getHiddenSize();
 		int length = config.getMaxLength();
-		int total = BATCH * length * hidden;
 		TraversalPolicy inputShape = shape(BATCH, length);
 		TraversalPolicy outputShape = shape(BATCH, length, hidden);
 
-		return layer("tokenEmbedding", inputShape, outputShape, ids -> {
-			CollectionProducer element = integers(0, total);
-			CollectionProducer feature = element.mod(hidden);
-			CollectionProducer position = element.subtract(feature).divide(hidden);
-			CollectionProducer id = c(shape(total), c(ids).reshape(shape(BATCH * length)), position);
-			CollectionProducer index = id.multiply(hidden).add(feature);
-			CollectionProducer table1d = cp(table).reshape(shape(table.getShape().getTotalSize()));
-			return c(shape(total), table1d, index).multiply(Math.sqrt(hidden)).reshape(outputShape);
-		}, List.of(table));
+		return layer("tokenEmbedding", inputShape, outputShape, ids ->
+				rows(shape(BATCH * length, hidden), cp(table), c(ids).reshape(shape(BATCH * length)))
+						.multiply(Math.sqrt(hidden)).reshape(outputShape), List.of(table));
 	}
 
 	/**
@@ -238,7 +233,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	 * @param invFreq    the rotary frequencies
 	 * @return the branch
 	 */
-	private Block attentionBranch(TraversalPolicy blockShape, String prefix, PackedCollection invFreq) {
+	Block attentionBranch(TraversalPolicy blockShape, String prefix, PackedCollection invFreq) {
 		int hidden = config.getHiddenSize();
 		SequentialBlock branch = new SequentialBlock(blockShape);
 		branch.add(rmsnorm(blockShape, weight(prefix + ".pre_self_attn_layernorm.weight", hidden), config.getNormEpsilon()));
@@ -258,7 +253,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	 * @param prefix     the layer's weight key prefix
 	 * @return the branch
 	 */
-	private Block feedForwardBranch(TraversalPolicy blockShape, String prefix) {
+	Block feedForwardBranch(TraversalPolicy blockShape, String prefix) {
 		int hidden = config.getHiddenSize();
 		int inner = config.getIntermediateSize();
 		SequentialBlock branch = new SequentialBlock(blockShape);
@@ -278,7 +273,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	 * @param dims the expected shape
 	 * @return the weight
 	 */
-	private PackedCollection weight(String key, int... dims) {
+	PackedCollection weight(String key, int... dims) {
 		PackedCollection value = weights.get(key);
 		if (value == null) {
 			throw new IllegalArgumentException("Missing weight " + key);
