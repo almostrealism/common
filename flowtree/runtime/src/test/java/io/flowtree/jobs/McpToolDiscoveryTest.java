@@ -333,6 +333,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"send_message",
 			"github_pr_find",
 			"github_pr_review_comments",
+			"github_pr_reviews",
 			"github_pr_conversation",
 			"github_pr_reply",
 			"github_list_open_prs",
@@ -657,6 +658,30 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			prCheckParams.contains("workstream_id"));
 		assertTrue("github_pr_check_status must declare branch in signature",
 			prCheckParams.contains("branch"));
+
+		List<String> prReviewsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_pr_reviews");
+		assertTrue("github_pr_reviews must declare pr_number in signature",
+			prReviewsParams.contains("pr_number"));
+		assertTrue("github_pr_reviews must declare head_only in signature; without"
+				+ " it, filtering review bodies to the PR's current head commit is"
+				+ " absent from the MCP schema",
+			prReviewsParams.contains("head_only"));
+		assertTrue("github_pr_reviews head_only must be optional (default value"
+				+ " present) so callers can omit it and get every review",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "github_pr_reviews", "head_only"));
+
+		List<String> prReviewCommentsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_pr_review_comments");
+		assertTrue("github_pr_review_comments must declare include_resolved in"
+				+ " signature; without it, resolved threads stay permanently"
+				+ " invisible to a re-checking agent",
+			prReviewCommentsParams.contains("include_resolved"));
+		assertTrue("github_pr_review_comments include_resolved must be optional"
+				+ " (default value present) so default behaviour is unchanged",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "github_pr_review_comments", "include_resolved"));
 
 		List<String> listRunsParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "github_list_workflow_runs");
