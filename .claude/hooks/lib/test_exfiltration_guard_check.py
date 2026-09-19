@@ -655,6 +655,8 @@ class BashObfuscationTests(GuardFixture):
             "node -e 'console.log(\"WebSocket (RFC 6455) is a protocol\")'"))
         self.assertAllowed(self.bash(
             "node -e 'console.log(\"axios and dgram are words\")'"))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('the report data comes from \\\"ws\\\" vendor')\""))
 
     def test_newline_separates_commands(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nprint(1)\nPY\npython3 -c 'print(2)'"))

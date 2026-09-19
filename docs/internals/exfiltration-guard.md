@@ -137,15 +137,11 @@ State these plainly; do not assume the guard closes them.
   parenthesis — never a bare module or API name, and never a
   parenthetical remark such as "the engine socket (an open TCP port)" —
   for the same reason the URL bullet above gives: a guard that blocks
-  prose teaches its way around itself. `Net::` and `LWP::` are unaffected
-  by this: they already required the `::` module-path form before this
-  scan existed, so they were never a bare-word match.
-  <!-- TODO(review): this claim is wrong for LWP::. `git log --all -p --
-  .claude/hooks/lib/exfil_bash_network.py` shows `\bLWP\b` (a bare-word
-  match) was narrowed to `\bLWP::` by this same narrowing effort, not
-  before it -- only Net:: was already `::`-qualified beforehand. The
-  sentence should either drop LWP:: from this bullet or describe it
-  alongside the narrowed entries above instead of alongside Net::. -->
+  prose teaches its way around itself. `Net::` is unaffected by this: it
+  already required the `::` module-path form before this scan existed,
+  so it was never a bare-word match. `LWP::` was narrowed by this same
+  effort — it used to match the bare word `LWP` and was tightened to
+  require the `::` module-path form alongside the other entries above.
   A handful of other
   entries have no natural "qualified" form at all (`XMLHttpRequest`,
   `HttpClient`, `URLConnection`, `child_process`, `node-fetch`,
