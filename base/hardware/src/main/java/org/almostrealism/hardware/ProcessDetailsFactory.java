@@ -567,7 +567,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * dependsOn} by blocking a worker thread rather than chaining into a non-blocking dispatch;
 	 * submitting that kind of evaluation to the {@code ComputeContext}'s own executor risks it
 	 * blocking one of that executor's own threads, which {@code AcceleratedComputationOperation}
-	 * refuses to allow. Such an evaluable is instead requested on a dedicated thread.</p>
+	 * refuses to allow. Such an evaluable is instead requested on a dedicated thread. This same
+	 * {@code isSharedExecutorSafe()} check applies to an argument that needs a sized destination:
+	 * the evaluable returned by {@code Evaluable::into} is checked again there, since wrapping
+	 * with a destination can change which evaluable actually answers the request.</p>
 	 *
 	 * <p>All working state lives in locals of this method, so overlapping
 	 * constructions (whether from another thread or from an argument evaluation
@@ -683,7 +686,20 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				Heap.addCreatedMemory(result);
 			}
 
-			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
+			Evaluable sized = kernelArgEvaluables[i].into(result);
+
+			// See this method's javadoc: this is the same isSharedExecutorSafe() check
+			// the first pass applies above, repeated here because into() can wrap the
+			// argument in a different evaluable.
+			boolean executorSafe = sized instanceof StreamingEvaluable
+					&& ((StreamingEvaluable<?>) sized).isSharedExecutorSafe();
+
+			if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
+				asyncEvaluables[i] = sized.async(this::execute);
+			} else {
+				asyncEvaluables[i] = sized.async();
+			}
+
 			dispatchBacked[i] = true;
 		}
 
