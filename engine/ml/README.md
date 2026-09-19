@@ -571,6 +571,13 @@ ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
 Block attention = sequenceAttention(shape, weights, factory);
 ```
 
+The fully specified `sequenceAttention` overload additionally accepts a `NormalizationType`
+for query/key normalization, an optional per-position `paddingMask` (zeroes masked value
+vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
+`AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
+shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
+and no masking.
+
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 
 `DiffusionTransformer` selects its conditioning scheme via `ConditioningMode`: `PREPEND` (the
@@ -610,6 +617,11 @@ into (an inpainting mask concatenated with the masked latent, for example) befor
 block projects it to the transformer width and adds it to the hidden state between the self-attention
 and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local
 conditioning. The buffer starts zero-filled, which is the value plain generation supplies.
+
+`DiffusionTransformerConfig.withNormalization(NormalizationType)` selects LayerNorm (default) or
+RMSNorm for every block norm and query/key norm; `withPaddingMask(true)` adds a per-position latent
+padding mask, exposed for writes via `DiffusionTransformer.getPaddingMask()` and consumed by
+self-attention as value masking.
 
 ### Stable Audio 3 Conditioning and Codec
 

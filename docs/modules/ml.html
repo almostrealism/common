@@ -780,6 +780,10 @@ Block attention = sequenceAttention(
     qkvWeight, outWeight, invFreq,
     loraFactory  // Projections automatically wrapped with LoRA
 );</code></pre>
+                <p>The fully specified <code>sequenceAttention</code> overload also accepts a
+                <code>NormalizationType</code> for query/key normalization plus optional padding
+                and key masks for masked sequences, and a logit soft-cap. Every shorter overload
+                delegates to it with <code>NormalizationType.LAYER</code> and no masking.</p>
             </section>
 
             <section id="performance">
