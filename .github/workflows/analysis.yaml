@@ -2031,7 +2031,7 @@ jobs:
           if-no-files-found: ignore
 
   test-cl:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
@@ -2044,12 +2044,23 @@ jobs:
     # integrated GPU, whose FP64 rate is poor enough that raising the lane to FP64 would cost
     # more than it is worth.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
-    # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
-    # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
-    # now an independent third lane, serialised internally as test-cl -> test-media-cl because
-    # the ROCm host has a single GPU. Gates on the validation checks directly.
-    # `!cancelled()` is retained for consistency with the other lane stages — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, and is serialised internally
+    # as test-cl -> test-media-cl because the ROCm host has a single GPU. Gates on the
+    # validation checks directly.
+    #
+    # It also gates on BOTH stages of the macOS GPU lane (test-mac and test-media-mac) with
+    # success-or-skipped. This is not GPU serialisation — the fleets are separate machines —
+    # it is admission control for a small fleet: the CL lane is sixteen matrix jobs on one
+    # host, the most expensive thing a pipeline schedules, and a branch that cannot pass the
+    # Metal suites will not pass the OpenCL duplicates of them either. Running the CL lane
+    # only once the Metal lane is green spends the ROCm runners on branches that have already
+    # cleared the equivalent tests on Metal, and leaves them free for the pipelines that can
+    # actually use a green CL result. The cost is that a healthy pipeline's CL lane starts
+    # after the mac lane finishes rather than alongside it.
+    #
+    # A mac stage skipped by its own layer gate is tolerated; a failure anywhere in the mac
+    # lane skips this stage and, through it, test-media-cl (fail-chain). `!cancelled()` is
+    # required for that tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -2057,6 +2068,8 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
@@ -2282,12 +2295,13 @@ jobs:
     # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
     # GPU-eligible work routes through CL.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm). The former gates on test-mac/test-media-mac
-    # serialised the macOS GPUs and no longer apply; the gate on test-cl remains, because the
-    # ROCm host has a single GPU and the two CL stages must not contend for it. test-cl is
-    # gated success-or-skipped, so a failure there skips this stage (fail-chain) while a stage
-    # skipped by its own layer gate is tolerated. Gates on the validation checks directly.
-    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm). Gates on test-cl because the ROCm host has a
+    # single GPU and the two CL stages must not contend for it; test-cl in turn gates on the
+    # whole macOS GPU lane (see there), so this stage runs only once every Metal suite and the
+    # OpenCL compute suite are green. test-cl is gated success-or-skipped, so a failure there
+    # skips this stage (fail-chain) while a stage skipped by its own layer gate is tolerated.
+    # Gates on the validation checks directly. `!cancelled()` is required for that tolerance
+    # to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&

@@ -23,9 +23,6 @@ import org.almostrealism.hardware.metal.MetalDataContext;
 import org.junit.Assume;
 import org.junit.Test;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Standalone shape/composition tests for {@link TransformerResamplingFeatures}, using small synthetic
  * weights and no Stable Audio 3 data. These run in normal CI and prove the plumbing of the
@@ -163,36 +160,6 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 		PackedCollection segment = eval(resamplingSegment(cp(mapped), 1, config, weights, "enc"));
 		int numSeg = length / config.getInputSegSize();
 		assertEquals(numSeg * config.getSubChunkSize() * config.getDim(), segment.getShape().getTotalSize());
-	}
-
-	/**
-	 * Builds a small encoder or decoder configuration that still exercises the full machinery
-	 * (segmentation, learned tokens, midpoint-shifted chunking, differential attention, SwiGLU).
-	 *
-	 * @param encoder {@code true} for an encoder (downsampling) config
-	 * @return the small configuration
-	 */
-	protected ResamplingConfig smallConfig(boolean encoder) {
-		int inChannels = encoder ? 4 : 8;
-		int outChannels = encoder ? 8 : 4;
-		int mappingKernel = encoder ? 1 : 3;
-		return new ResamplingConfig(inChannels, outChannels, 2, 4, 2, 4, 2,
-				encoder, true, true, 2.0, mappingKernel, ResamplingConfig.AttentionWindow.CHUNKED);
-	}
-
-	/**
-	 * Generates a complete set of synthetic weights for a resampling block under the given key prefix,
-	 * using the shared key/shape map so the synthetic key set matches the real one exactly.
-	 *
-	 * @param config the block configuration
-	 * @param prefix the weight key prefix
-	 * @return a {@link StateDictionary} holding randomly-initialized weights for every key the block reads
-	 */
-	protected StateDictionary syntheticWeights(ResamplingConfig config, String prefix) {
-		Map<String, PackedCollection> w = new HashMap<>();
-		blockWeightShapes(config, prefix).forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
-		return new StateDictionary(w);
 	}
 
 	/**
