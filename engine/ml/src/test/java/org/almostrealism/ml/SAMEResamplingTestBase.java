@@ -133,7 +133,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @param encoder {@code true} for an encoder (downsampling) config
 	 * @return the small configuration
 	 */
-	protected ResamplingConfig smallConfig(boolean encoder) {
+	public static ResamplingConfig smallConfig(boolean encoder) {
 		int inChannels = encoder ? 4 : 8;
 		int outChannels = encoder ? 8 : 4;
 		int mappingKernel = encoder ? 1 : 3;

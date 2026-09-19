@@ -19,6 +19,7 @@ package org.almostrealism.ml.audio;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.ResamplingConfig;
+import org.almostrealism.ml.SAMEResamplingTestBase;
 import org.almostrealism.ml.StateDictionary;
 
 import java.util.HashMap;
@@ -41,17 +42,14 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 	public static final int LATENT = 3;
 
 	/**
-	 * The resampling configuration of one side of the small autoencoder.
+	 * The resampling configuration of one side of the small autoencoder: the same small
+	 * configuration the standalone resampling tests use, so both exercise one set of dimensions.
 	 *
 	 * @param encoder whether to configure the encoder (downsampling) or the decoder side
 	 * @return the configuration
 	 */
 	public ResamplingConfig config(boolean encoder) {
-		int inChannels = encoder ? 4 : 8;
-		int outChannels = encoder ? 8 : 4;
-		int mappingKernel = encoder ? 1 : 3;
-		return new ResamplingConfig(inChannels, outChannels, 2, 4, 2, 4, 2,
-				encoder, true, true, 2.0, mappingKernel, ResamplingConfig.AttentionWindow.CHUNKED);
+		return SAMEResamplingTestBase.smallConfig(encoder);
 	}
 
 	/**

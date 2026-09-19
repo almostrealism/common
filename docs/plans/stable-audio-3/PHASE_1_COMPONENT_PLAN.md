@@ -788,10 +788,17 @@ Added on 2026-09-16:
 | Generation | `Model.generate`: duration plus 6 s headroom aligned to 8192 samples and capped at `sample_size`; padding mask over the duration plus headroom; zero inpainting inputs; 8 ping-pong steps under `LogSNRShift(rate 0, -6.2, 2)`; guidance off by default; output clamped and truncated to the duration | `StableAudio3` (compiled once for a maximum duration; shorter requests are masked rather than cropped) with `StableAudio3.small(...)` over the extracted dictionaries; `StableAudio3Test` over synthetic components |
 | DiT real-weight parity | one forward pass of the released small DiT (`dump_sa3_dit_reference.py`) | `StableAudio3TransformerParityTest` (gated on `AR_SA3_DIT_WEIGHTS` / `AR_SA3_DIT_REFERENCES`) |
 
-Still open: the SAME-S transformer layers must be run on a Metal-free machine (the first
-real-weight `SAMEResamplingParityTest` run, 2026-09-13, reproduced the convolution and mapping
-stages to ~1e-6 but produced NaN in every transformer layer past the first, which matches the
-deferred Metal defect noted by `skipWhenMetalPresent`; no FlowTree runner carrying the
-`os:linux` label picked up the job submitted for it), the full autoencoder round trip against
-the `ae_*` references, and an end-to-end generation with the released weights (which on a Mac
-also waits on the Metal defect).
+Resolved on 2026-09-19: the Metal NaN in the resampling transformer layers was the fast-math
+`tanh` in generated Metal kernels overflowing past `|x| ~ 44` inside the dynamic-tanh
+normalization (fixed on `master` by compiling with the precise `tanh`, together with a
+zero-height threadgroup defect for work sizes narrower than the SIMD width). The Metal skip
+guards are gone; the resampling shape tests, `SAMEAutoEncoderShapeTest` and `StableAudio3Test`
+run and pass on Metal.
+
+Still open: the real-weight `SAMEResamplingParityTest` (its first run, 2026-09-13, reproduced
+the convolution and mapping stages to ~1e-6 before the transformer layers hit the Metal defect;
+it must be rerun with regenerated weights and references: the extracted SAME-S weights and the
+reference source checkout under `/tmp` on the Mac Studio were purged by the periodic temporary-file
+cleanup, so `extract_sa3_weights.py --target ae` and `dump_same_references.py` need a fresh clone
+of the reference repository and a location outside `/tmp`), the full autoencoder round trip
+against the `ae_*` references, and an end-to-end generation with the released weights.

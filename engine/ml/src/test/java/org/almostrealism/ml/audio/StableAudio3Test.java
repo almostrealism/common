@@ -95,8 +95,6 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	 */
 	@Test(timeout = 240000)
 	public void guidedGenerationIsFiniteAndBounded() {
-		skipWhenMetalPresent();
-
 		StableAudio3 model = smallModel().setSteps(2).setVerbose(false).setGuidance(3.0, new long[]{11});
 		try {
 			PackedCollection audio = model.generate(3, new long[]{5, 7, 9}, 0.1).evaluate();
