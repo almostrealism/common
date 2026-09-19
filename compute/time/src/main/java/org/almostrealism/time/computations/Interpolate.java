@@ -285,11 +285,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 	}
 
 	/**
-	 * Returns the expression for the query time value taken from the position producer argument.
-	 *
-	 * @return an expression evaluating to the current kernel's time coordinate
-	 */
-	/**
 	 * Returns the number of samples the series makes available to one kernel
 	 * instance, so that a bracketing index can be checked against the end of
 	 * the series. A variable-count series hands each kernel one series of
@@ -314,6 +309,7 @@ public class Interpolate extends CollectionProducerComputationBase {
 				return e(c.getShape().getSize());
 			}
 		}
+		// TODO(review): confirm this matches the totalSize == 1 "hack" case in getSeriesValue()
 		return var.length();
 	}
 
