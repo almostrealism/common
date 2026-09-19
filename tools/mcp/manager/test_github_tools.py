@@ -778,6 +778,162 @@ class TestGithubPrReviewComments(unittest.TestCase):
         result = server.github_pr_review_comments(pr_number=1)
         self.assertEqual(result["comments"][0]["line"], 42)
 
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_include_resolved_surfaces_resolved_thread(self, mock_gql, mock_repo):
+        resolved = self._make_thread(True, [
+            {"id": 5, "body": "was flagged", "user": "copilot",
+             "createdAt": "2026-01-01T00:00:00Z"},
+        ])
+        unresolved = self._make_thread(False, [
+            {"id": 6, "body": "still open", "user": "alice",
+             "createdAt": "2026-01-02T00:00:00Z"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [resolved, unresolved], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=1, include_resolved=True)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 2)
+        by_id = {c["id"]: c for c in result["comments"]}
+        self.assertTrue(by_id[5]["is_resolved"])
+        self.assertFalse(by_id[6]["is_resolved"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_graphql_request")
+    def test_default_hides_resolved_and_has_no_is_resolved_field(
+            self, mock_gql, mock_repo):
+        resolved = self._make_thread(True, [
+            {"id": 5, "body": "was flagged", "createdAt": "2026-01-01T00:00:00Z"},
+        ])
+        unresolved = self._make_thread(False, [
+            {"id": 6, "body": "still open", "createdAt": "2026-01-02T00:00:00Z"},
+        ])
+        mock_gql.return_value = self._make_graphql_response(
+            [resolved, unresolved], has_next=False)
+
+        result = server.github_pr_review_comments(pr_number=1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["comments"][0]["id"], 6)
+        self.assertNotIn("is_resolved", result["comments"][0])
+
+class TestGithubPrReviews(unittest.TestCase):
+    """Tests for github_pr_reviews (REST-based review bodies, paginated)."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _review(self, id=1, login="copilot-pull-request-reviewer[bot]",
+                state="COMMENTED", submitted_at="2026-03-01T10:00:00Z",
+                commit_id="sha1", body=""):
+        return {
+            "id": id,
+            "user": {"login": login},
+            "state": state,
+            "submitted_at": submitted_at,
+            "commit_id": commit_id,
+            "body": body,
+        }
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_copilot_overview_body_round_trips_with_badge_stripped(
+            self, mock_gh, mock_repo):
+        body = (
+            "### Pull Request Overview\n"
+            "<picture>\n"
+            "<source media=\"(prefers-color-scheme: dark)\" srcset=\"dark.png\">\n"
+            "<source media=\"(prefers-color-scheme: light)\" srcset=\"light.png\">\n"
+            "<img alt=\"badge\" src=\"light.png\">\n"
+            "</picture>\n"
+            "This PR does X.\n\n"
+            "### Suppressed comments (1)\n"
+            "* some finding\n"
+        )
+        mock_gh.return_value = [self._review(id=99, body=body)]
+
+        result = server.github_pr_reviews(pr_number=17)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        review = result["reviews"][0]
+        self.assertEqual(review["id"], 99)
+        self.assertEqual(review["user"], "copilot-pull-request-reviewer[bot]")
+        self.assertNotIn("<picture>", review["body"])
+        self.assertNotIn("srcset", review["body"])
+        self.assertIn("This PR does X.", review["body"])
+        self.assertIn("Suppressed comments (1)", review["body"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_head_only_filters_by_commit(self, mock_gh, mock_repo):
+        old_review = self._review(id=1, commit_id="old-sha", body="stale")
+        new_review = self._review(id=2, commit_id="head-sha", body="fresh")
+
+        def fake_request(method, path):
+            if path == "/repos/owner/repo/pulls/17":
+                return {"head": {"sha": "head-sha"}}
+            return [old_review, new_review]
+
+        mock_gh.side_effect = fake_request
+
+        result = server.github_pr_reviews(pr_number=17, head_only=True)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["reviews"][0]["id"], 2)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_without_head_only_skips_pr_lookup(self, mock_gh, mock_repo):
+        mock_gh.return_value = [self._review(id=1)]
+        server.github_pr_reviews(pr_number=17)
+        for call in mock_gh.call_args_list:
+            self.assertNotEqual(call[0][1], "/repos/owner/repo/pulls/17")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_paginates_through_multiple_pages(self, mock_gh, mock_repo):
+        page1 = [self._review(id=i) for i in range(100)]
+        page2 = [self._review(id=200)]
+        mock_gh.side_effect = [page1, page2]
+
+        result = server.github_pr_reviews(pr_number=5)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 101)
+        self.assertEqual(mock_gh.call_count, 2)
+        self.assertIn("page=1", mock_gh.call_args_list[0][0][1])
+        self.assertIn("page=2", mock_gh.call_args_list[1][0][1])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "main", None))
+    @patch.object(server, "_github_request")
+    def test_newest_first(self, mock_gh, mock_repo):
+        mock_gh.return_value = [
+            self._review(id=1, submitted_at="2026-01-01T00:00:00Z"),
+            self._review(id=2, submitted_at="2026-03-01T00:00:00Z"),
+        ]
+        result = server.github_pr_reviews(pr_number=1)
+        self.assertEqual(result["reviews"][0]["id"], 2)
+        self.assertEqual(result["reviews"][1]["id"], 1)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "no repo"}))
+    def test_repo_resolution_error(self, mock_repo):
+        result = server.github_pr_reviews(pr_number=1)
+        self.assertFalse(result["ok"])
+        self.assertIn("no repo", result["error"])
+
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
+        with self.assertRaises(PermissionError):
+            server.github_pr_reviews(pr_number=1)
+
 class TestGithubRequestCopilotReview(unittest.TestCase):
     """Tests for github_request_copilot_review and the _request_copilot_review helper."""
 
