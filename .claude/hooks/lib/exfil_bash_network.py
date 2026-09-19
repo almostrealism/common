@@ -42,21 +42,40 @@ from exfil_bash_lex import GuardError, normalize_host
 # API nobody listed, against a URL literal, now passes where the bare URL
 # would have caught it. That is the accepted cost of a guard people can
 # work with — one that blocks prose teaches its way around itself, which
-# buys nothing at all.
+# buys nothing at all. For the same reason, every entry below matches a
+# *use* of the module or API it names — an import, a module-qualified
+# call, a constructor — never the bare word on its own: a string literal
+# that happens to contain "socket" or "subprocess" is prose, not code.
 NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
-    r"\brequests\.", r"\burllib\b", r"\bhttp\.client\b", r"\bhttplib\b",
-    r"\bhttpx\b", r"\baiohttp\b", r"\bsocket\b", r"\bsmtplib\b", r"\bftplib\b",
-    r"\btelnetlib\b", r"\bparamiko\b", r"\bboto3\b", r"\bbotocore\b",
-    r"\bpycurl\b", r"\bwebsocket", r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
+    r"\brequests\.",
+    r"\bimport\s+urllib\b|\bfrom\s+urllib\s+import\b|\burllib\.\w+",
+    r"\bhttp\.client\b",
+    r"\bimport\s+httplib\b|\bfrom\s+httplib\s+import\b|\bhttplib\.\w+",
+    r"\bimport\s+httpx\b|\bfrom\s+httpx\s+import\b|\bhttpx\.\w+",
+    r"\bimport\s+aiohttp\b|\bfrom\s+aiohttp\s+import\b|\baiohttp\.\w+",
+    r"\bimport\s+socket\b|\bfrom\s+socket\s+import\b|\bsocket\.\w+|\bsocket\s*\(",
+    r"\bimport\s+smtplib\b|\bfrom\s+smtplib\s+import\b|\bsmtplib\.\w+",
+    r"\bimport\s+ftplib\b|\bfrom\s+ftplib\s+import\b|\bftplib\.\w+",
+    r"\bimport\s+telnetlib\b|\bfrom\s+telnetlib\s+import\b|\btelnetlib\.\w+",
+    r"\bimport\s+paramiko\b|\bfrom\s+paramiko\s+import\b|\bparamiko\.\w+",
+    r"\bimport\s+boto3\b|\bfrom\s+boto3\s+import\b|\bboto3\.\w+",
+    r"\bimport\s+botocore\b|\bfrom\s+botocore\s+import\b|\bbotocore\.\w+",
+    r"\bimport\s+pycurl\b|\bfrom\s+pycurl\s+import\b|\bpycurl\.\w+",
+    r"\bwebsocket[s]?\s*\(|\bWebSocket\s*\(|require\(\s*['\"]ws['\"]\s*\)",
+    r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
     r"\bhttps?\.request\b", r"\bnet\.connect\b", r"\bnet\.createConnection\b",
-    r"\bdgram\b", r"\bWebSocket\b", r"\baxios\b", r"\bgot\s*\(",
-    r"\bnode-fetch\b", r"\bNet::", r"\bLWP\b", r"\bIO::Socket\b",
+    r"require\(\s*['\"]dgram['\"]\s*\)|\bfrom\s+['\"]dgram['\"]|\bdgram\.\w+",
+    r"\bgot\s*\(",
+    r"require\(\s*['\"]axios['\"]\s*\)|\bfrom\s+['\"]axios['\"]|\baxios\.\w+|\baxios\s*\(",
+    r"\bnode-fetch\b", r"\bNet::", r"\bLWP::", r"\bIO::Socket\b",
     r"\bHTTP::Tiny\b", r"\bcurl_", r"\bfsockopen\b", r"\bstream_socket_client\b",
     r"\bInvoke-WebRequest\b", r"\bInvoke-RestMethod\b", r"\bNet\.WebClient\b",
     r"\bSystem\.Net\b", r"\bHttpClient\b", r"\bURLConnection\b", r"\bjava\.net\b",
     r"\bnew\s+URL\s*\(", r"\bSocket\s*\(", r"\bdo shell script\b",
-    r"\bsystem\s*\(", r"\bsubprocess\b", r"\bos\.system\b",
-    r"\bchild_process\b", r"\bexec\s*\(", r"\bpopen\b", r"/inet/",
+    r"\bsystem\s*\(",
+    r"\bimport\s+subprocess\b|\bfrom\s+subprocess\s+import\b|\bsubprocess\.\w+",
+    r"\bos\.system\b",
+    r"\bchild_process\b", r"\bexec\s*\(", r"\b[Pp]open\s*\(", r"/inet/",
     r"\|\s*getline\b", r"\bopen\s*\(\s*['\"]https?:",
 )]
 
