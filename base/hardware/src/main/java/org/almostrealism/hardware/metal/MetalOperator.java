@@ -183,7 +183,28 @@ public class MetalOperator extends HardwareOperator {
 			return new int[] { workgroupSize, 1, 1 };
 		}
 
-		int simdWidth = kernel.threadExecutionWidth();
+		return splitWorkgroupDimensions(workgroupSize, kernel.threadExecutionWidth());
+	}
+
+	/**
+	 * Splits a threadgroup of {@code workgroupSize} threads into {@code [width, height, 1]}
+	 * dimensions for a {@code dispatchThreads} launch, using the kernel's SIMD group width.
+	 *
+	 * <p>The intent is a threadgroup one SIMD group wide and {@code workgroupSize / simdWidth}
+	 * high. That split is only valid when the workgroup spans at least one full SIMD group; for a
+	 * smaller workgroup &mdash; which {@link #getWorkgroupSize()} produces for small work sizes that
+	 * are not multiples of the SIMD width, such as a global work size of 144 or 216 &mdash; the
+	 * height would round to zero, which is not a valid threadgroup and on Metal leaves the
+	 * dispatched region partly unwritten (read later as uninitialised memory). Such a workgroup is
+	 * therefore dispatched one-dimensional as {@code [workgroupSize, 1, 1]} instead. The returned
+	 * dimensions always have a non-zero product equal to {@code workgroupSize} when
+	 * {@code simdWidth} divides it, and never contain a zero.</p>
+	 *
+	 * @param workgroupSize total threads per threadgroup (from {@link #getWorkgroupSize()})
+	 * @param simdWidth     the kernel's SIMD group width ({@code threadExecutionWidth})
+	 * @return 3-element array of {@code [width, height, depth]} threadgroup dimensions
+	 */
+	public static int[] splitWorkgroupDimensions(int workgroupSize, int simdWidth) {
 		if (workgroupSize < simdWidth) {
 			return new int[] { workgroupSize, 1, 1 };
 		}

@@ -84,6 +84,14 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * roughly 44 in magnitude, returning NaN where the true value is &plusmn;1. The precise variant
 	 * is selected for {@code tanh} so that saturating activations stay finite for every input,
 	 * matching the native backends.</p>
+	 *
+	 * <p>Only {@code tanh} needs this treatment. The other fast-math functions above overflow to
+	 * &plusmn;infinity or NaN only where the true function itself diverges &mdash; {@code exp} of a
+	 * large argument, {@code log} of zero, {@code pow}/{@code tan} at their singularities &mdash; so
+	 * their fast-math edge results already agree with the mathematical limit and never turn a
+	 * finite true value into NaN. {@code tanh} is the sole function here whose true value is bounded
+	 * everywhere yet whose fast-math implementation overflows, which is why it alone is made
+	 * precise.</p>
 	 */
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
@@ -99,7 +107,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::cos;\n" +
 									"using metal::acos;\n" +
 									"using metal::tan;\n" +
-									// TODO(review): only tanh is precise; audit whether the other fast-math functions above (exp, log, pow, tan) need the same treatment
+									// Only tanh; see the field javadoc for why the others stay fast-math.
 									"using metal::precise::tanh;\n";
 
 	/** The primary Metal device used for kernel compilation and execution. */
