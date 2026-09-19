@@ -158,4 +158,5 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	}
 
 	// TODO(review): request() never blocks the caller (only submits to executor) -- isSharedExecutorSafe() may be able to return true here
+	// TODO(review): caution -- ComputeContext's own executor here would deadlock (see ProcessDetailsFactory#execute).
 }

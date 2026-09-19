@@ -471,7 +471,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
-				getComputeContext()::runLater);
+				getComputeContext()::runLater,
+				getComputeContext()::isExecutorThread);
 
 		if (evaluator != null) {
 			detailsFactory.setEvaluator(evaluator);
