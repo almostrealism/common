@@ -45,7 +45,11 @@ composes :func:`fetch_runs`/:func:`fetch_run_jobs`/:func:`compute_job_metrics`
 and upserts the result into a :class:`tools.fleet.store.FleetStore`. The
 lower-level fetch/compute functions above are also useful standalone (e.g.
 for a caller that has already parsed the workflow graph and can supply
-``needs``), so they remain independently callable.
+``needs``), so they remain independently callable. ``poll_and_store`` itself
+accepts an optional ``resolve_needs`` callback for exactly that caller — see
+its docstring — so ``is_entry_point``/``queue_wait_seconds`` are not
+permanently NULL in the production poll path, just NULL whenever no
+resolver is supplied or it does not know a given job's dependency graph.
 
 **Labels.** The ``labels`` persisted per job are the *executing runner's*
 actual label set (the workflow-jobs API's own ``labels`` field), not the
@@ -61,7 +65,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from tools.fleet.store import FleetStore
 
@@ -303,6 +307,8 @@ def fetch_run_jobs(
 DEFAULT_POLL_MAX_RUNS = 100
 DEFAULT_POLL_RUN_MAX_PAGES = 2
 
+NeedsResolver = Callable[[Dict, Dict], Optional[List[str]]]
+
 
 def poll_and_store(
     repo: str,
@@ -313,6 +319,7 @@ def poll_and_store(
     run_max_pages: int = DEFAULT_POLL_RUN_MAX_PAGES,
     job_per_page: int = PER_PAGE,
     job_max_pages: int = MAX_PAGES,
+    resolve_needs: Optional[NeedsResolver] = None,
 ) -> int:
     """One poll cycle: fetch recent runs and their jobs for *repo*, compute
     job metrics, and upsert every job/step into *store*.
@@ -324,13 +331,25 @@ def poll_and_store(
     supply a parsed ``needs`` workflow graph for a precise ``queue_wait``).
 
     The workflow's dependency graph (``needs:``) is not available from the
-    job API this function calls, so every job here is persisted with
-    ``needs=None`` — ``is_entry_point``/``queue_wait_seconds`` stay unset and
-    only the always-honest ``pre_start_latency_seconds`` is populated (see
-    the module docstring and :func:`compute_job_metrics`). Deriving
-    ``needs`` from the workflow YAML to unlock ``queue_wait_seconds`` for
-    dependent jobs is the dependency-adjusted follow-up the design document
-    describes and is not implemented here.
+    job API this function calls. *resolve_needs*, when supplied, is called
+    as ``resolve_needs(run, job)`` for every job and must return that job's
+    ``needs:`` list (an empty list for a verified entry point) or ``None``
+    when the graph is not known for that particular job — the same
+    "unknown means ``None``, never guessed" contract
+    :func:`compute_job_metrics` already documents. This is how a caller that
+    *does* have reliable dependency-graph knowledge (for example, one that
+    has parsed the run's workflow file and can map jobs to their YAML keys
+    for a non-matrix workflow) populates ``is_entry_point``/
+    ``queue_wait_seconds`` for the production poll path. Without a resolver
+    (the default), every job here is persisted with ``needs=None`` exactly
+    as before — ``is_entry_point``/``queue_wait_seconds`` stay unset and
+    only the always-honest ``pre_start_latency_seconds`` is populated.
+
+    This module deliberately does not attempt that mapping itself: the
+    workflow-jobs API's ``name`` field is the job's ``name:`` override or
+    matrix-expanded label, not its YAML key, so guessing the mapping for a
+    matrix-heavy workflow risks attributing the wrong dependency list to a
+    job — silently wrong data, which is worse than an honest ``NULL``.
 
     Every call re-fetches and re-upserts recent runs/jobs (idempotent, since
     every write here is a natural-key upsert), rather than tracking what
@@ -358,7 +377,8 @@ def poll_and_store(
         run_id = str(run.get("id"))
         for job in fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages):
             job_id = str(job.get("id"))
-            metrics = compute_job_metrics(job)
+            needs = resolve_needs(run, job) if resolve_needs is not None else None
+            metrics = compute_job_metrics(job, needs=needs)
             # Sorted so the same label set always serializes identically
             # regardless of the order the API happens to return it in —
             # `job_event` is grouped by this string (see

@@ -204,6 +204,20 @@ class RunPsAndUptimeTests(unittest.TestCase):
         self.assertEqual(output, PS_TEXT)
         self.assertEqual(run.call_args[0][0], ["ps", "-eo", "pid,ppid,user,pcpu,rss,comm"])
 
+    def test_run_ps_returns_empty_string_when_ps_is_missing(self):
+        """`ps` not being on PATH must degrade to `""` (parsed as zero
+        processes), not raise out of the sampling loop."""
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=FileNotFoundError()):
+            self.assertEqual(collector._run_ps(), "")
+
+    def test_run_ps_returns_empty_string_when_ps_exits_non_zero(self):
+        """A transient non-zero `ps` exit must degrade to `""`, matching the
+        existing monitor's treatment of a failed snapshot as empty output,
+        so one bad cycle does not kill the long-running sampling loop."""
+        error = subprocess.CalledProcessError(1, ["ps"])
+        with mock.patch("tools.fleet.collector.subprocess.run", side_effect=error):
+            self.assertEqual(collector._run_ps(), "")
+
     def test_run_uptime_loads_parses_a_real_subprocess_result(self):
         result = mock.Mock(stdout="10:00  up 3 days, load average: 0.10, 0.05, 0.01\n")
         with mock.patch("tools.fleet.collector.subprocess.run", return_value=result):

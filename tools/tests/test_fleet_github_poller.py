@@ -419,6 +419,49 @@ class PollAndStoreTests(unittest.TestCase):
             poll_and_store("acme/repo", "tok", self.store, max_runs=None)
         self.assertEqual(job_calls, ["0", "1", "2"])
 
+    def test_poll_and_store_without_resolver_leaves_entry_point_metrics_null(self):
+        """The default (no `resolve_needs`) production path must stay
+        honest: without a dependency graph, `is_entry_point`/
+        `queue_wait_seconds` are NULL, never guessed."""
+        run = {"id": 1}
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]):
+            poll_and_store("acme/repo", "tok", self.store)
+        row = self.store._conn.execute(
+            "SELECT is_entry_point, queue_wait_seconds FROM job_event WHERE job_id = ?", ("42",),
+        ).fetchone()
+        self.assertIsNone(row[0])
+        self.assertIsNone(row[1])
+
+    def test_poll_and_store_uses_resolve_needs_to_populate_entry_point_metrics(self):
+        """A caller that supplies a `resolve_needs` callback (e.g. one that
+        parsed the run's workflow file) gets `is_entry_point`/
+        `queue_wait_seconds` populated for the jobs it can resolve."""
+        run = {"id": 1}
+        entry_job = {"id": 42, "name": "build", "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        unknown_job = {"id": 43, "name": "mystery", "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+
+        def _resolve_needs(run_obj, job_obj):
+            self.assertIs(run_obj, run)
+            return [] if job_obj["name"] == "build" else None
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[entry_job, unknown_job]):
+            poll_and_store("acme/repo", "tok", self.store, resolve_needs=_resolve_needs)
+
+        entry_row = self.store._conn.execute(
+            "SELECT is_entry_point, queue_wait_seconds FROM job_event WHERE job_id = ?", ("42",),
+        ).fetchone()
+        self.assertEqual(entry_row[0], 1)
+        self.assertAlmostEqual(entry_row[1], 300.0)
+
+        unknown_row = self.store._conn.execute(
+            "SELECT is_entry_point, queue_wait_seconds FROM job_event WHERE job_id = ?", ("43",),
+        ).fetchone()
+        self.assertIsNone(unknown_row[0])
+        self.assertIsNone(unknown_row[1])
+
 
 if __name__ == "__main__":
     unittest.main()

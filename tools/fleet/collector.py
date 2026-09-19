@@ -174,12 +174,24 @@ def cleanup_old_jsonl(log_dir: str, retention_days: int) -> None:
 
 
 def _run_ps() -> str:
-    result = subprocess.run(
-        ["ps", "-eo", "pid,ppid,user,pcpu,rss,comm"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    """Run the process-table snapshot ``ps`` call, tolerating its failure.
+
+    Mirrors :func:`_run_uptime_loads`: the existing shell-based monitor
+    treats a failed ``ps`` snapshot as empty output rather than a fatal
+    error, and :func:`sample_and_write`/:func:`run_sampling_loop` are not
+    prepared to catch an exception from here — letting one transient
+    ``ps`` failure escape would kill the long-running sampling loop instead
+    of writing a degraded (zero-process) sample and continuing.
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid,ppid,user,pcpu,rss,comm"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return ""
     return result.stdout
 
 
@@ -548,7 +560,7 @@ def sample_and_write(
     return record
 
 
-DEFAULT_INTERVAL_SECONDS = 10
+DEFAULT_INTERVAL_SECONDS = 15
 DEFAULT_RETENTION_DAYS = 14
 
 

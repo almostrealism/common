@@ -30,15 +30,21 @@ starts running.
 
 ## Known scope gaps in `github_poller.py`
 
-- **`is_entry_point`/`queue_wait_seconds` are always `NULL` from
-  `poll_and_store`.** It calls `compute_job_metrics(job)` without a `needs`
-  argument, since the workflow-jobs API does not return the dependency graph
-  and this module does not parse workflow YAML to derive it. Only the
-  always-honest `pre_start_latency_seconds` is populated by the production
-  poll path; `FleetStore.pre_start_latency_by_label` therefore returns no
-  rows against data from `poll_and_store` until a caller supplies `needs`
-  (e.g. a future workflow-YAML-aware wrapper) directly to
-  `compute_job_metrics`.
+- **`is_entry_point`/`queue_wait_seconds` are `NULL` from `poll_and_store`
+  unless the caller passes a `resolve_needs` callback.** The workflow-jobs
+  API does not return the dependency graph, and this module does not parse
+  workflow YAML to derive it itself — the API's job `name` is the job's
+  `name:` override or matrix-expanded label, not its YAML key, so guessing
+  that mapping for a matrix-heavy workflow risks attributing the wrong
+  `needs` list to a job (silently wrong data, worse than an honest `NULL`).
+  `poll_and_store(..., resolve_needs=fn)` is the extension point for a
+  caller that *does* have reliable dependency-graph knowledge (e.g. one that
+  parsed the run's workflow file and can map jobs to their YAML keys for a
+  non-matrix workflow): `fn(run, job)` returns that job's `needs` list (`[]`
+  for a verified entry point) or `None` when unknown, and
+  `compute_job_metrics` populates `is_entry_point`/`queue_wait_seconds`
+  accordingly. Without a resolver, every job is persisted with `needs=None`
+  and only the always-honest `pre_start_latency_seconds` is populated.
 - **`job_event.labels` is the executing runner's actual label set, not the
   job's requested `runs-on:` set.** A runner can carry extra/custom labels
   beyond what a job asked for, so grouping by this column measures
