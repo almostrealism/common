@@ -10,10 +10,17 @@
 # account executes code it did not write (it runs coding-agent jobs), so
 # nothing it can write may be trusted to decide what root does:
 #
-#   - This script refuses to run unless the file it was invoked from is owned
-#     by root or by the administrator invoking sudo, and is not writable by
-#     anyone else. Run it from a checkout you own — never from a copy under
-#     the service account's home, and never from a checkout that account owns.
+#   - This script refuses to run unless the file it was invoked from, and
+#     every directory on the path to it, is owned by root or by the
+#     administrator invoking sudo, is not writable by anyone else, and is not
+#     a symlink — a trusted file inside a directory the service account can
+#     write to can be swapped before sudo opens it. Run it from a checkout
+#     you own, under directories only you and root can write — never from a
+#     copy under the service account's home, never from a checkout that
+#     account owns, and not from /tmp.
+#   - It runs with the base-system PATH only; nothing outside /usr/bin, /bin,
+#     /usr/sbin and /sbin is needed, so nothing another account could put on
+#     the administrator's PATH is consulted.
 #   - The plist is copied to a root-owned temporary file before anything
 #     reads it, so what is validated is what gets installed.
 #   - The daemon must run as the account that owns the plist, with that
@@ -49,6 +56,13 @@
 
 set -euo pipefail
 
+# Everything this script runs ships with macOS, so it uses the system PATH
+# and nothing else: sudo sanitises PATH anyway (Homebrew's bin is usually
+# absent under it), and a root process should not be looking up commands
+# in directories another account can populate.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PLISTBUDDY="/usr/libexec/PlistBuddy"
+
 DAEMONS_DIR="/Library/LaunchDaemons"
 STOP_TIMEOUT_SECONDS=30
 ALLOWED_KEYS="Label UserName GroupName ProgramArguments EnvironmentVariables WorkingDirectory RunAtLoad KeepAlive ThrottleInterval StandardOutPath StandardErrorPath ProcessType Nice"
@@ -63,9 +77,9 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: run as root: sudo $0 ${SOURCE}" >&2
     exit 1
 fi
-for cmd in plutil jq launchctl; do
+for cmd in plutil launchctl "${PLISTBUDDY}"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
-        echo "ERROR: ${cmd} is not on PATH." >&2
+        echo "ERROR: ${cmd} is not available." >&2
         exit 1
     fi
 done
@@ -73,23 +87,50 @@ done
 # ── Provenance of this script ──────────────────────────────────────
 #
 # A script root runs must not be writable by the account whose plist it is
-# validating, or the validation is theirs to remove. Owner root or the
-# administrator behind sudo; no group or world write bit.
+# validating, or the validation is theirs to remove. That is a property of
+# the whole path, not of one inode: a file owned by the administrator inside
+# a directory the service account can write to can be renamed away and
+# replaced before sudo opens it. So every component from / down to the file
+# must be owned by root or by the administrator behind sudo, carry no group
+# or world write bit, and not be a symlink.
 
-SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-SELF_OWNER_UID="$(stat -f '%u' "${SELF}")"
-SELF_MODE="$(stat -f '%Lp' "${SELF}")"
 ADMIN_UID="${SUDO_UID:-0}"
-if [ "${SELF_OWNER_UID}" != "0" ] && [ "${SELF_OWNER_UID}" != "${ADMIN_UID}" ]; then
-    echo "ERROR: ${SELF} is owned by uid ${SELF_OWNER_UID}, not root or the invoking administrator." >&2
-    echo "  Root must not execute a file the service account can edit. Run this script" >&2
-    echo "  from a checkout you own, not from ${SELF}." >&2
-    exit 1
-fi
-if [ $(( 8#${SELF_MODE} & 8#022 )) -ne 0 ]; then
-    echo "ERROR: ${SELF} is group- or world-writable (mode ${SELF_MODE})." >&2
-    exit 1
-fi
+
+# Fails unless the path is a trusted component; the reason is printed.
+trusted_path() {
+    local path="$1" owner mode
+    if [ -L "${path}" ]; then
+        echo "${path} is a symlink" >&2
+        return 1
+    fi
+    owner="$(stat -f '%u' "${path}")"
+    mode="$(stat -f '%Lp' "${path}")"
+    if [ "${owner}" != "0" ] && [ "${owner}" != "${ADMIN_UID}" ]; then
+        echo "${path} is owned by uid ${owner}, not root or the invoking administrator" >&2
+        return 1
+    fi
+    if [ $(( 8#${mode} & 8#022 )) -ne 0 ]; then
+        echo "${path} is group- or world-writable (mode ${mode})" >&2
+        return 1
+    fi
+}
+
+# The path as invoked (logical, so a symlinked component is seen as one and
+# refused, rather than resolved to wherever it points at this moment).
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)/$(basename "${BASH_SOURCE[0]}")"
+PREFIX=""
+for component in / ${SELF//\// }; do
+    if [ "${component}" != "/" ]; then
+        PREFIX="${PREFIX}/${component}"
+    fi
+    if ! trusted_path "${PREFIX:-/}"; then
+        echo "ERROR: refusing to run from ${SELF}." >&2
+        echo "  Root must not execute a file the service account can edit or replace, and" >&2
+        echo "  every directory on the way to it counts. Run this script from a checkout" >&2
+        echo "  you own, under directories only you and root can write." >&2
+        exit 1
+    fi
+done
 
 # ── A private copy of the plist ────────────────────────────────────
 #
@@ -116,11 +157,15 @@ plutil -lint -s "${STAGED}"
 
 # ── Content checks ─────────────────────────────────────────────────
 
+# PlistBuddy prints the root dictionary with its own keys indented by exactly
+# four spaces and everything nested deeper, so the top-level keys are the
+# lines of the form "    Key = ...". Nothing outside the base system is
+# needed to read them.
 plist_keys() {
-    plutil -convert json -o - "${STAGED}" | jq -r 'keys[]'
+    "${PLISTBUDDY}" -c 'Print' "${STAGED}" | awk '/^    [^ ]+ = /{print $1}'
 }
 plist_string() {
-    /usr/libexec/PlistBuddy -c "Print :$1" "${STAGED}" 2>/dev/null || true
+    "${PLISTBUDDY}" -c "Print :$1" "${STAGED}" 2>/dev/null || true
 }
 
 for key in $(plist_keys); do
