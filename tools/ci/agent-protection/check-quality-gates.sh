@@ -18,6 +18,12 @@
 #                             "exfil-guard", "test-hiding", "infrastructure",
 #                             or empty (optional; defaults to empty)
 #   CHECKSTYLE_PASSED       - "true" or "false" (optional; defaults to "true")
+#   DECEPTION_AUDIT_ERROR   - "true" when deception-audit.sh could not resolve
+#                             the merge-base (or its file listing) and never
+#                             ran the audit -- distinct from
+#                             DECEPTION_AUDIT_FINDINGS=false, which means the
+#                             audit ran and found nothing (optional; defaults
+#                             to "false")
 #
 # Outputs (to GITHUB_OUTPUT):
 #   failure_count=<N>
@@ -104,7 +110,13 @@ if [ "${AGENT_COMMIT_BLOCKED:-false}" = "true" ]; then
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
-if [ "${DECEPTION_AUDIT_FINDINGS:-false}" = "true" ]; then
+if [ "${DECEPTION_AUDIT_ERROR:-false}" = "true" ]; then
+    # A merge-base failure must never be reported as "no deception findings":
+    # the audit never ran, so has_findings/finding_count are unset. This is
+    # informational (deception-audit does not fail the build) but distinct
+    # from a clean result, so a human notices the audit did not run.
+    echo "::warning::deception-audit could not resolve the merge-base (or its file listing) and did not run. This is not a clean result. A human should investigate."
+elif [ "${DECEPTION_AUDIT_FINDINGS:-false}" = "true" ]; then
     echo "- deception-audit: WARNING — ${DECEPTION_FINDING_COUNT:-0} deception pattern(s) detected on this branch. This may indicate coordinated agent deception across sessions. Run \`./tools/ci/agent-protection/deception-audit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
     # Deception audit is informational, not a hard failure
 fi

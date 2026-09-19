@@ -380,6 +380,53 @@ run_case "py added test function allowed"      0 feature/x "$SECRET" py_append_t
 run_case "py fixture edit allowed"             0 feature/x "$SECRET" py_edit_fixture
 run_case "py new test file allowed"            0 feature/x "$SECRET" py_add_new_test_file
 
+# ── Merge-base, not base-branch tip ──────────────────────────────
+#
+# The branch only adds a new test method. Master, unrelated to the
+# branch, evolves the SAME file afterward (its own @TestDepth bump).
+# Comparing against master's current tip would make that master-side
+# edit look like the branch's own file diverged from an "existing"
+# state that never actually matched what the branch started from,
+# misattributing master's change to the agent. Comparing against the
+# merge-base (the commit the branch actually forked from) does not.
+
+run_merge_base_case() {
+    local name="$1" expected_exit="$2"
+    local dir
+    dir=$(mktemp -d)
+    make_repo "$dir" feature/x
+
+    append_test_method "$dir"
+    git -C "$dir" add -A
+    git -C "$dir" commit -qm "add a new test method"
+
+    git -C "$dir" checkout -q master
+    escalate_test_depth "$dir"
+    git -C "$dir" add -A
+    git -C "$dir" commit -qm "master: bump TestDepth independently of the branch"
+    git -C "$dir" checkout -q feature/x
+
+    local actual_exit=0 output
+    output=$(cd "$dir" && AR_AGENT_BYPASS_SECRET="$SECRET" \
+        GITHUB_HEAD_REF="" GITHUB_REF_NAME="" \
+        bash "$VALIDATE" master --require-production-changes 2>&1) || actual_exit=$?
+
+    if [ "$actual_exit" -eq "$expected_exit" ]; then
+        PASS=$((PASS + 1))
+        printf '  PASS  %s\n' "$name"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("$name (expected $expected_exit, got $actual_exit)")
+        printf '  FAIL  %s  expected=%d got=%d\n' "$name" "$expected_exit" "$actual_exit"
+        printf '%s\n' "$output" | sed 's/^/        /'
+    fi
+
+    rm -rf "$dir"
+}
+
+echo "RULE 1 — merge-base, not base-branch tip"
+run_merge_base_case "branch-only addition allowed despite master's own later edit" 0
+
 # ── RULE 2: substantive changes ─────────────────────────────────
 
 echo "RULE 2 — substantive changes"

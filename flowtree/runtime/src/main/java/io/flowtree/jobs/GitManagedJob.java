@@ -229,6 +229,20 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private GitCommitHandler commitHandler;
 
     /**
+     * Test-only hook: injects the result of a {@link GitCommitHandler} run
+     * without driving the full {@link #run()} lifecycle (clone, branch
+     * preparation, tampering detection), so status-reporting logic that
+     * reads {@link #commitHandler} — {@link #hasAllChangesDropped()},
+     * {@link #createEvent(Exception)} — can be exercised directly against a
+     * handler a test ran itself.
+     *
+     * @param commitHandler the handler whose result to report from
+     */
+    void setCommitHandlerForTesting(GitCommitHandler commitHandler) {
+        this.commitHandler = commitHandler;
+    }
+
+    /**
      * Default constructor for deserialization.
      */
     protected GitManagedJob() {
@@ -571,6 +585,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 taskId, getTaskString(),
                 error.getMessage(), error
             );
+        } else if (hasAllChangesDropped()) {
+            return JobCompletionEvent.degraded(taskId, getTaskString(),
+                "All changes were dropped by staging guardrails: "
+                    + String.join("; ", commitHandler.getSkippedFiles()));
         } else {
             return JobCompletionEvent.success(taskId, getTaskString());
         }
@@ -1099,6 +1117,81 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         return originalBranch;
     }
 
+    /**
+     * Returns a {@link FileStager.GitOperations} adapter bound to this job's
+     * own {@link #executeGit} and {@link #executeGitWithOutput}, for use by
+     * {@link FileStager#evaluateFiles} and the test-method-protection
+     * analysis it delegates to.
+     *
+     * @return the adapter
+     */
+    FileStager.GitOperations asGitOperations() {
+        return new FileStager.GitOperations() {
+            @Override
+            public int execute(String... args) throws IOException, InterruptedException {
+                return executeGit(args);
+            }
+
+            @Override
+            public String executeWithOutput(String... args) throws IOException, InterruptedException {
+                return executeGitWithOutput(args);
+            }
+        };
+    }
+
+    /**
+     * Runs the same file-staging guardrails {@link GitCommitHandler} will
+     * eventually use, against the working tree's current uncommitted
+     * changes, without staging anything. This lets an enforcement rule react
+     * to a guardrail verdict while the agent session can still respond to
+     * it — see {@code StagingSkipRule} and {@link EnforceChangesRule}.
+     *
+     * <p>Not {@code final} so tests can stub the result without a real git
+     * working tree, the same testability pattern
+     * {@code CodingAgentJob.hasUncommittedChanges()} already uses.</p>
+     *
+     * @return the staging result today's changes would produce: which files
+     *         would be staged, and which would be skipped and why
+     */
+    StagingResult previewStaging() {
+        List<String> changedFiles = GitOperations.getChangedFiles(workingDirectory);
+        if (changedFiles.isEmpty()) {
+            return new StagingResult(Collections.emptyList(), Collections.emptyList());
+        }
+
+        FileStagingConfig config = FileStagingConfig.builder()
+                .excludedPatterns(getAllExcludedPatterns())
+                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+                .protectTestFiles(protectTestFiles && GitCommitHandler.isSensitiveFileProtectionEnabled(this))
+                .baseBranch(baseBranch)
+                .maxFileSizeBytes(maxFileSizeBytes)
+                .build();
+        File workDir = workingDirectory != null ? new File(workingDirectory) : new File(".");
+        return new FileStager().evaluateFiles(changedFiles, config, workDir, asGitOperations());
+    }
+
+    /**
+     * Returns whether every file the agent changed was dropped by a staging
+     * guardrail: the working tree had changes to stage, but none of them
+     * survived {@link FileStager}'s guardrails, so nothing was committed.
+     *
+     * <p>This is different from "nothing to do" (an agent session that made
+     * no changes at all): here the agent DID produce a change, and it was
+     * silently discarded. A job in this state must never report
+     * {@link JobCompletionEvent.Status#SUCCESS} — see
+     * {@link #createEvent(Exception)} and
+     * {@link CodingAgentJobEvent#forJob}.</p>
+     *
+     * @return {@code true} when every changed file was skipped and nothing
+     *         was staged or committed
+     */
+    protected boolean hasAllChangesDropped() {
+        return commitHandler != null
+                && !commitHandler.getSkippedFiles().isEmpty()
+                && commitHandler.getStagedFiles().isEmpty()
+                && commitHandler.getCommitHash() == null;
+    }
+
     // ==================== Status Reporting ====================
 
     /**
@@ -1168,22 +1261,19 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     // ==================== Git Utilities ====================
 
     /**
-     * Applies git identity environment variables to a {@link ProcessBuilder}.
-     *
-     * <p>Uses {@code GIT_AUTHOR_NAME}, {@code GIT_AUTHOR_EMAIL},
-     * {@code GIT_COMMITTER_NAME}, and {@code GIT_COMMITTER_EMAIL} so the
-     * identity is scoped to the process and never persisted in the repo's
-     * local config.</p>
+     * Runs git and other subprocess commands for this job. Created lazily so
+     * that jobs which never issue a git command never pay for one.
      */
-    private void applyGitIdentity(ProcessBuilder pb) {
-        if (gitUserName != null && !gitUserName.isEmpty()) {
-            pb.environment().put("GIT_AUTHOR_NAME", gitUserName);
-            pb.environment().put("GIT_COMMITTER_NAME", gitUserName);
-        }
-        if (gitUserEmail != null && !gitUserEmail.isEmpty()) {
-            pb.environment().put("GIT_AUTHOR_EMAIL", gitUserEmail);
-            pb.environment().put("GIT_COMMITTER_EMAIL", gitUserEmail);
-        }
+    private GitCommandExecutor commandExecutor;
+
+    /**
+     * Returns the lazily-created {@link GitCommandExecutor} for this job.
+     *
+     * @return the command executor
+     */
+    private GitCommandExecutor commandExecutor() {
+        if (commandExecutor == null) commandExecutor = new GitCommandExecutor(this);
+        return commandExecutor;
     }
 
     /**
@@ -1296,13 +1386,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
-     * its exit code.
-     *
-     * <p>Standard error is merged into standard output so the full output is
-     * captured. If the exit code is non-zero, the output is logged as a
-     * warning. SSH host-key prompts are suppressed via
-     * {@code GIT_SSH_COMMAND}. Git identity environment variables are
-     * injected via {@link #applyGitIdentity(ProcessBuilder)}.</p>
+     * its exit code. Delegates to {@link GitCommandExecutor#executeGit}.
      *
      * @param args git sub-command and its arguments (e.g. {@code "commit", "-m", "msg"})
      * @return the process exit code (0 on success)
@@ -1310,43 +1394,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     int executeGit(String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add(GitOperations.resolveGitCommand());
-        command.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (workingDirectory != null) {
-            pb.directory(new File(workingDirectory));
-        }
-        pb.redirectErrorStream(true);
-        GitOperations.augmentPath(pb);
-
-        // Prevent SSH from hanging on unknown host keys (no TTY available)
-        pb.environment().put("GIT_SSH_COMMAND",
-                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
-        applyGitIdentity(pb);
-
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            warn("git " + String.join(" ", args) + " failed (exit " + exitCode + "): " + output.toString().trim());
-        }
-
-        return exitCode;
+        return commandExecutor().executeGit(args);
     }
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
-     * its combined standard-output and standard-error as a string.
+     * its combined standard-output and standard-error as a string. Delegates
+     * to {@link GitCommandExecutor#executeGitWithOutput}.
      *
      * <p>Unlike {@link #executeGit(String...)}, the exit code is not checked;
      * callers that need to detect failure should inspect the returned string
@@ -1358,39 +1412,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeGitWithOutput(String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add(GitOperations.resolveGitCommand());
-        command.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (workingDirectory != null) {
-            pb.directory(new File(workingDirectory));
-        }
-        pb.redirectErrorStream(true);
-        GitOperations.augmentPath(pb);
-
-        // Prevent SSH from hanging on unknown host keys (no TTY available)
-        pb.environment().put("GIT_SSH_COMMAND",
-                "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes");
-        applyGitIdentity(pb);
-
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        process.waitFor();
-        return output.toString();
+        return commandExecutor().executeGitWithOutput(args);
     }
 
     /**
-     * Executes an arbitrary command and returns its output.
-     * Used for non-git commands like {@code gh}.
+     * Executes an arbitrary command and returns its output. Used for
+     * non-git commands like {@code gh}. Delegates to
+     * {@link GitCommandExecutor#executeCommandWithOutput}.
      *
      * @param command the command and its arguments
      * @return the combined stdout and stderr of the command
@@ -1398,25 +1426,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeCommandWithOutput(String... command) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (workingDirectory != null) {
-            pb.directory(new File(workingDirectory));
-        }
-        pb.redirectErrorStream(true);
-        GitOperations.augmentPath(pb);
-
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        process.waitFor();
-        return output.toString();
+        return commandExecutor().executeCommandWithOutput(command);
     }
 
     // ==================== Encoding ====================

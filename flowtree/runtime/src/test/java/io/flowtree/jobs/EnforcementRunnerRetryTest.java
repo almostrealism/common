@@ -21,6 +21,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -57,6 +58,16 @@ public class EnforcementRunnerRetryTest extends TestSuiteBase {
 		TrackingJob() { super("t1", "do the work"); }
 
 		@Override boolean hasUncommittedChanges() { return hasChanges; }
+
+		// EnforceChangesRule reads previewStaging() (a real change that would
+		// survive staging), not hasUncommittedChanges(), so both must move
+		// together for these enforce-changes tests to stay meaningful.
+		@Override
+		StagingResult previewStaging() {
+			return hasChanges
+					? new StagingResult(Collections.singletonList("file.txt"), Collections.emptyList())
+					: new StagingResult(Collections.emptyList(), Collections.emptyList());
+		}
 
 		/** Marks the job as having uncommitted changes (call from {@link #executeSingleRun()}). */
 		protected void trackChange() { hasChanges = true; }

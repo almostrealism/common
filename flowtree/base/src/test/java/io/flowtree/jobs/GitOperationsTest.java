@@ -186,6 +186,44 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * Tests that {@link GitOperations#getChangedFiles} lists modified,
+     * untracked, and excluded-path files alike, unfiltered — the raw
+     * material {@code hasUncommittedChanges} and staging previews both
+     * build on.
+     */
+    @Test(timeout = 10000)
+    public void getChangedFilesListsEveryChangedPathUnfiltered() throws Exception {
+        Path repo = initRepo();
+        Path tracked = repo.resolve("tracked.txt");
+        Files.writeString(tracked, "v1");
+        gitRun(repo, "add", "tracked.txt");
+        gitRun(repo, "commit", "-m", "seed");
+
+        Files.writeString(tracked, "v2");
+        Files.writeString(repo.resolve("Untracked.java"), "class Untracked {}");
+        Files.createDirectories(repo.resolve("target"));
+        Files.writeString(repo.resolve("target/Foo.class"), "bytecode");
+
+        List<String> changed = GitOperations.getChangedFiles(repo.toString());
+        assertTrue("Modified tracked file must be listed", changed.contains("tracked.txt"));
+        assertTrue("Untracked file must be listed", changed.contains("Untracked.java"));
+        assertTrue("Excluded-path file must still be listed (unfiltered)",
+                changed.contains("target/Foo.class"));
+    }
+
+    /** A clean repository reports no changed files. */
+    @Test(timeout = 10000)
+    public void getChangedFilesEmptyOnCleanRepo() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("seed.txt"), "seed");
+        gitRun(repo, "add", "seed.txt");
+        gitRun(repo, "commit", "-m", "seed");
+
+        assertTrue("Clean repo must report no changed files",
+                GitOperations.getChangedFiles(repo.toString()).isEmpty());
+    }
+
+    /**
      * Tests that {@link GitOperations#listFilesOnRef} returns the files tracked
      * on a ref, filtered by suffix, and ignores untracked working-tree files.
      */

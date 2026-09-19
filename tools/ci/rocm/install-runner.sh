@@ -101,7 +101,7 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
     fi
 fi
 
-for cmd in podman systemctl; do
+for cmd in podman systemctl curl jq; do
     if ! command -v "${cmd}" > /dev/null 2>&1; then
         echo "ERROR: ${cmd} is not available." >&2
         exit 1
@@ -131,6 +131,27 @@ if [ "${DO_BUILD}" = 1 ]; then
         BUILD_ARGS+=(--build-arg "ROCM_OPENCL_LIB=${ROCM_OPENCL_LIB}")
         echo "  ICD will name: ${ROCM_OPENCL_LIB}"
     fi
+    # The runner release is resolved HERE and passed in, not left to the
+    # Dockerfile's own lookup. The Dockerfile can resolve it, but that lookup
+    # lives inside a RUN step whose inputs never change, so podman's layer cache
+    # replays the old result on every rebuild: an image "rebuilt" on 2026-09-08
+    # still carried 2.336.0 two weeks after 2.337.0 shipped. Passing the version
+    # as a build argument changes the layer's cache key whenever the release
+    # changes, so a rebuild actually picks it up. RUNNER_VERSION in .env pins it
+    # explicitly for a reproducible build.
+    RUNNER_VERSION=$(sed -n 's/^RUNNER_VERSION=//p' "${SCRIPT_DIR}/.env" | tail -1)
+    if [ -z "${RUNNER_VERSION}" ]; then
+        RUNNER_VERSION=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \
+            | jq -r '.tag_name // empty' | sed 's/^v//')
+    fi
+    if [ -z "${RUNNER_VERSION}" ]; then
+        echo "ERROR: could not determine the actions/runner release to install." >&2
+        echo "  Set RUNNER_VERSION in .env to pin one, or check network access to" >&2
+        echo "  api.github.com." >&2
+        exit 1
+    fi
+    BUILD_ARGS+=(--build-arg "RUNNER_VERSION=${RUNNER_VERSION}")
+    echo "  Runner release: ${RUNNER_VERSION}"
     podman build -t "${IMAGE}" "${BUILD_ARGS[@]}" "${SCRIPT_DIR}"
     echo
 fi
