@@ -524,9 +524,11 @@ as its first argument — you say which service you are registering, and the
 plist must carry exactly that `Label`; it cannot name some other daemon on
 the host and have you boot that out and overwrite it, and the label must be
 under `com.almostrealism.`, so no system service can be named at all. It
-copies the plist into a directory only root can enter (under `/var/root`,
-not the inherited `TMPDIR`, which sudo may have taken from your environment),
-lints that copy, and checks it before root acts on it: the service must run
+copies the plist into a fresh directory only root can enter (under
+`/private/var/root` — checked to be root's alone by ownership, mode and ACL,
+with any inherited ACL stripped from the new directory — not the inherited
+`TMPDIR`, which sudo may have taken from your environment), lints that copy,
+and checks it before root acts on it: the service must run
 as the account that owns the plist (`UserName` is required and must name the
 owner, `GroupName` if present must be the owner's primary group, and the
 owner must not be root), and only the keys a plain service needs are

@@ -247,7 +247,10 @@ sed -e "s|@AGENT_HOME@|${AGENT_HOME}|g" \
 registration_steps() {
     echo "  As an administrator, from a checkout of this repository that YOU own" >&2
     echo "  (not this one, and nothing under ${AGENT_HOME} — root must not run files $(id -un) can edit):" >&2
-    echo "    sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh ${LABEL} ${PLIST}" >&2
+    # The plist path comes from FLOWTREE_AGENT_HOME, which this script does
+    # not control; the administrator will paste this line into a root shell,
+    # so it is emitted shell-quoted rather than as raw text.
+    printf '    sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh %q %q\n' "${LABEL}" "${PLIST}" >&2
     echo "  Then run this script again (or re-run the deploy workflow)." >&2
 }
 

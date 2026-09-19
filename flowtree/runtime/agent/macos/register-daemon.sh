@@ -28,7 +28,8 @@
 #     label must be under com.almostrealism., so no system service can be
 #     named at all.
 #   - The plist is copied into a directory only root can reach (under
-#     /var/root) before anything reads it, so what is validated is what gets
+#     /private/var/root, held to root-only ownership, mode and ACL, with any
+#     inherited ACL stripped) before anything reads it, so what is validated is what gets
 #     installed, and nothing can be swapped in between.
 #   - The daemon must run as the account that owns the plist, with that
 #     account's primary group: UserName is required and must name the owner,
@@ -77,8 +78,9 @@ PLISTBUDDY="/usr/libexec/PlistBuddy"
 
 DAEMONS_DIR="/Library/LaunchDaemons"
 # Only root can enter this directory, so a file staged under it cannot be
-# replaced between validation and install by anyone else.
-STAGING_ROOT="/var/root"
+# replaced between validation and install by anyone else. The real path,
+# because /var is a symlink and the checks refuse symlinked components.
+STAGING_ROOT="/private/var/root"
 STOP_TIMEOUT_SECONDS=30
 ALLOWED_KEYS="Label UserName GroupName ProgramArguments EnvironmentVariables WorkingDirectory RunAtLoad KeepAlive ThrottleInterval StandardOutPath StandardErrorPath ProcessType Nice"
 LABEL_PREFIX="com.almostrealism."
@@ -130,7 +132,17 @@ done
 
 ADMIN_UID="${SUDO_UID:-0}"
 
-# Fails unless the path is a trusted component; the reason is printed.
+# `ls -e` lists ACL entries after the mode line as " N: <who> allow|deny
+# <rights,...>". Prints the allow entries on the path whose rights match
+# the given pattern; deny entries (the usual "everyone deny delete" on a
+# home directory) never count.
+acl_allows() {
+    ls -lde "$1" | awk -v rights="$2" 'NR > 1 && $3 == "allow" && $4 ~ ("(^|,)(" rights ")(,|$)")'
+}
+
+# Fails unless the path is a trusted component — owned by root or the
+# administrator, not writable by anyone else, by mode or by ACL, and not a
+# symlink; the reason is printed.
 trusted_path() {
     local path="$1" owner mode acl
     if [ -L "${path}" ]; then
@@ -147,32 +159,63 @@ trusted_path() {
         echo "${path} is group- or world-writable (mode ${mode})" >&2
         return 1
     fi
-    # `ls -e` lists ACL entries after the mode line as " N: <who> allow|deny
-    # <rights,...>". Any allow entry with a write-type right disqualifies the
-    # path; deny entries (the usual "everyone deny delete" on a home) do not.
-    acl="$(ls -lde "${path}" | awk 'NR > 1 && $3 == "allow" && $4 ~ /(^|,)('"${ACL_WRITE_RIGHTS}"')(,|$)/')"
+    acl="$(acl_allows "${path}" "${ACL_WRITE_RIGHTS}")"
     if [ -n "${acl}" ]; then
         echo "${path} has an ACL entry granting write access:${acl}" >&2
         return 1
     fi
 }
 
+# Stricter: root's and nobody else's — owner root, no group or world bits at
+# all, no ACL allow entry of any kind, not a symlink. For the directory the
+# plist is staged in, where even read access would let someone else learn
+# a temporary name to race.
+root_only_path() {
+    local path="$1" mode acl
+    if [ -L "${path}" ]; then
+        echo "${path} is a symlink" >&2
+        return 1
+    fi
+    if [ "$(stat -f '%u' "${path}")" != "0" ]; then
+        echo "${path} is not owned by root" >&2
+        return 1
+    fi
+    mode="$(stat -f '%Lp' "${path}")"
+    if [ $(( 8#${mode} & 8#077 )) -ne 0 ]; then
+        echo "${path} is reachable by others (mode ${mode})" >&2
+        return 1
+    fi
+    acl="$(acl_allows "${path}" ".*")"
+    if [ -n "${acl}" ]; then
+        echo "${path} has an ACL allow entry:${acl}" >&2
+        return 1
+    fi
+}
+
+# Runs a check on every prefix of an absolute path, / first. The path is
+# split on "/" alone — a component containing spaces is one component — so
+# what is checked is exactly what the kernel will open.
+check_path_components() {
+    local check="$1" path="$2" prefix="" component
+    local -a components
+    IFS='/' read -r -a components <<< "${path#/}"
+    "${check}" / || return 1
+    for component in "${components[@]}"; do
+        prefix="${prefix}/${component}"
+        "${check}" "${prefix}" || return 1
+    done
+}
+
 # The path as invoked (logical, so a symlinked component is seen as one and
 # refused, rather than resolved to wherever it points at this moment).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)/$(basename "${BASH_SOURCE[0]}")"
-PREFIX=""
-for component in / ${SELF//\// }; do
-    if [ "${component}" != "/" ]; then
-        PREFIX="${PREFIX}/${component}"
-    fi
-    if ! trusted_path "${PREFIX:-/}"; then
-        echo "ERROR: refusing to run from ${SELF}." >&2
-        echo "  Root must not execute a file the service account can edit or replace, and" >&2
-        echo "  every directory on the way to it counts. Run this script from a checkout" >&2
-        echo "  you own, under directories only you and root can write." >&2
-        exit 1
-    fi
-done
+if ! check_path_components trusted_path "${SELF}"; then
+    echo "ERROR: refusing to run from ${SELF}." >&2
+    echo "  Root must not execute a file the service account can edit or replace, and" >&2
+    echo "  every directory on the way to it counts. Run this script from a checkout" >&2
+    echo "  you own, under directories only you and root can write." >&2
+    exit 1
+fi
 
 # ── A private copy of the plist ────────────────────────────────────
 #
@@ -182,9 +225,11 @@ done
 # which sudo may have taken from the administrator's environment and which
 # is not this script's to vouch for — so nobody else can swap it either.
 
-if [ "$(stat -f '%u' "${STAGING_ROOT}")" != "0" ] \
-   || [ $(( 8#$(stat -f '%Lp' "${STAGING_ROOT}") & 8#077 )) -ne 0 ]; then
-    echo "ERROR: ${STAGING_ROOT} is not a root-only directory; refusing to stage there." >&2
+# The directories above the staging root need only be trusted (root-owned,
+# nobody else may write); the root itself must be root's alone.
+if ! check_path_components trusted_path "$(dirname "${STAGING_ROOT}")" \
+   || ! root_only_path "${STAGING_ROOT}"; then
+    echo "ERROR: ${STAGING_ROOT} is not a root-only directory on a trusted path; refusing to stage there." >&2
     exit 1
 fi
 
@@ -202,7 +247,14 @@ fi
 
 STAGING_DIR="$(mktemp -d "${STAGING_ROOT}/register-daemon.XXXXXX")"
 trap 'rm -rf "${STAGING_DIR}"' EXIT
+# A new directory can inherit ACL entries from its parent; strip any, set
+# the mode, then hold the directory to the same standard as its parent.
+chmod -N "${STAGING_DIR}"
 chmod 700 "${STAGING_DIR}"
+if ! root_only_path "${STAGING_DIR}"; then
+    echo "ERROR: the staging directory could not be made root-only; refusing to continue." >&2
+    exit 1
+fi
 STAGED="${STAGING_DIR}/${EXPECTED_LABEL}.plist"
 cp "${SOURCE}" "${STAGED}"
 chmod 600 "${STAGED}"
