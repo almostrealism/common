@@ -494,6 +494,7 @@ with the command for this step, because worker cannot perform it:
 ```bash
 # from a checkout of this repository that YOU own — not worker's
 sudo /path/to/your/common/flowtree/runtime/agent/macos/register-daemon.sh \
+    com.almostrealism.flowtree-agent \
     /Users/worker/flowtree-agent/conf/com.almostrealism.flowtree-agent.plist
 ```
 
@@ -512,14 +513,25 @@ under `/tmp` does not. The script needs nothing beyond what ships with macOS
 directories, so it works under `sudo`'s sanitised PATH and consults nothing
 another account could place on yours.
 
+"Owned by you" is checked by ownership, mode bits *and* ACLs on every path
+component — macOS ACLs can grant write access with the mode bits clear, so
+an `allow … write` (or delete, append, add_file, …) entry for anyone
+disqualifies the path just as a group write bit does.
+
 The plist is worker's, and it is treated that way. `register-daemon.sh`
-(`flowtree/runtime/agent/macos/register-daemon.sh`) copies it to a root-owned
-temporary file, lints that copy, and checks it before root acts on it: the
-service must run as the account that owns the plist (`UserName` is required
-and must name the owner, `GroupName` if present must be the owner's primary
-group, and the owner must not be root), and only the keys a plain service
-needs are accepted. A plist can register a service that runs as whoever wrote
-it, and nothing else — no more than that account could already do with a
+(`flowtree/runtime/agent/macos/register-daemon.sh`) takes the service label
+as its first argument — you say which service you are registering, and the
+plist must carry exactly that `Label`; it cannot name some other daemon on
+the host and have you boot that out and overwrite it, and the label must be
+under `com.almostrealism.`, so no system service can be named at all. It
+copies the plist into a directory only root can enter (under `/var/root`,
+not the inherited `TMPDIR`, which sudo may have taken from your environment),
+lints that copy, and checks it before root acts on it: the service must run
+as the account that owns the plist (`UserName` is required and must name the
+owner, `GroupName` if present must be the owner's primary group, and the
+owner must not be root), and only the keys a plain service needs are
+accepted. A plist can register a service that runs as whoever wrote it, and
+nothing else — no more than that account could already do with a
 LaunchAgent, minus the login-session requirement. It then installs the copy
 under `/Library/LaunchDaemons` as root:wheel 644, bootstraps it into the
 system domain, and prints the service's state and pid. When a service with
@@ -607,6 +619,7 @@ PLIST
 # as an administrator, from a checkout YOU own — the same script, and the
 # same checks, as for the agent: the plist must run the service as worker
 sudo /path/to/your/common/flowtree/runtime/agent/macos/register-daemon.sh \
+    com.almostrealism.deploy-agent-runner \
     /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist
 tail -f /Users/worker/actions-runner-deploy-agent/runner.log
 ```
