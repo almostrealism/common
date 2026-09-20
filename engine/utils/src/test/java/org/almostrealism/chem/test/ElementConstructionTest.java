@@ -42,19 +42,21 @@ public class ElementConstructionTest extends TestSuiteBase {
 	 * Counts the occupied electron slots across all shells of an element by
 	 * asking each subshell for its spin-up and spin-down electrons. This avoids
 	 * constructing the {@link org.almostrealism.chem.Electrons} absorption model,
-	 * which enumerates excitation permutations and is far more expensive.
+	 * which enumerates excitation permutations and is far more expensive. A
+	 * proton count of zero is passed to {@link SubShell#getElectron(Spin, int)}
+	 * since only occupancy is being checked here, not excitation energy levels,
+	 * which would otherwise be computed for every counted electron.
 	 *
 	 * @param e the element to inspect
 	 * @return the total number of electrons across every shell
 	 */
 	private static int countElectrons(Element e) {
-		int protons = e.getAtomicNumber();
 		int total = 0;
 
 		for (Shell shell : e.getShells()) {
 			for (SubShell sub : shell.subShells()) {
-				if (sub.getElectron(Spin.Up, protons) != null) total++;
-				if (sub.getElectron(Spin.Down, protons) != null) total++;
+				if (sub.getElectron(Spin.Up, 0) != null) total++;
+				if (sub.getElectron(Spin.Down, 0) != null) total++;
 			}
 		}
 
@@ -79,6 +81,7 @@ public class ElementConstructionTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void everyElementHasElectronCountEqualToAtomicNumber() {
 		for (Element e : Element.values()) {
+			e.construct();
 			Assert.assertEquals(
 					"Electron count for " + e + " (Z=" + e.getAtomicNumber() + ") must equal its atomic number",
 					e.getAtomicNumber(), countElectrons(e));
