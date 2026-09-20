@@ -129,6 +129,54 @@ if [ ! -f "$SECRETS_DIR/shared-secret" ]; then
   echo "Shared secret written to $SECRETS_DIR/shared-secret"
 fi
 
+# ── Fleet monitoring: credentials, data directories, bind address ──
+#
+# fleet-db and fleet-grafana (see docker-compose.yml) take their passwords
+# from files, never from an environment variable with an empty default, so
+# the files have to exist before compose can start them. Generated once,
+# like the shared secret above. The Postgres password is alphanumeric so it
+# can be pasted into a URL without escaping.
+
+for secret in fleet-db-password grafana-admin-password; do
+  if [ ! -f "$SECRETS_DIR/$secret" ]; then
+    echo "Generating $secret..."
+    mkdir -p "$SECRETS_DIR"
+    openssl rand -hex 24 > "$SECRETS_DIR/$secret"
+    chmod 600 "$SECRETS_DIR/$secret"
+    echo "Written to $SECRETS_DIR/$secret"
+  fi
+done
+mkdir -p /Users/Shared/flowtree/fleet-db /Users/Shared/flowtree/grafana
+
+# The fleet services publish only on the tailnet address. Detect it unless
+# the operator set FLEET_BIND_ADDR (127.0.0.1 is the value for a machine
+# without Tailscale, where nothing else should reach them anyway). No
+# address at all is a hard stop: the compose file refuses to start the
+# stack without one, and silently binding to every interface is exactly
+# what the fleet design forbids.
+if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+  if command -v tailscale >/dev/null 2>&1; then
+    FLEET_BIND_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+  fi
+  if [ -z "${FLEET_BIND_ADDR:-}" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+    FLEET_BIND_ADDR="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1 || true)"
+  fi
+  if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+    # Tailscale's CGNAT range, 100.64.0.0/10, is the only 100.x address a
+    # host normally carries.
+    FLEET_BIND_ADDR="$(ifconfig 2>/dev/null | awk '/inet 100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./{print $2; exit}' || true)"
+  fi
+fi
+if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+  echo "ERROR: no tailnet address found for the fleet services." >&2
+  echo "  Set FLEET_BIND_ADDR to this host's Tailscale IPv4 address (or to 127.0.0.1 on a host" >&2
+  echo "  without Tailscale) and run again. The fleet-db and fleet-grafana ports are never" >&2
+  echo "  published on every interface." >&2
+  exit 1
+fi
+export FLEET_BIND_ADDR
+echo "Fleet services will bind to ${FLEET_BIND_ADDR}"
+
 # ── Maven build (needed by both controller and agent images) ───────
 
 NEEDS_BUILD=false

@@ -56,6 +56,7 @@ runs alongside this pool and receives jobs labeled `platform=macos`.
 | `flowtree-controller` | `flowtree/runtime/controller/Dockerfile` | Java server that accepts agent connections (:7766), exposes a low-level job submission API (:7780), integrates with Slack, and dispatches `ClaudeCodeJob` instances to agents |
 | **`ar-manager`** | `tools/mcp/manager/` | **Preferred entrypoint.** Python MCP server that exposes FlowTree to Claude Code agents, Claude mobile, CI pipelines, and any other HTTP client. Handles authentication, rate limiting, GitHub integration, and memory. |
 | `ar-memory` | `tools/mcp/memory/` | Semantic vector store that persists agent memories and decisions across sessions |
+| `fleet-db`, `fleet-grafana` | `tools/fleet/`, `flowtree/runtime/controller/grafana/` | Runner-fleet monitoring: the Postgres store every runner host's collector and the GitHub poller write to, and the Grafana capacity dashboard over it. Bound to the tailnet address only; see `tools/fleet/README.md`. |
 | Agent containers | `flowtree/runtime/agent/` | Each agent connects outbound to the controller, receives `ClaudeCodeJob` instances, and executes Claude Code prompts inside a Docker container with its own git workspace |
 
 ### ar-manager is the preferred entrypoint
@@ -102,9 +103,10 @@ machines with no inbound firewall rules required.
 ```
 
 This script (run from the repo root):
-1. Generates an `ar-manager` shared secret if one doesn't exist
-2. Runs `mvn package` on the flowtree module
-3. Builds and starts `flowtree-controller`, `ar-memory`, and `ar-manager` via Docker Compose
+1. Generates an `ar-manager` shared secret, and the `fleet-db`/`fleet-grafana` passwords, if they don't exist
+2. Detects the host's tailnet address for the fleet services (or takes `FLEET_BIND_ADDR`)
+3. Runs `mvn package` on the flowtree module
+4. Builds and starts the controller stack — `flowtree-controller`, `ar-memory`, `ar-tracker`, `ar-manager`, `fleet-db`, `fleet-grafana` — via Docker Compose
 
 ### Rebuild a single service
 

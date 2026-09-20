@@ -59,6 +59,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from tools.fleet import attribution
+from tools.fleet.credentials import read_secret_file
+from tools.fleet.store import FleetStore
 
 
 def build_record(
@@ -524,20 +526,91 @@ def discover_macos_agent_pid(
     return parse_launchctl_list(result.stdout, label)
 
 
-def sample_and_write(
-    host: str, jsonl_path: str, agent_domain_target: Optional[str] = None, disk_path: str = "/",
+DEFAULT_PROC_CPU_THRESHOLD = 5.0
+DEFAULT_PROC_RSS_THRESHOLD_MB = 100.0
+
+
+def filter_procs(
+    record: Dict,
+    cpu_threshold: float = DEFAULT_PROC_CPU_THRESHOLD,
+    rss_threshold_mb: float = DEFAULT_PROC_RSS_THRESHOLD_MB,
 ) -> Dict:
-    """Take one live sample and append it to the local JSONL fallback file.
+    """Drop the uninteresting ``other`` processes from a record's ``procs`` list.
+
+    :func:`build_record` classifies and totals every process on the host —
+    it has to, or ``class_totals`` would be wrong — but writing every one
+    of them to the JSONL fallback is what turns a sample into ~100 KB on a
+    busy host (hundreds of idle system processes), or hundreds of MB a day.
+    The shell monitor this collector generalises keeps only processes above
+    a CPU or memory threshold; this does the same, keeping every process
+    already attributed to ``runner`` or ``agent`` (the ones the attribution
+    exists to show) and any ``other`` process above either threshold.
+    ``class_totals`` and ``host_metrics`` are left exactly as computed, so
+    the filter changes what the fallback file lists, never what it counts.
+    """
+    kept = [
+        p for p in record.get("procs", [])
+        if p.get("class") != attribution.OTHER
+        or (p.get("cpu") or 0.0) >= cpu_threshold
+        or (p.get("rss_mb") or 0.0) >= rss_threshold_mb
+    ]
+    filtered = dict(record)
+    filtered["procs"] = kept
+    return filtered
+
+
+def store_record(store: FleetStore, record: Dict) -> None:
+    """Upsert one record's ``host_sample`` and ``class_sample`` rows into *store*.
+
+    One transaction per sample, so a reader never sees a host row without
+    its class rows. The per-process list is not stored — the store holds
+    the per-host and per-class series the capacity question needs; the
+    process detail stays in the local JSONL.
+    """
+    metrics = record["host_metrics"]
+    load1, load5, load15 = record.get("load") or (None, None, None)
+    with store.transaction():
+        store.upsert_host_sample(
+            record["ts"], record["host"],
+            cpu_pct=metrics.get("cpu_pct"),
+            mem_used_mb=metrics.get("mem_used_mb"),
+            mem_total_mb=metrics.get("mem_total_mb"),
+            disk_used_gb=metrics.get("disk_used_gb"),
+            disk_total_gb=metrics.get("disk_total_gb"),
+            load1=load1, load5=load5, load15=load15,
+            thermal_c=metrics.get("thermal_c"),
+            throttled=metrics.get("throttled"),
+        )
+        for cls, totals in record["class_totals"].items():
+            store.upsert_class_sample(record["ts"], record["host"], cls, totals["cpu_pct"], totals["rss_mb"])
+
+
+def sample_and_write(
+    host: str,
+    jsonl_path: str,
+    agent_domain_target: Optional[str] = None,
+    disk_path: str = "/",
+    store: Optional[FleetStore] = None,
+    cpu_threshold: float = DEFAULT_PROC_CPU_THRESHOLD,
+    rss_threshold_mb: float = DEFAULT_PROC_RSS_THRESHOLD_MB,
+) -> Dict:
+    """Take one live sample, append it to the local JSONL file, and write it to *store* if given.
 
     *agent_domain_target* is forwarded to :func:`discover_macos_agent_pid` —
-    set it to the agent's launchd domain (e.g. ``"gui/501"``) when the
-    collector runs under a separate identity from the agent (see that
+    set it to the agent's launchd domain (``"system"`` for the LaunchDaemon
+    install.sh registers, or ``"gui/501"`` for a per-user LaunchAgent) when
+    the collector runs under a separate identity from the agent (see that
     function's docstring); leave it ``None`` when they share an identity.
 
     *disk_path* is forwarded to :func:`collect_disk_usage`. The design
     defines disk capacity on the runner work volume, not necessarily the root
     filesystem — a host with a separate work disk must pass that mount point
     explicitly, or disk utilization is reported for the wrong filesystem.
+
+    The JSONL line is written first and unconditionally: it is the fallback
+    the design requires, and a store that is unreachable must not cost the
+    sample. A failure writing to *store* propagates to the caller, which
+    decides whether to reconnect (see :func:`run_sampling_loop`).
     """
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ps_text = _run_ps()
@@ -556,7 +629,9 @@ def sample_and_write(
         disk_used_gb=disk_used_gb,
         disk_total_gb=disk_total_gb,
     )
-    write_jsonl(record, jsonl_path)
+    write_jsonl(filter_procs(record, cpu_threshold, rss_threshold_mb), jsonl_path)
+    if store is not None:
+        store_record(store, record)
     return record
 
 
@@ -572,6 +647,10 @@ def run_sampling_loop(
     agent_domain_target: Optional[str] = None,
     disk_path: str = "/",
     iterations: Optional[int] = None,
+    store_url: Optional[str] = None,
+    cpu_threshold: float = DEFAULT_PROC_CPU_THRESHOLD,
+    rss_threshold_mb: float = DEFAULT_PROC_RSS_THRESHOLD_MB,
+    open_store=FleetStore.from_url,
 ) -> None:
     """Sample forever (or *iterations* times), one call to :func:`sample_and_write` per cycle.
 
@@ -595,21 +674,55 @@ def run_sampling_loop(
     under an external scheduler (e.g. a systemd timer or cron entry) that
     itself invokes one short-lived process per sample rather than keeping a
     long-running service alive.
+
+    *store_url*, when given, is where each sample is also written
+    (:func:`store_record`; see :meth:`tools.fleet.store.FleetStore.from_url`
+    for the forms). The store is opened lazily and reopened after any
+    failure: the central database restarts whenever the controller stack is
+    redeployed, and a collector that died — or stopped sampling — every time
+    that happened would leave holes in exactly the data the redeploy is
+    meant to be observed through. A failed write is reported on stderr, the
+    connection is dropped, the JSONL line (already written) is the record of
+    that sample, and the next cycle tries to connect again. Samples that
+    could not be stored are not replayed from the JSONL; the fallback file is
+    for an operator to consult, not a queue.
     """
     last_log_date: Optional[str] = None
     count = 0
+    store: Optional[FleetStore] = None
     while iterations is None or count < iterations:
         now = datetime.now(timezone.utc)
         current_date = now.strftime("%Y-%m-%d")
         if current_date != last_log_date:
             cleanup_old_jsonl(log_dir, retention_days)
             last_log_date = current_date
-        sample_and_write(
-            host, daily_jsonl_path(log_dir, now), agent_domain_target=agent_domain_target, disk_path=disk_path,
-        )
+        if store_url is not None and store is None:
+            try:
+                store = open_store(store_url)
+                store.init_schema()
+            except Exception as exc:  # noqa: BLE001 — any failure means "not this cycle"
+                print("fleet collector: store unavailable (%s); sampling to JSONL only" % exc, file=sys.stderr)
+                store = None
+        try:
+            sample_and_write(
+                host, daily_jsonl_path(log_dir, now),
+                agent_domain_target=agent_domain_target, disk_path=disk_path, store=store,
+                cpu_threshold=cpu_threshold, rss_threshold_mb=rss_threshold_mb,
+            )
+        except Exception as exc:  # noqa: BLE001 — the loop must outlive one bad write
+            if store is None:
+                raise
+            print("fleet collector: store write failed (%s); reconnecting next cycle" % exc, file=sys.stderr)
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001 — the connection is already gone
+                pass
+            store = None
         count += 1
         if iterations is None or count < iterations:
             time.sleep(interval_seconds)
+    if store is not None:
+        store.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -634,13 +747,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--disk-path", default="/", help="Filesystem path to sample disk usage for (default: /).")
     parser.add_argument("--once", action="store_true", help="Take a single sample and exit, instead of looping.")
+    parser.add_argument(
+        "--store-url", default=None,
+        help="Also write each sample to this store: sqlite:///path or postgresql://user:pass@host/db.",
+    )
+    parser.add_argument(
+        "--store-url-file", default=None,
+        help="Read --store-url from this file (mode 600) so the database credential never appears on a command line.",
+    )
+    parser.add_argument(
+        "--proc-cpu-threshold", type=float, default=DEFAULT_PROC_CPU_THRESHOLD,
+        help="Keep an 'other' process in the JSONL only above this CPU%% (default: %.1f)." % DEFAULT_PROC_CPU_THRESHOLD,
+    )
+    parser.add_argument(
+        "--proc-rss-threshold-mb", type=float, default=DEFAULT_PROC_RSS_THRESHOLD_MB,
+        help="Keep an 'other' process in the JSONL only above this RSS in MB (default: %.0f)." % DEFAULT_PROC_RSS_THRESHOLD_MB,
+    )
     return parser
+
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     """Parse *argv* and run :func:`run_sampling_loop` (or a single sample with ``--once``)."""
     args = build_parser().parse_args(argv)
     os.makedirs(args.log_dir, exist_ok=True)
+    store_url = args.store_url
+    if args.store_url_file:
+        store_url = read_secret_file(args.store_url_file)
+    # The store and the thresholds are passed only when the operator set
+    # them, so a plain JSONL invocation reaches run_sampling_loop exactly as
+    # it always did and takes that function's own defaults.
+    optional: Dict = {}
+    if store_url is not None:
+        optional["store_url"] = store_url
+    if args.proc_cpu_threshold != DEFAULT_PROC_CPU_THRESHOLD:
+        optional["cpu_threshold"] = args.proc_cpu_threshold
+    if args.proc_rss_threshold_mb != DEFAULT_PROC_RSS_THRESHOLD_MB:
+        optional["rss_threshold_mb"] = args.proc_rss_threshold_mb
     run_sampling_loop(
         args.host,
         args.log_dir,
@@ -649,6 +792,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         agent_domain_target=args.agent_domain_target,
         disk_path=args.disk_path,
         iterations=1 if args.once else None,
+        **optional,
     )
     return 0
 

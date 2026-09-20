@@ -34,6 +34,7 @@ import argparse
 import sys
 from typing import List, Optional, Sequence
 
+from tools.fleet.credentials import read_secret_file
 from tools.fleet.store import FleetStore
 
 
@@ -94,7 +95,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="fleetctl",
         description="Read-only visibility into the GitHub Actions runner fleet.",
     )
-    parser.add_argument("--db", default="fleet.db", help="Path to the sqlite store (default: fleet.db).")
+    parser.add_argument(
+        "--db", default="fleet.db",
+        help="The store: a sqlite path (default: fleet.db), sqlite:///path, or postgresql://... for the central store.",
+    )
+    parser.add_argument(
+        "--db-url-file", default=None,
+        help="Read --db from this file (mode 600), so a Postgres credential never appears on a command line.",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     list_parser = subparsers.add_parser("list", help="List runners and their current state.")
@@ -109,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     """Parse *argv*, open the sqlite store, dispatch to ``list``/``status``, and return an exit code."""
     args = build_parser().parse_args(argv)
-    store = FleetStore(args.db)
+    store = FleetStore.from_url(read_secret_file(args.db_url_file) if args.db_url_file else args.db)
     try:
         store.init_schema()
         if args.command == "list":
