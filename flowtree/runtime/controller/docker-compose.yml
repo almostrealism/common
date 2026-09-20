@@ -197,9 +197,10 @@ services:
   # The images are pinned through FLEET_DB_IMAGE / FLEET_GRAFANA_IMAGE so an
   # operator can hold a database major version (a Postgres data directory is
   # not forward-compatible across major versions) without editing this file.
-  # FLEET_DB_IMAGE's own default pins a major version rather than `latest`,
-  # so an unattended redeploy that never set the variable cannot pull a new
-  # major against the existing data directory and fail to start.
+  # Both variables' own defaults pin a specific version rather than `latest`,
+  # so an unattended redeploy that never set either variable cannot pull an
+  # unreviewed new release — of the database or of the dashboard — against
+  # the existing data/provisioning without an operator choosing to.
 
   fleet-db:
     image: ${FLEET_DB_IMAGE:-postgres:16}
@@ -232,7 +233,7 @@ services:
     restart: unless-stopped
 
   fleet-grafana:
-    image: ${FLEET_GRAFANA_IMAGE:-grafana/grafana:latest}
+    image: ${FLEET_GRAFANA_IMAGE:-grafana/grafana:11.3.0}
     ports:
       - "${FLEET_BIND_ADDR:?set FLEET_BIND_ADDR to the tailnet address (rebuild.sh does)}:${FLEET_GRAFANA_PORT:-3000}:3000"
     volumes:

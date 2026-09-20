@@ -100,6 +100,14 @@ class StoreUrlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             FleetStore.from_url("   ")
 
+    def test_sqlite_scheme_with_empty_path_is_rejected(self):
+        """`sqlite:///` strips down to an empty path, which
+        `sqlite3.connect("")` would silently accept as a throwaway temporary
+        database instead of the caller's intended file - same failure mode
+        as an empty URL, reached through a different malformed input."""
+        with self.assertRaises(ValueError):
+            FleetStore.from_url("sqlite:///")
+
     def test_postgres_url_reports_missing_driver_clearly(self):
         with mock.patch.dict("sys.modules", {"psycopg": None}):
             with self.assertRaises(RuntimeError) as ctx:
@@ -377,6 +385,46 @@ class CredentialFileTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 credentials.read_secret_file(path)
 
+    def test_refuses_a_mode_600_file_with_an_extended_acl_on_macos(self):
+        """Mode 600 alone does not guarantee owner-only access on macOS: a
+        filesystem ACL can grant another account read access while the mode
+        bits stay 0600. `ls -ld` marks such a file with a trailing `+`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "token")
+            with open(path, "w") as handle:
+                handle.write("secret\n")
+            os.chmod(path, 0o600)
+            fake_result = mock.Mock(stdout="-rw-------+  1 user  staff  0 Jan  1 00:00 token\n")
+            with mock.patch.object(credentials.sys, "platform", "darwin"):
+                with mock.patch.object(credentials.subprocess, "run", return_value=fake_result):
+                    with self.assertRaises(PermissionError):
+                        credentials.read_secret_file(path)
+
+    def test_allows_a_mode_600_file_with_no_acl_on_macos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "token")
+            with open(path, "w") as handle:
+                handle.write("secret\n")
+            os.chmod(path, 0o600)
+            fake_result = mock.Mock(stdout="-rw-------  1 user  staff  0 Jan  1 00:00 token\n")
+            with mock.patch.object(credentials.sys, "platform", "darwin"):
+                with mock.patch.object(credentials.subprocess, "run", return_value=fake_result):
+                    self.assertEqual("secret", credentials.read_secret_file(path))
+
+    def test_acl_check_is_a_no_op_off_macos(self):
+        """The ACL probe must never run (and never raise) on the Linux hosts
+        CI runs on - a `+` marker in `ls -ld` output means something
+        different there (SELinux context), and there's no CI coverage for it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "token")
+            with open(path, "w") as handle:
+                handle.write("secret\n")
+            os.chmod(path, 0o600)
+            with mock.patch.object(credentials.sys, "platform", "linux"):
+                with mock.patch.object(credentials.subprocess, "run") as run:
+                    self.assertEqual("secret", credentials.read_secret_file(path))
+                    run.assert_not_called()
+
 
 class RejectPostgresUrlOnCommandLineTests(unittest.TestCase):
 
@@ -397,6 +445,14 @@ class RejectPostgresUrlOnCommandLineTests(unittest.TestCase):
     def test_a_postgres_scheme_url_is_rejected(self):
         with self.assertRaises(ValueError):
             credentials.reject_postgres_url_on_command_line("postgres://u:p@h/db", "--db")
+
+    def test_an_uppercase_scheme_is_rejected(self):
+        with self.assertRaises(ValueError):
+            credentials.reject_postgres_url_on_command_line("POSTGRESQL://u:p@h/db", "--db")
+
+    def test_a_leading_whitespace_scheme_is_rejected(self):
+        with self.assertRaises(ValueError):
+            credentials.reject_postgres_url_on_command_line("  postgresql://u:p@h/db", "--db")
 
 
 class PollLoopTests(unittest.TestCase):
@@ -498,6 +554,24 @@ class PollLoopTests(unittest.TestCase):
                     "--store-url", "postgresql://u:p@h/db", "--once",
                 ])
 
+    def test_main_rejects_a_postgres_store_url_even_when_store_url_file_is_also_given(self):
+        """The file value wins for the actual connection, but a Postgres
+        URL must never be tolerated on the command line just because a
+        --store-url-file was also supplied - otherwise it still reaches
+        `ps`. The guard must fire before the (nonexistent) file is read."""
+        with tempfile.TemporaryDirectory() as tmp:
+            token = os.path.join(tmp, "token")
+            with open(token, "w") as handle:
+                handle.write("tok")
+            os.chmod(token, 0o600)
+            with self.assertRaises(ValueError):
+                github_poller.main([
+                    "--repo", "o/r", "--token-file", token,
+                    "--store-url", "postgresql://u:p@h/db",
+                    "--store-url-file", os.path.join(tmp, "does-not-exist"),
+                    "--once",
+                ])
+
 
 class CollectorMainCredentialGuardTests(unittest.TestCase):
 
@@ -507,12 +581,32 @@ class CollectorMainCredentialGuardTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 collector.main(["--log-dir", log_dir, "--store-url", "postgresql://u:p@h/db", "--once"])
 
+    def test_main_rejects_a_postgres_store_url_even_when_store_url_file_is_also_given(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with self.assertRaises(ValueError):
+                collector.main([
+                    "--log-dir", log_dir,
+                    "--store-url", "postgresql://u:p@h/db",
+                    "--store-url-file", os.path.join(tmp, "does-not-exist"),
+                    "--once",
+                ])
+
 
 class CliMainCredentialGuardTests(unittest.TestCase):
 
     def test_main_rejects_a_postgres_db_argument_given_directly(self):
         with self.assertRaises(ValueError):
             cli.main(["--db", "postgresql://u:p@h/db", "status"])
+
+    def test_main_rejects_a_postgres_db_argument_even_when_db_url_file_is_also_given(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                cli.main([
+                    "--db", "postgresql://u:p@h/db",
+                    "--db-url-file", os.path.join(tmp, "does-not-exist"),
+                    "status",
+                ])
 
 
 if __name__ == "__main__":

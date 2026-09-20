@@ -797,10 +797,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     os.makedirs(args.log_dir, exist_ok=True)
     store_url = args.store_url
+    reject_postgres_url_on_command_line(store_url, "--store-url")
     if args.store_url_file:
         store_url = read_secret_file(args.store_url_file)
-    else:
-        reject_postgres_url_on_command_line(store_url, "--store-url")
     # The store and the thresholds are passed only when the operator set
     # them, so a plain JSONL invocation reaches run_sampling_loop exactly as
     # it always did and takes that function's own defaults.

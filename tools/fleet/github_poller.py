@@ -560,10 +560,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         build_parser().error("one of --store-url or --store-url-file is required")
     token = read_secret_file(args.token_file)
     store_url = args.store_url
+    reject_postgres_url_on_command_line(store_url, "--store-url")
     if args.store_url_file:
         store_url = read_secret_file(args.store_url_file)
-    else:
-        reject_postgres_url_on_command_line(store_url, "--store-url")
     stored = run_poll_loop(
         args.repo, token, store_url,
         interval_seconds=args.interval_seconds,

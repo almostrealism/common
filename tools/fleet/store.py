@@ -149,17 +149,22 @@ class FleetStore:
         treated as a sqlite file, so existing ``--db fleet.db`` style
         arguments keep working.
 
-        An empty (or whitespace-only) *url* is rejected rather than falling
-        through to the bare-path case: ``sqlite3.connect("")`` opens a
-        temporary, on-disk-but-unnamed database that silently disappears on
-        close, so a blank credential file or environment variable would make
-        every write look successful while ingesting nothing into the actual
-        store.
+        An empty (or whitespace-only) *url*, and a ``sqlite:///`` URL with
+        nothing after the prefix, are both rejected rather than falling
+        through to ``sqlite3.connect("")``: that call opens a temporary,
+        on-disk-but-unnamed database that silently disappears on close, so a
+        blank credential file or malformed URL would make every write look
+        successful while ingesting nothing into the actual store.
         """
         if not url or not url.strip():
             raise ValueError("empty store URL (use sqlite:///path or postgresql://...)")
         if url.startswith("sqlite:///"):
-            return cls.sqlite(url[len("sqlite:///"):])
+            path = url[len("sqlite:///"):]
+            if not path:
+                raise ValueError(
+                    "empty sqlite path in store URL %r (use sqlite:///path or sqlite:///:memory:)" % url
+                )
+            return cls.sqlite(path)
         if url.startswith(("postgresql://", "postgres://")):
             return cls.postgres(url)
         if "://" in url:

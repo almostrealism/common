@@ -21,21 +21,27 @@ from files, and a file that is group- or world-readable would hand the
 credential to every account on the host, including the one that runs CI
 jobs. The check is a hard failure, not a warning.
 
-Known gap: :func:`read_secret_file` checks the POSIX mode bits only. On
-macOS (the collector/poller's actual deployment target), a filesystem ACL
-can grant another account read access while the mode bits still read
-``0600`` — ``os.stat`` does not surface ACL entries, and inspecting them
-portably from Python needs platform-specific tooling this module does not
-have a way to exercise in CI (which runs on Linux). The primary defense
-against that gap is procedural, not this check: the design requires the
+``os.stat``'s mode bits are not the whole story on macOS (the collector/
+poller's actual deployment target): a filesystem ACL can grant another
+account read access while the mode bits still read ``0600``, and ``os.stat``
+does not surface ACL entries at all. :func:`read_secret_file` additionally
+shells out to ``ls -ld`` there, since a file carrying an ACL is marked with a
+trailing ``+`` on the permission column (`ls(1)`) regardless of which grants
+the ACL holds — inspecting the ACL's actual entries needs platform-specific
+tooling this module does not have a portable way to exercise from Python, but
+detecting that one is present at all needs nothing more than that flag. This
+check is a no-op on other platforms (including the Linux hosts CI runs on),
+where the procedural defense remains primary: the design requires the
 collector and poller to run as an account that executes neither CI jobs nor
-coding-agent jobs (see ``tools/fleet/README.md``), so an ACL grant would
-have to specifically target that dedicated account to matter.
+coding-agent jobs (see ``tools/fleet/README.md``), so an ACL grant would have
+to specifically target that dedicated account to matter.
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from typing import Optional
 
 
@@ -50,12 +56,34 @@ def reject_postgres_url_on_command_line(url: Optional[str], flag: str) -> None:
     exempt: it carries no credential, so keeping it available directly on
     the command line costs nothing and keeps local/test usage simple.
     """
-    if url is not None and url.startswith(("postgresql://", "postgres://")):
+    if url is not None and url.strip().lower().startswith(("postgresql://", "postgres://")):
         raise ValueError(
             "%s must not be a Postgres URL: it would expose the database credential in "
             "this process's command line (visible to every account via `ps`); use the "
             "corresponding *-file flag to read it from a file instead" % flag
         )
+
+
+def _has_extended_acl(path: str) -> bool:
+    """Return whether *path* carries a filesystem ACL beyond its POSIX mode bits.
+
+    Only meaningful on macOS, where ``ls -ld`` marks a file with a trailing
+    ``+`` on the permission column when an ACL is present, whatever that
+    ACL's entries actually grant (see the module docstring). Always false
+    elsewhere, including the Linux hosts CI runs on, where no such marker
+    exists and the mode-bit check in :func:`read_secret_file` is the whole
+    story.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        result = subprocess.run(
+            ["ls", "-ld", path], capture_output=True, text=True, check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    fields = result.stdout.split(None, 1)
+    return bool(fields) and fields[0].endswith("+")
 
 
 def read_secret_file(path: str) -> str:
@@ -70,6 +98,12 @@ def read_secret_file(path: str) -> str:
     mode = os.stat(path).st_mode & 0o777
     if mode & 0o077:
         raise PermissionError("%s is readable by others (mode %o); it must be mode 600" % (path, mode))
+    if _has_extended_acl(path):
+        raise PermissionError(
+            "%s carries a filesystem ACL in addition to its POSIX mode bits; remove it so "
+            "mode 600 is a complete guarantee of owner-only access (`chmod -N %s` on macOS)"
+            % (path, path)
+        )
     with open(path, "r", encoding="utf-8") as handle:
         contents = handle.read().strip()
     if not contents:

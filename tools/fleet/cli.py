@@ -120,8 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     """Parse *argv*, open the sqlite store, dispatch to ``list``/``status``, and return an exit code."""
     args = build_parser().parse_args(argv)
-    if not args.db_url_file:
-        reject_postgres_url_on_command_line(args.db, "--db")
+    reject_postgres_url_on_command_line(args.db, "--db")
     store = FleetStore.from_url(read_secret_file(args.db_url_file) if args.db_url_file else args.db)
     try:
         store.init_schema()

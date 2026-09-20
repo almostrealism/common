@@ -141,8 +141,19 @@ fi
 # stack (see the `AGENTS_ONLY` guard below), so a host with no tailnet
 # address configured must still be able to rebuild the agent pool alone
 # without this block's hard stop on a missing FLEET_BIND_ADDR.
+#
+# Also skipped when specific, non-fleet services were named: `rebuild.sh
+# flowtree-controller` never touches fleet-db/fleet-grafana, so a host with
+# no tailnet address must still be able to rebuild that unrelated service
+# without this block's hard stop, and compose must not interpolate the
+# fleet port variables for an invocation that never selects those services.
 
-if [ "${AGENTS_ONLY}" = false ]; then
+FLEET_SERVICES_SELECTED=false
+if [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "fleet-db|fleet-grafana"; then
+  FLEET_SERVICES_SELECTED=true
+fi
+
+if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   for secret in fleet-db-password grafana-admin-password; do
     if [ ! -f "$SECRETS_DIR/$secret" ]; then
       echo "Generating $secret..."
