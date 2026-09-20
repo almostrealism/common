@@ -82,6 +82,10 @@ run_case() {
     echo "placeholder" > "$tmp_secrets/${SEED_SECRETS_FILE}"
     chmod 600 "$tmp_secrets/${SEED_SECRETS_FILE}"
   fi
+  if [ -n "${SEED_EMPTY_SECRETS_FILE:-}" ]; then
+    : > "$tmp_secrets/${SEED_EMPTY_SECRETS_FILE}"
+    chmod 600 "$tmp_secrets/${SEED_EMPTY_SECRETS_FILE}"
+  fi
 
   env -i PATH="$MOCK_BIN:$PATH" HOME="${HOME:-/tmp}" \
       SECRETS_DIR="$tmp_secrets" \
@@ -115,7 +119,7 @@ run_case() {
   fi
 
   rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$out"
-  unset SEED_DB_FILE SEED_SECRETS_FILE
+  unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE
 }
 
 echo "rebuild.sh fleet-setup tests"
@@ -142,6 +146,19 @@ run_case "a missing secret with already-initialized data aborts instead of regen
     FLEET_BIND_ADDR=100.64.1.2
 
 run_case "a missing secret with an empty data directory generates a fresh one" 0 \
+    "Generating fleet-db-password" "" \
+    fleet-db -- \
+    FLEET_BIND_ADDR=100.64.1.2
+
+SEED_EMPTY_SECRETS_FILE="fleet-db-password"
+SEED_DB_FILE="PG_VERSION"
+run_case "a zero-byte secret with already-initialized data aborts instead of treating it as present" 1 \
+    "contains initialized state" "Generating fleet-db-password" \
+    fleet-db -- \
+    FLEET_BIND_ADDR=100.64.1.2
+
+SEED_EMPTY_SECRETS_FILE="fleet-db-password"
+run_case "a zero-byte secret with an empty data directory regenerates a fresh one" 0 \
     "Generating fleet-db-password" "" \
     fleet-db -- \
     FLEET_BIND_ADDR=100.64.1.2

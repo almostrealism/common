@@ -58,6 +58,13 @@ from typing import Any, Iterator, List, Optional, Sequence, Tuple
 
 from tools.fleet import schema
 
+#: Default libpq connect timeout, in seconds, for :meth:`FleetStore.postgres`.
+#: Without a bound, a down controller host or an unreachable tailnet route
+#: can block ``psycopg.connect`` indefinitely, which stalls the collector's
+#: periodic local JSONL fallback and the poller's retry loop instead of
+#: letting either recover and try again on the next cycle.
+DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS = 10
+
 
 class Dialect:
     """What differs between the two backends: placeholder and ``ts`` type."""
@@ -128,6 +135,10 @@ class FleetStore:
         is explicit and identical to the sqlite path — ``BEGIN``,
         ``SAVEPOINT`` and ``COMMIT`` are issued as statements by
         :meth:`transaction`, never implicitly by the driver.
+
+        The connection attempt is bounded by
+        :data:`DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS` unless *dsn* already
+        sets its own ``connect_timeout``.
         """
         try:
             import psycopg  # noqa: F401 — optional dependency, needed only here
@@ -136,7 +147,10 @@ class FleetStore:
                 "a Postgres fleet store needs the 'psycopg' package "
                 "(pip install 'psycopg[binary]'); sqlite needs nothing"
             ) from exc
-        connection = psycopg.connect(dsn, autocommit=True)
+        connect_kwargs = {"autocommit": True}
+        if "connect_timeout" not in dsn.lower():
+            connect_kwargs["connect_timeout"] = DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS
+        connection = psycopg.connect(dsn, **connect_kwargs)
         return cls(dialect=Dialect(Dialect.POSTGRES), connection=connection)
 
     @classmethod

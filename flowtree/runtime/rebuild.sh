@@ -160,7 +160,12 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do
     secret="${secret_pair%%:*}"
     data_dir="${secret_pair#*:}"
-    if [ ! -f "$SECRETS_DIR/$secret" ]; then
+    # `-s`, not `-f`: a zero-byte file (e.g. from an interrupted write) must
+    # be treated exactly like a missing one, not like a present-but-blank
+    # password. Postgres's POSTGRES_PASSWORD_FILE rejects an empty file
+    # outright, so falling through to the chmod-only path below would leave
+    # the service unable to start instead of regenerating or failing closed.
+    if [ ! -s "$SECRETS_DIR/$secret" ]; then
       # A non-empty data directory with no matching secret file means the
       # service already initialized with a password we no longer have:
       # Postgres and Grafana both bake the credential into their state at

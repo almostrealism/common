@@ -24,11 +24,12 @@ the test job has no database and no ``psycopg``.
 import os
 import stat
 import tempfile
+import types
 import unittest
 from unittest import mock
 
 from tools.fleet import cli, collector, credentials, github_poller, schema
-from tools.fleet.store import Dialect, FleetStore
+from tools.fleet.store import DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS, Dialect, FleetStore
 
 
 class DialectTests(unittest.TestCase):
@@ -113,6 +114,45 @@ class StoreUrlTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 FleetStore.from_url("postgresql://u:p@h/db")
         self.assertIn("psycopg", str(ctx.exception))
+
+    def _fake_psycopg(self, recorded):
+        """A stand-in for the optional ``psycopg`` module whose ``connect``
+        records its kwargs instead of opening a real connection."""
+
+        class FakeConn:
+            def close(self):
+                pass
+
+        def fake_connect(dsn, **kwargs):
+            recorded["dsn"] = dsn
+            recorded["kwargs"] = kwargs
+            return FakeConn()
+
+        module = types.ModuleType("psycopg")
+        module.connect = fake_connect
+        return module
+
+    def test_postgres_connect_applies_a_default_connect_timeout(self):
+        """Without a bound, a down controller host or an unreachable tailnet
+        route can block `psycopg.connect` indefinitely, which would stall the
+        collector's periodic local JSONL fallback instead of letting it run."""
+        recorded = {}
+        with mock.patch.dict("sys.modules", {"psycopg": self._fake_psycopg(recorded)}):
+            with FleetStore.postgres("postgresql://u:p@h/db"):
+                pass
+        self.assertEqual(
+            DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS, recorded["kwargs"]["connect_timeout"]
+        )
+        self.assertTrue(recorded["kwargs"]["autocommit"])
+
+    def test_postgres_connect_respects_an_explicit_connect_timeout_in_the_dsn(self):
+        """A caller-supplied `connect_timeout` in the DSN must not be
+        clobbered by the default."""
+        recorded = {}
+        with mock.patch.dict("sys.modules", {"psycopg": self._fake_psycopg(recorded)}):
+            with FleetStore.postgres("postgresql://u:p@h/db?connect_timeout=30"):
+                pass
+        self.assertNotIn("connect_timeout", recorded["kwargs"])
 
     def test_postgres_store_issues_explicit_transactions_and_percent_placeholders(self):
         """The Postgres path is exercised against a recording fake connection."""
