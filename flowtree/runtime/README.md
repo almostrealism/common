@@ -64,8 +64,10 @@ runs alongside this pool and receives jobs labeled `platform=macos`.
 low-level diagnostics. Everything that submits jobs, registers workstreams, or
 queries status should go through ar-manager:
 
-- **Claude mobile / external AI** — configure ar-manager's public Tailscale
-  Funnel URL as a remote MCP server.
+- **Claude mobile / external AI** — configure ar-manager's public URL (the
+  Cloudflare tunnel, or a Tailscale Funnel) as a remote MCP server. The same
+  public URL is what the controller hands every agent job as
+  `AR_MANAGER_URL`, because agents run where the tailnet is not visible.
 - **Claude Code agents** — MCP tools (`workstream_submit_task`,
   `workstream_get_status`, etc.) are served by ar-manager.
 - **CI pipelines** — `tools/ci/submit-agent-job.sh` calls ar-manager's HTTP
