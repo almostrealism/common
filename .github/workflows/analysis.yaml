@@ -1131,14 +1131,12 @@ jobs:
   #
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
-  # below reports a notice or warning and exits 0.
-  # TODO(review): "every failure path... exits 0" is no longer true for the
-  # "Fetch base branch" and "Verify registration script integrity" steps
-  # added below — neither has `continue-on-error` or its own failure
-  # handling, so e.g. a transient `git fetch origin master` network error
-  # fails the step (GitHub Actions default `-eo pipefail`) and the whole job
-  # goes red, contradicting this comment. See review-followup memory on
-  # workstream 3e52f5d6-13d4-45b2-93a7-a776d5af7045 for detail.
+  # below reports a notice or warning and exits 0. "Fetch base branch"
+  # wraps its `git fetch` so a transient network error is reported via
+  # ::warning:: and `failed=true` rather than failing the step; "Verify
+  # registration script integrity" treats that flag as unverifiable and
+  # skips registration (fail closed) instead of falling through to the
+  # "script is new on master" trust-as-is branch.
   register-workstream:
     needs: [changes, build]
     if: >-
@@ -1155,7 +1153,12 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch base branch
-        run: git fetch origin master:refs/remotes/origin/master --no-tags
+        id: fetch_base
+        run: |
+          if ! git fetch origin master:refs/remotes/origin/master --no-tags; then
+            echo "::warning::failed to fetch origin/master — the script-integrity check below cannot verify tools/ci/register-workstream.sh against the trusted copy and will fail closed."
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Determine branch context
         id: ctx
@@ -1193,9 +1196,19 @@ jobs:
           # attached. That would defeat the very check this step exists
           # to perform.
           BRANCH: ${{ steps.ctx.outputs.branch }}
+          # Passed via env for the same reason as BRANCH: the value is an
+          # output of an earlier step and must not be interpolated as a
+          # GitHub Actions expression into the shell script body.
+          FETCH_FAILED: ${{ steps.fetch_base.outputs.failed }}
         run: |
           if echo "$BRANCH" | grep -qE '^ci/'; then
             echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          if [ "$FETCH_FAILED" = "true" ]; then
+            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
