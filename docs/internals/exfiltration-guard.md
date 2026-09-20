@@ -142,6 +142,15 @@ State these plainly; do not assume the guard closes them.
   so it was never a bare-word match. `LWP::` was narrowed by this same
   effort — it used to match the bare word `LWP` and was tightened to
   require the `::` module-path form alongside the other entries above.
+  `new WebSocket(...)` is the one entry that tolerates a space before the
+  parenthesis, because real code was found using that spacing and the
+  no-space rule let it through; a spaced call is matched only when the
+  argument opens with a quote, which is what a string-literal destination
+  looks like and a parenthetical remark such as "the new WebSocket (RFC
+  6455) protocol" does not. A spaced call whose destination is a variable
+  (`new WebSocket (url)`) still passes, on the same accepted-cost basis as
+  the rest of this list — there is no regex-only way to tell that apart
+  from prose once both the space and the literal are gone.
   A handful of other
   entries have no natural "qualified" form at all (`XMLHttpRequest`,
   `HttpClient`, `URLConnection`, `child_process`, `node-fetch`,
