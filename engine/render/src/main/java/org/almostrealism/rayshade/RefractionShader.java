@@ -37,6 +37,8 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.raytrace.LightingEngineAggregator;
 import org.almostrealism.space.AbstractSurface;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -272,8 +274,11 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		// if (entering) d.multiplyBy(-1.0);
 		Producer<Ray> r = new DynamicProducerForMemoryData<>(args -> new Ray(point, d));
 		
-		// TODO(review): getAllSurfaces() puts the primary surface first; the prior Scene.combineSurfaces call put it last.
-		Iterable<Curve<PackedCollection>> allSurfaces = (Iterable<Curve<PackedCollection>>) p.getAllSurfaces();
+		// LightingEngineAggregator ranks candidates by distance and breaks ties with a
+		// strict "<" comparison, so the primary surface must stay last here to match
+		// the tie order relied upon before this candidate list was assembled inline.
+		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>(Arrays.asList(otherSurfaces));
+		allSurfaces.add(surface);
 		List<Light> allLights = p.getAllLights();
 		
 //		if (Math.random() < 0.00001 && !entering) System.out.println(r.getDirection() + " " + lastRay);
