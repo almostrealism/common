@@ -27,6 +27,7 @@
  * hidden activation [1, hidden_dim] as the SiLU-gated gate path (w1) times the linear up path
  * (w3), both reading the normalized vector. Stage 3 dense(w2) projects back to [1, dim].
  */
+// TODO(review): "dim" is not a declared parameter here; this throws "Undefined identifier: 'dim'" if swiglu_ffn is ever called as a nested user-layer.
 layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsilon: float)
         -> [1, dim] {
     rmsnorm(norm_weights, epsilon)

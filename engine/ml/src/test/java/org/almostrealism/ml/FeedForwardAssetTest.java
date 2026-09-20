@@ -91,7 +91,21 @@ public class FeedForwardAssetTest extends TestSuiteBase implements FeedForwardFe
 	 */
 	@Test(timeout = 300000)
 	public void swigluAssetMatchesJavaAssembly() {
-		Weights w = new Weights(4, 8, 7L);
+		assertAssetMatchesJavaAssembly(new Weights(4, 8, 7L));
+	}
+
+	/**
+	 * The same asset-vs-Java-assembly comparison as {@link #swigluAssetMatchesJavaAssembly}, for the
+	 * wider hidden configuration ({@code dim=6, hidden=16}), so a shape-specific divergence between
+	 * the asset and the assembly it replaced would not go uncaught.
+	 */
+	@Test(timeout = 300000)
+	public void swigluAssetMatchesJavaAssemblyWideHidden() {
+		assertAssetMatchesJavaAssembly(new Weights(6, 16, 13L));
+	}
+
+	/** Builds the block both ways for {@code w} and asserts the asset and Java assembly agree. */
+	private void assertAssetMatchesJavaAssembly(Weights w) {
 		double[] asset = runAsset(w);
 		double[] java = run(javaAssembly(w), w);
 		log("java assembly -> " + literal(java));
