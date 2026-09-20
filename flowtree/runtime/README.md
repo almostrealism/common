@@ -190,12 +190,21 @@ deployed by the same workflow that rebuilds the pool:
 # as the account the agent should run as
 cp agent/macos/agent.env.example ~/flowtree-agent/agent.env   # then fill it in
 ./agent/macos/install.sh
+# first time only: it stops and prints the one `sudo` command (register-daemon.sh,
+# run from a checkout the administrator owns) that registers the service;
+# run it as an administrator, then run install.sh again
 ```
 
-`install.sh` builds the JARs, installs them under `~/flowtree-agent`, loads
-`com.almostrealism.flowtree-agent` into launchd (`KeepAlive`, so it survives
-crashes and reboots), and fails unless the new process connects to the
-controller. `tools/ci/macos/README.md` covers the runner that lets CI do this.
+`install.sh` builds the JARs, installs them under `~/flowtree-agent`, and
+restarts `com.almostrealism.flowtree-agent` — a LaunchDaemon in the system
+domain that runs as this account (`KeepAlive`, so it survives crashes and
+reboots with nobody logged in) — then fails unless the new process connects to
+the controller. Registering the daemon is a one-time administrator step; every
+deploy after it is unprivileged, which is what lets CI do it. It is a daemon
+rather than a LaunchAgent because a service account's own launchd domain is
+not there after a reboot and, on a host where the account is only reached via
+`su`, refuses bootstraps outright. `tools/ci/macos/README.md` ("Deploying the
+native macOS agent") covers the runner and the registration.
 
 ---
 
@@ -255,6 +264,7 @@ flowtree/
     macos/                  # Native macOS agent (launchd service)
       install.sh
       run.sh
+      register-daemon.sh    # root-only registration of the LaunchDaemon (agent or runner); run from an admin-owned checkout
       com.almostrealism.flowtree-agent.plist
       agent.env.example
   bin/                      # Bare-metal startup scripts
