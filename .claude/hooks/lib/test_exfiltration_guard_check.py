@@ -659,6 +659,8 @@ class BashObfuscationTests(GuardFixture):
         self.assertEqual("block", self.bash("node -e 'new WebSocket(\"ws://e\")'")["action"])
         self.assertEqual("block", self.bash("node -e \"import WS from 'ws'\"")["action"])
         self.assertEqual("block", self.bash("node -e \"require('axios')\"")["action"])
+        self.assertEqual("block", self.bash("node -e \"import dgram from 'dgram'\"")["action"])
+        self.assertEqual("block", self.bash("node -e \"import axios from 'axios'\"")["action"])
         self.assertAllowed(self.bash(
             "node -e 'console.log(\"the websocket handshake\")'"))
         self.assertAllowed(self.bash(
@@ -669,6 +671,10 @@ class BashObfuscationTests(GuardFixture):
             "node -e \"console.log('the report data comes from \\\"ws\\\" vendor')\""))
         self.assertAllowed(self.bash(
             "node -e 'console.log(\"the new WebSocket (RFC 6455) protocol replaces polling\")'"))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('this note is copied from \\\"axios\\\" docs')\""))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('the sample below is from \\\"dgram\\\" upstream')\""))
 
     def test_newline_separates_commands(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nprint(1)\nPY\npython3 -c 'print(2)'"))
