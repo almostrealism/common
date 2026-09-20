@@ -76,7 +76,18 @@ services:
     environment:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
-      - AR_MANAGER_URL=https://mac-studio.taild0f87.ts.net
+      # The ar-manager address handed to every agent job's MCP config, so it
+      # has to be reachable from wherever agents run — the Docker pool and
+      # the native macOS agent alike, neither of which can see the tailnet.
+      # This is the public Cloudflare tunnel to ar-manager (see
+      # /etc/cloudflared/config.yml on the host); authorization is
+      # ar-manager's own bearer check on the job's HMAC temp token, which
+      # does not depend on the hostname. The Tailscale serve/funnel address
+      # used before depended on the Tailscale.app client's serve
+      # configuration and went dark when the host's Tailscale client was
+      # replaced, taking every agent's ar-manager tools with it. Override
+      # with AR_MANAGER_URL for a host that fronts ar-manager differently.
+      - AR_MANAGER_URL=${AR_MANAGER_URL:-https://mcp.almostrealism.ai}
       - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
     depends_on:
       ar-memory:
