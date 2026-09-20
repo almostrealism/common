@@ -766,7 +766,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-
 def main(argv: Optional[List[str]] = None) -> int:
     """Parse *argv* and run :func:`run_sampling_loop` (or a single sample with ``--once``)."""
     args = build_parser().parse_args(argv)
