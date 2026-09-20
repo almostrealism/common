@@ -63,6 +63,12 @@ import java.util.List;
  * <p>This is implemented via modulo arithmetic on an internal counter,
  * allowing periodic purging without external timing logic.</p>
  *
+ * <p><b>Compaction is not throttled.</b> The frequency gate above applies only to advancing
+ * the begin cursor. The compaction step (see Operation, step 5) is evaluated on every
+ * invocation regardless of {@code frequency}, including calls where throttling skipped the
+ * purge itself; it fires whenever the end cursor has reached the full-series index. This
+ * interaction has not been verified under throttled (frequency &lt; 1.0) operation.</p>
+ *
  * <h2>Usage</h2>
  * <p>This class is typically not used directly. Instead, use {@link AcceleratedTimeSeries#purge(Producer, double)}:</p>
  * <pre>{@code
