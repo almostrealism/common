@@ -27,7 +27,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tools.fleet import collector, credentials, github_poller, schema
+from tools.fleet import cli, collector, credentials, github_poller, schema
 from tools.fleet.store import Dialect, FleetStore
 
 
@@ -78,6 +78,27 @@ class StoreUrlTests(unittest.TestCase):
     def test_unknown_scheme_is_rejected(self):
         with self.assertRaises(ValueError):
             FleetStore.from_url("mysql://x")
+
+    def test_unknown_scheme_error_never_includes_the_credential(self):
+        """A mistyped Postgres DSN is exactly the shape an unsupported-scheme
+        URL takes; the error must name only the scheme, never echo the whole
+        URL (and its embedded password) into a message a caller might log."""
+        with self.assertRaises(ValueError) as ctx:
+            FleetStore.from_url("mysql://user:hunter2@host/db")
+        self.assertIn("mysql", str(ctx.exception))
+        self.assertNotIn("hunter2", str(ctx.exception))
+        self.assertNotIn("user:hunter2@host", str(ctx.exception))
+
+    def test_empty_url_is_rejected_rather_than_opening_a_throwaway_sqlite_db(self):
+        """`sqlite3.connect("")` silently opens an unnamed temporary database
+        that vanishes on close - an empty URL (e.g. from a blank credential
+        file) must fail loudly instead of looking like a working store."""
+        with self.assertRaises(ValueError):
+            FleetStore.from_url("")
+
+    def test_whitespace_only_url_is_rejected(self):
+        with self.assertRaises(ValueError):
+            FleetStore.from_url("   ")
 
     def test_postgres_url_reports_missing_driver_clearly(self):
         with mock.patch.dict("sys.modules", {"psycopg": None}):
@@ -242,7 +263,7 @@ class SamplingLoopStoreTests(unittest.TestCase):
         def sample(*args, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
-                raise RuntimeError("connection lost")
+                raise collector.StoreWriteError("connection lost")
             return {}
 
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(collector, "sample_and_write", side_effect=sample):
@@ -256,6 +277,68 @@ class SamplingLoopStoreTests(unittest.TestCase):
              mock.patch.object(collector, "sample_and_write", side_effect=RuntimeError("ps exploded")):
             with self.assertRaises(RuntimeError):
                 collector.run_sampling_loop("h", tmp, interval_seconds=0, iterations=1)
+
+    def test_a_non_store_failure_propagates_and_does_not_trigger_reconnect(self):
+        """Only `StoreWriteError` should be treated as "the store connection
+        needs reopening" - a collection or JSONL bug (any other exception)
+        must not be misreported as a store outage, even when a store is
+        configured and open."""
+
+        def open_store(url):
+            return FleetStore()
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(collector, "sample_and_write", side_effect=RuntimeError("collection bug")):
+            with self.assertRaises(RuntimeError):
+                collector.run_sampling_loop(
+                    "h", tmp, interval_seconds=0, iterations=2,
+                    store_url="sqlite:///:memory:", open_store=open_store,
+                )
+
+    def test_loop_closes_the_store_when_init_schema_fails_after_a_successful_open(self):
+        """`open_store` succeeding but `init_schema` failing must not leak
+        the just-opened connection - regression test for a leak where the
+        exception handler discarded `store` without closing it first."""
+        closed = []
+
+        class FailingStore:
+            def init_schema(self):
+                raise RuntimeError("schema init failed")
+
+            def close(self):
+                closed.append(True)
+
+        def open_store(url):
+            return FailingStore()
+
+        with tempfile.TemporaryDirectory() as tmp, self._patch_sampling() as sample:
+            collector.run_sampling_loop(
+                "h", tmp, interval_seconds=0, iterations=1, store_url="sqlite:///:memory:", open_store=open_store,
+            )
+        self.assertEqual([True], closed)
+        self.assertIsNone(sample.call_args.kwargs["store"])
+
+
+class SampleAndWriteStoreErrorTests(unittest.TestCase):
+    """`sample_and_write` must translate a store-write failure into
+    `StoreWriteError` (what `run_sampling_loop` catches for its reconnect
+    logic) while still having already written the JSONL fallback line."""
+
+    def test_store_write_failure_raises_store_write_error_after_jsonl_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "x.jsonl")
+            broken_store = mock.Mock()
+            broken_store.transaction.side_effect = RuntimeError("db gone")
+            with mock.patch.object(collector, "_run_ps", return_value=""), \
+                 mock.patch.object(collector, "_run_uptime_loads", return_value=[None, None, None]), \
+                 mock.patch.object(collector, "discover_macos_agent_pid", return_value=None), \
+                 mock.patch.object(collector, "collect_host_cpu_pct", return_value=None), \
+                 mock.patch.object(collector, "collect_host_memory_mb", return_value=(None, None)), \
+                 mock.patch.object(collector, "collect_disk_usage", return_value=(None, None)):
+                with self.assertRaises(collector.StoreWriteError):
+                    collector.sample_and_write("h", path, store=broken_store)
+            with open(path, "r", encoding="utf-8") as handle:
+                self.assertEqual(1, len(handle.readlines()))
 
 
 class CredentialFileTests(unittest.TestCase):
@@ -276,6 +359,44 @@ class CredentialFileTests(unittest.TestCase):
             os.chmod(path, 0o644)
             with self.assertRaises(PermissionError):
                 credentials.read_secret_file(path)
+
+    def test_refuses_an_empty_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "token")
+            open(path, "w").close()
+            os.chmod(path, 0o600)
+            with self.assertRaises(ValueError):
+                credentials.read_secret_file(path)
+
+    def test_refuses_a_whitespace_only_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "token")
+            with open(path, "w") as handle:
+                handle.write("   \n\n")
+            os.chmod(path, 0o600)
+            with self.assertRaises(ValueError):
+                credentials.read_secret_file(path)
+
+
+class RejectPostgresUrlOnCommandLineTests(unittest.TestCase):
+
+    def test_none_is_allowed(self):
+        credentials.reject_postgres_url_on_command_line(None, "--store-url")  # must not raise
+
+    def test_a_sqlite_url_is_allowed(self):
+        credentials.reject_postgres_url_on_command_line("sqlite:///fleet.db", "--store-url")
+
+    def test_a_bare_sqlite_path_is_allowed(self):
+        credentials.reject_postgres_url_on_command_line("fleet.db", "--db")
+
+    def test_a_postgresql_scheme_url_is_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            credentials.reject_postgres_url_on_command_line("postgresql://u:p@h/db", "--store-url")
+        self.assertIn("--store-url", str(ctx.exception))
+
+    def test_a_postgres_scheme_url_is_rejected(self):
+        with self.assertRaises(ValueError):
+            credentials.reject_postgres_url_on_command_line("postgres://u:p@h/db", "--db")
 
 
 class PollLoopTests(unittest.TestCase):
@@ -322,6 +443,31 @@ class PollLoopTests(unittest.TestCase):
         self.assertEqual(1, stored)
         self.assertEqual(2, len(opened))
 
+    def test_closes_the_store_when_init_schema_fails_after_a_successful_open(self):
+        """`open_store` succeeding but `init_schema` failing must not leak
+        the just-opened connection - regression test for a leak where the
+        exception handler discarded `store` without closing it first."""
+        closed = []
+
+        class FailingStore:
+            def init_schema(self):
+                raise RuntimeError("schema init failed")
+
+            def close(self):
+                closed.append(True)
+
+        def open_store(url):
+            return FailingStore()
+
+        def poll(repo, token, store, max_runs=None):
+            self.fail("poll must not run when the store failed to initialize")
+
+        stored = github_poller.run_poll_loop(
+            "o/r", "tok", "sqlite:///:memory:", interval_seconds=0, iterations=1, open_store=open_store, poll=poll,
+        )
+        self.assertEqual(0, stored)
+        self.assertEqual([True], closed)
+
     def test_main_requires_a_store_and_a_private_token_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             token = os.path.join(tmp, "token")
@@ -335,6 +481,38 @@ class PollLoopTests(unittest.TestCase):
             self.assertEqual(0, rc)
             self.assertEqual(("o/r", "tok", "sqlite:///:memory:"), loop.call_args.args)
             self.assertEqual(1, loop.call_args.kwargs["iterations"])
+
+    def test_main_rejects_a_postgres_store_url_given_directly(self):
+        """A Postgres credential must only reach the poller through
+        --store-url-file - --store-url itself is rejected for a
+        postgresql://... value, since it would otherwise appear in this
+        process's command line (visible to every account via `ps`)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            token = os.path.join(tmp, "token")
+            with open(token, "w") as handle:
+                handle.write("tok")
+            os.chmod(token, 0o600)
+            with self.assertRaises(ValueError):
+                github_poller.main([
+                    "--repo", "o/r", "--token-file", token,
+                    "--store-url", "postgresql://u:p@h/db", "--once",
+                ])
+
+
+class CollectorMainCredentialGuardTests(unittest.TestCase):
+
+    def test_main_rejects_a_postgres_store_url_given_directly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with self.assertRaises(ValueError):
+                collector.main(["--log-dir", log_dir, "--store-url", "postgresql://u:p@h/db", "--once"])
+
+
+class CliMainCredentialGuardTests(unittest.TestCase):
+
+    def test_main_rejects_a_postgres_db_argument_given_directly(self):
+        with self.assertRaises(ValueError):
+            cli.main(["--db", "postgresql://u:p@h/db", "status"])
 
 
 if __name__ == "__main__":

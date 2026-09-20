@@ -34,7 +34,7 @@ import argparse
 import sys
 from typing import List, Optional, Sequence
 
-from tools.fleet.credentials import read_secret_file
+from tools.fleet.credentials import read_secret_file, reject_postgres_url_on_command_line
 from tools.fleet.store import FleetStore
 
 
@@ -97,11 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--db", default="fleet.db",
-        help="The store: a sqlite path (default: fleet.db), sqlite:///path, or postgresql://... for the central store.",
+        help="The store: a sqlite path (default: fleet.db) or sqlite:///path. "
+             "A postgresql://... URL is rejected here — use --db-url-file instead, so the credential "
+             "it carries never appears on this process's command line.",
     )
     parser.add_argument(
         "--db-url-file", default=None,
-        help="Read --db from this file (mode 600), so a Postgres credential never appears on a command line.",
+        help="Read --db from this file (mode 600); the only way to point this CLI at the central "
+             "Postgres store, so a Postgres credential never appears on a command line.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -117,6 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     """Parse *argv*, open the sqlite store, dispatch to ``list``/``status``, and return an exit code."""
     args = build_parser().parse_args(argv)
+    if not args.db_url_file:
+        reject_postgres_url_on_command_line(args.db, "--db")
     store = FleetStore.from_url(read_secret_file(args.db_url_file) if args.db_url_file else args.db)
     try:
         store.init_schema()

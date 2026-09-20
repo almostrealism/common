@@ -148,13 +148,31 @@ class FleetStore:
         ``postgresql://`` opens Postgres. A bare path with no scheme is
         treated as a sqlite file, so existing ``--db fleet.db`` style
         arguments keep working.
+
+        An empty (or whitespace-only) *url* is rejected rather than falling
+        through to the bare-path case: ``sqlite3.connect("")`` opens a
+        temporary, on-disk-but-unnamed database that silently disappears on
+        close, so a blank credential file or environment variable would make
+        every write look successful while ingesting nothing into the actual
+        store.
         """
+        if not url or not url.strip():
+            raise ValueError("empty store URL (use sqlite:///path or postgresql://...)")
         if url.startswith("sqlite:///"):
             return cls.sqlite(url[len("sqlite:///"):])
         if url.startswith(("postgresql://", "postgres://")):
             return cls.postgres(url)
         if "://" in url:
-            raise ValueError("unsupported store URL %r (use sqlite:///path or postgresql://...)" % url)
+            # The scheme alone is reported, never the full *url*: an
+            # unrecognised scheme is exactly the shape a mistyped Postgres
+            # DSN takes (e.g. "mysql://user:secret@host/db"), and this
+            # message reaches stderr via the collector/poller's own
+            # exception logging - interpolating the whole URL there would
+            # leak its credential into service logs.
+            scheme = url.split("://", 1)[0]
+            raise ValueError(
+                "unsupported store URL scheme %r (use sqlite:///path or postgresql://...)" % scheme
+            )
         return cls.sqlite(url)
 
     @property

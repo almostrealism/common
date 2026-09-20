@@ -186,11 +186,19 @@ services:
   # The images are pinned through FLEET_DB_IMAGE / FLEET_GRAFANA_IMAGE so an
   # operator can hold a database major version (a Postgres data directory is
   # not forward-compatible across major versions) without editing this file.
+  # FLEET_DB_IMAGE's own default pins a major version rather than `latest`,
+  # so an unattended redeploy that never set the variable cannot pull a new
+  # major against the existing data directory and fail to start.
 
   fleet-db:
-    image: ${FLEET_DB_IMAGE:-postgres:latest}
+    image: ${FLEET_DB_IMAGE:-postgres:16}
     ports:
-      - "${FLEET_BIND_ADDR:?set FLEET_BIND_ADDR to the tailnet address (rebuild.sh does)}:${FLEET_DB_PORT:-5432}:5432"
+      # The port is always 5432: every collector/poller and the README's
+      # deployment instructions hardcode it in the store URL they connect
+      # with, so an override here (as opposed to FLEET_BIND_ADDR, which
+      # every consumer discovers itself) would silently point them at the
+      # wrong port with no way to propagate the change.
+      - "${FLEET_BIND_ADDR:?set FLEET_BIND_ADDR to the tailnet address (rebuild.sh does)}:5432:5432"
     volumes:
       - /Users/Shared/flowtree/fleet-db:/var/lib/postgresql/data
     environment:

@@ -72,7 +72,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
-from tools.fleet.credentials import read_secret_file
+from tools.fleet.credentials import read_secret_file, reject_postgres_url_on_command_line
 from tools.fleet.store import FleetStore
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -493,6 +493,11 @@ def run_poll_loop(
                 store.init_schema()
             except Exception as exc:  # noqa: BLE001 — any failure means "not this cycle"
                 print("fleet poller: store unavailable (%s); skipping this cycle" % exc, file=sys.stderr)
+                if store is not None:
+                    try:
+                        store.close()
+                    except Exception:  # noqa: BLE001 — the connection is already gone
+                        pass
                 store = None
         if store is not None:
             try:
@@ -525,10 +530,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--token-file", required=True,
         help="File (mode 600) holding a read-only GitHub token; the token never appears on a command line.",
     )
-    parser.add_argument("--store-url", default=None, help="Store to write to: sqlite:///path or postgresql://...")
+    parser.add_argument(
+        "--store-url", default=None,
+        help="Store to write to: sqlite:///path, or a bare sqlite file path. A postgresql://... URL "
+             "is rejected here — use --store-url-file instead, so the credential it carries never "
+             "appears on this process's command line.",
+    )
     parser.add_argument(
         "--store-url-file", default=None,
-        help="Read --store-url from this file (mode 600) so the database credential never appears on a command line.",
+        help="Read --store-url from this file (mode 600); the only way to point the poller at the "
+             "central Postgres store, so the database credential never appears on a command line.",
     )
     parser.add_argument(
         "--interval-seconds", type=int, default=DEFAULT_POLL_INTERVAL_SECONDS,
@@ -551,6 +562,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     store_url = args.store_url
     if args.store_url_file:
         store_url = read_secret_file(args.store_url_file)
+    else:
+        reject_postgres_url_on_command_line(store_url, "--store-url")
     stored = run_poll_loop(
         args.repo, token, store_url,
         interval_seconds=args.interval_seconds,

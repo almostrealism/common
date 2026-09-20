@@ -59,8 +59,17 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from tools.fleet import attribution
-from tools.fleet.credentials import read_secret_file
+from tools.fleet.credentials import read_secret_file, reject_postgres_url_on_command_line
 from tools.fleet.store import FleetStore
+
+
+class StoreWriteError(RuntimeError):
+    """A sample was collected and written to the local JSONL fallback, but writing it to the
+    central store failed. Raised only for a failure inside the store write itself, never for a
+    failure collecting the sample or writing the JSONL line, so :func:`run_sampling_loop` can
+    tell "the store connection needs to be reopened" apart from "something is actually broken"
+    and let the latter propagate instead of masking it as a transient store outage.
+    """
 
 
 def build_record(
@@ -609,8 +618,12 @@ def sample_and_write(
 
     The JSONL line is written first and unconditionally: it is the fallback
     the design requires, and a store that is unreachable must not cost the
-    sample. A failure writing to *store* propagates to the caller, which
-    decides whether to reconnect (see :func:`run_sampling_loop`).
+    sample. Only a failure inside the store write itself is raised as
+    :class:`StoreWriteError`, which is what :func:`run_sampling_loop` catches
+    to decide whether to reconnect — a failure collecting the sample (before
+    the JSONL write) propagates as whatever it actually was, so a genuine bug
+    there is not misreported as "store unavailable" and does not trigger a
+    pointless close/reopen of an otherwise healthy store connection.
     """
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ps_text = _run_ps()
@@ -631,7 +644,10 @@ def sample_and_write(
     )
     write_jsonl(filter_procs(record, cpu_threshold, rss_threshold_mb), jsonl_path)
     if store is not None:
-        store_record(store, record)
+        try:
+            store_record(store, record)
+        except Exception as exc:
+            raise StoreWriteError(str(exc)) from exc
     return record
 
 
@@ -685,7 +701,11 @@ def run_sampling_loop(
     connection is dropped, the JSONL line (already written) is the record of
     that sample, and the next cycle tries to connect again. Samples that
     could not be stored are not replayed from the JSONL; the fallback file is
-    for an operator to consult, not a queue.
+    for an operator to consult, not a queue. Only :class:`StoreWriteError` —
+    a failure inside the store write itself — triggers that reconnect; any
+    other exception from :func:`sample_and_write` (a collection or JSONL
+    bug) propagates and ends the loop, since it is not something reopening
+    the store connection would fix.
     """
     last_log_date: Optional[str] = None
     count = 0
@@ -702,6 +722,11 @@ def run_sampling_loop(
                 store.init_schema()
             except Exception as exc:  # noqa: BLE001 — any failure means "not this cycle"
                 print("fleet collector: store unavailable (%s); sampling to JSONL only" % exc, file=sys.stderr)
+                if store is not None:
+                    try:
+                        store.close()
+                    except Exception:  # noqa: BLE001 — the connection is already gone
+                        pass
                 store = None
         try:
             sample_and_write(
@@ -709,9 +734,7 @@ def run_sampling_loop(
                 agent_domain_target=agent_domain_target, disk_path=disk_path, store=store,
                 cpu_threshold=cpu_threshold, rss_threshold_mb=rss_threshold_mb,
             )
-        except Exception as exc:  # noqa: BLE001 — the loop must outlive one bad write
-            if store is None:
-                raise
+        except StoreWriteError as exc:
             print("fleet collector: store write failed (%s); reconnecting next cycle" % exc, file=sys.stderr)
             try:
                 store.close()
@@ -749,11 +772,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", action="store_true", help="Take a single sample and exit, instead of looping.")
     parser.add_argument(
         "--store-url", default=None,
-        help="Also write each sample to this store: sqlite:///path or postgresql://user:pass@host/db.",
+        help="Also write each sample to this store: sqlite:///path, or a bare sqlite file path. "
+             "A postgresql://... URL is rejected here — use --store-url-file instead, so the "
+             "credential it carries never appears on this process's command line.",
     )
     parser.add_argument(
         "--store-url-file", default=None,
-        help="Read --store-url from this file (mode 600) so the database credential never appears on a command line.",
+        help="Read --store-url from this file (mode 600); the only way to point the collector at "
+             "the central Postgres store, so the database credential never appears on a command line.",
     )
     parser.add_argument(
         "--proc-cpu-threshold", type=float, default=DEFAULT_PROC_CPU_THRESHOLD,
@@ -773,6 +799,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     store_url = args.store_url
     if args.store_url_file:
         store_url = read_secret_file(args.store_url_file)
+    else:
+        reject_postgres_url_on_command_line(store_url, "--store-url")
     # The store and the thresholds are passed only when the operator set
     # them, so a plain JSONL invocation reaches run_sampling_loop exactly as
     # it always did and takes that function's own defaults.
