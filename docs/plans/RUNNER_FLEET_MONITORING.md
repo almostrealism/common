@@ -157,9 +157,10 @@ Facts that shape the store and security decisions:
   (`docker-compose.yml:16-21`). Bearer-token auth via
   `AR_*_AUTH_TOKEN`/secret files is the established pattern
   (`docker-compose.yml:56-58, 100-102`).
-- The stack is reachable over **Tailscale**
-  (`AR_MANAGER_URL=https://mac-studio.taild0f87.ts.net`,
-  `docker-compose.yml:79`).
+- The stack is reachable over **Tailscale**, and ar-manager is also fronted
+  by a public Cloudflare tunnel, which is the address agents are given
+  (`AR_MANAGER_URL`, `docker-compose.yml`) since neither the Docker pool nor
+  the native agent can see the tailnet.
 - **Restarting `ar-manager` drops every in-flight agent's MCP connection**, so
   the deploy workflow drains first (`.github/CLAUDE.md:465-471`). A metrics
   store must be a *separate* compose service so its restarts never touch the
