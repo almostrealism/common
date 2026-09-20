@@ -861,13 +861,22 @@ public class Shell {
 	 * @param orbitals the candidate orbitals for the subshell, in order
 	 * @param counts   the electron count for each orbital, parallel to {@code orbitals}
 	 * @return a shell containing a subshell for each occupied orbital
-	 * @throws IllegalArgumentException if every count is zero, since an empty
-	 *         shell has no meaningful energy level and callers are expected to
+	 * @throws IllegalArgumentException if {@code orbitals} and {@code counts} differ in
+	 *         length, if any count is negative, or if every count is zero, since an
+	 *         empty shell has no meaningful energy level and callers are expected to
 	 *         skip invoking this method for a fully unoccupied subshell
 	 */
 	private static Shell occupied(Orbital orbitals[], int counts[]) {
+		if (orbitals.length != counts.length) {
+			throw new IllegalArgumentException("orbitals and counts must have the same length");
+		}
+
 		List<SubShell> s = new ArrayList<>();
 		for (int i = 0; i < orbitals.length; i++) {
+			if (counts[i] < 0) {
+				throw new IllegalArgumentException("Electron counts must not be negative");
+			}
+
 			if (counts[i] > 0) s.add(orbitals[i].populate(counts[i]));
 		}
 
