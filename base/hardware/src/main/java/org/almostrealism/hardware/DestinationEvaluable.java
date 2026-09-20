@@ -381,8 +381,10 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} chains a
-	 * non-null {@code dependsOn} into the accelerated operation's own dispatch.</p>
+	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} orders its work
+	 * after a non-null {@code dependsOn} either way &mdash; chaining it into the accelerated
+	 * operation's own dispatch, or, for the host-evaluated {@link Provider} and element-wise
+	 * strategies, waiting for it directly before evaluating.</p>
 	 */
 	@Override
 	public boolean isDispatchBacked() {
@@ -412,13 +414,18 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * requested repeatedly across a streaming pipeline's lifetime) can serve every one of their
 	 * requests without any of them contending for {@link #setDownstream}.
 	 *
+	 * <p>When the wrapped operation is not an {@link AcceleratedOperation}, it is evaluated on
+	 * the host via {@link #evaluate(Object...)} &mdash; the {@link Provider} and element-wise
+	 * strategies that method documents have no device dispatch to chain {@code dependsOn} into,
+	 * so it is waited for directly, and the result is delivered without a dispatch completion
+	 * ({@code null}, for a {@link CompletionConsumer} downstream).</p>
+	 *
 	 * @param args       The input arguments ({@link MemoryData} instances)
 	 * @param dependsOn  completion that must fire before the dispatch (and its
 	 *                   argument preparation) reads memory, or {@code null}
 	 * @param downstream the consumer to receive the result of this request; a
 	 *                   {@link CompletionConsumer} receives it together with the
 	 *                   dispatch's completion, without any host wait
-	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
@@ -439,7 +446,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param dependsOn  completion that must fire before the dispatch (and its
 	 *                   argument preparation) reads memory, or {@code null}
 	 * @param downstream the consumer to receive the result of this request
-	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
 	 */
 	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (operation instanceof AcceleratedOperation) {
@@ -456,7 +462,17 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 				details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
 			}
 		} else {
-			throw new UnsupportedOperationException();
+			// The Provider and element-wise strategies evaluate() supports (see its javadoc)
+			// are host evaluations with no device dispatch to chain dependsOn into, exactly
+			// like a HardwareEvaluable short-circuit, so it is waited for directly here.
+			if (dependsOn != null) dependsOn.waitFor();
+			T result = evaluate(args);
+
+			if (downstream instanceof CompletionConsumer) {
+				((CompletionConsumer<T>) downstream).accept(result, null);
+			} else {
+				downstream.accept(result);
+			}
 		}
 	}
 

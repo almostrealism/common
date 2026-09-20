@@ -157,6 +157,19 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 		return true;
 	}
 
-	// TODO(review): request() never blocks the caller (only submits to executor) -- isSharedExecutorSafe() may be able to return true here
-	// TODO(review): caution -- ComputeContext's own executor here would deadlock (see ProcessDetailsFactory#execute).
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code false}: submitting the request to {@link #executor} does not itself
+	 * block the calling thread, but the task it submits blocks on {@code dependsOn.waitFor()}
+	 * before reading {@code args} (see {@link #request(Object[], Semaphore, Consumer)}). When
+	 * {@link #executor} is a bounded, shared pool (a {@code ComputeContext}'s own executor,
+	 * for example) that wait can starve or deadlock it, since the dependency this task waits
+	 * for may itself need a thread from that same pool to complete. Such a request must
+	 * instead be issued on a dedicated thread.</p>
+	 */
+	@Override
+	public boolean isSharedExecutorSafe() {
+		return false;
+	}
 }

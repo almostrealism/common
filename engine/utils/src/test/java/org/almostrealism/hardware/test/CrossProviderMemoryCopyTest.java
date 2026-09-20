@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.cl.CLMemory;
@@ -161,6 +162,46 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 			nativeProvider.deallocate(n, returned);
 			clProvider.deallocate(n, device);
 			nativeProvider.deallocate(n, original);
+		}
+	}
+
+	/**
+	 * Copies between two {@link NativeMemoryProvider} instances configured at different
+	 * precisions, exercising the {@code double[]}-mediated fallback that {@link
+	 * NativeMemoryProvider#setMem(RAM, int, io.almostrealism.code.Memory, int, int)} takes when
+	 * the source and destination precisions differ. A same-precision {@code NativeBuffer}-to-
+	 * {@code NativeBuffer} copy takes a raw byte-copy path instead; without the precision guard,
+	 * that path would reinterpret each 8-byte FP64 element as a pair of unrelated FP32 values
+	 * rather than converting it, so this confirms the mismatched-precision case is still correct.
+	 */
+	@Test(timeout = 60000)
+	public void nativeToNativeMixedPrecision() {
+		NativeMemoryProvider fp64 = new NativeMemoryProvider(Precision.FP64, 1024 * 1024, false, null, true);
+		NativeMemoryProvider fp32 = new NativeMemoryProvider(Precision.FP32, 1024 * 1024, false, null, true);
+
+		int n = 16;
+		RAM source = fp64.allocate(n);
+		RAM dest = fp32.allocate(n);
+
+		try {
+			double[] values = new double[n];
+			for (int i = 0; i < n; i++) values[i] = i + 0.5;
+			fp64.setMem(source, 0, values, 0, n);
+
+			double[] sentinel = new double[n];
+			for (int i = 0; i < n; i++) sentinel[i] = -1.0;
+			fp32.setMem(dest, 0, sentinel, 0, n);
+
+			// Copy all 16 elements from the FP64 source into the FP32 destination
+			fp32.setMem(dest, 0, source, 0, n);
+
+			double[] result = fp32.toArray(dest, 0, n);
+			for (int i = 0; i < n; i++) {
+				assertEquals("index " + i, i + 0.5, result[i]);
+			}
+		} finally {
+			fp32.deallocate(n, dest);
+			fp64.deallocate(n, source);
 		}
 	}
 

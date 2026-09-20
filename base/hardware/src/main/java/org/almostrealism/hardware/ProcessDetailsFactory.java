@@ -316,6 +316,29 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private DestinationSlot[] destinationSlots;
 
 	/**
+	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances, treating
+	 * the calling thread of every request as though it might always be one of {@code executor}'s
+	 * own (see {@link #ProcessDetailsFactory(boolean, int, List, int, Supplier, Executor,
+	 * BooleanSupplier)}). A caller using this overload has no way to report otherwise, so a
+	 * blocking argument request is always issued on a freshly spawned dedicated thread rather
+	 * than the calling thread, preserving this constructor's original behavior.
+	 *
+	 * @param fixedCount True if the kernel size is fixed at construction time
+	 * @param count Declared number of parallel work items (used when fixedCount is true)
+	 * @param arguments Ordered list of array variables representing kernel arguments
+	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
+	 * @param replacements Supplier of the memory replacement manager
+	 * @param executor Executor for asynchronous kernel dispatch
+	 */
+	public ProcessDetailsFactory(boolean fixedCount, int count,
+								 List<ArrayVariable<? extends T>> arguments,
+								 int outputArgIndex,
+								 Supplier<MemoryReplacementManager> replacements,
+								 Executor executor) {
+		this(fixedCount, count, arguments, outputArgIndex, replacements, executor, () -> true);
+	}
+
+	/**
 	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
 	 *
 	 * @param fixedCount True if the kernel size is fixed at construction time
