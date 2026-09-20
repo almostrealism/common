@@ -122,7 +122,11 @@ CREATE TABLE IF NOT EXISTS job_step (
 # these secondary indexes serve the other access path on each table.
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS host_sample_host_ts ON host_sample (host, ts)",
-    "CREATE INDEX IF NOT EXISTS class_sample_host_ts ON class_sample (host, class, ts)",
+    # ts leads class: the dashboard and status queries filter by host and a
+    # ts range without constraining class, so class after ts would strand the
+    # range scan behind an unconstrained middle column and force a full scan
+    # of every class for the matched hosts.
+    "CREATE INDEX IF NOT EXISTS class_sample_host_ts ON class_sample (host, ts, class)",
     "CREATE INDEX IF NOT EXISTS runner_state_host_ts ON runner_state (host, runner_name, ts)",
     "CREATE INDEX IF NOT EXISTS job_event_run ON job_event (run_id)",
     "CREATE INDEX IF NOT EXISTS job_event_created ON job_event (created_at)",

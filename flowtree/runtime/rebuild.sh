@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SECRETS_DIR="/Users/Shared/flowtree/secrets"
+SECRETS_DIR="${SECRETS_DIR:-/Users/Shared/flowtree/secrets}"
 # The agent pool's configuration file. It is gitignored, so a fresh checkout
 # (a CI runner workspace, for instance) never contains it — an unattended
 # caller must point FLOWTREE_AGENT_ENV at a copy that lives outside the
@@ -153,9 +153,29 @@ if [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "flee
   FLEET_SERVICES_SELECTED=true
 fi
 
+FLEET_DB_DATA_DIR="${FLEET_DB_DATA_DIR:-/Users/Shared/flowtree/fleet-db}"
+FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana}"
+
 if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
-  for secret in fleet-db-password grafana-admin-password; do
+  for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do
+    secret="${secret_pair%%:*}"
+    data_dir="${secret_pair#*:}"
     if [ ! -f "$SECRETS_DIR/$secret" ]; then
+      # A non-empty data directory with no matching secret file means the
+      # service already initialized with a password we no longer have:
+      # Postgres and Grafana both bake the credential into their state at
+      # first start, so minting a new one here would not match it and would
+      # turn the next rebuild into an authentication outage. Fail closed
+      # instead of silently generating a value that cannot possibly work.
+      if [ -d "$data_dir" ] && [ -n "$(ls -A "$data_dir" 2>/dev/null)" ]; then
+        echo "ERROR: $SECRETS_DIR/$secret is missing, but $data_dir already" >&2
+        echo "  contains initialized state. Generating a new password here would not" >&2
+        echo "  match the credential already baked into that service and would break" >&2
+        echo "  authentication on the next start. Restore the original secret file, or" >&2
+        echo "  rotate the credential explicitly (change it inside the running service" >&2
+        echo "  first, then write the matching value to $SECRETS_DIR/$secret)." >&2
+        exit 1
+      fi
       echo "Generating $secret..."
       mkdir -p "$SECRETS_DIR"
       openssl rand -hex 24 > "$SECRETS_DIR/$secret"
@@ -166,7 +186,7 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
     # some other process, must not silently stay group/world-readable.
     chmod 600 "$SECRETS_DIR/$secret"
   done
-  mkdir -p /Users/Shared/flowtree/fleet-db /Users/Shared/flowtree/grafana
+  mkdir -p "${FLEET_DB_DATA_DIR}" "${FLEET_GRAFANA_DATA_DIR}"
 
   # The fleet services publish only on the tailnet address. Detect it unless
   # the operator set FLEET_BIND_ADDR (127.0.0.1 is the value for a machine
@@ -194,8 +214,27 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
     echo "  published on every interface." >&2
     exit 1
   fi
+  # An operator override can undo the guarantee the detection above exists
+  # to provide; reject a wildcard address explicitly rather than letting a
+  # typo (or a deliberate but mistaken value) publish these ports everywhere.
+  case "${FLEET_BIND_ADDR}" in
+    0.0.0.0|::|"::0"|"[::]")
+      echo "ERROR: FLEET_BIND_ADDR=${FLEET_BIND_ADDR} is a wildcard address." >&2
+      echo "  fleet-db and fleet-grafana must bind to a specific address (this host's" >&2
+      echo "  tailnet address, or 127.0.0.1 on a host without Tailscale), never to every" >&2
+      echo "  interface. Set FLEET_BIND_ADDR to a non-wildcard value." >&2
+      exit 1
+      ;;
+  esac
   export FLEET_BIND_ADDR
   echo "Fleet services will bind to ${FLEET_BIND_ADDR}"
+elif [ "${AGENTS_ONLY}" = false ]; then
+  # docker compose interpolates every service definition in the file before
+  # selecting which ones to build/start, even for a single named non-fleet
+  # service, so the fleet ports' mandatory ${FLEET_BIND_ADDR:?} still needs a
+  # value here even though fleet-db/fleet-grafana are not being touched. The
+  # value is never used to publish anything in this branch.
+  export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-127.0.0.1}"
 fi
 
 # ── Maven build (needed by both controller and agent images) ───────
