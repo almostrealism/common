@@ -41,6 +41,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * does &mdash; this test observes both that this happens on the configured executor's thread, and that
  * the result is actually delivered rather than an {@link UnsupportedOperationException} being thrown.</p>
  *
+ * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}: that class
+ * lives in the engine layer, which sits above this module.</p>
+ *
  * @see DestinationEvaluable#async(java.util.concurrent.Executor)
  */
 public class DestinationEvaluableAsyncExecutorTest {

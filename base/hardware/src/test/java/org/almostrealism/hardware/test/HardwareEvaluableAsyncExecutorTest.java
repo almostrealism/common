@@ -33,6 +33,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * always ran (and could block) on the calling thread regardless of which executor {@code ProcessDetailsFactory}
  * selected via {@code isSharedExecutorSafe()}.
  *
+ * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}: that class
+ * lives in the engine layer, which sits above this module.</p>
+ *
  * @see HardwareEvaluable#async(java.util.concurrent.Executor)
  */
 public class HardwareEvaluableAsyncExecutorTest {

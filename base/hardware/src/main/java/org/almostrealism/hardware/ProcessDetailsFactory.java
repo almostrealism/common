@@ -590,12 +590,15 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * {@link StreamingEvaluable#isDispatchBacked()} reports that it orders its own work after
 	 * a supplied dependency — chaining through the provider for a device dispatch, or waiting
 	 * on a worker thread before reading memory otherwise — so that argument never reads memory
-	 * written by the work {@code dependsOn} represents before that work has completed. An
-	 * evaluable that is not dispatch-backed (a plain reference producer, not itself a
-	 * {@link StreamingEvaluable}) receives {@code null} instead: blocking it on {@code dependsOn}
-	 * would violate the non-blocking submission contract (a submit with an outstanding foreign
-	 * dependency must return, and a same-provider dependency must remain free), and it disregards
-	 * the dependency anyway, evaluating immediately.</p>
+	 * written by the work {@code dependsOn} represents before that work has completed. This flag
+	 * is read from the {@link StreamingEvaluable} actually constructed for this argument, after
+	 * {@code async()}/{@code async(Executor)} wraps it, not from the pre-wrap evaluable: a plain
+	 * evaluable that is not itself a {@link StreamingEvaluable} can still become dispatch-backed
+	 * once wrapped, since {@code EvaluableStreamingAdapter} waits on {@code dependsOn} before
+	 * evaluating. An argument whose wrapper is not dispatch-backed receives {@code null} instead:
+	 * blocking it on {@code dependsOn} would violate the non-blocking submission contract (a submit
+	 * with an outstanding foreign dependency must return, and a same-provider dependency must
+	 * remain free), and it disregards the dependency anyway, evaluating immediately.</p>
 	 *
 	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is submitted
 	 * to this factory's own executor only when {@link StreamingEvaluable#isSharedExecutorSafe()}
@@ -684,7 +687,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			if (evaluateAhead[i]) {
 				boolean streaming = kernelArgEvaluables[i] instanceof StreamingEvaluable;
-				dispatchBacked[i] = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 
 				// See this method's javadoc: isSharedExecutorSafe(), not isDispatchBacked(),
 				// decides whether this factory's own executor may be used here.
@@ -698,6 +700,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
 				}
+
+				// See this method's javadoc: derived from the wrapper produced above.
+				dispatchBacked[i] = asyncEvaluables[i].isDispatchBacked();
 			}
 		}
 
@@ -759,7 +764,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				asyncEvaluables[i] = sized.async();
 			}
 
-			dispatchBacked[i] = true;
+			// See this method's javadoc: derived from the wrapper produced above.
+			dispatchBacked[i] = asyncEvaluables[i].isDispatchBacked();
 		}
 
 		/*
