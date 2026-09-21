@@ -145,9 +145,10 @@ State these plainly; do not assume the guard closes them.
   `new WebSocket(...)` is the one entry that tolerates a space before the
   parenthesis, because real code was found using that spacing and the
   no-space rule let it through; a spaced call is matched only when the
-  argument opens with a quote, which is what a string-literal destination
-  looks like and a parenthetical remark such as "the new WebSocket (RFC
-  6455) protocol" does not. A spaced call whose destination is a variable
+  argument opens with a single quote, double quote, or backtick — the three
+  ways JavaScript opens a string literal, including a template literal — and
+  a parenthetical remark such as "the new WebSocket (RFC 6455) protocol"
+  opens with none of them. A spaced call whose destination is a variable
   (`new WebSocket (url)`) still passes, on the same accepted-cost basis as
   the rest of this list — there is no regex-only way to tell that apart
   from prose once both the space and the literal are gone.
