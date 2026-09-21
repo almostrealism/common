@@ -212,6 +212,14 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	 * using a {@link LightingEngineAggregator}. If the recursion depth exceeds the maximum allowed
 	 * reflections, black is returned immediately.</p>
 	 *
+	 * <p>{@link LightingEngineAggregator} ranks candidates by distance and breaks ties with a
+	 * strict {@code <} comparison, so whichever surface is first in the candidate list wins a
+	 * tie. This method needs the primary surface last, so other surfaces win ties, which is the
+	 * opposite of {@link ShaderContext#getAllSurfaces()} (primary first, used where the shaded
+	 * surface should win ties, e.g. by {@link ReflectionShader}). Since the two call sites need
+	 * opposite tie-break orders, the candidate list here is assembled locally rather than through
+	 * a shared {@link ShaderContext} method.</p>
+	 *
 	 * @param point           The surface intersection point
 	 * @param viewerDirection The direction from the intersection toward the viewer
 	 * @param lightDirection  The direction of the current light source
@@ -274,9 +282,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		// if (entering) d.multiplyBy(-1.0);
 		Producer<Ray> r = new DynamicProducerForMemoryData<>(args -> new Ray(point, d));
 		
-		// LightingEngineAggregator ranks candidates by distance and breaks ties with a
-		// strict "<" comparison, so the primary surface must stay last here to match
-		// the tie order relied upon before this candidate list was assembled inline.
+		// Primary surface last; see this method's javadoc for the tie-break rationale.
 		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>(Arrays.asList(otherSurfaces));
 		allSurfaces.add(surface);
 		List<Light> allLights = p.getAllLights();
