@@ -84,6 +84,20 @@ if ! [[ "${FLEET_USER}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
     echo "ERROR: --user must be a valid system account name (e.g. 'fleet')." >&2
     exit 1
 fi
+FLEET_HOST="${FLEET_HOST:-$(hostname -s | tr '[:upper:]' '[:lower:]')}"
+# FLEET_HOST and DISK_PATH are interpolated as bare, unquoted tokens into the
+# rendered unit's ExecStart= line (see unit_value below); restricting them to
+# characters that are never significant to systemd's argv/specifier parsing
+# there (no whitespace, quotes, backslash, or '%') is simpler and safer than
+# trying to escape whatever an operator passes.
+if ! [[ "${FLEET_HOST}" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    echo "ERROR: --host must contain only letters, digits, '.', '_', or '-'." >&2
+    exit 1
+fi
+if ! [[ "${DISK_PATH}" =~ ^[A-Za-z0-9_./:-]+$ ]]; then
+    echo "ERROR: --disk-path must contain only letters, digits, '.', '_', '-', '/', or ':'." >&2
+    exit 1
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: run with sudo: sudo $0 ..." >&2
@@ -101,7 +115,6 @@ APP_DIR="${FLEET_HOME}/app"
 PYTHON="${FLEET_HOME}/venv/bin/python3"
 STORE_URL_FILE="${FLEET_HOME}/store-url"
 UNIT_FILE="/etc/systemd/system/fleet-collector.service"
-FLEET_HOST="${FLEET_HOST:-$(hostname -s | tr '[:upper:]' '[:lower:]')}"
 
 # ── 1. Prerequisites ───────────────────────────────────────────────
 
@@ -118,8 +131,8 @@ if [ -z "${STORE_FROM}" ] && [ -z "${STORE_URL_SRC}" ] && [ ! -s "${STORE_URL_FI
     echo "  (the file holds postgresql://fleet:<password>@<store tailnet address>:5432/fleet)." >&2
     exit 1
 fi
-RUNNER_ACCOUNT="$(ps -eo user=,comm= 2>/dev/null | awk '$2 == "Runner.Listener" {print $1; exit}' || true)"
-if [ -n "${RUNNER_ACCOUNT}" ] && [ "${RUNNER_ACCOUNT}" = "${FLEET_USER}" ]; then
+RUNNER_ACCOUNTS="$(ps -eo user=,comm= 2>/dev/null | awk '$2 == "Runner.Listener" {print $1}' | sort -u || true)"
+if printf '%s\n' "${RUNNER_ACCOUNTS}" | grep -qx "${FLEET_USER}"; then
     echo "ERROR: a GitHub Actions runner on this host runs as ${FLEET_USER}; the collector must not." >&2
     exit 1
 fi
@@ -132,7 +145,22 @@ echo ""
 
 # ── 2. Service account and home ────────────────────────────────────
 
-if ! id "${FLEET_USER}" >/dev/null 2>&1; then
+if id "${FLEET_USER}" >/dev/null 2>&1; then
+    # Reusing an account this installer did not create is how --user could
+    # point at an existing runner/interactive account and let its owner read
+    # the store credential; only ever reuse an account with the nologin shell
+    # and FLEET_HOME this installer itself always sets.
+    EXISTING_SHELL="$(getent passwd "${FLEET_USER}" | cut -d: -f7)"
+    EXISTING_HOME="$(getent passwd "${FLEET_USER}" | cut -d: -f6)"
+    if [ "${EXISTING_SHELL}" != "/usr/sbin/nologin" ] && [ "${EXISTING_SHELL}" != "/sbin/nologin" ]; then
+        echo "ERROR: account ${FLEET_USER} already exists with shell '${EXISTING_SHELL}', not a nologin collector account; refusing to reuse it. Pick an unused --user name." >&2
+        exit 1
+    fi
+    if [ "${EXISTING_HOME}" != "${FLEET_HOME}" ]; then
+        echo "ERROR: account ${FLEET_USER} already exists with home '${EXISTING_HOME}', not ${FLEET_HOME}; refusing to reuse an account this installer did not create. Pick an unused --user name." >&2
+        exit 1
+    fi
+else
     echo "Creating system account ${FLEET_USER}..."
     useradd --system --home-dir "${FLEET_HOME}" --create-home --shell /usr/sbin/nologin \
         --comment "Runner fleet metrics collector" "${FLEET_USER}"
