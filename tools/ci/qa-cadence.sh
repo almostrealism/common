@@ -161,7 +161,13 @@ DAY="${STAMP:0:8}"
 
 # date(1) differs between BSD (macOS runners) and GNU (Linux runners).
 if date -j >/dev/null 2>&1; then
-    LAST_EPOCH=$(date -j -f "%Y%m%d" "$DAY" "+%s")
+    # "%Y%m%d" alone leaves hour/minute/second unspecified, and BSD date
+    # fills unspecified fields from the current wall-clock time rather than
+    # midnight — so LAST_EPOCH silently carried today's time-of-day instead
+    # of "$DAY 00:00:00", corrupting AGE_DAYS whenever a branch landed
+    # exactly MIN_INTERVAL_DAYS ago. Supplying an explicit midnight and -u
+    # (parse as UTC, matching NOW_EPOCH below) fixes both.
+    LAST_EPOCH=$(date -u -j -f "%Y%m%d %H:%M:%S" "$DAY 00:00:00" "+%s")
 else
     LAST_EPOCH=$(date -u -d "$DAY" "+%s")
 fi
