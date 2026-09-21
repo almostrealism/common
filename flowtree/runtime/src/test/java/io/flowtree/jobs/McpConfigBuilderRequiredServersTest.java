@@ -31,36 +31,36 @@ import static org.junit.Assert.fail;
  */
 public class McpConfigBuilderRequiredServersTest extends TestSuiteBase {
 
-	/** With a URL and a token, ar-manager is the one required server. */
-	@Test(timeout = 30000)
-	public void arManagerIsRequiredWhenConfigured() {
-		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setArManagerUrl("http://ar-manager:8010");
-		builder.setArManagerToken("armt_tmp_testtoken");
+    /** With a URL and a token, ar-manager is the one required server. */
+    @Test(timeout = 30000)
+    public void arManagerIsRequiredWhenConfigured() {
+        McpConfigBuilder builder = new McpConfigBuilder();
+        builder.setArManagerUrl("http://ar-manager:8010");
+        builder.setArManagerToken("armt_tmp_testtoken");
 
-		assertEquals(Set.of("ar-manager"), builder.requiredServerNames());
-	}
+        assertEquals(Set.of("ar-manager"), builder.requiredServerNames());
+    }
 
-	/** With no ar-manager configured, nothing is required. */
-	@Test(timeout = 30000)
-	public void nothingIsRequiredWithoutArManager() {
-		assertTrue(new McpConfigBuilder().requiredServerNames().isEmpty());
-	}
+    /** With no ar-manager configured, nothing is required. */
+    @Test(timeout = 30000)
+    public void nothingIsRequiredWithoutArManager() {
+        assertTrue(new McpConfigBuilder().requiredServerNames().isEmpty());
+    }
 
-	/**
-	 * A URL without a token is the misconfiguration {@code buildMcpConfig}
-	 * already refuses; asking what is required must refuse the same way
-	 * rather than answer "nothing".
-	 */
-	@Test(timeout = 30000)
-	public void aUrlWithoutATokenIsStillAMisconfiguration() {
-		McpConfigBuilder builder = new McpConfigBuilder();
-		builder.setArManagerUrl("http://ar-manager:8010");
-		try {
-			builder.requiredServerNames();
-			fail("expected IllegalStateException");
-		} catch (IllegalStateException expected) {
-			assertTrue(expected.getMessage().contains("token"));
-		}
-	}
+    /**
+     * A URL without a token is the misconfiguration {@code buildMcpConfig}
+     * already refuses; asking what is required must refuse the same way
+     * rather than answer "nothing".
+     */
+    @Test(timeout = 30000)
+    public void aUrlWithoutATokenIsStillAMisconfiguration() {
+        McpConfigBuilder builder = new McpConfigBuilder();
+        builder.setArManagerUrl("http://ar-manager:8010");
+        try {
+            builder.requiredServerNames();
+            fail("expected IllegalStateException");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("token"));
+        }
+    }
 }
