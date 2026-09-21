@@ -496,6 +496,15 @@ the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
 `false` to the `redeploy_agents` input on a manual run) to deploy the controller
 stack alone.
 
+The stack includes `fleet-db` and `fleet-grafana` (runner-fleet monitoring,
+`tools/fleet/README.md`). `rebuild.sh` generates their password files beside
+the shared secret and binds their ports to the host's tailnet address, which it
+detects (`FLEET_BIND_ADDR` overrides); the compose file refuses to start them
+without an address, so a deploy runner that cannot determine one fails there
+rather than publishing a database on every interface. A full rebuild recreates
+`fleet-db` too — the data directory persists, and the collectors on every
+host reconnect on their own — so nothing in the deploy needs to drain for it.
+
 The agent `.env` is gitignored, so it is never present in the runner's checkout.
 `rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow
 falls back to `/Users/Shared/flowtree/secrets/agent.env`, and the repository

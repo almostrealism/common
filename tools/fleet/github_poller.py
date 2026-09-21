@@ -63,13 +63,16 @@ the run's workflow YAML parsed, which this module does not do.
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
+from tools.fleet.credentials import read_secret_file, reject_postgres_url_on_command_line
 from tools.fleet.store import FleetStore
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -448,3 +451,128 @@ def poll_and_store(
                 )
             jobs_stored += 1
     return jobs_stored
+
+
+# ---- scheduled entry point ------------------------------------------------
+
+DEFAULT_POLL_INTERVAL_SECONDS = 600
+
+
+def run_poll_loop(
+    repo: str,
+    token: str,
+    store_url: str,
+    interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS,
+    iterations: Optional[int] = None,
+    max_runs: Optional[int] = DEFAULT_POLL_MAX_RUNS,
+    open_store=FleetStore.from_url,
+    poll=None,
+) -> int:
+    """Run :func:`poll_and_store` every *interval_seconds*, *iterations* times or forever.
+
+    The scheduled counterpart of :func:`tools.fleet.collector.run_sampling_loop`,
+    with the same stance on the store: opened lazily, closed and reopened
+    after any failure, because the central database restarts whenever the
+    controller stack is redeployed and a poller that died with it would
+    leave a gap. A GitHub-side failure (an HTTP error that outlasted the
+    rate-limit retries, a network error) is reported on stderr and the
+    cycle is skipped; every poll re-reads the same recent window, so a
+    skipped cycle costs latency, not data.
+
+    *poll* and *open_store* exist so a test can drive the loop without a
+    network or a database. Returns the number of cycles that stored jobs.
+    """
+    poll = poll or poll_and_store
+    store: Optional[FleetStore] = None
+    count = 0
+    stored_cycles = 0
+    while iterations is None or count < iterations:
+        if store is None:
+            try:
+                store = open_store(store_url)
+                store.init_schema()
+            except Exception as exc:  # noqa: BLE001 — any failure means "not this cycle"
+                print("fleet poller: store unavailable (%s); skipping this cycle" % exc, file=sys.stderr)
+                if store is not None:
+                    try:
+                        store.close()
+                    except Exception:  # noqa: BLE001 — the connection is already gone
+                        pass
+                store = None
+        if store is not None:
+            try:
+                jobs = poll(repo, token, store, max_runs=max_runs)
+                print("fleet poller: stored %d jobs for %s" % (jobs, repo), file=sys.stderr)
+                stored_cycles += 1
+            except Exception as exc:  # noqa: BLE001 — the loop must outlive one bad cycle
+                print("fleet poller: cycle failed (%s); reconnecting next cycle" % exc, file=sys.stderr)
+                try:
+                    store.close()
+                except Exception:  # noqa: BLE001 — the connection is already gone
+                    pass
+                store = None
+        count += 1
+        if iterations is None or count < iterations:
+            time.sleep(interval_seconds)
+    if store is not None:
+        store.close()
+    return stored_cycles
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for running this module as a service."""
+    parser = argparse.ArgumentParser(
+        prog="tools.fleet.github_poller",
+        description="Poll GitHub Actions runs/jobs for a repository on an interval and upsert them into the fleet store.",
+    )
+    parser.add_argument("--repo", required=True, help="Repository to poll, as owner/name.")
+    parser.add_argument(
+        "--token-file", required=True,
+        help="File (mode 600) holding a read-only GitHub token; the token never appears on a command line.",
+    )
+    parser.add_argument(
+        "--store-url", default=None,
+        help="Store to write to: sqlite:///path, or a bare sqlite file path. A postgresql://... URL "
+             "is rejected here — use --store-url-file instead, so the credential it carries never "
+             "appears on this process's command line.",
+    )
+    parser.add_argument(
+        "--store-url-file", default=None,
+        help="Read --store-url from this file (mode 600); the only way to point the poller at the "
+             "central Postgres store, so the database credential never appears on a command line.",
+    )
+    parser.add_argument(
+        "--interval-seconds", type=int, default=DEFAULT_POLL_INTERVAL_SECONDS,
+        help="Seconds between polls (default: %d)." % DEFAULT_POLL_INTERVAL_SECONDS,
+    )
+    parser.add_argument(
+        "--max-runs", type=int, default=DEFAULT_POLL_MAX_RUNS,
+        help="Most recent runs to re-read each cycle (default: %d)." % DEFAULT_POLL_MAX_RUNS,
+    )
+    parser.add_argument("--once", action="store_true", help="Poll once and exit, instead of looping.")
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Parse *argv* and run :func:`run_poll_loop` (or a single poll with ``--once``)."""
+    args = build_parser().parse_args(argv)
+    if not args.store_url and not args.store_url_file:
+        build_parser().error("one of --store-url or --store-url-file is required")
+    token = read_secret_file(args.token_file)
+    store_url = args.store_url
+    reject_postgres_url_on_command_line(store_url, "--store-url")
+    if args.store_url_file:
+        store_url = read_secret_file(args.store_url_file)
+    stored = run_poll_loop(
+        args.repo, token, store_url,
+        interval_seconds=args.interval_seconds,
+        iterations=1 if args.once else None,
+        max_runs=args.max_runs,
+    )
+    if args.once and stored == 0:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
