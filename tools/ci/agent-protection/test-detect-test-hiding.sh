@@ -394,6 +394,78 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: WRAPPED assert-named helper declaration moved out — FALSE-POSITIVE REGRESSION ──
+#
+# Same move as moved_assert_helper_declaration, but the helper's signature wraps
+# across two lines. Only the FIRST line carries the `assert`-named identifier and
+# is the only line Pattern 2's assert regex counts; an earlier, stricter
+# predicate required the closing `)` plus `{`/`throws` on that same line and so
+# failed to recognise the wrapped declaration, mis-counting it as a removed
+# assertion. The broadened predicate matches a first line that ends in `,`.
+# Pattern 2 must NOT fire (expected exit 0).
+setup_moved_wrapped_assert_helper_declaration() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual,
+                                int reference) {
+        if (actual != reference) throw new AssertionError();
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}'
+}
+
+# ── Scenario: PACKAGE-PRIVATE, typed-return assert-named helper moved out — FALSE-POSITIVE REGRESSION ──
+#
+# The helper has neither an access modifier nor a `void` return — a
+# package-private `Object assertLoaded(...)`. An earlier predicate keyed on
+# `public|private|protected|void` did not recognise it and mis-counted the moved
+# declaration as a removed assertion. The broadened predicate keys on the
+# return-type token instead. Pattern 2 must NOT fire (expected exit 0).
+setup_moved_typed_assert_helper_declaration() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    Object assertLoaded(int idx) {
+        if (idx < 0) throw new AssertionError();
+        return null;
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertLoaded(1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertLoaded(1);
+    }
+}'
+}
+
 # ── Scenario: no test files changed — CLEAN BRANCH ─────────────────────────
 setup_no_test_changes() {
     mkdir -p src/main/java
@@ -421,6 +493,8 @@ run_case "existing-timeout-inflated [true positive]"        2 setup_existing_tim
 run_case "rename-and-inflate [true positive / dodge caught]" 2 setup_rename_and_inflate
 run_case "rename-no-inflate [no false positive]"            0 setup_rename_no_inflate
 run_case "moved-assert-helper-declaration [false-positive regression]" 0 setup_moved_assert_helper_declaration
+run_case "moved-wrapped-assert-helper-declaration [false-positive regression]" 0 setup_moved_wrapped_assert_helper_declaration
+run_case "moved-typed-assert-helper-declaration [false-positive regression]" 0 setup_moved_typed_assert_helper_declaration
 run_case "helper-body-loses-assertion [true positive]"      2 setup_helper_body_loses_assertion
 run_case "test-body-assertion-removed-with-helper [true positive]" 2 setup_test_body_assertion_removed_with_helper
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes

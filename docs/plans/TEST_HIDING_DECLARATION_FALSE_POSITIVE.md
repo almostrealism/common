@@ -124,6 +124,34 @@ Encapsulate the predicate once (a small shell function or a single shared
 regex constant) so the removed and added side cannot drift apart — the same
 class of symmetry bug the comment-line exclusion already had to get right.
 
+#### Update — predicate broadened after review (PR #531)
+
+The first landed form used the "modifier / return-type lead-in" option above,
+requiring the assert-like token to be led by `public|private|protected|void`
+and the `(...)` to close with `{`/`throws` on the **same** line. Review flagged
+two real shapes it missed:
+
+- **Package-private / typed returns** — `boolean assertWithin(...)`,
+  `PackedCollection assertLoaded(...)`, `float[] assertArr(...)` — have neither
+  an access modifier nor a `void` return, so they were not recognised.
+- **Wrapped multi-line signatures** — `protected void assertWithin(String s,`
+  with the parameter list continuing on the next line — end the first line in
+  `,`, not `)`+`{`/`throws`, so they were not recognised. That first line is the
+  only one carrying the assert-named identifier, hence the only one Pattern 2
+  counts.
+
+The predicate now keys on structure instead of an enumerated modifier list:
+anchored at the line start (after the diff `+/-` marker and indent), one or more
+whitespace-separated identifier tokens (modifiers and the return type — possibly
+qualified, generic, or an array) followed by the assert/fail-named identifier
+and its opening `(`, with **no `;`** from that `(` to end of line. The trailing
+"no `;`" is what separates a declaration (ends in `{`, `throws …`, `)`, or a
+wrapped `,`) from a call statement such as `return assertLoaded(x);`, which a
+leading token could otherwise make look declaration-shaped; a bare call has no
+type token before the identifier and is never matched. Two regression cases
+(`moved-wrapped-assert-helper-declaration`, `moved-typed-assert-helper-declaration`)
+cover the two shapes.
+
 ### 2. Pattern 3 needs no equivalent change — state so explicitly
 
 Pattern 3 (`NET_TEST_METHODS_REMOVED`, lines ~478–485) counts lines matching

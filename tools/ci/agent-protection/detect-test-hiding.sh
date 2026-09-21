@@ -126,16 +126,35 @@ VIOLATIONS=""
 # deletes its declaration from this file and would be mis-counted as a removed
 # assertion (observed on feature/sa3-prep, SAMEResamplingParityTest.java).
 #
-# A declaration has a shape a call never has: an assert-like identifier led by an
-# access modifier or a `void` return, followed by a `(...)` parameter list that
-# ends the line with `{` or `throws`. A call passes value expressions and is
-# never preceded by a modifier/return type. This predicate matches the
-# declaration shape and is applied identically to the removed and the added side
-# (symmetry matters: excluding declarations on only one side could let a genuine
+# A declaration has a shape a call never has: an assert-like identifier led by a
+# return type (optionally preceded by modifiers), and NOT terminated as a
+# statement. The predicate encodes exactly that, so it stays correct for the
+# shapes an earlier, stricter form missed (reported in review):
+#   * package-private / typed returns — `boolean assertWithin(...)`,
+#     `PackedCollection assertLoaded(...)`, `float[] assertArr(...)` — not just
+#     `public`/`private`/`protected`/`void`;
+#   * wrapped multi-line signatures whose first line ends in `,` (or `)` with
+#     the `{` on the next line), e.g. `protected void assertWithin(String stage,`
+#     — only that first line carries the assert-named identifier and is the only
+#     line Pattern 2 ever counts, so matching it is sufficient.
+# It matches, anchored at the line start (after the diff +/- marker and indent),
+# one or more whitespace-separated identifier tokens (modifiers and the return
+# type — which may be qualified, generic, or an array) followed by the
+# assert/fail-named identifier and its opening `(`, with NO `;` from that `(` to
+# end of line. The trailing "no `;`" is what distinguishes a declaration (ends in
+# `{`, `throws …`, `)`, or a wrapped `,`) from a call statement such as
+# `return assertLoaded(x);` or `assertEquals(a, b);`, which a leading token could
+# otherwise make look declaration-shaped. A bare call (`assertEquals(...)`,
+# `if (assertWithin(...))`, `Assert.assertEquals(...)`, `x = assertX(...)`) has no
+# type token immediately before the identifier and is never matched. The
+# predicate is applied identically to the removed and the added side (symmetry
+# matters: excluding declarations on only one side could let a genuine
 # assertion-for-declaration swap net out incorrectly). It is layered on top of
 # the comment-line exclusion, so a declaration's call sites and the assertion
 # calls inside its body are untouched and still fully counted.
-ASSERT_DECL_RE='\b(public|private|protected|void)\b[^(]*\b(assert|fail)[A-Za-z0-9_]*[[:space:]]*\(.*\)[[:space:]]*(\{|throws)'
+#
+# ']' is placed first inside the token character class so it is a literal.
+ASSERT_DECL_RE='^[-+][[:space:]]*([A-Za-z_][]A-Za-z0-9_.<>[]*[[:space:]]+)+(assert|fail)[A-Za-z0-9_]*[[:space:]]*\([^;]*$'
 
 # Helper to record a violation
 record_violation() {
