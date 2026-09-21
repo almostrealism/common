@@ -247,6 +247,15 @@ public final class HarnessStatusReporter {
     /**
      * Formats the phase-exit message describing how a session ended.
      *
+     * <p>An unavailable required MCP server takes priority over an
+     * inactivity kill: a session can be killed by the watchdog precisely
+     * because it hung waiting on the tool it lacked, and in that case both
+     * conditions hold on the same result. Reporting "killed for inactivity"
+     * alone would hide the reason the job actually fails on, so this method
+     * checks {@link AgentRunResult#hasUnavailableRequiredMcpServer()} first
+     * and folds the inactivity kill into that message instead of the other
+     * way around.</p>
+     *
      * @param phase  the phase that completed
      * @param result the session result, or {@code null}
      * @return the formatted message text
@@ -255,14 +264,17 @@ public final class HarnessStatusReporter {
         String outcome;
         if (result == null) {
             outcome = "no result";
-        } else if (result.killedForInactivity()) {
-            outcome = "killed for inactivity";
         } else if (result.hasUnavailableRequiredMcpServer()) {
-            // Not a success whatever the exit code: the agent ran with its
-            // required tools absent, and the job fails on this result.
+            // Not a success whatever the exit code, and not merely an
+            // inactivity kill when both apply.
             outcome = "FAILED — required MCP server(s) unavailable at session start: "
                     + String.join(", ", result.unavailableRequiredMcpServers())
-                    + " (ran " + formatDuration(result.durationMs()) + " without them; output discarded)";
+                    + (result.killedForInactivity()
+                            ? " (also killed for inactivity after " + formatDuration(result.durationMs())
+                            : " (ran " + formatDuration(result.durationMs()) + " without them")
+                    + "; output discarded)";
+        } else if (result.killedForInactivity()) {
+            outcome = "killed for inactivity";
         } else if (result.exitCode() == 0) {
             outcome = "success in " + formatDuration(result.durationMs());
         } else {

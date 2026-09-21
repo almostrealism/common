@@ -145,4 +145,23 @@ public class ClaudeCodeRunnerMcpAvailabilityTest extends TestSuiteBase {
         assertTrue(message, message.contains("FAILED"));
         assertFalse(message, message.contains("success in"));
     }
+
+    /**
+     * A session can be killed by the inactivity watchdog precisely because it
+     * hung waiting on a required tool it never got; both conditions hold on
+     * the same result. The required-server failure must stay visible rather
+     * than being masked by a plain "killed for inactivity" message.
+     */
+    @Test(timeout = 5000)
+    public void phaseExitMessagePrioritizesUnavailableServerOverInactivityKill() {
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                INIT_WITH_FAILED_MANAGER + RESULT_SUCCESS, 0, true, SILENT, Set.of("ar-manager"));
+
+        String message = HarnessStatusReporter.formatPhaseExit(Phase.PRIMARY, result);
+
+        assertTrue(message, message.contains("ar-manager"));
+        assertTrue(message, message.contains("FAILED"));
+        assertTrue(message, message.contains("inactivity"));
+        assertFalse(message, message.contains("complete — killed for inactivity"));
+    }
 }

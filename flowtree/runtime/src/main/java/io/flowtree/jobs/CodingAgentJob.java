@@ -1280,6 +1280,7 @@ public class CodingAgentJob extends GitManagedJob {
         // instructions; the exception takes the job down the error path, so
         // nothing is committed and no later phase runs.
         if (finalResult != null && finalResult.hasUnavailableRequiredMcpServer()) {
+            // TODO(review): no test exercises this throw end-to-end via doWork().
             throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
         }
 
