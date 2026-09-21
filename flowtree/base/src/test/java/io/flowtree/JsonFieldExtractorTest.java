@@ -154,4 +154,40 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals("a", names.get(0));
 		Assert.assertEquals("b", names.get(1));
 	}
+
+	/**
+	 * A {@code '}'} inside a string field of an array object is a literal
+	 * character, not the object's closing brace. Counting braces without
+	 * tracking string literals (as the old implementation did) prematurely
+	 * closes the first object and desynchronizes the depth counter, so the
+	 * second object is never counted. {@code matchingBracket} already ignores
+	 * brackets inside strings; {@link JsonFieldExtractor#countArrayEntries(String, String)}
+	 * must ignore braces inside strings the same way.
+	 */
+	@Test(timeout = 10000)
+	public void countArrayEntriesWithBraceInStringField() {
+		String json = "{\"items\":[{\"a\":\"}\"},{\"a\":\"x\"}]}";
+
+		int count = JsonFieldExtractor.countArrayEntries(json, "items");
+
+		Assert.assertEquals(2, count);
+	}
+
+	/**
+	 * A {@code '}'} inside a string value must not be mistaken for the closing
+	 * brace of the object that contains it. Scanning object bounds by raw brace
+	 * depth (ignoring string literals) truncates the object body at the literal
+	 * brace, so {@link JsonFieldExtractor#extractFieldFromArrayObjects(String, String, String)}
+	 * returns a corrupted value for the field that carries the brace.
+	 */
+	@Test(timeout = 10000)
+	public void extractFieldFromArrayObjectsWithBraceInFieldValue() {
+		String json = "{\"items\":[{\"name\":\"a}b\",\"x\":1},{\"name\":\"c\"}]}";
+
+		List<String> names = JsonFieldExtractor.extractFieldFromArrayObjects(json, "items", "name");
+
+		Assert.assertEquals(2, names.size());
+		Assert.assertEquals("a}b", names.get(0));
+		Assert.assertEquals("c", names.get(1));
+	}
 }
