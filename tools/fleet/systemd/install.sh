@@ -22,7 +22,9 @@
 # Run with sudo from a checkout. It:
 #
 #   1. Checks the prerequisites (python3 with venv; systemd).
-#   2. Creates the service account and FLEET_HOME (mode 700).
+#   2. Creates the service account and FLEET_HOME (root-owned, mode 711 —
+#      traversable but not writable by the service account; its logs and
+#      venv subdirectories are separately owned by that account).
 #   3. Snapshots tools/fleet into FLEET_HOME/app and creates the private
 #      interpreter (a venv with psycopg) as the service account.
 #   4. Puts the store credential in place: --store-url-file copies a file
@@ -73,6 +75,15 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+
+if [ "${FLEET_USER}" = "root" ]; then
+    echo "ERROR: --user must not be root; the service must run as a dedicated, unprivileged account." >&2
+    exit 1
+fi
+if ! [[ "${FLEET_USER}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    echo "ERROR: --user must be a valid system account name (e.g. 'fleet')." >&2
+    exit 1
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: run with sudo: sudo $0 ..." >&2
@@ -126,14 +137,25 @@ if ! id "${FLEET_USER}" >/dev/null 2>&1; then
     useradd --system --home-dir "${FLEET_HOME}" --create-home --shell /usr/sbin/nologin \
         --comment "Runner fleet metrics collector" "${FLEET_USER}"
 fi
-mkdir -p "${FLEET_HOME}/logs"
-chown "${FLEET_USER}:${FLEET_USER}" "${FLEET_HOME}" "${FLEET_HOME}/logs"
-chmod 700 "${FLEET_HOME}"
+# FLEET_HOME itself stays root-owned and not writable by FLEET_USER, so the
+# service account can traverse into it (needed to reach APP_DIR, its own
+# logs/venv subdirectories, and the store credential) but cannot remove or
+# rename anything directly under it — in particular it cannot replace
+# APP_DIR, which is what makes that snapshot tamper-proof against a
+# compromised service account. The subdirectories the service account must
+# write to are owned by it individually.
+chown root:root "${FLEET_HOME}"
+chmod 711 "${FLEET_HOME}"
+mkdir -p "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
+chown "${FLEET_USER}:${FLEET_USER}" "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
+chmod 700 "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
 
 # ── 3. Code snapshot and interpreter ───────────────────────────────
 
-# Root-owned, world-readable: the service account can import it and nobody
-# but root can change it. A fresh copy each run, so an update is a re-run.
+# Root-owned; FLEET_HOME's own permissions (above) are what stop the service
+# account from replacing this directory. World-readable so the service
+# account (or anyone else who can traverse into FLEET_HOME) can still import
+# it. A fresh copy each run, so an update is a re-run.
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/tools/fleet"
 cp "${CHECKOUT}"/tools/fleet/*.py "${APP_DIR}/tools/fleet/"
