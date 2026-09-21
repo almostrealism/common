@@ -1,0 +1,37 @@
+# systemd unit for the fleet metrics collector on a Linux runner host.
+#
+# A template: tools/fleet/systemd/install.sh fills the @PLACEHOLDERS@ and
+# writes the result to /etc/systemd/system/fleet-collector.service. It runs
+# as the dedicated FLEET_USER account — not the account the runners run as,
+# since the store credential in FLEET_HOME/store-url (mode 600) must not be
+# readable by a CI job — and samples every 15 seconds into the local JSONL
+# under FLEET_HOME/logs and the central store.
+#
+# The collector reads the code from a root-owned snapshot under
+# FLEET_HOME/app rather than a checkout, so neither the service account nor
+# the runner account can change what the service runs.
+
+[Unit]
+Description=Runner fleet metrics collector
+Documentation=file://@APP_DIR@/tools/fleet/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@FLEET_USER@
+Group=@FLEET_USER@
+WorkingDirectory=@FLEET_HOME@
+Environment=PYTHONPATH=@APP_DIR@
+Environment=PATH=/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=@PYTHON@ -m tools.fleet.collector --host @HOST@ --log-dir @FLEET_HOME@/logs --store-url-file @FLEET_HOME@/store-url --disk-path @DISK_PATH@
+Restart=always
+RestartSec=15
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=@FLEET_HOME@/logs
+
+[Install]
+WantedBy=multi-user.target
