@@ -32,9 +32,11 @@
 #     label must be under com.almostrealism., so no system service can be
 #     named at all.
 #   - The plist is copied into a directory only root can reach (under
-#     /private/var/root, held to root-only ownership, mode and ACL, with any
-#     inherited ACL stripped) before anything reads it, so what is validated is what gets
-#     installed, and nothing can be swapped in between.
+#     /private/var/root, which must be root-owned and writable by root alone;
+#     the fresh staging directory inside it is held to root-only ownership,
+#     mode and ACL, with any inherited ACL stripped) before anything reads
+#     it, so what is validated is what gets installed, and nothing can be
+#     swapped in between.
 #   - The plist speaks for its owner and for nobody else, so it must be
 #     writable by root and the owner alone: the file and every directory
 #     above it are held to the same ownership, mode and ACL checks as this
@@ -87,9 +89,10 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 PLISTBUDDY="/usr/libexec/PlistBuddy"
 
 DAEMONS_DIR="/Library/LaunchDaemons"
-# Only root can enter this directory, so a file staged under it cannot be
-# replaced between validation and install by anyone else. The real path,
-# because /var is a symlink and the checks refuse symlinked components.
+# Only root can write this directory, so a file staged in a private
+# subdirectory of it cannot be replaced between validation and install by
+# anyone else. The real path, because /var is a symlink and the checks
+# refuse symlinked components.
 STAGING_ROOT="/private/var/root"
 STOP_TIMEOUT_SECONDS=30
 ALLOWED_KEYS="Label UserName GroupName ProgramArguments EnvironmentVariables WorkingDirectory RunAtLoad KeepAlive ThrottleInterval StandardOutPath StandardErrorPath ProcessType Nice"
@@ -242,11 +245,16 @@ fi
 # which sudo may have taken from the administrator's environment and which
 # is not this script's to vouch for — so nobody else can swap it either.
 
-# The directories above the staging root need only be trusted (root-owned,
-# nobody else may write); the root itself must be root's alone.
+# What prevents a swap is that nobody but root can WRITE the containing
+# directories: the ones above the staging root need only be trusted
+# (root-owned or the administrator's, no other writer), and the root itself
+# must be writable by root alone. It need not be unreadable by others —
+# macOS ships /var/root as 700 on some installs and 750 root:wheel on
+# others, and read access to the parent buys nothing when the staging
+# directory created inside it (checked below) is root's alone.
 if ! check_path_components "$(dirname "${STAGING_ROOT}")" trusted_path \
-   || ! root_only_path "${STAGING_ROOT}"; then
-    echo "ERROR: ${STAGING_ROOT} is not a root-only directory on a trusted path; refusing to stage there." >&2
+   || ! writable_only_by 0 "${STAGING_ROOT}"; then
+    echo "ERROR: ${STAGING_ROOT} is not a root-owned, root-only-writable directory on a trusted path; refusing to stage there." >&2
     exit 1
 fi
 
