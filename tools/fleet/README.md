@@ -9,17 +9,89 @@ starts running.
 | Module | What it does |
 |---|---|
 | `attribution.py` | Classifies host processes into `runner`/`agent`/`other` by process-tree ancestry. Every class is a direct sum of its own processes — never a `total - runner - agent` residual, which is ill-defined (differing `%cpu` accounting bases, RSS double-counted across shared pages). |
-| `collector.py` | Generalises `tools/ci/monitor/ar-host-monitor.sh`: records `ppid` and the owning user per process (the existing monitor records neither) and computes the attribution split. Writes local JSONL, matching the existing monitor's fallback-first design. `run_sampling_loop`/`main` is the scheduled entry point — runnable as `python -m tools.fleet.collector --log-dir <dir>`, meant to be the body of a launchd/systemd service — and rotates its own JSONL output the same way `ar-host-monitor.sh` does (`cleanup_old_jsonl`, date-stamped files, retention-days cutoff). |
-| `schema.py` | The store schema, with an explicit primary/unique key on every table — needed because both ingest paths (batched pushes, repeated GitHub polling) are at-least-once. |
-| `store.py` | A `sqlite3`-backed implementation of that schema with upsert-on-natural-key semantics, plus the read queries the CLI uses. A Postgres/TimescaleDB deployment is expected to use the same schema and query shapes; only the connection and upsert syntax differ. |
-| `github_poller.py` | Computes `pre_start_latency_seconds` (the raw `started_at - created_at` interval) and, only when the caller supplies the job's dependency graph, a real `queue_wait_seconds` distinct from it — a job gated on a workflow `needs:` does not have its queue wait measured by the raw interval alone, since that also includes time blocked on upstream jobs. `poll_and_store` is the poll-cycle entry point: it fetches runs/jobs, computes metrics, and upserts `job_event`/`job_step` into a `FleetStore`, retrying rate-limited (403/429) responses with backoff. |
-| `cli.py` | The two read verbs, `list` and `status`, against `store.py`. |
+| `collector.py` | Generalises `tools/ci/monitor/ar-host-monitor.sh`: records `ppid` and the owning user per process (the existing monitor records neither) and computes the attribution split. Writes local JSONL (with `filter_procs` keeping every `runner`/`agent` process and only the `other` processes above a CPU/RSS threshold — unfiltered, one sample is ~100 KB on a busy host) and, given `--store-url`/`--store-url-file`, the `host_sample`/`class_sample` rows to the store (`store_record`). `run_sampling_loop`/`main` is the scheduled entry point — `python -m tools.fleet.collector --log-dir <dir> …`, the body of the launchd service in `launchd/` — opening the store lazily and reopening it after any failed write, so a database restart costs a few rows, never the collector. |
+| `schema.py` | The store schema, with an explicit primary/unique key on every table — needed because both ingest paths (direct writes from collectors, repeated GitHub polling) are at-least-once. Portable DDL; the timestamp columns are `TEXT` on sqlite and `TIMESTAMPTZ` on Postgres. |
+| `store.py` | `FleetStore`: the schema on either sqlite3 (tests, a single host) or Postgres (the central store), through one implementation — `INSERT … ON CONFLICT DO UPDATE` upserts, `?`→`%s` placeholder rewriting, explicit transactions. `FleetStore.from_url` picks the backend from `sqlite:///path` or `postgresql://…`; Postgres needs `psycopg`, imported only when a Postgres store is opened. |
+| `credentials.py` | `read_secret_file`: the one way a credential (store URL, GitHub token) enters a service — from a file that must be mode 600, never a command line. |
+| `github_poller.py` | Computes `pre_start_latency_seconds` (the raw `started_at - created_at` interval) and, only when the caller supplies the job's dependency graph, a real `queue_wait_seconds` distinct from it — a job gated on a workflow `needs:` does not have its queue wait measured by the raw interval alone, since that also includes time blocked on upstream jobs. `poll_and_store` is the poll-cycle entry point: it fetches runs/jobs, computes metrics, and upserts `job_event`/`job_step` into a `FleetStore`, retrying rate-limited (403/429) responses with backoff. `run_poll_loop`/`main` is the scheduled entry point — `python -m tools.fleet.github_poller --repo owner/name --token-file … --store-url-file …` — with the collector's reconnect behaviour. |
+| `cli.py` | The two read verbs, `list` and `status`, against any store (`--db fleet.db`, or `--db-url-file` for the central Postgres store — `--db` itself rejects a `postgresql://…` URL, since the credential it carries would otherwise appear on this process's command line). |
+| `launchd/` | LaunchDaemon templates for the collector and the poller; `render.sh`, which fills them in for a host and creates the private interpreter (a venv with `psycopg`) they run with; and `install.sh`, the one-command install for a macOS host (render, credential, a proven first sample, registration). |
+
+## Deploying it
+
+The central store and dashboard are two services in the controller compose
+stack, `fleet-db` (Postgres) and `fleet-grafana`
+(`flowtree/runtime/controller/docker-compose.yml`); `rebuild.sh` generates
+their passwords into `/Users/Shared/flowtree/secrets/` on first run and binds
+their ports to the host's tailnet address only (it detects the address, or
+takes `FLEET_BIND_ADDR`, and writes the result to the compose project's
+`.env` — `flowtree/runtime/controller/.env`, gitignored — so every later
+`docker compose` command from that project, `logs` and `exec` included,
+resolves the address too; the compose file refuses to interpolate without
+one). Grafana's datasource and the capacity dashboard are provisioned from
+`flowtree/runtime/controller/grafana/`, so a dashboard change ships with the
+next deploy.
+
+Collectors write to the store directly over the tailnet, and so does the
+poller — there is no ingest service in between. The cost is a database
+credential on each host, which is why the collector runs as an account that
+executes neither CI jobs nor coding-agent jobs, with the credential in a
+mode-600 file only that account can read (`read_secret_file` refuses
+anything more permissive).
+
+On a macOS host, as the account the collector will run as (never the account
+the runners run as — the installer refuses that), one command does the whole
+install:
+
+```bash
+tools/fleet/launchd/install.sh --store-from michael@mac-studio
+```
+
+It creates the private interpreter and renders the plists (`render.sh`),
+copies the store credential from a host that already has it (or uses an
+existing `~/fleet/store-url`), takes **one sample into the central store and
+reads it back** before anything is daemonised — a credential or database
+problem fails there, in the foreground — and then registers the collector
+daemon through the native agent's `register-daemon.sh` (the one `sudo`
+step). Re-running it updates an existing install. On the store host add
+`--with-poller`, after putting the poller's read-only GitHub token
+(fine-grained, Actions: read) at `/Users/Shared/flowtree/secrets/fleet-github-token`,
+mode 600, owned by the same account; the poller runs once per fleet, not per
+host.
+
+The pieces, for a host where you want to do them by hand (`--no-register`
+stops before the sudo step and prints the commands):
+
+```bash
+tools/fleet/launchd/render.sh          # venv with psycopg, rendered plists under ~/fleet
+printf 'postgresql://fleet:%s@<tailnet address of the store host>:5432/fleet\n' \
+    "$(cat /Users/Shared/flowtree/secrets/fleet-db-password)" > ~/fleet/store-url
+chmod 600 ~/fleet/store-url
+sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh \
+    com.almostrealism.fleet-collector ~/fleet/launchd/com.almostrealism.fleet-collector.plist
+```
+
+`register-daemon.sh` validates that the plist runs the service as the
+account that wrote it and nothing else, and must itself be run from a
+checkout you own.
+
+`launchctl print system/com.almostrealism.fleet-collector | grep -E 'state|pid'`
+and `tail -f ~/fleet/logs/collector.log` show whether it is up; the host
+appears in Grafana (`http://<tailnet address>:3000`, user `admin`, password
+in `/Users/Shared/flowtree/secrets/grafana-admin-password`) within a minute.
+The collector's `--host` label is the host's `LocalHostName`, lower-cased;
+`render.sh` sets it because `platform.node()` on a Tailscale host can return
+the FQDN with extra tokens appended. A runner whose work volume is not `/`
+needs `FLEET_DISK_PATH=<mount>` in the environment of the install.
 
 ## What is intentionally not here
 
-- **Push transport** to a remote ingest endpoint, and **dashboards**: both
-  need a running store/ingest instance to deploy against, and an actual
-  fleet inventory to point at.
+- **An ingest service** in front of the database. The design describes one
+  (bearer auth, tailnet-bound); the direct connection above is the short
+  path that needs nothing built server-side, and it is enough while the
+  fleet is a handful of hosts the operator controls. Reconsider if a host
+  that runs fork-PR code cannot be given a separate account for the
+  collector.
 - **Docker-API-based attribution** for containers whose process tree is not
   visible to a native host `ps` (e.g. containers running inside a
   virtualized container runtime on macOS): needs a real host of that kind to

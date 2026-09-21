@@ -61,6 +61,9 @@ flowtree-controller.log
 **/slack-tokens.json
 tools/ci/.env
 flowtree/agent/.env
+# Written by flowtree/runtime/rebuild.sh: the compose project's interpolation
+# variables (the fleet services' tailnet bind address).
+flowtree/runtime/controller/.env
 
 # Data
 flowtreedb**

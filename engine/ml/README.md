@@ -260,6 +260,39 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 }
 ```
 
+### TransformerBlockFeatures
+
+`TransformerBlockFeatures` (extends `AttentionFeatures`) assembles complete pre-norm
+transformer blocks — self-attention, optional cross-attention, and a gated feed-forward,
+each in a residual branch — for the sequence-based (non-KV-cached) models such as
+`DiffusionTransformer` and `T5GemmaEncoder`. Every overload delegates to one fully
+specified `transformerBlock(...)` that accepts an `AttentionVariant`, optional adaLN
+modulation, optional per-position additive conditioning, and a `NormalizationType`, so
+all callers share one block assembly:
+
+```java
+Block block = transformerBlock(
+    batchSize, dim, seqLen, heads, crossAttend,
+    contextSeqLen, context,
+    preNormWeight, preNormBias,
+    selfQkv, selfWo,
+    selfQNormWeight, selfQNormBias, selfKNormWeight, selfKNormBias,
+    invFreq,
+    crossAttPreNormWeight, crossAttPreNormBias,
+    crossWq, crossKv, crossWo,
+    crossQNormWeight, crossQNormBias, crossKNormWeight, crossKNormBias,
+    ffnNormWeight, ffnNormBias, w1, w2, w1Bias, w2Bias,
+    attentionScores,       // optional Receptor to capture cross-attention scores, or null
+    projectionFactory,     // ProjectionFactory.dense() or a LoRA-wrapped factory
+    AttentionVariant.STANDARD,
+    diffLambda,            // learned lambda for variants that need it, or null
+    modulation,            // adaLN scale/shift/gate, shape [batch, 6, dim], or null for prepend-style conditioning
+    localAddition,         // per-position additive conditioning, shape [batch, seqLen, dim], or null
+    NormalizationType.RMS,
+    paddingMask            // per-position validity, or null for no masking
+);
+```
+
 ### AutoregressiveModel
 
 ```java
@@ -538,6 +571,13 @@ ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
 Block attention = sequenceAttention(shape, weights, factory);
 ```
 
+The fully specified `sequenceAttention` overload additionally accepts a `NormalizationType`
+for query/key normalization, an optional per-position `paddingMask` (zeroes masked value
+vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
+`AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
+shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
+and no masking.
+
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 
 `DiffusionTransformer` selects its conditioning scheme via `ConditioningMode`: `PREPEND` (the
@@ -577,6 +617,11 @@ into (an inpainting mask concatenated with the masked latent, for example) befor
 block projects it to the transformer width and adds it to the hidden state between the self-attention
 and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local
 conditioning. The buffer starts zero-filled, which is the value plain generation supplies.
+
+`DiffusionTransformerConfig.withNormalization(NormalizationType)` selects LayerNorm (default) or
+RMSNorm for every block norm and query/key norm; `withPaddingMask(true)` adds a per-position latent
+padding mask, exposed for writes via `DiffusionTransformer.getPaddingMask()` and consumed by
+self-attention as value masking.
 
 ### Stable Audio 3 Conditioning and Codec
 
