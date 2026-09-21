@@ -27,6 +27,19 @@
 # This prevents false positives when a branch adds brand-new test methods
 # that legitimately carry @TestDepth, skipLongTests, etc.
 #
+# Assertion counting (Pattern 2, NET_ASSERTIONS_REMOVED) is deliberately NOT
+# method-scoped: it counts assertion *calls* everywhere in a modified base-branch
+# test file — inside @Test bodies and inside helper methods alike — and nets them
+# per file, so stripping an assertEquals out of a helper that the @Test methods
+# call is still caught. It excludes two kinds of line that are not assertion
+# calls: comment lines (prose "assert" in Javadoc) and method *declaration* lines
+# whose name begins with "assert" (e.g. `protected void assertWithin(...) {`) — a
+# method name is not an assertion call. The declaration exclusion is applied
+# symmetrically to the removed and added side. Pattern 3
+# (NET_TEST_METHODS_REMOVED) counts `@Test` lines and needs no equivalent
+# exclusion: a declaration line carries no `@Test` annotation and no method is
+# named `@Test`, so it cannot mistake a declaration for a test method.
+#
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
 #   1 - invalid arguments
@@ -101,6 +114,28 @@ merge_base_has_file() {
 
 VIOLATION_COUNT=0
 VIOLATIONS=""
+
+# ── Pattern-2 helper: assert-like method DECLARATION shape ────────────────
+#
+# Pattern 2 counts assertion *calls* (see below). The bare word "assert" in its
+# regex also matches a method whose NAME begins with "assert" — but a method
+# name is not an assertion. A helper such as
+#   protected void assertWithin(String stage, PackedCollection actual, ...) {
+# therefore counts as an "assertion" on the single line where it is *declared*,
+# not only where it is *called*. Moving that helper into a shared base class
+# deletes its declaration from this file and would be mis-counted as a removed
+# assertion (observed on feature/sa3-prep, SAMEResamplingParityTest.java).
+#
+# A declaration has a shape a call never has: an assert-like identifier led by an
+# access modifier or a `void` return, followed by a `(...)` parameter list that
+# ends the line with `{` or `throws`. A call passes value expressions and is
+# never preceded by a modifier/return type. This predicate matches the
+# declaration shape and is applied identically to the removed and the added side
+# (symmetry matters: excluding declarations on only one side could let a genuine
+# assertion-for-declaration swap net out incorrectly). It is layered on top of
+# the comment-line exclusion, so a declaration's call sites and the assertion
+# calls inside its body are untouched and still fully counted.
+ASSERT_DECL_RE='\b(public|private|protected|void)\b[^(]*\b(assert|fail)[A-Za-z0-9_]*[[:space:]]*\(.*\)[[:space:]]*(\{|throws)'
 
 # Helper to record a violation
 record_violation() {
@@ -466,9 +501,14 @@ for FILE in $MODIFIED_TEST_FILES; do
 
     # ── Pattern 2: Deleted assertion lines (net) ──
     # Exclude comment lines (// single-line, /* block/javadoc, * continuation)
-    # to avoid false positives from prose use of "assert" in Javadoc comments.
-    DELETED_ASSERTS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
-    ADDED_ASSERTS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    # to avoid false positives from prose use of "assert" in Javadoc comments,
+    # then exclude assert-named method DECLARATION lines via $ASSERT_DECL_RE
+    # (a method name beginning with "assert" is not an assertion). Both
+    # exclusions are applied symmetrically to the removed and the added side so
+    # the per-file netting on the lines below stays balanced; only assertion
+    # *calls* — in @Test bodies and in helper bodies alike — are counted.
+    DELETED_ASSERTS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -vE "$ASSERT_DECL_RE" | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    ADDED_ASSERTS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -vE "$ASSERT_DECL_RE" | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
     if [ "$DELETED_ASSERTS" -gt 0 ] && [ "$ADDED_ASSERTS" -lt "$DELETED_ASSERTS" ]; then
         NET_REMOVED=$((DELETED_ASSERTS - ADDED_ASSERTS))
         record_violation "$FILE" "NET_ASSERTIONS_REMOVED" \
