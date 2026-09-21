@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd service for the GitHub job poller. One per fleet, on the host that
+  runs the store (the design puts both on the Mac Studio).
+
+  A template, rendered and registered exactly like the collector's (see
+  tools/fleet/launchd/render.sh and tools/fleet/README.md). Runs as
+  FLEET_USER, which owns the two credentials it reads: the read-only GitHub
+  token at TOKEN_FILE and the store URL at FLEET_HOME/store-url, both mode
+  600. The poller loops on its own interval, so launchd only keeps the one
+  process alive.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.almostrealism.fleet-poller</string>
+    <key>UserName</key>
+    <string>@FLEET_USER@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@PYTHON@</string>
+        <string>-m</string>
+        <string>tools.fleet.github_poller</string>
+        <string>--repo</string>
+        <string>@REPO@</string>
+        <string>--token-file</string>
+        <string>@TOKEN_FILE@</string>
+        <string>--store-url-file</string>
+        <string>@FLEET_HOME@/store-url</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>@CHECKOUT@</string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>@FLEET_USER_HOME@</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>@CHECKOUT@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <key>Nice</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>@FLEET_HOME@/logs/poller.log</string>
+    <key>StandardErrorPath</key>
+    <string>@FLEET_HOME@/logs/poller.log</string>
+</dict>
+</plist>

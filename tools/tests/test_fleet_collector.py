@@ -766,6 +766,53 @@ class CollectorMainTests(unittest.TestCase):
                 collector.main(["--log-dir", log_dir])
             self.assertIsNone(loop_mock.call_args.kwargs["iterations"])
 
+    def test_store_url_is_forwarded_when_given_on_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                collector.main(["--log-dir", log_dir, "--store-url", "sqlite:///fleet.db", "--once"])
+            self.assertEqual(loop_mock.call_args.kwargs["store_url"], "sqlite:///fleet.db")
+
+    def test_store_url_file_is_read_instead_of_appearing_on_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            store_url_file = os.path.join(tmp, "store-url")
+            with open(store_url_file, "w") as handle:
+                handle.write("postgresql://fleet:secret@db/fleet\n")
+            os.chmod(store_url_file, 0o600)
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                collector.main(["--log-dir", log_dir, "--store-url-file", store_url_file, "--once"])
+            self.assertEqual(loop_mock.call_args.kwargs["store_url"], "postgresql://fleet:secret@db/fleet")
+
+    def test_store_url_file_refuses_a_world_readable_credential(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            store_url_file = os.path.join(tmp, "store-url")
+            with open(store_url_file, "w") as handle:
+                handle.write("postgresql://fleet:secret@db/fleet\n")
+            os.chmod(store_url_file, 0o644)
+            with self.assertRaises(PermissionError):
+                collector.main(["--log-dir", log_dir, "--store-url-file", store_url_file, "--once"])
+
+    def test_default_thresholds_are_not_forwarded_to_the_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                collector.main(["--log-dir", log_dir, "--once"])
+            self.assertNotIn("cpu_threshold", loop_mock.call_args.kwargs)
+            self.assertNotIn("rss_threshold_mb", loop_mock.call_args.kwargs)
+
+    def test_custom_thresholds_are_forwarded_to_the_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, "logs")
+            with mock.patch("tools.fleet.collector.run_sampling_loop") as loop_mock:
+                collector.main([
+                    "--log-dir", log_dir, "--once",
+                    "--proc-cpu-threshold", "1.5", "--proc-rss-threshold-mb", "20",
+                ])
+            self.assertEqual(loop_mock.call_args.kwargs["cpu_threshold"], 1.5)
+            self.assertEqual(loop_mock.call_args.kwargs["rss_threshold_mb"], 20.0)
+
 
 if __name__ == "__main__":
     unittest.main()
