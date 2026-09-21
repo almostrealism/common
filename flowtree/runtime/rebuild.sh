@@ -164,7 +164,12 @@ FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana
 # also written to the compose project's `.env` file (gitignored), which
 # compose reads for interpolation automatically. The `:?` in the compose
 # file still fails closed on a host where this script has never run.
-COMPOSE_ENV_FILE="flowtree/runtime/controller/.env"
+#
+# Overridable like SECRETS_DIR and the data directories, and for the same
+# reason: the regression suite (test-rebuild.sh) runs this script from the
+# real checkout, and a run that wrote the checkout's own .env would hand
+# its value to the next run — and leave it behind for the next deploy.
+COMPOSE_ENV_FILE="${FLEET_COMPOSE_ENV_FILE:-flowtree/runtime/controller/.env}"
 
 persist_fleet_bind_addr() {
   local tmp="${COMPOSE_ENV_FILE}.tmp"

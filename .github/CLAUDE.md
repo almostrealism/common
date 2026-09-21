@@ -103,7 +103,12 @@ The `changes` job detects which top-level directories changed and sets flags:
 **No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
-flowtree tests always run in the `test-flowtree` job regardless of what changed.
+flowtree tests always run in the `test-flowtree` job regardless of what changed
+— with one gate: `test-flowtree` needs `python-tests` success-or-skipped. The
+flowtree runtime drives the Python tooling, so when the Python suite ran and
+failed there is nothing sound for the Java suite to prove. `python-tests` is
+skipped only by its own path gate, never by an upstream failure, so that
+`skipped` is unambiguous.
 The `python_changed` flag is a path-based (not layer-based) flag that gates
 `python-tests`; Python sources are not part of the layered Java module graph.
 The `agent_isolation_changed` flag is likewise path-based and gates
@@ -338,7 +343,13 @@ heavy suites do not contend on their fleet:
 The CPU and GPU lanes run in parallel. The CL lane starts only after **both**
 of them have finished: `test-cl` gates on `test`, `test-media`, `test-mac` and
 `test-media-mac` (each success-or-skipped), and `test-media-cl` gates on
-`test-cl`. This is admission control, not GPU serialisation — the fleets are
+`test-cl` **and on those same four lanes directly**. The second part is not
+redundant: `test-cl` is skipped either by its own layer gate or by an upstream
+failure, and its `skipped` result cannot tell the two apart — gating
+`test-media-cl` on `test-cl` alone let it run after a Linux suite had failed.
+A downstream job must never infer "upstream was fine" from a `skipped` that has
+more than one cause; it gates on the upstream lanes itself. This is admission
+control, not GPU serialisation — the fleets are
 different machines. The CL lane is sixteen matrix jobs on a single host, the
 most expensive thing a pipeline schedules, and it is "Linux plus an accelerator
 other than Metal": a branch that cannot pass the Linux CPU suites, or cannot
