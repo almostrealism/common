@@ -587,18 +587,31 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * ordering dispatch-backed argument evaluations after the given completion.
 	 *
 	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn} when
-	 * {@link StreamingEvaluable#isDispatchBacked()} reports that it orders its own work after
-	 * a supplied dependency — chaining through the provider for a device dispatch, or waiting
-	 * on a worker thread before reading memory otherwise — so that argument never reads memory
-	 * written by the work {@code dependsOn} represents before that work has completed. This flag
-	 * is read from the {@link StreamingEvaluable} actually constructed for this argument, after
-	 * {@code async()}/{@code async(Executor)} wraps it, not from the pre-wrap evaluable: a plain
-	 * evaluable that is not itself a {@link StreamingEvaluable} can still become dispatch-backed
-	 * once wrapped, since {@code EvaluableStreamingAdapter} waits on {@code dependsOn} before
-	 * evaluating. An argument whose wrapper is not dispatch-backed receives {@code null} instead:
-	 * blocking it on {@code dependsOn} would violate the non-blocking submission contract (a submit
-	 * with an outstanding foreign dependency must return, and a same-provider dependency must
-	 * remain free), and it disregards the dependency anyway, evaluating immediately.</p>
+	 * {@link StreamingEvaluable#isDispatchBacked()} reports, on the <em>pre-wrap</em> evaluable
+	 * (the value in {@code kernelArgEvaluables}, before {@code async()}/{@code async(Executor)}
+	 * wraps it), that it orders its own work after a supplied dependency — chaining through the
+	 * provider for a device dispatch, or waiting on a worker thread before reading memory
+	 * otherwise. An argument whose pre-wrap evaluable is not itself a {@link StreamingEvaluable}
+	 * (a plain reference-producing {@link Evaluable}, such as the handle-only lambdas a compiled
+	 * {@code Assignment} binds its source/destination to) receives {@code null} instead, even
+	 * though the generic {@code async()} wrapper ({@code EvaluableStreamingAdapter}) it gets
+	 * wrapped in unconditionally reports {@code isDispatchBacked() == true} once constructed.
+	 * That wrapper-level report describes what the adapter's {@code request} is <em>capable</em>
+	 * of (waiting on a non-null dependency before calling {@code evaluate()}), not whether this
+	 * particular argument needs it: a handle-only evaluable never reads memory content during its
+	 * own evaluation, and the compiled kernel's actual read of that memory is already ordered,
+	 * without any host wait, by {@link AcceleratedOperation#apply(MemoryBank, Object[], Semaphore)
+	 * apply}, which merges {@code dependsOn} into the operator's own dispatch semaphore
+	 * independently of this per-argument decision. Forwarding {@code dependsOn} here as well would
+	 * force a redundant, blocking host wait for exactly the kernel chaining this branch exists to
+	 * avoid (see {@code SemaphoreChainBatchingTest#chainedMetalDispatchesShareCommandBuffer} and
+	 * {@code #foreignDependencyBridgesWithoutHostWait}, which assert no such wait occurs), while
+	 * providing no additional correctness guarantee: blocking it on {@code dependsOn} would also
+	 * violate the non-blocking submission contract (a submit with an outstanding foreign
+	 * dependency must return, and a same-provider dependency must remain free). An argument that
+	 * instead needs a sized destination (built via {@code Evaluable::into} below) is always
+	 * dispatch-backed, since it only reaches that path by being a genuine kernel evaluation
+	 * rather than a handle-only reference.</p>
 	 *
 	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is submitted
 	 * to this factory's own executor only when {@link StreamingEvaluable#isSharedExecutorSafe()}
@@ -701,8 +714,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
 				}
 
-				// See this method's javadoc: derived from the wrapper produced above.
-				dispatchBacked[i] = asyncEvaluables[i].isDispatchBacked();
+				// See this method's javadoc: derived from the pre-wrap evaluable, not the
+				// generic async() wrapper produced above.
+				dispatchBacked[i] = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 			}
 		}
 
@@ -764,8 +778,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				asyncEvaluables[i] = sized.async();
 			}
 
-			// See this method's javadoc: derived from the wrapper produced above.
-			dispatchBacked[i] = asyncEvaluables[i].isDispatchBacked();
+			// See this method's javadoc: always a genuine dispatch, never a handle-only reference.
+			dispatchBacked[i] = true;
 		}
 
 		/*
