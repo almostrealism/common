@@ -97,6 +97,18 @@ import java.util.stream.Stream;
 public class CollectionProductComputation extends TraversableExpressionComputation {
 
 	/**
+	 * Cached result of {@link #isRowMonomial()}, computed lazily on first access. This
+	 * computation's operands are fixed at construction ({@link #generate(List)} always
+	 * returns a new instance rather than mutating this one), so the structural property
+	 * can be safely memoized rather than re-derived by walking the operand subgraph on
+	 * every call - which matters because {@link Algebraic#isRowMonomial(Object)} recurses
+	 * into each operand's own {@code isRowMonomial()}, and without memoization a shared
+	 * operand reachable through multiple paths in a DAG (common where a computation feeds
+	 * more than one downstream consumer) would be re-evaluated once per path.
+	 */
+	private Boolean rowMonomial;
+
+	/**
 	 * Constructs a new product computation with default name "multiply".
 	 *
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -186,12 +198,23 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * {@link #delta(Producer)} of a computation (such as convolution) that multiplies a
 	 * row-monomial Jacobian by an index-independent factor.</p>
 	 *
+	 * <p>If the other operand happens to be zero at the row-monomial operand's one candidate
+	 * column, the product's row is entirely zero rather than having exactly one non-zero
+	 * entry - still consistent with {@link Algebraic#isRowMonomial()}'s "at most one" contract.
+	 * This is sound because the gather collapse this enables reads the true product value at
+	 * the candidate column (via the normal expression evaluation path) rather than assuming
+	 * that value is non-zero.</p>
+	 *
 	 * @return true if any operand is recognized as row-monomial
 	 * @see Algebraic#isRowMonomial(Object)
 	 */
 	@Override
 	public boolean isRowMonomial() {
-		return getInputs().stream().skip(1).anyMatch(Algebraic::isRowMonomial);
+		if (rowMonomial == null) {
+			rowMonomial = getInputs().stream().skip(1).anyMatch(Algebraic::isRowMonomial);
+		}
+
+		return rowMonomial;
 	}
 
 	/**

@@ -17,8 +17,10 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.SubsetProjectionComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -95,5 +97,33 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 
 		assertFalse("an element-wise sum should not be recognized as row-monomial",
 				Algebraic.isRowMonomial(sum));
+	}
+
+	/**
+	 * A Hadamard product between a row-monomial operand and a factor that is zero at the
+	 * row-monomial operand's selected entry produces a row with zero non-zero entries, not
+	 * exactly one - {@link CollectionProductComputation#isRowMonomial()} still reports
+	 * {@code true} in this case (it only requires at least one operand to be row-monomial,
+	 * not that the product retain exactly one non-zero per row). This test confirms that
+	 * the gather-collapse this enables still reads the true (zero) value at that position
+	 * rather than an incorrect one, since the collapse reads the actual product expression
+	 * at the computed offset rather than assuming the row-monomial operand's value is
+	 * necessarily present in the result.
+	 */
+	@Test(timeout = 60000)
+	public void productWithAnnihilatingFactorIsSound() {
+		PackedCollection multiplier = pack(0.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		CollectionProducer delta = cp(in).multiply(cp(multiplier)).sum().delta(cp(in));
+		PackedCollection out = Process.optimized(delta).get().evaluate();
+
+		assertEquals(0.0, out.valueAt(0, 0, 0, 0));
+		assertEquals(3.0, out.valueAt(0, 0, 0, 1));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 0));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 1));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 0));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 1));
+		assertEquals(2.0, out.valueAt(1, 0, 1, 0));
+		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
 	}
 }

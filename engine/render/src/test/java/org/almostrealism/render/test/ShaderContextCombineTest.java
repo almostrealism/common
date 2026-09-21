@@ -32,14 +32,19 @@ import java.util.List;
 /**
  * Pins the behavior of {@link ShaderContext#getAllSurfaces()} and
  * {@link org.almostrealism.color.LightingContext#getAllLights()}, the shared
- * implementations that {@code ReflectionShader} and {@code RefractionShader}
- * now delegate to instead of assembling the combined surface and light lists
- * by hand.
+ * implementations that {@code ReflectionShader} now delegates to for both
+ * surface and light assembly, and that {@code RefractionShader} delegates to
+ * for light assembly only — {@code RefractionShader} still assembles its
+ * surface candidate list locally, in primary-last order, because its tie-break
+ * requirement is the opposite of what {@code getAllSurfaces()} provides (see
+ * {@code RefractionShader#shade(Vector, Vector, Producer, Light, Iterable,
+ * Curve, Curve[], Vector, ShaderContext)} for why).
  *
  * <p>The manual copies these tests replaced added the primary surface/light
  * first, followed by the other surfaces/lights, so these tests assert that
- * ordering. They also assert that {@link ShaderContext#getAllSurfaces()} omits
- * a {@code null} primary surface — a null-safety guard the former manual
+ * ordering for {@link ShaderContext#getAllSurfaces()} and
+ * {@code getAllLights()}. They also assert that {@link ShaderContext#getAllSurfaces()}
+ * omits a {@code null} primary surface — a null-safety guard the former manual
  * surface loop in {@code ReflectionShader} lacked.</p>
  */
 public class ShaderContextCombineTest extends TestSuiteBase {

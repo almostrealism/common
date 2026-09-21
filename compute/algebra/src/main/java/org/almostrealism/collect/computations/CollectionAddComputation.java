@@ -102,6 +102,18 @@ import java.util.stream.Stream;
 public class CollectionAddComputation extends TransitiveDeltaExpressionComputation {
 
 	/**
+	 * Cached result of {@link #isRowMonomial()}, computed lazily on first access. This
+	 * computation's operands are fixed at construction ({@link #generate(List)} always
+	 * returns a new instance rather than mutating this one), so the structural property
+	 * can be safely memoized rather than re-derived by walking the operand subgraph on
+	 * every call - which matters because the check recurses into each operand's own
+	 * {@code isRowMonomial()}/{@code isZero()}, and without memoization a shared operand
+	 * reachable through multiple paths in a DAG (common where a computation feeds more
+	 * than one downstream consumer) would be re-evaluated once per path.
+	 */
+	private Boolean rowMonomial;
+
+	/**
 	 * Constructs a new addition computation with default name "add".
 	 *
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -198,6 +210,20 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 */
 	@Override
 	public boolean isRowMonomial() {
+		if (rowMonomial == null) {
+			rowMonomial = computeRowMonomial();
+		}
+
+		return rowMonomial;
+	}
+
+	/**
+	 * Performs the actual row-monomial determination described by {@link #isRowMonomial()},
+	 * invoked once and cached by that method.
+	 *
+	 * @return true if exactly one operand is non-zero and that operand is row-monomial
+	 */
+	private boolean computeRowMonomial() {
 		List<Producer<PackedCollection>> operands = getInputs().stream().skip(1)
 				.collect(Collectors.toList());
 

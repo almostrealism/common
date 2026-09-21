@@ -164,27 +164,31 @@ public interface Algebraic extends Computable {
 
 	/**
 	 * Checks if this {@link Algebraic} represents a <em>row-monomial</em> transformation:
-	 * a matrix in which every row has exactly one non-zero entry (equivalently, each row
-	 * is a scalar multiple of a standard basis vector).
+	 * a matrix in which every row has at most one non-zero entry (equivalently, each row
+	 * is either zero or a scalar multiple of a standard basis vector).
 	 *
 	 * <p>This generalizes {@link #isIdentity(int)} and {@link #isDiagonal(int)}: a diagonal
-	 * matrix is the row-monomial matrix whose single non-zero per row sits on the diagonal,
-	 * and the identity is the 0/1 diagonal case. A row-monomial matrix relaxes "on the
-	 * diagonal" to "at an arbitrary, computable column," and — unlike diagonal/identity — it
-	 * need not be square: the (output x input) Jacobian of a subset, slice, or gather is a
-	 * row-monomial matrix.</p>
+	 * matrix is the row-monomial matrix whose (at most one) non-zero per row sits on the
+	 * diagonal, and the identity is the 0/1 diagonal case. A row-monomial matrix relaxes "on
+	 * the diagonal" to "at an arbitrary, computable column," and — unlike diagonal/identity —
+	 * it need not be square: the (output x input) Jacobian of a subset, slice, or gather is a
+	 * row-monomial matrix. A row that is entirely zero (for example where a row-monomial
+	 * Jacobian is scaled by a factor that annihilates its one candidate entry) is consistent
+	 * with the property: "at most one" rather than "exactly one" is what every consumer of
+	 * this method actually relies on, since a downstream contraction still gathers the true
+	 * (possibly zero) value at the candidate column rather than assuming it is non-zero.</p>
 	 *
 	 * <p>The significance for optimization is that a contraction against a row-monomial
-	 * matrix (summing over the column index) collapses to a direct gather of one element per
-	 * row, eliminating the dense reduction loop. When this method returns {@code true} the
-	 * containing computation can be kept visible (rather than isolated) so that downstream
-	 * reduction machinery can perform that collapse.</p>
+	 * matrix (summing over the column index) collapses to a direct gather of at most one
+	 * element per row, eliminating the dense reduction loop. When this method returns
+	 * {@code true} the containing computation can be kept visible (rather than isolated) so
+	 * that downstream reduction machinery can perform that collapse.</p>
 	 *
 	 * <p>No dimension argument is taken: a row-monomial matrix is generally non-square, so a
 	 * single {@code width} (as used by {@link #isIdentity(int)}) does not apply. An
 	 * implementing computation determines the property from its own shape.</p>
 	 *
-	 * @return {@code true} if this transformation has exactly one non-zero entry per row;
+	 * @return {@code true} if this transformation has at most one non-zero entry per row;
 	 *         {@code false} otherwise or if the property cannot be determined
 	 */
 	default boolean isRowMonomial() {
