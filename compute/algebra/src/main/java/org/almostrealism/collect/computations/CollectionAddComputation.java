@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -176,5 +177,38 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	public long getExpansionWidth() {
 		int operands = getChildren().size() - 1;
 		return Math.max(1L, operands);
+	}
+
+	/**
+	 * Determines if this element-wise sum preserves a row-monomial structure from one of
+	 * its operands.
+	 *
+	 * <p>Unlike a Hadamard product, a sum of two row-monomial operands is not row-monomial
+	 * in general - two different non-zero positions in the same row would add to a row with
+	 * two non-zero entries. The property survives only in the degenerate case where every
+	 * operand except one is algebraically zero, so the sum reduces to that one operand. This
+	 * is exactly the shape produced by the product-rule {@link CollectionProductComputation#delta(Producer)}
+	 * of a computation (such as convolution) multiplying a row-monomial Jacobian by a factor
+	 * that does not depend on the differentiation target: the other product-rule term has a
+	 * zero derivative and contributes a zero addend here.</p>
+	 *
+	 * @return true if exactly one operand is non-zero and that operand is row-monomial
+	 * @see Algebraic#isRowMonomial(Object)
+	 * @see Algebraic#isZero(Object)
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		List<Producer<PackedCollection>> operands = getInputs().stream().skip(1)
+				.collect(Collectors.toList());
+
+		Producer<PackedCollection> nonZero = null;
+
+		for (Producer<PackedCollection> operand : operands) {
+			if (Algebraic.isZero(operand)) continue;
+			if (nonZero != null) return false;
+			nonZero = operand;
+		}
+
+		return nonZero != null && Algebraic.isRowMonomial(nonZero);
 	}
 }

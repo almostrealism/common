@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -168,6 +169,29 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	public long getExpansionWidth() {
 		int operands = getChildren().size() - 1;
 		return Math.max(1L, operands);
+	}
+
+	/**
+	 * Determines if this element-wise product preserves a row-monomial structure from
+	 * one of its operands.
+	 *
+	 * <p>A Hadamard product {@code result[idx] = a[idx] * b[idx] * ...} is zero at every
+	 * index where any operand is zero. When one operand is row-monomial (at most one
+	 * non-zero entry per row), the product is therefore zero everywhere that operand is
+	 * zero, so it has at most as many non-zero entries per row as that operand does - the
+	 * product remains row-monomial regardless of what the other operands contain. This
+	 * mirrors {@link PackedCollectionEnumerate#isRowMonomial()}, which propagates the same
+	 * property through a structural reindexing; here it propagates through element-wise
+	 * multiplication, which is what allows the property to survive the product-rule
+	 * {@link #delta(Producer)} of a computation (such as convolution) that multiplies a
+	 * row-monomial Jacobian by an index-independent factor.</p>
+	 *
+	 * @return true if any operand is recognized as row-monomial
+	 * @see Algebraic#isRowMonomial(Object)
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		return getInputs().stream().skip(1).anyMatch(Algebraic::isRowMonomial);
 	}
 
 	/**
