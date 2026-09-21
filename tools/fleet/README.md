@@ -102,9 +102,11 @@ sudo tools/fleet/systemd/install.sh --store-from michael@mac-studio --disk-path 
 It creates a dedicated system account (`fleet`, no login shell — the
 runners' account must not be able to read the store credential, and on the
 ROCm host that account runs fork-PR code), snapshots `tools/fleet` into
-`/var/lib/fleet/app` as a root-owned copy the service imports (so neither
-the service account nor the runner account can change what runs; re-run to
-update), creates the venv with `psycopg` as that account, copies the
+`/var/lib/fleet/app` as a root-owned copy the service imports and creates
+the venv with `psycopg` beside it, also root-owned (so neither the service
+account nor the runner account can change what the service executes — only
+the logs and the credential are the service account's; re-run to update),
+copies the
 credential (`--store-from` runs `scp` as the user behind `sudo`, whose keys
 reach the other host; `--store-url-file` takes a local file), takes one
 sample into the central store **as the service account** and reads it back,

@@ -35,19 +35,27 @@ tokens or hit systemd's specifier expansion; both are now restricted to a
 safe character set before that substitution ever runs.
 """
 
-# TODO(review): the "accepts a valid X, fails later on sudo" tests below
-# assume this process is not root, so they rely on install.sh's `id -u`
-# guard to stop before any system-mutating command runs. If CI ever runs
-# this module as root, add an explicit skip/guard instead of depending on
-# that assumption (see review-followup memory on workstream
-# 98d1c068-d8fd-4c2f-899a-a36211088f9f).
-
 import os
 import subprocess
 import unittest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _SCRIPT = os.path.join(_REPO_ROOT, "tools", "fleet", "systemd", "install.sh")
+
+
+def setUpModule():
+    """Refuse to run the installer as root, where the tests would install.
+
+    The "accepts a valid value, fails later on sudo" cases rely on the
+    script's own root check to stop it before any system-mutating command
+    runs. As root that check passes, and a valid value would carry on to
+    create the service account, write under /var/lib, and register a
+    systemd unit on the machine running the tests. The module is skipped
+    outright in that case rather than trusting the CI user to stay
+    unprivileged.
+    """
+    if os.geteuid() == 0:
+        raise unittest.SkipTest("install.sh tests must not run as root: a valid value would install")
 
 
 def _run(*args):

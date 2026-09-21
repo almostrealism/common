@@ -20,7 +20,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=@FLEET_USER@
-Group=@FLEET_USER@
+Group=@FLEET_GROUP@
 WorkingDirectory=@FLEET_HOME@
 Environment=PYTHONPATH=@APP_DIR@
 Environment=PATH=/usr/bin:/bin:/usr/sbin:/sbin

@@ -16,8 +16,11 @@
 #     `fleet`, created here if missing, no login shell) because the store
 #     credential must not be readable by the account a CI job runs as.
 #   * The code the service runs is a root-owned snapshot of tools/fleet
-#     under FLEET_HOME/app, not a checkout, so neither the service account
-#     nor the runner account can change it. Re-run this script to update it.
+#     under FLEET_HOME/app, not a checkout, and the interpreter it runs
+#     with is a root-owned venv beside it, so neither the service account
+#     nor the runner account can change what the service executes. Only the
+#     logs directory and the credential belong to the service account.
+#     Re-run this script to update the snapshot.
 #
 # Run with sudo from a checkout. It:
 #
@@ -162,9 +165,14 @@ if id "${FLEET_USER}" >/dev/null 2>&1; then
     fi
 else
     echo "Creating system account ${FLEET_USER}..."
-    useradd --system --home-dir "${FLEET_HOME}" --create-home --shell /usr/sbin/nologin \
+    # --user-group: a same-named private group, whatever the host's default
+    # (USERGROUPS_ENAB may be off, and useradd --system does not imply one).
+    useradd --system --user-group --home-dir "${FLEET_HOME}" --create-home --shell /usr/sbin/nologin \
         --comment "Runner fleet metrics collector" "${FLEET_USER}"
 fi
+# The account's actual primary group is what every chown and the unit's
+# Group= use; it is not assumed to share the account's name.
+FLEET_GROUP="$(id -gn "${FLEET_USER}")"
 # FLEET_HOME itself stays root-owned and not writable by FLEET_USER, so the
 # service account can traverse into it (needed to reach APP_DIR, its own
 # logs/venv subdirectories, and the store credential) but cannot remove or
@@ -174,9 +182,9 @@ fi
 # write to are owned by it individually.
 chown root:root "${FLEET_HOME}"
 chmod 711 "${FLEET_HOME}"
-mkdir -p "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
-chown "${FLEET_USER}:${FLEET_USER}" "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
-chmod 700 "${FLEET_HOME}/logs" "${FLEET_HOME}/venv"
+mkdir -p "${FLEET_HOME}/logs"
+chown "${FLEET_USER}:${FLEET_GROUP}" "${FLEET_HOME}/logs"
+chmod 700 "${FLEET_HOME}/logs"
 
 # ── 3. Code snapshot and interpreter ───────────────────────────────
 
@@ -192,20 +200,35 @@ cp "${CHECKOUT}/tools/fleet/README.md" "${APP_DIR}/tools/fleet/README.md"
 chmod -R a+rX "${APP_DIR}"
 chmod 755 "${APP_DIR}"
 
+# The interpreter and its packages are root-owned like the snapshot, for the
+# same reason: the unit executes this python, so a service account that could
+# write to the venv could change what the service runs. It needs read and
+# execute only; a venv that an earlier install created as the service account
+# is taken over here.
+if [ -d "${FLEET_HOME}/venv" ] && [ "$(stat -c '%u' "${FLEET_HOME}/venv")" != "0" ]; then
+    echo "Taking ownership of ${FLEET_HOME}/venv for root..."
+    chown -R root:root "${FLEET_HOME}/venv"
+fi
 if [ ! -x "${PYTHON}" ]; then
     echo "Creating ${FLEET_HOME}/venv..."
-    runuser -u "${FLEET_USER}" -- python3 -m venv "${FLEET_HOME}/venv"
-    runuser -u "${FLEET_USER}" -- "${FLEET_HOME}/venv/bin/pip" install --quiet --upgrade pip
+    python3 -m venv "${FLEET_HOME}/venv"
+    "${FLEET_HOME}/venv/bin/pip" install --quiet --upgrade pip
 fi
-if ! runuser -u "${FLEET_USER}" -- "${PYTHON}" -c 'import psycopg' 2>/dev/null; then
+if ! "${PYTHON}" -c 'import psycopg' 2>/dev/null; then
     echo "Installing psycopg into the venv..."
-    runuser -u "${FLEET_USER}" -- "${FLEET_HOME}/venv/bin/pip" install --quiet 'psycopg[binary]'
+    "${FLEET_HOME}/venv/bin/pip" install --quiet 'psycopg[binary]'
+fi
+chmod -R go-w "${FLEET_HOME}/venv"
+chmod -R a+rX "${FLEET_HOME}/venv"
+if ! runuser -u "${FLEET_USER}" -- "${PYTHON}" -c 'import psycopg' 2>/dev/null; then
+    echo "ERROR: ${FLEET_USER} cannot import psycopg from ${FLEET_HOME}/venv." >&2
+    exit 1
 fi
 
 # ── 4. Store credential ────────────────────────────────────────────
 
 if [ -n "${STORE_URL_SRC}" ]; then
-    install -o "${FLEET_USER}" -g "${FLEET_USER}" -m 600 "${STORE_URL_SRC}" "${STORE_URL_FILE}"
+    install -o "${FLEET_USER}" -g "${FLEET_GROUP}" -m 600 "${STORE_URL_SRC}" "${STORE_URL_FILE}"
 elif [ -n "${STORE_FROM}" ] && [ ! -s "${STORE_URL_FILE}" ]; then
     # scp as the human behind sudo, whose keys and known_hosts reach the
     # other host; root's do not.
@@ -218,10 +241,10 @@ elif [ -n "${STORE_FROM}" ] && [ ! -s "${STORE_URL_FILE}" ]; then
     chown "${INVOKER}" "${TMP}"
     echo "Copying the store credential from ${STORE_FROM} as ${INVOKER}..."
     runuser -u "${INVOKER}" -- scp -q "${STORE_FROM}:fleet/store-url" "${TMP}"
-    install -o "${FLEET_USER}" -g "${FLEET_USER}" -m 600 "${TMP}" "${STORE_URL_FILE}"
+    install -o "${FLEET_USER}" -g "${FLEET_GROUP}" -m 600 "${TMP}" "${STORE_URL_FILE}"
     rm -f "${TMP}"
 fi
-chown "${FLEET_USER}:${FLEET_USER}" "${STORE_URL_FILE}"
+chown "${FLEET_USER}:${FLEET_GROUP}" "${STORE_URL_FILE}"
 chmod 600 "${STORE_URL_FILE}"
 
 # ── 5. Prove the path ──────────────────────────────────────────────
@@ -249,6 +272,7 @@ unit_value() {
     printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
 }
 sed -e "s|@FLEET_USER@|$(unit_value "${FLEET_USER}")|g" \
+    -e "s|@FLEET_GROUP@|$(unit_value "${FLEET_GROUP}")|g" \
     -e "s|@FLEET_HOME@|$(unit_value "${FLEET_HOME}")|g" \
     -e "s|@APP_DIR@|$(unit_value "${APP_DIR}")|g" \
     -e "s|@PYTHON@|$(unit_value "${PYTHON}")|g" \
