@@ -13,6 +13,11 @@
 #   ar-manager           MCP server that bridges Claude Code agents to
 #                        the controller, GitHub, and ar-memory.
 #
+#   fleet-db             Postgres store for runner-fleet monitoring
+#   fleet-grafana        (docs/plans/RUNNER_FLEET_MONITORING.md); both
+#                        bound to the tailnet address only — see the
+#                        section at the end of this file.
+#
 # ⚠ TLS REQUIREMENT ⚠
 #   Services are exposed over plain HTTP. Bearer tokens and API traffic
 #   are NOT encrypted in transit. For any internet-facing deployment,
@@ -165,3 +170,102 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+
+  # ─── Runner fleet monitoring ───────────────────────────────────────
+  #
+  # The central store and dashboard for docs/plans/RUNNER_FLEET_MONITORING.md.
+  # Collectors on every runner host and the GitHub poller write to fleet-db
+  # over the tailnet; Grafana reads it over the compose network.
+  #
+  # These two differ from the services above in two deliberate ways:
+  #
+  #   * Their published ports are bound to FLEET_BIND_ADDR — the host's
+  #     tailnet address, which rebuild.sh detects — not to every interface.
+  #     A database and a dashboard must be unreachable from anything but the
+  #     tailnet even if the host firewall is misconfigured. The variable is
+  #     required, so a run without it fails here rather than publishing on
+  #     0.0.0.0 by default.
+  #   * Their credentials come from files under the secrets directory (which
+  #     rebuild.sh generates on first run), never from environment variables
+  #     with an empty default. A missing file fails the service; it does
+  #     not start without a password.
+  #
+  # Restarts here are independent of the controller and manager, but a full
+  # `rebuild.sh` recreates these containers too; both keep their state in
+  # the mounted data directories, and the collectors reconnect on their own.
+  #
+  # The images are pinned through FLEET_DB_IMAGE / FLEET_GRAFANA_IMAGE so an
+  # operator can hold a database major version (a Postgres data directory is
+  # not forward-compatible across major versions) without editing this file.
+  # Both variables' own defaults pin a specific version rather than `latest`,
+  # so an unattended redeploy that never set either variable cannot pull an
+  # unreviewed new release — of the database or of the dashboard — against
+  # the existing data/provisioning without an operator choosing to.
+
+  fleet-db:
+    image: ${FLEET_DB_IMAGE:-postgres:16}
+    ports:
+      # The port is always 5432: every collector/poller and the README's
+      # deployment instructions hardcode it in the store URL they connect
+      # with, so an override here (as opposed to FLEET_BIND_ADDR, which
+      # every consumer discovers itself) would silently point them at the
+      # wrong port with no way to propagate the change.
+      - "${FLEET_BIND_ADDR:?set FLEET_BIND_ADDR to the tailnet address (rebuild.sh does)}:5432:5432"
+    volumes:
+      - /Users/Shared/flowtree/fleet-db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=fleet
+      - POSTGRES_USER=fleet
+      - POSTGRES_PASSWORD_FILE=/run/secrets/fleet-db-password
+    secrets:
+      - fleet-db-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet -d fleet"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+  fleet-grafana:
+    image: ${FLEET_GRAFANA_IMAGE:-grafana/grafana:11.3.0}
+    ports:
+      - "${FLEET_BIND_ADDR:?set FLEET_BIND_ADDR to the tailnet address (rebuild.sh does)}:${FLEET_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - /Users/Shared/flowtree/grafana:/var/lib/grafana
+      # Datasource and the fleet dashboard are provisioned from the
+      # checkout, so a redeploy carries dashboard changes with it.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana-admin-password
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_SERVER_ROOT_URL=${FLEET_GRAFANA_ROOT_URL:-http://${FLEET_BIND_ADDR}:${FLEET_GRAFANA_PORT:-3000}}
+    secrets:
+      - fleet-db-password
+      - grafana-admin-password
+    depends_on:
+      fleet-db:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+# Credential files, mounted at /run/secrets/<name>. rebuild.sh generates
+# both on first run (mode 600, beside the ar-manager shared secret).
+secrets:
+  fleet-db-password:
+    file: /Users/Shared/flowtree/secrets/fleet-db-password
+  grafana-admin-password:
+    file: /Users/Shared/flowtree/secrets/grafana-admin-password
