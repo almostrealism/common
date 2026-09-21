@@ -203,10 +203,51 @@ if [ ! -f "${OUTPUT_DIR}/coverage.xml" ]; then
 fi
 
 # ─── Python: always fresh (fast) ───────────────────────────────────────
+#
+# tools/mcp/manager/server.py imports mcp.server.fastmcp at module load
+# (discovered when PYTHON_DIRS below runs unittest discover over
+# tools/mcp/manager), and the `mcp` package requires Python >=3.10
+# (tools/mcp/requirements.txt). The bare `python3` on a self-hosted macOS
+# runner resolves to the OS-bundled Python 3.9, which cannot install `mcp`
+# at all, so this step failed every round with "ModuleNotFoundError: No
+# module named 'mcp'". Prefer the newest Homebrew Python available, the
+# same interpreter-selection order as
+# io.flowtree.jobs.EnvironmentManagedJob.PYTHON_CANDIDATES.
+PYTHON_BIN=""
+for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        PYTHON_BIN="$candidate"
+        break
+    fi
+done
+if [ -z "$PYTHON_BIN" ]; then
+    echo "::error::No python3 interpreter found on PATH" >&2
+    exit 1
+fi
 
-if ! python3 -m coverage --version >/dev/null 2>&1; then
-    echo "::notice::Installing coverage.py"
-    pip3 install --quiet coverage
+# A venv (rather than a bare `pip3 install`) is required here because a
+# Homebrew-installed Python marks its site-packages externally-managed and
+# refuses a global pip install outright. The venv is cached outside the
+# checkout so it survives across rounds instead of being recreated (and
+# reinstalled into) on every run.
+# TODO(review): venv cache never invalidates on interpreter upgrade or
+# requirements.txt changes — see stored review-followup memory for a
+# marker-file based invalidation approach.
+VENV_DIR="${HOME}/.cache/ar-coverage-qa/venv"
+if [ ! -x "${VENV_DIR}/bin/python3" ]; then
+    echo "::notice::Creating coverage-qa Python venv with ${PYTHON_BIN}"
+    mkdir -p "$(dirname "$VENV_DIR")"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
+fi
+PYTHON="${VENV_DIR}/bin/python3"
+
+if ! "$PYTHON" -c "import mcp, yaml, coverage" >/dev/null 2>&1; then
+    echo "::notice::Installing coverage-qa Python dependencies"
+    "$PYTHON" -m pip install --quiet --upgrade pip
+    # Mirrors analysis.yaml's python-tests "Install dependencies" step so the
+    # same package set covers PYTHON_DIRS below (tools/mcp/manager needs
+    # `mcp`; tools/tests needs `pyyaml`).
+    "$PYTHON" -m pip install --quiet -r tools/mcp/requirements.txt pyyaml coverage
 fi
 
 PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
@@ -214,16 +255,16 @@ FIRST=true
 for dir in "${PYTHON_DIRS[@]}"; do
     [ -d "$dir" ] || continue
     if [ "$FIRST" = "true" ]; then
-        python3 -m coverage run --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
+        "$PYTHON" -m coverage run --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
         FIRST=false
     else
-        python3 -m coverage run -a --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
+        "$PYTHON" -m coverage run -a --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
     fi
 done
 
 # --omit is the caveat the plan's appendix documents: --source=<dir> alone
 # instruments the test_*.py files too, which inflates the directory's
 # reported coverage with lines that are never production code.
-python3 -m coverage xml -o "${OUTPUT_DIR}/python-coverage.xml" --omit='*/test_*.py'
+"$PYTHON" -m coverage xml -o "${OUTPUT_DIR}/python-coverage.xml" --omit='*/test_*.py'
 
 echo "Coverage reports written to ${OUTPUT_DIR}/coverage.xml and ${OUTPUT_DIR}/python-coverage.xml"
