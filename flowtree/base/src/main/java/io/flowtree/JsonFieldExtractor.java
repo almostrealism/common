@@ -318,12 +318,16 @@ public final class JsonFieldExtractor {
 		if (arrContent.isEmpty()) return 0;
 
 		int count = 0;
-		int braceDepth = 0;
-		for (int i = 0; i < arrContent.length(); i++) {
-			char c = arrContent.charAt(i);
-			if (c == '{' && braceDepth == 0) count++;
-			if (c == '{') braceDepth++;
-			else if (c == '}') braceDepth--;
+		int pos = 0;
+		while (pos < arrContent.length()) {
+			int objStart = arrContent.indexOf("{", pos);
+			if (objStart < 0) break;
+
+			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
+			if (objEnd < 0) break;
+
+			count++;
+			pos = objEnd + 1;
 		}
 
 		return count;
@@ -365,22 +369,16 @@ public final class JsonFieldExtractor {
 			int objStart = arrContent.indexOf("{", pos);
 			if (objStart < 0) break;
 
-			int objDepth = 1;
-			int objEnd = objStart + 1;
-			while (objEnd < arrContent.length() && objDepth > 0) {
-				char c = arrContent.charAt(objEnd);
-				if (c == '{') objDepth++;
-				else if (c == '}') objDepth--;
-				objEnd++;
-			}
+			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
+			if (objEnd < 0) break;
 
-			String objBody = arrContent.substring(objStart, objEnd);
+			String objBody = arrContent.substring(objStart, objEnd + 1);
 			String value = extractString(objBody, objectField);
 			if (value != null) {
 				result.add(value);
 			}
 
-			pos = objEnd;
+			pos = objEnd + 1;
 		}
 
 		return result;
@@ -673,6 +671,29 @@ public final class JsonFieldExtractor {
 	 *         array is not closed
 	 */
 	private static int matchingBracket(CharSequence s, int openIndex) {
+		return matchingDelimiter(s, openIndex, '[', ']');
+	}
+
+	/**
+	 * Finds the index of the {@code close} delimiter that balances the
+	 * {@code open} delimiter at {@code openIndex}. Nesting is matched by depth,
+	 * and delimiters that appear inside a string literal are ignored, as are
+	 * escaped quotes within such strings — {@code {"k":"a}b"}} is a single
+	 * object whose {@code }} inside the value is not its closing brace.
+	 *
+	 * <p>Generalizes {@link #matchingBracket(CharSequence, int)} (which passes
+	 * {@code [} / {@code ]}) so object scans can share the same string-aware
+	 * balancing with {@code {} / {@code }} rather than counting braces raw,
+	 * where a brace inside a string value would corrupt the depth.</p>
+	 *
+	 * @param s         the source text
+	 * @param openIndex the index of the opening {@code open} delimiter
+	 * @param open      the opening delimiter character
+	 * @param close     the closing delimiter character
+	 * @return the index of the balancing {@code close}, or {@code -1} when it
+	 *         is not found
+	 */
+	private static int matchingDelimiter(CharSequence s, int openIndex, char open, char close) {
 		int depth = 0;
 		boolean inString = false;
 		for (int i = openIndex; i < s.length(); i++) {
@@ -687,9 +708,9 @@ public final class JsonFieldExtractor {
 			}
 			if (c == '"') {
 				inString = true;
-			} else if (c == '[') {
+			} else if (c == open) {
 				depth++;
-			} else if (c == ']') {
+			} else if (c == close) {
 				depth--;
 				if (depth == 0) return i;
 			}
