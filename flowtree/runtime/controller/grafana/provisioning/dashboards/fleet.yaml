@@ -1,0 +1,14 @@
+# Dashboards are loaded from files mounted out of the checkout, so a change
+# to a dashboard JSON ships with the next deploy rather than living only in
+# Grafana's database.
+apiVersion: 1
+
+providers:
+  - name: fleet
+    folder: Fleet
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

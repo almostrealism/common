@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SECRETS_DIR="/Users/Shared/flowtree/secrets"
+SECRETS_DIR="${SECRETS_DIR:-/Users/Shared/flowtree/secrets}"
 # The agent pool's configuration file. It is gitignored, so a fresh checkout
 # (a CI runner workspace, for instance) never contains it — an unattended
 # caller must point FLOWTREE_AGENT_ENV at a copy that lives outside the
@@ -127,6 +127,119 @@ if [ ! -f "$SECRETS_DIR/shared-secret" ]; then
   openssl rand -base64 32 > "$SECRETS_DIR/shared-secret"
   chmod 600 "$SECRETS_DIR/shared-secret"
   echo "Shared secret written to $SECRETS_DIR/shared-secret"
+fi
+
+# ── Fleet monitoring: credentials, data directories, bind address ──
+#
+# fleet-db and fleet-grafana (see docker-compose.yml) take their passwords
+# from files, never from an environment variable with an empty default, so
+# the files have to exist before compose can start them. Generated once,
+# like the shared secret above. The Postgres password is alphanumeric so it
+# can be pasted into a URL without escaping.
+#
+# Skipped entirely on --agents-only: that mode never starts the controller
+# stack (see the `AGENTS_ONLY` guard below), so a host with no tailnet
+# address configured must still be able to rebuild the agent pool alone
+# without this block's hard stop on a missing FLEET_BIND_ADDR.
+#
+# Also skipped when specific, non-fleet services were named: `rebuild.sh
+# flowtree-controller` never touches fleet-db/fleet-grafana, so a host with
+# no tailnet address must still be able to rebuild that unrelated service
+# without this block's hard stop, and compose must not interpolate the
+# fleet port variables for an invocation that never selects those services.
+
+FLEET_SERVICES_SELECTED=false
+if [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "fleet-db|fleet-grafana"; then
+  FLEET_SERVICES_SELECTED=true
+fi
+
+FLEET_DB_DATA_DIR="${FLEET_DB_DATA_DIR:-/Users/Shared/flowtree/fleet-db}"
+FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana}"
+
+if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
+  for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do
+    secret="${secret_pair%%:*}"
+    data_dir="${secret_pair#*:}"
+    # `-s`, not `-f`: a zero-byte file (e.g. from an interrupted write) must
+    # be treated exactly like a missing one, not like a present-but-blank
+    # password. Postgres's POSTGRES_PASSWORD_FILE rejects an empty file
+    # outright, so falling through to the chmod-only path below would leave
+    # the service unable to start instead of regenerating or failing closed.
+    if [ ! -s "$SECRETS_DIR/$secret" ]; then
+      # A non-empty data directory with no matching secret file means the
+      # service already initialized with a password we no longer have:
+      # Postgres and Grafana both bake the credential into their state at
+      # first start, so minting a new one here would not match it and would
+      # turn the next rebuild into an authentication outage. Fail closed
+      # instead of silently generating a value that cannot possibly work.
+      if [ -d "$data_dir" ] && [ -n "$(ls -A "$data_dir" 2>/dev/null)" ]; then
+        echo "ERROR: $SECRETS_DIR/$secret is missing, but $data_dir already" >&2
+        echo "  contains initialized state. Generating a new password here would not" >&2
+        echo "  match the credential already baked into that service and would break" >&2
+        echo "  authentication on the next start. Restore the original secret file, or" >&2
+        echo "  rotate the credential explicitly (change it inside the running service" >&2
+        echo "  first, then write the matching value to $SECRETS_DIR/$secret)." >&2
+        exit 1
+      fi
+      echo "Generating $secret..."
+      mkdir -p "$SECRETS_DIR"
+      openssl rand -hex 24 > "$SECRETS_DIR/$secret"
+      echo "Written to $SECRETS_DIR/$secret"
+    fi
+    # Enforced unconditionally, not only on the create branch above: a
+    # secret left over from before this mode was enforced, or loosened by
+    # some other process, must not silently stay group/world-readable.
+    chmod 600 "$SECRETS_DIR/$secret"
+  done
+  mkdir -p "${FLEET_DB_DATA_DIR}" "${FLEET_GRAFANA_DATA_DIR}"
+
+  # The fleet services publish only on the tailnet address. Detect it unless
+  # the operator set FLEET_BIND_ADDR (127.0.0.1 is the value for a machine
+  # without Tailscale, where nothing else should reach them anyway). No
+  # address at all is a hard stop: the compose file refuses to start the
+  # stack without one, and silently binding to every interface is exactly
+  # what the fleet design forbids.
+  if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+    if command -v tailscale >/dev/null 2>&1; then
+      FLEET_BIND_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+    fi
+    if [ -z "${FLEET_BIND_ADDR:-}" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+      FLEET_BIND_ADDR="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1 || true)"
+    fi
+    if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+      # Tailscale's CGNAT range, 100.64.0.0/10, is the only 100.x address a
+      # host normally carries.
+      FLEET_BIND_ADDR="$(ifconfig 2>/dev/null | awk '/inet 100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./{print $2; exit}' || true)"
+    fi
+  fi
+  if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+    echo "ERROR: no tailnet address found for the fleet services." >&2
+    echo "  Set FLEET_BIND_ADDR to this host's Tailscale IPv4 address (or to 127.0.0.1 on a host" >&2
+    echo "  without Tailscale) and run again. The fleet-db and fleet-grafana ports are never" >&2
+    echo "  published on every interface." >&2
+    exit 1
+  fi
+  # An operator override can undo the guarantee the detection above exists
+  # to provide; reject a wildcard address explicitly rather than letting a
+  # typo (or a deliberate but mistaken value) publish these ports everywhere.
+  case "${FLEET_BIND_ADDR}" in
+    0.0.0.0|::|"::0"|"[::]")
+      echo "ERROR: FLEET_BIND_ADDR=${FLEET_BIND_ADDR} is a wildcard address." >&2
+      echo "  fleet-db and fleet-grafana must bind to a specific address (this host's" >&2
+      echo "  tailnet address, or 127.0.0.1 on a host without Tailscale), never to every" >&2
+      echo "  interface. Set FLEET_BIND_ADDR to a non-wildcard value." >&2
+      exit 1
+      ;;
+  esac
+  export FLEET_BIND_ADDR
+  echo "Fleet services will bind to ${FLEET_BIND_ADDR}"
+elif [ "${AGENTS_ONLY}" = false ]; then
+  # docker compose interpolates every service definition in the file before
+  # selecting which ones to build/start, even for a single named non-fleet
+  # service, so the fleet ports' mandatory ${FLEET_BIND_ADDR:?} still needs a
+  # value here even though fleet-db/fleet-grafana are not being touched. The
+  # value is never used to publish anything in this branch.
+  export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-127.0.0.1}"
 fi
 
 # ── Maven build (needed by both controller and agent images) ───────
