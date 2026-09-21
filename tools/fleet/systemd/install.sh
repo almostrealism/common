@@ -205,6 +205,10 @@ mkdir -p "${APP_DIR}/tools/fleet"
 cp "${CHECKOUT}"/tools/fleet/*.py "${APP_DIR}/tools/fleet/"
 touch "${APP_DIR}/tools/__init__.py"
 cp "${CHECKOUT}/tools/fleet/README.md" "${APP_DIR}/tools/fleet/README.md"
+# cp keeps the checkout's mode bits, and a checkout can be group- or
+# world-writable; the snapshot is root's alone to write.
+chown -R root:root "${APP_DIR}"
+chmod -R go-w "${APP_DIR}"
 chmod -R a+rX "${APP_DIR}"
 chmod 755 "${APP_DIR}"
 
