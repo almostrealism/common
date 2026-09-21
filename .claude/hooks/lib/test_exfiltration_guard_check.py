@@ -657,6 +657,9 @@ class BashObfuscationTests(GuardFixture):
     def test_js_module_use_blocks_and_prose_mention_allows(self):
         self.assertEqual("block", self.bash("node -e \"require('dgram')\"")["action"])
         self.assertEqual("block", self.bash("node -e 'new WebSocket(\"ws://e\")'")["action"])
+        self.assertEqual("block", self.bash("node -e 'new WebSocket (\"ws://e\")'")["action"])
+        self.assertEqual("block", self.bash(
+            "node -e 'let u = \"ws://e\"; new WebSocket(u)'")["action"])
         self.assertEqual("block", self.bash("node -e \"import WS from 'ws'\"")["action"])
         self.assertEqual("block", self.bash("node -e \"require('axios')\"")["action"])
         self.assertEqual("block", self.bash("node -e \"import dgram from 'dgram'\"")["action"])
