@@ -257,6 +257,12 @@ public final class HarnessStatusReporter {
             outcome = "no result";
         } else if (result.killedForInactivity()) {
             outcome = "killed for inactivity";
+        } else if (result.hasUnavailableRequiredMcpServer()) {
+            // Not a success whatever the exit code: the agent ran with its
+            // required tools absent, and the job fails on this result.
+            outcome = "FAILED — required MCP server(s) unavailable at session start: "
+                    + String.join(", ", result.unavailableRequiredMcpServers())
+                    + " (ran " + formatDuration(result.durationMs()) + " without them; output discarded)";
         } else if (result.exitCode() == 0) {
             outcome = "success in " + formatDuration(result.durationMs());
         } else {
