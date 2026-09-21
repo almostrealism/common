@@ -192,6 +192,7 @@ public class Shell {
 	 * @return a new Shell representing the L shell
 	 */
 	public static Shell second(int s, int px, int py, int pz) {
+		if (px == 0 && py == 0 && pz == 0) return s2(s);
 		return s2(s).merge(p2(px, py, pz));
 	}
 
@@ -515,9 +516,8 @@ public class Shell {
 	 * @return   a new shell for the 2p subshell
 	 */
 	public static Shell p2(int x, int y, int z) {
-		return new Shell(Orbital.p2x().populate(x),
-						Orbital.p2y().populate(y),
-						Orbital.p2z().populate(z));
+		return occupied(new Orbital[] { Orbital.p2x(), Orbital.p2y(), Orbital.p2z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -529,9 +529,8 @@ public class Shell {
 	 * @return   a new shell for the 3p subshell
 	 */
 	public static Shell p3(int x, int y, int z) {
-		return new Shell(Orbital.p3x().populate(x),
-						Orbital.p3y().populate(y),
-						Orbital.p3z().populate(z));
+		return occupied(new Orbital[] { Orbital.p3x(), Orbital.p3y(), Orbital.p3z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -543,9 +542,8 @@ public class Shell {
 	 * @return   a new shell for the 4p subshell
 	 */
 	public static Shell p4(int x, int y, int z) {
-		return new Shell(Orbital.p4x().populate(x),
-						Orbital.p4y().populate(y),
-						Orbital.p4z().populate(z));
+		return occupied(new Orbital[] { Orbital.p4x(), Orbital.p4y(), Orbital.p4z() },
+						new int[] { x, y, z });
 	}
 
 	/**
@@ -557,9 +555,8 @@ public class Shell {
 	 * @return   a new shell for the 5p subshell
 	 */
 	public static Shell p5(int x, int y, int z) {
-		return new Shell(Orbital.p5x().populate(x),
-						Orbital.p5y().populate(y),
-						Orbital.p5z().populate(z));
+		return occupied(new Orbital[] { Orbital.p5x(), Orbital.p5y(), Orbital.p5z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -571,9 +568,8 @@ public class Shell {
 	 * @return   a new shell for the 6p subshell
 	 */
 	public static Shell p6(int x, int y, int z) {
-		return new Shell(Orbital.p6x().populate(x),
-						Orbital.p6y().populate(y),
-						Orbital.p6z().populate(z));
+		return occupied(new Orbital[] { Orbital.p6x(), Orbital.p6y(), Orbital.p6z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -585,9 +581,8 @@ public class Shell {
 	 * @return   a new shell for the 7p subshell
 	 */
 	public static Shell p7(int x, int y, int z) {
-		return new Shell(Orbital.p7x().populate(x),
-						Orbital.p7y().populate(y),
-						Orbital.p7z().populate(z));
+		return occupied(new Orbital[] { Orbital.p7x(), Orbital.p7y(), Orbital.p7z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -601,13 +596,8 @@ public class Shell {
 	 * @return   a new shell for the 3d subshell
 	 */
 	public static Shell d3(int a, int b, int c, int d, int e) {
-		List<SubShell> s = new ArrayList<>();
-		if (a > 0) s.add(Orbital.d3a().populate(a));
-		if (b > 0) s.add(Orbital.d3b().populate(b));
-		if (c > 0) s.add(Orbital.d3c().populate(c));
-		if (d > 0) s.add(Orbital.d3d().populate(d));
-		if (e > 0) s.add(Orbital.d3e().populate(e));
-		return new Shell(s.toArray(new SubShell[0]));
+		return occupied(new Orbital[] { Orbital.d3a(), Orbital.d3b(), Orbital.d3c(), Orbital.d3d(), Orbital.d3e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -621,11 +611,8 @@ public class Shell {
 	 * @return   a new shell for the 4d subshell
 	 */
 	public static Shell d4(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d4a().populate(a),
-						Orbital.d4b().populate(b),
-						Orbital.d4c().populate(c),
-						Orbital.d4d().populate(d),
-						Orbital.d4e().populate(e));
+		return occupied(new Orbital[] { Orbital.d4a(), Orbital.d4b(), Orbital.d4c(), Orbital.d4d(), Orbital.d4e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -639,11 +626,8 @@ public class Shell {
 	 * @return   a new shell for the 5d subshell
 	 */
 	public static Shell d5(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d5a().populate(a),
-						Orbital.d5b().populate(b),
-						Orbital.d5c().populate(c),
-						Orbital.d5d().populate(d),
-						Orbital.d5e().populate(e));
+		return occupied(new Orbital[] { Orbital.d5a(), Orbital.d5b(), Orbital.d5c(), Orbital.d5d(), Orbital.d5e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -657,11 +641,8 @@ public class Shell {
 	 * @return   a new shell for the 6d subshell
 	 */
 	public static Shell d6(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d6a().populate(a),
-						Orbital.d6b().populate(b),
-						Orbital.d6c().populate(c),
-						Orbital.d6d().populate(d),
-						Orbital.d6e().populate(e));
+		return occupied(new Orbital[] { Orbital.d6a(), Orbital.d6b(), Orbital.d6c(), Orbital.d6d(), Orbital.d6e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -675,11 +656,8 @@ public class Shell {
 	 * @return   a new shell for the 7d subshell
 	 */
 	public static Shell d7(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d7a().populate(a),
-						Orbital.d7b().populate(b),
-						Orbital.d7c().populate(c),
-						Orbital.d7d().populate(d),
-						Orbital.d7e().populate(e));
+		return occupied(new Orbital[] { Orbital.d7a(), Orbital.d7b(), Orbital.d7c(), Orbital.d7d(), Orbital.d7e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -695,13 +673,9 @@ public class Shell {
 	 * @return   a new shell for the 4f subshell
 	 */
 	public static Shell f4(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f4a().populate(a),
-						Orbital.f4b().populate(b),
-						Orbital.f4c().populate(c),
-						Orbital.f4d().populate(d),
-						Orbital.f4e().populate(e),
-						Orbital.f4f().populate(f),
-						Orbital.f4g().populate(g));
+		return occupied(new Orbital[] { Orbital.f4a(), Orbital.f4b(), Orbital.f4c(), Orbital.f4d(),
+						Orbital.f4e(), Orbital.f4f(), Orbital.f4g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -717,13 +691,9 @@ public class Shell {
 	 * @return   a new shell for the 5f subshell
 	 */
 	public static Shell f5(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f5a().populate(a),
-						Orbital.f5b().populate(b),
-						Orbital.f5c().populate(c),
-						Orbital.f5d().populate(d),
-						Orbital.f5e().populate(e),
-						Orbital.f5f().populate(f),
-						Orbital.f5g().populate(g));
+		return occupied(new Orbital[] { Orbital.f5a(), Orbital.f5b(), Orbital.f5c(), Orbital.f5d(),
+						Orbital.f5e(), Orbital.f5f(), Orbital.f5g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -739,13 +709,9 @@ public class Shell {
 	 * @return   a new shell for the 6f subshell
 	 */
 	public static Shell f6(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f6a().populate(a),
-						Orbital.f6b().populate(b),
-						Orbital.f6c().populate(c),
-						Orbital.f6d().populate(d),
-						Orbital.f6e().populate(e),
-						Orbital.f6f().populate(f),
-						Orbital.f6g().populate(g));
+		return occupied(new Orbital[] { Orbital.f6a(), Orbital.f6b(), Orbital.f6c(), Orbital.f6d(),
+						Orbital.f6e(), Orbital.f6f(), Orbital.f6g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -761,13 +727,9 @@ public class Shell {
 	 * @return   a new shell for the 7f subshell
 	 */
 	public static Shell f7(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f7a().populate(a),
-						Orbital.f7b().populate(b),
-						Orbital.f7c().populate(c),
-						Orbital.f7d().populate(d),
-						Orbital.f7e().populate(e),
-						Orbital.f7f().populate(f),
-						Orbital.f7g().populate(g));
+		return occupied(new Orbital[] { Orbital.f7a(), Orbital.f7b(), Orbital.f7c(), Orbital.f7d(),
+						Orbital.f7e(), Orbital.f7f(), Orbital.f7g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -887,6 +849,42 @@ public class Shell {
 		}
 		
 		return new int[] { fa, fb, fc, fd, fe, ff, fg };
+	}
+
+	/**
+	 * Builds a shell from the supplied orbitals, populating only those assigned a
+	 * positive electron count. An orbital with zero electrons is unoccupied and
+	 * contributes no {@link SubShell}. This keeps a partially filled subshell (for
+	 * example a lone {@code 2p1}) from attempting to create a subshell with zero
+	 * electrons, which {@link SubShell#SubShell(Orbital, int)} rejects.
+	 *
+	 * @param orbitals the candidate orbitals for the subshell, in order
+	 * @param counts   the electron count for each orbital, parallel to {@code orbitals}
+	 * @return a shell containing a subshell for each occupied orbital
+	 * @throws IllegalArgumentException if {@code orbitals} and {@code counts} differ in
+	 *         length, if any count is negative, or if every count is zero, since an
+	 *         empty shell has no meaningful energy level and callers are expected to
+	 *         skip invoking this method for a fully unoccupied subshell
+	 */
+	private static Shell occupied(Orbital orbitals[], int counts[]) {
+		if (orbitals.length != counts.length) {
+			throw new IllegalArgumentException("orbitals and counts must have the same length");
+		}
+
+		List<SubShell> s = new ArrayList<>();
+		for (int i = 0; i < orbitals.length; i++) {
+			if (counts[i] < 0) {
+				throw new IllegalArgumentException("Electron counts must not be negative");
+			}
+
+			if (counts[i] > 0) s.add(orbitals[i].populate(counts[i]));
+		}
+
+		if (s.isEmpty()) {
+			throw new IllegalArgumentException("At least one orbital must have a positive electron count");
+		}
+
+		return new Shell(s.toArray(new SubShell[0]));
 	}
 
 	/**
