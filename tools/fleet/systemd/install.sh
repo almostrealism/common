@@ -153,8 +153,16 @@ if id "${FLEET_USER}" >/dev/null 2>&1; then
     # point at an existing runner/interactive account and let its owner read
     # the store credential; only ever reuse an account with the nologin shell
     # and FLEET_HOME this installer itself always sets.
+    EXISTING_UID="$(id -u "${FLEET_USER}")"
+    EXISTING_GID="$(id -g "${FLEET_USER}")"
     EXISTING_SHELL="$(getent passwd "${FLEET_USER}" | cut -d: -f7)"
     EXISTING_HOME="$(getent passwd "${FLEET_USER}" | cut -d: -f6)"
+    # The name is not the identity: a second name mapped to uid 0 (or to the
+    # root group) would pass the shell and home checks and give the unit root.
+    if [ "${EXISTING_UID}" = "0" ] || [ "${EXISTING_GID}" = "0" ]; then
+        echo "ERROR: account ${FLEET_USER} already exists with uid ${EXISTING_UID} / gid ${EXISTING_GID}; the collector must not run privileged. Pick an unused --user name." >&2
+        exit 1
+    fi
     if [ "${EXISTING_SHELL}" != "/usr/sbin/nologin" ] && [ "${EXISTING_SHELL}" != "/sbin/nologin" ]; then
         echo "ERROR: account ${FLEET_USER} already exists with shell '${EXISTING_SHELL}', not a nologin collector account; refusing to reuse it. Pick an unused --user name." >&2
         exit 1
@@ -237,8 +245,13 @@ elif [ -n "${STORE_FROM}" ] && [ ! -s "${STORE_URL_FILE}" ]; then
         echo "ERROR: --store-from needs to run under sudo from a user account (SUDO_USER is unset)." >&2
         exit 1
     fi
+    # A credential passes through this file; it must not outlive a failed
+    # transfer (set -e would otherwise leave a partial copy in /tmp, readable
+    # by the invoker), so it is removed on any exit, not only on success.
     TMP="$(mktemp)"
+    trap 'rm -f "${TMP}"' EXIT
     chown "${INVOKER}" "${TMP}"
+    chmod 600 "${TMP}"
     echo "Copying the store credential from ${STORE_FROM} as ${INVOKER}..."
     runuser -u "${INVOKER}" -- scp -q "${STORE_FROM}:fleet/store-url" "${TMP}"
     install -o "${FLEET_USER}" -g "${FLEET_GROUP}" -m 600 "${TMP}" "${STORE_URL_FILE}"
