@@ -156,6 +156,27 @@ fi
 FLEET_DB_DATA_DIR="${FLEET_DB_DATA_DIR:-/Users/Shared/flowtree/fleet-db}"
 FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana}"
 
+# docker compose interpolates the whole file on EVERY invocation from the
+# project directory — `exec`, `logs`, `ps`, the deploy workflow's own
+# post-deploy checks — not only the one that starts fleet-db/fleet-grafana,
+# and each of those needs the mandatory ${FLEET_BIND_ADDR:?} resolved. An
+# exported variable lives only in this script's process, so the address is
+# also written to the compose project's `.env` file (gitignored), which
+# compose reads for interpolation automatically. The `:?` in the compose
+# file still fails closed on a host where this script has never run.
+COMPOSE_ENV_FILE="flowtree/runtime/controller/.env"
+
+persist_fleet_bind_addr() {
+  local tmp="${COMPOSE_ENV_FILE}.tmp"
+  { [ -f "${COMPOSE_ENV_FILE}" ] && grep -v '^FLEET_BIND_ADDR=' "${COMPOSE_ENV_FILE}"; \
+    echo "FLEET_BIND_ADDR=$1"; } > "${tmp}" || true
+  mv "${tmp}" "${COMPOSE_ENV_FILE}"
+}
+
+persisted_fleet_bind_addr() {
+  [ -f "${COMPOSE_ENV_FILE}" ] && sed -n 's/^FLEET_BIND_ADDR=//p' "${COMPOSE_ENV_FILE}" | tail -1
+}
+
 if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do
     secret="${secret_pair%%:*}"
@@ -232,13 +253,17 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
       ;;
   esac
   export FLEET_BIND_ADDR
+  persist_fleet_bind_addr "${FLEET_BIND_ADDR}"
   echo "Fleet services will bind to ${FLEET_BIND_ADDR}"
 elif [ "${AGENTS_ONLY}" = false ]; then
   # docker compose interpolates every service definition in the file before
   # selecting which ones to build/start, even for a single named non-fleet
   # service, so the fleet ports' mandatory ${FLEET_BIND_ADDR:?} still needs a
-  # value here even though fleet-db/fleet-grafana are not being touched. The
-  # value is never used to publish anything in this branch.
+  # value here even though fleet-db/fleet-grafana are not being touched.
+  # The address a full rebuild persisted is the right one to reuse; only a
+  # host that never ran a full rebuild falls back to loopback, and that value
+  # is never used to publish anything in this branch.
+  export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-$(persisted_fleet_bind_addr)}"
   export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-127.0.0.1}"
 fi
 

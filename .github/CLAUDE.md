@@ -499,9 +499,15 @@ stack alone.
 The stack includes `fleet-db` and `fleet-grafana` (runner-fleet monitoring,
 `tools/fleet/README.md`). `rebuild.sh` generates their password files beside
 the shared secret and binds their ports to the host's tailnet address, which it
-detects (`FLEET_BIND_ADDR` overrides); the compose file refuses to start them
-without an address, so a deploy runner that cannot determine one fails there
-rather than publishing a database on every interface. A full rebuild recreates
+detects (`FLEET_BIND_ADDR` overrides) and persists to the compose project's
+gitignored `.env` (`flowtree/runtime/controller/.env`); the compose file
+refuses to interpolate without an address, so a deploy runner that cannot
+determine one fails there rather than publishing a database on every
+interface. The `.env` matters beyond the rebuild: compose interpolates the
+whole file on every invocation, so the workflow's post-deploy
+`docker compose exec` check (and any `docker compose logs` run by hand) only
+works because the address is on disk, not merely exported inside
+`rebuild.sh`. A full rebuild recreates
 `fleet-db` too — the data directory persists, and the collectors on every
 host reconnect on their own — so nothing in the deploy needs to drain for it.
 
