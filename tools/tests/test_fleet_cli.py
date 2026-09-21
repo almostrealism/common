@@ -134,6 +134,29 @@ class MainEntryPointTests(unittest.TestCase):
             self.assertIn("No utilization data recorded", buf.getvalue())
             self.assertTrue(os.path.exists(db_path))
 
+    def test_main_reads_db_url_from_a_file_instead_of_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "fleet.db")
+            db_url_file = os.path.join(tmp, "db-url")
+            with open(db_url_file, "w") as handle:
+                handle.write("sqlite:///" + db_path + "\n")
+            os.chmod(db_url_file, 0o600)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                exit_code = cli.main(["--db-url-file", db_url_file, "status"])
+            self.assertEqual(exit_code, 0)
+            self.assertIn("No utilization data recorded", buf.getvalue())
+            self.assertTrue(os.path.exists(db_path))
+
+    def test_main_rejects_a_world_readable_db_url_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_url_file = os.path.join(tmp, "db-url")
+            with open(db_url_file, "w") as handle:
+                handle.write("sqlite:///" + os.path.join(tmp, "fleet.db") + "\n")
+            os.chmod(db_url_file, 0o644)
+            with self.assertRaises(PermissionError):
+                cli.main(["--db-url-file", db_url_file, "status"])
+
 
 if __name__ == "__main__":
     unittest.main()

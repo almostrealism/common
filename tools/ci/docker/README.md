@@ -25,8 +25,9 @@ All configuration is via the `.env` file (see `.env.example`).
 | Variable | Default | Description |
 |---|---|---|
 | `GITHUB_PAT` | *(required)* | GitHub personal access token |
+| `RUNNER_SCOPE` | `repo` | `repo` (single repository) or `org` (shared across the org) |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
-| `GITHUB_REPO` | `common` | Repository name |
+| `GITHUB_REPO` | `common` | Repository name (ignored when `RUNNER_SCOPE=org`) |
 | `RUNNER_PREFIX` | `ar-runner` | Name prefix for this machine |
 | `RUNNER_MEMORY_LIMIT` | `16g` | Memory limit per container |
 | `RUNNER_CPU_LIMIT` | `4` | CPU cores per container |
@@ -63,6 +64,43 @@ Each runner container:
 
 Each container has its own Maven repository to avoid concurrency
 issues when multiple runners build in parallel.
+
+## Sharing Runners Across Repositories (Org-Level)
+
+By default each container registers against the single repository named by
+`GITHUB_REPO`. To let several repositories in the org share the fleet, set
+`RUNNER_SCOPE=org` in `.env` — the containers then register at the
+organization level and `GITHUB_REPO` is ignored:
+
+```bash
+# In .env
+RUNNER_SCOPE=org
+GITHUB_OWNER=almostrealism
+```
+
+Then, once per org, grant the relevant repositories access to the runner group
+the containers join (`RUNNER_GROUP`, default `Default`) under **Org Settings ->
+Actions -> Runner groups -> (group) -> Repository access**. Without that grant,
+jobs queue forever against runners that report healthy.
+
+The PAT needs the `admin:org` scope (classic) or the organization
+"Self-hosted runners" read/write permission (fine-grained). Workflows keep
+targeting the fleet by label (`runs-on: [self-hosted, linux, ar-ci]`); nothing
+in the workflow files changes.
+
+Switching an existing fleet from repo to org scope: `docker compose down`
+deregisters the containers from their repo-level registrations (the dying
+processes still hold the old env), and the next `up` registers them at the org
+level. The same contract, with the same names, is what
+[`../macos/runner.sh`](../macos/README.md#sharing-runners-across-repositories-org-level)
+and [`../rocm/entrypoint.sh`](../rocm/) use.
+
+Verify org-level runners:
+
+```bash
+gh api orgs/almostrealism/actions/runners \
+    --jq '.runners[] | select(.labels[].name == "ar-ci") | {name, status, labels: [.labels[].name]}'
+```
 
 ## macOS Runners
 
