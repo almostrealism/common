@@ -15,7 +15,7 @@ starts running.
 | `credentials.py` | `read_secret_file`: the one way a credential (store URL, GitHub token) enters a service — from a file that must be mode 600, never a command line. |
 | `github_poller.py` | Computes `pre_start_latency_seconds` (the raw `started_at - created_at` interval) and, only when the caller supplies the job's dependency graph, a real `queue_wait_seconds` distinct from it — a job gated on a workflow `needs:` does not have its queue wait measured by the raw interval alone, since that also includes time blocked on upstream jobs. `poll_and_store` is the poll-cycle entry point: it fetches runs/jobs, computes metrics, and upserts `job_event`/`job_step` into a `FleetStore`, retrying rate-limited (403/429) responses with backoff. `run_poll_loop`/`main` is the scheduled entry point — `python -m tools.fleet.github_poller --repo owner/name --token-file … --store-url-file …` — with the collector's reconnect behaviour. |
 | `cli.py` | The two read verbs, `list` and `status`, against any store (`--db fleet.db`, or `--db-url-file` for the central Postgres store — `--db` itself rejects a `postgresql://…` URL, since the credential it carries would otherwise appear on this process's command line). |
-| `launchd/` | LaunchDaemon templates for the collector and the poller, and `render.sh`, which fills them in for a host and creates the private interpreter (a venv with `psycopg`) they run with. |
+| `launchd/` | LaunchDaemon templates for the collector and the poller; `render.sh`, which fills them in for a host and creates the private interpreter (a venv with `psycopg`) they run with; and `install.sh`, the one-command install for a macOS host (render, credential, a proven first sample, registration). |
 
 ## Deploying it
 
@@ -39,36 +39,50 @@ executes neither CI jobs nor coding-agent jobs, with the credential in a
 mode-600 file only that account can read (`read_secret_file` refuses
 anything more permissive).
 
-On a macOS host, as the account the services will run as:
+On a macOS host, as the account the collector will run as (never the account
+the runners run as — the installer refuses that), one command does the whole
+install:
+
+```bash
+tools/fleet/launchd/install.sh --store-from michael@mac-studio
+```
+
+It creates the private interpreter and renders the plists (`render.sh`),
+copies the store credential from a host that already has it (or uses an
+existing `~/fleet/store-url`), takes **one sample into the central store and
+reads it back** before anything is daemonised — a credential or database
+problem fails there, in the foreground — and then registers the collector
+daemon through the native agent's `register-daemon.sh` (the one `sudo`
+step). Re-running it updates an existing install. On the store host add
+`--with-poller`, after putting the poller's read-only GitHub token
+(fine-grained, Actions: read) at `/Users/Shared/flowtree/secrets/fleet-github-token`,
+mode 600, owned by the same account; the poller runs once per fleet, not per
+host.
+
+The pieces, for a host where you want to do them by hand (`--no-register`
+stops before the sudo step and prints the commands):
 
 ```bash
 tools/fleet/launchd/render.sh          # venv with psycopg, rendered plists under ~/fleet
 printf 'postgresql://fleet:%s@<tailnet address of the store host>:5432/fleet\n' \
     "$(cat /Users/Shared/flowtree/secrets/fleet-db-password)" > ~/fleet/store-url
 chmod 600 ~/fleet/store-url
+sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh \
+    com.almostrealism.fleet-collector ~/fleet/launchd/com.almostrealism.fleet-collector.plist
 ```
 
-The poller (one per fleet, on the store host) additionally needs a read-only
-GitHub token — fine-grained, Actions: read — at
-`/Users/Shared/flowtree/secrets/fleet-github-token`, mode 600, owned by that
-same account. Then, as an administrator, from a checkout you own, register
-each rendered plist with the native agent's helper, which validates that the
-plist runs the service as the account that wrote it and nothing else:
-
-```bash
-sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh \
-    com.almostrealism.fleet-collector ~fleetuser/fleet/launchd/com.almostrealism.fleet-collector.plist
-sudo <your checkout>/flowtree/runtime/agent/macos/register-daemon.sh \
-    com.almostrealism.fleet-poller ~fleetuser/fleet/launchd/com.almostrealism.fleet-poller.plist
-```
+`register-daemon.sh` validates that the plist runs the service as the
+account that wrote it and nothing else, and must itself be run from a
+checkout you own.
 
 `launchctl print system/com.almostrealism.fleet-collector | grep -E 'state|pid'`
-and `tail -f ~fleetuser/fleet/logs/collector.log` show whether they are up; the
-first samples appear in Grafana (`http://<tailnet address>:3000`, user
-`admin`, password in `/Users/Shared/flowtree/secrets/grafana-admin-password`)
-within a minute. The collector's `--host` label is the host's `LocalHostName`,
-lower-cased; `render.sh` sets it because `platform.node()` on a Tailscale host
-can return the FQDN with extra tokens appended.
+and `tail -f ~/fleet/logs/collector.log` show whether it is up; the host
+appears in Grafana (`http://<tailnet address>:3000`, user `admin`, password
+in `/Users/Shared/flowtree/secrets/grafana-admin-password`) within a minute.
+The collector's `--host` label is the host's `LocalHostName`, lower-cased;
+`render.sh` sets it because `platform.node()` on a Tailscale host can return
+the FQDN with extra tokens appended. A runner whose work volume is not `/`
+needs `FLEET_DISK_PATH=<mount>` in the environment of the install.
 
 ## What is intentionally not here
 
