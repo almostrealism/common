@@ -24,9 +24,13 @@ stack, `fleet-db` (Postgres) and `fleet-grafana`
 (`flowtree/runtime/controller/docker-compose.yml`); `rebuild.sh` generates
 their passwords into `/Users/Shared/flowtree/secrets/` on first run and binds
 their ports to the host's tailnet address only (it detects the address, or
-takes `FLEET_BIND_ADDR`). Grafana's datasource and the capacity dashboard are
-provisioned from `flowtree/runtime/controller/grafana/`, so a dashboard change
-ships with the next deploy.
+takes `FLEET_BIND_ADDR`, and writes the result to the compose project's
+`.env` — `flowtree/runtime/controller/.env`, gitignored — so every later
+`docker compose` command from that project, `logs` and `exec` included,
+resolves the address too; the compose file refuses to interpolate without
+one). Grafana's datasource and the capacity dashboard are provisioned from
+`flowtree/runtime/controller/grafana/`, so a dashboard change ships with the
+next deploy.
 
 Collectors write to the store directly over the tailnet, and so does the
 poller — there is no ingest service in between. The cost is a database
