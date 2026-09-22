@@ -66,6 +66,13 @@ public class ClaudeCodeRunner implements AgentRunner {
     /** Canonical runner name on the wire. */
     public static final String NAME = "claude";
 
+    /**
+     * Value passed to {@code --permission-mode}. See
+     * {@link #buildCommandLine(AgentRunRequest)} for why a headless session
+     * needs it even with an explicit allow list.
+     */
+    public static final String PERMISSION_MODE = "bypassPermissions";
+
     /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
     public static final List<String> VALID_EFFORT_LEVELS =
             List.of("low", "medium", "high", "xhigh", "max");
@@ -220,6 +227,18 @@ public class ClaudeCodeRunner implements AgentRunner {
      * Builds the {@code claude} command line for {@code request}. Exposed so
      * tests can assert the exact flags without running the subprocess.
      *
+     * <p>{@code --permission-mode bypassPermissions} is what makes the session
+     * headless in fact and not just in intent. {@code --allowedTools} decides
+     * which tools exist for the session, but it does not answer permission
+     * prompts, and the CLI holds back a class of paths — anything under
+     * {@code .claude/}, environment and credential files — for a human to
+     * approve per call. With no human on the other end those calls are denied
+     * outright ("... which is a sensitive file"), so a job told to edit a hook
+     * cannot do it and reports the refusal instead of the work. The tool
+     * policy for these sessions is the allow list plus the repository's own
+     * {@code PreToolUse} hooks, which still run under this mode;
+     * {@link OpencodeRunner} runs headless the same way.</p>
+     *
      * @param request the source of prompt, flags, and MCP config
      * @return the argv list passed to {@link ProcessBuilder}
      */
@@ -234,6 +253,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("--verbose");
         command.add("--allowedTools");
         command.add(request.getAllowedTools() != null ? request.getAllowedTools() : "");
+        command.add("--permission-mode");
+        command.add(PERMISSION_MODE);
         command.add("--max-turns");
         command.add(String.valueOf(request.getMaxTurns()));
 

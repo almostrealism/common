@@ -30,9 +30,19 @@ import java.nio.file.Path;
  * of changes made across all sessions.  Its sole job is to verify and (if
  * needed) recover a usable commit message.</p>
  *
+ * <p>An absent {@code commit.txt} is a violation only when the working tree
+ * actually holds uncommitted changes. A session that deliberately changed
+ * nothing — a review that found no defect, an investigation that only reported
+ * — has nothing to describe, and demanding a message from it would both waste
+ * a correction session and destroy the file's value as a signal: an authored
+ * message with no commit behind it is what tells
+ * {@link GitManagedJob#describeUnpublishedWork()} that a job's changes went
+ * missing, and that only holds if a message means the agent had changes.</p>
+ *
  * <h3>Violation conditions</h3>
  * <ul>
- *   <li>{@code commit.txt} is absent or empty.</li>
+ *   <li>{@code commit.txt} is absent or empty <em>and</em> the working tree
+ *       holds uncommitted changes.</li>
  *   <li>{@code commit.txt} is a verbatim copy of the task prompt (the
  *       harness prompt-fallback case).</li>
  *   <li>{@code commit.txt} echoes the rule's own previous correction prompt
@@ -74,7 +84,9 @@ class CommitMessageRule implements EnforcementRule {
     public boolean isViolated(CodingAgentJob job) {
         String content = readCommitTxt(job);
         if (content == null || content.trim().isEmpty()) {
-            return true;
+            // A session that changed nothing has nothing to describe, and an
+            // absent commit.txt is how it says so -- see the class javadoc.
+            return job.hasUncommittedChanges();
         }
         String trimmed = content.trim();
         // Detect verbatim copy of task prompt

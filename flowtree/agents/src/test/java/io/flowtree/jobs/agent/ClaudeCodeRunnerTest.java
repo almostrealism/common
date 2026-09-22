@@ -136,6 +136,21 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertFalse(cmd.contains("--max-budget-usd"));
     }
 
+    /**
+     * Every session must run in {@code bypassPermissions}. Without it the CLI
+     * holds back writes to {@code .claude/}, environment and credential files
+     * for a human to approve per call, and a headless job has no human: the
+     * call is refused as "a sensitive file" and a job told to edit a hook
+     * reports the refusal instead of doing the work. {@code --allowedTools}
+     * does not cover this, and neither does a {@code permissions.allow} rule.
+     */
+    @Test(timeout = 5000)
+    public void buildCommandLineRunsWithoutPermissionPrompts() {
+        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
+        assertFlagFollows(cmd, "--permission-mode", "bypassPermissions");
+        assertEquals("bypassPermissions", ClaudeCodeRunner.PERMISSION_MODE);
+    }
+
     /** Validation rejects unknown models. */
     @Test(timeout = 5000)
     public void validateRequestRejectsUnknownModel() {

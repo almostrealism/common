@@ -21,6 +21,7 @@ import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -173,6 +174,29 @@ public class CodingAgentJobRequiredMcpServerFailureTest extends TestSuiteBase {
         assertFalse("falsification must not run after the throw", job.falsificationRan);
         assertFalse("enforcement must not run after the throw", job.enforcementRan);
         assertFalse("retrospective must not run after the throw", job.reflectionRan);
+    }
+
+    /**
+     * A phase after primary loses the required server. The primary session
+     * already ran with its tools intact, so its work must survive: the loss
+     * must not throw — a throw here escapes {@code doWork()} and skips the
+     * whole git-commit block in {@link GitManagedJob#run()}, discarding
+     * everything the primary session produced. Instead no further session may
+     * launch, since each one would configure the same server and find it
+     * missing again.
+     */
+    @Test(timeout = 30000)
+    public void lossAfterPrimaryStopsLaunchingInsteadOfDiscardingTheWork() {
+        SpyJob job = unavailableRequiredServerJob();
+        job.setOutputConsumer(null);
+        job.setCurrentActivity(Phase.RETROSPECTIVE.wireName());
+
+        job.executeSingleRun();
+
+        assertFalse("no further session may launch after the loss",
+                job.restartGovernor().canLaunchSession());
+        assertTrue("the block reason must name the server: " + job.restartGovernor().blockReason(),
+                job.restartGovernor().blockReason().contains("ar-manager"));
     }
 
     /**

@@ -1217,6 +1217,19 @@ public class CodingAgentJob extends GitManagedJob {
      * dollar budget, or turn budget exhausted). This is the single chokepoint
      * through which every restart path passes, so no path can run away.
      * Package-private to allow test subclasses to override.</p>
+     *
+     * <p>A session that reports a required MCP server as unavailable ran
+     * without the instruction protocol that server carries, so its output is
+     * not trusted. What that costs depends on the phase. The primary session
+     * produces the job's changes, so losing its tools voids the job: the
+     * {@link IllegalStateException} thrown here takes it down the error path
+     * and nothing is committed. A later phase instead reviews, corrects or
+     * annotates work the primary session already produced with its tools
+     * intact; failing the job there would discard that work over a failure
+     * that came after it. So the loss is recorded through
+     * {@link RestartGovernor#stopLaunching(String)} — every further session
+     * would configure the same server and find it missing again — and the
+     * primary work still reaches the commit.</p>
      */
     void executeSingleRun() {
         if (!restartGovernor.beginSession()) {
@@ -1276,11 +1289,16 @@ public class CodingAgentJob extends GitManagedJob {
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
-        // A required MCP server that never connected voids the session's
-        // instructions; the exception takes the job down the error path, so
-        // nothing is committed and no later phase runs.
         if (finalResult != null && finalResult.hasUnavailableRequiredMcpServer()) {
-            throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
+            if (currentPhase == Phase.PRIMARY) {
+                throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
+            }
+            restartGovernor.stopLaunching(finalResult.describeUnavailableRequiredMcpServers());
+            warn(currentPhase.wireName() + " phase: "
+                    + finalResult.describeUnavailableRequiredMcpServers());
+            harnessStatus().unusual(currentPhase.wireName() + " phase lost a required MCP server;"
+                    + " no further phase will run and the primary session's work is kept");
+            return;
         }
 
         if (getOutputConsumer() != null) {
@@ -1452,22 +1470,17 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Returns {@code true} when the primary or any dependent repo has
-     * uncommitted changes to non-excluded files; checked by the enforcement
-     * loop to verify the agent produced meaningful changes.
+     * Returns the commit message the agent wrote to {@code commit.txt}, or
+     * {@code null} when it wrote none. This is the agent's own declaration
+     * that it produced changes worth describing, which is what lets
+     * {@link #describeUnpublishedWork()} tell a job that deliberately changed
+     * nothing from one whose changes went missing.
      *
-     * @return true if uncommitted changes exist
+     * @return the raw {@code commit.txt} content, or {@code null}
      */
-    boolean hasUncommittedChanges() {
-        if (GitOperations.hasUncommittedChanges(getWorkingDirectory())) {
-            return true;
-        }
-        for (String depPath : getDependentRepoPaths()) {
-            if (GitOperations.hasUncommittedChanges(depPath)) {
-                return true;
-            }
-        }
-        return false;
+    @Override
+    protected String authoredCommitMessage() {
+        return CommitMessageBuilder.captureCommitTxt(this);
     }
 
     @Override

@@ -149,6 +149,12 @@ public class RestartGovernor {
     private String lastBlockReason;
 
     /**
+     * Reason no further session may launch at all, or {@code null} while
+     * launches are permitted. See {@link #stopLaunching(String)}.
+     */
+    private String terminalStopReason;
+
+    /**
      * Creates a governor bound to the given job.
      *
      * @param job the job whose session launches this governor controls
@@ -167,6 +173,10 @@ public class RestartGovernor {
      *         has been reached (see {@link #blockReason()})
      */
     boolean canLaunchSession() {
+        if (terminalStopReason != null) {
+            lastBlockReason = terminalStopReason;
+            return false;
+        }
         if (sessionsLaunched == 0) {
             return true;
         }
@@ -246,6 +256,22 @@ public class RestartGovernor {
         }
         sessionsLaunched++;
         return true;
+    }
+
+    /**
+     * Refuses every further session launch for this job.
+     *
+     * <p>Unlike the counting ceilings, this holds from the moment it is set
+     * rather than when a count runs out: it records a condition a relaunch
+     * cannot clear. A required MCP server that did not connect is the case it
+     * exists for — every later session configures the same server and finds it
+     * missing again, so continuing only spends money to produce work that will
+     * not be kept.</p>
+     *
+     * @param reason human-readable reason, surfaced via {@link #blockReason()}
+     */
+    void stopLaunching(String reason) {
+        this.terminalStopReason = reason;
     }
 
     /**
