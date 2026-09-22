@@ -228,6 +228,9 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     private GitCommitHandler commitHandler;
 
+    /** Reports what became of this job's work: committed, dropped, or left behind. */
+    private final JobWorkOutcome workOutcome = new JobWorkOutcome(this);
+
     /**
      * Test-only hook: injects the result of a {@link GitCommitHandler} run
      * without driving the full {@link #run()} lifecycle (clone, branch
@@ -287,10 +290,32 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     protected abstract void doWork();
 
     /**
+     * Returns whether this job commits and pushes at all.
+     *
+     * <p>Distinct from {@link #validateChanges()}, which answers whether work
+     * that was <em>meant</em> to be committed may be. A job that never intended
+     * to commit — {@link ShellCommandJob} runs a command against a repository
+     * without mutating it — says so here, and neither the validation gate nor
+     * the unpublished-work check applies to it. Answering the two questions
+     * with one {@code false} made a deliberate opt-out indistinguishable from
+     * a rejected change set.</p>
+     *
+     * @return {@code true} when the job's work is expected to reach a commit
+     */
+    protected boolean performsGitOperations() {
+        return true;
+    }
+
+    /**
      * Validates changes made by {@link #doWork()} before git operations.
      * Subclasses can override to implement pre-commit validation logic.
      *
-     * @return true to proceed with git operations, false to abort
+     * <p>Returning {@code false} fails the job: it means work that was meant
+     * to be committed was rejected, and the changes are left in the working
+     * tree. A job that does not commit by design overrides
+     * {@link #performsGitOperations()} instead.</p>
+     *
+     * @return true to proceed with git operations, false to fail the job
      * @throws Exception if validation encounters an error
      */
     protected boolean validateChanges() throws Exception {
@@ -488,18 +513,22 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 // onInvalidFilesDetected(); if litter persists, the job fails.
                 enforceNoInvalidFiles();
 
-                if (!validateChanges()) {
-                    throw new IllegalStateException(
-                        "Job failed: change validation rejected this job's work, so nothing was"
-                            + " committed or pushed. The changes are still in the working tree on"
-                            + " the agent host. See the validation diagnostics above for what"
-                            + " rejected them.");
-                }
+                if (!performsGitOperations()) {
+                    log("This job does not commit; skipping git operations");
+                } else {
+                    if (!validateChanges()) {
+                        throw new IllegalStateException(
+                            "Job failed: change validation rejected this job's work, so nothing"
+                                + " was committed or pushed. The changes are still in the working"
+                                + " tree on the agent host. See the validation diagnostics above"
+                                + " for what rejected them.");
+                    }
 
-                commitHandler = new GitCommitHandler(this);
-                commitHandler.handle(repoSetup.hasMergeConflicts());
-                List<String> depPaths = repoSetup.getDependentRepoPaths();
-                commitHandler.handleDependentRepos(depPaths);
+                    commitHandler = new GitCommitHandler(this);
+                    commitHandler.handle(repoSetup.hasMergeConflicts());
+                    List<String> depPaths = repoSetup.getDependentRepoPaths();
+                    commitHandler.handleDependentRepos(depPaths);
+                }
             }
 
         } catch (Exception e) {
@@ -1194,10 +1223,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *         was staged or committed
      */
     protected boolean hasAllChangesDropped() {
-        return commitHandler != null
-                && !commitHandler.getSkippedFiles().isEmpty()
-                && commitHandler.getStagedFiles().isEmpty()
-                && commitHandler.getCommitHash() == null;
+        return workOutcome.allChangesDropped();
     }
 
     /**
@@ -1218,65 +1244,32 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Returns a description of work this job produced but never published, or
-     * {@code null} when its output and its commit agree.
-     *
-     * <p>A git-managed job that finishes without a commit published nothing.
-     * That is correct for a session that deliberately changed nothing — a
-     * review that found no defect, an investigation that only reported — and
-     * wrong for one that produced something. The two are told apart by what
-     * the session left behind: uncommitted changes to non-excluded files in a
-     * working tree, or an {@linkplain #authoredCommitMessage() authored commit
-     * message}.</p>
-     *
-     * <p>Either one with no commit behind it means the job's output was
-     * dropped on the way out, and every path that drops it does so quietly: a
-     * {@link #validateChanges()} that returned false, staging guardrails that
-     * passed no file, a phase that threw after the work was already made.
-     * Reporting success is what keeps those paths invisible, so a job in this
-     * state fails and names what was left behind.</p>
+     * {@code null} when its output and its commit agree; delegates to
+     * {@link JobWorkOutcome#describeUnpublishedWork()}.
      *
      * @return the failure description, or {@code null} when nothing was orphaned
      */
     protected String describeUnpublishedWork() {
-        if (targetBranch == null || targetBranch.isEmpty()) return null;
-        if (isDryRun() || hasAgentCommitted()) return null;
-        String commit = getCommitHash();
-        if (commit != null && !commit.isEmpty()) return null;
-
-        boolean changesRemain = hasUncommittedChanges();
-        String authored = authoredCommitMessage();
-        boolean messageAuthored = authored != null && !authored.trim().isEmpty();
-        if (!changesRemain && !messageAuthored) return null;
-
-        String produced;
-        if (changesRemain && messageAuthored) {
-            produced = "the working tree still holds uncommitted changes and the agent wrote a"
-                    + " commit message for them";
-        } else if (changesRemain) {
-            produced = "the working tree still holds uncommitted changes";
-        } else {
-            produced = "the agent wrote a commit message, so it had changes to describe, yet none"
-                    + " of them reached the tree";
-        }
-        return "Nothing was committed or pushed, but the job produced work: " + produced
-                + ". The work is still in the working directory on the agent host, unpublished.";
+        return workOutcome.describeUnpublishedWork();
     }
 
     /**
      * Returns whether the primary repository or any dependent repository holds
-     * uncommitted changes to files outside the standard exclusion set (see
-     * {@link GitOperations#isExcludedPath(String)}), so harness artifacts such
-     * as {@code commit.txt} do not read as work.
+     * uncommitted changes to files outside the standard exclusion set, or
+     * could not be inspected at all — see
+     * {@link JobWorkOutcome#hasUncommittedChanges(String)} for why an
+     * unanswerable query counts as "changes may exist".
      *
      * <p>Package-private so enforcement rules and test stubs in this package
      * can read and override it.</p>
      *
-     * @return {@code true} when meaningful uncommitted changes remain anywhere
+     * @return {@code true} when meaningful uncommitted changes remain anywhere,
+     *         or when a working tree could not be inspected
      */
     boolean hasUncommittedChanges() {
-        if (GitOperations.hasUncommittedChanges(workingDirectory)) return true;
+        if (workOutcome.hasUncommittedChanges(workingDirectory)) return true;
         for (String depPath : getDependentRepoPaths()) {
-            if (GitOperations.hasUncommittedChanges(depPath)) return true;
+            if (workOutcome.hasUncommittedChanges(depPath)) return true;
         }
         return false;
     }

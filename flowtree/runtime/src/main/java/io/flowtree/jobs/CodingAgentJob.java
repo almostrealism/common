@@ -224,6 +224,14 @@ public class CodingAgentJob extends GitManagedJob {
     private boolean sensitiveFileProtectionEnabled = true;
 
     /**
+     * Whether this job's sessions may bypass the agent runtime's interactive
+     * permission prompts; {@code false} unless the controller grants it from
+     * the workstream's policy. See
+     * {@link #isBypassAgentPermissionPrompts()}.
+     */
+    private boolean bypassAgentPermissionPrompts;
+
+    /**
      * Controller-signed HMAC-SHA256 bypass signature, populated by the
      * controller at submission time when the flag is false. Verified by CI
      * via {@code tools/ci/agent-protection/verify-sensitive-bypass.sh} using
@@ -269,8 +277,8 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
     final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
-    /** Downloads pushed MCP tool source files before each agent launch. */
-    private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
+    /** Turns this job's configuration into the launch configuration of a single agent session. */
+    private final AgentLaunchConfig launchConfig = new AgentLaunchConfig(this, mcpConfigBuilder);
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
     /**
@@ -628,6 +636,33 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Sets whether the agent subprocess launches inside a tmux session; the runner also honours {@code AR_AGENT_USE_TMUX}. */
     public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
+
+    /**
+     * Returns whether this job's sessions may bypass the agent runtime's
+     * interactive permission prompts, and so may write the files that runtime
+     * reserves for a human to approve — its own configuration and hooks,
+     * environment files, credentials.
+     *
+     * <p>{@code false} unless granted, because the grant covers the guardrails
+     * the session itself runs under. The controller decides per job, from the
+     * workstream's own policy
+     * ({@link io.flowtree.workstream.Workstream#permitsAgentPermissionBypass(String)}),
+     * so no branch-naming convention is built into the platform.</p>
+     *
+     * @return {@code true} when the grant is in effect for this job
+     * @see io.flowtree.jobs.agent.AgentRunRequest#isBypassPermissionPrompts()
+     */
+    public boolean isBypassAgentPermissionPrompts() { return bypassAgentPermissionPrompts; }
+
+    /**
+     * Sets whether this job's sessions may bypass the agent runtime's
+     * permission prompts.
+     *
+     * @param bypassAgentPermissionPrompts {@code true} to grant the bypass
+     */
+    public void setBypassAgentPermissionPrompts(boolean bypassAgentPermissionPrompts) {
+        this.bypassAgentPermissionPrompts = bypassAgentPermissionPrompts;
+    }
 
     /**
      * Returns whether the organizational placement rule is active for this job.
@@ -994,28 +1029,16 @@ public class CodingAgentJob extends GitManagedJob {
      * private so the dispatch-capable plumbing (job flag to builder to
      * allowed-tools CSV) can be exercised end to end in a unit test.
      */
-    void configureMcpBuilder() {
-        mcpConfigBuilder.setArManagerUrl(arManagerUrl);
-        mcpConfigBuilder.setArManagerToken(arManagerToken);
-        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
-        mcpConfigBuilder.setPythonCommand(getPythonCommand());
-        mcpConfigBuilder.setDispatchCapable(dispatchCapable);
-        Path workDir = getWorkingDirectory() != null ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-        mcpConfigBuilder.setWorkingDirectory(workDir);
-    }
+    void configureMcpBuilder() { launchConfig.configureMcpBuilder(); }
 
     /**
-     * Composes the allowed-tools CSV handed to the launched agent, layering
-     * ar-manager, dispatch (only when {@link #isDispatchCapable()}), pushed,
-     * and project-server entries onto the base tools. {@link #configureMcpBuilder()}
-     * must run first so the builder reflects current job state; this is the
-     * real artifact that grants the dispatch tools to an orchestrator.
+     * Composes the allowed-tools CSV handed to the launched agent.
+     * {@link #configureMcpBuilder()} must run first so the builder reflects
+     * current job state.
      *
      * @return the composed comma-separated allowed-tools list
      */
-    String buildComposedAllowedTools() {
-        return mcpConfigBuilder.buildAllowedTools(allowedTools);
-    }
+    String buildComposedAllowedTools() { return launchConfig.buildComposedAllowedTools(); }
 
     /**
      * Default maximum number of correction attempts per enforcement rule.
@@ -1220,16 +1243,18 @@ public class CodingAgentJob extends GitManagedJob {
      *
      * <p>A session that reports a required MCP server as unavailable ran
      * without the instruction protocol that server carries, so its output is
-     * not trusted. What that costs depends on the phase. The primary session
-     * produces the job's changes, so losing its tools voids the job: the
-     * {@link IllegalStateException} thrown here takes it down the error path
-     * and nothing is committed. A later phase instead reviews, corrects or
-     * annotates work the primary session already produced with its tools
-     * intact; failing the job there would discard that work over a failure
-     * that came after it. So the loss is recorded through
+     * not trusted. What that costs depends on whether the phase touches the
+     * working tree ({@link Phase#modifiesWorkingTree()}). One that does has
+     * left untrusted content there, indistinguishable from the work around it,
+     * so the {@link IllegalStateException} thrown here takes the job down the
+     * error path and nothing is committed — that covers the primary session,
+     * every correction phase, and the post-revert
+     * {@link Phase#GIT_TAMPERING_RESTART}, whose tree has already been reset.
+     * The retrospective touches nothing a commit can reach, so losing its
+     * tools costs only that phase: the loss is recorded through
      * {@link RestartGovernor#stopLaunching(String)} — every further session
-     * would configure the same server and find it missing again — and the
-     * primary work still reaches the commit.</p>
+     * would configure the same server and find it missing again — and the work
+     * the earlier phases produced still reaches the commit.</p>
      */
     void executeSingleRun() {
         if (!restartGovernor.beginSession()) {
@@ -1259,7 +1284,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         harnessStatus().phaseEntry(currentPhase, runner.getName(), effective, placement);
         harnessStatus().recordPhaseEntry(currentPhase, runner.getName(), effective, placement);
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
+        launchConfig.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
         String composedAllowedTools = buildComposedAllowedTools();
@@ -1290,7 +1315,7 @@ public class CodingAgentJob extends GitManagedJob {
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
         if (finalResult != null && finalResult.hasUnavailableRequiredMcpServer()) {
-            if (currentPhase == Phase.PRIMARY) {
+            if (currentPhase.modifiesWorkingTree()) {
                 throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
             }
             restartGovernor.stopLaunching(finalResult.describeUnavailableRequiredMcpServers());
@@ -1332,16 +1357,9 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Builds the {@link AgentRunRequest} for the current session, snapshotting
-     * the instruction prompt and the orchestrator-owned MCP and tool policy.
-     *
-     * <p>Reads per-phase model and effort via
-     * {@link #resolveEffectivePhaseConfig(Phase)} so that mixed-phase jobs
-     * dispatch each phase with its own resolved {@code (model, effort)}
-     * pair. Runner selection still goes through {@link #resolveRunner(Phase)}
-     * in {@link #executeSingleRun()}.</p>
-     *
-     * <p>Package-private for tests.</p>
+     * Builds the {@link AgentRunRequest} for the current session; delegates to
+     * {@link AgentLaunchConfig#buildRunRequest(String, String, Path, int)}.
+     * Package-private for tests.
      *
      * @param composedAllowedTools allowed-tools CSV including ar-manager and
      *                             pushed-tool entries from {@link McpConfigBuilder}
@@ -1356,46 +1374,8 @@ public class CodingAgentJob extends GitManagedJob {
                                     String mcpConfigJson,
                                     Path outputCapturePath,
                                     int attempt) {
-        Map<String, String> env = new LinkedHashMap<>();
-        // Per-workstream agentEnv first, so framework-critical vars set by
-        // applyAgentEnvironment (ar-manager URL/token, workstream URL) win on
-        // any key collision.
-        if (agentEnv != null && !agentEnv.isEmpty()) {
-            env.putAll(agentEnv);
-        }
-        String wsUrl = resolveWorkstreamUrl();
-        if (wsUrl != null && !wsUrl.isEmpty()) {
-            log("AR_WORKSTREAM_URL: " + wsUrl);
-        }
-        mcpConfigBuilder.applyAgentEnvironment(env, wsUrl);
-
-        Path workDir = getWorkingDirectory() != null
-                ? Path.of(getWorkingDirectory()) : null;
-        // Resolve per-phase model/effort/provider from the bundle. The runner
-        // falls back to the default runner; model/effort/provider come solely
-        // from the phase config (null means "use the runner's CLI default").
-        Phase phase = resolveCurrentPhase();
-        PhaseConfig effective = resolveEffectivePhaseConfig(phase);
-        return AgentRunRequest.builder()
-                .prompt(buildInstructionPrompt())
-                .workingDirectory(workDir)
-                .allowedTools(composedAllowedTools)
-                .mcpConfigJson(mcpConfigJson)
-                .requiredMcpServers(mcpConfigBuilder.requiredServerNames())
-                .environment(env)
-                .model(effective.model())
-                .effort(effective.effort())
-                .provider(effective.provider())
-                .maxTurns(maxTurns)
-                .maxBudgetUsd(maxBudgetUsd)
-                .inactivityTimeoutMillis(resolveRunner(phase).defaultInactivityTimeoutMillis())
-                .inactivityRestartAttempt(attempt)
-                .maxInactivityRestarts(restartGovernor.getMaxInactivityRestarts())
-                .taskId(getTaskId())
-                .activityTag(currentActivity)
-                .outputCapturePath(outputCapturePath)
-                .useTmux(useTmux)
-                .build();
+        return launchConfig.buildRunRequest(
+                composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
     }
 
     /** Effective {@link PhaseConfig} for {@code phase}; delegates to {@link PhaseRunnerConfig}. */

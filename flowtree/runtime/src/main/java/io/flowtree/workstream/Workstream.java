@@ -184,6 +184,23 @@ public class Workstream {
      */
     private List<String> completionListeners;
 
+    /**
+     * Branch-name prefixes whose jobs may bypass the agent runtime's
+     * interactive permission prompts. Empty or unset means no branch may —
+     * which is the default, because the grant lets a session write the
+     * guardrails it runs under.
+     *
+     * <p>This exists so the policy is the workstream's own. Repositories have
+     * their own conventions for which branches are allowed to change their
+     * tooling — one names them {@code ci/}, another {@code infra/}, another
+     * has no such branch at all — and a platform that hard-coded any one of
+     * them would force every repository onto it. FlowTree supplies the
+     * mechanism and each workstream states the policy here.</p>
+     *
+     * @see #permitsAgentPermissionBypass(String)
+     */
+    private List<String> agentPermissionBypassBranches;
+
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
@@ -716,6 +733,64 @@ public class Workstream {
             }
         }
         this.completionListeners = copy;
+    }
+
+    /**
+     * Returns the branch-name prefixes whose jobs may bypass the agent
+     * runtime's permission prompts.
+     *
+     * @return the prefixes; empty when no branch is permitted
+     * @see #agentPermissionBypassBranches
+     */
+    public List<String> getAgentPermissionBypassBranches() {
+        if (agentPermissionBypassBranches == null) {
+            return Collections.emptyList();
+        }
+        return Collections.unmodifiableList(agentPermissionBypassBranches);
+    }
+
+    /**
+     * Sets the branch-name prefixes whose jobs may bypass the agent runtime's
+     * permission prompts.
+     *
+     * <p>Blank entries are dropped rather than stored. An empty prefix is a
+     * prefix of every branch name, so keeping one would turn a typo or a
+     * trailing comma into a silent grant for the whole workstream — the one
+     * mistake this list must not be able to make.</p>
+     *
+     * @param agentPermissionBypassBranches the prefixes, or {@code null} for none
+     */
+    public void setAgentPermissionBypassBranches(List<String> agentPermissionBypassBranches) {
+        List<String> copy = new ArrayList<>();
+        if (agentPermissionBypassBranches != null) {
+            for (String prefix : agentPermissionBypassBranches) {
+                if (prefix == null) continue;
+                String trimmed = prefix.trim();
+                if (trimmed.isEmpty()) continue;
+                copy.add(trimmed);
+            }
+        }
+        this.agentPermissionBypassBranches = copy;
+    }
+
+    /**
+     * Returns whether a job targeting {@code branch} may bypass the agent
+     * runtime's interactive permission prompts.
+     *
+     * <p>True when {@code branch} starts with any configured prefix. A job
+     * with no target branch is never permitted: the grant is scoped to work
+     * that lands somewhere reviewable, and a branchless job has nowhere for
+     * the change to be reviewed.</p>
+     *
+     * @param branch the job's target branch; may be {@code null}
+     * @return {@code true} when the bypass applies to this branch
+     */
+    public boolean permitsAgentPermissionBypass(String branch) {
+        if (branch == null || branch.isEmpty()) return false;
+        for (String prefix : getAgentPermissionBypassBranches()) {
+            if (branch.startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     /**

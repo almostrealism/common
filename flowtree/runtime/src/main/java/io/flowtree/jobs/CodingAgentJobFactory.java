@@ -606,6 +606,35 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Grants this factory's jobs the agent-runtime permission-prompt bypass,
+     * so their sessions may write the files the runtime reserves for a human
+     * to approve — its own configuration and hooks, environment files,
+     * credentials.
+     *
+     * <p>Set by the controller at submission time from the workstream's own
+     * policy ({@link io.flowtree.workstream.Workstream#permitsAgentPermissionBypass(String)}),
+     * never by the agent. Stored in the inherited {@link AbstractJobFactory}
+     * properties map for the same reason as {@code dispatchCapable}: a plain
+     * field is dropped on the wire round-trip that ships a factory to a remote
+     * agent node.</p>
+     *
+     * @param bypassAgentPermissionPrompts {@code true} to grant the bypass
+     */
+    public void setBypassAgentPermissionPrompts(boolean bypassAgentPermissionPrompts) {
+        set("bypassAgentPermissionPrompts", String.valueOf(bypassAgentPermissionPrompts));
+    }
+
+    /**
+     * Returns whether this factory's jobs carry the permission-prompt bypass.
+     *
+     * @return {@code true} when the bypass should be granted
+     * @see #setBypassAgentPermissionPrompts(boolean)
+     */
+    public boolean isBypassAgentPermissionPrompts() {
+        return "true".equals(get("bypassAgentPermissionPrompts"));
+    }
+
+    /**
      * Returns the pushed-tools configuration JSON. May be {@code null}.
      */
     public String getPushedToolsConfig() {

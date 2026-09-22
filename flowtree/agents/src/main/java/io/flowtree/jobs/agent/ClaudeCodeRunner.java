@@ -227,17 +227,18 @@ public class ClaudeCodeRunner implements AgentRunner {
      * Builds the {@code claude} command line for {@code request}. Exposed so
      * tests can assert the exact flags without running the subprocess.
      *
-     * <p>{@code --permission-mode bypassPermissions} is what makes the session
-     * headless in fact and not just in intent. {@code --allowedTools} decides
-     * which tools exist for the session, but it does not answer permission
-     * prompts, and the CLI holds back a class of paths — anything under
-     * {@code .claude/}, environment and credential files — for a human to
-     * approve per call. With no human on the other end those calls are denied
-     * outright ("... which is a sensitive file"), so a job told to edit a hook
-     * cannot do it and reports the refusal instead of the work. The tool
-     * policy for these sessions is the allow list plus the repository's own
-     * {@code PreToolUse} hooks, which still run under this mode;
-     * {@link OpencodeRunner} runs headless the same way.</p>
+     * <p>{@code --permission-mode bypassPermissions} appears only when the
+     * request carries {@link AgentRunRequest#isBypassPermissionPrompts()}.
+     * {@code --allowedTools} decides which tools exist for the session, but it
+     * does not answer permission prompts, and the CLI holds back a class of
+     * paths — anything under {@code .claude/}, environment and credential
+     * files — for a human to approve per call. With no human on the other end
+     * those calls are denied outright ("... which is a sensitive file"), so a
+     * job told to edit a hook cannot do it and reports the refusal instead of
+     * the work. The flag is what lifts that, and it lifts it for the guardrails
+     * the session itself runs under, which is why it is granted per job rather
+     * than assumed here. Without the grant no permission flag is emitted at
+     * all, leaving the CLI's own default in place.</p>
      *
      * @param request the source of prompt, flags, and MCP config
      * @return the argv list passed to {@link ProcessBuilder}
@@ -253,8 +254,10 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("--verbose");
         command.add("--allowedTools");
         command.add(request.getAllowedTools() != null ? request.getAllowedTools() : "");
-        command.add("--permission-mode");
-        command.add(PERMISSION_MODE);
+        if (request.isBypassPermissionPrompts()) {
+            command.add("--permission-mode");
+            command.add(PERMISSION_MODE);
+        }
         command.add("--max-turns");
         command.add(String.valueOf(request.getMaxTurns()));
 

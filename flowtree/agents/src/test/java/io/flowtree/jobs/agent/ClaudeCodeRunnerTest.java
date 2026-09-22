@@ -137,7 +137,7 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
     }
 
     /**
-     * Every session must run in {@code bypassPermissions}. Without it the CLI
+     * A granted session runs in {@code bypassPermissions}. Without it the CLI
      * holds back writes to {@code .claude/}, environment and credential files
      * for a human to approve per call, and a headless job has no human: the
      * call is refused as "a sensitive file" and a job told to edit a hook
@@ -145,10 +145,32 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
      * does not cover this, and neither does a {@code permissions.allow} rule.
      */
     @Test(timeout = 5000)
-    public void buildCommandLineRunsWithoutPermissionPrompts() {
-        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
-        assertFlagFollows(cmd, "--permission-mode", "bypassPermissions");
+    public void grantedRequestRunsWithoutPermissionPrompts() {
+        AgentRunRequest granted = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .allowedTools("Read,Edit")
+                .maxTurns(7)
+                .bypassPermissionPrompts(true)
+                .build();
+
+        assertFlagFollows(new ClaudeCodeRunner().buildCommandLine(granted),
+                "--permission-mode", "bypassPermissions");
         assertEquals("bypassPermissions", ClaudeCodeRunner.PERMISSION_MODE);
+    }
+
+    /**
+     * Without the grant no permission flag is emitted at all, so the CLI keeps
+     * its own default and the session cannot edit the guardrails it runs
+     * under. The grant is a per-job decision (see
+     * {@code Workstream#permitsAgentPermissionBypass}), never this layer's.
+     */
+    @Test(timeout = 5000)
+    public void ungrantedRequestEmitsNoPermissionFlag() {
+        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
+        assertFalse("an ungranted request must not weaken permissions: " + cmd,
+                cmd.contains("--permission-mode"));
+        assertFalse("an ungranted request must not skip permissions: " + cmd,
+                cmd.contains("--dangerously-skip-permissions"));
     }
 
     /** Validation rejects unknown models. */
