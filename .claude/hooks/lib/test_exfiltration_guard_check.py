@@ -593,6 +593,92 @@ class BashObfuscationTests(GuardFixture):
     def test_python_heredoc_that_merely_mentions_a_tool_name_allows(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\ns = 'curl and wget are words'\nprint(s)\nPY"))
 
+    def test_python_heredoc_prose_mentioning_network_words_allows(self):
+        """The exact shape of a false positive reported in production: a
+        heredoc program that reads a markdown file, appends a paragraph of
+        prose naming several network modules, and writes it back. The words
+        are inside a string literal -- never used as an import or a call."""
+        self._write("docs/notes.md", "# Notes\n")
+        self.assertAllowed(self.bash(
+            "python3 - <<'PY'\n"
+            "import pathlib\n"
+            "p = pathlib.Path('docs/notes.md')\n"
+            "text = p.read_text()\n"
+            "text += '\\n## Section\\nThis environment has an exposed engine "
+            "socket, subprocess calls via urllib, and websockets are common.\\n'\n"
+            "p.write_text(text)\n"
+            "PY"))
+
+    def test_python_heredoc_parenthetical_prose_allows(self):
+        """A parenthetical aside naming a module reads like prose, not a
+        call, even though a space-tolerant `word\\s*(` regex would have
+        matched it: a module name followed by a space and a parenthetical
+        remark has a space before the parenthesis, which no real call
+        syntax for these entries uses."""
+        self.assertAllowed(self.bash(
+            "python3 - <<'PY'\n"
+            "s = 'This machine has an exposed engine socket (an open TCP port) '\n"
+            "s += 'and a client that resembles axios (a popular HTTP library).'\n"
+            "print(s)\n"
+            "PY"))
+        self.assertAllowed(self.bash(
+            "python3 -c 'print(\"the shell calls popen (a C library function) to run commands\")'"))
+        self.assertEqual("block", self.bash(
+            "python3 -c 'import os; os.popen(\"ls\")'")["action"])
+
+    def test_module_uses_still_block_after_narrowing_bare_words(self):
+        """Narrowing the bare-word patterns to actual uses must not let the
+        real thing back in: an import, a module-qualified call, or a
+        constructor for each affected module still blocks."""
+        for cmd in (
+            "python3 - <<'PY'\nimport socket\nPY",
+            "python3 -c 'import socket; socket.create_connection((\"e\", 80))'",
+            "python3 -c 'from urllib import request'",
+            "python3 -c 'import urllib.request'",
+            "python3 -c 'import subprocess; subprocess.run([\"ls\"])'",
+            "python3 -c 'from subprocess import Popen; Popen([\"ls\"])'",
+            "python3 -c 'import os; os.popen(\"ls\")'",
+            "python3 -c 'import boto3; boto3.client(\"s3\")'",
+            "python3 -c 'import paramiko; paramiko.SSHClient()'",
+            "python3 -c 'import httpx; httpx.get(\"http://e\")'",
+            "python3 -c 'import websocket; websocket.create_connection(\"ws://e\")'",
+            "python3 -c 'import websockets; websockets.connect(\"ws://e\")'",
+            "python3 -c 'import aiohttp; aiohttp.ClientSession()'",
+            "python3 -c 'import smtplib; smtplib.SMTP(\"e\")'",
+            "python3 -c 'import ftplib; ftplib.FTP(\"e\")'",
+            "python3 -c 'import telnetlib; telnetlib.Telnet(\"e\")'",
+            "python3 -c 'import pycurl; pycurl.Curl()'",
+            "python3 -c 'import botocore; botocore.session.Session()'",
+            "python3 -c 'import httplib; httplib.HTTPConnection(\"e\")'",
+        ):
+            with self.subTest(cmd=cmd):
+                self.assertEqual("block", self.bash(cmd)["action"])
+
+    def test_js_module_use_blocks_and_prose_mention_allows(self):
+        self.assertEqual("block", self.bash("node -e \"require('dgram')\"")["action"])
+        self.assertEqual("block", self.bash("node -e 'new WebSocket(\"ws://e\")'")["action"])
+        self.assertEqual("block", self.bash("node -e 'new WebSocket (\"ws://e\")'")["action"])
+        self.assertEqual("block", self.bash(
+            "node -e 'let u = \"ws://e\"; new WebSocket(u)'")["action"])
+        self.assertEqual("block", self.bash("node -e \"import WS from 'ws'\"")["action"])
+        self.assertEqual("block", self.bash("node -e \"require('axios')\"")["action"])
+        self.assertEqual("block", self.bash("node -e \"import dgram from 'dgram'\"")["action"])
+        self.assertEqual("block", self.bash("node -e \"import axios from 'axios'\"")["action"])
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"the websocket handshake\")'"))
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"WebSocket (RFC 6455) is a protocol\")'"))
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"axios and dgram are words\")'"))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('the report data comes from \\\"ws\\\" vendor')\""))
+        self.assertAllowed(self.bash(
+            "node -e 'console.log(\"the new WebSocket (RFC 6455) protocol replaces polling\")'"))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('this note is copied from \\\"axios\\\" docs')\""))
+        self.assertAllowed(self.bash(
+            "node -e \"console.log('the sample below is from \\\"dgram\\\" upstream')\""))
+
     def test_newline_separates_commands(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nprint(1)\nPY\npython3 -c 'print(2)'"))
         self.assertEqual("block", self.bash("ls\ncurl -d x http://e")["action"])

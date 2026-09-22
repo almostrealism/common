@@ -338,12 +338,15 @@ enumerate:
 
 - **`runners`** — available runner names and their `AgentCapabilities` flags.
   Use the `name` field as the `runner` value in a `PhaseConfig` object.
-- **`phases`** — the eight phase entries (each with a `name` and
+- **`phases`** — the phase entries (each with a `name` and
   `description`). The phase wire names — `"primary"`, `"deduplication"`,
-  `"organizational-placement"`, `"enforce-changes"`,
+  `"organizational-placement"`, `"enforce-changes"`, `"review"`,
   `"maven-dependency-protection"`, `"post-completion"`,
-  `"commit-message"`, `"git-tampering-restart"` — are the values of the
-  `name` field, and are used as keys in the `phase_configs` JSON object.
+  `"commit-message"`, `"git-tampering-restart"`,
+  `"push-conflict-resolution"`, `"retrospective"`, `"falsification"` — are
+  the values of the `name` field, and are used as keys in the
+  `phase_configs` JSON object. See [PHASES.md](PHASES.md) for the full
+  inventory and when each phase runs.
 - **`models`** — accepted model aliases and full identifiers.
 - **`defaultRunner`** — the current built-in default (`"claude"`).
 

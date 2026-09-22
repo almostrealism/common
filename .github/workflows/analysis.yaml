@@ -1131,14 +1131,12 @@ jobs:
   #
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
-  # below reports a notice or warning and exits 0.
-  # TODO(review): "every failure path... exits 0" is no longer true for the
-  # "Fetch base branch" and "Verify registration script integrity" steps
-  # added below — neither has `continue-on-error` or its own failure
-  # handling, so e.g. a transient `git fetch origin master` network error
-  # fails the step (GitHub Actions default `-eo pipefail`) and the whole job
-  # goes red, contradicting this comment. See review-followup memory on
-  # workstream 3e52f5d6-13d4-45b2-93a7-a776d5af7045 for detail.
+  # below reports a notice or warning and exits 0. "Fetch base branch"
+  # wraps its `git fetch` so a transient network error is reported via
+  # ::warning:: and `failed=true` rather than failing the step; "Verify
+  # registration script integrity" treats that flag as unverifiable and
+  # skips registration (fail closed) instead of falling through to the
+  # "script is new on master" trust-as-is branch.
   register-workstream:
     needs: [changes, build]
     if: >-
@@ -1155,7 +1153,12 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch base branch
-        run: git fetch origin master:refs/remotes/origin/master --no-tags
+        id: fetch_base
+        run: |
+          if ! git fetch origin master:refs/remotes/origin/master --no-tags; then
+            echo "::warning::failed to fetch origin/master — the script-integrity check below cannot verify tools/ci/register-workstream.sh against the trusted copy and will fail closed."
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Determine branch context
         id: ctx
@@ -1193,9 +1196,19 @@ jobs:
           # attached. That would defeat the very check this step exists
           # to perform.
           BRANCH: ${{ steps.ctx.outputs.branch }}
+          # Passed via env for the same reason as BRANCH: the value is an
+          # output of an earlier step and must not be interpolated as a
+          # GitHub Actions expression into the shell script body.
+          FETCH_FAILED: ${{ steps.fetch_base.outputs.failed }}
         run: |
           if echo "$BRANCH" | grep -qE '^ci/'; then
             echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          if [ "$FETCH_FAILED" = "true" ]; then
+            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -1507,13 +1520,21 @@ jobs:
   # Extracted from `build` so that slow flowtree tests do not block the
   # rest of the pipeline.
   test-flowtree:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Gated on python-tests success-or-skipped: the flowtree runtime drives the Python
+    # tooling (ar-manager, the fleet scripts, the CI helpers), so when the Python suite ran
+    # and failed there is nothing sound for this job to prove, only runner time to spend.
+    # python-tests is skipped only by its own path gate (no .py change, off master), never
+    # by an upstream failure, so its `skipped` is unambiguous and tolerated. `!cancelled()`
+    # is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.python-tests.result == 'success' || needs.python-tests.result == 'skipped') &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -2031,7 +2052,7 @@ jobs:
           if-no-files-found: ignore
 
   test-cl:
-    needs: [changes, build, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
@@ -2048,18 +2069,22 @@ jobs:
     # as test-cl -> test-media-cl because the ROCm host has a single GPU. Gates on the
     # validation checks directly.
     #
-    # It also gates on BOTH stages of the macOS GPU lane (test-mac and test-media-mac) with
-    # success-or-skipped. This is not GPU serialisation — the fleets are separate machines —
-    # it is admission control for a small fleet: the CL lane is sixteen matrix jobs on one
-    # host, the most expensive thing a pipeline schedules, and a branch that cannot pass the
-    # Metal suites will not pass the OpenCL duplicates of them either. Running the CL lane
-    # only once the Metal lane is green spends the ROCm runners on branches that have already
-    # cleared the equivalent tests on Metal, and leaves them free for the pipelines that can
-    # actually use a green CL result. The cost is that a healthy pipeline's CL lane starts
-    # after the mac lane finishes rather than alongside it.
+    # It also gates on BOTH stages of BOTH other lanes — the CPU lane (test and test-media)
+    # and the macOS GPU lane (test-mac and test-media-mac) — with success-or-skipped. This is
+    # not GPU serialisation — the fleets are separate machines — it is admission control for
+    # a small fleet: the CL lane is sixteen matrix jobs on one host, the most expensive thing
+    # a pipeline schedules, and it is "Linux plus an accelerator other than Metal": a branch
+    # that cannot pass the Linux CPU suites, or cannot pass the Metal suites, will not pass
+    # the OpenCL duplicates of them either. Running the CL lane only once both lanes are
+    # green spends the ROCm runners on branches that have already cleared the equivalent
+    # tests, and leaves them free for the pipelines that can actually use a green CL result.
+    # The cost is that a healthy pipeline's CL lane starts after the slower of the two lanes
+    # finishes rather than alongside them. The CPU-lane gate was added after a run in which
+    # the mac lane passed, the linux lane failed, and the CL lane still burned its sixteen
+    # jobs on a branch that could not have gone green.
     #
-    # A mac stage skipped by its own layer gate is tolerated; a failure anywhere in the mac
-    # lane skips this stage and, through it, test-media-cl (fail-chain). `!cancelled()` is
+    # A stage skipped by its own layer gate is tolerated; a failure anywhere in either lane
+    # skips this stage and, through it, test-media-cl (fail-chain). `!cancelled()` is
     # required for that tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
@@ -2068,6 +2093,8 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
       (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
       (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
@@ -2290,18 +2317,24 @@ jobs:
           if-no-files-found: ignore
 
   test-media-cl:
-    needs: [changes, build, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, second (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
     # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
     # GPU-eligible work routes through CL.
     #
     # Runs on the ROCm fleet (tools/ci/rocm). Gates on test-cl because the ROCm host has a
     # single GPU and the two CL stages must not contend for it; test-cl in turn gates on the
-    # whole macOS GPU lane (see there), so this stage runs only once every Metal suite and the
-    # OpenCL compute suite are green. test-cl is gated success-or-skipped, so a failure there
-    # skips this stage (fail-chain) while a stage skipped by its own layer gate is tolerated.
-    # Gates on the validation checks directly. `!cancelled()` is required for that tolerance
-    # to take effect — see test-media.
+    # whole CPU lane and the whole macOS GPU lane (see there), so this stage runs only once
+    # every Linux suite, every Metal suite and the OpenCL compute suite are green.
+    #
+    # It gates on those upstream lanes DIRECTLY, not only on test-cl's result. test-cl is
+    # skipped for two different reasons — its own layer gate, or an upstream failure — and
+    # its `skipped` result cannot tell them apart. Gating on test-cl alone therefore let this
+    # stage run after a Linux suite had failed (test-cl skipped, this job saw 'skipped' and
+    # tolerated it). Listing the upstream lanes here, each success-or-skipped exactly as
+    # test-cl lists them, makes an upstream failure skip this stage too, while a stage
+    # skipped by its own layer gate is still tolerated. `!cancelled()` is required for that
+    # tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -2309,6 +2342,10 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.test-cl.result == 'success' || needs.test-cl.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||

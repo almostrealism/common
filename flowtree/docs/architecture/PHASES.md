@@ -54,6 +54,9 @@ its model from another.
 | `POST_COMPLETION` | `post-completion` | `PostCompletionCommandRule` correction with the script's output. |
 | `COMMIT_MESSAGE` | `commit-message` | `CommitMessageRule` — always the last enforcement phase. |
 | `GIT_TAMPERING_RESTART` | `git-tampering-restart` | `onGitTampering()` re-run with a stern warning. |
+| `PUSH_CONFLICT_RESOLUTION` | `push-conflict-resolution` | Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch. |
+| `RETROSPECTIVE` | `retrospective` | Retrospective session — analyzes the primary phase transcript for improvement opportunities. |
+| `FALSIFICATION` | `falsification` | Falsification session — extracts load-bearing behavioural claims and bounces to primary when captured evidence refutes them. |
 
 The orchestrator resolves the current phase from the existing
 `currentActivity` field — no new session state was needed. Most rule

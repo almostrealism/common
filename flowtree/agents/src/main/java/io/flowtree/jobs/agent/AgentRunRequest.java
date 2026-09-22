@@ -19,7 +19,9 @@ package io.flowtree.jobs.agent;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Parameter object describing a single agent invocation.
@@ -42,6 +44,8 @@ public final class AgentRunRequest {
     private final String allowedTools;
     /** MCP server configuration JSON in the canonical {@code {"mcpServers":{...}}} shape. */
     private final String mcpConfigJson;
+    /** Servers in {@link #mcpConfigJson} the session cannot do its job without; see {@link #getRequiredMcpServers()}. */
+    private final Set<String> requiredMcpServers;
     /** Additional environment variables set on the agent subprocess. */
     private final Map<String, String> environment;
     /** Requested model identifier; {@code null} means runner default. */
@@ -82,6 +86,7 @@ public final class AgentRunRequest {
         this.workingDirectory = b.workingDirectory;
         this.allowedTools = b.allowedTools;
         this.mcpConfigJson = b.mcpConfigJson;
+        this.requiredMcpServers = Collections.unmodifiableSet(new LinkedHashSet<>(b.requiredMcpServers));
         this.environment = b.environment == null
                 ? Collections.emptyMap()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(b.environment));
@@ -118,6 +123,17 @@ public final class AgentRunRequest {
      * native schema translate from this canonical form.
      */
     public String getMcpConfigJson() { return mcpConfigJson; }
+
+    /**
+     * Names of the MCP servers in {@link #getMcpConfigJson()} that the session
+     * cannot do its job without. A runner that can observe connection status
+     * reports any of these that failed to connect on
+     * {@link AgentRunResult#unavailableRequiredMcpServers()}; the job then
+     * fails rather than run the agent with its instructions silently voided.
+     *
+     * @return the required server names, possibly empty; never {@code null}
+     */
+    public Set<String> getRequiredMcpServers() { return requiredMcpServers; }
 
     /** Returns any additional environment variables to set on the agent subprocess. */
     public Map<String, String> getEnvironment() { return environment; }
@@ -191,6 +207,8 @@ public final class AgentRunRequest {
         private String allowedTools;
         /** Pending MCP config JSON; see {@link AgentRunRequest#getMcpConfigJson()}. */
         private String mcpConfigJson;
+        /** Pending required servers; see {@link AgentRunRequest#getRequiredMcpServers()}. */
+        private Set<String> requiredMcpServers = Collections.emptySet();
         /** Pending environment overrides; see {@link AgentRunRequest#getEnvironment()}. */
         private Map<String, String> environment;
         /** Pending model identifier; see {@link AgentRunRequest#getModel()}. */
@@ -229,6 +247,12 @@ public final class AgentRunRequest {
         public Builder allowedTools(String allowedTools) { this.allowedTools = allowedTools; return this; }
         /** Sets the MCP config JSON. */
         public Builder mcpConfigJson(String mcpConfigJson) { this.mcpConfigJson = mcpConfigJson; return this; }
+
+        /** Sets the MCP servers the session cannot do its job without; {@code null} means none. */
+        public Builder requiredMcpServers(Set<String> requiredMcpServers) {
+            this.requiredMcpServers = requiredMcpServers == null ? Collections.emptySet() : requiredMcpServers;
+            return this;
+        }
         /** Sets additional environment variables. */
         public Builder environment(Map<String, String> environment) { this.environment = environment; return this; }
         /** Sets the requested model. */

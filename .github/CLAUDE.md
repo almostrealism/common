@@ -103,7 +103,12 @@ The `changes` job detects which top-level directories changed and sets flags:
 **No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
-flowtree tests always run in the `test-flowtree` job regardless of what changed.
+flowtree tests always run in the `test-flowtree` job regardless of what changed
+— with one gate: `test-flowtree` needs `python-tests` success-or-skipped. The
+flowtree runtime drives the Python tooling, so when the Python suite ran and
+failed there is nothing sound for the Java suite to prove. `python-tests` is
+skipped only by its own path gate, never by an upstream failure, so that
+`skipped` is unambiguous.
 The `python_changed` flag is a path-based (not layer-based) flag that gates
 `python-tests`; Python sources are not part of the layered Java module graph.
 The `agent_isolation_changed` flag is likewise path-based and gates
@@ -335,24 +340,33 @@ heavy suites do not contend on their fleet:
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
 
-The CPU and GPU lanes run in parallel. The CL lane starts only after the whole
-GPU lane has finished: `test-cl` gates on `test-mac` and `test-media-mac`
-(success-or-skipped), and `test-media-cl` gates on `test-cl`. This is
-admission control, not GPU serialisation — the fleets are different machines.
-The CL lane is sixteen matrix jobs on a single host, the most expensive thing
-a pipeline schedules, and a branch that cannot pass the Metal suites will not
-pass their OpenCL duplicates either. Holding the CL lane until the Metal lane
-is green spends the ROCm runners only on branches that have already cleared
-the equivalent tests, and keeps them free for the pipelines that can use a
-green CL result. The trade is that a healthy pipeline's CL lane starts later
-than it otherwise would.
+The CPU and GPU lanes run in parallel. The CL lane starts only after **both**
+of them have finished: `test-cl` gates on `test`, `test-media`, `test-mac` and
+`test-media-mac` (each success-or-skipped), and `test-media-cl` gates on
+`test-cl` **and on those same four lanes directly**. The second part is not
+redundant: `test-cl` is skipped either by its own layer gate or by an upstream
+failure, and its `skipped` result cannot tell the two apart — gating
+`test-media-cl` on `test-cl` alone let it run after a Linux suite had failed.
+A downstream job must never infer "upstream was fine" from a `skipped` that has
+more than one cause; it gates on the upstream lanes itself. This is admission
+control, not GPU serialisation — the fleets are
+different machines. The CL lane is sixteen matrix jobs on a single host, the
+most expensive thing a pipeline schedules, and it is "Linux plus an accelerator
+other than Metal": a branch that cannot pass the Linux CPU suites, or cannot
+pass the Metal suites, will not pass their OpenCL duplicates either. Holding the
+CL lane until both lanes are green spends the ROCm runners only on branches
+that have already cleared the equivalent tests, and keeps them free for the
+pipelines that can use a green CL result. The trade is that a healthy
+pipeline's CL lane starts after the slower of the two other lanes.
 
 The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
 moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
 real, non-deprecated OpenCL implementation. The gates on `test-mac` and
 `test-media-mac` were dropped at that point, because their original purpose
 (serialising the macOS GPUs) no longer applied, and were later restored for the
-admission-control reason above.
+admission-control reason above. The gate on the CPU lane came later still,
+after a pipeline in which the mac lane passed, the linux lane failed, and the
+CL lane ran its sixteen jobs anyway.
 
 The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
 also carried `ar-ci` it would start picking up general CPU test jobs, putting
@@ -496,6 +510,21 @@ the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
 `false` to the `redeploy_agents` input on a manual run) to deploy the controller
 stack alone.
 
+The stack includes `fleet-db` and `fleet-grafana` (runner-fleet monitoring,
+`tools/fleet/README.md`). `rebuild.sh` generates their password files beside
+the shared secret and binds their ports to the host's tailnet address, which it
+detects (`FLEET_BIND_ADDR` overrides) and persists to the compose project's
+gitignored `.env` (`flowtree/runtime/controller/.env`); the compose file
+refuses to interpolate without an address, so a deploy runner that cannot
+determine one fails there rather than publishing a database on every
+interface. The `.env` matters beyond the rebuild: compose interpolates the
+whole file on every invocation, so the workflow's post-deploy
+`docker compose exec` check (and any `docker compose logs` run by hand) only
+works because the address is on disk, not merely exported inside
+`rebuild.sh`. A full rebuild recreates
+`fleet-db` too — the data directory persists, and the collectors on every
+host reconnect on their own — so nothing in the deploy needs to drain for it.
+
 The agent `.env` is gitignored, so it is never present in the runner's checkout.
 `rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow
 falls back to `/Users/Shared/flowtree/secrets/agent.env`, and the repository
@@ -511,17 +540,35 @@ racing would let one job reopen intake while the other is still rebuilding),
 is gated on the same `DEPLOY_AGENTS` decision, and shares the `production`
 environment (one approval covers both jobs). It asks for
 `[self-hosted, macos, ar-deploy-agent]` — **not** `ar-deploy` — because the
-agent must run as the `worker` account and the job installs the launchd
-service for whichever account the runner runs as. A runner registered as the
-Docker owner would install the agent for the Docker owner, so the job checks
-`id -un` against the expected account (`worker` by default, overridable with
-the repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before
-`install.sh` runs if they do not match. Never add `ar-deploy-agent` to the
-`ar-deploy` runner; register a separate runner as `worker` (see
-`tools/ci/macos/README.md`, "Deploying the native macOS agent"). The job also
-fails unless the new agent process holds a connection to the controller port —
-there is no controller endpoint listing connected agents, so that check is
-made from the agent's side with `lsof`.
+agent runs as the `worker` account and the job writes that account's install
+directory and restarts that account's process; only the owner can do either.
+A runner registered as the Docker owner would install into the Docker owner's
+home, so the job checks `id -un` against the expected account (`worker` by
+default, overridable with the repository variable
+`FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before `install.sh` runs if they do
+not match. Never add `ar-deploy-agent` to the `ar-deploy` runner; register a
+separate runner as `worker` (see `tools/ci/macos/README.md`, "Deploying the
+native macOS agent").
+
+The agent is a **LaunchDaemon in the system domain** (`UserName: worker`),
+registered once by an administrator, and the job needs no launchd privilege:
+`install.sh` swaps the JARs, signals the running JVM, and `KeepAlive` starts it
+again on the new classpath. It is not a LaunchAgent in worker's own domain
+because that domain is absent after a reboot (nobody logs in as `worker`) and,
+on a host where `worker` is only reached through `su`, refuses every
+bootstrap with `Bootstrap failed: 5: Input/output error` — from worker, from
+root, and from root via `launchctl asuser`. The first version of the job
+bootstrapped a LaunchAgent from inside the CI job and failed on exactly that.
+`install.sh` re-renders the daemon plist on every run and fails, printing the
+`sudo register-daemon.sh` command (run from a checkout the administrator owns; it
+validates that the worker-written plist runs the service as worker and nothing
+else, and waits for a replaced service to stop
+before loading the new definition), when the daemon is not registered or the registered copy
+differs from the rendered one. The job also fails unless the new agent process
+— identified by process identity, pid plus start time, so it is a different
+process from the one signalled even if it received the same pid number — holds a connection to
+the controller port; there is no controller endpoint listing connected agents,
+so that check is made from the agent's side with `lsof`.
 
 ### What the `Master Agent Dispatch` workflow does
 

@@ -19,7 +19,7 @@ The module integrates deeply with the Almost Realism framework's computational g
 ar-audio
 +-- Root Package (org.almostrealism.audio)
 |   +-- CellFeatures      - Factory methods for creating audio cells
-|   +-- SamplingFeatures  - Sample rate and frame context management
+|   +-- SamplingFeatures  - Sample rate and frame context management, PolyBLEP anti-aliasing (polyBlep)
 |   +-- CellList          - Hierarchical cell container with lifecycle
 |   +-- WavFile           - WAV file I/O (RIFF/PCM format)
 |   +-- WaveOutput        - Audio output coordination
@@ -151,6 +151,12 @@ public class MyAudioProcessor implements SamplingFeatures {
     Producer<PackedCollection> bpm128Beat = bpm(128).l(1);  // One beat at 128 BPM
 }
 ```
+
+### Anti-Aliasing
+
+`SamplingFeatures.polyBlep(t, dt)` applies PolyBLEP (Polynomial Band-Limited Step)
+correction at waveform discontinuities, used by `SquareWaveCell` and `SawtoothWaveCell`
+to reduce aliasing without a separate oversampling pass.
 
 ### WaveData
 

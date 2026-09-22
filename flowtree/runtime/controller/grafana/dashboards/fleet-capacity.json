@@ -1,0 +1,285 @@
+{
+  "uid": "fleet-capacity",
+  "title": "Runner Fleet \u2014 Capacity",
+  "tags": [
+    "fleet"
+  ],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "multi": true,
+        "includeAll": true,
+        "datasource": {
+          "type": "postgres",
+          "uid": "fleet-db"
+        },
+        "query": "SELECT DISTINCT host FROM host_sample ORDER BY host",
+        "refresh": 2,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU by class (runner / agent / other), per host",
+      "type": "timeseries",
+      "description": "Sum of per-process CPU for each attribution class. Every class is a direct sum of its own processes; 'other' is not a residual.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host || ' ' || class AS metric,\n  AVG(cpu_pct) AS value\nFROM class_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Host CPU %",
+      "type": "timeseries",
+      "description": "The host's own CPU counter (top / /proc/stat), independent of the per-process sums above.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host AS metric,\n  AVG(cpu_pct) AS value\nFROM host_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Host memory used",
+      "type": "timeseries",
+      "description": "Memory in use (MemTotal \u2212 MemAvailable on Linux; hw.memsize \u2212 free pages on macOS).",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host AS metric,\n  AVG(mem_used_mb) AS value\nFROM host_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mbytes"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Pre-start latency, entry-point jobs, by executing-runner labels",
+      "type": "timeseries",
+      "description": "started_at \u2212 created_at for jobs with no `needs:` dependency \u2014 where it equals runner-availability wait. Empty until the poller is given a needs resolver (is_entry_point is NULL until then); see the table below for the unrestricted number.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '1h'),\n  labels AS metric,\n  AVG(pre_start_latency_seconds) AS value\nFROM job_event\nWHERE $__timeFilter(created_at) AND is_entry_point = 1 AND pre_start_latency_seconds IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Pre-start latency by executing-runner labels (all jobs in range)",
+      "type": "table",
+      "description": "started_at \u2212 created_at for every job. For a job with `needs:` this includes time blocked on upstream jobs, so it is an upper bound on runner-availability wait. Labels are the executing runner's, not the job's runs-on.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  labels,\n  COUNT(pre_start_latency_seconds) AS jobs,\n  ROUND(AVG(pre_start_latency_seconds)::numeric, 1) AS avg_seconds,\n  ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY pre_start_latency_seconds))::numeric, 1) AS p95_seconds,\n  ROUND(MAX(pre_start_latency_seconds)::numeric, 1) AS max_seconds\nFROM job_event\nWHERE $__timeFilter(created_at) AND pre_start_latency_seconds IS NOT NULL\nGROUP BY labels\nORDER BY avg_seconds DESC",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Runner busy time (from job windows)",
+      "type": "table",
+      "description": "Sum of [started_at, completed_at] per runner over the selected range, as hours and as a share of the range. Utilization per runner, computed from GitHub's job records rather than host sampling.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  runner_name,\n  COUNT(*) AS jobs,\n  ROUND(SUM(EXTRACT(EPOCH FROM (completed_at - started_at)))::numeric / 3600, 2) AS busy_hours,\n  ROUND(100 * SUM(EXTRACT(EPOCH FROM (completed_at - started_at)))::numeric\n        / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\nFROM job_event\nWHERE $__timeFilter(created_at) AND runner_name <> '' AND started_at IS NOT NULL AND completed_at IS NOT NULL\nGROUP BY runner_name\nORDER BY busy_hours DESC",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Where CI time goes: step durations",
+      "type": "table",
+      "description": "Average and total duration per step name across every job in the range. If most wall-clock is in the build step, more runners help less than caching would.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  s.name AS step,\n  COUNT(*) AS runs,\n  ROUND(AVG(EXTRACT(EPOCH FROM (s.completed_at - s.started_at)))::numeric, 1) AS avg_seconds,\n  ROUND(SUM(EXTRACT(EPOCH FROM (s.completed_at - s.started_at)))::numeric / 3600, 2) AS total_hours\nFROM job_step s\nJOIN job_event j ON j.job_id = s.job_id\nWHERE $__timeFilter(j.created_at) AND s.started_at IS NOT NULL AND s.completed_at IS NOT NULL\nGROUP BY s.name\nORDER BY total_hours DESC\nLIMIT 25",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

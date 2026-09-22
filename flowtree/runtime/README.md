@@ -56,6 +56,7 @@ runs alongside this pool and receives jobs labeled `platform=macos`.
 | `flowtree-controller` | `flowtree/runtime/controller/Dockerfile` | Java server that accepts agent connections (:7766), exposes a low-level job submission API (:7780), integrates with Slack, and dispatches `ClaudeCodeJob` instances to agents |
 | **`ar-manager`** | `tools/mcp/manager/` | **Preferred entrypoint.** Python MCP server that exposes FlowTree to Claude Code agents, Claude mobile, CI pipelines, and any other HTTP client. Handles authentication, rate limiting, GitHub integration, and memory. |
 | `ar-memory` | `tools/mcp/memory/` | Semantic vector store that persists agent memories and decisions across sessions |
+| `fleet-db`, `fleet-grafana` | `tools/fleet/`, `flowtree/runtime/controller/grafana/` | Runner-fleet monitoring: the Postgres store every runner host's collector and the GitHub poller write to, and the Grafana capacity dashboard over it. Bound to the tailnet address only; see `tools/fleet/README.md`. |
 | Agent containers | `flowtree/runtime/agent/` | Each agent connects outbound to the controller, receives `ClaudeCodeJob` instances, and executes Claude Code prompts inside a Docker container with its own git workspace |
 
 ### ar-manager is the preferred entrypoint
@@ -64,8 +65,10 @@ runs alongside this pool and receives jobs labeled `platform=macos`.
 low-level diagnostics. Everything that submits jobs, registers workstreams, or
 queries status should go through ar-manager:
 
-- **Claude mobile / external AI** — configure ar-manager's public Tailscale
-  Funnel URL as a remote MCP server.
+- **Claude mobile / external AI** — configure ar-manager's public URL (the
+  Cloudflare tunnel, or a Tailscale Funnel) as a remote MCP server. The same
+  public URL is what the controller hands every agent job as
+  `AR_MANAGER_URL`, because agents run where the tailnet is not visible.
 - **Claude Code agents** — MCP tools (`workstream_submit_task`,
   `workstream_get_status`, etc.) are served by ar-manager.
 - **CI pipelines** — `tools/ci/submit-agent-job.sh` calls ar-manager's HTTP
@@ -102,9 +105,10 @@ machines with no inbound firewall rules required.
 ```
 
 This script (run from the repo root):
-1. Generates an `ar-manager` shared secret if one doesn't exist
-2. Runs `mvn package` on the flowtree module
-3. Builds and starts `flowtree-controller`, `ar-memory`, and `ar-manager` via Docker Compose
+1. Generates an `ar-manager` shared secret, and the `fleet-db`/`fleet-grafana` passwords, if they don't exist
+2. Detects the host's tailnet address for the fleet services (or takes `FLEET_BIND_ADDR`)
+3. Runs `mvn package` on the flowtree module
+4. Builds and starts the controller stack — `flowtree-controller`, `ar-memory`, `ar-tracker`, `ar-manager`, `fleet-db`, `fleet-grafana` — via Docker Compose
 
 ### Rebuild a single service
 
@@ -190,12 +194,21 @@ deployed by the same workflow that rebuilds the pool:
 # as the account the agent should run as
 cp agent/macos/agent.env.example ~/flowtree-agent/agent.env   # then fill it in
 ./agent/macos/install.sh
+# first time only: it stops and prints the one `sudo` command (register-daemon.sh,
+# run from a checkout the administrator owns) that registers the service;
+# run it as an administrator, then run install.sh again
 ```
 
-`install.sh` builds the JARs, installs them under `~/flowtree-agent`, loads
-`com.almostrealism.flowtree-agent` into launchd (`KeepAlive`, so it survives
-crashes and reboots), and fails unless the new process connects to the
-controller. `tools/ci/macos/README.md` covers the runner that lets CI do this.
+`install.sh` builds the JARs, installs them under `~/flowtree-agent`, and
+restarts `com.almostrealism.flowtree-agent` — a LaunchDaemon in the system
+domain that runs as this account (`KeepAlive`, so it survives crashes and
+reboots with nobody logged in) — then fails unless the new process connects to
+the controller. Registering the daemon is a one-time administrator step; every
+deploy after it is unprivileged, which is what lets CI do it. It is a daemon
+rather than a LaunchAgent because a service account's own launchd domain is
+not there after a reboot and, on a host where the account is only reached via
+`su`, refuses bootstraps outright. `tools/ci/macos/README.md` ("Deploying the
+native macOS agent") covers the runner and the registration.
 
 ---
 
@@ -255,6 +268,7 @@ flowtree/
     macos/                  # Native macOS agent (launchd service)
       install.sh
       run.sh
+      register-daemon.sh    # root-only registration of the LaunchDaemon (agent or runner); run from an admin-owned checkout
       com.almostrealism.flowtree-agent.plist
       agent.env.example
   bin/                      # Bare-metal startup scripts
