@@ -100,29 +100,9 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 		float[] refPre = loadFlat(new File(refDir, "dit_pre_transformer.bin").toPath());
 		float[] refPost = loadFlat(new File(refDir, "dit_post_transformer.bin").toPath());
 
-		report("output", output, refOutput);
-		reportIfSameSize("preTransformer", transformer.getPreTransformerState(), refPre);
-		reportIfSameSize("postTransformer", transformer.getPostTransformerState(), refPost);
-
-		double tolerance = RELATIVE_TOLERANCE * diffStats(output, refOutput)[3];
-		assertWithin("output", output, refOutput, tolerance);
+		assertWithinRelative("output", output, refOutput, RELATIVE_TOLERANCE);
+		assertWithinRelative("preTransformer", transformer.getPreTransformerState(), refPre, RELATIVE_TOLERANCE);
+		assertWithinRelative("postTransformer", transformer.getPostTransformerState(), refPost, RELATIVE_TOLERANCE);
 		transformer.destroy();
-	}
-
-	/**
-	 * Reports a captured intermediate state against its reference when the two hold the same
-	 * number of values, and logs both sizes otherwise.
-	 *
-	 * @param stage     the stage label
-	 * @param actual    the captured state
-	 * @param reference the flat reference values
-	 */
-	private void reportIfSameSize(String stage, PackedCollection actual, float[] reference) {
-		if (actual != null && actual.getShape().getTotalSize() == reference.length) {
-			report(stage, actual, reference);
-		} else {
-			log(stage + ": captured " + (actual == null ? "nothing" : actual.getShape()) +
-					" while the reference has " + reference.length + " values");
-		}
 	}
 }

@@ -276,4 +276,26 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
 		}
 	}
+
+	/**
+	 * Reports one stage against its reference and asserts parity within a fraction of the
+	 * reference magnitude. A computed collection of a different size fails outright, since it
+	 * means the capture and the reference dump disagree about the layout.
+	 *
+	 * @param stage             the stage label
+	 * @param actual            the computed collection
+	 * @param reference         the flat reference values
+	 * @param relativeTolerance the permitted largest absolute error as a fraction of the largest
+	 *                          reference magnitude
+	 */
+	protected void assertWithinRelative(String stage, PackedCollection actual, float[] reference,
+										double relativeTolerance) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		report(stage, actual, reference);
+		assertWithin(stage, actual, reference, relativeTolerance * diffStats(actual, reference)[3]);
+	}
 }

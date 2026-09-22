@@ -134,7 +134,8 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param conditioner        the prompt and duration conditioner, released by {@link #destroy()}
 	 * @param autoencoder        the latent autoencoder whose decoder is compiled here
 	 * @param sampleRate         the audio sample rate in Hz
-	 * @param maxSeconds         the longest duration to generate, in seconds
+	 * @param maxSeconds         the longest duration to generate, in seconds; rejected when it
+	 *                           needs more than {@link #MAX_SAMPLES} samples
 	 * @param headroomSeconds    seconds of latent generated beyond the requested duration
 	 */
 	public StableAudio3(DiffusionTransformerConfig config, StateDictionary transformerWeights,
@@ -154,6 +155,11 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		this.samples = Math.min(MAX_SAMPLES,
 				autoencoder.alignedAudioLength(seconds(maxSeconds + headroomSeconds)));
 		this.latentLen = autoencoder.latentLength(samples);
+
+		if (seconds(maxSeconds) > samples) {
+			throw new IllegalArgumentException("maxSeconds " + maxSeconds + " needs " + seconds(maxSeconds) +
+					" samples, beyond the " + samples + " the decoder can produce");
+		}
 
 		if (config.getIoChannels() != autoencoder.getLatentDim()) {
 			throw new IllegalArgumentException("The transformer's " + config.getIoChannels() +
@@ -333,13 +339,17 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 			sampler.setGuidance(new ClassifierFreeGuidance(guidanceScale), negativeContext, negativeGlobal);
 		}
 
+		PackedCollection audio;
 		PackedCollection latent = sampler.sample(seed, context, global);
-		PackedCollection audio = decoder.forward(latent);
-
-		context.destroy();
-		global.destroy();
-		if (negativeContext != null) negativeContext.destroy();
-		if (negativeGlobal != null) negativeGlobal.destroy();
+		try {
+			audio = decoder.forward(latent);
+		} finally {
+			latent.destroy();
+			context.destroy();
+			global.destroy();
+			if (negativeContext != null) negativeContext.destroy();
+			if (negativeGlobal != null) negativeGlobal.destroy();
+		}
 
 		int outputSamples = seconds(seconds);
 		return bound(cp(audio).reshape(channels, samples).subset(shape(channels, outputSamples), 0, 0), -1.0, 1.0);

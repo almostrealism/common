@@ -124,13 +124,38 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
-	 * The small pipeline: a two-layer prompt encoder of width 16, a duration embedder of the same
-	 * width, a one-block transformer with adaptive layer-norm conditioning, two memory tokens, a
-	 * local additive input and a padding mask, and the small autoencoder.
+	 * A maximum duration whose sample count exceeds the longest clip the decoder can produce is
+	 * rejected at construction rather than accepted and truncated later.
+	 */
+	@Test(timeout = 240000)
+	public void overlongMaximumIsRejected() {
+		double tooLong = (double) StableAudio3.MAX_SAMPLES / SAMPLE_RATE + 1.0;
+		try {
+			smallModel(tooLong);
+			throw new AssertionError("a maximum duration beyond the decoder length must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains(String.valueOf(tooLong)));
+		}
+	}
+
+	/**
+	 * The small pipeline compiled for clips of up to {@link #MAX_SECONDS}.
 	 *
 	 * @return the model
 	 */
 	private StableAudio3 smallModel() {
+		return smallModel(MAX_SECONDS);
+	}
+
+	/**
+	 * The small pipeline: a two-layer prompt encoder of width 16, a duration embedder of the same
+	 * width, a one-block transformer with adaptive layer-norm conditioning, two memory tokens, a
+	 * local additive input and a padding mask, and the small autoencoder.
+	 *
+	 * @param maxSeconds the longest duration the model is compiled for
+	 * @return the model
+	 */
+	private StableAudio3 smallModel(double maxSeconds) {
 		T5GemmaWeightFixture prompts = new T5GemmaWeightFixture();
 		T5GemmaConfig encoderConfig = prompts.smallConfig(PROMPT_LENGTH);
 		Random random = new Random(21);
@@ -151,6 +176,6 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 		StateDictionary transformerWeights = new StateDictionary(new DiffusionTransformerWeightFixture().weights(config));
 
 		return new StableAudio3(config, transformerWeights, conditioner, autoencoders.autoencoder(),
-				SAMPLE_RATE, MAX_SECONDS, HEADROOM);
+				SAMPLE_RATE, maxSeconds, HEADROOM);
 	}
 }
