@@ -931,8 +931,9 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	public PackedCollection getPreTransformerState() { return preTransformerState; }
 
 	/**
-	 * Returns the captured post-transformer (pre output-projection) state tensor.
-	 * Only populated when state capture is enabled.
+	 * Returns the captured post-transformer state tensor: the output of the transformer's output
+	 * projection, before the prepended tokens are stripped. Only populated when state capture is
+	 * enabled.
 	 *
 	 * @return Post-transformer state, or {@code null} if capture is disabled
 	 */

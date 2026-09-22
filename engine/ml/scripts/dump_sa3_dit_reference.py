@@ -125,11 +125,14 @@ def dit_reference_stages(model, io_channels, latent_len, seed):
     """Run the real conditioner and a single DiT forward pass, returning the
     requested activations plus the two standalone conditioner tensors.
 
-    Registers a forward-pre-hook on the first ``ContinuousTransformer`` layer and
-    a forward hook on the last one to capture the transformer stack's input
-    (after the DiT's ``preprocess_conv`` and the memory-token/global-conditioning
-    prepending that happens inside ``ContinuousTransformer.forward``) and its
-    output (before the DiT's ``postprocess_conv``).
+    Registers a forward-pre-hook on the first ``ContinuousTransformer`` layer to
+    capture the transformer stack's input (after ``project_in`` and the
+    memory-token/global-conditioning prepending that happens inside
+    ``ContinuousTransformer.forward``) and a forward hook on the
+    ``ContinuousTransformer`` itself to capture its output (after ``project_out``,
+    before the DiT strips the prepended tokens and applies ``postprocess_conv``).
+    Both match the states ``DiffusionTransformer`` captures: the input after its
+    input projection and prepending, and the output after its output projection.
     """
     device = torch.device("cpu")
 
@@ -156,10 +159,10 @@ def dit_reference_stages(model, io_channels, latent_len, seed):
         out = output[0] if isinstance(output, tuple) else output
         captured["post_transformer"] = out.detach().cpu().float()
 
-    layers = model.model.model.transformer.layers
+    transformer = model.model.model.transformer
     handles = [
-        layers[0].register_forward_pre_hook(pre_hook),
-        layers[-1].register_forward_hook(post_hook),
+        transformer.layers[0].register_forward_pre_hook(pre_hook),
+        transformer.register_forward_hook(post_hook),
     ]
 
     with torch.no_grad():
