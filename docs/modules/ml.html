@@ -556,6 +556,7 @@ for (int step = 0; step < maxTokens; step++) {
                     <li><strong>Timestep Embeddings</strong> using Fourier features</li>
                     <li><strong>Cross-Attention Conditioning</strong> for conditional generation</li>
                     <li><strong>Configurable Conditioning</strong> via <code>ConditioningMode</code>: prepended tokens (default) or AdaLayerNorm (adaLN-Zero) modulation</li>
+                    <li><strong>Optional per-position local additive conditioning</strong> (e.g. an inpainting mask), summed into the hidden state of every block independently of the conditioning mode</li>
                     <li><strong>Configurable depth, heads, and patch sizes</strong></li>
                 </ul>
 
@@ -678,6 +679,30 @@ PackedCollection output = model.forward(
                 <h4>ConditioningMode.ADALN</h4>
                 <p>adaLN-Zero modulation derives per-block scale/shift/gate vectors from the combined timestep and global conditioning embedding and modulates each sub-layer (self-attention and feed-forward) in place, without lengthening the sequence. When no global conditioning is configured, the timestep embedding alone drives the modulation. See <code>DiffusionTransformer.adaptiveConditioning()</code> and <code>AdaptiveLayerNormFeatures</code>.</p>
 
+                <p><strong>Local additive conditioning</strong> is orthogonal to the two modes above: when <code>DiffusionTransformerConfig</code> is given a <code>localAddCondDim &gt; 0</code>, <code>DiffusionTransformer.getLocalAddCond()</code> exposes a <code>[batch, localAddCondDim, audioSeqLen]</code> buffer that the caller writes a per-position control signal into (an inpainting mask concatenated with the masked latent, for example) before <code>forward()</code>. Each block projects it to the transformer width and adds it to the hidden state between the self-attention and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local conditioning. The buffer starts zero-filled, which is the value plain generation supplies.</p>
+
+                <h3>Stable Audio 3 Conditioning and Codec</h3>
+                <p><code>StableAudio3Conditioner</code> (package <code>org.almostrealism.ml.audio</code>) builds the cross-attention and global conditioning that <code>DiffusionTransformer</code> expects, from pre-tokenized prompt IDs and a duration:</p>
+                <pre><code class="language-java">import org.almostrealism.ml.audio.AudioAttentionConditioner.ConditionerOutput;
+import org.almostrealism.ml.audio.StableAudio3Conditioner;
+import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
+
+StableAudio3Conditioner conditioner = new StableAudio3Conditioner(
+        t5GemmaEncoder,      // T5GemmaEncoder — encodes the prompt
+        paddingEmbedding,    // learned embedding substituted at padded prompt positions
+        durationConditioner  // NumberConditioner — embeds the requested duration
+);
+
+ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationSeconds);</code></pre>
+                <p>The prompt itself is encoded by <code>T5GemmaEncoder</code> (package <code>org.almostrealism.ml.t5gemma</code>), a T5Gemma text encoder configured by <code>T5GemmaConfig</code> and loaded from a <code>StateDictionary</code> the same way as the other model weights in this module.</p>
+                <p>Other Stable Audio 3 building blocks:</p>
+                <ul>
+                    <li><code>ClassifierFreeGuidance</code> — combines a conditional and unconditional denoiser prediction (with optional adaptive projected guidance); wired into sampling via <code>DiffusionSampler#setGuidance(ClassifierFreeGuidance, PackedCollection, PackedCollection)</code>.</li>
+                    <li><code>DistributionShift</code> (<code>LogSNRShift</code>, <code>FluxDistributionShift</code>, <code>LogitDistributionShift</code>) — warps the rectified-flow sampler's uniform timestep schedule so more steps land at the noise levels where structure emerges. Some implementations and configurations shift with the generated sequence length (<code>isLengthDependent()</code> reports which); <code>DistributionShift.identity()</code> and a <code>FluxDistributionShift</code> constructed with a single constant <code>alpha</code> ignore sequence length entirely.</li>
+                    <li><code>OobleckCodec</code> (<code>OobleckEncoder</code>/<code>OobleckDecoder</code>) and <code>SAMEAutoEncoder</code> — latent audio autoencoders that compress waveforms to and from the diffusion model's latent space.</li>
+                    <li><code>PatchedPretransform</code> — a parameter-free pretransform, used by <code>SAMEAutoEncoder</code>, that folds runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.</li>
+                </ul>
+
                 <h3>LoRA Fine-Tuning</h3>
                 <p>For parameter-efficient fine-tuning, use <code>LoRADiffusionTransformer</code> which extends DiffusionTransformer with <code>LowRankAdapterSupport</code>:</p>
                 <pre><code class="language-java">import org.almostrealism.ml.audio.LoRADiffusionTransformer;
@@ -755,6 +780,10 @@ Block attention = sequenceAttention(
     qkvWeight, outWeight, invFreq,
     loraFactory  // Projections automatically wrapped with LoRA
 );</code></pre>
+                <p>The fully specified <code>sequenceAttention</code> overload also accepts a
+                <code>NormalizationType</code> for query/key normalization plus optional padding
+                and key masks for masked sequences, and a logit soft-cap. Every shorter overload
+                delegates to it with <code>NormalizationType.LAYER</code> and no masking.</p>
             </section>
 
             <section id="performance">

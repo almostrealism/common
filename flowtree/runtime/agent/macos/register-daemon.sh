@@ -1,0 +1,378 @@
+#!/bin/bash
+#
+# Register (or replace) a LaunchDaemon in the system domain from a plist
+# rendered by the account the daemon will run as. This is the one step of a
+# native-agent install that needs root, and it is the same step for the agent
+# (install.sh renders its plist and prints this command) and for the runner
+# that redeploys it (tools/ci/macos/README.md).
+#
+# Trust boundary. The plist comes from a service account's home, and that
+# account executes code it did not write (it runs coding-agent jobs), so
+# nothing it can write may be trusted to decide what root does:
+#
+#   - This script refuses to run unless the file it was invoked from, and
+#     every directory on the path to it, is owned by root or by the
+#     administrator invoking sudo, is not writable by anyone else — by mode
+#     bits or by an ACL entry — and is not a symlink; a trusted file inside a
+#     directory the service account can write to can be swapped before sudo
+#     opens it. Run it from a checkout you own, under directories only you
+#     and root can write — never from a copy under the service account's
+#     home, never from a checkout that account owns, and not from /tmp.
+#   - It runs with the base-system PATH only; nothing outside /usr/bin, /bin,
+#     /usr/sbin and /sbin is needed, so nothing another account could put on
+#     the administrator's PATH is consulted. That starts with the interpreter:
+#     the shebang names /bin/bash outright, because `#!/usr/bin/env bash`
+#     would resolve bash through the inherited PATH before any line of this
+#     script could constrain it. The script is written for the bash macOS
+#     ships (3.2).
+#   - The administrator names the service on the command line, and the plist
+#     must carry exactly that Label. The plist decides nothing about WHICH
+#     service is replaced — otherwise it could name any daemon on the host
+#     and have the printed command boot that out and overwrite it — and the
+#     label must be under com.almostrealism., so no system service can be
+#     named at all.
+#   - The plist is copied into a directory only root can reach (under
+#     /private/var/root, which must be root-owned and writable by root alone;
+#     the fresh staging directory inside it is held to root-only ownership,
+#     mode and ACL, with any inherited ACL stripped) before anything reads
+#     it, so what is validated is what gets installed, and nothing can be
+#     swapped in between.
+#   - The plist speaks for its owner and for nobody else, so it must be
+#     writable by root and the owner alone: the file and every directory
+#     above it are held to the same ownership, mode and ACL checks as this
+#     script's own path, with the owner in the administrator's place. A
+#     group-writable home directory fails that, because every member of the
+#     group could otherwise hand root a definition to run as the owner.
+#   - The daemon must run as the account that owns the plist, with that
+#     account's primary group: UserName is required and must name the owner,
+#     GroupName if present must be the owner's primary group, and the owner
+#     must not be root. A plist can therefore only register a service running
+#     as whoever wrote it — which is what a user could already do with a
+#     LaunchAgent, minus the login-session requirement.
+#   - Only the keys a plain service needs are accepted (see ALLOWED_KEYS).
+#     launchd opens the StandardOutPath/StandardErrorPath files as the
+#     service user, so those are not a root write path and are allowed.
+#
+# What it does, in order:
+#   1. Checks its own provenance (above), lints the plist and checks its
+#      Label against the one named on the command line; the file under
+#      /Library/LaunchDaemons is named after the label.
+#   2. If a service with that label is already registered, boots it out and
+#      waits for launchd to stop listing it. bootout returns before the
+#      service is gone, and a bootstrap that lands while the old process is
+#      still exiting would briefly run two of them — for the agent, two
+#      processes with the same node identity on the controller. If the old
+#      service is still listed after the wait, this script fails rather than
+#      install beside it.
+#   3. Installs the plist as root:wheel, mode 644, and bootstraps it.
+#   4. Prints the service's state and pid.
+#
+# Usage:
+#   sudo /path/to/your/checkout/flowtree/runtime/agent/macos/register-daemon.sh <label> <rendered plist>
+#
+#   <label>  the service being registered, e.g. com.almostrealism.flowtree-agent;
+#            the plist's Label must be exactly this
+#
+# Exit codes:
+#   0 - the service is registered from the given definition
+#   1 - not root, the script or plist failed a trust check, the plist is
+#       missing or invalid or carries a different Label, or the previous
+#       instance would not stop
+
+set -euo pipefail
+
+# Everything this script runs ships with macOS, so it uses the system PATH
+# and nothing else: sudo sanitises PATH anyway (Homebrew's bin is usually
+# absent under it), and a root process should not be looking up commands
+# in directories another account can populate.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+PLISTBUDDY="/usr/libexec/PlistBuddy"
+
+DAEMONS_DIR="/Library/LaunchDaemons"
+# Only root can write this directory, so a file staged in a private
+# subdirectory of it cannot be replaced between validation and install by
+# anyone else. The real path, because /var is a symlink and the checks
+# refuse symlinked components.
+STAGING_ROOT="/private/var/root"
+STOP_TIMEOUT_SECONDS=30
+ALLOWED_KEYS="Label UserName GroupName ProgramArguments EnvironmentVariables WorkingDirectory RunAtLoad KeepAlive ThrottleInterval StandardOutPath StandardErrorPath ProcessType Nice"
+LABEL_PREFIX="com.almostrealism."
+# An ACL entry granting any of these lets its subject change or replace the
+# file whatever the mode bits say.
+ACL_WRITE_RIGHTS="write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown"
+
+if [ "$#" -ne 2 ]; then
+    echo "Usage: sudo $0 <label> <rendered plist>" >&2
+    exit 1
+fi
+EXPECTED_LABEL="$1"
+SOURCE="$2"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "ERROR: run as root: sudo $0 ${EXPECTED_LABEL} ${SOURCE}" >&2
+    exit 1
+fi
+case "${EXPECTED_LABEL}" in
+    "${LABEL_PREFIX}"*) ;;
+    *)
+        echo "ERROR: label '${EXPECTED_LABEL}' is not under ${LABEL_PREFIX}; this script registers only this project's services." >&2
+        exit 1
+        ;;
+esac
+case "${EXPECTED_LABEL}" in
+    *[!A-Za-z0-9._-]*)
+        echo "ERROR: label '${EXPECTED_LABEL}' contains characters other than letters, digits, '.', '_' and '-'." >&2
+        exit 1
+        ;;
+esac
+for cmd in plutil launchctl "${PLISTBUDDY}"; do
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+        echo "ERROR: ${cmd} is not available." >&2
+        exit 1
+    fi
+done
+
+# ── Provenance of this script ──────────────────────────────────────
+#
+# A script root runs must not be writable by the account whose plist it is
+# validating, or the validation is theirs to remove. That is a property of
+# the whole path, not of one inode: a file owned by the administrator inside
+# a directory the service account can write to can be renamed away and
+# replaced before sudo opens it. So every component from / down to the file
+# must be owned by root or by the administrator behind sudo, carry no group
+# or world write bit, grant no write right through an ACL (macOS ACLs can
+# allow writing with the mode bits clear), and not be a symlink.
+
+ADMIN_UID="${SUDO_UID:-0}"
+
+# `ls -e` lists ACL entries after the mode line as " N: <who> allow|deny
+# <rights,...>". Prints the allow entries on the path whose rights match
+# the given pattern; deny entries (the usual "everyone deny delete" on a
+# home directory) never count.
+acl_allows() {
+    ls -lde "$1" | awk -v rights="$2" 'NR > 1 && $3 == "allow" && $4 ~ ("(^|,)(" rights ")(,|$)")'
+}
+
+# Fails unless the path can be changed only by root and the given uid —
+# owned by one of the two, not writable by anyone else by mode or by ACL,
+# and not a symlink; the reason is printed. With the administrator's uid
+# this is what makes a component of the script's path trustworthy; with the
+# plist owner's uid, what makes the plist theirs and nobody else's.
+writable_only_by() {
+    local uid="$1" path="$2" owner mode acl
+    if [ -L "${path}" ]; then
+        echo "${path} is a symlink" >&2
+        return 1
+    fi
+    owner="$(stat -f '%u' "${path}")"
+    mode="$(stat -f '%Lp' "${path}")"
+    if [ "${owner}" != "0" ] && [ "${owner}" != "${uid}" ]; then
+        echo "${path} is owned by uid ${owner}, not root or uid ${uid}" >&2
+        return 1
+    fi
+    if [ $(( 8#${mode} & 8#022 )) -ne 0 ]; then
+        echo "${path} is group- or world-writable (mode ${mode})" >&2
+        return 1
+    fi
+    acl="$(acl_allows "${path}" "${ACL_WRITE_RIGHTS}")"
+    if [ -n "${acl}" ]; then
+        echo "${path} has an ACL entry granting write access:${acl}" >&2
+        return 1
+    fi
+}
+
+trusted_path() {
+    writable_only_by "${ADMIN_UID}" "$1"
+}
+
+# Stricter: root's and nobody else's — owner root, no group or world bits at
+# all, no ACL allow entry of any kind, not a symlink. For the directory the
+# plist is staged in, where even read access would let someone else learn
+# a temporary name to race.
+root_only_path() {
+    local path="$1" mode acl
+    if [ -L "${path}" ]; then
+        echo "${path} is a symlink" >&2
+        return 1
+    fi
+    if [ "$(stat -f '%u' "${path}")" != "0" ]; then
+        echo "${path} is not owned by root" >&2
+        return 1
+    fi
+    mode="$(stat -f '%Lp' "${path}")"
+    if [ $(( 8#${mode} & 8#077 )) -ne 0 ]; then
+        echo "${path} is reachable by others (mode ${mode})" >&2
+        return 1
+    fi
+    acl="$(acl_allows "${path}" ".*")"
+    if [ -n "${acl}" ]; then
+        echo "${path} has an ACL allow entry:${acl}" >&2
+        return 1
+    fi
+}
+
+# Runs a check on every prefix of an absolute path, / first. The path is
+# split on "/" alone — a component containing spaces is one component — so
+# what is checked is exactly what the kernel will open.
+check_path_components() {
+    local path="$1" prefix="" component
+    shift
+    local -a components
+    IFS='/' read -r -a components <<< "${path#/}"
+    "$@" / || return 1
+    for component in "${components[@]}"; do
+        prefix="${prefix}/${component}"
+        "$@" "${prefix}" || return 1
+    done
+}
+
+# The path as invoked (logical, so a symlinked component is seen as one and
+# refused, rather than resolved to wherever it points at this moment).
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -L)/$(basename "${BASH_SOURCE[0]}")"
+if ! check_path_components "${SELF}" trusted_path; then
+    echo "ERROR: refusing to run from ${SELF}." >&2
+    echo "  Root must not execute a file the service account can edit or replace, and" >&2
+    echo "  every directory on the way to it counts. Run this script from a checkout" >&2
+    echo "  you own, under directories only you and root can write." >&2
+    exit 1
+fi
+
+# ── A private copy of the plist ────────────────────────────────────
+#
+# Validated and installed from the same bytes: the source stays under the
+# owner's control and could change between a check and the install. The
+# copy lives in a directory only root can enter — not the inherited TMPDIR,
+# which sudo may have taken from the administrator's environment and which
+# is not this script's to vouch for — so nobody else can swap it either.
+
+# What prevents a swap is that nobody but root can WRITE the containing
+# directories: the ones above the staging root need only be trusted
+# (root-owned or the administrator's, no other writer), and the root itself
+# must be writable by root alone. It need not be unreadable by others —
+# macOS ships /var/root as 700 on some installs and 750 root:wheel on
+# others, and read access to the parent buys nothing when the staging
+# directory created inside it (checked below) is root's alone.
+if ! check_path_components "$(dirname "${STAGING_ROOT}")" trusted_path \
+   || ! writable_only_by 0 "${STAGING_ROOT}"; then
+    echo "ERROR: ${STAGING_ROOT} is not a root-owned, root-only-writable directory on a trusted path; refusing to stage there." >&2
+    exit 1
+fi
+
+if [ ! -f "${SOURCE}" ] || [ -L "${SOURCE}" ]; then
+    echo "ERROR: ${SOURCE} is not a regular file." >&2
+    exit 1
+fi
+OWNER_UID="$(stat -f '%u' "${SOURCE}")"
+OWNER_NAME="$(id -un "${OWNER_UID}")"
+OWNER_GROUP="$(id -gn "${OWNER_UID}")"
+if [ "${OWNER_UID}" = "0" ]; then
+    echo "ERROR: ${SOURCE} is owned by root; this script registers services for service accounts." >&2
+    exit 1
+fi
+
+# The plist is trusted to speak for its owner and for nobody else. That
+# holds only if no other account can edit it or swap it in — the file and
+# every directory above it must be writable by root and the owner alone.
+# A home directory that is group-writable fails this, and rightly: every
+# member of the group could then hand root a definition to run as the
+# owner.
+SOURCE_ABS="$(cd "$(dirname "${SOURCE}")" && pwd -L)/$(basename "${SOURCE}")"
+if ! check_path_components "${SOURCE_ABS}" writable_only_by "${OWNER_UID}"; then
+    echo "ERROR: ${SOURCE} can be changed by an account other than root and ${OWNER_NAME}; refusing to register it." >&2
+    echo "  Every directory from / down to the plist must be owned by root or ${OWNER_NAME}, have no group" >&2
+    echo "  or world write bit and no write-granting ACL entry, and not be a symlink. For a" >&2
+    echo "  group-writable home directory the fix is, as an administrator:" >&2
+    echo "    sudo chmod g-w $(dirname "${SOURCE_ABS}" | sed 's|^\(/Users/[^/]*\).*|\1|')" >&2
+    exit 1
+fi
+
+STAGING_DIR="$(mktemp -d "${STAGING_ROOT}/register-daemon.XXXXXX")"
+trap 'rm -rf "${STAGING_DIR}"' EXIT
+# A new directory can inherit ACL entries from its parent; strip any, set
+# the mode, then hold the directory to the same standard as its parent.
+chmod -N "${STAGING_DIR}"
+chmod 700 "${STAGING_DIR}"
+if ! root_only_path "${STAGING_DIR}"; then
+    echo "ERROR: the staging directory could not be made root-only; refusing to continue." >&2
+    exit 1
+fi
+STAGED="${STAGING_DIR}/${EXPECTED_LABEL}.plist"
+cp "${SOURCE}" "${STAGED}"
+chmod 600 "${STAGED}"
+plutil -lint -s "${STAGED}"
+
+# ── Content checks ─────────────────────────────────────────────────
+
+# PlistBuddy prints the root dictionary with its own keys indented by exactly
+# four spaces and everything nested deeper, so the top-level keys are the
+# lines of the form "    Key = ...". Nothing outside the base system is
+# needed to read them.
+plist_keys() {
+    "${PLISTBUDDY}" -c 'Print' "${STAGED}" | awk '/^    [^ ]+ = /{print $1}'
+}
+plist_string() {
+    "${PLISTBUDDY}" -c "Print :$1" "${STAGED}" 2>/dev/null || true
+}
+
+for key in $(plist_keys); do
+    case " ${ALLOWED_KEYS} " in
+        *" ${key} "*) ;;
+        *)
+            echo "ERROR: ${SOURCE} sets '${key}', which this script does not accept." >&2
+            echo "  Accepted keys: ${ALLOWED_KEYS}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# The plist does not get to choose which service is replaced: the label is
+# the administrator's, given on the command line, and the plist must agree.
+LABEL="$(plist_string Label)"
+if [ "${LABEL}" != "${EXPECTED_LABEL}" ]; then
+    echo "ERROR: ${SOURCE} carries Label '${LABEL:-<missing>}', but ${EXPECTED_LABEL} was asked for." >&2
+    echo "  A plist may only be registered as the service it was rendered for." >&2
+    exit 1
+fi
+
+USER_NAME="$(plist_string UserName)"
+if [ "${USER_NAME}" != "${OWNER_NAME}" ]; then
+    echo "ERROR: ${SOURCE} is owned by ${OWNER_NAME} but its UserName is '${USER_NAME:-<missing>}'." >&2
+    echo "  A daemon registered from an account's plist runs as that account, nothing else." >&2
+    exit 1
+fi
+GROUP_NAME="$(plist_string GroupName)"
+if [ -n "${GROUP_NAME}" ] && [ "${GROUP_NAME}" != "${OWNER_GROUP}" ]; then
+    echo "ERROR: ${SOURCE} sets GroupName '${GROUP_NAME}'; ${OWNER_NAME}'s primary group is ${OWNER_GROUP}." >&2
+    exit 1
+fi
+
+SERVICE="system/${LABEL}"
+TARGET="${DAEMONS_DIR}/${LABEL}.plist"
+
+# ── Replace or register ────────────────────────────────────────────
+
+registered() {
+    launchctl print "${SERVICE}" >/dev/null 2>&1
+}
+
+if registered; then
+    echo "Stopping the registered ${SERVICE}..."
+    launchctl bootout "${SERVICE}"
+    for _ in $(seq 1 "${STOP_TIMEOUT_SECONDS}"); do
+        if ! registered; then
+            break
+        fi
+        sleep 1
+    done
+    if registered; then
+        echo "ERROR: ${SERVICE} is still listed ${STOP_TIMEOUT_SECONDS}s after bootout." >&2
+        echo "  Not installing beside it. Inspect with: launchctl print ${SERVICE}" >&2
+        exit 1
+    fi
+fi
+
+install -o root -g wheel -m 644 "${STAGED}" "${TARGET}"
+echo "Installed ${TARGET} (runs as ${USER_NAME})"
+launchctl bootstrap system "${TARGET}"
+echo "Registered ${SERVICE}"
+launchctl print "${SERVICE}" | awk '/^[[:space:]]*(state|pid) = /{print "  " $0}'

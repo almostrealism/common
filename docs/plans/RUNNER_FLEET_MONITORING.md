@@ -157,9 +157,10 @@ Facts that shape the store and security decisions:
   (`docker-compose.yml:16-21`). Bearer-token auth via
   `AR_*_AUTH_TOKEN`/secret files is the established pattern
   (`docker-compose.yml:56-58, 100-102`).
-- The stack is reachable over **Tailscale**
-  (`AR_MANAGER_URL=https://mac-studio.taild0f87.ts.net`,
-  `docker-compose.yml:79`).
+- The stack is reachable over **Tailscale**, and ar-manager is also fronted
+  by a public Cloudflare tunnel, which is the address agents are given
+  (`AR_MANAGER_URL`, `docker-compose.yml`) since neither the Docker pool nor
+  the native agent can see the tailnet.
 - **Restarting `ar-manager` drops every in-flight agent's MCP connection**, so
   the deploy workflow drains first (`.github/CLAUDE.md:465-471`). A metrics
   store must be a *separate* compose service so its restarts never touch the
@@ -761,10 +762,29 @@ poll-cycle entry point (`poll_and_store`) that persists `job_event`/
 does not yet parse `needs:` from the workflow YAML, so `queue_wait_seconds`
 is populated only for the entry-point case (§5.4 option 1) — the
 dependency-adjusted calculation (option 2) needs that parsing as a follow-up.
-Not yet implemented: the push transport, Docker-API attribution for a
-virtualized container runtime's processes, Grafana dashboards, and every
-control verb — each needs either a live target to validate against or an
-operator decision this document defers to §9.
+
+A second round added what the first deferred to a live store: `store.py` runs
+on Postgres as well as sqlite (one implementation, `FleetStore.from_url`);
+the collector writes each sample to the store directly over the tailnet
+(`--store-url-file`), reconnecting after a database restart, and filters the
+JSONL fallback to the attributed processes plus busy `other` ones (unfiltered,
+a sample on the Mac Studio was ~100 KB — hundreds of MB a day); the poller has
+a scheduled entry point (`python -m tools.fleet.github_poller`); `fleet-db`
+and `fleet-grafana` are services in the controller compose stack, bound to
+the tailnet address with file-based credentials `rebuild.sh` generates; the
+capacity dashboard is provisioned from
+`flowtree/runtime/controller/grafana/`; `tools/fleet/launchd/` holds the
+LaunchDaemon templates, `render.sh` and a one-command `install.sh` for macOS
+hosts; and `tools/fleet/systemd/` holds the unit template and `install.sh`
+for the Linux runner hosts, where the collector runs on the host as a
+dedicated `fleet` system account (task 10's rollout, for the collector).
+The direct database connection is
+the "short way" for task 3 — no ingest service exists, and the credential
+isolation it requires is documented in `tools/fleet/README.md`. Not yet
+implemented: runner-state detection (task 4 — `runner_state` is never
+written, so `list` is empty), Docker-API attribution for a virtualized
+container runtime's processes, the `needs:` resolver, and every control
+verb.
 
 **Phase A — read-only visibility (the MVP, §6):**
 

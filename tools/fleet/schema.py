@@ -23,8 +23,13 @@ inflates every rollup computed on top of this data.
 This module writes plain, portable SQL (standard column types, no
 Postgres-specific syntax) so the exact same statements apply to the
 sqlite3-backed :mod:`store` used for local development and tests, as well as
-to a Postgres/TimescaleDB deployment — swapping the backend is a connection
-change, not a schema rewrite.
+to a Postgres deployment — swapping the backend is a connection change, not
+a schema rewrite. The one type that differs is the timestamp columns: sqlite
+stores ISO-8601 text (which sorts and compares correctly), Postgres a real
+``TIMESTAMPTZ`` so Grafana and any rollup can treat them as time without a
+cast. Each statement therefore carries a ``{ts}`` token that
+:func:`statements` fills for the backend in use; :data:`ALL_STATEMENTS` is
+the sqlite rendering, kept for callers that only ever meant sqlite.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ from typing import List
 
 HOST_SAMPLE = """
 CREATE TABLE IF NOT EXISTS host_sample (
-    ts TEXT NOT NULL,
+    ts {ts} NOT NULL,
     host TEXT NOT NULL,
     cpu_pct REAL,
     mem_used_mb REAL,
@@ -51,7 +56,7 @@ CREATE TABLE IF NOT EXISTS host_sample (
 
 CLASS_SAMPLE = """
 CREATE TABLE IF NOT EXISTS class_sample (
-    ts TEXT NOT NULL,
+    ts {ts} NOT NULL,
     host TEXT NOT NULL,
     class TEXT NOT NULL,
     cpu_pct REAL,
@@ -62,7 +67,7 @@ CREATE TABLE IF NOT EXISTS class_sample (
 
 RUNNER_STATE = """
 CREATE TABLE IF NOT EXISTS runner_state (
-    ts TEXT NOT NULL,
+    ts {ts} NOT NULL,
     host TEXT NOT NULL,
     runner_name TEXT NOT NULL,
     labels TEXT,
@@ -87,9 +92,9 @@ CREATE TABLE IF NOT EXISTS job_event (
     -- job asked for, so grouping by this column reports actual-runner-label
     -- demand, not per-`runs-on` demand.
     labels TEXT,
-    created_at TEXT,
-    started_at TEXT,
-    completed_at TEXT,
+    created_at {ts},
+    started_at {ts},
+    completed_at {ts},
     status TEXT,
     conclusion TEXT,
     runner_name TEXT,
@@ -105,17 +110,44 @@ CREATE TABLE IF NOT EXISTS job_step (
     job_id TEXT NOT NULL,
     number INTEGER NOT NULL,
     name TEXT,
-    started_at TEXT,
-    completed_at TEXT,
+    started_at {ts},
+    completed_at {ts},
     conclusion TEXT,
     UNIQUE (job_id, number)
 )
 """
 
-ALL_STATEMENTS: List[str] = [
+# The queries the CLI and a dashboard run are "this host, this time range"
+# and "these runs' jobs"; the primary keys lead with ``ts``/``job_id``, so
+# these secondary indexes serve the other access path on each table.
+INDEXES = [
+    "CREATE INDEX IF NOT EXISTS host_sample_host_ts ON host_sample (host, ts)",
+    # ts leads class: the dashboard and status queries filter by host and a
+    # ts range without constraining class, so class after ts would strand the
+    # range scan behind an unconstrained middle column and force a full scan
+    # of every class for the matched hosts.
+    "CREATE INDEX IF NOT EXISTS class_sample_host_ts ON class_sample (host, ts, class)",
+    "CREATE INDEX IF NOT EXISTS runner_state_host_ts ON runner_state (host, runner_name, ts)",
+    "CREATE INDEX IF NOT EXISTS job_event_run ON job_event (run_id)",
+    "CREATE INDEX IF NOT EXISTS job_event_created ON job_event (created_at)",
+]
+
+TABLES: List[str] = [
     HOST_SAMPLE,
     CLASS_SAMPLE,
     RUNNER_STATE,
     JOB_EVENT,
     JOB_STEP,
 ]
+
+
+def statements(timestamp_type: str = "TEXT") -> List[str]:
+    """Every DDL statement, with the timestamp columns typed as *timestamp_type*.
+
+    ``"TEXT"`` is the sqlite rendering, ``"TIMESTAMPTZ"`` the Postgres one;
+    :class:`tools.fleet.store.Dialect` supplies the right value.
+    """
+    return [table.format(ts=timestamp_type) for table in TABLES] + list(INDEXES)
+
+
+ALL_STATEMENTS: List[str] = statements("TEXT")

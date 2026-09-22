@@ -32,8 +32,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -193,7 +195,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         }
 
         return parseClaudeNdjson(
-                rawOutput, processResult.exitCode(), processResult.killedForInactivity(), logger);
+                rawOutput, processResult.exitCode(), processResult.killedForInactivity(), logger,
+                request.getRequiredMcpServers());
     }
 
     /**
@@ -313,6 +316,44 @@ public class ClaudeCodeRunner implements AgentRunner {
                                             int exitCode,
                                             boolean killedForInactivity,
                                             ConsoleFeatures logger) {
+        return parseClaudeNdjson(jsonOutput, exitCode, killedForInactivity, logger, Collections.emptySet());
+    }
+
+    /**
+     * Parses Claude Code NDJSON output into an {@link AgentRunResult}, also
+     * checking the session's {@code init} event for MCP servers that failed
+     * to connect.
+     *
+     * <p>The first event of a {@code stream-json} session is
+     * {@code {"type":"system","subtype":"init",...}} and carries
+     * {@code mcp_servers: [{name, status}, ...]}. A server whose status is
+     * not {@code connected} contributed no tools to the session — every
+     * {@code mcp__<name>__*} entry on the allow list was simply absent, and
+     * the model could not tell that from a server that was never configured.
+     * Every such server is logged; the ones in {@code requiredMcpServers}
+     * are reported on the result, where the job turns them into a failure.</p>
+     *
+     * @param jsonOutput           the captured stdout (may be NDJSON or a single object)
+     * @param exitCode             the process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param logger               target for diagnostics on parse failure
+     * @param requiredMcpServers   servers the session could not do its job without
+     * @return the parsed result
+     */
+    public AgentRunResult parseClaudeNdjson(String jsonOutput,
+                                            int exitCode,
+                                            boolean killedForInactivity,
+                                            ConsoleFeatures logger,
+                                            Set<String> requiredMcpServers) {
+        List<String> unavailableRequired = new ArrayList<>();
+        for (Map.Entry<String, String> failed : failedMcpServersAtInit(jsonOutput).entrySet()) {
+            logger.warn("mcpServerFailed=" + failed.getKey() + " status=" + failed.getValue()
+                    + " -- its tools were absent from the session");
+            if (requiredMcpServers != null && requiredMcpServers.contains(failed.getKey())) {
+                unavailableRequired.add(failed.getKey());
+            }
+        }
+
         String resultJson = null;
         if (jsonOutput != null && !jsonOutput.isEmpty()) {
             resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
@@ -375,6 +416,46 @@ public class ClaudeCodeRunner implements AgentRunner {
                 subtype,
                 sessionIsError,
                 deniedToolNames,
-                Collections.emptyMap());
+                Collections.emptyMap(),
+                unavailableRequired);
+    }
+
+    /**
+     * Reads the MCP servers that did not connect from the session's
+     * {@code init} event.
+     *
+     * @param jsonOutput the captured {@code stream-json} output
+     * @return server name to reported status, in the order the event listed
+     *         them, for every server whose status is not {@code connected};
+     *         empty when there is no init event or every server connected
+     */
+    public Map<String, String> failedMcpServersAtInit(String jsonOutput) {
+        Map<String, String> failed = new LinkedHashMap<>();
+        if (jsonOutput == null || jsonOutput.isEmpty()) return failed;
+
+        for (String line : jsonOutput.split("\n")) {
+            if (!line.startsWith("{") || !line.contains("\"init\"") || !line.contains("\"mcp_servers\"")) {
+                continue;
+            }
+            JsonNode root;
+            try {
+                root = MAPPER.readTree(line);
+            } catch (IOException e) {
+                continue;
+            }
+            if (!"system".equals(JsonFieldExtractor.getTextOrNull(root, "type"))
+                    || !"init".equals(JsonFieldExtractor.getTextOrNull(root, "subtype"))) {
+                continue;
+            }
+            for (JsonNode server : root.path("mcp_servers")) {
+                String name = JsonFieldExtractor.getTextOrNull(server, "name");
+                String status = JsonFieldExtractor.getTextOrNull(server, "status");
+                if (name != null && !"connected".equals(status)) {
+                    failed.put(name, status == null ? "unknown" : status);
+                }
+            }
+            return failed;
+        }
+        return failed;
     }
 }

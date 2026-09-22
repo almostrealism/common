@@ -129,6 +129,36 @@ State these plainly; do not assume the guard closes them.
   in a string it writes to a file. A network API nobody listed, against a URL
   literal, passes. This was a deliberate relaxation: a guard that blocks prose
   teaches its way around itself.
+- **The inline-program scan mostly matches uses, not mentions.** The
+  module/API entries most prone to plain-English mentions in
+  `NETWORK_CODE_PATTERNS` (`socket`, `urllib`, `subprocess`, `websocket(s)`,
+  `axios`, and the rest of that family) require an import, a
+  module-qualified call, or a constructor with no space before the
+  parenthesis — never a bare module or API name, and never a
+  parenthetical remark such as "the engine socket (an open TCP port)" —
+  for the same reason the URL bullet above gives: a guard that blocks
+  prose teaches its way around itself. `Net::` is unaffected by this: it
+  already required the `::` module-path form before this scan existed,
+  so it was never a bare-word match. `LWP::` was narrowed by this same
+  effort — it used to match the bare word `LWP` and was tightened to
+  require the `::` module-path form alongside the other entries above.
+  `new WebSocket(...)` is the one entry that tolerates a space before the
+  parenthesis, because real code was found using that spacing and the
+  no-space rule let it through; a spaced call is matched only when the
+  argument opens with a single quote, double quote, or backtick — the three
+  ways JavaScript opens a string literal, including a template literal — and
+  a parenthetical remark such as "the new WebSocket (RFC 6455) protocol"
+  opens with none of them. A spaced call whose destination is a variable
+  (`new WebSocket (url)`) still passes, on the same accepted-cost basis as
+  the rest of this list — there is no regex-only way to tell that apart
+  from prose once both the space and the literal are gone.
+  A handful of other
+  entries have no natural "qualified" form at all (`XMLHttpRequest`,
+  `HttpClient`, `URLConnection`, `child_process`, `node-fetch`,
+  `fsockopen`, `stream_socket_client`, `Invoke-WebRequest`,
+  `Invoke-RestMethod`, and similar language built-ins) and still match
+  the bare identifier, on the same accepted-cost basis as everywhere else
+  in this list.
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.
