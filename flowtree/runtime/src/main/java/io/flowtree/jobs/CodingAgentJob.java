@@ -1276,6 +1276,12 @@ public class CodingAgentJob extends GitManagedJob {
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
+        // A required MCP server that never connected voids the session's
+        // instructions; the exception takes the job down the error path, so
+        // nothing is committed and no later phase runs.
+        if (finalResult != null && finalResult.hasUnavailableRequiredMcpServer()) {
+            throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
+        }
 
         if (getOutputConsumer() != null) {
             getOutputConsumer().accept(new CodingAgentJobOutput(
@@ -1357,6 +1363,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .workingDirectory(workDir)
                 .allowedTools(composedAllowedTools)
                 .mcpConfigJson(mcpConfigJson)
+                .requiredMcpServers(mcpConfigBuilder.requiredServerNames())
                 .environment(env)
                 .model(effective.model())
                 .effort(effective.effort())
