@@ -27,10 +27,19 @@ localhost
 ::1
 amd-halo
 amd-halo.local
+dgx-spark
+dgx-spark.local
+192.168.8.185
 macbook-pro
 macbook-pro.local
 100.64.0.0/10
 *.docker.internal
+
+[ar-servers]
+*.almostrealism.com
+*.almostrealism.net
+*.almostrealism.io
+*.almostrealism.ai
 
 [git-remotes]
 github.com/almostrealism/common
