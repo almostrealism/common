@@ -58,20 +58,42 @@ resolver is supplied or it does not know a given job's dependency graph.
 actual label set (the workflow-jobs API's own ``labels`` field), not the
 workflow's requested ``runs-on:`` set — a runner can carry extra/custom
 labels beyond what a job asked for. Resolving the requested set would need
-the run's workflow YAML parsed, which this module does not do.
+the job matched to its ``runs-on:`` in the workflow YAML, which this module
+does not do. Two projections of the set are persisted beside it so a
+dashboard never parses it: ``lane``, the fleet's own ``ar-*`` label (what
+kind of work the runner is for), and ``platform`` (macos / linux / windows)
+— see :func:`classify_labels`.
+
+**Dependencies.** The production entry point (:func:`main`) resolves each
+job's ``needs:`` from the run's workflow file through
+:class:`tools.fleet.workflow_graph.WorkflowGraphResolver`, so
+``is_entry_point`` and ``queue_wait_seconds`` are populated whenever the
+job can be matched to the file (see that module for when it cannot). Without
+``PyYAML`` the poller runs as before, with those two columns ``NULL``.
+
+**Runner inventory.** Every cycle also records each self-hosted runner the
+repository (and, with ``--runners-org``, the organization) has registered,
+from ``GET /repos/{owner}/{repo}/actions/runners``, into ``runner_state``:
+its labels, lane and platform, and whether it is busy, idle or offline. That
+is the denominator the capacity dashboard needs — how many runners a lane
+has, and how many were idle while its jobs waited. The endpoint needs a
+token with administration read on the repository; one without it gets a
+403, which is reported and skipped so job polling is unaffected.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
+from tools.fleet import workflow_graph
 from tools.fleet.credentials import read_secret_file, reject_postgres_url_on_command_line
 from tools.fleet.store import FleetStore
 
@@ -87,6 +109,42 @@ def _parse_github_timestamp(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+LANE_LABEL_PREFIX = "ar-"
+PLATFORM_LABELS = ("macos", "linux", "windows")
+
+
+class LabelClass(NamedTuple):
+    """The two dashboard keys derived from a label set: see :func:`classify_labels`."""
+
+    lane: str
+    platform: str
+
+
+def classify_labels(labels: Optional[List[str]]) -> LabelClass:
+    """Project a runner label set onto the fleet's ``lane`` and ``platform``.
+
+    The fleet names the kind of work a runner is for with ``ar-*`` labels
+    (``ar-ci``, ``ar-ci-cl``, ``ar-deploy``, ``ar-deploy-agent`` — see
+    ``docs/plans/RUNNER_FLEET_MONITORING.md`` §2.1), and those are what a
+    capacity decision is about: a job waited for an ``ar-ci`` runner, not
+    for "a macOS machine". ``lane`` is that label; if a runner somehow
+    carries several they are joined with ``+`` in sorted order so the key
+    stays stable. ``platform`` is the first of macos / linux / windows
+    found, matched case-insensitively. Both are ``''`` when absent — which,
+    for ``lane``, is exactly the GitHub-hosted runners (``ubuntu-latest``),
+    so ``lane <> ''`` selects the fleet's own hardware.
+    """
+    names = [str(label) for label in (labels or [])]
+    lanes = sorted(name for name in names if name.startswith(LANE_LABEL_PREFIX))
+    platform = ""
+    lowered = [name.lower() for name in names]
+    for candidate in PLATFORM_LABELS:
+        if candidate in lowered:
+            platform = candidate
+            break
+    return LabelClass(lane="+".join(lanes), platform=platform)
 
 
 def compute_job_metrics(
@@ -310,10 +368,90 @@ def fetch_run_jobs(
     )
 
 
+def fetch_runners(
+    repo: str,
+    token: str,
+    org: Optional[str] = None,
+    per_page: int = PER_PAGE,
+    max_pages: int = MAX_PAGES,
+) -> List[Dict]:
+    """Fetch every self-hosted runner registered to *repo*, and to *org* when given.
+
+    Repository-level and organization-level registrations are separate
+    lists on the GitHub API (``/repos/{owner}/{repo}/actions/runners`` and
+    ``/orgs/{org}/actions/runners``); a fleet that registers some runners
+    org-wide — as the ROCm hosts here do — needs both to see all of its
+    hardware. Each runner dict is returned as the API gives it (``name``,
+    ``os``, ``status``, ``busy``, ``labels`` as ``[{"name": ...}]``), with a
+    ``registration`` key added (``owner/name`` or ``org:name``) saying which
+    list it came from.
+
+    The two lists need different token permissions (self-hosted-runner read
+    on the repository, and on the organization), so each is fetched on its
+    own: a list the token cannot read is reported on stderr and left out,
+    and the other is still returned. Only when every list fails is the
+    failure raised, so a caller can tell "no runners" from "could not ask".
+    """
+    sources = [("%s/repos/%s/actions/runners" % (GITHUB_API_BASE, repo), repo, "runners for %s" % repo)]
+    if org:
+        sources.append(("%s/orgs/%s/actions/runners" % (GITHUB_API_BASE, org), "org:%s" % org,
+                        "runners for org %s" % org))
+    runners: List[Dict] = []
+    failures: List[Exception] = []
+    for base_url, registration, description in sources:
+        try:
+            fetched = _fetch_paginated(base_url, "runners", description, token, per_page, max_pages, False)
+        except Exception as exc:  # noqa: BLE001 — one unreadable list must not hide the other
+            failures.append(exc)
+            print("fleet poller: %s unavailable (%s)" % (description, exc), file=sys.stderr)
+            continue
+        for runner in fetched:
+            runner = dict(runner)
+            runner["registration"] = registration
+            runners.append(runner)
+    if failures and len(failures) == len(sources):
+        raise failures[0]
+    return runners
+
+
+def runner_state_of(runner: Dict) -> str:
+    """``busy`` / ``idle`` / ``offline`` for one runner object from the runners API.
+
+    The API reports ``status`` (``online``/``offline``) and ``busy``
+    separately; the store keeps the one word a dashboard counts by.
+    """
+    if runner.get("status") != "online":
+        return "offline"
+    return "busy" if runner.get("busy") else "idle"
+
+
+def store_runner_states(store: FleetStore, runners: List[Dict], ts: str) -> int:
+    """Upsert one ``runner_state`` row per runner in *runners*, all stamped *ts*.
+
+    The host column is left ``''``: the runners API does not say which
+    machine a runner is on. Returns the number of rows written.
+    """
+    for runner in runners:
+        labels = sorted(str(label.get("name")) for label in (runner.get("labels") or []) if label.get("name"))
+        label_class = classify_labels(labels)
+        store.upsert_runner_state(
+            ts=ts,
+            host="",
+            runner_name=runner.get("name") or "",
+            labels=json.dumps(labels),
+            state=runner_state_of(runner),
+            repo=runner.get("registration") or "",
+            lane=label_class.lane,
+            platform=label_class.platform,
+        )
+    return len(runners)
+
+
 DEFAULT_POLL_MAX_RUNS = 100
 DEFAULT_POLL_RUN_MAX_PAGES = 2
 
 NeedsResolver = Callable[[Dict, Dict], Optional[List[str]]]
+DependencyCompletionResolver = Callable[[Dict, Dict, List[Dict]], Optional[str]]
 
 
 def poll_and_store(
@@ -326,9 +464,13 @@ def poll_and_store(
     job_per_page: int = PER_PAGE,
     job_max_pages: int = MAX_PAGES,
     resolve_needs: Optional[NeedsResolver] = None,
+    resolve_dependency_completed_at: Optional[DependencyCompletionResolver] = None,
+    runners_org: Optional[str] = None,
+    record_runners: bool = False,
 ) -> int:
     """One poll cycle: fetch recent runs and their jobs for *repo*, compute
-    job metrics, and upsert every job/step into *store*.
+    job metrics, and upsert every job/step into *store*; then record the
+    fleet's registered runners.
 
     This is the entry point that actually populates ``job_event``/
     ``job_step`` — :func:`fetch_runs`, :func:`fetch_run_jobs`, and
@@ -351,11 +493,30 @@ def poll_and_store(
     as before — ``is_entry_point``/``queue_wait_seconds`` stay unset and
     only the always-honest ``pre_start_latency_seconds`` is populated.
 
-    This module deliberately does not attempt that mapping itself: the
-    workflow-jobs API's ``name`` field is the job's ``name:`` override or
-    matrix-expanded label, not its YAML key, so guessing the mapping for a
-    matrix-heavy workflow risks attributing the wrong dependency list to a
-    job — silently wrong data, which is worse than an honest ``NULL``.
+    *resolve_dependency_completed_at*, when supplied alongside it, is called
+    as ``resolve_dependency_completed_at(run, job, run_jobs)`` for every job
+    whose ``needs`` came back non-empty, with every job of the same run, and
+    returns the API timestamp at which the last dependency completed (or
+    ``None`` when not knowable) — :func:`compute_job_metrics` then measures
+    ``queue_wait_seconds`` from that moment instead of leaving it ``NULL``
+    for dependent jobs. :class:`tools.fleet.workflow_graph.WorkflowGraphResolver`
+    implements both callbacks from the run's workflow file, and is what
+    :func:`main` supplies.
+
+    The mapping from an API job name back to its YAML key lives in that
+    module, not here, and it reports ``None`` rather than guessing whenever
+    a name could have come from more than one job — silently wrong data is
+    worse than an honest ``NULL``.
+
+    With *record_runners*, the cycle ends by fetching the repository's
+    registered runners — and *runners_org*'s, when given — and writing one
+    ``runner_state`` row each (see :func:`fetch_runners`). The scheduled
+    entry point (:func:`run_poll_loop`) always asks for this; it is opt-in
+    here so a caller composing the lower-level pieces, or driving one cycle
+    against a fixture, does not reach the runners endpoint unasked. The step
+    is independent of the job data: a token that cannot list runners (HTTP
+    403) or any other failure there is reported on stderr and skipped
+    without affecting the jobs already stored.
 
     Every call re-fetches and re-upserts recent runs/jobs (idempotent, since
     every write here is a natural-key upsert), rather than tracking what
@@ -391,18 +552,22 @@ def poll_and_store(
     if max_runs is not None:
         runs = runs[:max_runs]
 
-    fetched: List[Tuple[Dict, str, Dict]] = []
+    fetched: List[Tuple[Dict, str, Dict, List[Dict]]] = []
     for run in runs:
         run_id = str(run.get("id"))
-        for job in fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages):
-            fetched.append((run, run_id, job))
+        run_jobs = fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages)
+        for job in run_jobs:
+            fetched.append((run, run_id, job, run_jobs))
 
     jobs_stored = 0
     with store.transaction():
-        for run, run_id, job in fetched:
+        for run, run_id, job, run_jobs in fetched:
             job_id = str(job.get("id"))
             needs = resolve_needs(run, job) if resolve_needs is not None else None
-            metrics = compute_job_metrics(job, needs=needs)
+            dependency_completed_at = None
+            if needs and resolve_dependency_completed_at is not None:
+                dependency_completed_at = resolve_dependency_completed_at(run, job, run_jobs)
+            metrics = compute_job_metrics(job, needs=needs, dependency_completed_at=dependency_completed_at)
             # Sorted so the same label set always serializes identically
             # regardless of the order the API happens to return it in —
             # `job_event` is grouped by this string (see
@@ -423,12 +588,15 @@ def poll_and_store(
             # the run's workflow YAML, which this module does not do (see
             # `FleetStore.upsert_job_event`/`pre_start_latency_by_label`).
             labels = sorted(job.get("labels") or [])
+            label_class = classify_labels(labels)
             store.upsert_job_event(
                 job_id=job_id,
                 run_id=run_id,
                 repo=repo,
                 name=job.get("name") or "",
                 labels=json.dumps(labels),
+                lane=label_class.lane,
+                platform=label_class.platform,
                 created_at=job.get("created_at"),
                 started_at=job.get("started_at"),
                 completed_at=job.get("completed_at"),
@@ -450,6 +618,15 @@ def poll_and_store(
                     conclusion=step.get("conclusion") or "",
                 )
             jobs_stored += 1
+
+    if record_runners:
+        try:
+            runners = fetch_runners(repo, token, org=runners_org)
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with store.transaction():
+                store_runner_states(store, runners, ts)
+        except Exception as exc:  # noqa: BLE001 — the inventory is independent of the job data above
+            print("fleet poller: runner inventory unavailable (%s); runner_state not updated" % exc, file=sys.stderr)
     return jobs_stored
 
 
@@ -467,8 +644,14 @@ def run_poll_loop(
     max_runs: Optional[int] = DEFAULT_POLL_MAX_RUNS,
     open_store=FleetStore.from_url,
     poll=None,
+    runners_org: Optional[str] = None,
+    resolver: Optional[workflow_graph.WorkflowGraphResolver] = None,
 ) -> int:
     """Run :func:`poll_and_store` every *interval_seconds*, *iterations* times or forever.
+
+    *resolver*, when given, supplies both dependency callbacks to every
+    cycle (see :func:`poll_and_store`); *runners_org* is passed through as
+    the organization whose runners to inventory besides the repository's.
 
     The scheduled counterpart of :func:`tools.fleet.collector.run_sampling_loop`,
     with the same stance on the store: opened lazily, closed and reopened
@@ -480,9 +663,12 @@ def run_poll_loop(
     skipped cycle costs latency, not data.
 
     *poll* and *open_store* exist so a test can drive the loop without a
-    network or a database. Returns the number of cycles that stored jobs.
+    network or a database; *poll* is called as ``poll(repo, token, store,
+    max_runs=...)``, and when it is left as the default it is
+    :func:`poll_and_store` with the runner inventory enabled and the
+    resolver's callbacks bound. Returns the number of cycles that stored jobs.
     """
-    poll = poll or poll_and_store
+    poll = poll or functools.partial(poll_and_store, record_runners=True, **_poll_options(runners_org, resolver))
     store: Optional[FleetStore] = None
     count = 0
     stored_cycles = 0
@@ -519,6 +705,20 @@ def run_poll_loop(
     return stored_cycles
 
 
+def _poll_options(
+    runners_org: Optional[str],
+    resolver: Optional[workflow_graph.WorkflowGraphResolver],
+) -> Dict:
+    """The keyword arguments :func:`run_poll_loop` binds into its default poll, beyond *max_runs*."""
+    options: Dict = {}
+    if runners_org:
+        options["runners_org"] = runners_org
+    if resolver is not None:
+        options["resolve_needs"] = resolver.needs
+        options["resolve_dependency_completed_at"] = resolver.dependency_completed_at
+    return options
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for running this module as a service."""
     parser = argparse.ArgumentParser(
@@ -549,8 +749,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-runs", type=int, default=DEFAULT_POLL_MAX_RUNS,
         help="Most recent runs to re-read each cycle (default: %d)." % DEFAULT_POLL_MAX_RUNS,
     )
+    parser.add_argument(
+        "--runners-org", default=None,
+        help="Also inventory this organization's runners (runners registered org-wide, not to the "
+             "repository, are only visible there).",
+    )
+    parser.add_argument(
+        "--no-resolve-needs", action="store_true",
+        help="Do not fetch each run's workflow file to resolve job dependencies; is_entry_point and "
+             "queue_wait_seconds are then left NULL.",
+    )
     parser.add_argument("--once", action="store_true", help="Poll once and exit, instead of looping.")
     return parser
+
+
+def build_resolver(repo: str, token: str, disabled: bool = False) -> Optional[workflow_graph.WorkflowGraphResolver]:
+    """The dependency resolver :func:`main` runs with, or ``None`` when it cannot or should not.
+
+    ``None`` when *disabled*, or when ``PyYAML`` is not importable — in which
+    case a warning says so, since the queue-wait panels stay empty without
+    it and a silently degraded poller would look like a healthy one.
+    """
+    if disabled:
+        return None
+    if not workflow_graph.yaml_available():
+        print(
+            "fleet poller: PyYAML is not installed; job dependencies will not be resolved "
+            "(is_entry_point/queue_wait_seconds stay NULL). pip install pyyaml",
+            file=sys.stderr,
+        )
+        return None
+    return workflow_graph.WorkflowGraphResolver(repo, lambda url: _get_json(url, token))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -568,6 +797,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         interval_seconds=args.interval_seconds,
         iterations=1 if args.once else None,
         max_runs=args.max_runs,
+        runners_org=args.runners_org,
+        resolver=build_resolver(args.repo, token, disabled=args.no_resolve_needs),
     )
     if args.once and stored == 0:
         return 1

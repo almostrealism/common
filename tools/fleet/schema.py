@@ -68,9 +68,16 @@ CREATE TABLE IF NOT EXISTS class_sample (
 RUNNER_STATE = """
 CREATE TABLE IF NOT EXISTS runner_state (
     ts {ts} NOT NULL,
+    -- The host the runner runs on, when known. The GitHub runners API does
+    -- not report it, so the poller writes '' here; a collector that can see
+    -- the runner's process tree may write the real hostname.
     host TEXT NOT NULL,
     runner_name TEXT NOT NULL,
     labels TEXT,
+    -- Derived from `labels` (see `lane`/`platform` on job_event).
+    lane TEXT,
+    platform TEXT,
+    -- busy / idle / offline, as the runners API reports it.
     state TEXT,
     repo TEXT,
     workflow TEXT,
@@ -92,6 +99,13 @@ CREATE TABLE IF NOT EXISTS job_event (
     -- job asked for, so grouping by this column reports actual-runner-label
     -- demand, not per-`runs-on` demand.
     labels TEXT,
+    -- Two projections of `labels`, so a dashboard groups by a short, stable
+    -- key instead of parsing the JSON label set in every panel. `lane` is
+    -- the fleet's own `ar-*` label(s) — the kind of work a runner is for
+    -- (ar-ci, ar-ci-cl, ar-deploy, ...) — and is '' for a GitHub-hosted
+    -- runner, which carries none; `platform` is macos / linux / windows.
+    lane TEXT,
+    platform TEXT,
     created_at {ts},
     started_at {ts},
     completed_at {ts},
@@ -130,6 +144,23 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS runner_state_host_ts ON runner_state (host, runner_name, ts)",
     "CREATE INDEX IF NOT EXISTS job_event_run ON job_event (run_id)",
     "CREATE INDEX IF NOT EXISTS job_event_created ON job_event (created_at)",
+    # The runners-per-lane panels read the newest sample per runner and
+    # then filter by lane; ts leads so "latest sample" is an index walk.
+    "CREATE INDEX IF NOT EXISTS runner_state_ts ON runner_state (ts)",
+]
+
+# Columns added after a table first shipped. ``CREATE TABLE IF NOT EXISTS``
+# leaves an existing table untouched, so a store created before a column
+# existed never acquires it from the definitions above; :meth:`FleetStore.init_schema`
+# adds each of these to a table that lacks it. sqlite has no
+# ``ADD COLUMN IF NOT EXISTS``, so the check is the store's, not the DDL's.
+# Every entry is also present in the ``CREATE TABLE`` above, so a fresh store
+# and a migrated one end up identical.
+ADDED_COLUMNS: List[tuple] = [
+    ("job_event", "lane", "TEXT"),
+    ("job_event", "platform", "TEXT"),
+    ("runner_state", "lane", "TEXT"),
+    ("runner_state", "platform", "TEXT"),
 ]
 
 TABLES: List[str] = [

@@ -276,13 +276,13 @@ quantities. Each becomes a dashboard panel and drives a schema requirement:
 1. **Utilization per host and per runner** = busy wall-clock ÷ total wall-clock.
    Low utilization + high queue wait ⇒ a *distribution/label* problem, not a
    hardware problem. High utilization + high queue wait ⇒ genuinely short.
-2. **Queue wait per runner label** = time a job spends between "eligible" and
-   "picked up by a runner", bucketed by its `runs-on` label set. This is the
-   headline number for the purchasing decision.
-   <!-- TODO(review): this still states the aspirational runs-on bucketing
-   without the label-semantics caveat added to §5.4 and the appendix — the
-   Phase A implementation actually buckets by the executing runner's label
-   set. Reconcile this section with the §5.4 correction. -->
+2. **Queue wait per lane** = time a job spends between "eligible" and
+   "picked up by a runner", bucketed by lane — the `ar-*` label of the runner
+   that executed it (§2.1), which is the fleet's name for the kind of work a
+   runner is for. This is the headline number for the purchasing decision.
+   (The implementation buckets by the executing runner's label, not the job's
+   requested `runs-on:` set — see the §5.4 correction; the two coincide while
+   every runner carries exactly one `ar-*` label.)
 3. **Concurrency headroom per host** = how many more concurrent jobs a host
    could take before CPU / memory / disk saturates. Needs host metrics attributed
    by class (§7.3): a host that looks "busy" because of a FlowTree agent has
@@ -780,11 +780,28 @@ for the Linux runner hosts, where the collector runs on the host as a
 dedicated `fleet` system account (task 10's rollout, for the collector).
 The direct database connection is
 the "short way" for task 3 — no ingest service exists, and the credential
-isolation it requires is documented in `tools/fleet/README.md`. Not yet
-implemented: runner-state detection (task 4 — `runner_state` is never
-written, so `list` is empty), Docker-API attribution for a virtualized
-container runtime's processes, the `needs:` resolver, and every control
-verb.
+isolation it requires is documented in `tools/fleet/README.md`.
+
+A third round made the dashboard answer §3's question the way it was posed.
+The poller now resolves each job's `needs:` from the run's workflow file
+(`tools/fleet/workflow_graph.py`), so `is_entry_point` is set and
+`queue_wait_seconds` is measured for dependent jobs as well — §5.4's option 2,
+eligibility being the last dependency's completion — with an honest `NULL`
+whenever a job's display name cannot be matched to its YAML key. It also
+writes `runner_state` every cycle from the runners API (repository- and
+org-level registrations; busy / idle / offline), which is the denominator the
+capacity question needs; `host` is `''` there until a host manifest exists.
+Both `job_event` and `runner_state` carry `lane` (the `ar-*` label — the
+kind of work a runner is for) and `platform`, so the dashboard groups by the
+fleet's own lanes rather than by raw label sets, and excludes GitHub-hosted
+jobs throughout. The dashboard itself now leads with wait-for-a-runner against
+runners busy / idle / offline per lane (the §3 two-by-two), shows fleet CPU by
+class as one stacked sum, host memory and disk as a share of the host's total,
+and utilization and step time as bars rather than tables. Not yet
+implemented: the host manifest (`runner_state.host`, and joining a runner to
+its host's samples), process-tree runner-state detection on the host itself
+(task 4's other half), Docker-API attribution for a virtualized container
+runtime's processes, and every control verb.
 
 **Phase A — read-only visibility (the MVP, §6):**
 

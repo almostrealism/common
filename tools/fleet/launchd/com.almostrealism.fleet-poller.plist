@@ -10,7 +10,9 @@
   FLEET_USER, which owns the two credentials it reads: the read-only GitHub
   token at TOKEN_FILE and the store URL at FLEET_HOME/store-url, both mode
   600. The poller loops on its own interval, so launchd only keeps the one
-  process alive.
+  process alive. Besides Actions read, the token needs self-hosted-runner
+  read on the repository and on RUNNERS_ORG for the runner inventory;
+  without it the poller still records jobs and only warns about the inventory.
 -->
 <plist version="1.0">
 <dict>
@@ -25,6 +27,8 @@
         <string>tools.fleet.github_poller</string>
         <string>--repo</string>
         <string>@REPO@</string>
+        <string>--runners-org</string>
+        <string>@RUNNERS_ORG@</string>
         <string>--token-file</string>
         <string>@TOKEN_FILE@</string>
         <string>--store-url-file</string>

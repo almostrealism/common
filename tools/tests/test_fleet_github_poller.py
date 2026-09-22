@@ -24,24 +24,34 @@ Run with:
     python -m unittest discover -v -s tools/tests -p "test_fleet_github_poller.py"
 """
 
+import base64
 import email.message
 import json
+import os
+import tempfile
 import time as _time
 import unittest
 import urllib.error
 from unittest import mock
 
+from tools.fleet import github_poller
 from tools.fleet.github_poller import (
     RATE_LIMIT_DEFAULT_RETRY_SECONDS,
     _get_json,
     _is_retryable_rate_limit,
     _rate_limit_delay_seconds,
+    classify_labels,
     compute_job_metrics,
     fetch_run_jobs,
+    fetch_runners,
     fetch_runs,
     poll_and_store,
+    run_poll_loop,
+    runner_state_of,
+    store_runner_states,
 )
 from tools.fleet.store import FleetStore
+from tools.fleet.workflow_graph import WorkflowGraphResolver
 
 
 def _http_error(code, headers=None):
@@ -520,6 +530,270 @@ class PollAndStoreTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 poll_and_store("acme/repo", "tok", self.store)
         self.assertEqual(self.store.job_event_count(), 0)
+
+
+class ClassifyLabelsTests(unittest.TestCase):
+    """`classify_labels` projects a label set onto the dashboard's `lane` and `platform` keys."""
+
+    def test_the_ar_label_is_the_lane_and_the_os_label_the_platform(self):
+        self.assertEqual(("ar-ci", "macos"), classify_labels(["self-hosted", "macos", "ar-ci"]))
+        self.assertEqual(("ar-ci-cl", "linux"), classify_labels(["ar-ci-cl", "linux", "self-hosted"]))
+        self.assertEqual(("ar-deploy-agent", "macos"), classify_labels(["self-hosted", "macOS", "ar-deploy-agent"]))
+
+    def test_a_github_hosted_runner_has_no_lane(self):
+        self.assertEqual(("", ""), classify_labels(["ubuntu-latest"]))
+        self.assertEqual(("", ""), classify_labels([]))
+        self.assertEqual(("", ""), classify_labels(None))
+
+    def test_several_ar_labels_join_in_sorted_order(self):
+        self.assertEqual("ar-ci+ar-deploy", classify_labels(["ar-deploy", "ar-ci"]).lane)
+
+    def test_a_self_hosted_runner_without_an_ar_label_has_no_lane_but_a_platform(self):
+        self.assertEqual(("", "linux"), classify_labels(["self-hosted", "linux", "x64"]))
+
+
+class RunnerInventoryTests(unittest.TestCase):
+    """The runners API is the denominator for every per-lane capacity panel."""
+
+    RUNNERS = [
+        {"id": 1, "name": "mac-studio-macos", "os": "macOS", "status": "online", "busy": True,
+         "labels": [{"name": "self-hosted"}, {"name": "macOS"}, {"name": "ar-ci"}]},
+        {"id": 2, "name": "mac-mini-macos", "os": "macOS", "status": "online", "busy": False,
+         "labels": [{"name": "ar-ci"}, {"name": "self-hosted"}, {"name": "macOS"}]},
+        {"id": 3, "name": "amd-halo-rocm", "os": "Linux", "status": "offline", "busy": False,
+         "labels": [{"name": "self-hosted"}, {"name": "Linux"}, {"name": "ar-ci-cl"}]},
+    ]
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_runner_state_of_reduces_status_and_busy_to_one_word(self):
+        self.assertEqual("busy", runner_state_of({"status": "online", "busy": True}))
+        self.assertEqual("idle", runner_state_of({"status": "online", "busy": False}))
+        self.assertEqual("offline", runner_state_of({"status": "offline", "busy": False}))
+        self.assertEqual("offline", runner_state_of({}))
+
+    def test_fetch_runners_reads_the_repository_endpoint(self):
+        with mock.patch("tools.fleet.github_poller._get_json", return_value={"runners": self.RUNNERS}) as get:
+            runners = fetch_runners("acme/repo", "tok")
+        self.assertEqual(3, len(runners))
+        self.assertTrue(get.call_args.args[0].startswith("https://api.github.com/repos/acme/repo/actions/runners?"))
+        self.assertEqual({"acme/repo"}, {runner["registration"] for runner in runners})
+
+    def test_fetch_runners_also_reads_the_organization_endpoint_when_asked(self):
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                return {"runners": [self.RUNNERS[2]]}
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get):
+            runners = fetch_runners("acme/repo", "tok", org="acme")
+        self.assertEqual(["acme/repo", "acme/repo", "org:acme"], [runner["registration"] for runner in runners])
+
+    def test_fetch_runners_keeps_the_list_it_could_read_when_the_other_is_forbidden(self):
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                raise _http_error(403)
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get), mock.patch("sys.stderr"):
+            runners = fetch_runners("acme/repo", "tok", org="acme")
+        self.assertEqual(["acme/repo", "acme/repo"], [runner["registration"] for runner in runners])
+
+    def test_fetch_runners_raises_when_every_list_is_unavailable(self):
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_http_error(403)), mock.patch("sys.stderr"):
+            with self.assertRaises(RuntimeError):
+                fetch_runners("acme/repo", "tok", org="acme")
+
+    def test_store_runner_states_writes_one_row_per_runner_with_lane_and_platform(self):
+        runners = [dict(runner, registration="acme/repo") for runner in self.RUNNERS]
+        self.assertEqual(3, store_runner_states(self.store, runners, "2026-09-21T10:00:00Z"))
+        rows = self.store._conn.execute(
+            "SELECT runner_name, host, labels, lane, platform, state, repo FROM runner_state ORDER BY runner_name"
+        ).fetchall()
+        self.assertEqual([
+            ("amd-halo-rocm", "", json.dumps(["Linux", "ar-ci-cl", "self-hosted"]), "ar-ci-cl", "linux", "offline", "acme/repo"),
+            ("mac-mini-macos", "", json.dumps(["ar-ci", "macOS", "self-hosted"]), "ar-ci", "macos", "idle", "acme/repo"),
+            ("mac-studio-macos", "", json.dumps(["ar-ci", "macOS", "self-hosted"]), "ar-ci", "macos", "busy", "acme/repo"),
+        ], rows)
+
+    def test_poll_and_store_records_runners_only_when_asked(self):
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \
+                mock.patch("tools.fleet.github_poller.fetch_runners", return_value=self.RUNNERS) as runners:
+            poll_and_store("acme/repo", "tok", self.store)
+            self.assertEqual(0, runners.call_count)
+            poll_and_store("acme/repo", "tok", self.store, record_runners=True, runners_org="acme")
+        self.assertEqual(("acme/repo", "tok"), runners.call_args.args)
+        self.assertEqual("acme", runners.call_args.kwargs["org"])
+        self.assertEqual(3, len(self.store.latest_runner_states()))
+
+    def test_a_failed_runner_inventory_does_not_lose_the_cycles_jobs(self):
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[{"id": 1}]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]), \
+                mock.patch("tools.fleet.github_poller.fetch_runners", side_effect=RuntimeError("HTTP Error 403")), \
+                mock.patch("sys.stderr"):
+            stored = poll_and_store("acme/repo", "tok", self.store, record_runners=True)
+        self.assertEqual(1, stored)
+        self.assertEqual(1, self.store.job_event_count())
+        self.assertEqual([], self.store.latest_runner_states())
+
+
+class PollAndStoreLaneTests(unittest.TestCase):
+    """Every job_event row carries the lane/platform projection of its labels."""
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def _lane_and_platform(self, job_id):
+        return self.store._conn.execute(
+            "SELECT lane, platform FROM job_event WHERE job_id = ?", (job_id,),
+        ).fetchone()
+
+    def test_poll_and_store_persists_lane_and_platform(self):
+        jobs = [
+            {"id": 1, "labels": ["self-hosted", "macos", "ar-ci"]},
+            {"id": 2, "labels": ["self-hosted", "linux", "ar-ci-cl"]},
+            {"id": 3, "labels": ["ubuntu-latest"]},
+        ]
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[{"id": 1}]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=jobs):
+            poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(("ar-ci", "macos"), self._lane_and_platform("1"))
+        self.assertEqual(("ar-ci-cl", "linux"), self._lane_and_platform("2"))
+        self.assertEqual(("", ""), self._lane_and_platform("3"))
+
+
+class PollAndStoreDependencyTests(unittest.TestCase):
+    """With both resolver callbacks, queue wait is measured for dependent jobs too."""
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_dependency_completion_is_asked_only_for_dependent_jobs(self):
+        run = {"id": 1}
+        entry = {"id": 1, "name": "build", "created_at": "2026-09-21T10:00:00Z",
+                 "started_at": "2026-09-21T10:01:00Z", "completed_at": "2026-09-21T10:10:00Z"}
+        dependent = {"id": 2, "name": "test", "created_at": "2026-09-21T10:00:00Z",
+                     "started_at": "2026-09-21T10:12:00Z", "completed_at": "2026-09-21T10:30:00Z"}
+        asked = []
+
+        def _needs(run_obj, job_obj):
+            return [] if job_obj["name"] == "build" else ["build"]
+
+        def _completed(run_obj, job_obj, run_jobs):
+            asked.append(job_obj["name"])
+            self.assertEqual([entry, dependent], run_jobs)
+            return "2026-09-21T10:10:00Z"
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[entry, dependent]):
+            poll_and_store("acme/repo", "tok", self.store, resolve_needs=_needs, resolve_dependency_completed_at=_completed)
+
+        self.assertEqual(["test"], asked)
+        rows = self.store._conn.execute(
+            "SELECT job_id, is_entry_point, pre_start_latency_seconds, queue_wait_seconds FROM job_event ORDER BY job_id"
+        ).fetchall()
+        self.assertEqual(("1", 1, 60.0, 60.0), rows[0])
+        # Dependent: 12 minutes after creation, but only 2 minutes after its dependency finished.
+        self.assertEqual(("2", 0, 720.0, 120.0), rows[1])
+
+    def test_the_workflow_graph_resolver_drives_both_callbacks_end_to_end(self):
+        workflow = "jobs:\n  build: {}\n  test:\n    needs: build\n    strategy: {matrix: {g: [1, 2]}}\n"
+        payload = {"content": base64.b64encode(workflow.encode()).decode()}
+        resolver = WorkflowGraphResolver("acme/repo", lambda url: payload)
+        run = {"id": 7, "path": ".github/workflows/ci.yaml", "head_sha": "deadbeef"}
+        jobs = [
+            {"id": 1, "name": "build", "created_at": "2026-09-21T10:00:00Z",
+             "started_at": "2026-09-21T10:00:30Z", "completed_at": "2026-09-21T10:10:00Z"},
+            {"id": 2, "name": "test (1)", "created_at": "2026-09-21T10:00:00Z",
+             "started_at": "2026-09-21T10:10:45Z", "completed_at": "2026-09-21T10:20:00Z"},
+            {"id": 3, "name": "test (2)", "created_at": "2026-09-21T10:00:00Z",
+             "started_at": "2026-09-21T10:15:00Z", "completed_at": "2026-09-21T10:25:00Z"},
+        ]
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=jobs):
+            poll_and_store(
+                "acme/repo", "tok", self.store,
+                resolve_needs=resolver.needs,
+                resolve_dependency_completed_at=resolver.dependency_completed_at,
+            )
+        rows = self.store._conn.execute(
+            "SELECT job_id, is_entry_point, queue_wait_seconds FROM job_event ORDER BY job_id"
+        ).fetchall()
+        self.assertEqual([("1", 1, 30.0), ("2", 0, 45.0), ("3", 0, 300.0)], rows)
+
+
+class PollLoopWiringTests(unittest.TestCase):
+    """`run_poll_loop`'s default poll is `poll_and_store` with the inventory on and the resolver bound."""
+
+    def test_the_default_poll_enables_the_runner_inventory_and_binds_the_resolver(self):
+        resolver = WorkflowGraphResolver("acme/repo", lambda url: {})
+        with mock.patch("tools.fleet.github_poller.poll_and_store", return_value=1) as poll:
+            run_poll_loop(
+                "acme/repo", "tok", "sqlite:///:memory:", interval_seconds=0, iterations=1,
+                open_store=lambda url: FleetStore(), runners_org="acme", resolver=resolver,
+            )
+        kwargs = poll.call_args.kwargs
+        self.assertTrue(kwargs["record_runners"])
+        self.assertEqual("acme", kwargs["runners_org"])
+        self.assertEqual(resolver.needs, kwargs["resolve_needs"])
+        self.assertEqual(resolver.dependency_completed_at, kwargs["resolve_dependency_completed_at"])
+
+    def test_the_default_poll_without_options_still_records_runners(self):
+        with mock.patch("tools.fleet.github_poller.poll_and_store", return_value=1) as poll:
+            run_poll_loop(
+                "acme/repo", "tok", "sqlite:///:memory:", interval_seconds=0, iterations=1,
+                open_store=lambda url: FleetStore(),
+            )
+        self.assertEqual({"record_runners": True, "max_runs": github_poller.DEFAULT_POLL_MAX_RUNS}, poll.call_args.kwargs)
+
+    def test_build_resolver_is_none_when_disabled_or_without_yaml(self):
+        self.assertIsNone(github_poller.build_resolver("acme/repo", "tok", disabled=True))
+        with mock.patch("tools.fleet.workflow_graph.yaml_available", return_value=False), mock.patch("sys.stderr"):
+            self.assertIsNone(github_poller.build_resolver("acme/repo", "tok"))
+        with mock.patch("tools.fleet.workflow_graph.yaml_available", return_value=True):
+            self.assertIsInstance(github_poller.build_resolver("acme/repo", "tok"), WorkflowGraphResolver)
+
+    def test_the_resolver_fetches_with_the_pollers_authenticated_getter(self):
+        with mock.patch("tools.fleet.workflow_graph.yaml_available", return_value=True), \
+                mock.patch("tools.fleet.github_poller._get_json", return_value={"content": ""}) as get:
+            resolver = github_poller.build_resolver("acme/repo", "tok")
+            resolver.needs({"path": "w.yaml", "head_sha": "abc"}, {"name": "x"})
+        self.assertEqual(("https://api.github.com/repos/acme/repo/contents/w.yaml?ref=abc", "tok"), get.call_args.args)
+
+    def test_main_passes_the_org_and_the_resolver_to_the_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = os.path.join(tmp, "token")
+            with open(token, "w") as handle:
+                handle.write("tok")
+            os.chmod(token, 0o600)
+            with mock.patch.object(github_poller, "run_poll_loop", return_value=1) as loop, \
+                    mock.patch("tools.fleet.workflow_graph.yaml_available", return_value=True):
+                github_poller.main([
+                    "--repo", "o/r", "--token-file", token, "--store-url", "sqlite:///:memory:",
+                    "--runners-org", "o", "--once",
+                ])
+                self.assertEqual("o", loop.call_args.kwargs["runners_org"])
+                self.assertIsInstance(loop.call_args.kwargs["resolver"], WorkflowGraphResolver)
+                github_poller.main([
+                    "--repo", "o/r", "--token-file", token, "--store-url", "sqlite:///:memory:",
+                    "--no-resolve-needs", "--once",
+                ])
+                self.assertIsNone(loop.call_args.kwargs["resolver"])
+                self.assertIsNone(loop.call_args.kwargs["runners_org"])
 
 
 if __name__ == "__main__":

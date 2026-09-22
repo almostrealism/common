@@ -288,5 +288,72 @@ class FleetStoreTransactionBatchingTests(unittest.TestCase):
         self.assertEqual(ids, {"before", "after"})
 
 
+class FleetStoreSchemaMigrationTests(unittest.TestCase):
+    """`init_schema` must bring a store created before a column existed up to
+    the current writers - `CREATE TABLE IF NOT EXISTS` alone never would."""
+
+    def _store_with_old_job_event_and_runner_state(self):
+        store = FleetStore(":memory:")
+        store._conn.execute(
+            "CREATE TABLE job_event (job_id TEXT PRIMARY KEY, run_id TEXT, repo TEXT, name TEXT, labels TEXT, "
+            "created_at TEXT, started_at TEXT, completed_at TEXT, status TEXT, conclusion TEXT, "
+            "runner_name TEXT, runner_group TEXT, pre_start_latency_seconds REAL, is_entry_point INTEGER, "
+            "queue_wait_seconds REAL)"
+        )
+        store._conn.execute(
+            "CREATE TABLE runner_state (ts TEXT NOT NULL, host TEXT NOT NULL, runner_name TEXT NOT NULL, "
+            "labels TEXT, state TEXT, repo TEXT, workflow TEXT, job_id TEXT, agent_version TEXT, "
+            "PRIMARY KEY (ts, host, runner_name))"
+        )
+        store._conn.execute("INSERT INTO job_event (job_id, name) VALUES ('1', 'old')")
+        return store
+
+    def test_columns_lists_a_tables_columns_in_order(self):
+        store = FleetStore(":memory:")
+        store.init_schema()
+        self.assertEqual(["ts", "host", "class", "cpu_pct", "rss_mb"], store.columns("class_sample"))
+        self.assertEqual([], store.columns("no_such_table"))
+
+    def test_init_schema_adds_the_missing_columns_to_an_existing_table(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        self.assertNotIn("lane", store.columns("job_event"))
+        store.init_schema()
+        self.assertIn("lane", store.columns("job_event"))
+        self.assertIn("platform", store.columns("job_event"))
+        self.assertIn("lane", store.columns("runner_state"))
+        self.assertIn("platform", store.columns("runner_state"))
+        row = store._conn.execute("SELECT name, lane FROM job_event WHERE job_id = '1'").fetchone()
+        self.assertEqual(("old", None), row)
+
+    def test_a_migrated_store_accepts_the_current_writers(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        store.init_schema()
+        store.upsert_job_event(job_id="2", labels='["ar-ci"]', lane="ar-ci", platform="macos")
+        store.upsert_runner_state(ts="2026-09-21T00:00:00Z", host="", runner_name="r", lane="ar-ci", platform="linux")
+        self.assertEqual(
+            ("ar-ci", "macos"),
+            store._conn.execute("SELECT lane, platform FROM job_event WHERE job_id = '2'").fetchone(),
+        )
+        self.assertEqual(
+            ("ar-ci", "linux"),
+            store._conn.execute("SELECT lane, platform FROM runner_state WHERE runner_name = 'r'").fetchone(),
+        )
+
+    def test_init_schema_is_idempotent_after_migrating(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        store.init_schema()
+        before = store.columns("job_event")
+        store.init_schema()
+        self.assertEqual(before, store.columns("job_event"))
+
+    def test_a_fresh_store_and_a_migrated_store_have_the_same_columns(self):
+        fresh = FleetStore(":memory:")
+        fresh.init_schema()
+        migrated = self._store_with_old_job_event_and_runner_state()
+        migrated.init_schema()
+        for table in ("job_event", "runner_state"):
+            self.assertEqual(sorted(fresh.columns(table)), sorted(migrated.columns(table)), table)
+
+
 if __name__ == "__main__":
     unittest.main()

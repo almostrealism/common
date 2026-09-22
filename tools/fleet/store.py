@@ -304,11 +304,38 @@ class FleetStore:
         self._commit_unless_batched()
 
     def init_schema(self) -> None:
-        """Create every table (and index) declared in :mod:`schema`, if not already present."""
+        """Create every table (and index) declared in :mod:`schema`, if not already present.
+
+        Then add any column in :data:`schema.ADDED_COLUMNS` that an existing
+        table lacks: ``CREATE TABLE IF NOT EXISTS`` never alters a table that
+        already exists, so a store created before a column shipped would
+        otherwise stay behind the writers, and every ``upsert_*`` naming the
+        new column would fail against it.
+        """
         for statement in schema.statements(self._dialect.timestamp_type):
             self._conn.execute(statement)
+        for table, column, column_type in schema.ADDED_COLUMNS:
+            if column not in self.columns(table):
+                self._conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, column_type))
         if self._dialect.name == Dialect.SQLITE:
             self._conn.commit()
+
+    def columns(self, table: str) -> List[str]:
+        """The column names *table* currently has, in declaration order.
+
+        sqlite answers through ``PRAGMA table_info``; Postgres through
+        ``information_schema.columns`` — the only place besides
+        :class:`Dialect` where the two backends need different SQL.
+        """
+        if self._dialect.name == Dialect.SQLITE:
+            return [row[1] for row in self._conn.execute("PRAGMA table_info(%s)" % table)]
+        return [
+            row[0] for row in self._execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? ORDER BY ordinal_position",
+                (table,),
+            )
+        ]
 
     # ---- host_sample / class_sample -----------------------------------
 
@@ -369,12 +396,20 @@ class FleetStore:
         workflow: str = "",
         job_id: str = "",
         agent_version: str = "",
+        lane: str = "",
+        platform: str = "",
     ) -> None:
-        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name)``."""
+        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name)``.
+
+        *host* may be ``''`` when the writer cannot know it (the GitHub
+        runners API reports no host); *lane*/*platform* are the projections
+        of *labels* described on :meth:`upsert_job_event`.
+        """
         self._upsert(
             "runner_state", ("ts", "host", "runner_name"),
-            ("ts", "host", "runner_name", "labels", "state", "repo", "workflow", "job_id", "agent_version"),
-            (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version),
+            ("ts", "host", "runner_name", "labels", "lane", "platform", "state",
+             "repo", "workflow", "job_id", "agent_version"),
+            (ts, host, runner_name, labels, lane, platform, state, repo, workflow, job_id, agent_version),
         )
 
     # ---- job_event / job_step ---------------------------------------------
@@ -396,6 +431,8 @@ class FleetStore:
         pre_start_latency_seconds: Optional[float] = None,
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
+        lane: str = "",
+        platform: str = "",
     ) -> None:
         """Insert or replace one ``job_event`` row, keyed on ``job_id``.
 
@@ -405,14 +442,19 @@ class FleetStore:
         A runner can carry extra/custom labels beyond what a job asked for,
         so a caller grouping on this column is measuring actual-runner-label
         demand, not per-``runs-on`` demand.
+
+        *lane* and *platform* are the two projections of that label set the
+        dashboard groups by (the fleet's ``ar-*`` label, and macos / linux /
+        windows); :func:`tools.fleet.github_poller.classify_labels` derives
+        them, and a writer that has no labels leaves both ``''``.
         """
         self._upsert(
             "job_event", ("job_id",),
-            ("job_id", "run_id", "repo", "name", "labels", "created_at", "started_at",
-             "completed_at", "status", "conclusion", "runner_name", "runner_group",
+            ("job_id", "run_id", "repo", "name", "labels", "lane", "platform", "created_at",
+             "started_at", "completed_at", "status", "conclusion", "runner_name", "runner_group",
              "pre_start_latency_seconds", "is_entry_point", "queue_wait_seconds"),
             (
-                job_id, run_id, repo, name, labels, created_at, started_at,
+                job_id, run_id, repo, name, labels, lane, platform, created_at, started_at,
                 completed_at, status, conclusion, runner_name, runner_group,
                 pre_start_latency_seconds,
                 None if is_entry_point is None else int(bool(is_entry_point)),
