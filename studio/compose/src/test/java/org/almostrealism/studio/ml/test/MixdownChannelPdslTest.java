@@ -24,17 +24,22 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Tests for the PDSL-defined mixdown channel pipeline ({@code mixdown_channel.pdsl}).
@@ -191,34 +196,34 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		PackedCollection outMid = new PackedCollection(totalSamples);
 		PackedCollection outHigh = new PackedCollection(totalSamples);
 
+		IntFunction<PackedCollection> lowTone = window(SIGNAL_SIZE,
+				t -> sin(t.multiply(2.0 * Math.PI * 50.0 / SAMPLE_RATE)));
+		IntFunction<PackedCollection> midTone = window(SIGNAL_SIZE,
+				t -> sin(t.multiply(2.0 * Math.PI * 1000.0 / SAMPLE_RATE)));
+		IntFunction<PackedCollection> highTone = window(SIGNAL_SIZE,
+				t -> sin(t.multiply(2.0 * Math.PI * 14000.0 / SAMPLE_RATE)));
+
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
 
 			// Low tone at 50 Hz (below HP cutoff — should be attenuated)
 			// Copy each result before the next forward() call, which reuses the output.
-			PackedCollection lowInput = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 50.0 / SAMPLE_RATE))
-					.into(lowInput.traverseEach()).evaluate();
+			PackedCollection lowInput = lowTone.apply(offset);
 			PackedCollection loOut = compiled.forward(lowInput.reshape(compiled.getInputShape()));
 			inLow.setFrom(offset, lowInput);
 			outLow.setFrom(offset, loOut);
 
 			// Mid tone at 1 kHz (in passband — should pass through near unity)
-			PackedCollection midInput = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 1000.0 / SAMPLE_RATE))
-					.into(midInput.traverseEach()).evaluate();
+			PackedCollection midInput = midTone.apply(offset);
 			PackedCollection miOut = compiled.forward(midInput.reshape(compiled.getInputShape()));
 			inMid.setFrom(offset, midInput);
 			outMid.setFrom(offset, miOut);
 
 			// High tone at 14 kHz (above LP cutoff — should be attenuated)
-			PackedCollection highInput = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 14000.0 / SAMPLE_RATE))
-					.into(highInput.traverseEach()).evaluate();
+			PackedCollection highInput = highTone.apply(offset);
 			PackedCollection hiOut = compiled.forward(highInput.reshape(compiled.getInputShape()));
 			inHigh.setFrom(offset, highInput);
 			outHigh.setFrom(offset, hiOut);
-
 		}
 
 		// Skip FIR edge effects when computing energy
@@ -249,6 +254,72 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				"1 kHz passband tone must retain most energy: "
 						+ "inEnergy=" + energyInMid + " outEnergy=" + energyOutMid,
 				energyOutMid > energyInMid * 0.5);
+	}
+
+	/**
+	 * Diagnostic counterpart of {@link #testMixdownMainFilters()}: the same workload,
+	 * run under an operation profile, with the wall-clock split between compiling the
+	 * layer, synthesising each tone buffer, running the filters, and copying results
+	 * back to the host. The profile is saved for the profile analyzer. Excluded from
+	 * the pipeline profile; run it by hand on the backend whose timing is in question.
+	 */
+	@Test(timeout = 600000)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	public void profileMainFilters() throws IOException {
+		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("mixdown-main-filters"));
+		double[] tones = { 50.0, 1000.0, 14000.0 };
+		int numPasses = SAMPLE_RATE / SIGNAL_SIZE;
+		long[] synthNanos = new long[1];
+		long[] forwardNanos = new long[1];
+		long[] copyNanos = new long[1];
+
+		try {
+			long compileStart = System.nanoTime();
+			PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+			PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
+			TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+			Model model = new Model(inputShape);
+			model.add(loader.buildLayer(program, "mixdown_main", inputShape, mainArgs()));
+			CompiledModel compiled = model.compile();
+			long compileNanos = System.nanoTime() - compileStart;
+
+			PackedCollection out = new PackedCollection(SAMPLE_RATE);
+			List<IntFunction<PackedCollection>> windows = new ArrayList<>();
+			for (double tone : tones) {
+				windows.add(window(SIGNAL_SIZE, t -> sin(t.multiply(2.0 * Math.PI * tone / SAMPLE_RATE))));
+			}
+
+			long loopStart = System.nanoTime();
+			for (int pass = 0; pass < numPasses; pass++) {
+				int offset = pass * SIGNAL_SIZE;
+
+				for (IntFunction<PackedCollection> tone : windows) {
+					long t = System.nanoTime();
+					PackedCollection input = tone.apply(offset);
+					synthNanos[0] += System.nanoTime() - t;
+
+					t = System.nanoTime();
+					PackedCollection result = compiled.forward(input.reshape(compiled.getInputShape()));
+					forwardNanos[0] += System.nanoTime() - t;
+					Assert.assertEquals("Filtered buffer size", SIGNAL_SIZE, result.getShape().getTotalSize());
+
+					t = System.nanoTime();
+					out.setFrom(offset, result);
+					copyNanos[0] += System.nanoTime() - t;
+				}
+			}
+			long loopNanos = System.nanoTime() - loopStart;
+			Assert.assertTrue("Filtered output must not be silent", energy(out, FILTER_ORDER) > 0.0);
+
+			int calls = numPasses * tones.length;
+			log("compile=" + compileNanos / 1_000_000 + "ms loop=" + loopNanos / 1_000_000 + "ms over "
+					+ calls + " calls");
+			log("perCallSynth=" + synthNanos[0] / calls / 1_000 + "us perCallForward="
+					+ forwardNanos[0] / calls / 1_000 + "us perCallCopy=" + copyNanos[0] / calls / 1_000 + "us");
+		} finally {
+			logKernelMetrics(profile);
+			profile.save("results/mixdown-main-filters.xml");
+		}
 	}
 
 	/**
@@ -287,11 +358,12 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// Both models carry a delay ring between passes, so the two are advanced together
 		// pass by pass rather than one signal being rendered before the other.
+		IntFunction<PackedCollection> tone = window(SIGNAL_SIZE,
+				t -> sin(t.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)));
+
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
-			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
-					.into(input.traverseEach()).evaluate();
+			PackedCollection input = tone.apply(offset);
 
 			mainSignal.setFrom(offset, mainCompiled.forward(input.reshape(mainCompiled.getInputShape()))
 					.range(shape(SIGNAL_SIZE)));
@@ -344,13 +416,14 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		PackedCollection mainSignal = new PackedCollection(totalSamples);
 		PackedCollection channelSignal = new PackedCollection(totalSamples);
 
+		IntFunction<PackedCollection> chord = window(SIGNAL_SIZE, t ->
+				sin(t.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
+						.add(sin(t.multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
+						.add(sin(t.multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33)));
+
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
-			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
-					.add(sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
-					.add(sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
-					.into(input.traverseEach()).evaluate();
+			PackedCollection input = chord.apply(offset);
 
 			// Each result is copied before the next forward(), which reuses the output
 			drySignal.setFrom(offset, input);

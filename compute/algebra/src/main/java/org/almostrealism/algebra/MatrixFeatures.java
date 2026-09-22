@@ -202,6 +202,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		boolean singleRow = vShape.getDimensions() == 1;
 		boolean isVectorPath = each || onlyColumns || singleRow;
 
+		// A column vector (n, 1) whose row count matches the contraction dimension is
+		// a single vector, not a batch of n one-element vectors, whichever path follows
+		if (onlyColumns && vShape.getDimensions() == 2 && vShape.length(0) == mShape.length(1)) {
+			vShape = vShape.trim();
+			vector = reshape(vShape, vector);
+			onlyColumns = false;
+		}
+
 		// If the matrix is being multiplied by a vector, or by
 		// a batch of vectors, rather than a matrix (or batch of
 		// matrices) then simple multiplication followed by a sum

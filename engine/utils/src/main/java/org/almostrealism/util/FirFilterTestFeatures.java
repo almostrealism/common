@@ -16,8 +16,11 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.function.Function;
 import java.util.function.IntFunction;
 
 
@@ -133,6 +136,38 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 */
 	default double peakOf(PackedCollection samples) {
 		return max(cp(samples).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * A fixed-length window onto a signal defined over absolute frame indices, positioned
+	 * by the offset given at render time and rendered by one compiled kernel for every
+	 * position.
+	 *
+	 * <p>The signal is built once from a frame-index producer whose start is a runtime
+	 * value ({@code integers(0, length).add(p(offset))}); each call sets the offset and
+	 * evaluates the same kernel into a fresh buffer. Writing the start as a literal
+	 * instead ({@code integers(offset, offset + length)}) bakes it into the generated
+	 * source, and because the sequence's initial value is part of the kernel's identity,
+	 * every window compiles a new kernel. A render of hundreds of passes then spends
+	 * nearly all of its time in the backend compiler rather than in the signal.</p>
+	 *
+	 * <p>Suitable as the pass function of {@link #render(int, int, IntFunction)}.</p>
+	 *
+	 * @param length the frames in each window
+	 * @param signal builds the signal from the producer of absolute frame indices
+	 * @return a function from a window's first frame to the rendered window
+	 */
+	default IntFunction<PackedCollection> window(int length,
+												 Function<CollectionProducer, CollectionProducer> signal) {
+		PackedCollection offset = new PackedCollection(1);
+		Evaluable<PackedCollection> kernel = signal.apply(integers(0, length).add(p(offset))).get();
+
+		return start -> {
+			offset.fill(start);
+			PackedCollection out = new PackedCollection(length);
+			kernel.into(out.traverseEach()).evaluate();
+			return out;
+		};
 	}
 
 	/**

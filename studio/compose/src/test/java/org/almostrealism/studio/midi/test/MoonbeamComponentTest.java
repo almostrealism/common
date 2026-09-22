@@ -30,13 +30,18 @@ import org.almostrealism.studio.midi.MoonbeamMidiGenerator;
 import org.almostrealism.ml.midi.MidiCompoundToken;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.ml.midi.MoonbeamMidi;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.Arrays;
 
 import java.util.HashMap;
@@ -71,7 +76,9 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	/**
 	 * Embed a single attribute value using FundamentalMusicEmbedding at the
 	 * real embedding dimension (320). Exercises the sinusoidal encoding,
-	 * translation bias, and linear projection.
+	 * translation bias, and linear projection, evaluated the way the generator
+	 * does it: the value is a kernel argument and the producer passes through
+	 * the process optimizer before it is compiled.
 	 */
 	@Test(timeout = 5_000)
 	public void testSingleFmeEmbed() {
@@ -81,8 +88,11 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		double base = 199999.0;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
 
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(fme.embed(cp(PackedCollection.of(42.0)))).get();
+
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = fme.embed(42).evaluate();
+		PackedCollection result = kernel.evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("FME result should not be null", result);
@@ -99,6 +109,58 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 				+ elapsed + " ms (compute: " + computeTime + " ms)");
 	}
 
+	/**
+	 * Diagnostic counterpart of {@link #testSingleCompoundEmbedding()}: one compound
+	 * embedding evaluated twice under an operation profile, so the first call (which
+	 * compiles every kernel in the producer) and the steady-state call are reported
+	 * separately, and the profile is saved for the profile analyzer. Excluded from the
+	 * pipeline profile; run it by hand on the backend whose timing is in question.
+	 */
+	@Test(timeout = 600_000)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	public void profileCompoundEmbedding() throws IOException {
+		OperationProfileNode profile =
+				initKernelMetrics(new OperationProfileNode("moonbeam-compound-embedding"));
+
+		try {
+			CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(REAL_CONFIG);
+			MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
+			Evaluable<PackedCollection> kernel = embedding.embed(token).get();
+
+			long t = System.nanoTime();
+			PackedCollection first = kernel.evaluate();
+			long firstNanos = System.nanoTime() - t;
+
+			t = System.nanoTime();
+			PackedCollection second = kernel.evaluate();
+			long secondNanos = System.nanoTime() - t;
+
+			Assert.assertEquals("Embedding output size", REAL_CONFIG.hiddenSize,
+					first.getShape().getTotalSize());
+			Assert.assertEquals("Embedding output size", REAL_CONFIG.hiddenSize,
+					second.getShape().getTotalSize());
+			log("firstEvaluate=" + firstNanos / 1_000_000 + "ms secondEvaluate="
+					+ secondNanos / 1_000_000 + "ms");
+
+			// The generator's form, for comparison with the fused literal form above
+			Evaluable<? extends PackedCollection> optimized =
+					Process.optimized(embedding.embedValues(cp(token.pack()))).get();
+			t = System.nanoTime();
+			PackedCollection optimizedFirst = optimized.evaluate();
+			long optimizedFirstNanos = System.nanoTime() - t;
+			t = System.nanoTime();
+			optimized.evaluate();
+			long optimizedSecondNanos = System.nanoTime() - t;
+			Assert.assertEquals("Embedding output size", REAL_CONFIG.hiddenSize,
+					optimizedFirst.getShape().getTotalSize());
+			log("optimizedFirstEvaluate=" + optimizedFirstNanos / 1_000_000 + "ms optimizedSecondEvaluate="
+					+ optimizedSecondNanos / 1_000_000 + "ms");
+		} finally {
+			logKernelMetrics(profile);
+			profile.save("results/moonbeam-compound-embedding.xml");
+		}
+	}
+
 	/* ------------------------------------------------------------ */
 	/*  Test 2: Single CompoundMidiEmbedding at real dim (1920)     */
 	/* ------------------------------------------------------------ */
@@ -106,7 +168,9 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	/**
 	 * Embed a single compound MIDI token at the real hidden dimension (1920).
 	 * This exercises all 6 parallel FME embeddings (5 sinusoidal + 1 lookup)
-	 * and the concatenation to produce the full hidden-size vector.
+	 * and the concatenation to produce the full hidden-size vector, evaluated
+	 * the way the generator does it: the token's values are a kernel argument
+	 * and the producer passes through the process optimizer before compilation.
 	 */
 	@Test(timeout = 10_000)
 	public void testSingleCompoundEmbedding() {
@@ -116,8 +180,11 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
 
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(embedding.embedValues(cp(token.pack()))).get();
+
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = embedding.embed(token).evaluate();
+		PackedCollection result = kernel.evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("Embedding result should not be null", result);

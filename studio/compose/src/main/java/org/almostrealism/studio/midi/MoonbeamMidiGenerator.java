@@ -17,6 +17,9 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -136,11 +139,29 @@ public class MoonbeamMidiGenerator {
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
 		PackedCollection temperature = new PackedCollection(1);
 
+		// One embedding kernel for every ordinary token: the token's attribute values are
+		// written into this collection each step and the compiled evaluable is reused,
+		// rather than compiling an embedding whose values are literals per distinct token
+		PackedCollection tokenValues = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
+		Evaluable<? extends PackedCollection> tokenEmbedding =
+				Process.optimized(embedding.embedValues(Ops.o().p(tokenValues))).get();
+
 		this.inner = new AutoregressiveModel<>(
 				model.getPosition(),
 				token -> {
 					model.setAttributePositions(token);
-					PackedCollection emb = embedding.embed(token).evaluate();
+					PackedCollection emb;
+
+					if (token.isSpecial()) {
+						emb = Process.optimized(embedding.embed(token)).get().evaluate();
+					} else {
+						try (PackedCollection packed = token.pack()) {
+							tokenValues.setFrom(0, packed);
+						}
+
+						emb = tokenEmbedding.evaluate();
+					}
+
 					input.setFrom(0, emb, 0, hiddenSize);
 				},
 				() -> model.forward(input),
