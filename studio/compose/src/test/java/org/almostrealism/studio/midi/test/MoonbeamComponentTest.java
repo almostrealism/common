@@ -201,6 +201,75 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 				+ elapsed + " ms (compute: " + computeTime + " ms)");
 	}
 
+	/**
+	 * One compiled embedding serves every token: the six attribute values are a
+	 * kernel argument, so writing a different token (with a different instrument)
+	 * into the same collection and evaluating again must reproduce the embedding
+	 * that a producer built for that token alone gives. Random weights make the
+	 * comparison meaningful, since zero weights embed every token identically.
+	 */
+	@Test(timeout = 60_000)
+	public void testCompoundEmbeddingKernelReuse() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding =
+				new CompoundMidiEmbedding(createRandomEmbeddingWeights(config), config);
+
+		PackedCollection values = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(embedding.embedValues(p(values))).get();
+
+		MidiCompoundToken[] tokens = {
+				new MidiCompoundToken(100, 50, 5, 7, 0, 80),
+				new MidiCompoundToken(30, 12, 3, 2, 9, 40)
+		};
+		PackedCollection[] reused = new PackedCollection[tokens.length];
+
+		for (int i = 0; i < tokens.length; i++) {
+			try (PackedCollection packed = tokens[i].pack()) {
+				values.setFrom(0, packed);
+			}
+
+			reused[i] = kernel.evaluate();
+			PackedCollection expected =
+					Process.optimized(embedding.embedValues(cp(tokens[i].pack()))).get().evaluate();
+
+			Assert.assertTrue("Embedding of token " + i + " is not trivial",
+					sum(cp(expected).abs()).evaluate().toDouble(0) > 0.0);
+			assertEquals("Embedding of token " + i, expected, reused[i]);
+		}
+
+		Assert.assertTrue("Distinct tokens embed differently",
+				sum(cp(reused[0]).subtract(cp(reused[1])).abs()).evaluate().toDouble(0) > 0.0);
+	}
+
+	/**
+	 * Random weights for every parameter of the compound embedding, keyed as the
+	 * checkpoint keys them.
+	 */
+	private static StateDictionary createRandomEmbeddingWeights(MoonbeamConfig config) {
+		Random rng = new Random(7);
+		Map<String, PackedCollection> weights = new HashMap<>();
+		int dim = config.embeddingDim;
+		int hidden = config.hiddenSize;
+
+		for (String prefix : new String[] {
+				"onset_embedding", "duration_embedding", "octave_embedding",
+				"pitch_embedding", "velocity_embedding"}) {
+			weights.put(prefix + ".linear.weight", createRandomCollection(rng, dim, dim));
+			weights.put(prefix + ".linear.bias", createRandomCollection(rng, dim));
+			weights.put(prefix + ".translation_bias", createRandomCollection(rng, 1));
+		}
+
+		weights.put("instrument_embedding.weight", createRandomCollection(rng, config.vocabSizes[4], dim));
+		weights.put("supplementary_embedding.weight",
+				createRandomCollection(rng, config.supplementaryVocabSize, hidden));
+		weights.put("supplementary_mlp.0.weight", createRandomCollection(rng, hidden / 2, hidden));
+		weights.put("supplementary_mlp.0.bias", createRandomCollection(rng, hidden / 2));
+		weights.put("supplementary_mlp.2.weight", createRandomCollection(rng, hidden, hidden / 2));
+		weights.put("supplementary_mlp.2.bias", createRandomCollection(rng, hidden));
+		return new StateDictionary(weights);
+	}
+
 	/* ------------------------------------------------------------ */
 	/*  Test 3: RoPE frequency computation at real headDim (160)    */
 	/* ------------------------------------------------------------ */

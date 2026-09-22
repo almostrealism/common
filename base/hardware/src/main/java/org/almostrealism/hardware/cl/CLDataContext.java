@@ -294,6 +294,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The alternate JVM heap-based memory provider for small allocations. */
 	private MemoryProvider<Memory> altRam;
 
+	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private boolean destroyed;
+
 	/** Optional delegate memory provider retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer honored. */
 	private MemoryProvider<? extends RAM> delegateMemory;
 
@@ -711,7 +714,11 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		if (altRam != null) altRam.destroy();
 		if (ctx != null) CL.clReleaseContext(ctx);
 		ctx = null;
+		destroyed = true;
 	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
 
 	/** Returns the console for logging output. */
 	@Override

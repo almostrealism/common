@@ -366,5 +366,6 @@ public class NativeDataContext extends HardwareDataContext {
 	public void destroy() {
 		// TODO  Destroy all compute contexts
 		if (!providedRam && ram != null) ram.destroy();
+		super.destroy();
 	}
 }

@@ -425,5 +425,6 @@ public class MetalDataContext extends HardwareDataContext {
 		if (altRam != null) altRam.destroy();
 		if (mainDevice != null) mainDevice.release();
 		mainDevice = null;
+		super.destroy();
 	}
 }

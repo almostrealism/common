@@ -564,6 +564,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
 		}
+		if (allocated == null) {
+			throw new IllegalStateException("Cannot allocate " + ram + " as the provider has been destroyed");
+		}
+
 
 		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {

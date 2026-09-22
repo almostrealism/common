@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
@@ -193,10 +194,11 @@ import java.util.function.Supplier;
  * );
  * }</pre>
  *
- * <p>Entries are keyed by the operation signature <em>and</em> the {@link ComputeContext},
- * because a compiled kernel dispatches through the command runner of the context it was
- * compiled under. Operations reuse a kernel only when they share both structure and
- * context; a structurally-identical operation from another context compiles its own.</p>
+ * <p>Entries are keyed by the operation signature, so structurally identical operations
+ * share one compiled kernel. A kernel dispatches through the command runner and memory
+ * provider of the context it was compiled under, so an entry whose {@link DataContext}
+ * has since been destroyed (a scoped context that has ended) is evicted on access and
+ * compiled again under the current context.</p>
  *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>
@@ -543,7 +545,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
 				};
 
-		return instructionsCache.computeIfAbsent(cacheKey,
+		Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> create =
 				() -> {
 					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 							new ScopeInstructionsManager<>(context, scope, accessListener);
@@ -553,7 +555,20 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					}
 
 					return mgr;
-				});
+				};
+
+		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
+				instructionsCache.computeIfAbsent(cacheKey, create);
+
+		// A kernel compiled under a scoped DataContext dispatches through that
+		// context's command runner and memory provider, neither of which exists
+		// once the scope ends; the signature alone cannot tell the difference
+		if (mgr.getComputeContext().getDataContext().isDestroyed()) {
+			instructionsCache.evict(cacheKey);
+			mgr = instructionsCache.computeIfAbsent(cacheKey, create);
+		}
+
+		return mgr;
 	}
 
 	/**
