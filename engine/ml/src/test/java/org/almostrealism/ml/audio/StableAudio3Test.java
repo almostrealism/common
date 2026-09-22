@@ -60,16 +60,17 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	/**
 	 * A clip of the requested duration has one row per audio channel and exactly the samples the
 	 * duration spans, and the padding mask marks the frames covering the duration plus the headroom
-	 * as valid: 15 samples need 4 of the 8 frames, and the headroom adds 2 more.
+	 * as valid: 15 samples plus 10 of headroom span 25 samples, which need 7 of the 8 frames of
+	 * four samples each.
 	 */
 	@Test(timeout = 240000)
 	public void generatesRequestedDurationWithPaddingMask() {
 		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
 		try {
 			assertEquals(8, model.getLatentLength());
-			assertEquals(6, model.validFrames(0.15));
+			assertEquals(7, model.validFrames(0.15));
 			assertEquals(4, model.validFrames(0.05));
-			assertEquals(7, model.validFrames(MAX_SECONDS));
+			assertEquals(8, model.validFrames(MAX_SECONDS));
 
 			PackedCollection audio = model.generate(7, new long[]{5, 7, 9}, 0.15).evaluate();
 			assertEquals(2, audio.getShape().getDimensions());
@@ -78,7 +79,7 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 
 			PackedCollection mask = model.getPaddingMask();
 			for (int i = 0; i < 8; i++) {
-				assertEquals("frame " + i, i < 6 ? 1.0 : 0.0, mask.toDouble(i), 0.0);
+				assertEquals("frame " + i, i < 7 ? 1.0 : 0.0, mask.toDouble(i), 0.0);
 			}
 
 			model.generate(7, new long[]{5, 7, 9}, 0.05).evaluate();
