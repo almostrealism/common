@@ -204,6 +204,16 @@ public final class AgentRunRequest {
      * {@code Workstream#permitsAgentPermissionBypass(String)} — not something
      * this layer decides.</p>
      *
+     * <p>Honoured by {@link ClaudeCodeRunner} only, and the asymmetry is in
+     * the CLIs rather than here. For Claude the flag is purely the
+     * sensitive-path bypass: an ungranted session still runs headless, it
+     * simply cannot write the reserved paths. opencode's equivalent is what
+     * makes a session unattended at all — without it every tool call waits on
+     * a prompt — so {@link OpencodeRunner} passes it unconditionally and a
+     * job dispatched there is not restricted by this grant. Narrowing that
+     * needs a per-path permission policy in the opencode config rather than a
+     * flag, and is not attempted here.</p>
+     *
      * @return {@code true} when the session may act without prompt approval
      */
     public boolean isBypassPermissionPrompts() { return bypassPermissionPrompts; }

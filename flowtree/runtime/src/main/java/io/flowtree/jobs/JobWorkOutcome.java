@@ -65,14 +65,18 @@ class JobWorkOutcome {
      * all): here the job DID produce a change and it was discarded, so the job
      * must not report success.</p>
      *
+     * <p>Publication is asked across every repository, not just the primary
+     * one. A job whose primary files were all skipped may still have committed
+     * a dependent repo, and that job did not have all its changes dropped.</p>
+     *
      * @return {@code true} when every changed file was skipped and nothing
-     *         was staged or committed
+     *         was committed anywhere
      */
     boolean allChangesDropped() {
         // A non-empty skip list is itself proof the commit handler ran.
         return !job.getSkippedFiles().isEmpty()
                 && job.getStagedFiles().isEmpty()
-                && job.getCommitHash() == null;
+                && !job.hasPublishedCommit();
     }
 
     /**
@@ -93,6 +97,13 @@ class JobWorkOutcome {
      * {@link GitManagedJob#validateChanges()} that returned false, staging
      * guardrails that passed no file, a phase that threw after the work was
      * already made. Reporting success is what keeps those paths invisible.</p>
+     *
+     * <p>A reverted tampering commit is checked first, and against the primary
+     * commit hash alone rather than
+     * {@link GitManagedJob#hasPublishedCommit()}. The revert destroyed
+     * primary-tree work, and only a primary commit from the restart replaces
+     * it; a dependent-repository commit is different work and would otherwise
+     * mask the loss.</p>
      *
      * @return the failure description, or {@code null} when nothing was orphaned
      */
@@ -125,18 +136,16 @@ class JobWorkOutcome {
         if (job.getTargetBranch() == null || job.getTargetBranch().isEmpty()) return null;
         if (!job.performsGitOperations()) return null;
         if (job.isDryRun()) return null;
-        // Asks for a commit in ANY repository: a job whose changes live in a
-        // dependent repo commits and pushes with a null primary hash.
-        if (job.hasPublishedCommit()) return null;
 
-        // Commits the agent made itself were reverted, so whatever they held
-        // is gone and the tree that replaced them is clean. Nothing below can
-        // see that, because there is nothing left to see.
-        if (job.hasRevertedAgentWork()) {
-            return "Nothing was committed or pushed, and the commits the agent made itself were"
-                    + " reverted as git tampering. Whatever they contained was destroyed and no"
-                    + " restart replaced it.";
+        String primaryCommit = job.getCommitHash();
+        boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();
+        if (job.hasRevertedAgentWork() && !primaryCommitted) {
+            return "Nothing was committed to the primary repository, and the commits the agent"
+                    + " made itself were reverted as git tampering. Whatever they contained was"
+                    + " destroyed and no restart replaced it.";
         }
+
+        if (job.hasPublishedCommit()) return null;
         if (job.hasAgentCommitted()) return null;
 
         boolean changesRemain = mayHaveUncommittedChanges();

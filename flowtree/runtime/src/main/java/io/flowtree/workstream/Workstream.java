@@ -185,23 +185,6 @@ public class Workstream {
      */
     private List<String> completionListeners;
 
-    /**
-     * Branch-name prefixes whose jobs may bypass the agent runtime's
-     * interactive permission prompts. Empty or unset means no branch may —
-     * which is the default, because the grant lets a session write the
-     * guardrails it runs under.
-     *
-     * <p>This exists so the policy is the workstream's own. Repositories have
-     * their own conventions for which branches are allowed to change their
-     * tooling — one names them {@code ci/}, another {@code infra/}, another
-     * has no such branch at all — and a platform that hard-coded any one of
-     * them would force every repository onto it. FlowTree supplies the
-     * mechanism and each workstream states the policy here.</p>
-     *
-     * @see #permitsAgentPermissionBypass(String)
-     */
-    private List<String> agentPermissionBypassBranches;
-
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
@@ -254,6 +237,23 @@ public class Workstream {
      * backstop.</p>
      */
     private boolean dispatchCapable;
+
+    /**
+     * Branch-name prefixes whose jobs may bypass the agent runtime's
+     * interactive permission prompts. Empty or unset means no branch may —
+     * which is the default, because the grant lets a session write the
+     * guardrails it runs under.
+     *
+     * <p>This exists so the policy is the workstream's own. Repositories have
+     * their own conventions for which branches are allowed to change their
+     * tooling — one names them {@code ci/}, another {@code infra/}, another
+     * has no such branch at all — and a platform that hard-coded any one of
+     * them would force every repository onto it. FlowTree supplies the
+     * mechanism and each workstream states the policy here.</p>
+     *
+     * @see #permitsAgentPermissionBypass(String)
+     */
+    private List<String> agentPermissionBypassBranches;
 
     /**
      * Workstream-level default for {@code useTmux}: when {@code true},
