@@ -13,11 +13,55 @@ moving the code that depends on it.
 
 import base64
 import binascii
+import re
 from urllib.parse import quote
 
 import github_api
 import server
 from server import mcp
+
+# GitHub renders a light/dark badge image via a <picture> element with
+# <source> variants in Copilot's PR overview review bodies. It carries no
+# information for an agent reading the body, only markup noise. The badge's
+# shape is exactly two prefers-color-scheme <source> variants plus a
+# fallback <img>, nothing else — a <picture> wrapping anything more (a
+# reviewer's screenshot, descriptive text, extra images) is real content and
+# must survive verbatim.
+_PICTURE_RE = re.compile(r"<picture>(.*?)</picture>", re.DOTALL | re.IGNORECASE)
+_SOURCE_DARK_RE = re.compile(
+    r"<source\b[^>]*media=[\"']\(prefers-color-scheme:\s*dark\)[\"'][^>]*/?>",
+    re.IGNORECASE)
+_SOURCE_LIGHT_RE = re.compile(
+    r"<source\b[^>]*media=[\"']\(prefers-color-scheme:\s*light\)[\"'][^>]*/?>",
+    re.IGNORECASE)
+_IMG_RE = re.compile(r"<img\b[^>]*/?>", re.IGNORECASE)
+_ANY_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _is_picture_badge(inner: str) -> bool:
+    """True when a <picture> element's content is exactly the light/dark
+    badge shape GitHub embeds: a dark and a light source variant plus a
+    single fallback img, with no other tags or text.
+    """
+    if not _SOURCE_DARK_RE.search(inner) or not _SOURCE_LIGHT_RE.search(inner):
+        return False
+    if _ANY_TAG_RE.sub("", inner).strip():
+        return False
+    return (len(_ANY_TAG_RE.findall(inner)) == 3
+            and len(_IMG_RE.findall(inner)) == 1)
+
+
+def _strip_picture_badges(body: str) -> str:
+    """Remove ``<picture>...</picture>`` badge markup from a review body.
+
+    Only the specific light/dark badge shape is removed (see
+    ``_is_picture_badge``); a ``<picture>`` block carrying a screenshot or
+    other meaningful content is left untouched.
+    """
+    if not isinstance(body, str):
+        return body
+    return _PICTURE_RE.sub(
+        lambda m: "" if _is_picture_badge(m.group(1)) else m.group(0), body)
 
 
 @mcp.tool()
@@ -94,8 +138,15 @@ def github_pr_review_comments(
     branch: str = "",
     org: str = "",
     repo: str = "",
+    include_resolved: bool = False,
 ) -> dict:
     """Get code review comments on a pull request.
+
+    Only comments attached to a review thread are covered here — the
+    overview text a reviewer (including GitHub Copilot) writes as the body
+    of the review itself is a separate surface; use ``github_pr_reviews``
+    for that. Issue-style conversation comments are a third surface, read
+    by ``github_pr_conversation``.
 
     Args:
         pr_number: The PR number.
@@ -105,6 +156,13 @@ def github_pr_review_comments(
             with ``repo``. Bypasses workstream resolution; scoped tokens are
             checked against this org via the workspace scope gate.
         repo: GitHub repository name. Must be passed together with ``org``.
+        include_resolved: When True, comments from resolved threads are
+            included too, each carrying an ``is_resolved`` field. Defaults
+            to False, which returns only unresolved-thread comments with no
+            ``is_resolved`` field, matching prior behaviour. A thread that
+            has been resolved (e.g. after a fix) disappears from the default
+            view even though the original finding is still on record —
+            pass ``include_resolved=True`` to see it.
 
     Returns:
         List of review comments.
@@ -165,10 +223,11 @@ def github_pr_review_comments(
         threads = threads_connection.get("nodes", [])
 
         for thread in threads:
-            if thread.get("isResolved"):
+            is_resolved = bool(thread.get("isResolved"))
+            if is_resolved and not include_resolved:
                 continue
             for c in thread.get("comments", {}).get("nodes", []):
-                all_comments.append({
+                comment = {
                     "id": c.get("databaseId"),
                     "path": c.get("path"),
                     "line": c.get("line") or c.get("originalLine"),
@@ -176,7 +235,10 @@ def github_pr_review_comments(
                     "user": (c.get("author") or {}).get("login"),
                     "created_at": c.get("createdAt"),
                     "in_reply_to_id": None,
-                })
+                }
+                if include_resolved:
+                    comment["is_resolved"] = is_resolved
+                all_comments.append(comment)
 
         page_info = threads_connection.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
@@ -188,6 +250,103 @@ def github_pr_review_comments(
     return {"ok": True, "comments": top_comments, "count": len(top_comments)}
 
 @mcp.tool()
+def github_pr_reviews(
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+    head_only: bool = False,
+) -> dict:
+    """Get the reviews submitted on a pull request, including their bodies.
+
+    A pull-request review is a distinct object from both a review-thread
+    comment (``github_pr_review_comments``) and an issue-style conversation
+    comment (``github_pr_conversation``): it is the top-level verdict a
+    reviewer submits (``APPROVED``, ``CHANGES_REQUESTED``, ``COMMENTED``),
+    and its ``body`` carries any overview text written alongside that
+    verdict. GitHub Copilot posts its per-round summary — "Changes
+    recommended" / "Needs a closer look", with "Previously missed",
+    "Resolved since last review", and "Suppressed comments" sections — only
+    here, as a review body; it is invisible to the other two tools. Unlike
+    review-thread comments, a review body has no resolved/unresolved state,
+    so it never disappears once posted.
+
+    Uses the REST ``GET /pulls/{pr}/reviews`` endpoint, paginated.
+
+    Args:
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint (used for repo resolution if needed).
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+        head_only: When True, only reviews whose ``commit_id`` matches the
+            PR's current head commit are returned (the same PR lookup
+            ``github_pr_check_status`` uses to find the head SHA). Defaults
+            to False, which returns every review ever submitted, including
+            ones left on since-superseded commits.
+
+    Returns:
+        dict with ok=True, a ``reviews`` list (newest first, each with
+        id, user, state, submitted_at, commit_id, and body — verbatim
+        except for stripped ``<picture>`` badge markup), and count; or
+        ok=False with error details.
+    """
+    server._require_scope("github")
+    if org and repo:
+        server._require_org_in_scope(org)
+    owner, repo, _, err = server._resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    server._audit("github_pr_reviews", pr_number=pr_number, head_only=head_only)
+
+    head_sha = ""
+    if head_only:
+        pr_data = server._github_request("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}")
+        if isinstance(pr_data, dict) and pr_data.get("ok") is False:
+            return pr_data
+        if not isinstance(pr_data, dict):
+            return {"ok": False, "error": "Unexpected response fetching PR"}
+        head_sha = pr_data.get("head", {}).get("sha", "")
+
+    all_reviews = []
+    page = 1
+    while True:
+        result = server._github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100&page={page}",
+        )
+        if isinstance(result, dict) and result.get("ok") is False:
+            return result
+        if not isinstance(result, list):
+            return {"ok": False, "error": "Unexpected response listing PR reviews"}
+        all_reviews.extend(result)
+        if len(result) < 100:
+            break
+        page += 1
+
+    reviews = []
+    for r in all_reviews:
+        commit_id = r.get("commit_id")
+        if head_only and commit_id != head_sha:
+            continue
+        reviews.append({
+            "id": r.get("id"),
+            "user": (r.get("user") or {}).get("login"),
+            "state": r.get("state"),
+            "submitted_at": r.get("submitted_at"),
+            "commit_id": commit_id,
+            "body": _strip_picture_badges(r.get("body", "")),
+        })
+
+    reviews.sort(key=lambda r: r.get("submitted_at") or "", reverse=True)
+    return {"ok": True, "reviews": reviews, "count": len(reviews)}
+
+@mcp.tool()
 def github_pr_conversation(
     pr_number: int,
     workstream_id: str = "",
@@ -196,6 +355,12 @@ def github_pr_conversation(
     repo: str = "",
 ) -> dict:
     """Get the conversation (issue comments) on a pull request.
+
+    This is the third of three distinct comment surfaces on a PR: review
+    bodies (``github_pr_reviews``), review-thread comments
+    (``github_pr_review_comments``), and this one — the issue-style
+    conversation thread, where a reviewer's top-level "LGTM" or a bot's
+    plain-text status update lands, but never a Copilot review overview.
 
     Args:
         pr_number: The PR number.

@@ -774,8 +774,15 @@ public class InstructionPromptBuilder {
         // GitHub and memory tools — available via ar-manager
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
             sb.append("You can read and respond to GitHub PR review comments using ");
-            sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
-            sb.append("Use these to check for code review feedback and address it.\n\n");
+            sb.append("github_pr_find, github_pr_review_comments, github_pr_reviews, ");
+            sb.append("github_pr_conversation, and github_pr_reply. ");
+            sb.append("Use these to check for code review feedback and address it. ");
+            sb.append("Pass include_resolved=true to github_pr_review_comments to also see ");
+            sb.append("comments on threads that have already been marked resolved -- the default ");
+            sb.append("view only returns unresolved threads. Use github_pr_reviews to read the ");
+            sb.append("top-level review verdicts and their bodies (a reviewer's overview text, or ");
+            sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
+            sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
 
             sb.append("## When to Post PR Replies\n");
             sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
@@ -789,11 +796,17 @@ public class InstructionPromptBuilder {
         // Test integrity policy -only when protectTestFiles is enabled
         if (protectTestFiles) {
             sb.append("## Test Integrity Policy\n");
-            sb.append("You MUST NOT modify test files that exist on the base branch (");
+            sb.append("You MUST NOT modify or remove a test method that exists on the base ");
+            sb.append("branch (");
             sb.append(baseBranch != null ? baseBranch : "master");
-            sb.append("). Fix the production code instead. ");
-            sb.append("Tests you introduced on this branch may be modified. ");
-            sb.append("The commit harness will reject changes to protected test files.\n\n");
+            sb.append("), even by only adding lines to it — an inserted early return, a new ");
+            sb.append("assumption, an @Ignore/@TestDepth-style annotation, or a changed timeout ");
+            sb.append("all count as a modification. Fix the production code instead. ");
+            sb.append("You MAY add new test methods to an existing test file, edit test methods ");
+            sb.append("you introduced on this branch, and freely edit fixtures, helpers, and ");
+            sb.append("fields in any test file. The commit harness enforces this at test-method ");
+            sb.append("granularity and will reject a change that touches an existing base-branch ");
+            sb.append("test method.\n\n");
         }
 
         // Git commit instructions -conditional on git management being active

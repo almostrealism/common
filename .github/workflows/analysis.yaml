@@ -837,6 +837,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     outputs:
+      # audit_error=true when deception-audit.sh could not resolve the
+      # merge-base (or its file listing) and never ran the audit --
+      # distinct from has_findings=false, which means the audit ran and
+      # found nothing. Surfaced here so check-quality-gates.sh (via
+      # DECEPTION_AUDIT_ERROR) can tell the two apart instead of a
+      # merge-base failure silently reading as "no deception findings".
+      audit_error: ${{ steps.audit.outputs.audit_error }}
       has_findings: ${{ steps.audit.outputs.has_findings }}
       finding_count: ${{ steps.audit.outputs.finding_count }}
     steps:
@@ -867,7 +874,11 @@ jobs:
         run: |
           echo "## Deception Audit" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
+          if [ "${{ steps.audit.outputs.audit_error }}" = "true" ]; then
+            echo "**ERROR: the audit could not resolve the merge-base (or its file listing) and did not run.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "This is not a clean result. A human should investigate the job log." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
@@ -1062,32 +1073,55 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as the early validation
-  # jobs pass, rather than waiting for auto-resolve at the end of the run.
+  # Registers a workstream for this branch as soon as `build` succeeds,
+  # rather than waiting for auto-resolve at the end of the run.
   #
   # auto-resolve already creates a workstream on demand
-  # (createWorkstreamIfMissing in submit-agent-job.sh), but it cannot run
-  # until every test job has reported, and the self-hosted test lanes are
-  # long. That leaves a branch with no workstream for the whole wait — so no
-  # workstream ID to submit other improvement jobs against, and nothing for
-  # another session to address memory to. Registering here closes that gap.
+  # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
+  # `analysis`, which waits on `build`, `test`, `test-flowtree`, `test-media`,
+  # `test-mac` and `test-media-mac` (any may be skipped) — and those lanes are
+  # long. (The ROCm lane, `test-cl` and `test-media-cl`, is also self-hosted
+  # and long, but uploads no coverage, so `analysis` does not wait on it — see
+  # .github/CLAUDE.md.) That leaves a branch with no workstream for the whole
+  # wait — so no workstream ID to submit other improvement jobs against, and
+  # nothing for another session to address memory to. Registering here
+  # closes that gap.
   #
-  # The two outcomes are both wanted. If a validation job fails, this is
-  # skipped and auto-resolve fires almost immediately, registering by its
-  # normal path. If they all pass, the tests are about to run for a long
-  # time and the workstream exists from the start.
+  # This job is deliberately independent of the validation gates
+  # (code-policy-check, test-timeout-check, duplicate-code-check,
+  # test-integrity-check, checkstyle). Four of those five DO gate the lanes
+  # `analysis` waits on: `test`, `test-flowtree`, `test-media`, `test-mac`
+  # and `test-media-mac` (and, for that matter, `test-cl`/`test-media-cl`)
+  # all list code-policy-check, test-timeout-check, duplicate-code-check and
+  # test-integrity-check directly in `needs` — see .github/CLAUDE.md. So a
+  # failure in any of those four already skip-fails the lanes `analysis`
+  # waits on just as fast as it would skip-fail this job if it kept the same
+  # `needs`; decoupling from them buys nothing on that failure path. What it
+  # does buy is not waiting on them when they are going to pass: those four
+  # checks run in parallel with `build` and can still take real time to
+  # finish, and this job has no functional dependency on their outcome, so
+  # there is no reason to sit idle until they report before registering.
   #
-  # checkstyle is one of the gates for that reason and no other: it is not a
-  # prerequisite of the test jobs, but it fails fast and hard, so a branch
-  # that trips it reaches auto-resolve without a long wait — exactly the
-  # case this job exists to avoid duplicating.
+  # checkstyle is the actual outlier: it is NOT a prerequisite of `test`,
+  # `test-flowtree`, `test-media`, `test-mac` or `test-media-mac` — unlike
+  # the four checks above, none of the test-matrix jobs list it in `needs`.
+  # A branch that only trips checkstyle therefore runs the full matrix to
+  # completion while register-workstream — back when it still depended on
+  # checkstyle as a "fast-fail fallback" — sat skipped the whole time
+  # (observed: 90+ minutes on PR #500, still waiting on queued test-cl lanes
+  # with no workstream to submit against). Registering unconditionally once
+  # `build` succeeds removes that gap regardless of which gate, if any,
+  # eventually fails.
   #
-  # Gating on those jobs also handles the docs-only case with no extra
-  # condition: they all declare `needs: build`, and `build` is gated on
-  # code_changed, so a docs-only PR skips them and therefore skips this.
-  # The code_changed check below is what expresses "some test job will
-  # actually run" — test-flowtree gates on code_changed alone, so whenever
-  # it is true at least one test job follows.
+  # Running both this job and auto-resolve's own registration is harmless:
+  # registration is idempotent on the controller (an existing workstream is
+  # returned with `existing: true`), so there is nothing to avoid by
+  # narrowing this job's `needs`.
+  #
+  # The code_changed check handles the docs-only case: `build` itself is
+  # gated on code_changed, so a docs-only PR skips it and therefore skips
+  # this job too. The explicit check documents that dependency rather than
+  # relying on it silently.
   #
   # Deliberately NOT declaring `environment:`. A job with an environment in
   # a pull_request run attaches a GitHub Deployment to the PR head, and a
@@ -1097,17 +1131,17 @@ jobs:
   #
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
-  # below reports a notice or warning and exits 0.
+  # below reports a notice or warning and exits 0. "Fetch base branch"
+  # wraps its `git fetch` so a transient network error is reported via
+  # ::warning:: and `failed=true` rather than failing the step; "Verify
+  # registration script integrity" treats that flag as unverifiable and
+  # skips registration (fail closed) instead of falling through to the
+  # "script is new on master" trust-as-is branch.
   register-workstream:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
+    needs: [changes, build]
     if: >-
       github.ref != 'refs/heads/master' &&
       needs.build.result == 'success' &&
-      needs.code-policy-check.result == 'success' &&
-      needs.test-timeout-check.result == 'success' &&
-      needs.duplicate-code-check.result == 'success' &&
-      needs.test-integrity-check.result == 'success' &&
-      needs.checkstyle.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -1115,6 +1149,16 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        id: fetch_base
+        run: |
+          if ! git fetch origin master:refs/remotes/origin/master --no-tags; then
+            echo "::warning::failed to fetch origin/master — the script-integrity check below cannot verify tools/ci/register-workstream.sh against the trusted copy and will fail closed."
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Determine branch context
         id: ctx
@@ -1127,7 +1171,60 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
+      # This job no longer waits on test-integrity-check, so nothing else in
+      # the pipeline has verified by this point that tools/ci/register-workstream.sh
+      # is the trusted copy before it runs with FLOWTREE_CF_ACCESS_CLIENT_SECRET in
+      # its environment. The checkout above is the PR's own tree, so a branch that
+      # modified the script would have that modified copy executed with the secret
+      # attached — the script is the thing being asked to run, not just code it
+      # happens to sit next to. Refuse to run a script that differs from the trusted
+      # copy on origin/master, with the same ci/... carve-out the
+      # "Check for enforcement infrastructure tampering" step of
+      # test-integrity-check (below) uses for branches that declare the
+      # pipeline itself as their subject.
+      - name: Verify registration script integrity
+        id: script_integrity
+        env:
+          # Passed via env, not interpolated into the script body: the
+          # branch name is attacker-controlled (github.head_ref on a
+          # pull_request run) and git refs permit shell metacharacters
+          # (backticks, `$()`, `;`, quotes). Template-substituting it
+          # directly into `run:` would let a crafted branch name inject
+          # commands into this step — which runs, in the same job and
+          # workspace, immediately before the step that executes
+          # tools/ci/register-workstream.sh with the registration secret
+          # attached. That would defeat the very check this step exists
+          # to perform.
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          # Passed via env for the same reason as BRANCH: the value is an
+          # output of an earlier step and must not be interpolated as a
+          # GitHub Actions expression into the shell script body.
+          FETCH_FAILED: ${{ steps.fetch_base.outputs.failed }}
+        run: |
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          if [ "$FETCH_FAILED" = "true" ]; then
+            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A script that does not exist on origin/master yet is new, not modified —
+          # there is no trusted copy to compare against, so trust the checkout as-is.
+          if ! git cat-file -e origin/master:tools/ci/register-workstream.sh 2>/dev/null; then
+            exit 0
+          fi
+
+          if git diff --name-only origin/master...HEAD -- tools/ci/register-workstream.sh | grep -q .; then
+            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Register workstream
+        if: steps.script_integrity.outputs.skip != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
@@ -1423,13 +1520,21 @@ jobs:
   # Extracted from `build` so that slow flowtree tests do not block the
   # rest of the pipeline.
   test-flowtree:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Gated on python-tests success-or-skipped: the flowtree runtime drives the Python
+    # tooling (ar-manager, the fleet scripts, the CI helpers), so when the Python suite ran
+    # and failed there is nothing sound for this job to prove, only runner time to spend.
+    # python-tests is skipped only by its own path gate (no .py change, off master), never
+    # by an upstream failure, so its `skipped` is unambiguous and tolerated. `!cancelled()`
+    # is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.python-tests.result == 'success' || needs.python-tests.result == 'skipped') &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -1458,6 +1563,20 @@ jobs:
            -pl flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_TEST_PROFILE=pipeline
+
+      - name: Upload Surefire Reports
+        # Without this, a test-flowtree failure has no parseable surefire XML for
+        # auto-resolve to read, and falls through to a generic/no-op resolution
+        # path instead of the specific test-failure prompt. See the "surefire-flowtree"
+        # entry in auto-resolve's "Filter to resolvable surefire reports" step.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-flowtree
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Collect Coverage Data
         if: always()
@@ -1933,7 +2052,7 @@ jobs:
           if-no-files-found: ignore
 
   test-cl:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
@@ -1946,12 +2065,27 @@ jobs:
     # integrated GPU, whose FP64 rate is poor enough that raising the lane to FP64 would cost
     # more than it is worth.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
-    # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
-    # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
-    # now an independent third lane, serialised internally as test-cl -> test-media-cl because
-    # the ROCm host has a single GPU. Gates on the validation checks directly.
-    # `!cancelled()` is retained for consistency with the other lane stages — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, and is serialised internally
+    # as test-cl -> test-media-cl because the ROCm host has a single GPU. Gates on the
+    # validation checks directly.
+    #
+    # It also gates on BOTH stages of BOTH other lanes — the CPU lane (test and test-media)
+    # and the macOS GPU lane (test-mac and test-media-mac) — with success-or-skipped. This is
+    # not GPU serialisation — the fleets are separate machines — it is admission control for
+    # a small fleet: the CL lane is sixteen matrix jobs on one host, the most expensive thing
+    # a pipeline schedules, and it is "Linux plus an accelerator other than Metal": a branch
+    # that cannot pass the Linux CPU suites, or cannot pass the Metal suites, will not pass
+    # the OpenCL duplicates of them either. Running the CL lane only once both lanes are
+    # green spends the ROCm runners on branches that have already cleared the equivalent
+    # tests, and leaves them free for the pipelines that can actually use a green CL result.
+    # The cost is that a healthy pipeline's CL lane starts after the slower of the two lanes
+    # finishes rather than alongside them. The CPU-lane gate was added after a run in which
+    # the mac lane passed, the linux lane failed, and the CL lane still burned its sixteen
+    # jobs on a branch that could not have gone green.
+    #
+    # A stage skipped by its own layer gate is tolerated; a failure anywhere in either lane
+    # skips this stage and, through it, test-media-cl (fail-chain). `!cancelled()` is
+    # required for that tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -1959,6 +2093,10 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
@@ -2179,17 +2317,24 @@ jobs:
           if-no-files-found: ignore
 
   test-media-cl:
-    needs: [changes, build, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, second (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
     # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
     # GPU-eligible work routes through CL.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm). The former gates on test-mac/test-media-mac
-    # serialised the macOS GPUs and no longer apply; the gate on test-cl remains, because the
-    # ROCm host has a single GPU and the two CL stages must not contend for it. test-cl is
-    # gated success-or-skipped, so a failure there skips this stage (fail-chain) while a stage
-    # skipped by its own layer gate is tolerated. Gates on the validation checks directly.
-    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm). Gates on test-cl because the ROCm host has a
+    # single GPU and the two CL stages must not contend for it; test-cl in turn gates on the
+    # whole CPU lane and the whole macOS GPU lane (see there), so this stage runs only once
+    # every Linux suite, every Metal suite and the OpenCL compute suite are green.
+    #
+    # It gates on those upstream lanes DIRECTLY, not only on test-cl's result. test-cl is
+    # skipped for two different reasons — its own layer gate, or an upstream failure — and
+    # its `skipped` result cannot tell them apart. Gating on test-cl alone therefore let this
+    # stage run after a Linux suite had failed (test-cl skipped, this job saw 'skipped' and
+    # tolerated it). Listing the upstream lanes here, each success-or-skipped exactly as
+    # test-cl lists them, makes an upstream failure skip this stage too, while a stage
+    # skipped by its own layer gate is still tolerated. `!cancelled()` is required for that
+    # tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -2197,6 +2342,10 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.test-cl.result == 'success' || needs.test-cl.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
@@ -2542,6 +2691,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
@@ -2584,16 +2734,19 @@ jobs:
       - name: Filter to resolvable surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # Keep artifacts from the linux test jobs and the Metal mac jobs:
-          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media,
-          #   surefire-mac-group-*, surefire-media-mac-group-*
+          # Keep artifacts from every required test job (the set `analysis.needs`
+          # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
+          # which fails a new test lane until it is added here):
+          #   surefire-utils-group-*, surefire-ml-group-* (test),
+          #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
+          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac)
           # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
           # so CL results are never parsed here — CL remains the only ignored case.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media|surefire-mac-group-*|surefire-media-mac-group-*)
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
@@ -2640,9 +2793,15 @@ jobs:
           MEDIA_RESULT="${{ needs.test-media.result }}"
           MAC_RESULT="${{ needs.test-mac.result }}"
           MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
-          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT}"
+          TEST_FLOWTREE_RESULT="${{ needs.test-flowtree.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT}"
 
-          # Check for genuine failures (job ran but failed without surefire XML)
+          # Check for genuine failures (job ran but failed without surefire XML).
+          # Every job in `analysis.needs` other than `build` (the required
+          # test-execution jobs; see tools/tests/test_auto_resolve_test_job_coverage.py)
+          # must be checked here: this is the invariant that keeps a required job's
+          # "failure" result from ever falling through to the quality-gate or
+          # general-review paths, which report that all tests passed.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
@@ -2654,6 +2813,10 @@ jobs:
           if [ "$MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$TEST_FLOWTREE_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-flowtree job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
@@ -2813,6 +2976,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
@@ -2842,6 +3006,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
@@ -2861,6 +3026,7 @@ jobs:
           TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
@@ -2890,6 +3056,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
@@ -2915,6 +3082,7 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
@@ -2939,6 +3107,13 @@ jobs:
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          # This is the all-checks-green path: PR #492 reached CI because a
+          # job here ran without this flag, added new test methods to an
+          # existing base-branch file, and one of them was broken. Test-file
+          # protection now permits branch-introduced test methods (see
+          # flowtree/runtime/docs/file-staging.md), so there is no longer a
+          # tradeoff between protection and adding tests here.
+          PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -3115,7 +3290,7 @@ jobs:
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deception-audit | ${{ needs.deception-audit.result }} (audit_error=${{ needs.deception-audit.outputs.audit_error }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"

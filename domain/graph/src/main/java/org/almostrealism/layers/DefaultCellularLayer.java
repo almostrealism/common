@@ -202,6 +202,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 
+	@Override
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
 	/**

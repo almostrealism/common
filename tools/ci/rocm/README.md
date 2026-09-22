@@ -283,6 +283,7 @@ Configuration is split by what it governs:
 | `RUNNER_PREFIX` | `amd-halo` | Runners register as `<prefix>-1`, `<prefix>-2`, … |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `ROCM_OPENCL_LIB` | `/opt/rocm/lib/opencl/libamdocl64.so` | Absolute path baked into the ICD at build time |
+| `RUNNER_VERSION` | *(resolved from the GitHub API at build time)* | GitHub Actions agent release to bake into the image; pin to reproduce a specific build |
 
 Set in `ar-ci-cl-runner@.container` rather than `.env`, because systemd unit
 files do not interpolate environment variables into these fields. The limits are
@@ -540,23 +541,51 @@ namespace the device shows as `nobody:nogroup` whenever the host owner falls
 outside the subuid map, so a readability test reports failure even where access
 works. Check group membership, not readability.
 
-### "Runner update in progress ... Downloading <version> runner" on every job
+### Jobs stay "in progress" on GitHub for hours after the tests finished
 
-The image's agent is older than the release GitHub currently requires, so the
-agent self-updates before accepting work. These runners are ephemeral, so the
-container is discarded when the job ends and the update goes with it — meaning
-*every* job pays the download. A sixteen-group lane does it sixteen times, and
-it shows up as request timeouts against `broker.actions.githubusercontent.com`
-under load.
+The job log on GitHub ends normally — every step green, "Post job cleanup",
+"Cleaning up orphan processes" — and the runner journal says
+`Job test-media-cl (6) completed with result: Succeeded`, yet GitHub shows the
+job running until someone cancels it or the six-hour limit kills it. Sibling
+jobs may show no log at all (HTTP 404), having been assigned to a registration
+that no longer had a process behind it.
 
-Rebuild; the image resolves the current release at build time:
+Cause, verified 2026-09-18: an image whose agent was one release behind. The
+agent self-updated on every job (ephemeral container, update discarded with it)
+and applied the update *at the moment the result was reported*: the listener
+exited to relaunch, the relaunched listener found its ephemeral registration
+already deleted and exited again, and the completion was lost between GitHub's
+broker and its job store (upstream: actions/runner#4309). In the journal the
+signature is, on every job:
+
+```
+Running job: test-media-cl (6)
+Runner update in progress, do not shutdown runner.
+...
+Job test-media-cl (6) completed with result: Succeeded
+Generate and execute update script.
+Runner listener exit ...
+```
+
+Two things now prevent it, and both must stay:
+
+1. The entrypoint registers with `--disableupdate`, so the agent never patches
+   itself mid-lifecycle. Agent freshness comes only from rebuilding the image.
+2. `install-runner.sh` resolves the current agent release itself and passes it
+   as a build argument. The Dockerfile's own lookup was defeated by podman's
+   layer cache — the `RUN` step's inputs never changed, so a rebuild replayed
+   the old layer and an image "rebuilt" on 2026-09-08 still carried an agent
+   two weeks stale. Set `RUNNER_VERSION` in `.env` to pin one deliberately.
+
+Rebuild whenever GitHub ships a new agent release:
 
 ```bash
 ./install-runner.sh
 ```
 
-Nothing checks for this automatically, so rebuild periodically. The symptom is
-visible in the journal well before it starts costing failures.
+Nothing checks for a new release automatically. GitHub refuses work to agents
+that fall too far behind, so a rebuild every few weeks is part of operating the
+fleet.
 
 ### More runners are registered than `--runners` asked for
 

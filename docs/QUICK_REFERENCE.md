@@ -301,9 +301,11 @@ to read every tensor into a freshly allocated `PackedCollection` at load time
 ```java
 // In AttentionFeatures
 attention(
-    headCount, kvHeadCount, headSize,
-    wq, wk, wv, wo,           // Projection weights
-    qkNormQ, qkNormK,         // Optional QK-Norm (null if unused)
+    headCount, kvHeadCount,   // Query heads, KV heads (GQA when kvHeadCount < headCount)
+    rmsAttWeight,             // Pre-attention RMSNorm weights
+    wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
+    bk, bv, bq,               // Optional bias terms (null if unused)
+    qkNormQ, qkNormK,         // Optional QK-Norm weights (null if unused)
     freqCis,                  // RoPE frequencies
     position,                 // Position producer
     requirements              // GPU/CPU

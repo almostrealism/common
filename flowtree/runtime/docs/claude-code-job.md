@@ -231,7 +231,7 @@ This phase is handled entirely by `GitManagedJob.run()` before `doWork()` is cal
 
 1. **Repository resolution and cloning** -- If `repoUrl` is set but no working directory exists, the repo is cloned into a resolved workspace path. The resolution follows a priority chain: if `defaultWorkspacePath` is set, it is used directly; otherwise, if `/workspace/project` exists (typical in container environments), it is used; as a final fallback, a directory is created under `/tmp/flowtree-workspaces/` using the repository name extracted from the URL. The clone uses `git clone <repoUrl> <path>` and is logged with the destination path for operator visibility.
 
-2. **Uncommitted change detection** -- The working directory is checked for uncommitted changes (excluding ignored patterns like `claude-output/**`, `.claude/**`, `commit.txt`). If found, they are discarded with `git checkout .` and `git clean -fd`, since agent workers should never have manual edits.
+2. **Uncommitted change detection** -- The working directory is checked for uncommitted changes (excluding ignored patterns like `claude-output/**`, `.claude/projects/**`, `.claude/*.local.json`, `.claude/scheduled_tasks.lock`, `commit.txt`; project-shared `.claude/hooks/**`, `.claude/agents/**`, and `.claude/commands/**` are NOT excluded — see [file-staging.md](file-staging.md#default-exclusion-patterns)). If found, they are discarded with `git checkout .` and `git clean -fd`, since agent workers should never have manual edits.
 
 3. **Fetch from origin** -- `git fetch origin` brings remote refs up to date.
 
@@ -326,7 +326,7 @@ Commit messages must not attribute authorship of the work: no `Co-Authored-By` (
 
 ### Validation: detect-test-hiding.sh
 
-When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
+When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip, so an unrelated change master made to a test file after the branch forked is never misattributed to the agent) for changes that might "hide" test failures, such as:
 
 - Removing or commenting out existing test methods
 - Changing assertions to make failing tests pass trivially
@@ -384,7 +384,7 @@ The file staging process applies multiple layers of filtering to prevent uninten
 
 **Excluded Patterns** -- A comprehensive set of glob patterns covering secrets (`.env`, `*.pem`, `*.key`), build outputs (`target/**`, `build/**`), IDE files (`.idea/**`, `.vscode/**`), binary files (`*.exe`, `*.jar`, `*.png`), databases (`*.db`, `*.sqlite`), logs (`*.log`), AR-specific outputs (`Extensions/**`, `*.cl`, `*.metal`), and agent outputs (`claude-output/**`, `commit.txt`, `.claude/**`).
 
-**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, or `.github/actions/**` are checked against the base branch. If the file exists on `origin/<baseBranch>`, it is blocked from staging. Files that are new to the branch (not present on the base) are allowed. This check uses `git cat-file -e` for existence testing and fails safe (blocks on error).
+**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, or `.github/actions/**` are checked against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip). A file absent at the merge-base is a branch-new file and is allowed through in full. For `.github/workflows/**`, `.github/actions/**`, and any non-`.java` file, protection is whole-file: existing at the merge-base blocks it outright. For a `.java` file it is test-method-level (`TestMethodProtection`, which shells out to the shared `tools/ci/agent-protection/test-method-lines.awk`): the file is blocked only if an existing `@Test` method's content changed (even by addition, e.g. an inserted early return) or was removed; new test methods, and edits to fixtures, helpers, fields, or methods the branch itself introduced, are all allowed. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection) for the full algorithm. Every existence/content check fails safe (blocks on error).
 
 **File Size Limit** -- Files larger than `maxFileSizeBytes` (default: 1MB) are skipped. This prevents accidentally committing large generated files or data dumps.
 
@@ -398,13 +398,21 @@ The `InstructionPromptBuilder` class extracts the prompt-assembly logic from `Cl
 
 ### Section Assembly Order
 
-All setters support chaining. The `build()` method assembles sections in this fixed order. The first three sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all three are emitted in order.
+All setters support chaining. The `build()` method assembles sections in this fixed order. The first six sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all are emitted in order.
 
 0a. **Git Tampering Violation Warning** -- Present when `gitTamperingViolation` is set. Heading: `## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!`. Explains that the previous session was terminated and its changes destroyed because the agent ran a forbidden git command (commit, checkout, switch, branch, merge, rebase, reset, stash). Lists the exact rules and warns that another violation will result in another forced reset.
 
-0b. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+0b. **Binary File Litter Warning** -- Present when `invalidFilesViolation` is set. Heading: `## !! SESSION RESTARTED -- BINARY FILE LITTER !!`. Explains that the previous session was blocked because it left `.bin` files (see `InvalidFileDetector`) in the working tree, lists exactly which files must be deleted, and warns that they poison the repository whether or not they were staged or committed. A path prefixed with a repository directory name identifies litter in a dependent repository checked out beside the primary one.
 
-0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+0c. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+
+0d. **Conversation Catch-Up** -- Present when `conversationCatchUp` is non-empty. Heading: `## !! SESSION RESTARTED -- MESSAGES ARRIVED WHILE YOU WERE DOWN !!`. Rendered by `ConversationCatchUp#render()` from the workstream mailbox: quotes every message that arrived after the job's own last message, oldest first, and tells the relaunched session to act on the newest instruction rather than redo preparatory work it was told to skip.
+
+**Message deduplication.** `WorkstreamMailbox.appendIfNew(text, sender, jobId, activity, messageId)` atomically checks the mailbox for a message carrying the same caller-supplied `messageId` and appends only if none is found, returning a `Dedupe(message, appended)` record. `recent(messageId)` matches only within `DEDUPE_WINDOW_MILLIS` (15 minutes) of the earlier message's timestamp, so a sender's prompt retry after a timeout is treated as the same message, while a repeat sent long after is a new one. `MessageEndpointHandler` uses this so a client that retries a timed-out POST does not duplicate its message in the mailbox.
+
+0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+
+0f. **Falsification Refutation Warning** -- Present when `falsificationFindings` is non-empty. Heading: `## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM DID NOT PASS FALSIFICATION !!`. Used when the falsification phase bounced the job back to primary because a load-bearing behavioural claim the prior attempt relied on was not confirmed by the evidence captured during that attempt. Includes the claim, the dependent code, and the captured evidence.
 
 1. **Opening paragraph** -- Always present. Establishes that the agent is autonomous with no TTY and no interactive session.
 
@@ -418,7 +426,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 6. **GitHub PR Instructions** -- Present when `gitHubMcpEnabled` is true (in the builder) or always present (in `ClaudeCodeJob`'s inline version, since the ar-manager allowlist always grants the GitHub tools). Lists the available GitHub MCP tools: `github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`, plus the ar-manager additions (`github_list_open_prs`, `github_create_pr`, `github_request_copilot_review`, `github_read_file`, `github_pr_check_status`).
 
-7. **Test Integrity Policy** -- Present only when `protectTestFiles` is true. Tells the agent not to modify test files that exist on the base branch and to fix production code instead. Notes that tests introduced on the current branch may be modified, and that the commit harness will reject changes to protected test files.
+7. **Test Integrity Policy** -- Present only when `protectTestFiles` is true. Tells the agent not to modify a test method that exists on the base branch and to fix production code instead, and that the commit harness will reject such a change even when the diff only adds lines (an inserted early return, a new `@Ignore`/`@TestDepth`-style annotation). Notes that new test methods, tests introduced on the current branch, and fixtures/helpers/fields may be modified freely.
 
 8. **Git Commit Instructions** -- Always present, but with two variants:
    - When `targetBranch` is set: Tells the agent not to make git commits and that the harness will commit. If the agent wants to control the commit message, it should write to `commit.txt`.
@@ -479,7 +487,11 @@ post-completion command that tries to violate it anyway.
 | `setTaskId(String)` | `String` | Non-null enables section 14. |
 | `setPlanningDocument(String)` | `String` | Non-null/non-empty enables section 15. |
 | `setGitTamperingViolation(String)` | `String` | Non-null/non-empty enables section 0a. |
-| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0b. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
+| `setInvalidFilesViolation(String)` | `String` | Non-null/non-empty enables section 0b. Comma-separated list of `.bin` litter paths from `InvalidFileDetector`. |
+| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0c. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
+| `setConversationCatchUp(String)` | `String` | Non-null/non-empty enables section 0d. Rendered by `ConversationCatchUp#render()`. |
+| `setCorrectionSession(boolean)` | `boolean` | `true` suppresses section 0e (enforcement retry warning) and the outer `enforce_changes` pressure, since a rule-specific correction prompt may legitimately accept "no changes needed". |
+| `setFalsificationFindings(String)` | `String` | Non-null/non-empty enables section 0f. |
 
 ### Relationship Between Builder and Inline Method
 

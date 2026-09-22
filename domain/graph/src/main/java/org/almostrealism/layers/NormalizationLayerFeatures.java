@@ -607,24 +607,35 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 	/**
 	 * RMS (Root Mean Square) normalization layer with configurable epsilon.
 	 *
+	 * <p>The statistic is taken over the last axis of {@code weights}: every consecutive run of
+	 * that many input features is one vector, normalized by its own root mean square. The scale
+	 * (and bias) is then applied over the full extent of the weights. With 1-D weights of
+	 * {@code n} elements this is the usual RMSNorm of each {@code n}-feature vector. With
+	 * {@code [heads, headSize]} weights, each head's {@code headSize} slice of the input is
+	 * normalized separately while every head keeps its own scale — the per-head query/key
+	 * normalization of Qwen3-style attention.</p>
+	 *
 	 * @param shape Input/output shape
-	 * @param weights Normalization weights
-	 * @param biases Optional biases (can be null)
+	 * @param weights Normalization weights; the last axis is the normalized vector length
+	 * @param biases Optional biases (can be null), with the same number of elements as the weights
 	 * @param epsilon Small constant for numerical stability (e.g., 1e-5 or 1e-6)
 	 * @param requirements Compute requirements
 	 * @return RMSNorm layer
+	 * @throws IllegalArgumentException if the biases do not have as many elements as the weights
 	 */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  PackedCollection biases,
 								  double epsilon,
 								  ComputeRequirement... requirements) {
-		if (weights.getShape().getDimensions() != 1 ||
-				(biases != null && biases.getShape().getDimensions() != 1)) {
-			throw new IllegalArgumentException();
-		}
+		TraversalPolicy weightShape = weights.getShape();
+		int extent = weightShape.getTotalSize();
+		int size = weightShape.length(weightShape.getDimensions() - 1);
 
-		int size = weights.getShape().getTotalSize();
+		if (biases != null && biases.getShape().getTotalSize() != extent) {
+			throw new IllegalArgumentException("RMSNorm biases " + biases.getShape()
+					+ " do not match weights " + weightShape);
+		}
 
 		// Every vector of `size` features is one row: its root mean square is reduced per row and
 		// applied per row, so inputs holding many vectors (a sequence of positions, for example)
@@ -632,7 +643,7 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		return layer("rmsnorm", shape, shape, input -> {
 			CollectionProducer rows = c(input).reshape(-1, 1, size).traverse(2);
 			CollectionProducer out = rows.divide(rows.pow(2.0).mean(2).add(c(epsilon)).sqrt());
-			out = out.reshape(-1, size).traverse(1);
+			out = out.reshape(-1, extent).traverse(1);
 
 			out = out.multiply(cp(weights.flatten()));
 

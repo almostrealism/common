@@ -350,6 +350,13 @@ public class RestartGovernor {
      * first non-killed one, or the final killed one when all relaunches are
      * exhausted), or {@code null} if no attempt ran.</p>
      *
+     * <p>An attempt whose result reports {@link AgentRunResult#hasUnavailableRequiredMcpServer()}
+     * ends the loop immediately, whether or not the watchdog also killed it.
+     * A relaunch does not reset the working tree, so an earlier attempt that
+     * ran without a required tool has already left its untrusted changes in
+     * place; retrying would only spend more budget on top of that same
+     * tainted state instead of on a session whose output can be kept.</p>
+     *
      * @param runnerName name of the agent runner, used in status messages
      * @param attempt    runs a single agent attempt for the given index
      * @return the final attempt's result, or {@code null} if none ran
@@ -362,6 +369,9 @@ public class RestartGovernor {
             AgentRunResult result = attempt.apply(i);
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
+            if (result.hasUnavailableRequiredMcpServer()) {
+                break;
+            }
             if (!wasKilledForInactivity) {
                 break;
             }

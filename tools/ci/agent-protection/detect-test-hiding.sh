@@ -27,6 +27,19 @@
 # This prevents false positives when a branch adds brand-new test methods
 # that legitimately carry @TestDepth, skipLongTests, etc.
 #
+# Assertion counting (Pattern 2, NET_ASSERTIONS_REMOVED) is deliberately NOT
+# method-scoped: it counts assertion *calls* everywhere in a modified base-branch
+# test file — inside @Test bodies and inside helper methods alike — and nets them
+# per file, so stripping an assertEquals out of a helper that the @Test methods
+# call is still caught. It excludes two kinds of line that are not assertion
+# calls: comment lines (prose "assert" in Javadoc) and method *declaration* lines
+# whose name begins with "assert" (e.g. `protected void assertWithin(...) {`) — a
+# method name is not an assertion call. The declaration exclusion is applied
+# symmetrically to the removed and added side. Pattern 3
+# (NET_TEST_METHODS_REMOVED) counts `@Test` lines and needs no equivalent
+# exclusion: a declaration line carries no `@Test` annotation and no method is
+# named `@Test`, so it cannot mistake a declaration for a test method.
+#
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
 #   1 - invalid arguments
@@ -46,8 +59,102 @@ if [ -z "$BASE_BRANCH" ]; then
     exit 1
 fi
 
+# ── Merge-base with the base branch ─────────────────────────────────
+#
+# Base-branch file existence and content are read from this commit, not
+# from the live tip of $BASE_BRANCH — see validate-agent-commit.sh for
+# why comparing against a moving base branch misattributes master's own
+# later edits to the agent's branch. A merge-base that cannot be
+# computed is treated as "nothing can be checked", the same fail-closed
+# posture the diff-unavailable case below already takes.
+if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
+    echo "Cannot compute merge-base of ${BASE_BRANCH} and HEAD — the branch cannot be checked:" >&2
+    echo "$MERGE_BASE" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "violation_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_violations=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+# ── Merge-base file listing ─────────────────────────────────────────
+#
+# Every "does this file exist at the merge-base" question below is
+# answered from this one-time listing rather than a per-file
+# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
+# for why that probe cannot distinguish "path absent" from "the lookup
+# itself failed" by exit code alone. A listing failure is treated the
+# same as the diff-unavailable case above: no evidence is a reason to
+# stop, not a reason to report a clean audit.
+if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
+    echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be checked:" >&2
+    echo "$MERGE_BASE_FILE_LIST" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "violation_count=0" >> "$GITHUB_OUTPUT"
+        echo "has_violations=false" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
+
+declare -A MERGE_BASE_FILE_SET
+while IFS= read -r f; do
+    [ -n "$f" ] && MERGE_BASE_FILE_SET["$f"]=1
+done <<< "$MERGE_BASE_FILE_LIST"
+
+# Reports whether $1 exists at the merge-base. Membership only -- the
+# listing's own success was already checked above, so this can never
+# confuse "absent" with "lookup failed".
+merge_base_has_file() {
+    [ -n "${MERGE_BASE_FILE_SET[$1]:-}" ]
+}
+
 VIOLATION_COUNT=0
 VIOLATIONS=""
+
+# ── Pattern-2 helper: assert-like method DECLARATION shape ────────────────
+#
+# Pattern 2 counts assertion *calls* (see below). The bare word "assert" in its
+# regex also matches a method whose NAME begins with "assert" — but a method
+# name is not an assertion. A helper such as
+#   protected void assertWithin(String stage, PackedCollection actual, ...) {
+# therefore counts as an "assertion" on the single line where it is *declared*,
+# not only where it is *called*. Moving that helper into a shared base class
+# deletes its declaration from this file and would be mis-counted as a removed
+# assertion (observed on feature/sa3-prep, SAMEResamplingParityTest.java).
+#
+# A declaration has a shape a call never has: an assert-like identifier led by a
+# return type (optionally preceded by modifiers), and NOT terminated as a
+# statement. The predicate encodes exactly that, so it stays correct for the
+# shapes an earlier, stricter form missed (reported in review):
+#   * package-private / typed returns — `boolean assertWithin(...)`,
+#     `PackedCollection assertLoaded(...)`, `float[] assertArr(...)` — not just
+#     `public`/`private`/`protected`/`void`;
+#   * wrapped multi-line signatures whose first line ends in `,` (or `)` with
+#     the `{` on the next line), e.g. `protected void assertWithin(String stage,`
+#     — only that first line carries the assert-named identifier and is the only
+#     line Pattern 2 ever counts, so matching it is sufficient.
+# It matches, anchored at the line start (after the diff +/- marker and indent),
+# one or more whitespace-separated identifier tokens (modifiers and the return
+# type — which may be qualified, generic, or an array) followed by the
+# assert/fail-named identifier and its opening `(`, with NO `;` from that `(` to
+# end of line. The trailing "no `;`" is what distinguishes a declaration (ends in
+# `{`, `throws …`, `)`, or a wrapped `,`) from a call statement such as
+# `return assertLoaded(x);` or `assertEquals(a, b);`, which a leading token could
+# otherwise make look declaration-shaped. A bare call (`assertEquals(...)`,
+# `if (assertWithin(...))`, `Assert.assertEquals(...)`, `x = assertX(...)`) has no
+# type token immediately before the identifier and is never matched. The
+# predicate is applied identically to the removed and the added side (symmetry
+# matters: excluding declarations on only one side could let a genuine
+# assertion-for-declaration swap net out incorrectly). It is layered on top of
+# the comment-line exclusion, so a declaration's call sites and the assertion
+# calls inside its body are untouched and still fully counted.
+#
+# ']' is placed first inside the token character class so it is a literal.
+ASSERT_DECL_RE='^[-+][[:space:]]*([A-Za-z_][]A-Za-z0-9_.<>[]*[[:space:]]+)+(assert|fail)[A-Za-z0-9_]*[[:space:]]*\([^;]*$'
 
 # Helper to record a violation
 record_violation() {
@@ -361,9 +468,20 @@ FILE_COUNT=$(echo "$MODIFIED_TEST_FILES" | wc -l)
 echo "Checking ${FILE_COUNT} modified test file(s) for test-hiding patterns..."
 
 for FILE in $MODIFIED_TEST_FILES; do
-    # Verify the file actually existed on the base branch (belt-and-suspenders)
-    if ! git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
-        continue
+    # Verify the file actually existed at the merge-base (belt-and-suspenders).
+    # git already reported this file with "M" status against the merge-base,
+    # so its absence from our own tree listing means the listing itself
+    # cannot be trusted here -- not that the file is legitimately new.
+    if ! merge_base_has_file "$FILE"; then
+        echo "Modified test file ${FILE} was not found at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+        echo "git reported it as modified relative to the base branch, which is inconsistent with it being absent there." >&2
+
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+            echo "violation_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit 1
     fi
 
     # Get only the additions and deletions for this file
@@ -374,7 +492,17 @@ for FILE in $MODIFIED_TEST_FILES; do
     # that lines inside brand-new test methods (or between methods, leading
     # into a new one) are not attributed to a previous existing method.
     BASE_FILE_TMP=$(mktemp)
-    git show "${BASE_BRANCH}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null || true
+    if ! git show "${MERGE_BASE}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null; then
+        echo "Could not read ${FILE} at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+        rm -f "$BASE_FILE_TMP"
+
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+            echo "violation_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit 1
+    fi
     BASE_METHOD_NAMES=$(list_method_spans "$BASE_FILE_TMP" | cut -f3 | sort -u)
     HEAD_SPANS=$(list_method_spans "$FILE")
     OWNS_RANGES=$(compute_owns_ranges "$HEAD_SPANS")
@@ -392,9 +520,14 @@ for FILE in $MODIFIED_TEST_FILES; do
 
     # ── Pattern 2: Deleted assertion lines (net) ──
     # Exclude comment lines (// single-line, /* block/javadoc, * continuation)
-    # to avoid false positives from prose use of "assert" in Javadoc comments.
-    DELETED_ASSERTS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
-    ADDED_ASSERTS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    # to avoid false positives from prose use of "assert" in Javadoc comments,
+    # then exclude assert-named method DECLARATION lines via $ASSERT_DECL_RE
+    # (a method name beginning with "assert" is not an assertion). Both
+    # exclusions are applied symmetrically to the removed and the added side so
+    # the per-file netting on the lines below stays balanced; only assertion
+    # *calls* — in @Test bodies and in helper bodies alike — are counted.
+    DELETED_ASSERTS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -vE "$ASSERT_DECL_RE" | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    ADDED_ASSERTS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -vE "$ASSERT_DECL_RE" | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
     if [ "$DELETED_ASSERTS" -gt 0 ] && [ "$ADDED_ASSERTS" -lt "$DELETED_ASSERTS" ]; then
         NET_REMOVED=$((DELETED_ASSERTS - ADDED_ASSERTS))
         record_violation "$FILE" "NET_ASSERTIONS_REMOVED" \

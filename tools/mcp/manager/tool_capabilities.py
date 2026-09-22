@@ -39,6 +39,7 @@ GRANTED_TOOLS = (
     "workstream_submit_task",
     "github_pr_find",
     "github_pr_review_comments",
+    "github_pr_reviews",
     "github_pr_conversation",
     "github_pr_reply",
     "github_list_open_prs",

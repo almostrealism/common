@@ -69,7 +69,8 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `github_pr_find` | github | Find a PR by branch/number |
-| `github_pr_review_comments` | github | Get unresolved review thread comments on a PR |
+| `github_pr_reviews` | github | Get review bodies on a PR (e.g. GitHub Copilot's per-round overview) |
+| `github_pr_review_comments` | github | Get review thread comments on a PR (unresolved by default; pass `include_resolved=true` for resolved threads too) |
 | `github_pr_conversation` | github | Get the issue-style conversation comments on a PR |
 | `github_pr_reply` | github | Reply to a PR review thread |
 | `github_pr_check_status` | github | Get CI/check status for a PR head commit |
@@ -80,6 +81,18 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |
+
+A PR carries three distinct comment surfaces, each read by a different tool:
+review bodies — the top-level text a reviewer (including GitHub Copilot's
+per-round "Changes recommended" / "Needs a closer look" summary) submits
+alongside a review verdict — are read by `github_pr_reviews`; inline
+review-thread comments are read by `github_pr_review_comments`; and
+issue-style top-level PR conversation comments are read by
+`github_pr_conversation`. Copilot never posts to the conversation thread, and
+once a review thread is marked resolved its comment vanishes from the
+`github_pr_review_comments` default view (`include_resolved=true` brings it
+back) — but a review body has no resolved state, so `github_pr_reviews`
+always has the full history.
 
 ### Tier 4: Memory
 
