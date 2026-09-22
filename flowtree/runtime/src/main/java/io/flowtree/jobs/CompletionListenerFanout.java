@@ -960,9 +960,9 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                         + " chain=" + chainId + ": " + ex.getMessage());
             }
         }
-        // Dispatch capability: wake-up jobs run on the listener,
-        // so source the flag from the listener's opt-in.
-        factory.setDispatchCapable(listener.isDispatchCapable());
+        // Wake-up jobs run on the listener, so its capabilities are the ones
+        // that apply, not the workstream that triggered the wake-up.
+        listener.applyCapabilities(factory, factory.getTargetBranch());
 
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);

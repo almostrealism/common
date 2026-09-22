@@ -17,10 +17,12 @@
 package io.flowtree.jobs;
 
 import io.flowtree.jobs.agent.AgentRunRequest;
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.nio.file.Path;
+import java.util.Collections;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -102,5 +104,41 @@ public class CodingAgentJobPermissionBypassWireTest extends TestSuiteBase {
 
         assertTrue(GitManagedJobSerializationTest.roundTripFactory(factory)
                 .isBypassAgentPermissionPrompts());
+    }
+
+    /**
+     * The grant reaches the job the factory actually builds. A factory flag
+     * that {@code nextJob()} never copies is the failure this covers: the job
+     * record says the session may write the tooling it was submitted to edit,
+     * and the session is denied anyway.
+     */
+    @Test(timeout = 15000)
+    public void grantReachesTheJobTheFactoryBuilds() {
+        CodingAgentJobFactory granted = new CodingAgentJobFactory();
+        granted.setPrompts("do the work");
+        granted.setBypassAgentPermissionPrompts(true);
+        assertTrue(((CodingAgentJob) granted.nextJob()).isBypassAgentPermissionPrompts());
+
+        CodingAgentJobFactory ungranted = new CodingAgentJobFactory();
+        ungranted.setPrompts("do the work");
+        assertFalse(((CodingAgentJob) ungranted.nextJob()).isBypassAgentPermissionPrompts());
+    }
+
+    /**
+     * A workstream applies the grant to every submission path through one
+     * decision, so a path cannot quietly omit it.
+     */
+    @Test(timeout = 15000)
+    public void workstreamAppliesTheGrantForPermittedBranchesOnly() {
+        Workstream ws = new Workstream();
+        ws.setAgentPermissionBypassBranches(Collections.singletonList("ci/"));
+
+        CodingAgentJobFactory permitted = new CodingAgentJobFactory();
+        ws.applyCapabilities(permitted, "ci/tooling");
+        assertTrue(permitted.isBypassAgentPermissionPrompts());
+
+        CodingAgentJobFactory ordinary = new CodingAgentJobFactory();
+        ws.applyCapabilities(ordinary, "feature/thing");
+        assertFalse(ordinary.isBypassAgentPermissionPrompts());
     }
 }

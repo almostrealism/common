@@ -272,6 +272,10 @@ public class RestartGovernor {
      */
     void stopLaunching(String reason) {
         this.terminalStopReason = reason;
+        // Also the current block reason, so a status or completion report that
+        // reads it before the next launch attempt names this failure rather
+        // than whatever refused a launch last, or nothing at all.
+        this.lastBlockReason = reason;
     }
 
     /**

@@ -531,6 +531,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 }
             }
 
+            // Last thing inside the lock: the completion event is built after
+            // it is released, by which time the tree may belong to another job.
+            workOutcome.capture();
+
         } catch (Exception e) {
             warn("Error: " + e.getMessage(), e);
             error = e;
@@ -653,6 +657,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     protected boolean hasAgentCommitted() {
         return tampering != null && tampering.hasCommitted();
+    }
+
+    /**
+     * Returns whether this job reverted commits the agent made itself,
+     * destroying what they contained; see
+     * {@link GitTamperingDetector#hasRevertedWork()}.
+     *
+     * @return {@code true} when agent commits were reverted during this job
+     */
+    protected boolean hasRevertedAgentWork() {
+        return tampering != null && tampering.hasRevertedWork();
     }
 
     /**

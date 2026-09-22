@@ -17,6 +17,7 @@
 package io.flowtree.workstream;
 
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -791,6 +792,25 @@ public class Workstream {
             if (branch.startsWith(prefix)) return true;
         }
         return false;
+    }
+
+    /**
+     * Applies this workstream's agent capabilities to a job factory, for a job
+     * targeting {@code targetBranch}.
+     *
+     * <p>Every submission path — the HTTP submit endpoint, a Slack request, a
+     * completion-listener wake-up — has to make the same grants from the same
+     * workstream state, and a path that forgets one produces a job that is
+     * silently less capable than the workstream says it should be. Making each
+     * of them repeat the decision is what lets that happen, so the decision
+     * lives here and each path calls it once.</p>
+     *
+     * @param factory      the factory to configure
+     * @param targetBranch the branch the job will run against; may be {@code null}
+     */
+    public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch) {
+        factory.setDispatchCapable(dispatchCapable);
+        factory.setBypassAgentPermissionPrompts(permitsAgentPermissionBypass(targetBranch));
     }
 
     /**

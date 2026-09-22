@@ -40,6 +40,12 @@ class JobWorkOutcome {
     /** The job whose work this reports on. */
     private final GitManagedJob job;
 
+    /** Whether {@link #capture()} has run; {@link #capturedDescription} is authoritative once it has. */
+    private boolean captured;
+
+    /** The outcome recorded by {@link #capture()}; {@code null} means nothing was orphaned. */
+    private String capturedDescription;
+
     /**
      * Creates an outcome view of {@code job}.
      *
@@ -90,11 +96,46 @@ class JobWorkOutcome {
      * @return the failure description, or {@code null} when nothing was orphaned
      */
     String describeUnpublishedWork() {
+        if (captured) return capturedDescription;
+        return computeUnpublishedWork();
+    }
+
+    /**
+     * Records the outcome while the caller still holds the workspace lock.
+     *
+     * <p>{@link GitManagedJob#run()} releases that lock in its {@code finally}
+     * block before the completion event is built, and the working-tree query
+     * below reads a directory that the next job for the same workspace may
+     * already have started editing. Asking afterwards can therefore report
+     * another job's changes as this one's unpublished work. Asking here, at
+     * the end of the locked region, reads the tree this job actually left.</p>
+     */
+    void capture() {
+        capturedDescription = computeUnpublishedWork();
+        captured = true;
+    }
+
+    /**
+     * Computes the unpublished-work description from the job's current state.
+     *
+     * @return the failure description, or {@code null} when nothing was orphaned
+     */
+    private String computeUnpublishedWork() {
         if (job.getTargetBranch() == null || job.getTargetBranch().isEmpty()) return null;
         if (!job.performsGitOperations()) return null;
-        if (job.isDryRun() || job.hasAgentCommitted()) return null;
+        if (job.isDryRun()) return null;
         String commit = job.getCommitHash();
         if (commit != null && !commit.isEmpty()) return null;
+
+        // Commits the agent made itself were reverted, so whatever they held
+        // is gone and the tree that replaced them is clean. Nothing below can
+        // see that, because there is nothing left to see.
+        if (job.hasRevertedAgentWork()) {
+            return "Nothing was committed or pushed, and the commits the agent made itself were"
+                    + " reverted as git tampering. Whatever they contained was destroyed and no"
+                    + " restart replaced it.";
+        }
+        if (job.hasAgentCommitted()) return null;
 
         boolean changesRemain = job.hasUncommittedChanges();
         String authored = job.authoredCommitMessage();

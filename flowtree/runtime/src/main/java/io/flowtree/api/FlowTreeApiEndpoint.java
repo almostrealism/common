@@ -1019,12 +1019,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        // Dispatch capability: opt-in workstreams get the dispatch tools.
-        factory.setDispatchCapable(workstream.isDispatchCapable());
-        // Permission-prompt bypass: the workstream states which of its own
-        // branches may edit the tooling an agent session runs under.
-        factory.setBypassAgentPermissionPrompts(
-            workstream.permitsAgentPermissionBypass(factory.getTargetBranch()));
+        workstream.applyCapabilities(factory, factory.getTargetBranch());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
