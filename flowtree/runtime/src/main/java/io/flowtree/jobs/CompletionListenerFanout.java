@@ -25,6 +25,7 @@ import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import org.almostrealism.io.ConsoleFeatures;
@@ -400,7 +401,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
     /** Pushed-tools config JSON forwarded to every job; may be {@code null}. */
     private final String pushedToolsConfig;
     /** Workspace lookup; {@code null} means workspace layer is skipped. */
-    private final Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup;
+    private final Function<String, WorkspaceEntry> workspaceLookup;
     /** Default workspace path; propagated to wake-up factories when set. */
     private final String defaultWorkspacePath;
     /**
@@ -432,7 +433,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                                     String arManagerUrl,
                                     String sharedSecret,
                                     String pushedToolsConfig,
-                                    Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                                    Function<String, WorkspaceEntry> workspaceLookup,
                                     String defaultWorkspacePath) {
         this(acceptSupplier, allWorkstreams, server, statsStore,
                 workstreamUrlBuilder, arManagerUrl, sharedSecret,
@@ -456,7 +457,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                                     String arManagerUrl,
                                     String sharedSecret,
                                     String pushedToolsConfig,
-                                    Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                                    Function<String, WorkspaceEntry> workspaceLookup,
                                     String defaultWorkspacePath,
                                     Supplier<Long> clock) {
         this(acceptSupplier, allWorkstreams, server, statsStore,
@@ -483,7 +484,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                                     String arManagerUrl,
                                     String sharedSecret,
                                     String pushedToolsConfig,
-                                    Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                                    Function<String, WorkspaceEntry> workspaceLookup,
                                     String defaultWorkspacePath,
                                     ListenerNotifierLookup listenerNotifierLookup,
                                     Supplier<Long> clock) {
@@ -530,7 +531,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             pushedToolsConfig = listener.getPushedToolsConfig();
             defaultWorkspacePath = listener.getDefaultWorkspacePath();
         }
-        Function<String, WorkstreamConfig.WorkspaceEntry> wsLookup = endpoint::workspaceLookupOrNull;
+        Function<String, WorkspaceEntry> wsLookup = endpoint::workspaceLookupOrNull;
         ListenerNotifierLookup listenerLookup = listenerWsId -> {
             SlackNotifier n = notifiers.notifierFor(listenerWsId);
             if (n == null || n.getWorkstream(listenerWsId) == null) return null;
@@ -972,7 +973,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         if (workspaceLookup != null) {
             String wsId = listener.getWorkspaceId();
             if (wsId != null && !wsId.isEmpty()) {
-                WorkstreamConfig.WorkspaceEntry wsEntry = workspaceLookup.apply(wsId);
+                WorkspaceEntry wsEntry = workspaceLookup.apply(wsId);
                 if (wsEntry != null) {
                     Map<String, String> wsLabels = extractWorkspaceLabels();
                     if (wsLabels != null && !wsLabels.isEmpty()) {
@@ -993,7 +994,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
 
     /**
      * Reads required-labels from a workspace entry. The
-     * {@link WorkstreamConfig.WorkspaceEntry} class does not currently
+     * {@link WorkspaceEntry} class does not currently
      * carry a per-workspace {@code requiredLabels} map (that is a
      * workstream-level concept in v1), so this method is a no-op
      * stub; the listener's own {@code requiredLabels} already covers
