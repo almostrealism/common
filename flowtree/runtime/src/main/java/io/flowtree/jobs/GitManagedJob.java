@@ -453,6 +453,11 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 workspaceLock.acquire(lockTarget);
                 repoSetup = new GitRepositorySetup(this);
                 workingDirectory = repoSetup.resolveAndClone();
+            } else if (workingDirectory != null && !workingDirectory.isEmpty()) {
+                // A directory-only job clones nothing, but it shares the tree
+                // with every other job pointed at the same directory just the
+                // same — including for the completion snapshot taken below.
+                workspaceLock.acquire(workingDirectory);
             }
 
             // Clone/sync dependent repos alongside the primary repo
@@ -549,38 +554,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * Fails the job when invalid files (currently any {@code .bin} file) are
      * present in the working tree of the primary repo or any dependent repo.
      *
-     * <p>Scans each working tree directly (not via git, so {@code .gitignore} is
-     * deliberately bypassed — ignored litter is still litter), excluding any
-     * {@code .bin} file that already exists on that repo's base branch, which is
-     * pre-existing content the job did not create. If any invalid file remains,
-     * {@link #onInvalidFilesDetected(List)} is invoked to give a subclass one
-     * chance to clean up, then the trees are re-scanned. If invalid files remain
-     * after that — or no corrective handler is configured — an exception is
-     * thrown so the whole job is marked failed and no git operations occur.</p>
+     * <p>Delegates to {@link InvalidFileDetector#enforceNone(GitManagedJob, List)},
+     * which owns every part of the decision.</p>
      *
      * @throws IllegalStateException if invalid files remain after correction
      */
     private void enforceNoInvalidFiles() {
-        List<String> dependentRepoPaths = repoSetup != null
-                ? repoSetup.getDependentRepoPaths() : Collections.emptyList();
-        InvalidFileDetector detector = new InvalidFileDetector(this, dependentRepoPaths);
-        detector.detect();
-        if (!detector.isDetected()) {
-            return;
-        }
-
-        warn("Invalid files detected in working tree: " + detector.getDescription());
-        if (onInvalidFilesDetected(detector.getInvalidFiles())) {
-            detector.detect();
-        }
-
-        if (detector.isDetected()) {
-            throw new IllegalStateException(
-                "Job failed: invalid files left in the repository working tree: "
-                    + detector.getDescription()
-                    + ". Binary (.bin) files must never be left behind — remove them "
-                    + "or generate them outside the repository.");
-        }
+        InvalidFileDetector.enforceNone(this, repoSetup != null
+                ? repoSetup.getDependentRepoPaths() : Collections.emptyList());
     }
 
     /**
@@ -1224,15 +1205,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Returns whether every file the agent changed was dropped by a staging
-     * guardrail: the working tree had changes to stage, but none of them
-     * survived {@link FileStager}'s guardrails, so nothing was committed.
-     *
-     * <p>This is different from "nothing to do" (an agent session that made
-     * no changes at all): here the agent DID produce a change, and it was
-     * silently discarded. A job in this state must never report
-     * {@link JobCompletionEvent.Status#SUCCESS} — see
-     * {@link #createEvent(Exception)} and
-     * {@link CodingAgentJobEvent#forJob}.</p>
+     * guardrail; delegates to {@link JobWorkOutcome#allChangesDropped()}.
      *
      * @return {@code true} when every changed file was skipped and nothing
      *         was staged or committed
@@ -1242,14 +1215,23 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Returns whether this job committed anything, in the primary repository
+     * or a dependent one; see {@link GitCommitHandler#hasAnyCommit()}.
+     *
+     * @return {@code true} when a commit was made in any repository
+     */
+    protected boolean hasPublishedCommit() {
+        return commitHandler != null && commitHandler.hasAnyCommit();
+    }
+
+    /**
      * Returns the commit message the agent authored for its own changes, or
      * {@code null} when it authored none.
      *
-     * <p>An authored message is a job's declaration, in the harness's own
-     * protocol, that it has changes worth describing — which is why
-     * {@link #describeUnpublishedWork()} treats one with no commit behind it
-     * as work that went missing. The base job has no such protocol and
-     * returns {@code null}; {@link CodingAgentJob} reads {@code commit.txt}.</p>
+     * <p>An authored message declares that the job has changes worth
+     * describing, which is why {@link #describeUnpublishedWork()} treats one
+     * with no commit behind it as work that went missing. The base job has no
+     * such protocol; {@link CodingAgentJob} reads {@code commit.txt}.</p>
      *
      * @return the agent-authored commit message, or {@code null}
      */
@@ -1269,24 +1251,30 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Returns whether the primary repository or any dependent repository holds
-     * uncommitted changes to files outside the standard exclusion set, or
-     * could not be inspected at all — see
-     * {@link JobWorkOutcome#hasUncommittedChanges(String)} for why an
-     * unanswerable query counts as "changes may exist".
+     * Returns whether the primary repository or any dependent repository was
+     * observed to hold uncommitted changes outside the standard exclusion set;
+     * see {@link JobWorkOutcome#observedUncommittedChanges()}. A tree that
+     * could not be read reads as clean here, which is what enforcement rules
+     * deciding whether there is work to act on want.
+     * Package-private so enforcement rules and test stubs can override it.
      *
-     * <p>Package-private so enforcement rules and test stubs in this package
-     * can read and override it.</p>
-     *
-     * @return {@code true} when meaningful uncommitted changes remain anywhere,
-     *         or when a working tree could not be inspected
+     * @return {@code true} when uncommitted changes were observed anywhere
      */
     boolean hasUncommittedChanges() {
-        if (workOutcome.hasUncommittedChanges(workingDirectory)) return true;
-        for (String depPath : getDependentRepoPaths()) {
-            if (workOutcome.hasUncommittedChanges(depPath)) return true;
-        }
-        return false;
+        return workOutcome.observedUncommittedChanges();
+    }
+
+    /**
+     * Returns whether uncommitted changes remain anywhere, counting a tree
+     * that could not be read as one that might hold them; see
+     * {@link JobWorkOutcome#mayHaveUncommittedChanges()}. Use this where a
+     * wrong "no" would lose work, not to decide whether there is work to act
+     * on.
+     *
+     * @return {@code true} when changes remain or a tree could not be read
+     */
+    boolean mayHaveUncommittedChanges() {
+        return workOutcome.mayHaveUncommittedChanges();
     }
 
     // ==================== Status Reporting ====================

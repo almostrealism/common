@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import java.io.IOException;
+import java.util.function.Predicate;
 
 /**
  * Answers what became of the work a {@link GitManagedJob} produced: whether it
@@ -124,8 +125,9 @@ class JobWorkOutcome {
         if (job.getTargetBranch() == null || job.getTargetBranch().isEmpty()) return null;
         if (!job.performsGitOperations()) return null;
         if (job.isDryRun()) return null;
-        String commit = job.getCommitHash();
-        if (commit != null && !commit.isEmpty()) return null;
+        // Asks for a commit in ANY repository: a job whose changes live in a
+        // dependent repo commits and pushes with a null primary hash.
+        if (job.hasPublishedCommit()) return null;
 
         // Commits the agent made itself were reverted, so whatever they held
         // is gone and the tree that replaced them is clean. Nothing below can
@@ -137,7 +139,7 @@ class JobWorkOutcome {
         }
         if (job.hasAgentCommitted()) return null;
 
-        boolean changesRemain = job.hasUncommittedChanges();
+        boolean changesRemain = mayHaveUncommittedChanges();
         String authored = job.authoredCommitMessage();
         boolean messageAuthored = authored != null && !authored.trim().isEmpty();
         if (!changesRemain && !messageAuthored) return null;
@@ -154,6 +156,52 @@ class JobWorkOutcome {
         }
         return "Nothing was committed or pushed, but the job produced work: " + produced
                 + ". The work is still in the working directory on the agent host, unpublished.";
+    }
+
+    /**
+     * Returns whether any of the job's repositories holds uncommitted changes
+     * that {@code git status} actually reported.
+     *
+     * <p>A query that could not run reads as "no changes" here. That is the
+     * right answer for callers deciding whether there is work to act on — a
+     * review session, a change-enforcement retry — because acting on a tree
+     * nobody could read produces nothing. Callers deciding whether work may
+     * have been LOST want {@link #mayHaveUncommittedChanges()} instead.</p>
+     *
+     * @return {@code true} when changes were observed in any repository
+     */
+    boolean observedUncommittedChanges() {
+        return anyRepository(GitOperations::hasUncommittedChanges);
+    }
+
+    /**
+     * Returns whether any of the job's repositories holds uncommitted changes,
+     * treating a tree that could not be read as one that might.
+     *
+     * <p>This is the fail-closed form, for the questions where a wrong "no"
+     * loses work: whether the job published everything it produced, and
+     * whether it still owes a commit message. See
+     * {@link #hasUncommittedChanges(String)}.</p>
+     *
+     * @return {@code true} when changes remain or a tree could not be read
+     */
+    boolean mayHaveUncommittedChanges() {
+        return anyRepository(this::hasUncommittedChanges);
+    }
+
+    /**
+     * Applies {@code test} to the primary working directory and every
+     * dependent repository, stopping at the first {@code true}.
+     *
+     * @param test the per-repository question to ask
+     * @return {@code true} when any repository answers {@code true}
+     */
+    private boolean anyRepository(Predicate<String> test) {
+        if (test.test(job.getWorkingDirectory())) return true;
+        for (String depPath : job.getDependentRepoPaths()) {
+            if (test.test(depPath)) return true;
+        }
+        return false;
     }
 
     /**

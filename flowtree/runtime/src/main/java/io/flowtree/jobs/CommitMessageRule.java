@@ -85,8 +85,9 @@ class CommitMessageRule implements EnforcementRule {
         String content = readCommitTxt(job);
         if (content == null || content.trim().isEmpty()) {
             // A session that changed nothing has nothing to describe, and an
-            // absent commit.txt is how it says so -- see the class javadoc.
-            return job.hasUncommittedChanges();
+            // absent commit.txt is how it says so. Fail-closed: a tree that
+            // cannot be read still owes a message -- see the class javadoc.
+            return job.mayHaveUncommittedChanges();
         }
         String trimmed = content.trim();
         // Detect verbatim copy of task prompt

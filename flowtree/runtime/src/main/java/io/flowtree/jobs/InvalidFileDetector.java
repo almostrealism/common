@@ -247,6 +247,40 @@ class InvalidFileDetector implements ConsoleFeatures {
     }
 
     /**
+     * Scans {@code job}'s working trees and fails it when invalid files remain.
+     *
+     * <p>Gives the job one chance to clean up through
+     * {@link GitManagedJob#onInvalidFilesDetected(List)} and re-scans; litter
+     * that survives that throws, so the job is marked failed and no git
+     * operations run. Lives here rather than on the job because every part of
+     * the decision — what counts as litter, whether any remains, how to
+     * describe it — is this detector's.</p>
+     *
+     * @param job                 the job whose trees to scan and fail
+     * @param dependentRepoPaths  dependent repository paths to scan alongside
+     *                            the primary working directory
+     * @throws IllegalStateException if invalid files remain after correction
+     */
+    static void enforceNone(GitManagedJob job, List<String> dependentRepoPaths) {
+        InvalidFileDetector detector = new InvalidFileDetector(job, dependentRepoPaths);
+        detector.detect();
+        if (!detector.isDetected()) return;
+
+        job.warn("Invalid files detected in working tree: " + detector.getDescription());
+        if (job.onInvalidFilesDetected(detector.getInvalidFiles())) {
+            detector.detect();
+        }
+
+        if (detector.isDetected()) {
+            throw new IllegalStateException(
+                "Job failed: invalid files left in the repository working tree: "
+                    + detector.getDescription()
+                    + ". Binary (.bin) files must never be left behind — remove them "
+                    + "or generate them outside the repository.");
+        }
+    }
+
+    /**
      * Returns whether the given path lies within the git metadata directory of
      * the given repository root, which is excluded from the scan.
      */

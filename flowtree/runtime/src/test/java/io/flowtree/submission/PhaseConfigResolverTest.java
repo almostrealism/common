@@ -32,6 +32,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import static org.junit.Assert.assertEquals;
@@ -701,7 +702,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearAllPhaseOverridesOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -723,7 +724,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearDefaultConfigOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -745,7 +746,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearOnePhaseOverrideOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -904,7 +905,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
                 + "      effort: \"high\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry wsp = config.findWorkspace("almostrealism");
+        WorkspaceEntry wsp = config.findWorkspace("almostrealism");
         assertNotNull("workspace entry must deserialize", wsp);
 
         PhaseConfigBundle workspaceBundle = wsp.toPhaseConfigBundle();

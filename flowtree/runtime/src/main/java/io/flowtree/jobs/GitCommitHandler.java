@@ -75,6 +75,9 @@ class GitCommitHandler implements ConsoleFeatures {
     /** Set to {@code true} when all git operations complete without error. */
     private boolean successful;
 
+    /** Dependent repository paths this handler committed to; see {@link #hasAnyCommit()}. */
+    private final List<String> dependentRepoCommits = new ArrayList<>();
+
     /**
      * Repository-relative paths under {@link FlowtreeArtifacts#DIRECTORY} that
      * this handler is permitted to stage. Defaults to the empty production
@@ -454,6 +457,22 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether this handler committed anything at all, in the primary
+     * repository or in a dependent one.
+     *
+     * <p>{@link #getCommitHash()} answers only for the primary repository, so
+     * a job whose changes live entirely in a dependent repo commits, pushes,
+     * and still reports a {@code null} hash. Anything deciding whether the
+     * job published its work has to ask this instead, or it will read a
+     * successful dependent-repo job as having published nothing.</p>
+     *
+     * @return {@code true} when a commit was made in any repository
+     */
+    boolean hasAnyCommit() {
+        return (commitHash != null && !commitHash.isEmpty()) || !dependentRepoCommits.isEmpty();
+    }
+
+    /**
      * Returns the URL of an open pull request detected after push, or
      * {@code null} if no PR was found or PR detection was not attempted.
      *
@@ -524,6 +543,7 @@ class GitCommitHandler implements ConsoleFeatures {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
                 continue;
             }
+            dependentRepoCommits.add(depPath);
 
             if (job.isPushToOrigin() && !job.isDryRun()) {
                 new GitPushReconciler(job, depPath, gitOps::execute, gitOps::executeWithOutput)
