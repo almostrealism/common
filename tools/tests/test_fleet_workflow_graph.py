@@ -396,11 +396,15 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", lambda url: {"message": "too large"})
         self.assertIsNone(resolver.needs(self.run, {"name": "build"}))
 
-    def test_a_5xx_is_retried_on_the_next_poll_instead_of_cached(self):
+    def test_a_5xx_is_not_cached_permanently_but_is_remembered_within_the_poll(self):
         """Unlike a 404 (deterministic — the file never existed at this
         commit), a 5xx is a transient failure: the same commit's workflow
         file may well be servable a moment later, so it must not be cached
-        as permanently unknown."""
+        as permanently unknown. But two calls back to back — the shape of
+        two jobs from the same run, both calling ``needs()`` during the
+        same poll cycle — must not each pay for their own failed fetch and
+        warning either; the second is served from the short-lived
+        transient-failure memo instead of repeating the request."""
         run = dict(self.run, path=".github/workflows/flaky.yaml")
 
         def fetch_json(url):
@@ -410,9 +414,9 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
-        self.assertEqual(2, len(self.requests))
+        self.assertEqual(1, len(self.requests))
 
-    def test_a_network_error_is_retried_on_the_next_poll_instead_of_cached(self):
+    def test_a_network_error_is_not_cached_permanently_but_is_remembered_within_the_poll(self):
         run = dict(self.run, path=".github/workflows/unreachable.yaml")
 
         def fetch_json(url):
@@ -422,7 +426,55 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
-        self.assertEqual(2, len(self.requests))
+        self.assertEqual(1, len(self.requests))
+
+    def test_a_transient_failure_is_retried_once_the_cooldown_elapses(self):
+        """The memo that stops every job of one run from repeating a
+        failed fetch (see the two tests above) must not strand the graph
+        as unknown forever: once ``TRANSIENT_RETRY_COOLDOWN_SECONDS`` has
+        passed — comfortably inside one scheduled poll interval (default
+        600s) — the next call retries the fetch instead of reusing the
+        memo."""
+        run = dict(self.run, path=".github/workflows/flaky.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        clock = [1000.0]
+        with mock.patch("tools.fleet.workflow_graph.time.monotonic", side_effect=lambda: clock[0]):
+            self.assertIsNone(resolver.needs(run, {"name": "build"}))
+            self.assertEqual(1, len(self.requests))
+            clock[0] += WorkflowGraphResolver.TRANSIENT_RETRY_COOLDOWN_SECONDS - 1
+            self.assertIsNone(resolver.needs(run, {"name": "build"}))
+            self.assertEqual(1, len(self.requests))
+            clock[0] += 2
+            self.assertIsNone(resolver.needs(run, {"name": "build"}))
+            self.assertEqual(2, len(self.requests))
+
+    def test_the_transient_failure_memo_is_bounded_and_drops_the_oldest_first(self):
+        """The transient-failure memo must not grow without bound in a
+        long-lived resolver that keeps seeing distinct failing files — the
+        same eviction discipline :data:`MAX_CACHED_GRAPHS` applies to
+        successfully-loaded graphs applies here too."""
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+
+        with mock.patch.object(WorkflowGraphResolver, "MAX_CACHED_GRAPHS", 2):
+            resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+            for sha in ("a", "b", "c"):
+                resolver.graph(dict(self.run, head_sha=sha))
+            self.assertEqual(3, len(self.requests))
+            # "a" was evicted from the memo when "c" was recorded (capacity
+            # 2, so inserting "c" dropped the oldest, "a"), so it is no
+            # longer suppressed and retries — which in turn evicts "b" (now
+            # the oldest); "c" is still remembered and stays suppressed.
+            resolver.graph(dict(self.run, head_sha="a"))
+            self.assertEqual(4, len(self.requests))
+            resolver.graph(dict(self.run, head_sha="c"))
+            self.assertEqual(4, len(self.requests))
 
     def test_a_403_without_rate_limit_headers_is_cached_as_unknown(self):
         """A 403 without any rate-limit signal is a persistent permission
@@ -452,10 +504,12 @@ class ResolverTests(unittest.TestCase):
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertEqual(1, len(self.requests))
 
-    def test_a_403_with_exhausted_rate_limit_is_retried_not_cached(self):
+    def test_a_403_with_exhausted_rate_limit_is_not_cached_permanently(self):
         """A 403 carrying GitHub's rate-limit signal is transient - the
-        limit resets, so it must be retried on the next poll rather than
-        cached as a permanent failure."""
+        limit resets, so it must not be cached as a permanent failure, but
+        two calls back to back (two jobs of the same run, same poll cycle)
+        still share the one failed request via the transient-failure
+        memo."""
         run = dict(self.run, path=".github/workflows/rate-limited.yaml")
 
         def fetch_json(url):
@@ -465,9 +519,9 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
-        self.assertEqual(2, len(self.requests))
+        self.assertEqual(1, len(self.requests))
 
-    def test_a_403_with_retry_after_is_retried_not_cached(self):
+    def test_a_403_with_retry_after_is_not_cached_permanently(self):
         run = dict(self.run, path=".github/workflows/secondary-rate-limited.yaml")
 
         def fetch_json(url):
@@ -477,12 +531,12 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
-        self.assertEqual(2, len(self.requests))
+        self.assertEqual(1, len(self.requests))
 
-    def test_a_429_without_rate_limit_headers_is_retried_not_cached(self):
+    def test_a_429_without_rate_limit_headers_is_not_cached_permanently(self):
         """A 429 is always a rate limit on the GitHub API, unlike a 403 which
-        is ambiguous - so it must be retried on the next poll even without a
-        Retry-After or X-RateLimit-Remaining header, matching how
+        is ambiguous - so it must not be cached as permanently unknown even
+        without a Retry-After or X-RateLimit-Remaining header, matching how
         github_poller._is_retryable_rate_limit treats 429 at the transport
         layer. Caching a headerless 429 here would strand the graph as
         permanently unknown once the transport-level retry budget in
@@ -496,7 +550,7 @@ class ResolverTests(unittest.TestCase):
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
-        self.assertEqual(2, len(self.requests))
+        self.assertEqual(1, len(self.requests))
 
     def test_a_transient_failure_does_not_evict_the_cache(self):
         """A retried-not-cached outcome must not consume a slot in the

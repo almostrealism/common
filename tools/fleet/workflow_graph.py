@@ -59,6 +59,7 @@ from __future__ import annotations
 import base64
 import re
 import sys
+import time
 import urllib.error
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
@@ -281,8 +282,10 @@ class WorkflowGraph:
 class _TransientLoadFailure(Exception):
     """Internal signal that fetching a workflow file failed for a reason
     that might not recur (a network error, a 5xx, an exhausted rate
-    limit). :meth:`WorkflowGraphResolver.graph` catches this and does not
-    cache the outcome, unlike a deterministic 404 or an unparsable file.
+    limit). :meth:`WorkflowGraphResolver.graph` catches this and remembers
+    it only for :data:`WorkflowGraphResolver.TRANSIENT_RETRY_COOLDOWN_SECONDS`,
+    unlike a deterministic 404 or an unparsable file, which it caches
+    indefinitely.
     """
 
 
@@ -299,40 +302,66 @@ class WorkflowGraphResolver:
     cache keeps the :data:`MAX_CACHED_GRAPHS` most recently first-seen
     files — a poller that lives for months sees a new commit per push, and
     the recent window it re-reads never spans more than a few hundred.
+
+    A transient fetch failure (a network error, a 5xx, an exhausted rate
+    limit) gets the same one-request-per-cycle treatment, not the
+    indefinite one: :meth:`graph` remembers it for
+    :data:`TRANSIENT_RETRY_COOLDOWN_SECONDS` so the remaining jobs of the
+    same run — ``needs()``/``dependency_completed_at()`` are called once
+    per job, and every job of one run shares the same ``(path, head_sha)``
+    — don't each repeat the failed request and its warning, then forgets
+    it so the next poll cycle (which runs well after the cooldown, at the
+    scheduled entry point's default 600s interval) retries instead of the
+    graph staying unknown forever.
     """
 
     MAX_CACHED_GRAPHS = 512
+    TRANSIENT_RETRY_COOLDOWN_SECONDS = 60
 
     def __init__(self, repo: str, fetch_json: Callable[[str], Dict], api_base: str = GITHUB_API_BASE):
         self._repo = repo
         self._fetch_json = fetch_json
         self._api_base = api_base
         self._graphs: Dict[Tuple[str, str], Optional[WorkflowGraph]] = {}
+        self._transient_failures: Dict[Tuple[str, str], float] = {}
 
     def graph(self, run: Dict) -> Optional[WorkflowGraph]:
         """The parsed workflow file for *run*, or ``None`` if it cannot be had.
 
         A transient fetch failure (a network error, a 5xx, an exhausted
-        rate limit) is not cached: the next poll cycle's call to this
-        method retries the fetch instead of the graph staying unknown
-        until :data:`MAX_CACHED_GRAPHS` evicts the entry. A deterministic
-        outcome — the file does not exist at this commit, or does not
-        parse — is cached, since retrying it would only reproduce the same
-        result on every future poll.
+        rate limit) is remembered for :data:`TRANSIENT_RETRY_COOLDOWN_SECONDS`
+        rather than retried on every call — without that, every job of a
+        run sharing the same ``(path, head_sha)`` would repeat the same
+        failed fetch, turning one outage into one request per job. Once
+        the cooldown elapses, the next call retries the fetch instead of
+        the graph staying unknown until :data:`MAX_CACHED_GRAPHS` evicts
+        the entry. A deterministic outcome — the file does not exist at
+        this commit, or does not parse — is cached indefinitely, since
+        retrying it would only reproduce the same result on every future
+        poll.
         """
         path = run.get("path")
         sha = run.get("head_sha")
         if not path or not sha:
             return None
         cache_key = (path, sha)
-        if cache_key not in self._graphs:
-            try:
-                loaded = self._load(path, sha)
-            except _TransientLoadFailure:
+        if cache_key in self._graphs:
+            return self._graphs[cache_key]
+        failed_at = self._transient_failures.get(cache_key)
+        if failed_at is not None:
+            if time.monotonic() - failed_at < self.TRANSIENT_RETRY_COOLDOWN_SECONDS:
                 return None
-            if len(self._graphs) >= self.MAX_CACHED_GRAPHS:
-                del self._graphs[next(iter(self._graphs))]
-            self._graphs[cache_key] = loaded
+            del self._transient_failures[cache_key]
+        try:
+            loaded = self._load(path, sha)
+        except _TransientLoadFailure:
+            if len(self._transient_failures) >= self.MAX_CACHED_GRAPHS:
+                del self._transient_failures[next(iter(self._transient_failures))]
+            self._transient_failures[cache_key] = time.monotonic()
+            return None
+        if len(self._graphs) >= self.MAX_CACHED_GRAPHS:
+            del self._graphs[next(iter(self._graphs))]
+        self._graphs[cache_key] = loaded
         return self._graphs[cache_key]
 
     def _load(self, path: str, sha: str) -> Optional[WorkflowGraph]:
