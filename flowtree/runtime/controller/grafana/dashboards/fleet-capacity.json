@@ -488,7 +488,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  b.t AS time,\n  'running' AS metric,\n  COUNT(j.job_id) AS value\nFROM generate_series($__timeFrom()::timestamptz, $__timeTo()::timestamptz,\n                     ($__interval_ms::text || ' milliseconds')::interval) AS b(t)\nLEFT JOIN job_event j\n  ON j.lane = '$lane'\n AND j.started_at IS NOT NULL\n AND j.started_at <= b.t\n AND COALESCE(j.completed_at, NOW()) > b.t\n AND j.created_at >= $__timeFrom()::timestamptz - INTERVAL '2 days'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  b.t AS time,\n  'running' AS metric,\n  COUNT(j.job_id) AS value\nFROM generate_series($__timeFrom()::timestamptz, $__timeTo()::timestamptz,\n                     ($__interval_ms::text || ' milliseconds')::interval) AS b(t)\nLEFT JOIN job_event j\n  ON j.lane = '$lane'\n AND j.started_at IS NOT NULL\n AND j.started_at <= b.t\n AND COALESCE(j.completed_at, NOW()) > b.t\n AND j.started_at <= $__timeTo()::timestamptz\n AND COALESCE(j.completed_at, NOW()) >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
           "format": "time_series",
           "editorMode": "code"
         },
