@@ -65,7 +65,7 @@ version_at_least() {
 
 PYTHON_BIN=""
 PYTHON_VERSION=""
-for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
     if ! command -v "$candidate" >/dev/null 2>&1; then
         continue
     fi
@@ -78,14 +78,29 @@ for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
 done
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "::error::No python3 interpreter on PATH satisfies the minimum required version ${MIN_PYTHON_VERSION} (checked python3.13, python3.12, python3.11, python3.10, python3)" >&2
+    echo "::error::No python3 interpreter on PATH satisfies the minimum required version ${MIN_PYTHON_VERSION} (checked python3.14, python3.13, python3.12, python3.11, python3.10, python3)" >&2
     exit 1
 fi
 
 # ─── Provision (or reuse) the venv, gated on a marker recording everything
-# that determines its contents. ─────────────────────────────────────────
-REQUIREMENTS_HASH=$(sha256sum "$REQUIREMENTS_FILE" | cut -d' ' -f1)
-EXTRA_ARGS_HASH=$(printf '%s' "$*" | sha256sum | cut -d' ' -f1)
+# that determines its contents. sha256sum is a GNU coreutil and is absent
+# from a stock macOS runner; shasum -a 256 is the BSD/macOS equivalent. ──
+sha256_hash() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$@"
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$@"
+    else
+        echo "::error::Neither sha256sum nor shasum is available on PATH" >&2
+        exit 1
+    fi
+}
+
+REQUIREMENTS_HASH=$(sha256_hash "$REQUIREMENTS_FILE" | cut -d' ' -f1)
+# One argument per line (not "$*", which joins on a single space and makes
+# ["a b"] and ["a", "b"] hash identically) so the marker distinguishes any
+# change to the caller's extra pip-package list.
+EXTRA_ARGS_HASH=$(printf '%s\n' "$@" | sha256_hash | cut -d' ' -f1)
 EXPECTED_MARKER="${PYTHON_BIN}@${PYTHON_VERSION} ${REQUIREMENTS_HASH} ${EXTRA_ARGS_HASH}"
 MARKER_FILE="${VENV_DIR}/.provision-marker"
 

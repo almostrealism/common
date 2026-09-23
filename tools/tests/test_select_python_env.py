@@ -33,7 +33,13 @@ _SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "coverage", "select-python-env
 # actually shell out to. Deliberately excludes any real python* binary, so
 # the "no interpreter found" and "too old" cases are reproducible regardless
 # of what the host running these tests has installed.
-_COREUTILS = ["mkdir", "rm", "cp", "chmod", "cat", "dirname", "cut", "sha256sum", "env"]
+_COREUTILS = ["mkdir", "rm", "cp", "chmod", "cat", "dirname", "cut", "env"]
+
+# select-python-env.sh hashes with sha256sum when present and falls back to
+# shasum -a 256 otherwise (a stock macOS runner has the latter, not the
+# former). Symlink whichever one this host actually provides so the isolated
+# PATH matches what the script itself would resolve.
+_HASH_TOOL_CANDIDATES = ["sha256sum", "shasum"]
 
 _FAKE_PYTHON_TEMPLATE = """#!/usr/bin/env bash
 set -euo pipefail
@@ -71,6 +77,13 @@ class SelectPythonEnvTests(unittest.TestCase):
             real = shutil.which(tool)
             self.assertIsNotNone(real, "required coreutil not found: %s" % tool)
             os.symlink(real, os.path.join(self.bin_dir, tool))
+        hash_tool_found = False
+        for tool in _HASH_TOOL_CANDIDATES:
+            real = shutil.which(tool)
+            if real:
+                os.symlink(real, os.path.join(self.bin_dir, tool))
+                hash_tool_found = True
+        self.assertTrue(hash_tool_found, "neither sha256sum nor shasum found on PATH")
         # bash itself must come from the real PATH so the subprocess and any
         # fake interpreter scripts it invokes can actually run.
         os.symlink(shutil.which("bash"), os.path.join(self.bin_dir, "bash"))
