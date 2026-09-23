@@ -457,9 +457,6 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *         configured or when enforcement has been disabled
      */
     public Set<String> requiredServerNames() {
-        // TODO(review): this .orElse(true) default reverses commit 72bce226e
-        // ("Disable validation"), which set it to .orElse(false) deliberately;
-        // see stored review-followup memory before keeping this flip.
         if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(true)) {
             return Collections.emptySet();
         }

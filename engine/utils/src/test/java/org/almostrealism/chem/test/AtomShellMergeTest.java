@@ -105,4 +105,37 @@ public class AtomShellMergeTest extends TestSuiteBase {
 		Assert.assertEquals("Merging must retain the 2s, 2px and 2py subshells",
 				3, subShells);
 	}
+
+	/**
+	 * Chained merging across three separate same-energy shells (2s, 2px and 2py
+	 * each supplied as their own {@link Shell}) must retain every electron.
+	 * {@link #sameEnergyShellsMergeIntoValenceShell()} only supplies two n=2
+	 * shells, so a regression that merges the first same-energy match it finds
+	 * but drops a third would still pass that test; this exercises the
+	 * constructor's merge loop across three successive same-energy entries.
+	 */
+	@Test(timeout = 10000)
+	public void mergingChainsAcrossThreeSameEnergyShells() {
+		Atom atom = new Atom(6, List.of(
+				Shell.first(2),        // 1s2
+				Shell.s2(2),           // 2s2   (n = 2)
+				Shell.p2(1, 0, 0),     // 2px1  (n = 2)
+				Shell.p2(0, 1, 0)));   // 2py1  (n = 2)
+
+		Shell valence = atom.getValenceShell();
+
+		Assert.assertNotNull("The atom must expose a valence shell", valence);
+		Assert.assertEquals("The valence shell must be the merged n=2 shell",
+				2, valence.getEnergyLevel());
+		Assert.assertEquals(
+				"Three separate n=2 shells (2s, 2px, 2py) must all merge into the "
+						+ "valence shell; all four electrons must survive the chain",
+				4, countElectrons(valence));
+
+		int subShells = 0;
+		for (SubShell ignored : valence.subShells()) subShells++;
+
+		Assert.assertEquals("Merging three shells must retain all three subshells (2s, 2px, 2py)",
+				3, subShells);
+	}
 }
