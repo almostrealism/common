@@ -37,7 +37,7 @@ POST_COMPLETION_MAX_TIMEOUT_SECONDS = 2400
 _SHELL_OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}", "\n"}
 
 _SKIP_TESTS_PATTERN = re.compile(
-    r"-DskipTests(=true)?\b|-Dmaven\.test\.skip(=true)?\b", re.IGNORECASE)
+    r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$", re.IGNORECASE)
 
 # Maven lifecycle phases that execute tests unless skipped. "install" and
 # "verify" are the two the incident used; "package" and "deploy" sit at or
@@ -102,7 +102,7 @@ def _maven_segment_violation(tokens: list) -> str:
     if base != "mvn":
         return ""
     args = tokens[1:]
-    if _SKIP_TESTS_PATTERN.search(" ".join(args)):
+    if any(_SKIP_TESTS_PATTERN.match(a) for a in args):
         return ""
     phases_present = sorted(a for a in args if a in _MVN_TEST_RUNNING_PHASES)
     dtest_values = _dtest_values(args)
@@ -141,13 +141,12 @@ def _pytest_segment_violation(tokens: list) -> str:
         return ""
     positionals = [a for a in rest if not a.startswith("-")]
     node_ids = [a for a in positionals if "::" in a]
-    # TODO(review): accepts once ANY positional has "::", even if another positional is a bare file/dir.
-    if not node_ids:
-        return (
-            "pytest command has no explicit node id (file.py::test_name): "
-            "\"{}\". This runs an entire file or directory. Pass explicit "
-            "node ids, one test per invocation.".format(" ".join(tokens)))
-    return ""
+    if positionals and len(node_ids) == len(positionals):
+        return ""
+    return (
+        "pytest command has no explicit node id (file.py::test_name): "
+        "\"{}\". This runs an entire file or directory. Pass explicit "
+        "node ids, one test per invocation.".format(" ".join(tokens)))
 
 
 def validate_post_completion_command(command: str) -> list:
@@ -212,11 +211,35 @@ _TEST_LINT_PATTERNS = [
      "AR_TEST_GROUP/AR_TEST_GROUPS reference"),
     (re.compile(r"\bmvn\s+test\b(?!.*-Dtest=\S+#\S+)", re.IGNORECASE),
      '"mvn test" without a Class#method -Dtest selector'),
-    # TODO(review): the lookahead can match a "#" past a comma, so a mixed value like
-    # "-Dtest=Foo,Bar#baz" (Foo is broad) is not flagged even though Foo alone is.
-    (re.compile(r"-Dtest=([^\s#,]+)(?!\S*#)", re.IGNORECASE),
-     "-Dtest=<Class> selector without #method"),
 ]
+
+
+class _DTestBroadValueMatcher:
+    """Flags a ``-Dtest=<value>`` mention whose comma-separated entries are
+    not ALL narrowed to ``Class#method``.
+
+    A single regex with a negative lookahead for ``#`` cannot express this: a
+    mixed value like ``-Dtest=Foo,Bar#baz`` (where ``Foo`` alone is broad)
+    satisfies a lookahead that only checks whether a ``#`` appears somewhere
+    later in the string, because it finds the one in ``Bar#baz``. Exposes the
+    same ``search(line)`` interface as a compiled pattern so it drops into
+    ``_TEST_LINT_PATTERNS`` unchanged.
+    """
+
+    _VALUE_PATTERN = re.compile(r"-Dtest=(\S+)", re.IGNORECASE)
+
+    def search(self, line: str):
+        match = self._VALUE_PATTERN.search(line)
+        if not match:
+            return None
+        entries = [e for e in match.group(1).split(",") if e]
+        if entries and all("#" in e for e in entries):
+            return None
+        return match
+
+
+_TEST_LINT_PATTERNS.append(
+    (_DTestBroadValueMatcher(), "-Dtest=<Class> selector without #method"))
 
 
 def lint_prompt_for_broad_test_instructions(prompt: str) -> list:

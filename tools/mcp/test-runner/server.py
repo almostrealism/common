@@ -1264,7 +1264,18 @@ async def call_tool(name: str, arguments: dict):
                     ),
                 }, indent=2))]
             timeout_minutes = arguments.get("timeout_minutes", DEFAULT_TIMEOUT)
-            if timeout_minutes and timeout_minutes > MAX_TIMEOUT_MINUTES:
+            if timeout_minutes is None:
+                timeout_minutes = DEFAULT_TIMEOUT
+            if timeout_minutes <= 0:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": (
+                        f"timeout_minutes={timeout_minutes} must be positive. "
+                        "A zero or negative value arms no timer downstream, "
+                        "silently bypassing the 40-minute ceiling this check "
+                        "exists to enforce."
+                    ),
+                }, indent=2))]
+            if timeout_minutes > MAX_TIMEOUT_MINUTES:
                 return [TextContent(type="text", text=json.dumps({
                     "error": (
                         f"timeout_minutes={timeout_minutes} exceeds the maximum "

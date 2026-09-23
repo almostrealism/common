@@ -56,9 +56,11 @@ public class PostCompletionCommandValidator {
 	/** Matches an AR_TEST_GROUP/AR_TEST_GROUPS reference anywhere in the command. */
 	private static final Pattern AR_TEST_GROUP = Pattern.compile("\\bAR_TEST_GROUPS?\\b");
 
-	/** Matches the Maven flags that disable test execution. */
+	/** Matches a whole argument token that disables test execution. Matched per-argument via
+	 * {@link Matcher#matches()}, not as a substring search, so {@code -DskipTests=false} (which
+	 * starts with the same prefix but explicitly re-enables tests) is not misread as a skip flag. */
 	private static final Pattern SKIP_TESTS = Pattern.compile(
-			"-DskipTests(=true)?\\b|-Dmaven\\.test\\.skip(=true)?\\b", Pattern.CASE_INSENSITIVE);
+			"-DskipTests(=true)?|-Dmaven\\.test\\.skip(=true)?", Pattern.CASE_INSENSITIVE);
 
 	/** Default-lifecycle phases that run tests unless {@link #SKIP_TESTS} is present. */
 	private static final List<String> TEST_RUNNING_PHASES = Arrays.asList(
@@ -141,9 +143,10 @@ public class PostCompletionCommandValidator {
 			return null;
 		}
 		List<String> args = tokens.subList(1, tokens.size());
-		String joined = String.join(" ", args);
-		if (SKIP_TESTS.matcher(joined).find()) {
-			return null;
+		for (String arg : args) {
+			if (SKIP_TESTS.matcher(arg).matches()) {
+				return null;
+			}
 		}
 		List<String> phasesPresent = new ArrayList<>();
 		List<String> dtestValues = new ArrayList<>();
@@ -206,11 +209,21 @@ public class PostCompletionCommandValidator {
 		} else if (!"pytest".equals(base) && !"py.test".equals(base)) {
 			return null;
 		}
-		// TODO(review): accepts the segment once ANY positional has "::", even if another positional is a bare file/dir.
+		List<String> positionals = new ArrayList<>();
 		for (String arg : rest) {
-			if (!arg.startsWith("-") && arg.contains("::")) {
-				return null;
+			if (!arg.startsWith("-")) {
+				positionals.add(arg);
 			}
+		}
+		boolean allNodeIds = !positionals.isEmpty();
+		for (String positional : positionals) {
+			if (!positional.contains("::")) {
+				allNodeIds = false;
+				break;
+			}
+		}
+		if (allNodeIds) {
+			return null;
 		}
 		return "pytest command has no explicit node id (file.py::test_name): \""
 				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "

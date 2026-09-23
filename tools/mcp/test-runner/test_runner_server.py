@@ -545,6 +545,32 @@ class StartTestRunLimitsTest(unittest.TestCase):
         mock_start.assert_called_once()
         self.assertEqual("run-1", response["run_id"])
 
+    def test_timeout_minutes_zero_is_rejected(self):
+        # timeout_minutes=0 is falsy in Python, so a check written as
+        # "if timeout_minutes and timeout_minutes > MAX" silently skips the
+        # ceiling for it -- and downstream "if config.timeout_minutes:" then
+        # arms no timer at all, running the test with no timeout whatsoever.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "timeout_minutes": 0,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("must be positive", response["error"])
+
+    def test_timeout_minutes_negative_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "timeout_minutes": -5,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("must be positive", response["error"])
+
 
 class InvocationReportCopyTest(unittest.TestCase):
     """Per-invocation report collection must ignore reports left by earlier runs.

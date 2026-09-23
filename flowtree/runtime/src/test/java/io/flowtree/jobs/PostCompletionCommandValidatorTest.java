@@ -83,6 +83,13 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("bash scripts/verify-foo.sh").isEmpty());
 	}
 
+	/** pytest with every positional argument naming an explicit node id is accepted. */
+	@Test(timeout = 10000)
+	public void pytestMultipleNodeIdsAccepted() {
+		assertTrue(violationsFor(
+				"pytest test_foo.py::test_bar test_baz.py::test_qux").isEmpty());
+	}
+
 	// -- Rejected commands ------------------------------------------------------
 
 	/** The exact command from the 2026-09-16 incident described in the class javadoc must be rejected. */
@@ -150,6 +157,30 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void pytestWithNoArgsRejected() {
 		assertFalse(violationsFor("pytest").isEmpty());
+	}
+
+	/** A mix of one node id and one bare directory/file must be rejected: the bare
+	 * positional still runs a whole file or directory, even though the other
+	 * positional is narrow. */
+	@Test(timeout = 10000)
+	public void pytestMixedDirectoryAndNodeIdRejected() {
+		List<String> violations = violationsFor(
+				"pytest tests/ test_foo.py::test_bar");
+		assertFalse("a bare directory alongside a node id must still be rejected",
+				violations.isEmpty());
+		assertTrue(violations.get(0).contains("node id"));
+	}
+
+	/** -DskipTests=false explicitly re-enables tests and must not be treated as a skip flag. */
+	@Test(timeout = 10000)
+	public void skipTestsEqualsFalseIsNotTreatedAsSkip() {
+		assertFalse(violationsFor("mvn install -DskipTests=false -pl engine/utils").isEmpty());
+	}
+
+	/** -Dmaven.test.skip=false explicitly re-enables tests and must not be treated as a skip flag. */
+	@Test(timeout = 10000)
+	public void mavenTestSkipEqualsFalseIsNotTreatedAsSkip() {
+		assertFalse(violationsFor("mvn verify -Dmaven.test.skip=false").isEmpty());
 	}
 
 	// -- Timeout ceiling --------------------------------------------------------

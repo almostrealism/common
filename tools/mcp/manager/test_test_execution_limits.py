@@ -58,6 +58,10 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
     def test_custom_script(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
+    def test_pytest_multiple_node_ids(self):
+        self.assertEqual([], validate_post_completion_command(
+            "pytest test_foo.py::test_bar test_baz.py::test_qux"))
+
 
 class TestValidatePostCompletionCommandRejected(unittest.TestCase):
     """Commands that must be rejected, with a clear reason."""
@@ -127,6 +131,25 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command(
             "pytest tools/mcp/manager -k test_render")
         self.assertTrue(violations)
+
+    def test_pytest_mixed_directory_and_node_id_rejected(self):
+        # A bare directory alongside a real node id still runs the whole
+        # directory; only checking that ANY positional has "::" let this
+        # through.
+        violations = validate_post_completion_command(
+            "pytest tests/ test_foo.py::test_bar")
+        self.assertTrue(violations, "a bare directory alongside a node id must still be rejected")
+        self.assertIn("node id", " ".join(violations))
+
+    def test_skip_tests_equals_false_is_not_treated_as_skip(self):
+        violations = validate_post_completion_command(
+            "mvn install -DskipTests=false -pl engine/utils")
+        self.assertTrue(violations, "-DskipTests=false explicitly re-enables tests")
+
+    def test_maven_test_skip_equals_false_is_not_treated_as_skip(self):
+        violations = validate_post_completion_command(
+            "mvn verify -Dmaven.test.skip=false")
+        self.assertTrue(violations, "-Dmaven.test.skip=false explicitly re-enables tests")
 
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
@@ -198,6 +221,19 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=NotifierRegistryTest to confirm the fix.")
         self.assertTrue(hits)
+
+    def test_mixed_narrow_and_broad_dtest_mention_rejected(self):
+        # -Dtest=Foo,Bar#baz -- Foo alone is broad even though Bar#baz is
+        # narrow. A single-entry lookahead can find the later "#" and miss
+        # this; every comma-separated entry must be checked individually.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=NotifierRegistryTest,OtherTest#testFoo to confirm the fix.")
+        self.assertTrue(hits, "a mixed narrow/broad -Dtest value must still be flagged")
+
+    def test_fully_narrow_dtest_mention_not_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=FooTest#bar,BazTest#qux to confirm the fix.")
+        self.assertEqual([], hits)
 
     def test_violation_includes_line_number(self):
         hits = lint_prompt_for_broad_test_instructions(
