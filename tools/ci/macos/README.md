@@ -531,8 +531,9 @@ in your place. **A group-writable home directory fails this** — every
 member of the group could otherwise hand root a definition to run as worker
 — and the fix is `sudo chmod g-w /Users/worker`. It then
 copies the plist into a fresh directory only root can enter (under
-`/private/var/root` — checked to be root's alone by ownership, mode and ACL,
-with any inherited ACL stripped from the new directory — not the inherited
+`/private/var/root`, which must be root-owned and writable by root alone; the
+new directory is checked to be root's alone by ownership, mode and ACL, with
+any inherited ACL stripped — not the inherited
 `TMPDIR`, which sudo may have taken from your environment), lints that copy,
 and checks it before root acts on it: the service must run
 as the account that owns the plist (`UserName` is required and must name the

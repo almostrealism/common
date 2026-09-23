@@ -55,9 +55,12 @@ trap cleanup EXIT
 # run_case NAME EXPECT_EXIT MUST_CONTAIN MUST_NOT_CONTAIN -- SERVICES... -- ENV=VAL...
 #
 # Runs rebuild.sh with fresh temp SECRETS_DIR/FLEET_DB_DATA_DIR/
-# FLEET_GRAFANA_DATA_DIR (optionally seeded beforehand via the SEED_DB_FILE /
-# SEED_SECRETS_FILE globals a caller sets before invoking), the given
-# service-name arguments, and the given extra environment variables.
+# FLEET_GRAFANA_DATA_DIR and a fresh FLEET_COMPOSE_ENV_FILE (optionally
+# seeded beforehand via the SEED_DB_FILE / SEED_SECRETS_FILE globals a caller
+# sets before invoking), the given service-name arguments, and the given
+# extra environment variables. Every path the script writes is a temp path:
+# a case must neither see what an earlier case persisted nor leave anything
+# in the checkout it runs from.
 run_case() {
   local name="$1" expect_exit="$2" must_contain="$3" must_not_contain="$4"
   shift 4
@@ -68,10 +71,11 @@ run_case() {
   done
   shift
 
-  local tmp_secrets tmp_db tmp_grafana out actual_exit
+  local tmp_secrets tmp_db tmp_grafana tmp_compose_env out actual_exit
   tmp_secrets="$(mktemp -d)"
   tmp_db="$(mktemp -d)"
   tmp_grafana="$(mktemp -d)"
+  tmp_compose_env="$(mktemp -d)/.env"
   out="$(mktemp)"
   : > "$MOCK_DOCKER_LOG"
 
@@ -91,6 +95,7 @@ run_case() {
       SECRETS_DIR="$tmp_secrets" \
       FLEET_DB_DATA_DIR="$tmp_db" \
       FLEET_GRAFANA_DATA_DIR="$tmp_grafana" \
+      FLEET_COMPOSE_ENV_FILE="$tmp_compose_env" \
       MOCK_DOCKER_LOG="$MOCK_DOCKER_LOG" \
       "$@" \
       bash "$SCRIPT" "${services[@]}" >"$out" 2>&1
@@ -118,7 +123,7 @@ run_case() {
     sed 's/^/    /' "$out"
   fi
 
-  rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$out"
+  rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" "$out"
   unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE
 }
 

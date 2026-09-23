@@ -773,8 +773,12 @@ a scheduled entry point (`python -m tools.fleet.github_poller`); `fleet-db`
 and `fleet-grafana` are services in the controller compose stack, bound to
 the tailnet address with file-based credentials `rebuild.sh` generates; the
 capacity dashboard is provisioned from
-`flowtree/runtime/controller/grafana/`; and `tools/fleet/launchd/` holds the
-LaunchDaemon templates plus `render.sh`. The direct database connection is
+`flowtree/runtime/controller/grafana/`; `tools/fleet/launchd/` holds the
+LaunchDaemon templates, `render.sh` and a one-command `install.sh` for macOS
+hosts; and `tools/fleet/systemd/` holds the unit template and `install.sh`
+for the Linux runner hosts, where the collector runs on the host as a
+dedicated `fleet` system account (task 10's rollout, for the collector).
+The direct database connection is
 the "short way" for task 3 — no ingest service exists, and the credential
 isolation it requires is documented in `tools/fleet/README.md`. Not yet
 implemented: runner-state detection (task 4 — `runner_state` is never
