@@ -321,6 +321,25 @@ public class ShellCommandJob extends GitManagedJob {
 	 * Skips all git commit and push handling: a ShellCommandJob runs a command
 	 * against the repository but never mutates it.
 	 *
+	 * <p>This is the deliberate opt-out, kept separate from
+	 * {@link #validateChanges()} so that the harness can tell "this job never
+	 * commits" from "this job's changes were rejected" — the latter fails the
+	 * job, and a shell command that succeeded must not.</p>
+	 *
+	 * @return always {@code false}
+	 */
+	@Override
+	protected boolean performsGitOperations() {
+		return false;
+	}
+
+	/**
+	 * Skips all git commit and push handling: a ShellCommandJob runs a command
+	 * against the repository but never mutates it.
+	 *
+	 * <p>Retained alongside {@link #performsGitOperations()}, which is what the
+	 * harness now consults; this never runs for a shell job.</p>
+	 *
 	 * @return always {@code false}
 	 */
 	@Override

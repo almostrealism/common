@@ -207,48 +207,24 @@ fi
 # tools/mcp/manager/server.py imports mcp.server.fastmcp at module load
 # (discovered when PYTHON_DIRS below runs unittest discover over
 # tools/mcp/manager), and the `mcp` package requires Python >=3.10
-# (tools/mcp/requirements.txt). The bare `python3` on a self-hosted macOS
-# runner resolves to the OS-bundled Python 3.9, which cannot install `mcp`
-# at all, so this step failed every round with "ModuleNotFoundError: No
-# module named 'mcp'". Prefer the newest Homebrew Python available, the
-# same interpreter-selection order as
-# io.flowtree.jobs.EnvironmentManagedJob.PYTHON_CANDIDATES.
-PYTHON_BIN=""
-for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-        PYTHON_BIN="$candidate"
-        break
-    fi
-done
-if [ -z "$PYTHON_BIN" ]; then
-    echo "::error::No python3 interpreter found on PATH" >&2
-    exit 1
-fi
-
-# A venv (rather than a bare `pip3 install`) is required here because a
-# Homebrew-installed Python marks its site-packages externally-managed and
-# refuses a global pip install outright. The venv is cached outside the
-# checkout so it survives across rounds instead of being recreated (and
-# reinstalled into) on every run.
-# TODO(review): venv cache never invalidates on interpreter upgrade or
-# requirements.txt changes — see stored review-followup memory for a
-# marker-file based invalidation approach.
-VENV_DIR="${HOME}/.cache/ar-coverage-qa/venv"
-if [ ! -x "${VENV_DIR}/bin/python3" ]; then
-    echo "::notice::Creating coverage-qa Python venv with ${PYTHON_BIN}"
-    mkdir -p "$(dirname "$VENV_DIR")"
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
-fi
-PYTHON="${VENV_DIR}/bin/python3"
-
-if ! "$PYTHON" -c "import mcp, yaml, coverage" >/dev/null 2>&1; then
-    echo "::notice::Installing coverage-qa Python dependencies"
-    "$PYTHON" -m pip install --quiet --upgrade pip
-    # Mirrors analysis.yaml's python-tests "Install dependencies" step so the
-    # same package set covers PYTHON_DIRS below (tools/mcp/manager needs
-    # `mcp`; tools/tests needs `pyyaml`).
-    "$PYTHON" -m pip install --quiet -r tools/mcp/requirements.txt pyyaml coverage
-fi
+# (tools/mcp/requirements.txt). A bare `python3` on a self-hosted macOS
+# runner can resolve to the OS-bundled Python 3.9, which cannot install
+# `mcp` at all. select-python-env.sh selects the newest interpreter on
+# PATH that actually satisfies the requirement (verified via
+# sys.version_info, not just its name), and provisions a venv for it in a
+# cache directory outside the checkout — a plain `pip3 install` is not an
+# option because a Homebrew-installed Python marks its site-packages
+# externally-managed and refuses a global install outright. The cached
+# venv is invalidated (recreated) whenever the interpreter,
+# tools/mcp/requirements.txt, or the extra package list below changes;
+# without that, a venv created once by an old interpreter would be reused
+# forever, and pip's `Requires-Python` filtering would silently make every
+# release of a dependency look unavailable ("from versions: none").
+# Mirrors analysis.yaml's python-tests "Install dependencies" step so the
+# same package set covers PYTHON_DIRS below (tools/mcp/manager needs
+# `mcp`; tools/tests needs `pyyaml`).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON=$(REQUIREMENTS_FILE=tools/mcp/requirements.txt bash "${SCRIPT_DIR}/select-python-env.sh" pyyaml coverage)
 
 PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
 FIRST=true

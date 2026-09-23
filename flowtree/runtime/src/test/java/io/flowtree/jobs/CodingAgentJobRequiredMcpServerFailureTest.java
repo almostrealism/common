@@ -21,6 +21,7 @@ import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -28,6 +29,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -173,6 +175,108 @@ public class CodingAgentJobRequiredMcpServerFailureTest extends TestSuiteBase {
         assertFalse("falsification must not run after the throw", job.falsificationRan);
         assertFalse("enforcement must not run after the throw", job.enforcementRan);
         assertFalse("retrospective must not run after the throw", job.reflectionRan);
+    }
+
+    /**
+     * The primary session runs with its tools intact and leaves a change in
+     * the working tree; the retrospective that follows loses the required
+     * server. The primary change must survive, because a throw there escapes
+     * {@code doWork()} and skips the whole git-commit block in
+     * {@link GitManagedJob#run()}, discarding work that was produced correctly.
+     * Only the retrospective is treated this way — it is the one phase that
+     * cannot leave untrusted content in the tree
+     * ({@link Phase#modifiesWorkingTree()}).
+     */
+    @Test(timeout = 30000)
+    public void retrospectiveLossKeepsThePrimarySessionsWork() throws IOException {
+        Path produced = tempDir.resolve("produced-by-primary.txt");
+        AgentRunnerRegistry.register(PHASE_AWARE_RUNNER,
+                () -> new PhaseAwareRunner(produced));
+
+        SpyJob job = new SpyJob("task", "do the work");
+        job.setWorkingDirectory(tempDir.toString());
+        job.setArManagerUrl("http://ar-manager:8010");
+        job.setArManagerToken("armt_tmp_testtoken");
+        job.setRunnerName(PHASE_AWARE_RUNNER);
+
+        job.executeSingleRun();
+        assertTrue("the primary session must have produced its change",
+                Files.exists(produced));
+
+        job.setCurrentActivity(Phase.RETROSPECTIVE.wireName());
+        job.executeSingleRun();
+
+        assertTrue("the primary session's work must survive the retrospective loss",
+                Files.exists(produced));
+        assertFalse("no further session may launch after the loss",
+                job.restartGovernor().canLaunchSession());
+        assertTrue("the block reason must name the server: " + job.restartGovernor().blockReason(),
+                job.restartGovernor().blockReason().contains("ar-manager"));
+    }
+
+    /**
+     * A phase that can edit the tree is not given the retrospective's
+     * treatment. Its untrusted edits are already in the working tree and
+     * cannot be told apart from the work around them, so the job fails rather
+     * than commit them alongside it.
+     */
+    @Test(timeout = 30000)
+    public void lossInATreeModifyingPhaseStillFailsTheJob() {
+        SpyJob job = unavailableRequiredServerJob();
+        job.setOutputConsumer(null);
+        job.setCurrentActivity(Phase.GIT_TAMPERING_RESTART.wireName());
+
+        try {
+            job.executeSingleRun();
+            fail("a tree-modifying phase must not continue to the commit");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("ar-manager"));
+        }
+    }
+
+    /** Name under which the phase-aware stub runner is registered. */
+    private static final String PHASE_AWARE_RUNNER = "required-mcp-phase-aware-stub-runner";
+
+    /**
+     * A stub runner that behaves like a healthy agent during primary work —
+     * writing a file to stand in for the session's edits — and reports the
+     * required servers unavailable once the retrospective phase runs.
+     */
+    private static final class PhaseAwareRunner implements AgentRunner {
+        /** File written during the primary phase, standing in for the session's edits. */
+        private final Path produced;
+
+        /**
+         * @param produced the file the primary phase writes
+         */
+        PhaseAwareRunner(Path produced) {
+            this.produced = produced;
+        }
+
+        @Override
+        public String getName() { return PHASE_AWARE_RUNNER; }
+
+        @Override
+        public AgentCapabilities capabilities() {
+            return new AgentCapabilities(false, false, false, false, true, true, false,
+                    Collections.emptySet());
+        }
+
+        @Override
+        public AgentRunResult run(AgentRunRequest request, ConsoleFeatures logger) {
+            boolean retrospective = Phase.RETROSPECTIVE.wireName().equals(request.getActivityTag());
+            if (!retrospective) {
+                try {
+                    Files.writeString(produced, "primary work\n", StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    throw new IllegalStateException("could not write the primary change", e);
+                }
+            }
+            return new AgentRunResult(0, false, "", "session-id", 10L, 5L, 1, 0.0,
+                    "success", false, Collections.emptyList(), Collections.emptyMap(),
+                    retrospective ? List.copyOf(request.getRequiredMcpServers())
+                            : Collections.emptyList());
+        }
     }
 
     /**
