@@ -93,7 +93,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "WITH latest AS (\n  SELECT rs.lane, rs.state\n  FROM runner_state rs\n  JOIN (SELECT runner_name, MAX(ts) AS max_ts FROM runner_state GROUP BY runner_name) m\n    ON m.runner_name = rs.runner_name AND m.max_ts = rs.ts\n  WHERE rs.lane <> '' AND rs.lane IN ($lane)\n)\nSELECT\n  lane,\n  SUM(CASE WHEN state = 'busy' THEN 1 ELSE 0 END) AS busy,\n  SUM(CASE WHEN state = 'idle' THEN 1 ELSE 0 END) AS idle,\n  SUM(CASE WHEN state = 'offline' THEN 1 ELSE 0 END) AS offline\nFROM latest\nGROUP BY lane\nORDER BY lane",
+          "rawSql": "WITH latest_ts AS (\n  SELECT MAX(ts) AS max_ts FROM runner_state\n),\nlatest AS (\n  SELECT rs.lane, rs.state\n  FROM runner_state rs, latest_ts\n  WHERE rs.ts = latest_ts.max_ts AND rs.lane <> '' AND rs.lane IN ($lane)\n)\nSELECT\n  lane,\n  SUM(CASE WHEN state = 'busy' THEN 1 ELSE 0 END) AS busy,\n  SUM(CASE WHEN state = 'idle' THEN 1 ELSE 0 END) AS idle,\n  SUM(CASE WHEN state = 'offline' THEN 1 ELSE 0 END) AS offline\nFROM latest\nGROUP BY lane\nORDER BY lane",
           "format": "table",
           "editorMode": "code"
         }

@@ -310,15 +310,82 @@ class FleetStore:
         table lacks: ``CREATE TABLE IF NOT EXISTS`` never alters a table that
         already exists, so a store created before a column shipped would
         otherwise stay behind the writers, and every ``upsert_*`` naming the
-        new column would fail against it.
+        new column would fail against it. Finally, widen ``runner_state``'s
+        key if it predates :meth:`_widen_runner_state_key`'s column — see
+        that method.
         """
         for statement in schema.statements(self._dialect.timestamp_type):
             self._conn.execute(statement)
         for table, column, column_type in schema.ADDED_COLUMNS:
-            if column not in self.columns(table):
-                self._conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, column_type))
+            self._add_column_if_missing(table, column, column_type)
+        self._widen_runner_state_key()
         if self._dialect.name == Dialect.SQLITE:
             self._conn.commit()
+
+    def _add_column_if_missing(self, table: str, column: str, column_type: str) -> None:
+        """Add *column* to *table* if it does not already have it.
+
+        On Postgres this is a single atomic ``ADD COLUMN IF NOT EXISTS``,
+        which matters because both the collector and the poller call
+        :meth:`init_schema` at startup against the same shared store: with a
+        check-then-``ALTER`` (the sqlite branch below), two processes can
+        both observe the column missing and one then fails with a
+        duplicate-column error. sqlite has no such clause, so the check
+        stays a separate query there — sqlite is the single local file a
+        single host writes to (see this module's docstring), not the shared
+        store two independent processes start against concurrently.
+        """
+        if self._dialect.name == Dialect.POSTGRES:
+            self._conn.execute("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s" % (table, column, column_type))
+        elif column not in self.columns(table):
+            self._conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, column_type))
+
+    def _widen_runner_state_key(self) -> None:
+        """Widen ``runner_state``'s natural key to ``(ts, host, runner_name, repo)``.
+
+        A runner's ``name`` is unique only within the GitHub registration
+        scope it was fetched from (a specific repository, or an
+        organization) — not across scopes. ``github_poller.fetch_runners``
+        can fetch both a repository's and (with ``--runners-org``) an
+        organization's runners in the same cycle, and ``store_runner_states``
+        writes every one of them with ``host=''`` (the runners API reports
+        no host), so two runners that happen to share a name in different
+        scopes previously collided on the old key ``(ts, host, runner_name)``
+        and silently overwrote one another, undercounting capacity. ``repo``
+        already carries the registration scope for these rows (see
+        ``store_runner_states``'s ``repo=runner["registration"]``), so
+        including it in the key is enough to disambiguate them — no new
+        column is needed.
+
+        A store whose ``runner_state`` table already has the new key is left
+        alone (the common case, and always true for a table just created by
+        :meth:`init_schema` above, since :data:`schema.RUNNER_STATE` already
+        declares it). sqlite cannot alter a primary key in place, so an old
+        table is migrated by rename-recreate-copy-drop. Postgres can alter
+        it directly; the attempt is wrapped in a broad ``except`` because,
+        like the column migration above, two processes can race to widen the
+        same live table concurrently, and Postgres has no
+        ``ADD CONSTRAINT IF NOT EXISTS`` to make that atomic — the loser of
+        the race hits an error from a migration the winner already
+        completed, which is safe to ignore.
+        """
+        target = ["ts", "host", "runner_name", "repo"]
+        if self._primary_key_columns("runner_state") == target:
+            return
+        if self._dialect.name == Dialect.SQLITE:
+            self._conn.execute("ALTER TABLE runner_state RENAME TO runner_state_old")
+            self._conn.execute(schema.RUNNER_STATE.format(ts=self._dialect.timestamp_type))
+            columns = ", ".join(self.columns("runner_state_old"))
+            self._conn.execute(
+                "INSERT INTO runner_state (%s) SELECT %s FROM runner_state_old" % (columns, columns)
+            )
+            self._conn.execute("DROP TABLE runner_state_old")
+        else:
+            try:
+                self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
+                self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
+            except Exception:  # noqa: BLE001 — another process already migrated this table concurrently
+                pass
 
     def columns(self, table: str) -> List[str]:
         """The column names *table* currently has, in declaration order.
@@ -333,6 +400,30 @@ class FleetStore:
             row[0] for row in self._execute(
                 "SELECT column_name FROM information_schema.columns "
                 "WHERE table_name = ? ORDER BY ordinal_position",
+                (table,),
+            )
+        ]
+
+    def _primary_key_columns(self, table: str) -> List[str]:
+        """The columns of *table*'s primary key, in key order.
+
+        sqlite answers through ``PRAGMA table_info`` (its ``pk`` column is 0
+        for a non-key column, else its 1-based position in the key);
+        Postgres through ``information_schema``, joining the table's
+        primary-key constraint to its key columns.
+        """
+        if self._dialect.name == Dialect.SQLITE:
+            ordered = sorted(
+                (row[5], row[1]) for row in self._conn.execute("PRAGMA table_info(%s)" % table) if row[5]
+            )
+            return [name for _, name in ordered]
+        return [
+            row[0] for row in self._execute(
+                "SELECT kcu.column_name FROM information_schema.table_constraints tc "
+                "JOIN information_schema.key_column_usage kcu "
+                "ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema "
+                "WHERE tc.table_name = ? AND tc.constraint_type = 'PRIMARY KEY' "
+                "ORDER BY kcu.ordinal_position",
                 (table,),
             )
         ]
@@ -399,14 +490,19 @@ class FleetStore:
         lane: str = "",
         platform: str = "",
     ) -> None:
-        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name)``.
+        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name, repo)``.
 
         *host* may be ``''`` when the writer cannot know it (the GitHub
         runners API reports no host); *lane*/*platform* are the projections
-        of *labels* described on :meth:`upsert_job_event`.
+        of *labels* described on :meth:`upsert_job_event`. *repo* is part of
+        the key alongside *host*/*runner_name* because a runner's name is
+        only unique within its GitHub registration scope (see
+        :func:`tools.fleet.github_poller.fetch_runners`) — without it, a
+        repo-scoped and an org-scoped runner that happen to share a name
+        would collide and overwrite each other under the same ``host=''``.
         """
         self._upsert(
-            "runner_state", ("ts", "host", "runner_name"),
+            "runner_state", ("ts", "host", "runner_name", "repo"),
             ("ts", "host", "runner_name", "labels", "lane", "platform", "state",
              "repo", "workflow", "job_id", "agent_version"),
             (ts, host, runner_name, labels, lane, platform, state, repo, workflow, job_id, agent_version),

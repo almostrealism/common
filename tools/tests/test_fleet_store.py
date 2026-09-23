@@ -30,7 +30,30 @@ import tempfile
 import unittest
 
 from tools.fleet.attribution import ClassMetrics
-from tools.fleet.store import FleetStore
+from tools.fleet.store import Dialect, FleetStore
+
+
+class _FakePostgresConnection:
+    """Records every statement executed against it, and answers the
+    ``information_schema`` primary-key lookup with a fixed column list.
+
+    Exercises :class:`FleetStore`'s Postgres-only migration branches
+    (``_add_column_if_missing``, ``_widen_runner_state_key``) without a real
+    Postgres server: :meth:`FleetStore.__init__`'s two-argument form accepts
+    any connection object carrying an ``execute`` method, and none of the
+    statements these methods issue need a real result set beyond the
+    canned primary-key row list.
+    """
+
+    def __init__(self, primary_key_columns):
+        self.statements = []
+        self._primary_key_columns = primary_key_columns
+
+    def execute(self, sql, params=()):
+        self.statements.append(sql)
+        if "information_schema.table_constraints" in sql:
+            return [(column,) for column in self._primary_key_columns]
+        return []
 
 
 class FleetStoreIdempotencyTests(unittest.TestCase):
@@ -89,6 +112,25 @@ class FleetStoreIdempotencyTests(unittest.TestCase):
         self.store.upsert_runner_state("2026-09-18T00:00:00Z", "mac-studio", "runner-1", state="busy")
         count = self.store._conn.execute("SELECT COUNT(*) FROM runner_state").fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_runner_state_upsert_keeps_same_named_runners_from_different_registration_scopes(self):
+        """A runner's name is unique only within its GitHub registration
+        scope (a repository, or an organization) - `github_poller.fetch_runners`
+        can return a repo-scoped and an org-scoped runner that happen to
+        share a name, both stamped with the same poll-cycle `ts` and the
+        same `host=''` (the runners API reports no host). Without `repo`
+        (which carries the registration scope for these rows) in the key,
+        the second upsert would silently overwrite the first."""
+        self.store.upsert_runner_state(
+            "2026-09-18T00:00:00Z", "", "shared-name", state="idle", repo="almostrealism/common",
+        )
+        self.store.upsert_runner_state(
+            "2026-09-18T00:00:00Z", "", "shared-name", state="busy", repo="org:almostrealism",
+        )
+        rows = self.store._conn.execute(
+            "SELECT repo, state FROM runner_state WHERE runner_name = 'shared-name' ORDER BY repo"
+        ).fetchall()
+        self.assertEqual([("almostrealism/common", "idle"), ("org:almostrealism", "busy")], rows)
 
     def test_class_samples_upsert_writes_one_row_per_class(self):
         metrics = {
@@ -353,6 +395,61 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         migrated.init_schema()
         for table in ("job_event", "runner_state"):
             self.assertEqual(sorted(fresh.columns(table)), sorted(migrated.columns(table)), table)
+
+    def test_a_fresh_store_already_has_the_widened_runner_state_key(self):
+        store = FleetStore(":memory:")
+        store.init_schema()
+        self.assertEqual(["ts", "host", "runner_name", "repo"], store._primary_key_columns("runner_state"))
+
+    def test_init_schema_widens_an_old_runner_state_primary_key(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        self.assertEqual(["ts", "host", "runner_name"], store._primary_key_columns("runner_state"))
+        store.init_schema()
+        self.assertEqual(["ts", "host", "runner_name", "repo"], store._primary_key_columns("runner_state"))
+
+    def test_widening_the_runner_state_key_preserves_existing_rows(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        store._conn.execute(
+            "INSERT INTO runner_state (ts, host, runner_name, state, repo) "
+            "VALUES ('2026-09-21T00:00:00Z', '', 'r1', 'idle', 'almostrealism/common')"
+        )
+        store.init_schema()
+        row = store._conn.execute(
+            "SELECT runner_name, state, repo FROM runner_state WHERE runner_name = 'r1'"
+        ).fetchone()
+        self.assertEqual(("r1", "idle", "almostrealism/common"), row)
+
+    def test_init_schema_is_idempotent_after_widening_the_runner_state_key(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        store.init_schema()
+        before = store._primary_key_columns("runner_state")
+        store.init_schema()
+        self.assertEqual(before, store._primary_key_columns("runner_state"))
+
+    def test_add_column_if_missing_uses_atomic_syntax_on_postgres(self):
+        """The Postgres branch must be a single `ADD COLUMN IF NOT EXISTS`
+        statement, not a check-then-`ALTER` - see `_add_column_if_missing`'s
+        docstring for why a check-then-`ALTER` races when the collector and
+        the poller both call `init_schema()` against the same store."""
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name", "repo"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._add_column_if_missing("job_event", "lane", "TEXT")
+        self.assertIn("ALTER TABLE job_event ADD COLUMN IF NOT EXISTS lane TEXT", connection.statements)
+
+    def test_widen_runner_state_key_migrates_an_old_postgres_primary_key(self):
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        self.assertIn("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey", connection.statements)
+        self.assertIn(
+            "ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)", connection.statements
+        )
+
+    def test_widen_runner_state_key_is_a_noop_on_postgres_when_already_widened(self):
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name", "repo"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        self.assertFalse(any("ALTER TABLE runner_state" in sql for sql in connection.statements))
 
 
 if __name__ == "__main__":

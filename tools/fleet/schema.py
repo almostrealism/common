@@ -79,11 +79,16 @@ CREATE TABLE IF NOT EXISTS runner_state (
     platform TEXT,
     -- busy / idle / offline, as the runners API reports it.
     state TEXT,
-    repo TEXT,
+    -- For a GitHub-API-sourced row (see `github_poller.store_runner_states`),
+    -- the registration scope the runner came from ('owner/repo' or
+    -- 'org:name') -- part of the key alongside `runner_name` because a
+    -- runner's name is unique only within one registration scope, not
+    -- across scopes, and every such row shares `host=''`.
+    repo TEXT NOT NULL DEFAULT '',
     workflow TEXT,
     job_id TEXT,
     agent_version TEXT,
-    PRIMARY KEY (ts, host, runner_name)
+    PRIMARY KEY (ts, host, runner_name, repo)
 )
 """
 
