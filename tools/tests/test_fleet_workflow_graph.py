@@ -220,6 +220,32 @@ class JobKeyTests(unittest.TestCase):
         self.assertEqual("verify", key)
         self.assertFalse(is_inner)
 
+    def test_a_literal_full_name_match_and_a_caller_inner_match_are_one_candidate_set(self):
+        """A literal job whose display name happens to render to the exact
+        string a reusable-workflow call's inner job would produce is
+        genuinely ambiguous with that caller/inner reading - resolving the
+        full name first and returning immediately, without ever considering
+        the caller split, would silently prefer the literal job over the
+        equally valid reusable-workflow attribution instead of reporting
+        the ambiguity, exactly like every other pair of candidate forms in
+        `resolve`."""
+        graph = WorkflowGraph({
+            "vcc": {"name": "verify / check-completion"},
+            "verify": {"uses": "./.github/workflows/verify.yaml"},
+        })
+        key, is_inner = graph.resolve("verify / check-completion")
+        self.assertIsNone(key)
+        self.assertFalse(is_inner)
+
+    def test_a_literal_full_name_match_with_no_colliding_caller_is_unambiguous(self):
+        graph = WorkflowGraph({
+            "vcc": {"name": "verify / check-completion"},
+            "build": {},
+        })
+        key, is_inner = graph.resolve("verify / check-completion")
+        self.assertEqual("vcc", key)
+        self.assertFalse(is_inner)
+
 
 class NeedsTests(unittest.TestCase):
 

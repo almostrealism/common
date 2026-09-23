@@ -631,6 +631,40 @@ class RunnerInventoryTests(unittest.TestCase):
             runners = fetch_runners("acme/repo", "tok", org="acme")
         self.assertEqual(["acme/repo", "acme/repo"], [runner["registration"] for runner in runners])
 
+    def test_fetch_runners_deduplicates_a_runner_shared_by_both_scopes_by_id(self):
+        """An organization-scoped runner made available to a repository via
+        a runner group can be returned by both the repository and the
+        organization endpoints under the same numeric `id` - counting it
+        from both would make the fleet's capacity panels overcount that
+        one piece of hardware. The organization-sourced entry (fetched
+        second) wins, since that is the registration whose scope actually
+        governs the runner."""
+        shared_from_repo = dict(self.RUNNERS[0])
+        shared_from_org = dict(self.RUNNERS[0], busy=False)
+
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                return {"runners": [shared_from_org]}
+            return {"runners": [shared_from_repo, self.RUNNERS[1]]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get):
+            runners = fetch_runners("acme/repo", "tok", org="acme")
+        self.assertEqual(2, len(runners))
+        by_id = {runner["id"]: runner for runner in runners}
+        self.assertEqual("org:acme", by_id[shared_from_org["id"]]["registration"])
+        self.assertFalse(by_id[shared_from_org["id"]]["busy"])
+        self.assertEqual("acme/repo", by_id[self.RUNNERS[1]["id"]]["registration"])
+
+    def test_fetch_runners_does_not_deduplicate_runners_with_no_id(self):
+        runner_without_id = {"name": "legacy-runner", "os": "Linux", "status": "online", "busy": False}
+
+        def _get(url, token):
+            return {"runners": [dict(runner_without_id), dict(runner_without_id)]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get):
+            runners = fetch_runners("acme/repo", "tok")
+        self.assertEqual(2, len(runners))
+
     def test_fetch_runners_raises_when_every_list_is_unavailable(self):
         with mock.patch("tools.fleet.github_poller._get_json", side_effect=_http_error(403)), mock.patch("sys.stderr"):
             with self.assertRaises(RuntimeError):

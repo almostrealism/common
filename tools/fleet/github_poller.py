@@ -387,6 +387,15 @@ def fetch_runners(
     ``registration`` key added (``owner/name`` or ``org:name``) saying which
     list it came from.
 
+    An organization-scoped runner made available to *repo* via a runner
+    group can appear in both lists at once, under the same numeric ``id``;
+    counted from both, it would look like two runners occupying the fleet's
+    capacity instead of one. Results are de-duplicated by ``id`` — a runner
+    seen in both lists keeps its organization-sourced entry (fetched second,
+    below), since that is the registration whose scope actually governs it.
+    A runner dict with no ``id`` (not expected from the real API, but not
+    ruled out either) is never treated as a duplicate of another.
+
     The two lists need different token permissions (self-hosted-runner read
     on the repository, and on the organization), so each is fetched on its
     own: by default, a list the token cannot read is reported on stderr and
@@ -409,6 +418,7 @@ def fetch_runners(
         sources.append(("%s/orgs/%s/actions/runners" % (GITHUB_API_BASE, org), "org:%s" % org,
                         "runners for org %s" % org))
     runners: List[Dict] = []
+    seen_ids: Dict[object, int] = {}
     failures: List[Exception] = []
     for base_url, registration, description in sources:
         try:
@@ -421,6 +431,12 @@ def fetch_runners(
         for runner in fetched:
             runner = dict(runner)
             runner["registration"] = registration
+            runner_id = runner.get("id")
+            if runner_id is not None and runner_id in seen_ids:
+                runners[seen_ids[runner_id]] = runner
+                continue
+            if runner_id is not None:
+                seen_ids[runner_id] = len(runners)
             runners.append(runner)
     if failures and (require_complete or len(failures) == len(sources)):
         raise failures[0]

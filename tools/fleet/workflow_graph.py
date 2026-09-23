@@ -165,23 +165,42 @@ class WorkflowGraph:
         and pattern matches are collected into one set, and a key is
         returned only when that combined set is a singleton.
 
-        Only when the full name matches nothing at all is a ``caller /
-        inner`` name split and the caller half tried the same way — and even
-        then only among jobs whose own definition has ``uses:``, since a
-        normal top-level job whose literal name happens to contain ``" / "``
-        (for example ``name: "build / test"``) must resolve on its own
-        name, not be reattributed to a caller it never had.
+        The full-name match and the ``caller / inner`` split are two more
+        competing hypotheses, not a priority order to try in sequence: a
+        literal job whose display name happens to render to the same string
+        a reusable-workflow call's inner job would produce (for example a
+        job named ``"verify / check-completion"`` alongside a separate
+        ``verify`` job that has ``uses:`` and calls a workflow with an inner
+        job named ``check-completion``) is genuinely ambiguous between the
+        two, so trying the full name first and returning as soon as it
+        matches would silently prefer the literal job over the equally
+        valid caller/inner reading instead of reporting the ambiguity. The
+        caller/inner split is only attempted at all among jobs whose own
+        definition has ``uses:``, since a normal top-level job whose literal
+        name happens to contain ``" / "`` (for example ``name: "build /
+        test"``) must resolve on its own name, not be reattributed to a
+        caller it never had — but when both forms do produce a candidate,
+        they are merged into one set exactly like every other pair of forms
+        in this method, and a key is returned only when that set is a
+        singleton.
         """
         if not api_name:
             return None, False
+        candidates: Set[Tuple[str, bool]] = set()
         key, matched = self._match(api_name)
         if matched:
-            return key, False
+            if key is None:
+                return None, False
+            candidates.add((key, False))
         if " / " in api_name:
             caller = api_name.split(" / ", 1)[0]
             key, matched = self._match(caller, require_uses=True)
             if matched:
-                return key, True
+                if key is None:
+                    return None, False
+                candidates.add((key, True))
+        if len(candidates) == 1:
+            return next(iter(candidates))
         return None, False
 
     def _match(self, name: str, require_uses: bool = False) -> Tuple[Optional[str], bool]:
