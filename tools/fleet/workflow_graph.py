@@ -145,11 +145,15 @@ class WorkflowGraph:
         Tries the full name first — exact, then as a pattern for a
         ``name:`` that contains a ``${{ }}`` expression. If that name ends
         in a ``(...)`` suffix, the stripped form is tried too, but only
-        against jobs whose own definition declares a ``strategy.matrix`` —
-        only an actual matrix job can render with that suffix in the API at
-        all, so a non-matrix job is never a candidate for the stripped form,
-        even when its literal name happens to end in parentheses on its
-        own. Every surviving form is a competing hypothesis about what
+        against jobs whose own definition declares a ``strategy.matrix``
+        and whose own display name has no expression — only an actual
+        matrix job with a plain (or key-derived) name can render with that
+        suffix in the API at all, so a non-matrix job is never a candidate
+        for the stripped form, even when its literal name happens to end
+        in parentheses on its own, and neither is an expression-bearing
+        matrix job, whose rendered name is entirely the expression's own
+        value and never gains a further auto-appended suffix. Every
+        surviving form is a competing hypothesis about what
         *api_name* actually is, not an independent fallback to try in
         order: a matrix job ``foo`` and an unrelated literal job
         ``name: foo (bar)`` are both exact matches for the api_name
@@ -210,10 +214,16 @@ class WorkflowGraph:
         Combines exact and pattern matches against *name* itself with exact
         and pattern matches against its matrix-suffix-stripped form — the
         latter restricted to jobs that actually declare a
-        ``strategy.matrix``, since only a matrix job can render with a
-        ``(values)`` suffix in the API at all; a non-matrix job whose
-        literal name simply ends in parentheses on its own is only ever a
-        candidate through the unstripped form.
+        ``strategy.matrix`` AND whose own display name has no ``${{ }}``
+        expression. Only a matrix job can render with a ``(values)`` suffix
+        in the API at all, so a non-matrix job whose literal name simply
+        ends in parentheses on its own is only ever a candidate through the
+        unstripped form — and per the module docstring's rendering rules, a
+        matrix job whose ``name:`` itself uses an expression never gets that
+        suffix either, since the expression's own rendered value is already
+        the whole name; matching such a job's pattern against the
+        suffix-stripped text would treat it as a candidate for a rendering
+        it can never actually produce.
 
         Returns ``(key, True)`` when that set is a singleton, ``(None, True)``
         when it has more than one member (a real ambiguity), and
@@ -226,7 +236,7 @@ class WorkflowGraph:
         if stripped != name:
             matches.update(
                 key for key in self._exact_matches(stripped) | self._pattern_matches(stripped)
-                if self._matrix.get(key)
+                if self._matrix.get(key) and not _EXPRESSION.search(self._display.get(key, ""))
             )
         if require_uses:
             matches = {key for key in matches if self._uses.get(key)}

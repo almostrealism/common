@@ -145,6 +145,32 @@ class JobKeyTests(unittest.TestCase):
         graph = WorkflowGraph({"foo": {"strategy": {"matrix": {"group": ["bar"]}}}})
         self.assertEqual("foo", graph.job_key("foo (bar)"))
 
+    def test_an_expression_bearing_matrix_job_is_not_a_candidate_for_the_stripped_suffix_form(self):
+        """A matrix job whose own `name:` contains a `${{ }}` expression
+        never gets GitHub's automatic "(values)" suffix appended - the
+        expression's rendered value is the entire name (see the module
+        docstring's rendering rules), so it must not be treated as a
+        candidate for some OTHER job's suffix-stripped api_name just
+        because it also declares `strategy.matrix`. Without this
+        restriction, `expr-job`'s pattern (`"Deploy .*? thing"`) matches
+        the suffix-stripped text `"Deploy prod thing"` and collides with
+        `target-job`'s real, unambiguous rendering `"Deploy prod thing
+        (1)"`, even though `expr-job` itself could never actually render
+        to that string - its own expression would have to literally end
+        in " thing", which never happens once a real matrix value is
+        substituted and a further "(1)" is appended on top."""
+        graph = WorkflowGraph({
+            "expr-job": {
+                "name": "Deploy ${{ matrix.env }} thing",
+                "strategy": {"matrix": {"env": ["prod"]}},
+            },
+            "target-job": {
+                "name": "Deploy prod thing",
+                "strategy": {"matrix": {"x": [1]}},
+            },
+        })
+        self.assertEqual("target-job", graph.job_key("Deploy prod thing (1)"))
+
     def test_a_non_matrix_job_is_not_a_candidate_for_the_stripped_suffix_form(self):
         """Only an actual matrix job can render with a "(values)" suffix in
         the jobs API. A non-matrix job `foo` (no `strategy.matrix`) must not
