@@ -154,6 +154,11 @@ final class CodingAgentJobCodec {
         if (job.isDispatchCapable()) {
             sb.append("::dispatchCapable:=true");
         }
+        // Emitted only when granted, for the same reason as dispatchCapable:
+        // dropping it on a dispatch denies the job the writes it exists to make.
+        if (job.isBypassAgentPermissionPrompts()) {
+            sb.append("::bypassAgentPermissionPrompts:=true");
+        }
         if (job.getDeduplicationMode() != null) {
             sb.append("::dedupMode:=").append(job.getDeduplicationMode());
         }
@@ -273,6 +278,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "dispatchCapable":
                 job.setDispatchCapable(Boolean.parseBoolean(value));
+                return true;
+            case "bypassAgentPermissionPrompts":
+                job.setBypassAgentPermissionPrompts(Boolean.parseBoolean(value));
                 return true;
             case "dedupMode":
                 job.setDeduplicationMode(value);

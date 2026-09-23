@@ -63,6 +63,8 @@ import io.flowtree.slack.NotifierRegistry;
 import org.almostrealism.io.AlertRecipients;
 import org.almostrealism.io.RateLimit;
 import org.almostrealism.util.SignalWireDeliveryProvider;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.submission.PhaseConfigResolver;
 
@@ -157,7 +159,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Map<String, String> orgToWorkspaceId = new HashMap<>();
 
     /** Resolves a Slack workspace ID to its entry for the workspace runner layer. */
-    private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
+    private Function<String, WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
 
@@ -341,7 +343,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionConfigResolver}; {@code null} disables it. */
-    public void setWorkspaceLookup(Function<String, WorkstreamConfig.WorkspaceEntry> lookup) {
+    public void setWorkspaceLookup(Function<String, WorkspaceEntry> lookup) {
         this.workspaceLookup = lookup != null ? lookup : id -> null;
     }
 
@@ -352,9 +354,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * the workspace for a listener workstream and propagate any
      * workspace-level routing defaults.
      */
-    public WorkstreamConfig.WorkspaceEntry workspaceLookupOrNull(String workspaceId) {
+    public WorkspaceEntry workspaceLookupOrNull(String workspaceId) {
         if (workspaceId == null || workspaceId.isEmpty()) return null;
-        WorkstreamConfig.WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
+        WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
         return entry;
     }
 
@@ -479,7 +481,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param cache workspace-ID → (secret-name → entry) map
      */
     public void setSecretsCache(
-            Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache) {
+            Map<String, Map<String, WorkspaceSecretEntry>> cache) {
         secretsHandler.setSecretsCache(cache);
     }
 
@@ -982,7 +984,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // resolver. Same code path the Slack listener uses, so workspace-level
         // settings are honoured uniformly regardless of submission entrypoint.
         String wsId = workstream.getWorkspaceId();
-        WorkstreamConfig.WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
+        WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
         if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing workspaceId=" + wsId);
         PhaseConfigBundle requestBundle = PhaseConfigResolver.bundleFromRequest(body);
         SubmissionConfigResolver configResolver = SubmissionConfigResolver.resolve(
@@ -1017,8 +1019,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        // Dispatch capability: opt-in workstreams get the dispatch tools.
-        factory.setDispatchCapable(workstream.isDispatchCapable());
+        workstream.applyCapabilities(factory, factory.getTargetBranch());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
