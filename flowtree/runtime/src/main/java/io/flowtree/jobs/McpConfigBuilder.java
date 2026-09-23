@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -429,6 +430,30 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 + "refusing to build an MCP configuration without a token.");
         }
         return true;
+    }
+
+    /**
+     * The servers in the configuration this builder produces that an agent
+     * session cannot do its job without.
+     *
+     * <p>ar-manager is the one: the instruction protocol — status messages,
+     * memories, pull-request review tools, alerts — exists only through it.
+     * A session it failed to connect to has every one of those instructions
+     * silently voided, and the model, finding no {@code mcp__ar-manager__*}
+     * tools, substitutes whatever else looks similar. The runner reports any
+     * of these that did not connect (see
+     * {@link io.flowtree.jobs.agent.AgentRunResult#unavailableRequiredMcpServers()})
+     * and the job fails on it rather than keep the session's work. Pushed
+     * tool servers (test runner, build validator, ...) are not required:
+     * their absence degrades a session, it does not void its instructions.</p>
+     *
+     * @return the required server names; empty when ar-manager is not configured
+     */
+    public Set<String> requiredServerNames() {
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
+            return Collections.emptySet();
+        }
+        return arManagerEnabled() ? Set.of("ar-manager") : Collections.emptySet();
     }
 
     /**

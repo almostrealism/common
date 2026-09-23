@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -43,7 +44,7 @@ import static org.junit.Assert.*;
  */
 public class SlackMultiTenantConfigTest extends TestSuiteBase {
 
-    /** WorkstreamConfig.WorkspaceEntry serializes and deserializes all Slack fields. */
+    /** WorkspaceEntry serializes and deserializes all Slack fields. */
     @Test(timeout = 10000)
     public void testWorkspaceEntryYamlRoundTrip() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -60,7 +61,7 @@ public class SlackMultiTenantConfigTest extends TestSuiteBase {
         assertNotNull(config.getSlackWorkspaces());
         assertEquals(1, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.WorkspaceEntry entry = config.getSlackWorkspaces().get(0);
+        WorkspaceEntry entry = config.getSlackWorkspaces().get(0);
         assertEquals("T0123456789", entry.getId());
         assertEquals("T0123456789", entry.getSlackTeamId());
         assertEquals("my-org", entry.getName());
@@ -90,14 +91,14 @@ public class SlackMultiTenantConfigTest extends TestSuiteBase {
 
         assertEquals(2, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.WorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
+        WorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
         assertEquals("T111", ws1.getId());
         assertEquals("workspace-one", ws1.getName());
         assertEquals("xoxb-one", ws1.getBotToken());
         assertNotNull(ws1.getGithubOrgs());
         assertEquals("ghp_one", ws1.getGithubOrgs().get("my-org").getToken());
 
-        WorkstreamConfig.WorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
+        WorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
         assertEquals("T222", ws2.getId());
         assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
     }
@@ -162,7 +163,7 @@ public class SlackMultiTenantConfigTest extends TestSuiteBase {
     /** SlackTokens.from(entry) extracts inline botToken and appToken. */
     @Test(timeout = 10000)
     public void testSlackTokensFromEntryInlineTokens() throws IOException {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setId("T999");
         entry.setBotToken("xoxb-inline-bot");
         entry.setAppToken("xapp-inline-app");
@@ -181,7 +182,7 @@ public class SlackMultiTenantConfigTest extends TestSuiteBase {
         Files.write(tempFile.toPath(),
                 "{ \"botToken\": \"xoxb-from-file\", \"appToken\": \"xapp-from-file\" }".getBytes());
 
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setId("T888");
         entry.setTokensFile(tempFile.getAbsolutePath());
         entry.setBotToken("xoxb-should-be-ignored");

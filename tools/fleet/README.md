@@ -48,7 +48,8 @@ tools/fleet/launchd/install.sh --store-from michael@mac-studio
 ```
 
 It creates the private interpreter and renders the plists (`render.sh`),
-copies the store credential from a host that already has it (or uses an
+copies the store credential from a host that already has it with `scp`
+(expect that host's password prompt unless you have a key there; or use an
 existing `~/fleet/store-url`), takes **one sample into the central store and
 reads it back** before anything is daemonised — a credential or database
 problem fails there, in the foreground — and then registers the collector
@@ -83,6 +84,38 @@ The collector's `--host` label is the host's `LocalHostName`, lower-cased;
 `render.sh` sets it because `platform.node()` on a Tailscale host can return
 the FQDN with extra tokens appended. A runner whose work volume is not `/`
 needs `FLEET_DISK_PATH=<mount>` in the environment of the install.
+
+### Linux runner hosts
+
+The runners on the Linux hosts are containers — Docker Compose on the CPU
+fleet (`tools/ci/docker`), rootless podman on the ROCm fleet
+(`tools/ci/rocm`) — but on native Linux a container's processes are ordinary
+host processes, so the collector runs on the host, not in a container, and
+its process-tree attribution works unchanged (`Runner.Listener` fits Linux
+`ps`'s 15-character `comm`). The differences are packaging, and
+`tools/fleet/systemd/install.sh` handles them. With sudo, from a checkout:
+
+```bash
+sudo tools/fleet/systemd/install.sh --store-from michael@mac-studio --disk-path /var/lib/docker
+```
+
+It creates a dedicated system account (`fleet`, no login shell — the
+runners' account must not be able to read the store credential, and on the
+ROCm host that account runs fork-PR code), snapshots `tools/fleet` into
+`/var/lib/fleet/app` as a root-owned copy the service imports and creates
+the venv with `psycopg` beside it, also root-owned (so neither the service
+account nor the runner account can change what the service executes — only
+the logs and the credential are the service account's; re-run to update),
+copies the
+credential (`--store-from` runs `scp` as the user behind `sudo`, whose keys
+reach the other host; `--store-url-file` takes a local file), takes one
+sample into the central store **as the service account** and reads it back,
+then renders `tools/fleet/systemd/fleet-collector.service` into
+`/etc/systemd/system/` and enables it. `--disk-path` should be the runners'
+work volume — the Docker data root, or `/var/lib/containers` / the service
+account's podman storage on the ROCm host — since that is the disk the
+capacity question is about. `journalctl -u fleet-collector -f` shows the
+service; the JSONL fallback is under `/var/lib/fleet/logs`.
 
 ## What is intentionally not here
 
