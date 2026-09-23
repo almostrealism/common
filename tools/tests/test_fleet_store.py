@@ -125,6 +125,25 @@ class FleetStoreIdempotencyTests(unittest.TestCase):
         row = self.store._conn.execute("SELECT runner_id FROM job_event WHERE job_id = 'job-42'").fetchone()
         self.assertEqual((None,), row)
 
+    def test_job_event_upsert_positional_arguments_preserve_prior_ordering(self):
+        """`runner_id` was added after `pre_start_latency_seconds`,
+        `is_entry_point`, `queue_wait_seconds`, `lane` and `platform` were
+        already part of the signature, specifically so that a caller
+        invoking those five positionally (as this test does) keeps binding
+        them to the same parameters it always did, instead of silently
+        shifting onto `runner_id`."""
+        self.store.upsert_job_event(
+            "job-1", "run-1", "acme/repo", "build", "[]",
+            "2026-09-18T00:00:00Z", "2026-09-18T00:05:00Z", "2026-09-18T00:10:00Z",
+            "completed", "success", "runner-1", "default",
+            300.0, True, 300.0, "ar-ci", "macos",
+        )
+        row = self.store._conn.execute(
+            "SELECT pre_start_latency_seconds, is_entry_point, queue_wait_seconds, lane, platform, runner_id "
+            "FROM job_event WHERE job_id = 'job-1'"
+        ).fetchone()
+        self.assertEqual((300.0, 1, 300.0, "ar-ci", "macos", None), row)
+
     def test_job_step_upsert_is_idempotent_on_job_id_and_number(self):
         for _ in range(2):
             self.store.upsert_job_step("job-42", 1, name="checkout")
@@ -211,6 +230,22 @@ class FleetStoreQueryTests(unittest.TestCase):
         # (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version)
         by_repo = {row[5]: row[4] for row in rows}
         self.assertEqual({"almostrealism/common": "idle", "org:almostrealism": "busy"}, by_repo)
+
+    def test_latest_runner_states_excludes_the_empty_inventory_heartbeat(self):
+        """`github_poller.store_runner_states` writes a `runner_name=''`
+        heartbeat row on a successful zero-runner poll cycle purely to
+        advance `MAX(ts)` - it is not itself a runner, and must not appear
+        in the listing `fleetctl list` renders."""
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "", "", labels="[]", state="", repo="")
+        rows = self.store.latest_runner_states()
+        self.assertEqual([], rows)
+
+    def test_latest_runner_states_excludes_heartbeat_but_keeps_real_runners(self):
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "", "", labels="[]", state="", repo="")
+        self.store.upsert_runner_state("2026-09-18T00:00:00Z", "", "runner-1", state="idle", repo="acme/repo")
+        rows = self.store.latest_runner_states()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][2], "runner-1")
 
     def test_utilization_by_class_averages_across_samples(self):
         self.store.upsert_class_sample("2026-09-18T00:00:00Z", "mac-studio", "runner", 10.0, 100.0)

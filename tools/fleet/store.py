@@ -566,12 +566,12 @@ class FleetStore:
         conclusion: str = "",
         runner_name: str = "",
         runner_group: str = "",
-        runner_id: Optional[int] = None,
         pre_start_latency_seconds: Optional[float] = None,
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
         lane: str = "",
         platform: str = "",
+        runner_id: Optional[int] = None,
     ) -> None:
         """Insert or replace one ``job_event`` row, keyed on ``job_id``.
 
@@ -637,6 +637,11 @@ class FleetStore:
         runners, and grouping on ``(host, runner_name)`` alone would let
         whichever one sampled later suppress the other from this list even
         though both are still live.
+
+        Excludes the empty-inventory heartbeat row (``runner_name=''``,
+        see :func:`tools.fleet.github_poller.store_runner_states`) — that
+        row exists only to advance ``MAX(ts)`` when a poll cycle reports
+        zero runners, and is not itself a runner to list.
         """
         query = """
             SELECT rs.ts, rs.host, rs.runner_name, rs.labels, rs.state,
@@ -645,7 +650,7 @@ class FleetStore:
             JOIN (
                 SELECT host, runner_name, repo, MAX(ts) AS max_ts
                 FROM runner_state
-                {where}
+                WHERE runner_name <> ''{host_filter}
                 GROUP BY host, runner_name, repo
             ) latest
             ON rs.host = latest.host AND rs.runner_name = latest.runner_name
@@ -653,8 +658,8 @@ class FleetStore:
             ORDER BY rs.host, rs.runner_name, rs.repo
         """
         if host is not None:
-            return self._rows(query.format(where="WHERE host = ?"), (host,))
-        return self._rows(query.format(where=""))
+            return self._rows(query.format(host_filter=" AND host = ?"), (host,))
+        return self._rows(query.format(host_filter=""))
 
     def utilization_by_class(self, host: Optional[str] = None) -> List[Tuple]:
         """Average CPU% per host/class across every stored sample, for ``status``."""

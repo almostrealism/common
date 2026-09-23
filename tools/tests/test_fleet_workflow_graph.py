@@ -27,6 +27,7 @@ import base64
 import builtins
 import os
 import unittest
+import urllib.error
 from unittest import mock
 
 from tools.fleet.workflow_graph import WorkflowGraph, WorkflowGraphResolver, yaml_available
@@ -110,6 +111,24 @@ class JobKeyTests(unittest.TestCase):
         graph = WorkflowGraph({"build": {}, "other": {"name": "not-build"}})
         self.assertEqual("build", graph.job_key("build"))
 
+    def test_a_matrix_suffixed_match_and_a_literal_name_match_are_one_candidate_set(self):
+        """A matrix job `foo` (no `name:`) rendered with its matrix suffix
+        and a separate literal job `name: "foo (bar)"` both produce the
+        api_name "foo (bar)" - one via the stripped-suffix candidate form,
+        one via the literal form. The first matching candidate form must
+        not win outright: every form has to be checked before deciding, or
+        this genuine ambiguity would be silently resolved to whichever form
+        happens to be tried first."""
+        graph = WorkflowGraph({
+            "foo": {"strategy": {"matrix": {"group": ["bar"]}}},
+            "collider": {"name": "foo (bar)"},
+        })
+        self.assertIsNone(graph.job_key("foo (bar)"))
+
+    def test_a_matrix_suffixed_match_with_no_colliding_literal_name_is_unambiguous(self):
+        graph = WorkflowGraph({"foo": {"strategy": {"matrix": {"group": ["bar"]}}}})
+        self.assertEqual("foo", graph.job_key("foo (bar)"))
+
 
 class NeedsTests(unittest.TestCase):
 
@@ -187,7 +206,7 @@ class ResolverTests(unittest.TestCase):
         def fetch_json(url):
             self.requests.append(url)
             if "missing" in url:
-                raise RuntimeError("HTTP Error 404: Not Found")
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
             return {"encoding": "base64", "content": base64.b64encode(self.WORKFLOW.encode("utf-8")).decode("ascii")}
 
         self.resolver = WorkflowGraphResolver("acme/repo", fetch_json)
@@ -259,6 +278,59 @@ class ResolverTests(unittest.TestCase):
     def test_a_response_without_content_is_unknown(self):
         resolver = WorkflowGraphResolver("acme/repo", lambda url: {"message": "too large"})
         self.assertIsNone(resolver.needs(self.run, {"name": "build"}))
+
+    def test_a_5xx_is_retried_on_the_next_poll_instead_of_cached(self):
+        """Unlike a 404 (deterministic — the file never existed at this
+        commit), a 5xx is a transient failure: the same commit's workflow
+        file may well be servable a moment later, so it must not be cached
+        as permanently unknown."""
+        run = dict(self.run, path=".github/workflows/flaky.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(2, len(self.requests))
+
+    def test_a_network_error_is_retried_on_the_next_poll_instead_of_cached(self):
+        run = dict(self.run, path=".github/workflows/unreachable.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.URLError("connection refused")
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(2, len(self.requests))
+
+    def test_a_transient_failure_does_not_evict_the_cache(self):
+        """A retried-not-cached outcome must not consume a slot in the
+        bounded cache either, or a run of transient failures could evict
+        graphs that were fetched successfully."""
+        fail_next = []
+
+        def fetch_json(url):
+            self.requests.append(url)
+            if fail_next:
+                raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+            return {"encoding": "base64", "content": base64.b64encode(self.WORKFLOW.encode("utf-8")).decode("ascii")}
+
+        with mock.patch.object(WorkflowGraphResolver, "MAX_CACHED_GRAPHS", 1):
+            resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+            resolver.graph(dict(self.run, head_sha="a"))
+            self.assertEqual(1, len(self.requests))
+
+            fail_next.append(True)
+            resolver.graph(dict(self.run, path=".github/workflows/flaky.yaml", head_sha="b"))
+            self.assertEqual(2, len(self.requests))
+
+            fail_next.clear()
+            resolver.graph(dict(self.run, head_sha="a"))
+            self.assertEqual(2, len(self.requests))
 
     @unittest.skipUnless(yaml_available(), "PyYAML is not installed")
     def test_dependency_completed_at_is_the_latest_upstream_completion(self):

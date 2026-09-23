@@ -937,13 +937,18 @@ host_sample(ts, host, cpu_pct, mem_used_mb, mem_total_mb, disk_used_gb,
             PRIMARY KEY (ts, host))
 class_sample(ts, host, class /*runner|agent|other*/, cpu_pct, rss_mb,
              PRIMARY KEY (ts, host, class))
-runner_state(ts, host, runner_name, labels, state /*idle|busy*/,
-             repo, workflow, job_id, agent_version,
-             /* TODO(review): this sketch is stale -- schema.py's RUNNER_STATE
-                also has lane/platform columns and PRIMARY KEY (ts, host,
-                runner_name, repo); reconcile this block with schema.py. */
-             PRIMARY KEY (ts, host, runner_name))
-job_event(job_id PRIMARY KEY, run_id, repo, name, labels, created_at,
+runner_state(ts, host, runner_name, labels,
+             lane, platform /* two projections of labels, matching
+             job_event's own lane/platform below */,
+             state /*idle|busy*/,
+             repo /* part of the key alongside host/runner_name: a
+             runner's name is unique only within its GitHub registration
+             scope, not across scopes */, workflow, job_id, agent_version,
+             PRIMARY KEY (ts, host, runner_name, repo))
+job_event(job_id PRIMARY KEY, run_id, repo, name, labels,
+          lane, platform /* two projections of labels, so a dashboard
+          groups by a short, stable key instead of parsing the JSON label
+          set in every panel */, created_at,
           started_at, completed_at, status, conclusion, runner_name,
           runner_group, runner_id /* the API's own stable identity for the
           executing runner, unique across registration scopes unlike

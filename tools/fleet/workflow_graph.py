@@ -53,7 +53,8 @@ from __future__ import annotations
 import base64
 import re
 import sys
-from typing import Callable, Dict, List, Optional, Tuple
+import urllib.error
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 GITHUB_API_BASE = "https://api.github.com"
 
@@ -114,23 +115,34 @@ class WorkflowGraph:
     def job_key(self, api_name: str) -> Optional[str]:
         """Map the ``name`` the jobs API reports back to the YAML key that produced it.
 
-        Tries the rendering rules in the module docstring in order — exact,
-        then with a matrix suffix removed, then the caller half of a reusable
+        Tries the rendering rules in the module docstring — exact, then
+        with a matrix suffix removed, then the caller half of a reusable
         workflow name — and finally treats ``name:`` values that contain
-        ``${{ }}`` expressions as patterns. Returns ``None`` when nothing
-        matches, or when more than one job could have produced *api_name*.
+        ``${{ }}`` expressions as patterns. Every candidate form is a
+        competing hypothesis about what *api_name* actually is, not an
+        independent fallback to try in order: a matrix job ``foo`` and an
+        unrelated literal job ``name: foo (bar)`` are both exact matches for
+        the api_name ``"foo (bar)"`` (one via the matrix-suffix-stripped
+        form, one via the literal form), so matching on the literal form
+        first and returning immediately would silently prefer it over the
+        equally valid matrix-job match instead of reporting the ambiguity.
+        Matches from every candidate form are collected together and a key
+        is returned only when the combined set is a singleton; exact
+        matches take priority over pattern matches as a tier, but within
+        each tier every form is checked before deciding.
         """
         if not api_name:
             return None
-        for candidate in self._candidates(api_name):
-            key = self._exact(candidate)
-            if key is not None:
-                return key
-        for candidate in self._candidates(api_name):
-            key = self._by_pattern(candidate)
-            if key is not None:
-                return key
-        return None
+        candidates = self._candidates(api_name)
+        exact_matches: Set[str] = set()
+        for candidate in candidates:
+            exact_matches.update(self._exact_matches(candidate))
+        if exact_matches:
+            return next(iter(exact_matches)) if len(exact_matches) == 1 else None
+        pattern_matches: Set[str] = set()
+        for candidate in candidates:
+            pattern_matches.update(self._pattern_matches(candidate))
+        return next(iter(pattern_matches)) if len(pattern_matches) == 1 else None
 
     @staticmethod
     def _candidates(api_name: str) -> List[str]:
@@ -154,34 +166,30 @@ class WorkflowGraph:
             return name[:name.rfind(" (")]
         return name
 
-    def _exact(self, name: str) -> Optional[str]:
-        """The key whose key or literal (expression-free) display name is *name*, if exactly one.
+    def _exact_matches(self, name: str) -> Set[str]:
+        """Every key whose key or literal (expression-free) display name is *name*.
 
         A key match and a literal display-name match are candidates for the
         same job, not two independent tiers to try in priority order: a
         ``build: {}`` job and a separate ``other: {name: build}`` job both
         render as ``"build"`` in the jobs API and are genuinely
-        indistinguishable from *name* alone, so returning the key match
-        first would silently prefer one over the other instead of reporting
-        the ambiguity. Every candidate key is collected into one set and a
-        result is returned only when it is unique.
+        indistinguishable from *name* alone, so preferring the key match
+        would silently pick one over the other instead of reporting the
+        ambiguity to the caller.
         """
-        candidates = {key for key in self._needs if key == name}
-        candidates.update(
+        matches = {key for key in self._needs if key == name}
+        matches.update(
             key for key, display in self._display.items()
             if display == name and not _EXPRESSION.search(display)
         )
-        return next(iter(candidates)) if len(candidates) == 1 else None
+        return matches
 
-    def _by_pattern(self, name: str) -> Optional[str]:
-        """The key whose expression-bearing display name can render to *name*, if exactly one."""
-        matches = []
-        for key, display in self._display.items():
-            if not _EXPRESSION.search(display):
-                continue
-            if re.fullmatch(self._pattern(display), name):
-                matches.append(key)
-        return matches[0] if len(matches) == 1 else None
+    def _pattern_matches(self, name: str) -> Set[str]:
+        """Every key whose expression-bearing display name can render to *name*."""
+        return {
+            key for key, display in self._display.items()
+            if _EXPRESSION.search(display) and re.fullmatch(self._pattern(display), name)
+        }
 
     @staticmethod
     def _pattern(display: str) -> str:
@@ -194,6 +202,14 @@ class WorkflowGraph:
             position = match.end()
         parts.append(re.escape(display[position:]))
         return "".join(parts)
+
+
+class _TransientLoadFailure(Exception):
+    """Internal signal that fetching a workflow file failed for a reason
+    that might not recur (a network error, a 5xx, an exhausted rate
+    limit). :meth:`WorkflowGraphResolver.graph` catches this and does not
+    cache the outcome, unlike a deterministic 404 or an unparsable file.
+    """
 
 
 def _is_reusable_workflow_job_name(api_name: str) -> bool:
@@ -231,34 +247,70 @@ class WorkflowGraphResolver:
         self._graphs: Dict[Tuple[str, str], Optional[WorkflowGraph]] = {}
 
     def graph(self, run: Dict) -> Optional[WorkflowGraph]:
-        """The parsed workflow file for *run*, or ``None`` if it cannot be had."""
+        """The parsed workflow file for *run*, or ``None`` if it cannot be had.
+
+        A transient fetch failure (a network error, a 5xx, an exhausted
+        rate limit) is not cached: the next poll cycle's call to this
+        method retries the fetch instead of the graph staying unknown
+        until :data:`MAX_CACHED_GRAPHS` evicts the entry. A deterministic
+        outcome — the file does not exist at this commit, or does not
+        parse — is cached, since retrying it would only reproduce the same
+        result on every future poll.
+        """
         path = run.get("path")
         sha = run.get("head_sha")
         if not path or not sha:
             return None
         cache_key = (path, sha)
         if cache_key not in self._graphs:
+            try:
+                loaded = self._load(path, sha)
+            except _TransientLoadFailure:
+                return None
             if len(self._graphs) >= self.MAX_CACHED_GRAPHS:
                 del self._graphs[next(iter(self._graphs))]
-            self._graphs[cache_key] = self._load(path, sha)
+            self._graphs[cache_key] = loaded
         return self._graphs[cache_key]
 
     def _load(self, path: str, sha: str) -> Optional[WorkflowGraph]:
+        """Fetch and parse the workflow file at *path*@*sha*.
+
+        Returns ``None`` — a cacheable "no such graph" — for a 404, a
+        response with no ``content``, or invalid YAML. Raises
+        :class:`_TransientLoadFailure` for any other fetch error, since
+        those are not guaranteed to recur on the next attempt.
+        """
         url = "%s/repos/%s/contents/%s?ref=%s" % (self._api_base, self._repo, path, sha)
         try:
             payload = self._fetch_json(url)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            self._log_unavailable(path, sha, exc, retrying=True)
+            raise _TransientLoadFailure(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 — a non-HTTP fetch failure (network error, timeout) is also transient
+            self._log_unavailable(path, sha, exc, retrying=True)
+            raise _TransientLoadFailure(str(exc)) from exc
+        try:
             content = payload.get("content")
             if not content:
                 return None
             text = base64.b64decode(content).decode("utf-8")
             return WorkflowGraph.from_yaml(text)
-        except Exception as exc:  # noqa: BLE001 — an unreadable file means "unknown graph", never a failed poll
-            print(
-                "fleet poller: workflow %s@%s unavailable (%s); dependency graph unknown for its jobs"
-                % (path, sha[:12], exc),
-                file=sys.stderr,
-            )
+        except Exception as exc:  # noqa: BLE001 — an unparsable file means "unknown graph", never a retry
+            self._log_unavailable(path, sha, exc, retrying=False)
             return None
+
+    @staticmethod
+    def _log_unavailable(path: str, sha: str, exc: Exception, retrying: bool) -> None:
+        print(
+            "fleet poller: workflow %s@%s unavailable (%s); %s"
+            % (
+                path, sha[:12], exc,
+                "will retry next poll" if retrying else "dependency graph unknown for its jobs",
+            ),
+            file=sys.stderr,
+        )
 
     def needs(self, run: Dict, job: Dict) -> Optional[List[str]]:
         """*job*'s ``needs:`` list (``[]`` for an entry point), or ``None`` when unknown.
