@@ -138,18 +138,21 @@ append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 
 # ── Determine which modules contain failures and build CI commands ──
 # Parse class#method names from the failure list and map each class to its
-# Maven module. The CI command section names the SPECIFIC failing classes
-# via test_classes so the agent reproduces narrowly, one test at a time --
-# never a bare module run (that is a whole-module suite, which agents may
-# never run; see ci/test-execution-limits).
+# Maven module. The CI command section names the SPECIFIC failing method via
+# test_methods so the agent reproduces narrowly, one test at a time -- never
+# a bare module run (a whole-module suite) and never a bare class selector
+# (every method in that class), both of which agents may never run; see
+# ci/test-execution-limits.
 FAILING_MODULES=""
-MODULE_CLASSES=""
+MODULE_METHODS=""
 while IFS= read -r line; do
     # Only process lines that start with "- " (test name lines).
     # Skip exception details, stack traces, and blank lines.
     case "$line" in
         "- "*)
-            class_name=$(echo "$line" | sed 's/^- //' | sed 's/#.*//')
+            full_name=$(echo "$line" | sed 's/^- //')
+            class_name="${full_name%%#*}"
+            method_name="${full_name#*#}"
             # Resolve to a source file
             src_file=$(find . -path "*/src/test/java*/${class_name##*.}.java" -print -quit 2>/dev/null)
             if [ -n "$src_file" ]; then
@@ -159,9 +162,10 @@ while IFS= read -r line; do
                     FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
                 fi
                 short_class="${class_name##*.}"
-                existing=$(eval "echo \"\${MODULE_CLASSES_${module}:-}\"")
-                if ! echo "$existing" | grep -qw "$short_class"; then
-                    eval "MODULE_CLASSES_${module}=\"\${existing:+\$existing }${short_class}\""
+                pair="${short_class}#${method_name}"
+                existing=$(eval "echo \"\${MODULE_METHODS_${module}:-}\"")
+                if ! echo "$existing" | grep -qw "$pair"; then
+                    eval "MODULE_METHODS_${module}=\"\${existing:+\$existing }${pair}\""
                 fi
             fi
             ;;
@@ -169,21 +173,24 @@ while IFS= read -r line; do
 done < "$FAILURES_FILE"
 
 # Build CI reproduction commands for each failing module: one invocation per
-# failing class, never a bare module-wide run and never several classes
-# grouped into one test_classes list -- one test per invocation, same as
+# failing method, never a bare module-wide run, never a bare class selector
+# (which would run every method in that class), and never several methods
+# grouped into one test_methods list -- one test per invocation, same as
 # every other surface this rule covers.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
-    classes=$(eval "echo \"\${MODULE_CLASSES_${module}:-}\"")
+    pairs=$(eval "echo \"\${MODULE_METHODS_${module}:-}\"")
     CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}"
-    for class_name in $classes; do
+    for pair in $pairs; do
+        pair_class="${pair%%#*}"
+        pair_method="${pair#*#}"
         if [ "$module" = "ml" ]; then
             CI_COMMANDS="${CI_COMMANDS}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[\"${class_name}\"] profile:\"pipeline\""
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_methods:[{\"class\":\"${pair_class}\",\"method\":\"${pair_method}\"}] profile:\"pipeline\""
         else
             CI_COMMANDS="${CI_COMMANDS}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[\"${class_name}\"]"
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_methods:[{\"class\":\"${pair_class}\",\"method\":\"${pair_method}\"}]"
         fi
     done
 done
@@ -191,12 +198,13 @@ done
 # If we couldn't determine modules, provide a generic fallback
 if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
-Could not auto-detect failing modules. Examine the failing test class names below,
-find which module they belong to (utils, ml, audio, music, compose), and run ONLY
-that specific class:
-  mcp__ar-test-runner__start_test_run module:\"<module>\" test_classes:[\"<FailingClass>\"]
-For ML module tests, add profile:\"pipeline\". Never omit test_classes -- that runs
-the module's whole suite, which is not permitted."
+Could not auto-detect failing modules. Examine the failing test class#method names
+below, find which module they belong to (utils, ml, audio, music, compose), and run
+ONLY that specific method:
+  mcp__ar-test-runner__start_test_run module:\"<module>\" test_methods:[{\"class\":\"<FailingClass>\",\"method\":\"<failingMethod>\"}]
+For ML module tests, add profile:\"pipeline\". Never omit test_methods, and never pass
+a bare class with no method -- either runs the module's or class's whole suite, which
+is not permitted."
 fi
 
 # Now append the dynamic portion

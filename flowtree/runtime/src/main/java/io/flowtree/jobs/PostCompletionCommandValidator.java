@@ -169,19 +169,27 @@ public class PostCompletionCommandValidator {
 
 	/**
 	 * Strips a leading chain of command-prefix wrappers -- {@code env} (with
-	 * its own {@code VAR=value} assignments and flags) and simple wrappers in
-	 * {@link #CMD_PREFIXES} ({@code sudo}, {@code nohup}, {@code time},
-	 * {@code exec}, {@code command}, {@code builtin}, {@code stdbuf},
-	 * {@code nice}, {@code ionice}, {@code !}) -- so e.g. {@code command mvn
-	 * test} or {@code sudo env FOO=bar mvn test} reach the real command.
-	 * Returns {@code tokens} unchanged when it starts with none of these.
+	 * its own {@code VAR=value} assignments and flags), bare {@code
+	 * VAR=value} assignments with no leading {@code env} token (the shell
+	 * accepts one or more of these directly in command position, e.g.
+	 * {@code FOO=bar mvn test}), and simple wrappers in {@link #CMD_PREFIXES}
+	 * ({@code sudo}, {@code nohup}, {@code time}, {@code exec}, {@code
+	 * command}, {@code builtin}, {@code stdbuf}, {@code nice}, {@code
+	 * ionice}, {@code !}) -- so e.g. {@code command mvn test}, {@code sudo
+	 * env FOO=bar mvn test}, or {@code FOO=bar mvn test} reach the real
+	 * command. Returns {@code tokens} unchanged when it starts with none of
+	 * these.
 	 */
 	private List<String> unwrapCommandPrefixes(List<String> tokens) {
-		// TODO(review): a bare "VAR=value" prefix with no "env" token is not stripped and bypasses validation.
 		while (!tokens.isEmpty()) {
 			List<String> afterEnv = unwrapEnv(tokens);
 			if (afterEnv != tokens) {
 				tokens = afterEnv;
+				continue;
+			}
+			List<String> afterAssignments = unwrapLeadingAssignments(tokens);
+			if (afterAssignments != tokens) {
+				tokens = afterAssignments;
 				continue;
 			}
 			String base = baseName(tokens.get(0));
@@ -192,6 +200,20 @@ public class PostCompletionCommandValidator {
 			break;
 		}
 		return tokens;
+	}
+
+	/**
+	 * Strips one or more leading bare {@code VAR=value} assignment tokens
+	 * (as the shell accepts directly in command position, with no {@code
+	 * env} keyword), returning {@code tokens} unchanged when it does not
+	 * start with one.
+	 */
+	private List<String> unwrapLeadingAssignments(List<String> tokens) {
+		int i = 0;
+		while (i < tokens.size() && ENV_ASSIGNMENT.matcher(tokens.get(i)).matches()) {
+			i++;
+		}
+		return i == 0 ? tokens : tokens.subList(i, tokens.size());
 	}
 
 	/**

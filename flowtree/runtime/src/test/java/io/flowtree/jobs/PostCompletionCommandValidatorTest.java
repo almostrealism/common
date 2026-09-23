@@ -250,6 +250,36 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violations.isEmpty());
 	}
 
+	/** A bare "VAR=value" prefix with no "env" token is exactly as valid to the
+	 * shell as one preceded by "env" -- it must be stripped the same way, not
+	 * waved through because the first token isn't literally "mvn"/"env". */
+	@Test(timeout = 10000)
+	public void bareAssignmentWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("FOO=bar mvn test -pl engine/utils");
+		assertFalse("a bare VAR=value prefix must not bypass detection", violations.isEmpty());
+	}
+
+	/** Multiple bare assignments ahead of the real command must all be stripped. */
+	@Test(timeout = 10000)
+	public void multipleBareAssignmentsWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("FOO=bar BAZ=qux mvn test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** A bare assignment prefix with an explicit selector inside is still accepted. */
+	@Test(timeout = 10000)
+	public void bareAssignmentWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"FOO=bar mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo").isEmpty());
+	}
+
+	/** Prefix wrappers chain: sudo wraps a bare assignment, which wraps the real command. */
+	@Test(timeout = 10000)
+	public void sudoBareAssignmentWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("sudo FOO=bar mvn test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+	}
+
 	/** A multi-line command must have each line checked independently: the
 	 * tokenizer treats "\n" purely as whitespace between tokens, never as an
 	 * operator token, so without an explicit newline split the narrow

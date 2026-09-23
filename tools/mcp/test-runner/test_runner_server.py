@@ -614,6 +614,41 @@ class StartTestRunLimitsTest(unittest.TestCase):
         mock_start.assert_called_once()
         self.assertEqual("run-1", response["run_id"])
 
+    def test_multiple_test_classes_is_rejected(self):
+        # test_classes with more than one entry joins into a single
+        # "-Dtest=A,B" that runs several classes together in one JVM --
+        # exactly the broad, multi-test invocation this MCP surface exists
+        # to prevent.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest", "BarTest"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_multiple_test_methods_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": ["FooTest#a", "FooTest#b"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_one_class_and_one_method_together_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "test_methods": ["BarTest#baz"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
 
 class InvocationReportCopyTest(unittest.TestCase):
     """Per-invocation report collection must ignore reports left by earlier runs.

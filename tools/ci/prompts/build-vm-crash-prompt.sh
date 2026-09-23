@@ -71,33 +71,31 @@ for class in $CRASHED_CLASSES; do
 done
 
 # ── Build MCP test runner commands ─────────────────────────────────
+# One start_test_run invocation per crashed class -- never several classes
+# grouped into one test_classes list, the same one-test-per-invocation rule
+# applied everywhere else this rule covers (see build-resolve-prompt.sh).
 CI_COMMANDS=""
 if [ -n "$CRASHED_CLASSES" ]; then
     for module in $CRASHED_MODULES; do
-        # Collect classes for this module
-        classes_for_module=""
-        for class in $CRASHED_CLASSES; do
-            case "$class" in
-                *ml.*|*model.*|*network.*)
-                    [ "$module" = "ml" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *audio.*)
-                    [ "$module" = "audio" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *music.*)
-                    [ "$module" = "music" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *compose.*)
-                    [ "$module" = "compose" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *)
-                    [ "$module" = "utils" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-            esac
-        done
-
         profile_arg=""
         if [ "$module" = "ml" ]; then
             profile_arg=" profile:\"pipeline\""
         fi
 
-        CI_COMMANDS="${CI_COMMANDS}
-  mcp__ar-test-runner__start_test_run module:\"${module}\"${profile_arg} jmx_monitoring:true test_classes:[${classes_for_module}]"
+        for class in $CRASHED_CLASSES; do
+            class_module=""
+            case "$class" in
+                *ml.*|*model.*|*network.*) class_module="ml" ;;
+                *audio.*) class_module="audio" ;;
+                *music.*) class_module="music" ;;
+                *compose.*) class_module="compose" ;;
+                *) class_module="utils" ;;
+            esac
+            if [ "$class_module" = "$module" ]; then
+                CI_COMMANDS="${CI_COMMANDS}
+  mcp__ar-test-runner__start_test_run module:\"${module}\"${profile_arg} jmx_monitoring:true test_classes:[\"${class}\"]"
+            fi
+        done
     done
 fi
 

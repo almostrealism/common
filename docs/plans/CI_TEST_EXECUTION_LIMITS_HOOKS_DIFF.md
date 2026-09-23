@@ -28,7 +28,16 @@ Apply this diff (context lines included for exact placement):
 
 ```diff
 @@
- SKIP = re.compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
+-SKIP = re.compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
++# Anchored to the whole argument token (the ^...$ pairs make runs_tests()'s
++# existing SKIP.search(a) call behave as a full-token match), not a
++# substring search -- the unanchored form matched "-DskipTests=false" and
++# "-Dmaven.test.skip=false" (both of which explicitly RE-ENABLE tests) as if
++# they were skip flags, letting a broad `mvn test -DskipTests=false` slip
++# past this hook uncaught. Matches the same whole-token, true-only pattern
++# already fixed in tools/mcp/manager/test_execution_limits.py's
++# _SKIP_TESTS_PATTERN and PostCompletionCommandValidator.java's SKIP_TESTS.
++SKIP = re.compile(r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$")
  
 -TEST_PHASES = {"test", "integration-test"}
 +# Every default-lifecycle phase at or after "test" runs tests unless skipped.
@@ -156,6 +165,17 @@ and add a new explicit test for the newly-blocked case:
 +        # there is no legitimate agent use of AR_TEST_GROUP at all.
 +        d = self.core.decide("mvn package -DAR_TEST_GROUP=1 -DAR_TEST_GROUPS=4 -DskipTests")
 +        self.assertEqual(d["action"], "block")
++
++    def test_skip_tests_equals_false_is_not_treated_as_skip(self):
++        # The unanchored form of SKIP matched "-DskipTests=false" as a
++        # substring even though that flag explicitly RE-ENABLES tests --
++        # the anchored ^...$ pattern must not repeat that bug.
++        d = self.core.decide("mvn test -DskipTests=false")
++        self.assertEqual(d["action"], "block")
++
++    def test_maven_test_skip_equals_false_is_not_treated_as_skip(self):
++        d = self.core.decide("mvn install -Dmaven.test.skip=false")
++        self.assertEqual(d["action"], "block")
 ```
 
 (Also update the chained-commands sample's other `mvn clean` usage if any
@@ -188,11 +208,18 @@ instead of re-declaring it:
          CMD_PREFIXES = {"!", "time", "nohup", "sudo", "env", "command", "exec",
                          "builtin", "stdbuf", "nice", "ionice"}
          ENV_ASSIGN = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-         SKIP = __import__("re").compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
+-        SKIP = __import__("re").compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
 -        TEST_PHASES = {"test", "integration-test"}
++        SKIP = self.core.SKIP
 +        TEST_PHASES = self.core.TEST_PHASES
          DASH_C = __import__("re").compile(r"^-[a-z]*c$")
 ```
+
+Also pulling `SKIP` from `self.core.SKIP` rather than re-declaring it here for the
+same reason as `TEST_PHASES`: the equivalence test's job is proving the
+tokenizer/dispatch extraction matches the pre-extraction script, not pinning an
+independent copy of the skip-flag pattern that would go stale the next time
+`SKIP` changes.
 
 And update the sample list's two entries that change outcome under the wider
 phase set (`mvn verify` and `mvn package` are already in the sample and will

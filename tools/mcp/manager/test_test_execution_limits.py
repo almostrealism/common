@@ -207,6 +207,30 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "sudo env FOO=bar mvn test -pl engine/utils")
         self.assertTrue(violations)
 
+    def test_bare_assignment_wrapped_maven_test_rejected(self):
+        # A bare "VAR=value" prefix with no "env" token is exactly as valid
+        # to the shell as one preceded by "env" -- it must be stripped the
+        # same way, not waved through because the first token isn't
+        # literally "mvn"/"env".
+        violations = validate_post_completion_command(
+            "FOO=bar mvn test -pl engine/utils")
+        self.assertTrue(violations, "a bare VAR=value prefix must not bypass detection")
+
+    def test_multiple_bare_assignments_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "FOO=bar BAZ=qux mvn test -pl engine/utils")
+        self.assertTrue(violations)
+
+    def test_bare_assignment_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "FOO=bar mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
+
+    def test_sudo_bare_assignment_wrapped_maven_test_rejected(self):
+        # Prefixes chain: sudo wraps a bare assignment, which wraps the real command.
+        violations = validate_post_completion_command(
+            "sudo FOO=bar mvn test -pl engine/utils")
+        self.assertTrue(violations)
+
     def test_newline_separated_broad_mvn_after_narrow_one_rejected(self):
         # shlex.shlex always treats "\n" as whitespace -- a separator
         # consumed between tokens, never emitted as its own token -- so a
@@ -328,6 +352,37 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
     def test_chained_narrow_mvn_test_commands_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run mvn test -Dtest=Foo#bar && mvn test -Dtest=Baz#qux to confirm.")
+        self.assertEqual([], hits)
+
+    def test_mvn_verify_without_selector_rejected(self):
+        # "verify" runs the full default lifecycle up to and including
+        # tests unless -DskipTests is present -- exactly as broad as "test".
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify to check your change compiles and passes.")
+        self.assertTrue(hits)
+
+    def test_mvn_install_without_selector_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn install before declaring this task complete.")
+        self.assertTrue(hits)
+
+    def test_mvn_package_without_selector_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn package to confirm the artifact builds.")
+        self.assertTrue(hits)
+
+    def test_mvn_install_with_skip_tests_not_flagged(self):
+        # A pure build-verification command that explicitly skips tests
+        # must not be flagged as a broad test instruction -- this is the
+        # exact phrase this repository's own CLAUDE.md recommends running
+        # before declaring a task complete.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn clean install -DskipTests before declaring this done.")
+        self.assertEqual([], hits)
+
+    def test_mvn_verify_with_maven_test_skip_true_not_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -Dmaven.test.skip=true to confirm it builds.")
         self.assertEqual([], hits)
 
 

@@ -539,12 +539,12 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "job-pcc"}
         server.workstream_submit_task(
             prompt="Task",
-            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest#testFoo",
         )
         payload = mock_post.call_args[0][1]
         self.assertEqual(
             payload["postCompletionCommand"],
-            "mvn -pl flowtree/runtime test -Dtest=FooTest",
+            "mvn -pl flowtree/runtime test -Dtest=FooTest#testFoo",
         )
 
     @patch.object(server, "_controller_post")

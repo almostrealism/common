@@ -139,18 +139,34 @@ def _unwrap_env(tokens: list) -> list:
     return tokens[i:]
 
 
+def _unwrap_leading_assignments(tokens: list) -> list:
+    """Strips one or more leading bare ``VAR=value`` assignment tokens (as
+    the shell accepts directly in command position, with no ``env``
+    keyword), returning ``tokens`` unchanged when it does not start with
+    one."""
+    i = 0
+    while i < len(tokens) and _ENV_ASSIGNMENT_PATTERN.match(tokens[i]):
+        i += 1
+    return tokens[i:] if i else tokens
+
+
 def _unwrap_command_prefixes(tokens: list) -> list:
     """Strips a leading chain of command-prefix wrappers -- ``env``
     (with its own ``VAR=value`` assignments and flags), bare ``VAR=value``
-    assignments, and simple wrappers in ``_CMD_PREFIXES`` (``sudo``,
-    ``nohup``, ``time``, ``exec``, ``command``, ``builtin``, ``stdbuf``,
-    ``nice``, ``ionice``, ``!``) -- so e.g. ``command mvn test`` or
-    ``sudo env FOO=bar mvn test`` reach the real command. Returns ``tokens``
+    assignments with no leading ``env`` token (the shell accepts one or more
+    of these directly in command position, e.g. ``FOO=bar mvn test``), and
+    simple wrappers in ``_CMD_PREFIXES`` (``sudo``, ``nohup``, ``time``,
+    ``exec``, ``command``, ``builtin``, ``stdbuf``, ``nice``, ``ionice``,
+    ``!``) -- so e.g. ``command mvn test``, ``sudo env FOO=bar mvn test``, or
+    ``FOO=bar mvn test`` reach the real command. Returns ``tokens``
     unchanged when it starts with none of these.
     """
-    # TODO(review): a bare "VAR=value" prefix with no "env" token is not stripped and bypasses validation.
     while tokens:
         unwrapped = _unwrap_env(tokens)
+        if unwrapped is not tokens:
+            tokens = unwrapped
+            continue
+        unwrapped = _unwrap_leading_assignments(tokens)
         if unwrapped is not tokens:
             tokens = unwrapped
             continue
@@ -330,9 +346,10 @@ _TEST_LINT_PATTERNS = [
 
 
 class _MvnTestSegmentMatcher:
-    """Flags an ``mvn test`` mention whose OWN chained-command fragment has no
-    Class#method ``-Dtest`` selector, without being fooled by a selector that
-    belongs to a different command earlier or later on the same line.
+    """Flags an ``mvn <test-running-phase>`` mention whose OWN chained-command
+    fragment has no Class#method ``-Dtest`` selector, without being fooled by
+    a selector that belongs to a different command earlier or later on the
+    same line.
 
     A single regex with a negative lookahead for ``-Dtest=\\S+#\\S+`` cannot
     express this correctly: the lookahead scans the rest of the whole line,
@@ -343,25 +360,37 @@ class _MvnTestSegmentMatcher:
     shell tokenization -- prompt lines are English prose, not shell syntax,
     and commonly contain unescaped apostrophes (``don't``, ``module's``)
     that would make a quote-aware tokenizer raise on perfectly ordinary
-    text -- and checks each ``mvn test`` mention against only its own
+    text -- and checks each ``mvn <phase>`` mention against only its own
     fragment. Exposes the same ``search(line)`` interface as a compiled
     pattern so it drops into ``_TEST_LINT_PATTERNS`` unchanged.
+
+    Matches every phase in ``_MVN_TEST_RUNNING_PHASES``
+    (test/integration-test/verify/install/package/deploy), not just
+    ``test``: ``mvn verify`` and ``mvn install`` run the full default
+    lifecycle up to and including tests unless ``-DskipTests`` is present,
+    so a prompt telling the agent to "run mvn verify" is exactly as broad
+    as "run mvn test".
     """
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
-    _MVN_TEST_PATTERN = re.compile(r"\bmvn\s+test\b", re.IGNORECASE)
+    _MVN_TEST_PATTERN = re.compile(
+        r"\bmvn\s+(?:" + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
+        re.IGNORECASE)
     _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
+    _SKIP_PATTERN = re.compile(r"-DskipTests(=true)?\b|-Dmaven\.test\.skip(=true)?\b", re.IGNORECASE)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
             if self._MVN_TEST_PATTERN.search(fragment) \
-                    and not self._SELECTOR_PATTERN.search(fragment):
+                    and not self._SELECTOR_PATTERN.search(fragment) \
+                    and not self._SKIP_PATTERN.search(fragment):
                 return True
         return None
 
 
 _TEST_LINT_PATTERNS.append(
-    (_MvnTestSegmentMatcher(), '"mvn test" without a Class#method -Dtest selector'))
+    (_MvnTestSegmentMatcher(),
+     '"mvn test/verify/install/package/deploy" without a Class#method -Dtest selector'))
 
 
 class _DTestBroadValueMatcher:

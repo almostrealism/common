@@ -1297,6 +1297,17 @@ async def call_tool(name: str, arguments: dict):
                         "test_methods to select the specific test(s) you need."
                     ),
                 }, indent=2))]
+            if len(test_classes) + len(test_methods) > 1:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": (
+                        "At most ONE test per invocation is permitted: "
+                        f"got {len(test_classes)} test_classes and "
+                        f"{len(test_methods)} test_methods. A -Dtest= value "
+                        "listing several classes/methods runs them together "
+                        "in one JVM, which agents and job submitters may "
+                        "never do. Call start_test_run once per test."
+                    ),
+                }, indent=2))]
             config = RunConfig(
                 depth=arguments.get("depth"),
                 project=arguments.get("project", ""),
