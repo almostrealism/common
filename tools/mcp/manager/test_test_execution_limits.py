@@ -185,6 +185,42 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "mvn test -Dtest=Foo#bar&&echo ok"))
 
+    def test_command_wrapped_maven_test_rejected(self):
+        # "command" is a shell builtin that runs its argument as a normal
+        # command, bypassing a shell function/alias of the same name -- it
+        # must not hide the wrapped mvn invocation either.
+        violations = validate_post_completion_command(
+            "command mvn test -pl engine/utils")
+        self.assertTrue(violations, "command mvn test must be rejected like a direct mvn test")
+
+    def test_sudo_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command("sudo mvn test -pl engine/utils")
+        self.assertTrue(violations)
+
+    def test_command_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "command mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
+
+    def test_sudo_env_wrapped_maven_test_rejected(self):
+        # Prefixes chain: sudo wraps env, env wraps the real command.
+        violations = validate_post_completion_command(
+            "sudo env FOO=bar mvn test -pl engine/utils")
+        self.assertTrue(violations)
+
+    def test_newline_separated_broad_mvn_after_narrow_one_rejected(self):
+        # shlex.shlex always treats "\n" as whitespace -- a separator
+        # consumed between tokens, never emitted as its own token -- so a
+        # multi-line command would previously tokenize as ONE segment,
+        # letting the narrow selector on the first line mask the second
+        # line's broad invocation entirely.
+        violations = validate_post_completion_command(
+            "mvn test -Dtest=Foo#bar\nmvn test -pl engine/utils")
+        self.assertTrue(violations, "the second line's broad mvn test must still be flagged")
+
+    def test_newline_separated_narrow_commands_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "mvn test -Dtest=Foo#bar\npytest tests/test_foo.py::test_bar"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 

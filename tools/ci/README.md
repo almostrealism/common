@@ -125,9 +125,16 @@ Broad verification is the CI pipeline's job; a prompt that tells an agent sessio
 reproduce it (e.g. "run the full CI command", "run the relevant module's tests") is a
 bug in the prompt, not a fair characterization of what the session should do. This is
 enforced mechanically elsewhere too — `workstream_submit_task`'s prompt/command
-validation (`tools/mcp/manager/test_execution_limits.py`), the controller's
-`PostCompletionCommandValidator`, and an agent-side `PreToolUse` Bash hook — so a
-prompt written to violate it fails loudly rather than quietly working around the gate.
+validation (`tools/mcp/manager/test_execution_limits.py`) and the controller's
+`PostCompletionCommandValidator` both reject it with no bypass. An agent-side
+`PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what a
+running agent session can do directly, but it is only a partial backstop today: it
+covers a direct `mvn test`/`mvn integration-test` and nothing else — not
+`verify`/`install`/`package`/`deploy` without `-DskipTests`, not a bare `AR_TEST_GROUP`/
+`AR_TEST_GROUPS` reference, and there is no pytest hook at all yet. The diff that closes
+that gap has been recorded for a human to apply by hand — coding-agent sessions cannot
+write under `.claude/hooks/` or `.claude/settings.json`. A prompt written to violate the rule fails loudly at the two
+mechanically-enforced surfaces above regardless of whether the hook has landed.
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.

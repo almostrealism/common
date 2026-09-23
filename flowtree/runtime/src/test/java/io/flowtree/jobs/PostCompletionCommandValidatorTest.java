@@ -221,6 +221,53 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("sh -c 'pytest tools/mcp/manager'").isEmpty());
 	}
 
+	/** "command" is a shell builtin that runs its argument as a normal command,
+	 * bypassing a shell function/alias of the same name -- it must not hide
+	 * the wrapped mvn invocation either. */
+	@Test(timeout = 10000)
+	public void commandWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("command mvn test -pl engine/utils");
+		assertFalse("command mvn test must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "command mvn test" with an explicit selector inside is still accepted. */
+	@Test(timeout = 10000)
+	public void commandWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"command mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo").isEmpty());
+	}
+
+	/** "sudo" must not hide the wrapped mvn invocation either. */
+	@Test(timeout = 10000)
+	public void sudoWrappedMavenTestRejected() {
+		assertFalse(violationsFor("sudo mvn test -pl engine/utils").isEmpty());
+	}
+
+	/** Prefix wrappers chain: sudo wraps env, env wraps the real command. */
+	@Test(timeout = 10000)
+	public void sudoEnvWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("sudo env FOO=bar mvn test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** A multi-line command must have each line checked independently: the
+	 * tokenizer treats "\n" purely as whitespace between tokens, never as an
+	 * operator token, so without an explicit newline split the narrow
+	 * selector on the first line would mask the second line's broad mvn. */
+	@Test(timeout = 10000)
+	public void newlineSeparatedBroadMvnAfterNarrowOneRejected() {
+		List<String> violations = violationsFor(
+				"mvn test -Dtest=Foo#bar\nmvn test -pl engine/utils");
+		assertFalse("the second line's broad mvn test must still be flagged", violations.isEmpty());
+	}
+
+	/** Two independently-narrow commands on separate lines are both accepted. */
+	@Test(timeout = 10000)
+	public void newlineSeparatedNarrowCommandsAccepted() {
+		assertTrue(violationsFor(
+				"mvn test -Dtest=Foo#bar\npytest tests/test_foo.py::test_bar").isEmpty());
+	}
+
 	// -- Timeout ceiling --------------------------------------------------------
 
 	/** Pins the timeout ceiling so a silent regression is caught immediately. */

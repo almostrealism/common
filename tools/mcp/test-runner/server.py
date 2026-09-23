@@ -1284,12 +1284,25 @@ async def call_tool(name: str, arguments: dict):
                         "must be narrow and fast."
                     ),
                 }, indent=2))]
+            test_classes = arguments.get("test_classes", [])
+            test_methods = arguments.get("test_methods", [])
+            if not test_classes and not test_methods:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": (
+                        "test_classes or test_methods is required. With "
+                        "neither set, this call falls through to "
+                        "'mvn test -pl <module>', running the module's whole "
+                        "test suite -- exactly the broad run agents and job "
+                        "submitters may never start. Pass test_classes or "
+                        "test_methods to select the specific test(s) you need."
+                    ),
+                }, indent=2))]
             config = RunConfig(
                 depth=arguments.get("depth"),
                 project=arguments.get("project", ""),
                 module=arguments.get("module", DEFAULT_MODULE),
-                test_classes=arguments.get("test_classes", []),
-                test_methods=arguments.get("test_methods", []),
+                test_classes=test_classes,
+                test_methods=test_methods,
                 timeout_minutes=timeout_minutes,
                 jvm_args=arguments.get("jvm_args", []),
                 profile=arguments.get("profile"),

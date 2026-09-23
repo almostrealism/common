@@ -582,6 +582,38 @@ class StartTestRunLimitsTest(unittest.TestCase):
         self.assertIn("error", response)
         self.assertIn("must be positive", response["error"])
 
+    def test_no_selector_is_rejected(self):
+        # With neither test_classes nor test_methods set, RunConfig would
+        # receive empty filters and build_maven_command would fall through to
+        # "mvn test -pl <module>" -- an entire module's suite, exactly the
+        # broad run this MCP surface exists to prevent.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils"})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("test_classes or test_methods is required", response["error"])
+
+    def test_empty_selector_lists_are_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": [],
+                "test_methods": [],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("test_classes or test_methods is required", response["error"])
+
+    def test_test_methods_alone_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": ["FooTest#bar"],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
 
 class InvocationReportCopyTest(unittest.TestCase):
     """Per-invocation report collection must ignore reports left by earlier runs.

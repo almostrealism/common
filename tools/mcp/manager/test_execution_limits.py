@@ -34,7 +34,7 @@ import shlex
 # job submitter can request. 2400s = 40 minutes.
 POST_COMPLETION_MAX_TIMEOUT_SECONDS = 2400
 
-_SHELL_OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}", "\n"}
+_SHELL_OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}"}
 
 _SKIP_TESTS_PATTERN = re.compile(
     r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$", re.IGNORECASE)
@@ -49,6 +49,14 @@ _AR_TEST_GROUP_PATTERN = re.compile(r"\bAR_TEST_GROUPS?\b")
 _ENV_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 
 _SHELL_INTERPRETERS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+# Command-prefix wrappers that pass their remaining arguments through to the
+# real command unchanged: a shell builtin/wrapper such as ``command mvn
+# test`` or ``sudo mvn test`` must not be waved through just because its
+# first token is not literally ``mvn``/``pytest``/``python``. Minus "env" --
+# env is handled separately by ``_unwrap_env`` because it also strips its own
+# VAR=value assignments and flags.
+_CMD_PREFIXES = {"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice"}
 
 
 def _tokenize(command: str) -> list:
@@ -74,19 +82,36 @@ def _tokenize(command: str) -> list:
 
 def _shell_segments(command: str) -> list:
     """Best-effort split of a shell command string into simple-command token
-    lists, one per ``&&``/``;``/``|``-separated segment.
+    lists, one per ``&&``/``;``/``|``/newline-separated segment.
 
     Mirrors the tokenizer in ``.claude/hooks/lib/mvn_test_check.py`` so the
     ar-manager-side submission check and the agent-side Bash hook agree on
-    what counts as a distinct command within a chained pipeline. Falls back
-    to treating the whole string as one segment when it cannot be
+    what counts as a distinct command within a chained pipeline. The command
+    is split on newlines before tokenization rather than relying on
+    ``shlex`` to emit ``"\\n"`` as its own token: ``shlex.shlex`` always
+    treats newline as whitespace (a separator consumed between tokens, never
+    a token itself) regardless of ``punctuation_chars``, so a multi-line
+    command such as ``"mvn test -Dtest=Foo#bar\\nmvn test -pl engine/utils"``
+    would otherwise tokenize as one unbroken segment -- letting the narrow
+    selector on the first line mask the second line's broad invocation.
+    """
+    segments = []
+    for line in command.split("\n"):
+        segments.extend(_line_segments(line))
+    return segments
+
+
+def _line_segments(line: str) -> list:
+    """Splits a single (newline-free) line into simple-command token lists.
+
+    Falls back to treating the whole line as one segment when it cannot be
     tokenized (e.g. unbalanced quotes) -- fail toward flagging it for a
     human to look at, not toward silently passing it through.
     """
     try:
-        tokens = _tokenize(command)
+        tokens = _tokenize(line)
     except ValueError:
-        return [[command]]
+        return [[line]]
     segments = []
     current = []
     for tok in tokens:
@@ -114,6 +139,29 @@ def _unwrap_env(tokens: list) -> list:
     return tokens[i:]
 
 
+def _unwrap_command_prefixes(tokens: list) -> list:
+    """Strips a leading chain of command-prefix wrappers -- ``env``
+    (with its own ``VAR=value`` assignments and flags), bare ``VAR=value``
+    assignments, and simple wrappers in ``_CMD_PREFIXES`` (``sudo``,
+    ``nohup``, ``time``, ``exec``, ``command``, ``builtin``, ``stdbuf``,
+    ``nice``, ``ionice``, ``!``) -- so e.g. ``command mvn test`` or
+    ``sudo env FOO=bar mvn test`` reach the real command. Returns ``tokens``
+    unchanged when it starts with none of these.
+    """
+    # TODO(review): a bare "VAR=value" prefix with no "env" token is not stripped and bypasses validation.
+    while tokens:
+        unwrapped = _unwrap_env(tokens)
+        if unwrapped is not tokens:
+            tokens = unwrapped
+            continue
+        base = tokens[0].rsplit("/", 1)[-1]
+        if base in _CMD_PREFIXES:
+            tokens = tokens[1:]
+            continue
+        break
+    return tokens
+
+
 def _shell_dash_c_script(tokens: list):
     """Returns the inline script text when ``tokens`` is a shell interpreter
     invoked as ``sh|bash|zsh|dash|ksh -c "<script>"``, or ``None`` when it
@@ -127,14 +175,15 @@ def _shell_dash_c_script(tokens: list):
 
 def _segment_violations(tokens: list) -> list:
     """Return violation reasons for a single shell segment, first unwrapping
-    a leading ``env VAR=val ...`` prefix and -- when the segment is a shell
+    a leading chain of command-prefix wrappers (``env VAR=val ...``,
+    ``sudo``, ``command``, ``exec``, ...) and -- when the segment is a shell
     interpreter invoked as ``sh|bash|zsh|dash|ksh -c "<script>"`` -- recursing
     into the inline script's own segments instead of checking the
-    interpreter invocation itself. Without this, ``env mvn test`` or
-    ``sh -c 'mvn test'`` would see a first token other than ``mvn``/
-    ``pytest`` and be waved through unchecked.
+    interpreter invocation itself. Without this, ``env mvn test``,
+    ``command mvn test``, or ``sh -c 'mvn test'`` would see a first token
+    other than ``mvn``/``pytest`` and be waved through unchecked.
     """
-    unwrapped = _unwrap_env(tokens)
+    unwrapped = _unwrap_command_prefixes(tokens)
     script = _shell_dash_c_script(unwrapped)
     if script is not None:
         violations = []

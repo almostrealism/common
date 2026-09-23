@@ -708,10 +708,9 @@ hook below is a partial backstop, not yet a closed surface (see its own entry):
   test`/`mvn integration-test`, not the full rule above: it does not yet block
   `verify`/`install`/`package`/`deploy` without `-DskipTests`, a bare `AR_TEST_GROUP`/
   `AR_TEST_GROUPS` reference, or a broad `pytest`/`python -m pytest` invocation (there is
-  no pytest hook at all yet). The diff that closes this gap is recorded in
-  `docs/plans/CI_TEST_EXECUTION_LIMITS_HOOKS_DIFF.md`, pending a human applying it by hand
-  — coding-agent sessions cannot write under `.claude/hooks/` or `.claude/settings.json`.
-  Until it lands, this hook is a partial backstop, not a closed surface.
+  no pytest hook at all yet). The diff that closes this gap has been recorded for a human
+  to apply by hand — coding-agent sessions cannot write under `.claude/hooks/` or
+  `.claude/settings.json`. Until it lands, this hook is a partial backstop, not a closed surface.
 - `tools/ci/prompts/**`, the auto-resolve prompt builders, must never instruct an agent
   to run something broad — see [`tools/ci/README.md`](../tools/ci/README.md#test-execution-limits).
 

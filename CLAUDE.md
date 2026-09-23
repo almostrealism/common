@@ -469,9 +469,8 @@ A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also blocks 
 it does not block `verify`/`install`/`package`/`deploy` (which also run tests unless
 `-DskipTests` is set), does not block a bare `AR_TEST_GROUP`/`AR_TEST_GROUPS` reference, and
 has no equivalent hook for a broad `pytest`/`python -m pytest` invocation. The exact diff to
-close this gap is recorded in `docs/plans/CI_TEST_EXECUTION_LIMITS_HOOKS_DIFF.md`, blocked on
-a human applying it by hand — coding-agent sessions cannot write under `.claude/hooks/` or
-`.claude/settings.json`. Until that diff lands, a direct agent Bash command can still slip a
+close this gap has been recorded for a human to apply by hand — coding-agent sessions cannot
+write under `.claude/hooks/` or `.claude/settings.json`. Until that diff lands, a direct agent Bash command can still slip a
 broad Maven phase, `AR_TEST_GROUP`, or a broad pytest run past the hook layer; the three
 surfaces above remain the only ones with no bypass.
 

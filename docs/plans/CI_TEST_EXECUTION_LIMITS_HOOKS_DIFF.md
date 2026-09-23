@@ -274,7 +274,10 @@ def _is_pytest_invocation(tokens):
 
 def _has_explicit_node_id(args):
     positionals = [a for a in args if not a.startswith("-")]
-    return any("::" in a for a in positionals)
+    # ALL positionals must be node ids, not just one -- "pytest tests/
+    # tests/test_foo.py::test_bar" still runs the whole "tests/" directory
+    # even though one of its two positionals names a single test.
+    return bool(positionals) and all("::" in a for a in positionals)
 
 
 def analyze(cmd):
@@ -434,6 +437,13 @@ class DecideFunctionTests(unittest.TestCase):
 
     def test_pytest_dash_k_keyword_blocks(self):
         d = self.core.decide("pytest tests/ -k test_bar")
+        self.assertEqual(d["action"], "block")
+
+    def test_pytest_mixed_directory_and_node_id_blocks(self):
+        # A bare directory positional still runs the whole directory even
+        # when a second positional names one specific test -- _has_explicit_
+        # node_id must require ALL positionals to be node ids, not just one.
+        d = self.core.decide("pytest tests/ tests/test_foo.py::test_bar")
         self.assertEqual(d["action"], "block")
 
     def test_python_module_pytest_with_node_id_allows(self):

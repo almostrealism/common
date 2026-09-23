@@ -80,6 +80,14 @@ public class PostCompletionCommandValidator {
 	private static final List<String> SHELL_INTERPRETERS = Arrays.asList(
 			"sh", "bash", "zsh", "dash", "ksh");
 
+	/** Command-prefix wrappers that pass their remaining arguments through to the real
+	 * command unchanged: a wrapper such as {@code command mvn test} or {@code sudo mvn test}
+	 * must not be waved through just because its first token is not literally {@code mvn}/
+	 * {@code pytest}. Minus "env" -- env is handled separately by {@link #unwrapEnv} because
+	 * it also strips its own {@code VAR=value} assignments and flags. */
+	private static final List<String> CMD_PREFIXES = Arrays.asList(
+			"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice");
+
 	/** The shell command being validated. */
 	private final String command;
 
@@ -114,18 +122,19 @@ public class PostCompletionCommandValidator {
 
 	/**
 	 * Validates a single simple-command token list, first unwrapping a leading
-	 * {@code env VAR=val ...} prefix and -- when the segment is a shell
+	 * chain of command-prefix wrappers ({@code env VAR=val ...}, {@code sudo},
+	 * {@code command}, {@code exec}, ...) and -- when the segment is a shell
 	 * interpreter invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"} --
 	 * recursing into the inline script's own segments instead of checking the
-	 * interpreter invocation itself. Without this, {@code env mvn test} or
-	 * {@code sh -c 'mvn test'} would see a first token other than {@code mvn}/
-	 * {@code pytest} and be waved through unchecked.
+	 * interpreter invocation itself. Without this, {@code env mvn test},
+	 * {@code command mvn test}, or {@code sh -c 'mvn test'} would see a first
+	 * token other than {@code mvn}/{@code pytest} and be waved through unchecked.
 	 */
 	private void validateSegment(List<String> tokens) {
-		List<String> unwrapped = unwrapEnv(tokens);
+		List<String> unwrapped = unwrapCommandPrefixes(tokens);
 		String script = shellDashCScript(unwrapped);
 		if (script != null) {
-			for (List<String> inner : splitIntoSegments(tokenize(script))) {
+			for (List<String> inner : segmentsForText(script)) {
 				validateSegment(inner);
 			}
 			return;
@@ -156,6 +165,33 @@ public class PostCompletionCommandValidator {
 			i++;
 		}
 		return tokens.subList(i, tokens.size());
+	}
+
+	/**
+	 * Strips a leading chain of command-prefix wrappers -- {@code env} (with
+	 * its own {@code VAR=value} assignments and flags) and simple wrappers in
+	 * {@link #CMD_PREFIXES} ({@code sudo}, {@code nohup}, {@code time},
+	 * {@code exec}, {@code command}, {@code builtin}, {@code stdbuf},
+	 * {@code nice}, {@code ionice}, {@code !}) -- so e.g. {@code command mvn
+	 * test} or {@code sudo env FOO=bar mvn test} reach the real command.
+	 * Returns {@code tokens} unchanged when it starts with none of these.
+	 */
+	private List<String> unwrapCommandPrefixes(List<String> tokens) {
+		// TODO(review): a bare "VAR=value" prefix with no "env" token is not stripped and bypasses validation.
+		while (!tokens.isEmpty()) {
+			List<String> afterEnv = unwrapEnv(tokens);
+			if (afterEnv != tokens) {
+				tokens = afterEnv;
+				continue;
+			}
+			String base = baseName(tokens.get(0));
+			if (CMD_PREFIXES.contains(base)) {
+				tokens = tokens.subList(1, tokens.size());
+				continue;
+			}
+			break;
+		}
+		return tokens;
 	}
 
 	/**
@@ -290,13 +326,33 @@ public class PostCompletionCommandValidator {
 
 	/**
 	 * Splits {@link #command} into simple-command token lists, one per
-	 * {@code &&}/{@code ;}/{@code |}-separated segment. A best-effort
+	 * {@code &&}/{@code ;}/{@code |}/newline-separated segment. A best-effort
 	 * whitespace/quote tokenizer -- not a full shell grammar -- since the
 	 * only goal is recognising an {@code mvn}/{@code pytest} invocation and
 	 * its flags, not executing the command.
 	 */
 	private List<List<String>> shellSegments() {
-		return splitIntoSegments(tokenize(command));
+		return segmentsForText(command);
+	}
+
+	/**
+	 * Splits {@code text} into simple-command token lists, first splitting on
+	 * newlines and then on {@link #SHELL_OPERATORS} within each line. Newlines
+	 * are handled as an explicit pre-split rather than as another entry in
+	 * {@link #SHELL_OPERATORS}: {@link #tokenize} treats any
+	 * {@link Character#isWhitespace} character, including {@code '\n'}, purely
+	 * as a token separator, never as a token in its own right, so a multi-line
+	 * command such as {@code "mvn test -Dtest=Foo#bar\nmvn test -pl
+	 * engine/utils"} would otherwise tokenize as one unbroken segment -- letting
+	 * the narrow selector on the first line mask the second line's broad
+	 * invocation.
+	 */
+	private List<List<String>> segmentsForText(String text) {
+		List<List<String>> segments = new ArrayList<>();
+		for (String line : text.split("\n", -1)) {
+			segments.addAll(splitIntoSegments(tokenize(line)));
+		}
+		return segments;
 	}
 
 	/** Groups {@code tokens} into simple-command segments, split on {@link #SHELL_OPERATORS}. */
