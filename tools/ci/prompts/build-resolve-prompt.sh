@@ -168,21 +168,24 @@ while IFS= read -r line; do
     esac
 done < "$FAILURES_FILE"
 
-# Build CI reproduction commands for each failing module: name the specific
-# failing classes, never a bare module-wide run.
+# Build CI reproduction commands for each failing module: one invocation per
+# failing class, never a bare module-wide run and never several classes
+# grouped into one test_classes list -- one test per invocation, same as
+# every other surface this rule covers.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
     classes=$(eval "echo \"\${MODULE_CLASSES_${module}:-}\"")
-    class_list=$(echo "$classes" | tr ' ' '\n' | sed 's/^/"/;s/$/"/' | paste -sd, -)
-    if [ "$module" = "ml" ]; then
-        CI_COMMANDS="${CI_COMMANDS}
-Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[${class_list}] profile:\"pipeline\""
-    else
-        CI_COMMANDS="${CI_COMMANDS}
-Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[${class_list}]"
-    fi
+    CI_COMMANDS="${CI_COMMANDS}
+Module: ${module}"
+    for class_name in $classes; do
+        if [ "$module" = "ml" ]; then
+            CI_COMMANDS="${CI_COMMANDS}
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[\"${class_name}\"] profile:\"pipeline\""
+        else
+            CI_COMMANDS="${CI_COMMANDS}
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[\"${class_name}\"]"
+        fi
+    done
 done
 
 # If we couldn't determine modules, provide a generic fallback
@@ -212,8 +215,9 @@ These tests PASS on origin/master. They FAIL on this branch. The branch changes 
 ## How to reproduce (REQUIRED)
 
 You MUST reproduce the failure locally before attempting a fix and after applying
-your fix. Use the MCP test runner with these exact commands -- each names the
-specific failing class(es) via \`test_classes\`, never a bare module run:
+your fix. Use the MCP test runner with these exact commands -- one invocation per
+failing class via \`test_classes\`, never a bare module run and never several
+classes grouped into one invocation:
 ${CI_COMMANDS}
 
 Run only the specific failing test(s), one at a time. Do NOT run the module's whole

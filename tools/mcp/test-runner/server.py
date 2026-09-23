@@ -1253,11 +1253,11 @@ async def call_tool(name: str, arguments: dict):
             # job submitters must never start. There is no operator bypass:
             # see tools/mcp/manager/test_execution_limits.py for the same
             # rule enforced at job submission.
-            if arguments.get("test_group") is not None:
+            if arguments.get("test_group") is not None or arguments.get("test_groups") is not None:
                 return [TextContent(type="text", text=json.dumps({
                     "error": (
-                        "test_group is not permitted: it reproduces a whole CI "
-                        "shard (every test class hashing to the group, run "
+                        "test_group/test_groups is not permitted: it reproduces a "
+                        "whole CI shard (every test class hashing to the group, run "
                         "together in one JVM), which agents and job submitters "
                         "may never run. Pass test_classes or test_methods to "
                         "select the specific test(s) you need instead."
@@ -1314,9 +1314,10 @@ async def call_tool(name: str, arguments: dict):
                     ],
                 }, indent=2))]
 
-            # config.test_group is always None here -- rejected above before
-            # RunConfig is built. resolve_ci_test_groups is still used by
-            # RunConfig callers outside this MCP surface (see test_runner_server.py).
+            # config.test_group/test_groups are always None here -- both are
+            # rejected above before RunConfig is built. resolve_ci_test_groups
+            # is still used by RunConfig callers outside this MCP surface (see
+            # test_runner_server.py).
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,

@@ -690,8 +690,9 @@ This exists because of a 2026-09-16 incident: an operator-submitted job's
 `post_completion_command` ran a full `mvn install` followed by an entire `engine/utils`
 CI shard, with a 3600s timeout and 2 retries. It burned over three hours on a runner, and
 the retry sessions weakened pre-existing tests to force a pass. Written guidance alone
-did not stop it, so the rule is enforced mechanically at every surface that can start a
-test run, with no operator bypass at any of them:
+did not stop it, so the rule is enforced mechanically at job-submission time and at the
+MCP test runner, with no operator bypass at either surface; the interactive-session Bash
+hook below is a partial backstop, not yet a closed surface (see its own entry):
 
 - `workstream_submit_task` (`tools/mcp/manager/test_execution_limits.py`) rejects a
   `post_completion_command`/`command` that runs a broad Maven phase or an unscoped
@@ -700,9 +701,17 @@ test run, with no operator bypass at any of them:
 - The controller's `/api/submit` endpoint applies the same command validation
   (`io.flowtree.jobs.PostCompletionCommandValidator`) and clamps the timeout to 2400s,
   so a direct API call cannot bypass what `workstream_submit_task` already rejects.
-- A `PreToolUse` Bash hook and the `mcp__ar-test-runner__start_test_run` tool restrict
-  what a running agent session can do directly (the test runner rejects
-  `test_group`/`test_groups` outright and caps `timeout_minutes` at 40).
+- The `mcp__ar-test-runner__start_test_run` tool rejects `test_group`/`test_groups`
+  outright and caps `timeout_minutes` at 40, with no bypass.
+- A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what
+  a running agent session can do directly, but today it only covers a direct `mvn
+  test`/`mvn integration-test`, not the full rule above: it does not yet block
+  `verify`/`install`/`package`/`deploy` without `-DskipTests`, a bare `AR_TEST_GROUP`/
+  `AR_TEST_GROUPS` reference, or a broad `pytest`/`python -m pytest` invocation (there is
+  no pytest hook at all yet). The diff that closes this gap is recorded in
+  `docs/plans/CI_TEST_EXECUTION_LIMITS_HOOKS_DIFF.md`, pending a human applying it by hand
+  — coding-agent sessions cannot write under `.claude/hooks/` or `.claude/settings.json`.
+  Until it lands, this hook is a partial backstop, not a closed surface.
 - `tools/ci/prompts/**`, the auto-resolve prompt builders, must never instruct an agent
   to run something broad — see [`tools/ci/README.md`](../tools/ci/README.md#test-execution-limits).
 

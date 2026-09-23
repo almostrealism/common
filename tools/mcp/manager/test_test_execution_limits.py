@@ -151,6 +151,40 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "mvn verify -Dmaven.test.skip=false")
         self.assertTrue(violations, "-Dmaven.test.skip=false explicitly re-enables tests")
 
+    def test_env_wrapped_maven_test_rejected(self):
+        # "env" as a wrapper must not hide the wrapped mvn invocation --
+        # only the literal first token "mvn" was previously recognized.
+        violations = validate_post_completion_command("env mvn test -pl engine/utils")
+        self.assertTrue(violations, "env mvn test must be rejected like a direct mvn test")
+
+    def test_env_with_assignment_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "env FOO=bar mvn test -pl engine/utils")
+        self.assertTrue(violations)
+
+    def test_sh_dash_c_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "sh -c 'mvn test -pl engine/utils'")
+        self.assertTrue(violations, "sh -c 'mvn test' must be rejected like a direct mvn test")
+
+    def test_bash_dash_c_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "bash -c 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'"))
+
+    def test_sh_dash_c_wrapped_pytest_on_directory_rejected(self):
+        violations = validate_post_completion_command("sh -c 'pytest tools/mcp/manager'")
+        self.assertTrue(violations)
+
+    def test_maven_test_glued_to_shell_operator_rejected(self):
+        # shlex.split alone (no punctuation_chars) would swallow "&&" into
+        # the "test" token as "test&&echo", hiding this from phase detection.
+        violations = validate_post_completion_command("mvn test&&echo ok")
+        self.assertTrue(violations, "mvn test glued to && must still be detected")
+
+    def test_maven_test_glued_to_shell_operator_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "mvn test -Dtest=Foo#bar&&echo ok"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 
@@ -241,6 +275,24 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         self.assertTrue(hits)
         lineno, snippet, reason = hits[0]
         self.assertEqual(2, lineno)
+
+    def test_chained_broad_mvn_test_before_narrow_one_rejected(self):
+        # A whole-line lookahead is fooled by a selector belonging to a
+        # LATER, unrelated chained command: "mvn test && mvn test
+        # -Dtest=Foo#bar" must still flag the first (broad) "mvn test".
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn test && mvn test -Dtest=Foo#bar to double check this.")
+        self.assertTrue(hits, "the broad first mvn test must be flagged")
+
+    def test_chained_broad_mvn_test_after_narrow_one_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn test -Dtest=Foo#bar && mvn test to double check this.")
+        self.assertTrue(hits, "the broad second mvn test must be flagged")
+
+    def test_chained_narrow_mvn_test_commands_not_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn test -Dtest=Foo#bar && mvn test -Dtest=Baz#qux to confirm.")
+        self.assertEqual([], hits)
 
 
 if __name__ == "__main__":

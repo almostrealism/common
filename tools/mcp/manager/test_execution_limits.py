@@ -46,6 +46,31 @@ _MVN_TEST_RUNNING_PHASES = {"test", "integration-test", "verify", "install", "pa
 
 _AR_TEST_GROUP_PATTERN = re.compile(r"\bAR_TEST_GROUPS?\b")
 
+_ENV_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+
+_SHELL_INTERPRETERS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+
+def _tokenize(command: str) -> list:
+    """Split ``command`` into shell tokens, treating operators like ``&&``
+    as tokens in their own right even when glued to a word with no
+    whitespace (``mvn test&&echo ok``).
+
+    Plain ``shlex.split`` only splits on whitespace and quoting, so
+    punctuation attached directly to a word stays part of that word's
+    token -- ``mvn test&&echo ok`` would yield a single ``test&&echo``
+    token, hiding the ``mvn test`` invocation from every check that looks
+    for an exact ``test`` phase token. ``shlex.shlex`` with
+    ``punctuation_chars`` enabled splits ``();<>|&`` (and the multi-char
+    operators built from them, e.g. ``&&``/``;;``/``|&``) into their own
+    tokens regardless of surrounding whitespace, which is exactly the
+    shell behaviour this validator needs to match.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    return list(lexer)
+
 
 def _shell_segments(command: str) -> list:
     """Best-effort split of a shell command string into simple-command token
@@ -59,7 +84,7 @@ def _shell_segments(command: str) -> list:
     human to look at, not toward silently passing it through.
     """
     try:
-        tokens = shlex.split(command, comments=False, posix=True)
+        tokens = _tokenize(command)
     except ValueError:
         return [[command]]
     segments = []
@@ -74,6 +99,55 @@ def _shell_segments(command: str) -> list:
     if current:
         segments.append(current)
     return segments
+
+
+def _unwrap_env(tokens: list) -> list:
+    """Strips a leading ``env`` invocation's ``VAR=value`` assignments and
+    flags (e.g. ``-i``), returning the wrapped command's own tokens
+    unchanged when ``tokens`` is not an ``env`` invocation."""
+    if not tokens or tokens[0].rsplit("/", 1)[-1] != "env":
+        return tokens
+    i = 1
+    while i < len(tokens) and (
+            _ENV_ASSIGNMENT_PATTERN.match(tokens[i]) or tokens[i].startswith("-")):
+        i += 1
+    return tokens[i:]
+
+
+def _shell_dash_c_script(tokens: list):
+    """Returns the inline script text when ``tokens`` is a shell interpreter
+    invoked as ``sh|bash|zsh|dash|ksh -c "<script>"``, or ``None`` when it
+    is not that shape."""
+    if len(tokens) < 3 or tokens[0].rsplit("/", 1)[-1] not in _SHELL_INTERPRETERS:
+        return None
+    if tokens[1] != "-c":
+        return None
+    return tokens[2]
+
+
+def _segment_violations(tokens: list) -> list:
+    """Return violation reasons for a single shell segment, first unwrapping
+    a leading ``env VAR=val ...`` prefix and -- when the segment is a shell
+    interpreter invoked as ``sh|bash|zsh|dash|ksh -c "<script>"`` -- recursing
+    into the inline script's own segments instead of checking the
+    interpreter invocation itself. Without this, ``env mvn test`` or
+    ``sh -c 'mvn test'`` would see a first token other than ``mvn``/
+    ``pytest`` and be waved through unchecked.
+    """
+    unwrapped = _unwrap_env(tokens)
+    script = _shell_dash_c_script(unwrapped)
+    if script is not None:
+        violations = []
+        for inner in _shell_segments(script):
+            violations.extend(_segment_violations(inner))
+        return violations
+    reason = _maven_segment_violation(unwrapped)
+    if reason:
+        return [reason]
+    reason = _pytest_segment_violation(unwrapped)
+    if reason:
+        return [reason]
+    return []
 
 
 def _dtest_values(args: list) -> list:
@@ -165,13 +239,7 @@ def validate_post_completion_command(command: str) -> list:
             "agents and job submitters must never run a shard.".format(
                 command.strip()[:200]))
     for segment in _shell_segments(command):
-        reason = _maven_segment_violation(segment)
-        if reason:
-            violations.append(reason)
-            continue
-        reason = _pytest_segment_violation(segment)
-        if reason:
-            violations.append(reason)
+        violations.extend(_segment_violations(segment))
     return violations
 
 
@@ -209,9 +277,42 @@ _TEST_LINT_PATTERNS = [
      '"run(ning) ... shard" phrase'),
     (re.compile(r"\bAR_TEST_GROUPS?\b"),
      "AR_TEST_GROUP/AR_TEST_GROUPS reference"),
-    (re.compile(r"\bmvn\s+test\b(?!.*-Dtest=\S+#\S+)", re.IGNORECASE),
-     '"mvn test" without a Class#method -Dtest selector'),
 ]
+
+
+class _MvnTestSegmentMatcher:
+    """Flags an ``mvn test`` mention whose OWN chained-command fragment has no
+    Class#method ``-Dtest`` selector, without being fooled by a selector that
+    belongs to a different command earlier or later on the same line.
+
+    A single regex with a negative lookahead for ``-Dtest=\\S+#\\S+`` cannot
+    express this correctly: the lookahead scans the rest of the whole line,
+    so ``mvn test && mvn test -Dtest=Foo#bar`` wrongly exempts the FIRST
+    (actually broad) ``mvn test`` because a selector exists later on the
+    line, for an unrelated chained command. Splits the line on the chain
+    operators (``&&``/``||``/``;``/``|``) by plain text rather than full
+    shell tokenization -- prompt lines are English prose, not shell syntax,
+    and commonly contain unescaped apostrophes (``don't``, ``module's``)
+    that would make a quote-aware tokenizer raise on perfectly ordinary
+    text -- and checks each ``mvn test`` mention against only its own
+    fragment. Exposes the same ``search(line)`` interface as a compiled
+    pattern so it drops into ``_TEST_LINT_PATTERNS`` unchanged.
+    """
+
+    _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
+    _MVN_TEST_PATTERN = re.compile(r"\bmvn\s+test\b", re.IGNORECASE)
+    _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
+
+    def search(self, line: str):
+        for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
+            if self._MVN_TEST_PATTERN.search(fragment) \
+                    and not self._SELECTOR_PATTERN.search(fragment):
+                return True
+        return None
+
+
+_TEST_LINT_PATTERNS.append(
+    (_MvnTestSegmentMatcher(), '"mvn test" without a Class#method -Dtest selector'))
 
 
 class _DTestBroadValueMatcher:

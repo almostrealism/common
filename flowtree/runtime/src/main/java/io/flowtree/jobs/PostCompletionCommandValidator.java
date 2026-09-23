@@ -73,6 +73,13 @@ public class PostCompletionCommandValidator {
 	private static final List<String> SHELL_OPERATORS = Arrays.asList(
 			"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}");
 
+	/** Matches a leading {@code VAR=value} assignment token, as accepted by {@code env}. */
+	private static final Pattern ENV_ASSIGNMENT = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*=.*$");
+
+	/** Shell interpreters whose {@code -c <script>} form re-executes an inline script string. */
+	private static final List<String> SHELL_INTERPRETERS = Arrays.asList(
+			"sh", "bash", "zsh", "dash", "ksh");
+
 	/** The shell command being validated. */
 	private final String command;
 
@@ -100,17 +107,68 @@ public class PostCompletionCommandValidator {
 					+ "for the CI workflow matrix; agents and job submitters must never run a shard.");
 		}
 		for (List<String> segment : shellSegments()) {
-			String reason = mavenSegmentViolation(segment);
-			if (reason != null) {
-				violations.add(reason);
-				continue;
-			}
-			reason = pytestSegmentViolation(segment);
-			if (reason != null) {
-				violations.add(reason);
-			}
+			validateSegment(segment);
 		}
 		return this;
+	}
+
+	/**
+	 * Validates a single simple-command token list, first unwrapping a leading
+	 * {@code env VAR=val ...} prefix and -- when the segment is a shell
+	 * interpreter invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"} --
+	 * recursing into the inline script's own segments instead of checking the
+	 * interpreter invocation itself. Without this, {@code env mvn test} or
+	 * {@code sh -c 'mvn test'} would see a first token other than {@code mvn}/
+	 * {@code pytest} and be waved through unchecked.
+	 */
+	private void validateSegment(List<String> tokens) {
+		List<String> unwrapped = unwrapEnv(tokens);
+		String script = shellDashCScript(unwrapped);
+		if (script != null) {
+			for (List<String> inner : splitIntoSegments(tokenize(script))) {
+				validateSegment(inner);
+			}
+			return;
+		}
+		String reason = mavenSegmentViolation(unwrapped);
+		if (reason != null) {
+			violations.add(reason);
+			return;
+		}
+		reason = pytestSegmentViolation(unwrapped);
+		if (reason != null) {
+			violations.add(reason);
+		}
+	}
+
+	/**
+	 * Strips a leading {@code env} invocation's {@code VAR=value} assignments
+	 * and flags (e.g. {@code -i}), returning the wrapped command's own tokens.
+	 * Returns {@code tokens} unchanged when it is not an {@code env} invocation.
+	 */
+	private List<String> unwrapEnv(List<String> tokens) {
+		if (tokens.isEmpty() || !"env".equals(baseName(tokens.get(0)))) {
+			return tokens;
+		}
+		int i = 1;
+		while (i < tokens.size()
+				&& (ENV_ASSIGNMENT.matcher(tokens.get(i)).matches() || tokens.get(i).startsWith("-"))) {
+			i++;
+		}
+		return tokens.subList(i, tokens.size());
+	}
+
+	/**
+	 * Returns the inline script text when {@code tokens} is a shell interpreter
+	 * invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"}, or {@code null}
+	 * when it is not that shape.
+	 */
+	private String shellDashCScript(List<String> tokens) {
+		if (tokens.size() < 3 || !SHELL_INTERPRETERS.contains(baseName(tokens.get(0)))
+				|| !"-c".equals(tokens.get(1))) {
+			return null;
+		}
+		return tokens.get(2);
 	}
 
 	/** Returns the violations found by {@link #validate()}; empty until called. */
@@ -238,9 +296,14 @@ public class PostCompletionCommandValidator {
 	 * its flags, not executing the command.
 	 */
 	private List<List<String>> shellSegments() {
+		return splitIntoSegments(tokenize(command));
+	}
+
+	/** Groups {@code tokens} into simple-command segments, split on {@link #SHELL_OPERATORS}. */
+	private List<List<String>> splitIntoSegments(List<String> tokens) {
 		List<List<String>> segments = new ArrayList<>();
 		List<String> current = new ArrayList<>();
-		for (String token : tokenize(command)) {
+		for (String token : tokens) {
 			if (SHELL_OPERATORS.contains(token)) {
 				if (!current.isEmpty()) {
 					segments.add(current);

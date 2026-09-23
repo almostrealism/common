@@ -516,6 +516,17 @@ class StartTestRunLimitsTest(unittest.TestCase):
         mock_start.assert_not_called()
         self.assertIn("error", response)
 
+    def test_test_groups_alone_is_rejected(self):
+        # test_groups (plural) is the shard-count field that always
+        # accompanies test_group in a real CI-shard invocation, but a caller
+        # could pass it alone -- only checking "test_group" let this through
+        # and silently discarded the field instead of rejecting the request.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_groups": 8})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("CI shard", response["error"])
+
     def test_timeout_minutes_over_max_is_rejected(self):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({

@@ -183,6 +183,44 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("mvn verify -Dmaven.test.skip=false").isEmpty());
 	}
 
+	/** A broad "mvn test" wrapped in "env" must not bypass detection just because
+	 * the first token isn't literally "mvn". */
+	@Test(timeout = 10000)
+	public void envWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env mvn test -pl engine/utils");
+		assertFalse("env mvn test must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "env" with a VAR=value assignment ahead of the wrapped command must still
+	 * be unwrapped so the wrapped Maven invocation is checked. */
+	@Test(timeout = 10000)
+	public void envWithAssignmentWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env FOO=bar mvn test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** A broad "mvn test" wrapped in "sh -c '...'" must not bypass detection --
+	 * the controller sees only the shell invocation unless it recurses into
+	 * the inline script. */
+	@Test(timeout = 10000)
+	public void shDashCWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("sh -c 'mvn test -pl engine/utils'");
+		assertFalse("sh -c 'mvn test' must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "bash -c" with an explicit selector inside the script is still accepted. */
+	@Test(timeout = 10000)
+	public void bashDashCWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"bash -c 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'").isEmpty());
+	}
+
+	/** A broad pytest run wrapped in "sh -c" must also be rejected. */
+	@Test(timeout = 10000)
+	public void shDashCWrappedPytestOnDirectoryRejected() {
+		assertFalse(violationsFor("sh -c 'pytest tools/mcp/manager'").isEmpty());
+	}
+
 	// -- Timeout ceiling --------------------------------------------------------
 
 	/** Pins the timeout ceiling so a silent regression is caught immediately. */
