@@ -506,9 +506,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	@Override
 	public synchronized void destroy() {
-		getAllocated().forEach(this::deallocate);
-		memoryUsed = 0;
-
 		super.destroy();
 	}
 

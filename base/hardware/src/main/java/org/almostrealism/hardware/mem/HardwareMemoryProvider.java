@@ -102,7 +102,7 @@ import java.util.stream.Stream;
  * // tracked.remove(memory.getContainerPointer())
  * }</pre>
  *
- * <p>On {@link #destroy()}, any remaining allocations are reported with stack traces to identify
+ * <p>On {@link #destroy()}, any remaining allocations are retained and reported with stack traces to identify
  * memory leaks.</p>
  *
  * <h2>Deallocation Modes</h2>
@@ -207,6 +207,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
 	private volatile boolean destroying;
 
+	/** True once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
 	/**
 	 * Initializes allocation tracking and starts the background deallocation threads.
 	 */
@@ -290,11 +293,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @param mem The memory block to deallocate
 	 */
 	private void deallocateNow(T mem) {
-		if (allocated == null) {
-			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
-			return;
-		}
-
 		NativeRef<T> ref = getNativeRef(mem);
 		if (ref == null) {
 			if (mem.isActive()) {
@@ -493,11 +491,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 *
 	 * @param mem the memory to test
 	 * @return {@code true} if the memory has been released, or belongs to
-	 *         another provider, or this provider has been destroyed
+	 *         another provider
 	 */
 	@Override
 	public boolean isReleased(Memory mem) {
-		if (allocated == null) return true;
 		if (!(mem instanceof RAM ram)) return false;
 		if (ram.getProvider() != this) return true;
 
@@ -564,10 +561,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
 		}
-		if (allocated == null) {
+		if (destroyed) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider has been destroyed");
 		}
-
 
 		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {
@@ -643,46 +639,60 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Retires this provider: no further blocks may be allocated, but every block still
+	 * tracked stays valid and is released the way it always would have been, when its
+	 * holder is collected or destroys it.
+	 *
+	 * <p>Freeing the remaining blocks here would be wrong, because they are still
+	 * referenced: a block that is unreferenced has already been released through the
+	 * reference queue. Whatever still holds one (a cache, a value shared between a
+	 * scoped context and its enclosing one) would go on reading and writing freed
+	 * memory, which is how the heap gets corrupted and the process aborted long
+	 * after the fact. The remaining blocks are reported so that a leak can be found,
+	 * but ownership of them is kept.</p>
+	 */
 	@Override
 	public synchronized void destroy() {
 		try {
 			destroying = true;
 
-			if (allocated != null) {
-				List<NativeRef<T>> stillAllocated = new ArrayList<>();
+			List<NativeRef<T>> stillAllocated = new ArrayList<>();
 
-				w: while (true) {
-					try {
-						stillAllocated.clear();
-						allocated.values().forEach(stillAllocated::add);
-						break w;
-					} catch (Exception e) {
-						// start over and try again if the allocated map was
-						// modified while attempting to capture its contents
-						warn(e.getClass().getSimpleName() + " - " + e.getMessage());
-					}
+			w: while (true) {
+				try {
+					stillAllocated.clear();
+					allocated.values().forEach(stillAllocated::add);
+					break w;
+				} catch (Exception e) {
+					// start over and try again if the allocated map was
+					// modified while attempting to capture its contents
+					warn(e.getClass().getSimpleName() + " - " + e.getMessage());
 				}
-
-				stillAllocated.stream()
-						.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
-						.limit(10)
-						.forEach(ref -> {
-							warn(ref + " was not deallocated");
-							if (ref.getAllocationStackTrace() != null) {
-								Stream.of(ref.getAllocationStackTrace())
-										.forEach(stack -> warn("\tat " + stack));
-							}
-						});
-
-				// TODO  Deallocating all of these at once appears to produce SIGSEGV
-				// List<MetalMemory> available = new ArrayList<>(allocated);
-				// available.forEach(mem -> deallocate(0, mem));
-				allocated = null;
 			}
+
+			stillAllocated.stream()
+					.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
+					.limit(10)
+					.forEach(ref -> {
+						warn(ref + " was not deallocated and is retained until released");
+						if (ref.getAllocationStackTrace() != null) {
+							Stream.of(ref.getAllocationStackTrace())
+									.forEach(stack -> warn("\tat " + stack));
+						}
+					});
+
+			destroyed = true;
 		} finally {
 			destroying = false;
 		}
 	}
+
+	/**
+	 * Returns whether {@link #destroy()} has run. A destroyed provider allocates
+	 * nothing further, but still releases the blocks it retained.
+	 */
+	public boolean isDestroyed() { return destroyed; }
 
 
 	@Override
