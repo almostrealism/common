@@ -153,12 +153,32 @@ INDEXES = [
     # range scan behind an unconstrained middle column and force a full scan
     # of every class for the matched hosts.
     "CREATE INDEX IF NOT EXISTS class_sample_host_ts ON class_sample (host, ts, class)",
-    "CREATE INDEX IF NOT EXISTS runner_state_host_ts ON runner_state (host, runner_name, ts)",
+    # repo leads runner_name's use as the third key column (before joining
+    # on ts) because `FleetStore.latest_runner_states` groups and joins on
+    # (host, runner_name, repo, ts) -- a runner's name is only unique within
+    # its registration scope, so repo is part of "this runner" alongside
+    # host/runner_name, not an afterthought filter.
+    "CREATE INDEX IF NOT EXISTS runner_state_host_repo_ts ON runner_state (host, runner_name, repo, ts)",
     "CREATE INDEX IF NOT EXISTS job_event_run ON job_event (run_id)",
     "CREATE INDEX IF NOT EXISTS job_event_created ON job_event (created_at)",
     # The runners-per-lane panels read the newest sample per runner and
     # then filter by lane; ts leads so "latest sample" is an index walk.
     "CREATE INDEX IF NOT EXISTS runner_state_ts ON runner_state (ts)",
+]
+
+# Indexes replaced by a wider definition in INDEXES above, dropped from an
+# existing store by FleetStore.init_schema(): CREATE INDEX IF NOT EXISTS
+# only ever adds an index a store lacks by name, so a store created while an
+# older, narrower definition shipped keeps that narrower index under the old
+# name forever unless it is dropped explicitly -- exactly the ADDED_COLUMNS
+# problem, but for an index's column list instead of a table's columns.
+DROPPED_INDEXES: List[str] = [
+    # Superseded by runner_state_host_repo_ts once runner_state's key
+    # widened to include repo (see FleetStore._widen_runner_state_key):
+    # this narrower index could not serve latest_runner_states' repo-aware
+    # grouping/join, forcing a full scan of the table for "latest per
+    # runner" queries.
+    "runner_state_host_ts",
 ]
 
 # Columns added after a table first shipped. ``CREATE TABLE IF NOT EXISTS``

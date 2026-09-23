@@ -397,7 +397,12 @@ def fetch_runners(
     (see :func:`poll_and_store`'s ``record_runners``) must not let one
     source's outage look like the runners it lists retired, so it demands
     every source succeed or gets nothing at all rather than a silently
-    partial list.
+    partial list. With *require_complete*, a per-source failure is not
+    printed here — the caller is always going to log the raised failure
+    itself with full context, so printing here too would double-log the
+    same outage on every poll cycle; without it, this is the only place a
+    tolerated source failure is ever reported, so it is printed as it
+    happens.
     """
     sources = [("%s/repos/%s/actions/runners" % (GITHUB_API_BASE, repo), repo, "runners for %s" % repo)]
     if org:
@@ -410,7 +415,8 @@ def fetch_runners(
             fetched = _fetch_paginated(base_url, "runners", description, token, per_page, max_pages, False)
         except Exception as exc:  # noqa: BLE001 — one unreadable list must not hide the other
             failures.append(exc)
-            print("fleet poller: %s unavailable (%s)" % (description, exc), file=sys.stderr)
+            if not require_complete:
+                print("fleet poller: %s unavailable (%s)" % (description, exc), file=sys.stderr)
             continue
         for runner in fetched:
             runner = dict(runner)

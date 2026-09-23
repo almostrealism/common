@@ -1021,7 +1021,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  runner_name || '  \u00b7  ' || lane AS runner,\n  ROUND(100 * SUM(EXTRACT(EPOCH FROM (\n      LEAST(completed_at, $__timeTo()::timestamptz) - GREATEST(started_at, $__timeFrom()::timestamptz)\n    )))::numeric\n    / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\nFROM job_event\nWHERE lane <> '' AND lane IN ($lane) AND runner_name <> ''\n  AND started_at IS NOT NULL AND completed_at IS NOT NULL\n  AND completed_at >= $__timeFrom()::timestamptz AND started_at <= $__timeTo()::timestamptz\nGROUP BY runner_id, runner_name, lane\nORDER BY 2 DESC",
+          "rawSql": "WITH utilization AS (\n  SELECT\n    runner_id,\n    runner_name,\n    lane,\n    ROUND(100 * SUM(EXTRACT(EPOCH FROM (\n        LEAST(completed_at, $__timeTo()::timestamptz) - GREATEST(started_at, $__timeFrom()::timestamptz)\n      )))::numeric\n      / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\n  FROM job_event\n  WHERE lane <> '' AND lane IN ($lane) AND runner_name <> ''\n    AND started_at IS NOT NULL AND completed_at IS NOT NULL\n    AND completed_at >= $__timeFrom()::timestamptz AND started_at <= $__timeTo()::timestamptz\n  GROUP BY runner_id, runner_name, lane\n)\nSELECT\n  runner_name || '  \u00b7  ' || lane ||\n    CASE WHEN COUNT(*) OVER (PARTITION BY runner_name, lane) > 1\n         THEN '  (' || COALESCE(runner_id::text, '?') || ')'\n         ELSE '' END AS runner,\n  utilization_pct\nFROM utilization\nORDER BY 2 DESC",
           "format": "table",
           "editorMode": "code"
         }

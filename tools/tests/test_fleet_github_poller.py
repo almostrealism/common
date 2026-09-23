@@ -652,6 +652,35 @@ class RunnerInventoryTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 fetch_runners("acme/repo", "tok", org="acme", require_complete=True)
 
+    def test_fetch_runners_does_not_print_a_per_source_failure_when_require_complete(self):
+        """`poll_and_store`'s `except` block always logs the raised failure
+        itself with full context when `require_complete=True`; printing the
+        per-source failure here too would double-log the same outage on
+        every poll cycle."""
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                raise _http_error(403)
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get), \
+                mock.patch("sys.stderr") as stderr:
+            with self.assertRaises(RuntimeError):
+                fetch_runners("acme/repo", "tok", org="acme", require_complete=True)
+        stderr.write.assert_not_called()
+
+    def test_fetch_runners_prints_a_per_source_failure_without_require_complete(self):
+        """Without `require_complete`, a tolerated source failure is only
+        ever reported here, so it must still be printed."""
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                raise _http_error(403)
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get), \
+                mock.patch("sys.stderr") as stderr:
+            fetch_runners("acme/repo", "tok", org="acme")
+        stderr.write.assert_called()
+
     def test_store_runner_states_writes_one_row_per_runner_with_lane_and_platform(self):
         runners = [dict(runner, registration="acme/repo") for runner in self.RUNNERS]
         self.assertEqual(3, store_runner_states(self.store, runners, "2026-09-21T10:00:00Z"))

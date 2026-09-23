@@ -312,16 +312,24 @@ class FleetStore:
     def init_schema(self) -> None:
         """Create every table (and index) declared in :mod:`schema`, if not already present.
 
-        Then add any column in :data:`schema.ADDED_COLUMNS` that an existing
-        table lacks: ``CREATE TABLE IF NOT EXISTS`` never alters a table that
-        already exists, so a store created before a column shipped would
-        otherwise stay behind the writers, and every ``upsert_*`` naming the
-        new column would fail against it. Finally, widen ``runner_state``'s
-        key if it predates :meth:`_widen_runner_state_key`'s column — see
-        that method.
+        Then drop any index named in :data:`schema.DROPPED_INDEXES`:
+        ``CREATE INDEX IF NOT EXISTS`` only ever adds an index a store lacks
+        *by name*, so a store created while an older, narrower definition
+        shipped under that name would otherwise keep serving queries from
+        the stale index forever, never picking up the wider one declared in
+        :data:`schema.INDEXES` under its new name. Then add any column in
+        :data:`schema.ADDED_COLUMNS` that an existing table lacks:
+        ``CREATE TABLE IF NOT EXISTS`` never alters a table that already
+        exists, so a store created before a column shipped would otherwise
+        stay behind the writers, and every ``upsert_*`` naming the new
+        column would fail against it. Finally, widen ``runner_state``'s key
+        if it predates :meth:`_widen_runner_state_key`'s column — see that
+        method.
         """
         for statement in schema.statements(self._dialect.timestamp_type):
             self._conn.execute(statement)
+        for index_name in schema.DROPPED_INDEXES:
+            self._conn.execute("DROP INDEX IF EXISTS %s" % index_name)
         for table, column, column_type in schema.ADDED_COLUMNS:
             self._add_column_if_missing(table, column, column_type)
         self._widen_runner_state_key()
@@ -366,20 +374,31 @@ class FleetStore:
         A store whose ``runner_state`` table already has the new key is left
         alone (the common case, and always true for a table just created by
         :meth:`init_schema` above, since :data:`schema.RUNNER_STATE` already
-        declares it). sqlite cannot alter a primary key in place, so an old
-        table is migrated by rename-recreate-copy-drop; a stale
-        ``runner_state_old`` from a migration this process crashed in the
-        middle of on a prior run is dropped before the rename, so restarting
-        after such a crash retries the migration instead of failing forever
-        on "table runner_state_old already exists". The new table's
-        ``repo`` is ``NOT NULL`` (see :data:`schema.RUNNER_STATE`) while the
-        legacy table's was not, so a legacy ``NULL`` is coalesced to ``''``
-        during the copy rather than left to fail the insert, and the two
-        ``runner_state`` indexes (attached to the old table by ``CREATE
-        INDEX IF NOT EXISTS`` above, in :meth:`init_schema`, before this
-        migration runs) are recreated against the new table once the old one
-        is dropped, since sqlite drops an index along with the table it is
-        on. Postgres can alter the key directly; the attempt is wrapped in a
+        declares it) -- *unless* a ``runner_state_old`` is also still
+        present, in which case it is merged in first (see below) before that
+        early-return check is applied, since the check alone cannot tell a
+        genuinely-already-widened table apart from one :meth:`init_schema`'s
+        own ``CREATE TABLE IF NOT EXISTS`` just recreated empty after a crash
+        renamed the real data away. sqlite cannot alter a primary key in
+        place, so an old table is migrated by rename-recreate-copy-drop. A
+        process killed between the ``RENAME`` and the final ``DROP`` leaves
+        ``runner_state_old`` holding rows that never made it into
+        ``runner_state`` -- possibly the *only* copy, if the crash landed
+        before the copy ran at all -- so a restart merges any leftover
+        ``runner_state_old`` into ``runner_state`` (``INSERT OR IGNORE``,
+        safe to repeat: rows already copied are matched on ``runner_state``'s
+        primary key and left alone) and drops it, rather than unconditionally
+        dropping it and losing that data. A stale ``runner_state_old`` from
+        an even older schema, sharing no columns with the current
+        ``runner_state``, has nothing to merge and is just dropped. The new
+        table's ``repo`` is ``NOT NULL`` (see :data:`schema.RUNNER_STATE`)
+        while the legacy table's was not, so a legacy ``NULL`` is coalesced
+        to ``''`` during the merge rather than left to fail the insert, and
+        the two ``runner_state`` indexes (attached to the old table by
+        ``CREATE INDEX IF NOT EXISTS`` above, in :meth:`init_schema`, before
+        this migration runs) are recreated against the new table once the
+        old one is dropped, since sqlite drops an index along with the table
+        it is on. Postgres can alter the key directly; the attempt is wrapped in a
         ``try``/``except`` because, like the column migration above, two
         processes can race to widen the same live table concurrently, and
         Postgres has no ``ADD CONSTRAINT IF NOT EXISTS`` to make that atomic
@@ -422,25 +441,20 @@ class FleetStore:
         column that contains one.
         """
         target = ["ts", "host", "runner_name", "repo"]
-        if self._primary_key_columns("runner_state") == target:
-            return
         if self._dialect.name == Dialect.SQLITE:
-            self._conn.execute("DROP TABLE IF EXISTS runner_state_old")
+            if self.columns("runner_state_old"):
+                self._merge_runner_state_old()
+            if self._primary_key_columns("runner_state") == target:
+                return
             self._conn.execute("ALTER TABLE runner_state RENAME TO runner_state_old")
             self._conn.execute(schema.RUNNER_STATE.format(ts=self._dialect.timestamp_type))
-            columns = self.columns("runner_state_old")
-            select_list = ", ".join(
-                "COALESCE(%s, '')" % column if column == "repo" else column for column in columns
-            )
-            self._conn.execute(
-                "INSERT INTO runner_state (%s) SELECT %s FROM runner_state_old"
-                % (", ".join(columns), select_list)
-            )
-            self._conn.execute("DROP TABLE runner_state_old")
+            self._merge_runner_state_old()
             for statement in schema.INDEXES:
                 if " ON runner_state " in statement:
                     self._conn.execute(statement)
         else:
+            if self._primary_key_columns("runner_state") == target:
+                return
             self._conn.execute("BEGIN")
             try:
                 self._conn.execute("SELECT pg_advisory_xact_lock(%d)" % _RUNNER_STATE_MIGRATION_LOCK_KEY)
@@ -454,6 +468,33 @@ class FleetStore:
                     raise
             else:
                 self._conn.execute("COMMIT")
+
+    def _merge_runner_state_old(self) -> None:
+        """Copy any rows from a leftover ``runner_state_old`` into ``runner_state``, then drop it.
+
+        Only the columns the two tables have in common are copied: a
+        ``runner_state_old`` left by an interrupted widening migration
+        shares every column with the current ``runner_state`` (at most
+        missing a later-added one, which is fine to leave at its default),
+        but a stale leftover from an unrelated, much older schema may share
+        none at all, in which case there is nothing to merge and the table
+        is simply dropped. ``INSERT OR IGNORE`` makes this safe to call on a
+        partially-copied table: a row already present in ``runner_state``
+        (matching on its primary key) is left alone rather than raising a
+        duplicate-key error, so calling this twice for the same leftover
+        table is harmless.
+        """
+        old_columns = self.columns("runner_state_old")
+        common_columns = [column for column in old_columns if column in self.columns("runner_state")]
+        if common_columns:
+            select_list = ", ".join(
+                "COALESCE(%s, '')" % column if column == "repo" else column for column in common_columns
+            )
+            self._conn.execute(
+                "INSERT OR IGNORE INTO runner_state (%s) SELECT %s FROM runner_state_old"
+                % (", ".join(common_columns), select_list)
+            )
+        self._conn.execute("DROP TABLE runner_state_old")
 
     def columns(self, table: str) -> List[str]:
         """The column names *table* currently has, in declaration order.

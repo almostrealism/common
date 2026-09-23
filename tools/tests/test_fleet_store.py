@@ -536,9 +536,9 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
     def test_widening_the_runner_state_key_recreates_its_indexes(self):
         """sqlite drops an index along with the table it is on; the
         migration renames the old `runner_state` away (taking
-        `runner_state_host_ts`/`runner_state_ts` with it) and drops it once
-        the data is copied, so the two indexes must be recreated against the
-        new table rather than silently lost."""
+        `runner_state_host_repo_ts`/`runner_state_ts` with it) and drops it
+        once the data is copied, so the two indexes must be recreated
+        against the new table rather than silently lost."""
         store = self._store_with_old_job_event_and_runner_state()
         store.init_schema()
         index_names = {
@@ -546,8 +546,40 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'runner_state'"
             )
         }
-        self.assertIn("runner_state_host_ts", index_names)
+        self.assertIn("runner_state_host_repo_ts", index_names)
         self.assertIn("runner_state_ts", index_names)
+
+    def test_init_schema_replaces_a_dropped_index_with_its_wider_replacement(self):
+        """`runner_state_host_ts (host, runner_name, ts)` predates `repo`
+        joining the key, and `CREATE INDEX IF NOT EXISTS` never touches an
+        index that already exists under that name - a store created while
+        the narrower index shipped would keep serving `latest_runner_states`
+        (which now groups/joins on `(host, runner_name, repo, ts)`) from it
+        forever unless `init_schema` drops it by name and lets the wider
+        `runner_state_host_repo_ts` from `schema.INDEXES` take its place."""
+        store = FleetStore(":memory:")
+        store.init_schema()
+        store._conn.execute("DROP INDEX runner_state_host_repo_ts")
+        store._conn.execute("CREATE INDEX runner_state_host_ts ON runner_state (host, runner_name, ts)")
+        store.init_schema()
+        index_names = {
+            row[0] for row in store._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'runner_state'"
+            )
+        }
+        self.assertNotIn("runner_state_host_ts", index_names)
+        self.assertIn("runner_state_host_repo_ts", index_names)
+
+    def test_a_fresh_store_has_the_wider_runner_state_index_not_the_dropped_one(self):
+        store = FleetStore(":memory:")
+        store.init_schema()
+        index_names = {
+            row[0] for row in store._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'runner_state'"
+            )
+        }
+        self.assertIn("runner_state_host_repo_ts", index_names)
+        self.assertNotIn("runner_state_host_ts", index_names)
 
     def test_init_schema_is_idempotent_after_widening_the_runner_state_key(self):
         store = self._store_with_old_job_event_and_runner_state()
@@ -575,6 +607,40 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
             "SELECT runner_name, state, repo FROM runner_state WHERE runner_name = 'r1'"
         ).fetchone()
         self.assertEqual(("r1", "idle", "almostrealism/common"), row)
+
+    def test_widening_the_runner_state_key_recovers_orphaned_data_left_by_a_crash_before_the_copy(self):
+        """A process killed right after the `RENAME` but before the copy back
+        into the recreated `runner_state` leaves the *only* copy of the
+        pre-migration row in `runner_state_old`, while `runner_state` itself
+        can already be back to an empty, already-widened table by the time
+        of the next restart - `init_schema`'s own `CREATE TABLE IF NOT
+        EXISTS` runs before `_widen_runner_state_key` and already declares
+        the widened key, so it recreates `runner_state` empty rather than
+        leaving it missing. The early-return "already widened" check alone
+        cannot distinguish that from a store that was never interrupted, so
+        migration must still merge a leftover `runner_state_old` in before
+        applying it - not silently drop or ignore the only copy of the row."""
+        store = FleetStore(":memory:")
+        store.init_schema()
+        store._conn.execute(
+            "CREATE TABLE runner_state_old (ts TEXT NOT NULL, host TEXT NOT NULL, runner_name TEXT NOT NULL, "
+            "labels TEXT, state TEXT, repo TEXT, workflow TEXT, job_id TEXT, agent_version TEXT, "
+            "PRIMARY KEY (ts, host, runner_name))"
+        )
+        store._conn.execute(
+            "INSERT INTO runner_state_old (ts, host, runner_name, state, repo) "
+            "VALUES ('2026-09-21T00:00:00Z', '', 'r1', 'idle', 'almostrealism/common')"
+        )
+        store.init_schema()
+        self.assertEqual(["ts", "host", "runner_name", "repo"], store._primary_key_columns("runner_state"))
+        row = store._conn.execute(
+            "SELECT runner_name, state, repo FROM runner_state WHERE runner_name = 'r1'"
+        ).fetchone()
+        self.assertEqual(("r1", "idle", "almostrealism/common"), row)
+        leftover = store._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runner_state_old'"
+        ).fetchall()
+        self.assertEqual([], leftover)
 
     def test_add_column_if_missing_uses_atomic_syntax_on_postgres(self):
         """The Postgres branch must be a single `ADD COLUMN IF NOT EXISTS`

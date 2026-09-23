@@ -253,7 +253,7 @@ class WorkflowGraph:
         position = 0
         for match in _EXPRESSION.finditer(display):
             parts.append(re.escape(display[position:match.start()]))
-            parts.append(".+?")
+            parts.append(".*?")
             position = match.end()
         parts.append(re.escape(display[position:]))
         return "".join(parts)

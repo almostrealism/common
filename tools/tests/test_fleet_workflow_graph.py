@@ -87,6 +87,14 @@ class JobKeyTests(unittest.TestCase):
     def test_an_expression_name_with_a_matrix_suffix_still_matches(self):
         self.assertEqual("test-media", self.graph.job_key("Media 4 (linux)"))
 
+    def test_an_expression_that_renders_to_empty_text_still_matches(self):
+        """A GitHub expression can render to an empty string (an empty
+        matrix value, a falsy conditional). The pattern built from
+        `name: "Media ${{ matrix.group }}"` must match that empty expansion
+        too, not just one or more characters."""
+        graph = WorkflowGraph({"job": {"name": "Media ${{ matrix.group }}", "needs": ["build"]}})
+        self.assertEqual("job", graph.job_key("Media "))
+
     def test_an_unknown_name_is_none_not_a_guess(self):
         self.assertIsNone(self.graph.job_key("something else entirely"))
         self.assertIsNone(self.graph.job_key(""))
