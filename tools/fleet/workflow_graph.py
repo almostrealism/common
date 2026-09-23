@@ -36,10 +36,16 @@ its YAML key, and rendering follows a handful of rules:
   matrix expression, in which case only the rendered ``name:`` appears;
 - a job that calls a reusable workflow → ``caller / inner job``.
 
-:meth:`WorkflowGraph.job_key` inverts those rules. A ``name:`` that contains
-an expression cannot be matched verbatim, so it becomes a pattern with each
-``${{ }}`` standing for any text; the pattern must match exactly one job,
-or the job is reported unknown (``None``). Unknown is always preferred over
+:meth:`WorkflowGraph.resolve` (and its convenience wrapper
+:meth:`WorkflowGraph.job_key`) inverts those rules. A ``name:`` that
+contains an expression cannot be matched verbatim, so it becomes a pattern
+with each ``${{ }}`` standing for any text; the literal and pattern
+candidates across every rendering form are one combined set of hypotheses,
+and the job is reported unknown (``None``) unless exactly one of them
+matches. The ``caller / inner`` form is only recognized when the caller
+job's own definition has ``uses:`` — evidence it actually calls a reusable
+workflow — so an ordinary job whose literal name happens to contain
+``" / "`` still resolves on its own name. Unknown is always preferred over
 a guess: a wrong dependency list would silently misreport queue wait, an
 unresolved one is an honest ``NULL``.
 
@@ -77,6 +83,7 @@ class WorkflowGraph:
         """Build from the ``jobs:`` mapping of a parsed workflow (key → job definition)."""
         self._needs: Dict[str, List[str]] = {}
         self._display: Dict[str, str] = {}
+        self._uses: Dict[str, bool] = {}
         for key, definition in (jobs or {}).items():
             definition = definition or {}
             needs = definition.get("needs") or []
@@ -85,6 +92,7 @@ class WorkflowGraph:
             self._needs[key] = [str(n) for n in needs]
             name = definition.get("name")
             self._display[key] = str(name) if name else key
+            self._uses[key] = "uses" in definition
 
     @classmethod
     def from_yaml(cls, text: str) -> "WorkflowGraph":
@@ -113,50 +121,88 @@ class WorkflowGraph:
         return self._display.get(key)
 
     def job_key(self, api_name: str) -> Optional[str]:
+        """The YAML key that produced *api_name*; ``None`` if unknown or ambiguous.
+
+        Equivalent to ``resolve(api_name)[0]`` — see :meth:`resolve` for the
+        rules that govern this mapping.
+        """
+        return self.resolve(api_name)[0]
+
+    def resolve(self, api_name: str) -> Tuple[Optional[str], bool]:
         """Map the ``name`` the jobs API reports back to the YAML key that produced it.
 
-        Tries the rendering rules in the module docstring — exact, then
-        with a matrix suffix removed, then the caller half of a reusable
-        workflow name — and finally treats ``name:`` values that contain
-        ``${{ }}`` expressions as patterns. Every candidate form is a
-        competing hypothesis about what *api_name* actually is, not an
-        independent fallback to try in order: a matrix job ``foo`` and an
-        unrelated literal job ``name: foo (bar)`` are both exact matches for
-        the api_name ``"foo (bar)"`` (one via the matrix-suffix-stripped
-        form, one via the literal form), so matching on the literal form
-        first and returning immediately would silently prefer it over the
-        equally valid matrix-job match instead of reporting the ambiguity.
-        Matches from every candidate form are collected together and a key
-        is returned only when the combined set is a singleton; exact
-        matches take priority over pattern matches as a tier, but within
-        each tier every form is checked before deciding.
+        Returns ``(key, is_inner_job_reference)``. ``is_inner_job_reference``
+        is true when *api_name* is the API's ``caller / inner`` rendering for
+        a job inside a workflow *key* calls via ``uses:`` — the inner job's
+        own ``needs:`` live in the called workflow file, not in this graph,
+        so a caller resolving dependencies must treat that case as unknown
+        even though a key was found (see
+        :meth:`WorkflowGraphResolver.needs`).
+
+        Tries the full name first — exact, then with a matrix suffix
+        removed — and finally treats ``name:`` values that contain
+        ``${{ }}`` expressions as patterns. Every form is a competing
+        hypothesis about what *api_name* actually is, not an independent
+        fallback to try in order: a matrix job ``foo`` and an unrelated
+        literal job ``name: foo (bar)`` are both exact matches for the
+        api_name ``"foo (bar)"`` (one via the matrix-suffix-stripped form,
+        one via the literal form), so matching on the literal form first and
+        returning immediately would silently prefer it over the equally
+        valid matrix-job match instead of reporting the ambiguity. Exact and
+        pattern matches are candidates for the same job, not two independent
+        tiers to try in priority order: a literal job ``name: "test ubuntu"``
+        and a pattern job ``name: "test ${{ matrix.os }}"`` are both
+        plausible explanations for the api_name ``"test ubuntu"``, so
+        matching the literal form and returning immediately would silently
+        prefer it over the equally valid pattern match. Every form's exact
+        and pattern matches are collected into one set, and a key is
+        returned only when that combined set is a singleton.
+
+        Only when the full name matches nothing at all is a ``caller /
+        inner`` name split and the caller half tried the same way — and even
+        then only among jobs whose own definition has ``uses:``, since a
+        normal top-level job whose literal name happens to contain ``" / "``
+        (for example ``name: "build / test"``) must resolve on its own
+        name, not be reattributed to a caller it never had.
         """
         if not api_name:
-            return None
-        candidates = self._candidates(api_name)
-        exact_matches: Set[str] = set()
-        for candidate in candidates:
-            exact_matches.update(self._exact_matches(candidate))
-        if exact_matches:
-            return next(iter(exact_matches)) if len(exact_matches) == 1 else None
-        pattern_matches: Set[str] = set()
-        for candidate in candidates:
-            pattern_matches.update(self._pattern_matches(candidate))
-        return next(iter(pattern_matches)) if len(pattern_matches) == 1 else None
-
-    @staticmethod
-    def _candidates(api_name: str) -> List[str]:
-        """*api_name* and the progressively shorter forms the rendering rules can produce."""
-        forms = [api_name]
-        stripped = WorkflowGraph._without_matrix_suffix(api_name)
-        if stripped != api_name:
-            forms.append(stripped)
+            return None, False
+        key, matched = self._match(self._forms(api_name))
+        if matched:
+            return key, False
         if " / " in api_name:
             caller = api_name.split(" / ", 1)[0]
-            forms.append(caller)
-            stripped_caller = WorkflowGraph._without_matrix_suffix(caller)
-            if stripped_caller != caller:
-                forms.append(stripped_caller)
+            key, matched = self._match(self._forms(caller), require_uses=True)
+            if matched:
+                return key, True
+        return None, False
+
+    def _match(self, forms: List[str], require_uses: bool = False) -> Tuple[Optional[str], bool]:
+        """Every key any of *forms* matches (exactly or as a pattern), merged into one set.
+
+        Returns ``(key, True)`` when that set is a singleton, ``(None, True)``
+        when it has more than one member (a real ambiguity), and
+        ``(None, False)`` when it is empty — the caller uses the second
+        element to tell "ambiguous" from "no evidence at all", since only
+        the latter should fall back to a weaker form of matching.
+        """
+        matches: Set[str] = set()
+        for form in forms:
+            matches.update(self._exact_matches(form))
+            matches.update(self._pattern_matches(form))
+        if require_uses:
+            matches = {key for key in matches if self._uses.get(key)}
+        if not matches:
+            return None, False
+        return (next(iter(matches)) if len(matches) == 1 else None), True
+
+    @staticmethod
+    def _forms(name: str) -> List[str]:
+        """*name* and its matrix-suffix-stripped form, if that differs."""
+        forms = [name]
+        stripped = WorkflowGraph._without_matrix_suffix(name)
+        if stripped != name:
+            forms.append(stripped)
         return forms
 
     @staticmethod
@@ -212,17 +258,6 @@ class _TransientLoadFailure(Exception):
     """
 
 
-def _is_reusable_workflow_job_name(api_name: str) -> bool:
-    """Whether *api_name* is the ``caller / inner`` form the jobs API
-    renders for a job inside a called reusable workflow (see this module's
-    docstring). The inner job's own ``needs:`` live in the called workflow
-    file, not in *this* file's graph, so this is how
-    :meth:`WorkflowGraphResolver.needs` recognises it must answer "unknown"
-    rather than substitute the calling job's dependencies.
-    """
-    return " / " in api_name
-
-
 class WorkflowGraphResolver:
     """Fetches each run's workflow file once and answers the poller's dependency questions.
 
@@ -276,7 +311,8 @@ class WorkflowGraphResolver:
         """Fetch and parse the workflow file at *path*@*sha*.
 
         Returns ``None`` — a cacheable "no such graph" — for a 404, a
-        response with no ``content``, or invalid YAML. Raises
+        non-retryable HTTP error (see :meth:`_is_retryable`), a response
+        with no ``content``, or invalid YAML. Raises
         :class:`_TransientLoadFailure` for any other fetch error, since
         those are not guaranteed to recur on the next attempt.
         """
@@ -285,6 +321,9 @@ class WorkflowGraphResolver:
             payload = self._fetch_json(url)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
+                return None
+            if not self._is_retryable(exc):
+                self._log_unavailable(path, sha, exc, retrying=False)
                 return None
             self._log_unavailable(path, sha, exc, retrying=True)
             raise _TransientLoadFailure(str(exc)) from exc
@@ -302,6 +341,29 @@ class WorkflowGraphResolver:
             return None
 
     @staticmethod
+    def _is_retryable(exc: urllib.error.HTTPError) -> bool:
+        """Whether *exc* might succeed on a later poll, rather than reproduce forever.
+
+        A 5xx is always transient. A 403/429 is transient only when it
+        carries GitHub's rate-limit signal — a ``Retry-After`` header, or
+        ``X-RateLimit-Remaining: 0`` — since GitHub uses both statuses for
+        rate limiting as well as for plain permission failures. A 401 or a
+        403/429 without either header is a persistent auth/permission
+        failure (a missing scope, a revoked token): caching it means one
+        failed request per run instead of one per job per poll cycle,
+        repeated forever for a file the token will never be allowed to
+        read.
+        """
+        if exc.code >= 500:
+            return True
+        if exc.code in (403, 429):
+            headers = exc.headers
+            if headers is not None and (headers.get("Retry-After") or headers.get("X-RateLimit-Remaining") == "0"):
+                return True
+            return False
+        return False
+
+    @staticmethod
     def _log_unavailable(path: str, sha: str, exc: Exception, retrying: bool) -> None:
         print(
             "fleet poller: workflow %s@%s unavailable (%s); %s"
@@ -317,24 +379,24 @@ class WorkflowGraphResolver:
 
         A job inside a called reusable workflow (the API's ``caller / inner``
         name — see the module docstring) is always unknown here:
-        ``WorkflowGraph.job_key`` attributes that name to the *calling* job's
-        key (see its own docstring — that attribution serves other
+        ``WorkflowGraph.resolve`` attributes that name to the *calling*
+        job's key (see its own docstring — that attribution serves other
         purposes, such as identifying which top-level job a nested run
-        belongs to), but the inner job's own dependencies are declared
-        inside the *called* workflow file, which this class does not fetch
-        or parse. Reporting the caller's ``needs:`` here would attribute a
-        dependency list to a job that never declared it.
+        belongs to) and flags it as an inner-job reference, but the inner
+        job's own dependencies are declared inside the *called* workflow
+        file, which this class does not fetch or parse. Reporting the
+        caller's ``needs:`` here would attribute a dependency list to a job
+        that never declared it.
 
         This is the ``resolve_needs`` callback :func:`tools.fleet.github_poller.poll_and_store` takes.
         """
-        api_name = job.get("name") or ""
-        if _is_reusable_workflow_job_name(api_name):
-            return None
         graph = self.graph(run)
         if graph is None:
             return None
-        key = graph.job_key(api_name)
-        return None if key is None else graph.needs(key)
+        key, is_inner_job_reference = graph.resolve(job.get("name") or "")
+        if key is None or is_inner_job_reference:
+            return None
+        return graph.needs(key)
 
     def dependency_completed_at(self, run: Dict, job: Dict, run_jobs: List[Dict]) -> Optional[str]:
         """When the last job *job* depends on finished, as the API's timestamp string, or ``None``.

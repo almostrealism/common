@@ -129,6 +129,68 @@ class JobKeyTests(unittest.TestCase):
         graph = WorkflowGraph({"foo": {"strategy": {"matrix": {"group": ["bar"]}}}})
         self.assertEqual("foo", graph.job_key("foo (bar)"))
 
+    def test_an_exact_match_and_a_pattern_match_are_one_candidate_set(self):
+        """A literal job `name: "test ubuntu"` and a pattern job
+        `name: "test ${{ matrix.os }}"` are both plausible explanations for
+        the api_name "test ubuntu" - the exact tier must not win outright
+        just because it is non-empty, or this genuine ambiguity would be
+        silently resolved to the literal job instead of reported."""
+        graph = WorkflowGraph({
+            "matrix-job": {"name": "test ${{ matrix.os }}"},
+            "literal-job": {"name": "test ubuntu"},
+        })
+        self.assertIsNone(graph.job_key("test ubuntu"))
+
+    def test_an_exact_match_with_no_colliding_pattern_is_unambiguous(self):
+        graph = WorkflowGraph({
+            "matrix-job": {"name": "test ${{ matrix.os }}"},
+            "literal-job": {"name": "test ubuntu"},
+        })
+        self.assertEqual("matrix-job", graph.job_key("test macos"))
+
+    def test_a_literal_name_containing_a_slash_resolves_directly_without_uses(self):
+        """GitHub permits an ordinary top-level job named e.g. `"build /
+        test"` - that literal name must resolve on its own, not be
+        misread as the `caller / inner` form of a reusable-workflow call,
+        since this job never declares `uses:`."""
+        graph = WorkflowGraph({"combo": {"name": "build / test", "needs": ["changes"]}})
+        self.assertEqual("combo", graph.job_key("build / test"))
+        key, is_inner = graph.resolve("build / test")
+        self.assertEqual("combo", key)
+        self.assertFalse(is_inner)
+
+    def test_a_slash_form_with_no_reusable_caller_is_unknown(self):
+        """A "caller / inner"-shaped name whose caller half does not call a
+        reusable workflow (no `uses:`) must not be attributed to that
+        caller - there is no called workflow whose inner job it could be."""
+        graph = WorkflowGraph({"build": {}})
+        self.assertIsNone(graph.job_key("build / something"))
+
+    def test_an_ambiguous_full_name_match_does_not_fall_back_to_the_caller_form(self):
+        """A "caller / inner"-shaped api_name that is ALREADY ambiguous as
+        a literal full-name match must stay ambiguous, not fall through to
+        the weaker caller-only interpretation and resolve to a caller job -
+        the caller-split fallback is only for names with NO full-name
+        evidence at all, not for names with conflicting full-name evidence."""
+        graph = WorkflowGraph({
+            "a": {"name": "verify / thing"},
+            "b": {"name": "verify / thing"},
+            "verify": {"uses": "./.github/workflows/verify.yaml"},
+        })
+        self.assertIsNone(graph.job_key("verify / thing"))
+
+    def test_a_reusable_workflow_call_sets_the_inner_job_reference_flag(self):
+        graph = WorkflowGraph(FIXTURE_JOBS)
+        key, is_inner = graph.resolve("verify / check-completion")
+        self.assertEqual("verify", key)
+        self.assertTrue(is_inner)
+
+    def test_a_direct_match_does_not_set_the_inner_job_reference_flag(self):
+        graph = WorkflowGraph(FIXTURE_JOBS)
+        key, is_inner = graph.resolve("verify")
+        self.assertEqual("verify", key)
+        self.assertFalse(is_inner)
+
 
 class NeedsTests(unittest.TestCase):
 
@@ -197,7 +259,7 @@ class ResolverTests(unittest.TestCase):
         "  changes: {}\n"
         "  build:\n    needs: changes\n"
         "  test:\n    needs: [build]\n    strategy: {matrix: {g: [1, 2]}}\n"
-        "  deploy:\n    needs: [test]\n"
+        "  deploy:\n    needs: [test]\n    uses: ./.github/workflows/verify.yaml\n"
     )
 
     def setUp(self):
@@ -301,6 +363,61 @@ class ResolverTests(unittest.TestCase):
         def fetch_json(url):
             self.requests.append(url)
             raise urllib.error.URLError("connection refused")
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(2, len(self.requests))
+
+    def test_a_403_without_rate_limit_headers_is_cached_as_unknown(self):
+        """A 403 without any rate-limit signal is a persistent permission
+        failure (missing scope, revoked token) - retrying it on every job
+        of every poll cycle would just repeat the same failed request
+        forever, so it must be cached like a 404."""
+        run = dict(self.run, path=".github/workflows/forbidden.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 403, "Forbidden", {}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(1, len(self.requests))
+
+    def test_a_401_is_cached_as_unknown(self):
+        run = dict(self.run, path=".github/workflows/unauthorized.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(1, len(self.requests))
+
+    def test_a_403_with_exhausted_rate_limit_is_retried_not_cached(self):
+        """A 403 carrying GitHub's rate-limit signal is transient - the
+        limit resets, so it must be retried on the next poll rather than
+        cached as a permanent failure."""
+        run = dict(self.run, path=".github/workflows/rate-limited.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 403, "Forbidden", {"X-RateLimit-Remaining": "0"}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(2, len(self.requests))
+
+    def test_a_403_with_retry_after_is_retried_not_cached(self):
+        run = dict(self.run, path=".github/workflows/secondary-rate-limited.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 403, "Forbidden", {"Retry-After": "30"}, None)
 
         resolver = WorkflowGraphResolver("acme/repo", fetch_json)
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
