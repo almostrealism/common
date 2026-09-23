@@ -72,6 +72,8 @@ public final class AgentRunRequest {
     private final Path outputCapturePath;
     /** When {@code true}, the runner launches the agent inside a tmux session (real tty). */
     private final boolean useTmux;
+    /** When {@code true}, the session may bypass the agent runtime's interactive permission prompts. */
+    private final boolean bypassPermissionPrompts;
 
     /**
      * Key in {@link #getEnvironment()} that carries the workstream identifier
@@ -102,6 +104,7 @@ public final class AgentRunRequest {
         this.activityTag = b.activityTag;
         this.outputCapturePath = b.outputCapturePath;
         this.useTmux = b.useTmux;
+        this.bypassPermissionPrompts = b.bypassPermissionPrompts;
     }
 
     /** Returns the full instruction prompt to send to the agent. */
@@ -185,6 +188,37 @@ public final class AgentRunRequest {
     public boolean isUseTmux() { return useTmux; }
 
     /**
+     * Returns whether this session may bypass the agent runtime's interactive
+     * permission prompts.
+     *
+     * <p>An agent runtime reserves some tool calls for a human to approve one
+     * at a time — writes to its own configuration and hooks, to environment
+     * files, to credentials. A headless session has no human, so those calls
+     * are simply denied, and a job asked to change one of those files reports
+     * the refusal instead of doing the work. The allow list does not cover
+     * this: it decides which tools exist, not who answers a prompt.</p>
+     *
+     * <p>{@code false} by default, because the grant is exactly what stops an
+     * agent from editing the guardrails it runs under. Which jobs receive it
+     * is a policy each deployment sets for itself — see
+     * {@code Workstream#permitsAgentPermissionBypass(String)} — not something
+     * this layer decides.</p>
+     *
+     * <p>Honoured by {@link ClaudeCodeRunner} only, and the asymmetry is in
+     * the CLIs rather than here. For Claude the flag is purely the
+     * sensitive-path bypass: an ungranted session still runs headless, it
+     * simply cannot write the reserved paths. opencode's equivalent is what
+     * makes a session unattended at all — without it every tool call waits on
+     * a prompt — so {@link OpencodeRunner} passes it unconditionally and a
+     * job dispatched there is not restricted by this grant. Narrowing that
+     * needs a per-path permission policy in the opencode config rather than a
+     * flag, and is not attempted here.</p>
+     *
+     * @return {@code true} when the session may act without prompt approval
+     */
+    public boolean isBypassPermissionPrompts() { return bypassPermissionPrompts; }
+
+    /**
      * Returns the workstream identifier from the request environment, or
      * {@code null} if {@link #ENV_WORKSTREAM_ID} is absent from the map.
      */
@@ -235,6 +269,8 @@ public final class AgentRunRequest {
         private Path outputCapturePath;
         /** Pending tmux-launch flag; see {@link AgentRunRequest#isUseTmux()}. */
         private boolean useTmux;
+        /** Pending permission-prompt bypass; see {@link AgentRunRequest#isBypassPermissionPrompts()}. */
+        private boolean bypassPermissionPrompts;
 
         /** Hidden default constructor; obtain instances via {@link AgentRunRequest#builder()}. */
         private Builder() {}
@@ -279,6 +315,11 @@ public final class AgentRunRequest {
         public Builder outputCapturePath(Path outputCapturePath) { this.outputCapturePath = outputCapturePath; return this; }
         /** Sets whether the runner should launch the agent inside a tmux session. */
         public Builder useTmux(boolean useTmux) { this.useTmux = useTmux; return this; }
+        /** Grants the session the permission-prompt bypass; see {@link AgentRunRequest#isBypassPermissionPrompts()}. */
+        public Builder bypassPermissionPrompts(boolean bypassPermissionPrompts) {
+            this.bypassPermissionPrompts = bypassPermissionPrompts;
+            return this;
+        }
 
         /** Builds the immutable request. */
         public AgentRunRequest build() { return new AgentRunRequest(this); }
