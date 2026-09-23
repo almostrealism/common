@@ -427,6 +427,9 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     public final void run() {
         Exception error = null;
         WorkspaceLock workspaceLock = new WorkspaceLock(taskId);
+        // False when no lock was taken at all, and when one was attempted and
+        // failed; see JobWorkOutcome#capture(boolean).
+        boolean workspaceHeld = false;
 
         try {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
@@ -450,14 +453,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 String lockTarget = workingDirectory != null && !workingDirectory.isEmpty()
                     ? workingDirectory
                     : WorkspaceResolver.resolve(defaultWorkspacePath, repoUrl);
-                workspaceLock.acquire(lockTarget);
+                workspaceHeld = workspaceLock.acquire(lockTarget);
                 repoSetup = new GitRepositorySetup(this);
                 workingDirectory = repoSetup.resolveAndClone();
             } else if (workingDirectory != null && !workingDirectory.isEmpty()) {
                 // A directory-only job clones nothing, but it shares the tree
                 // with every other job pointed at the same directory just the
                 // same — including for the completion snapshot taken below.
-                workspaceLock.acquire(workingDirectory);
+                workspaceHeld = workspaceLock.acquire(workingDirectory);
             }
 
             // Clone/sync dependent repos alongside the primary repo
@@ -538,7 +541,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
             // Last thing inside the lock: the completion event is built after
             // it is released, by which time the tree may belong to another job.
-            workOutcome.capture();
+            workOutcome.capture(workspaceHeld);
 
         } catch (Exception e) {
             warn("Error: " + e.getMessage(), e);

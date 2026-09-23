@@ -33,7 +33,7 @@ import java.util.Map;
  * unit, optionally connected to a Slack team.
  *
  * <p>The {@code id} field is operator-chosen and is the identifier
- * referenced by {@link WorkstreamEntry#getWorkspaceId()}. The optional
+ * referenced by {@link WorkstreamConfig.WorkstreamEntry#getWorkspaceId()}. The optional
  * {@code slackTeamId} field carries the Slack team ID (e.g.
  * {@code "T0123456789"}) when the workspace is connected to Slack;
  * when absent the workspace has no Slack integration and channel/notifier

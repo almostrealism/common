@@ -41,10 +41,10 @@ class JobWorkOutcome {
     /** The job whose work this reports on. */
     private final GitManagedJob job;
 
-    /** Whether {@link #capture()} has run; {@link #capturedDescription} is authoritative once it has. */
+    /** Whether {@link #capture(boolean)} has run; {@link #capturedDescription} is authoritative once it has. */
     private boolean captured;
 
-    /** The outcome recorded by {@link #capture()}; {@code null} means nothing was orphaned. */
+    /** The outcome recorded by {@link #capture(boolean)}; {@code null} means nothing was orphaned. */
     private String capturedDescription;
 
     /**
@@ -98,12 +98,15 @@ class JobWorkOutcome {
      * guardrails that passed no file, a phase that threw after the work was
      * already made. Reporting success is what keeps those paths invisible.</p>
      *
-     * <p>A reverted tampering commit is checked first, and against the primary
-     * commit hash alone rather than
-     * {@link GitManagedJob#hasPublishedCommit()}. The revert destroyed
-     * primary-tree work, and only a primary commit from the restart replaces
-     * it; a dependent-repository commit is different work and would otherwise
-     * mask the loss.</p>
+     * <p>A tampering revert is checked first, and against the primary commit
+     * hash alone rather than {@link GitManagedJob#hasPublishedCommit()}. The
+     * revert destroyed primary-tree work, and only a primary commit from the
+     * restart replaces it; a dependent-repository commit is different work and
+     * would otherwise mask the loss. The reported reason speaks of the agent's
+     * changes rather than its commits, because
+     * {@link GitTamperingDetector#revert()} also runs for a branch switch,
+     * where the reset discarded uncommitted state and no commit ever
+     * existed.</p>
      *
      * @return the failure description, or {@code null} when nothing was orphaned
      */
@@ -121,10 +124,24 @@ class JobWorkOutcome {
      * already have started editing. Asking afterwards can therefore report
      * another job's changes as this one's unpublished work. Asking here, at
      * the end of the locked region, reads the tree this job actually left.</p>
+     *
+     * <p>{@code locked} says whether that region was in fact exclusive.
+     * {@link WorkspaceLock#acquire(String)} can fail — an unwritable parent
+     * directory, an I/O error — and lets the job continue unlocked, in which
+     * case this reading has the same race it was added to remove. It is still
+     * the best reading available, and taken here rather than later because
+     * later is strictly worse, but the caller is told so it can say the
+     * outcome was not observed under exclusion.</p>
+     *
+     * @param locked whether the workspace lock was held for this job
      */
-    void capture() {
+    void capture(boolean locked) {
         capturedDescription = computeUnpublishedWork();
         captured = true;
+        if (!locked) {
+            job.warn("Workspace lock was not held; the completion snapshot of "
+                    + job.getWorkingDirectory() + " may not reflect this job alone");
+        }
     }
 
     /**
@@ -140,9 +157,9 @@ class JobWorkOutcome {
         String primaryCommit = job.getCommitHash();
         boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();
         if (job.hasRevertedAgentWork() && !primaryCommitted) {
-            return "Nothing was committed to the primary repository, and the commits the agent"
-                    + " made itself were reverted as git tampering. Whatever they contained was"
-                    + " destroyed and no restart replaced it.";
+            return "Nothing was committed to the primary repository, and the agent's own changes"
+                    + " to it were reverted as git tampering. Whatever they held was destroyed"
+                    + " and no restart replaced it.";
         }
 
         if (job.hasPublishedCommit()) return null;
