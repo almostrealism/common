@@ -445,6 +445,25 @@ class ResolverTests(unittest.TestCase):
         self.assertIsNone(resolver.needs(run, {"name": "build"}))
         self.assertEqual(2, len(self.requests))
 
+    def test_a_429_without_rate_limit_headers_is_retried_not_cached(self):
+        """A 429 is always a rate limit on the GitHub API, unlike a 403 which
+        is ambiguous - so it must be retried on the next poll even without a
+        Retry-After or X-RateLimit-Remaining header, matching how
+        github_poller._is_retryable_rate_limit treats 429 at the transport
+        layer. Caching a headerless 429 here would strand the graph as
+        permanently unknown once the transport-level retry budget in
+        _get_json is exhausted, even though the rate limit itself resets."""
+        run = dict(self.run, path=".github/workflows/bare-429.yaml")
+
+        def fetch_json(url):
+            self.requests.append(url)
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+
+        resolver = WorkflowGraphResolver("acme/repo", fetch_json)
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertIsNone(resolver.needs(run, {"name": "build"}))
+        self.assertEqual(2, len(self.requests))
+
     def test_a_transient_failure_does_not_evict_the_cache(self):
         """A retried-not-cached outcome must not consume a slot in the
         bounded cache either, or a run of transient failures could evict

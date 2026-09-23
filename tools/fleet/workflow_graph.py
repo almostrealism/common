@@ -353,19 +353,28 @@ class WorkflowGraphResolver:
     def _is_retryable(exc: urllib.error.HTTPError) -> bool:
         """Whether *exc* might succeed on a later poll, rather than reproduce forever.
 
-        A 5xx is always transient. A 403/429 is transient only when it
-        carries GitHub's rate-limit signal — a ``Retry-After`` header, or
-        ``X-RateLimit-Remaining: 0`` — since GitHub uses both statuses for
-        rate limiting as well as for plain permission failures. A 401 or a
-        403/429 without either header is a persistent auth/permission
-        failure (a missing scope, a revoked token): caching it means one
-        failed request per run instead of one per job per poll cycle,
-        repeated forever for a file the token will never be allowed to
-        read.
+        A 5xx is always transient. A 429 is always a rate limit, and so is
+        always transient. A 403 is ambiguous on the GitHub API — it is
+        returned both for a secondary rate limit and for plain
+        permission-denied — so it is only treated as transient when it
+        carries GitHub's rate-limit signal: a ``Retry-After`` header, or
+        ``X-RateLimit-Remaining: 0``. This mirrors
+        :func:`tools.fleet.github_poller._is_retryable_rate_limit`, which
+        ``_get_json`` uses to retry the same statuses on the request itself;
+        by the time that retry budget is exhausted and this method sees the
+        exception, a headerless 429 must still be treated as transient here,
+        or it is cached as a permanent failure despite being retried as a
+        rate limit at the transport layer. A 401 or a headerless 403 is a
+        persistent auth/permission failure (a missing scope, a revoked
+        token): caching it means one failed request per run instead of one
+        per job per poll cycle, repeated forever for a file the token will
+        never be allowed to read.
         """
         if exc.code >= 500:
             return True
-        if exc.code in (403, 429):
+        if exc.code == 429:
+            return True
+        if exc.code == 403:
             headers = exc.headers
             if headers is not None and (headers.get("Retry-After") or headers.get("X-RateLimit-Remaining") == "0"):
                 return True
