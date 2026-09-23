@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -449,6 +450,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * @return the required server names; empty when ar-manager is not configured
      */
     public Set<String> requiredServerNames() {
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
+            return Collections.emptySet();
+        }
         return arManagerEnabled() ? Set.of("ar-manager") : Collections.emptySet();
     }
 

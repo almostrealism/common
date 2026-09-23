@@ -55,6 +55,8 @@ import io.flowtree.github.GitHubTokenValidator;
 import io.flowtree.workstream.McpServerEntry;
 import io.flowtree.workstream.PushedToolEntry;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
@@ -207,8 +209,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * {@link #buildSecretsCache(WorkstreamConfig)} during config load and
      * passed to the API endpoint via {@link FlowTreeApiEndpoint#setSecretsCache}.
      */
-    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache =
-            new HashMap<>();
+    private Map<String, Map<String, WorkspaceSecretEntry>> secretsCache = new HashMap<>();
 
     /**
      * Creates a new controller, resolving tokens from the default
@@ -406,23 +407,23 @@ public class FlowTreeController implements ConsoleFeatures {
      * Builds the in-memory secrets index from the loaded workstream config.
      *
      * <p>Iterates all {@code slackWorkspaces} entries and indexes their declared
-     * {@link WorkstreamConfig.WorkspaceSecretEntry} instances by workspace ID and name.
+     * {@link WorkspaceSecretEntry} instances by workspace ID and name.
      * Also logs a warning for any declared secrets file that is readable by group or
      * world (permissions wider than {@code 0600}).</p>
      *
      * @param config the loaded workstream configuration
      */
     private void buildSecretsCache(WorkstreamConfig config) {
-        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        Map<String, Map<String, WorkspaceSecretEntry>> cache = new HashMap<>();
         if (config.getWorkspaces() == null) {
             this.secretsCache = cache;
             return;
         }
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : config.getWorkspaces()) {
+        for (WorkspaceEntry wsEntry : config.getWorkspaces()) {
             if (wsEntry.getSecrets() == null || wsEntry.getSecrets().isEmpty()) continue;
             String workspaceId = wsEntry.getId();
-            Map<String, WorkstreamConfig.WorkspaceSecretEntry> byName = new HashMap<>();
-            for (WorkstreamConfig.WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
+            Map<String, WorkspaceSecretEntry> byName = new HashMap<>();
+            for (WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
                 if (entry.getName() == null || entry.getFile() == null) continue;
                 byName.put(entry.getName(), entry);
                 checkSecretFilePermissions(entry, workspaceId);
@@ -444,7 +445,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param workspaceId workspace owning this secret (for log context only)
      */
     private void checkSecretFilePermissions(
-            WorkstreamConfig.WorkspaceSecretEntry entry, String workspaceId) {
+            WorkspaceSecretEntry entry, String workspaceId) {
         Path filePath = Path.of(entry.getFile());
         if (!Files.exists(filePath)) {
             warn("Secret file not found: " + entry.getFile()
@@ -643,9 +644,9 @@ public class FlowTreeController implements ConsoleFeatures {
      *
      * @param entries the Slack workspace entries from the YAML configuration
      */
-    private void buildWorkspaceConnections(List<WorkstreamConfig.WorkspaceEntry> entries) {
+    private void buildWorkspaceConnections(List<WorkspaceEntry> entries) {
         workspaceConnections.clear();
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : entries) {
+        for (WorkspaceEntry wsEntry : entries) {
             if (wsEntry.getSlackTeamId() == null || wsEntry.getSlackTeamId().isEmpty()) {
                 // No Slack integration — register a no-op connection so
                 // multi-workspace routing stays active and start() does not
