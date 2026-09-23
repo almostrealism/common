@@ -45,14 +45,25 @@ class _FakePostgresConnection:
     canned primary-key row list.
     """
 
-    def __init__(self, primary_key_columns):
+    def __init__(self, primary_key_columns, fail_on=None, primary_key_columns_after_fail=None):
         self.statements = []
         self._primary_key_columns = primary_key_columns
+        self._fail_on = fail_on
+        self._primary_key_columns_after_fail = primary_key_columns_after_fail
+        self._failed = False
 
     def execute(self, sql, params=()):
         self.statements.append(sql)
+        if self._fail_on is not None and self._fail_on in sql:
+            self._failed = True
+            raise RuntimeError("simulated Postgres failure for %r" % sql)
         if "information_schema.table_constraints" in sql:
-            return [(column,) for column in self._primary_key_columns]
+            columns = (
+                self._primary_key_columns_after_fail
+                if self._failed and self._primary_key_columns_after_fail is not None
+                else self._primary_key_columns
+            )
+            return [(column,) for column in columns]
         return []
 
 
@@ -171,6 +182,22 @@ class FleetStoreQueryTests(unittest.TestCase):
         rows = self.store.latest_runner_states(host="host-a")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][1], "host-a")
+
+    def test_latest_runner_states_keeps_same_named_runners_from_different_registration_scopes(self):
+        """Two runners that share a name but not a registration scope are
+        distinct current runners (see `upsert_runner_state`) - grouping
+        `latest_runner_states` on `(host, runner_name)` alone would let
+        whichever one sampled later suppress the other from this list."""
+        self.store.upsert_runner_state(
+            "2026-09-18T00:00:00Z", "", "shared-name", state="idle", repo="almostrealism/common",
+        )
+        self.store.upsert_runner_state(
+            "2026-09-18T00:05:00Z", "", "shared-name", state="busy", repo="org:almostrealism",
+        )
+        rows = self.store.latest_runner_states()
+        # (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version)
+        by_repo = {row[5]: row[4] for row in rows}
+        self.assertEqual({"almostrealism/common": "idle", "org:almostrealism": "busy"}, by_repo)
 
     def test_utilization_by_class_averages_across_samples(self):
         self.store.upsert_class_sample("2026-09-18T00:00:00Z", "mac-studio", "runner", 10.0, 100.0)
@@ -419,6 +446,39 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(("r1", "idle", "almostrealism/common"), row)
 
+    def test_widening_the_runner_state_key_coalesces_a_legacy_null_repo(self):
+        """The legacy table's `repo` column had no `NOT NULL` constraint,
+        but the widened table's does (`repo` is now part of the primary
+        key). A legacy row with `repo IS NULL` must not make the migration's
+        copy step fail - it is coalesced to `''`, the same default a fresh
+        write without a `repo` uses."""
+        store = self._store_with_old_job_event_and_runner_state()
+        store._conn.execute(
+            "INSERT INTO runner_state (ts, host, runner_name, state, repo) "
+            "VALUES ('2026-09-21T00:00:00Z', '', 'r-legacy', 'idle', NULL)"
+        )
+        store.init_schema()
+        row = store._conn.execute(
+            "SELECT runner_name, state, repo FROM runner_state WHERE runner_name = 'r-legacy'"
+        ).fetchone()
+        self.assertEqual(("r-legacy", "idle", ""), row)
+
+    def test_widening_the_runner_state_key_recreates_its_indexes(self):
+        """sqlite drops an index along with the table it is on; the
+        migration renames the old `runner_state` away (taking
+        `runner_state_host_ts`/`runner_state_ts` with it) and drops it once
+        the data is copied, so the two indexes must be recreated against the
+        new table rather than silently lost."""
+        store = self._store_with_old_job_event_and_runner_state()
+        store.init_schema()
+        index_names = {
+            row[0] for row in store._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'runner_state'"
+            )
+        }
+        self.assertIn("runner_state_host_ts", index_names)
+        self.assertIn("runner_state_ts", index_names)
+
     def test_init_schema_is_idempotent_after_widening_the_runner_state_key(self):
         store = self._store_with_old_job_event_and_runner_state()
         store.init_schema()
@@ -450,6 +510,32 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
         store._widen_runner_state_key()
         self.assertFalse(any("ALTER TABLE runner_state" in sql for sql in connection.statements))
+
+    def test_widen_runner_state_key_reraises_a_postgres_failure_that_left_the_key_unwidened(self):
+        """A real failure (bad permissions, invalid legacy data) must not be
+        swallowed alongside the benign concurrent-migration race - the old
+        broad `except: pass` hid both identically, which could leave
+        `runner_state` on the old key (or no key at all, since the
+        connection is autocommit and `DROP CONSTRAINT` can already have
+        committed) while writers upsert against a key it does not have."""
+        connection = _FakePostgresConnection(
+            primary_key_columns=["ts", "host", "runner_name"], fail_on="ADD PRIMARY KEY",
+        )
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        with self.assertRaises(RuntimeError):
+            store._widen_runner_state_key()
+
+    def test_widen_runner_state_key_swallows_a_postgres_failure_once_a_concurrent_migration_already_won(self):
+        """The one case a failed `ADD PRIMARY KEY` should be swallowed: a
+        concurrent process already widened the key by the time this one's
+        attempt failed, so the table is already on the target key despite
+        the local error."""
+        connection = _FakePostgresConnection(
+            primary_key_columns=["ts", "host", "runner_name"], fail_on="ADD PRIMARY KEY",
+            primary_key_columns_after_fail=["ts", "host", "runner_name", "repo"],
+        )
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
 
 
 if __name__ == "__main__":

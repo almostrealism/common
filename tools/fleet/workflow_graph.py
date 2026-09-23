@@ -187,6 +187,17 @@ class WorkflowGraph:
         return "".join(parts)
 
 
+def _is_reusable_workflow_job_name(api_name: str) -> bool:
+    """Whether *api_name* is the ``caller / inner`` form the jobs API
+    renders for a job inside a called reusable workflow (see this module's
+    docstring). The inner job's own ``needs:`` live in the called workflow
+    file, not in *this* file's graph, so this is how
+    :meth:`WorkflowGraphResolver.needs` recognises it must answer "unknown"
+    rather than substitute the calling job's dependencies.
+    """
+    return " / " in api_name
+
+
 class WorkflowGraphResolver:
     """Fetches each run's workflow file once and answers the poller's dependency questions.
 
@@ -243,12 +254,25 @@ class WorkflowGraphResolver:
     def needs(self, run: Dict, job: Dict) -> Optional[List[str]]:
         """*job*'s ``needs:`` list (``[]`` for an entry point), or ``None`` when unknown.
 
+        A job inside a called reusable workflow (the API's ``caller / inner``
+        name — see the module docstring) is always unknown here:
+        ``WorkflowGraph.job_key`` attributes that name to the *calling* job's
+        key (see its own docstring — that attribution serves other
+        purposes, such as identifying which top-level job a nested run
+        belongs to), but the inner job's own dependencies are declared
+        inside the *called* workflow file, which this class does not fetch
+        or parse. Reporting the caller's ``needs:`` here would attribute a
+        dependency list to a job that never declared it.
+
         This is the ``resolve_needs`` callback :func:`tools.fleet.github_poller.poll_and_store` takes.
         """
+        api_name = job.get("name") or ""
+        if _is_reusable_workflow_job_name(api_name):
+            return None
         graph = self.graph(run)
         if graph is None:
             return None
-        key = graph.job_key(job.get("name") or "")
+        key = graph.job_key(api_name)
         return None if key is None else graph.needs(key)
 
     def dependency_completed_at(self, run: Dict, job: Dict, run_jobs: List[Dict]) -> Optional[str]:
@@ -261,12 +285,11 @@ class WorkflowGraphResolver:
         ``resolve_dependency_completed_at`` callback
         :func:`tools.fleet.github_poller.poll_and_store` takes.
         """
+        needs = self.needs(run, job)
+        if not needs:
+            return None
         graph = self.graph(run)
         if graph is None:
-            return None
-        key = graph.job_key(job.get("name") or "")
-        needs = None if key is None else graph.needs(key)
-        if not needs:
             return None
         by_key: Dict[str, List[Dict]] = {}
         for sibling in run_jobs:

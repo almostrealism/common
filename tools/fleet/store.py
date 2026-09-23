@@ -361,13 +361,23 @@ class FleetStore:
         alone (the common case, and always true for a table just created by
         :meth:`init_schema` above, since :data:`schema.RUNNER_STATE` already
         declares it). sqlite cannot alter a primary key in place, so an old
-        table is migrated by rename-recreate-copy-drop. Postgres can alter
-        it directly; the attempt is wrapped in a broad ``except`` because,
-        like the column migration above, two processes can race to widen the
-        same live table concurrently, and Postgres has no
-        ``ADD CONSTRAINT IF NOT EXISTS`` to make that atomic — the loser of
-        the race hits an error from a migration the winner already
-        completed, which is safe to ignore.
+        table is migrated by rename-recreate-copy-drop; the new table's
+        ``repo`` is ``NOT NULL`` (see :data:`schema.RUNNER_STATE`) while the
+        legacy table's was not, so a legacy ``NULL`` is coalesced to ``''``
+        during the copy rather than left to fail the insert, and the two
+        ``runner_state`` indexes (attached to the old table by ``CREATE
+        INDEX IF NOT EXISTS`` above, in :meth:`init_schema`, before this
+        migration runs) are recreated against the new table once the old one
+        is dropped, since sqlite drops an index along with the table it is
+        on. Postgres can alter the key directly; the attempt is wrapped in a
+        ``try``/``except`` because, like the column migration above, two
+        processes can race to widen the same live table concurrently, and
+        Postgres has no ``ADD CONSTRAINT IF NOT EXISTS`` to make that atomic
+        — but the exception is only swallowed once the primary key actually
+        matches *target*, i.e. a concurrent winner already finished the same
+        migration; any other failure (a permission error, invalid legacy
+        data) is re-raised rather than silently leaving the table on the old
+        or no key while writers upsert against a key it does not have.
         """
         target = ["ts", "host", "runner_name", "repo"]
         if self._primary_key_columns("runner_state") == target:
@@ -375,17 +385,25 @@ class FleetStore:
         if self._dialect.name == Dialect.SQLITE:
             self._conn.execute("ALTER TABLE runner_state RENAME TO runner_state_old")
             self._conn.execute(schema.RUNNER_STATE.format(ts=self._dialect.timestamp_type))
-            columns = ", ".join(self.columns("runner_state_old"))
+            columns = self.columns("runner_state_old")
+            select_list = ", ".join(
+                "COALESCE(%s, '')" % column if column == "repo" else column for column in columns
+            )
             self._conn.execute(
-                "INSERT INTO runner_state (%s) SELECT %s FROM runner_state_old" % (columns, columns)
+                "INSERT INTO runner_state (%s) SELECT %s FROM runner_state_old"
+                % (", ".join(columns), select_list)
             )
             self._conn.execute("DROP TABLE runner_state_old")
+            for statement in schema.INDEXES:
+                if " ON runner_state " in statement:
+                    self._conn.execute(statement)
         else:
             try:
                 self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
                 self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
-            except Exception:  # noqa: BLE001 — another process already migrated this table concurrently
-                pass
+            except Exception:  # noqa: BLE001 — re-raised below unless a concurrent migration already won
+                if self._primary_key_columns("runner_state") != target:
+                    raise
 
     def columns(self, table: str) -> List[str]:
         """The column names *table* currently has, in declaration order.
@@ -577,19 +595,29 @@ class FleetStore:
     # ---- queries -----------------------------------------------------------
 
     def latest_runner_states(self, host: Optional[str] = None) -> List[Tuple]:
-        """One row per ``runner_name`` (the most recent sample), for ``list``."""
+        """One row per ``(runner_name, repo)`` (the most recent sample), for ``list``.
+
+        ``repo`` is part of the grouping, not just ``host``/``runner_name``,
+        because a runner's name is only unique within its GitHub
+        registration scope (see :meth:`upsert_runner_state`): a repo-scoped
+        and an org-scoped runner sharing a name are distinct current
+        runners, and grouping on ``(host, runner_name)`` alone would let
+        whichever one sampled later suppress the other from this list even
+        though both are still live.
+        """
         query = """
             SELECT rs.ts, rs.host, rs.runner_name, rs.labels, rs.state,
                    rs.repo, rs.workflow, rs.job_id, rs.agent_version
             FROM runner_state rs
             JOIN (
-                SELECT host, runner_name, MAX(ts) AS max_ts
+                SELECT host, runner_name, repo, MAX(ts) AS max_ts
                 FROM runner_state
                 {where}
-                GROUP BY host, runner_name
+                GROUP BY host, runner_name, repo
             ) latest
-            ON rs.host = latest.host AND rs.runner_name = latest.runner_name AND rs.ts = latest.max_ts
-            ORDER BY rs.host, rs.runner_name
+            ON rs.host = latest.host AND rs.runner_name = latest.runner_name
+                AND rs.repo = latest.repo AND rs.ts = latest.max_ts
+            ORDER BY rs.host, rs.runner_name, rs.repo
         """
         if host is not None:
             return self._rows(query.format(where="WHERE host = ?"), (host,))

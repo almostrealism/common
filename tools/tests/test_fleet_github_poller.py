@@ -609,6 +609,22 @@ class RunnerInventoryTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 fetch_runners("acme/repo", "tok", org="acme")
 
+    def test_fetch_runners_raises_on_one_failed_source_when_require_complete(self):
+        """The default (`require_complete=False`) tolerates one source
+        failing so a best-effort listing still shows what it could read.
+        `require_complete=True` - what `poll_and_store` passes when
+        publishing this as the current inventory - must not tolerate that,
+        since a caller publishing a partial list as current would make the
+        dashboard believe the unreadable scope's runners had deregistered."""
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                raise _http_error(403)
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_get), mock.patch("sys.stderr"):
+            with self.assertRaises(RuntimeError):
+                fetch_runners("acme/repo", "tok", org="acme", require_complete=True)
+
     def test_store_runner_states_writes_one_row_per_runner_with_lane_and_platform(self):
         runners = [dict(runner, registration="acme/repo") for runner in self.RUNNERS]
         self.assertEqual(3, store_runner_states(self.store, runners, "2026-09-21T10:00:00Z"))
@@ -641,6 +657,48 @@ class RunnerInventoryTests(unittest.TestCase):
         self.assertEqual(1, stored)
         self.assertEqual(1, self.store.job_event_count())
         self.assertEqual([], self.store.latest_runner_states())
+
+    def test_poll_and_store_calls_fetch_runners_requiring_a_complete_inventory(self):
+        """`poll_and_store` must not publish one source's runners as if they
+        were the whole fleet when the other source failed - it asks
+        `fetch_runners` for `require_complete=True` so a partial fetch
+        raises instead of silently returning less than the whole fleet."""
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \
+                mock.patch("tools.fleet.github_poller.fetch_runners", return_value=self.RUNNERS) as runners:
+            poll_and_store("acme/repo", "tok", self.store, record_runners=True, runners_org="acme")
+        self.assertTrue(runners.call_args.kwargs.get("require_complete"))
+
+    def test_a_partially_failed_runner_inventory_does_not_overwrite_the_prior_complete_one(self):
+        """One source (e.g. the organization endpoint) failing while the
+        other succeeds must not publish the partial result as the current
+        inventory - it would look, to the dashboard's latest-sample query,
+        as though every runner from the failed scope had deregistered. The
+        previous cycle's complete snapshot must survive untouched."""
+        self.store.upsert_runner_state(
+            "2026-09-21T09:00:00Z", "", "org-runner", state="idle", repo="org:acme",
+        )
+        self.store.upsert_runner_state(
+            "2026-09-21T09:00:00Z", "", "mac-studio-macos", state="idle", repo="acme/repo",
+        )
+
+        def _get(url, token):
+            if "/orgs/acme/" in url:
+                raise _http_error(403)
+            return {"runners": self.RUNNERS[:2]}
+
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \
+                mock.patch("tools.fleet.github_poller._get_json", side_effect=_get), \
+                mock.patch("sys.stderr"):
+            poll_and_store("acme/repo", "tok", self.store, record_runners=True, runners_org="acme")
+
+        # The prior cycle's rows for both scopes are exactly as they were -
+        # a failed, partial re-poll must not have touched either.
+        rows = {
+            (row[2], row[5]): row[4] for row in self.store.latest_runner_states()
+        }
+        self.assertEqual(
+            {("org-runner", "org:acme"): "idle", ("mac-studio-macos", "acme/repo"): "idle"}, rows,
+        )
 
 
 class PollAndStoreLaneTests(unittest.TestCase):

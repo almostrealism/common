@@ -374,6 +374,7 @@ def fetch_runners(
     org: Optional[str] = None,
     per_page: int = PER_PAGE,
     max_pages: int = MAX_PAGES,
+    require_complete: bool = False,
 ) -> List[Dict]:
     """Fetch every self-hosted runner registered to *repo*, and to *org* when given.
 
@@ -388,9 +389,15 @@ def fetch_runners(
 
     The two lists need different token permissions (self-hosted-runner read
     on the repository, and on the organization), so each is fetched on its
-    own: a list the token cannot read is reported on stderr and left out,
-    and the other is still returned. Only when every list fails is the
-    failure raised, so a caller can tell "no runners" from "could not ask".
+    own: by default, a list the token cannot read is reported on stderr and
+    left out, and the other is still returned — only when every list fails
+    is the failure raised, so a caller can tell "no runners" from "could not
+    ask". *require_complete*, when set, raises on *any* source failure
+    instead: a caller that publishes this result as *the* current inventory
+    (see :func:`poll_and_store`'s ``record_runners``) must not let one
+    source's outage look like the runners it lists retired, so it demands
+    every source succeed or gets nothing at all rather than a silently
+    partial list.
     """
     sources = [("%s/repos/%s/actions/runners" % (GITHUB_API_BASE, repo), repo, "runners for %s" % repo)]
     if org:
@@ -409,7 +416,7 @@ def fetch_runners(
             runner = dict(runner)
             runner["registration"] = registration
             runners.append(runner)
-    if failures and len(failures) == len(sources):
+    if failures and (require_complete or len(failures) == len(sources)):
         raise failures[0]
     return runners
 
@@ -510,13 +517,26 @@ def poll_and_store(
 
     With *record_runners*, the cycle ends by fetching the repository's
     registered runners — and *runners_org*'s, when given — and writing one
-    ``runner_state`` row each (see :func:`fetch_runners`). The scheduled
-    entry point (:func:`run_poll_loop`) always asks for this; it is opt-in
-    here so a caller composing the lower-level pieces, or driving one cycle
-    against a fixture, does not reach the runners endpoint unasked. The step
-    is independent of the job data: a token that cannot list runners (HTTP
-    403) or any other failure there is reported on stderr and skipped
-    without affecting the jobs already stored.
+    ``runner_state`` row each (see :func:`fetch_runners`), stamped with a
+    single shared timestamp so the dashboard's "current inventory" query can
+    select the newest one. ``fetch_runners`` is called with
+    ``require_complete=True`` here: a repository-scoped and an
+    organization-scoped fetch are two independent GitHub requests, and
+    without this flag one of them failing (e.g. a token missing
+    administration-read on the organization) would still publish the
+    other's runners under a new, newest ``ts`` — the dashboard's global
+    latest-sample query would then drop every runner from the failed scope
+    as if it had been deregistered, though it was never actually asked
+    about. Requiring completeness means this whole step fails together
+    (caught below, same as any other failure) rather than publishing a
+    partial snapshot that looks complete. The scheduled entry point
+    (:func:`run_poll_loop`) always asks for this; it is opt-in here so a
+    caller composing the lower-level pieces, or driving one cycle against a
+    fixture, does not reach the runners endpoint unasked. The step is
+    independent of the job data: any failure fetching or storing the
+    inventory is reported on stderr and skipped without affecting the jobs
+    already stored, and the previous cycle's ``runner_state`` rows are left
+    as the most recent complete inventory until a cycle succeeds.
 
     Every call re-fetches and re-upserts recent runs/jobs (idempotent, since
     every write here is a natural-key upsert), rather than tracking what
@@ -541,10 +561,12 @@ def poll_and_store(
     observes a poll cycle that is only partially written — it sees either
     the previous cycle's rows or this cycle's rows in full. That transaction
     is opened only around the upserts, after every run's jobs have already
-    been fetched: opening it earlier would hold sqlite's write lock for the
-    duration of the GitHub requests (including any rate-limit sleep in
-    :func:`_get_json`), blocking a concurrent collector or poller writer on
-    network latency instead of on the brief span the local upserts take.
+    been fetched and every job's dependency metrics resolved: opening it
+    earlier would hold sqlite's write lock for the duration of the GitHub
+    requests (including any rate-limit sleep in :func:`_get_json`, and any
+    Contents API fetch a workflow-graph resolver makes on a cache miss),
+    blocking a concurrent collector or poller writer on network latency
+    instead of on the brief span the local upserts take.
 
     Returns the number of job_event rows upserted.
     """
@@ -559,15 +581,26 @@ def poll_and_store(
         for job in run_jobs:
             fetched.append((run, run_id, job, run_jobs))
 
+    # Dependency resolution runs here, before `store.transaction()` opens
+    # below, for the same reason the run/job fetches above do: a resolver
+    # backed by `WorkflowGraphResolver` can issue its own Contents API
+    # request on a cache miss, and opening the transaction first would hold
+    # sqlite's write lock for the duration of that request (and any
+    # rate-limit sleep inside it) instead of the brief span the local
+    # upserts actually take.
+    prepared: List[Tuple[str, Dict, Dict[str, Optional[float]]]] = []
+    for run, run_id, job, run_jobs in fetched:
+        needs = resolve_needs(run, job) if resolve_needs is not None else None
+        dependency_completed_at = None
+        if needs and resolve_dependency_completed_at is not None:
+            dependency_completed_at = resolve_dependency_completed_at(run, job, run_jobs)
+        metrics = compute_job_metrics(job, needs=needs, dependency_completed_at=dependency_completed_at)
+        prepared.append((run_id, job, metrics))
+
     jobs_stored = 0
     with store.transaction():
-        for run, run_id, job, run_jobs in fetched:
+        for run_id, job, metrics in prepared:
             job_id = str(job.get("id"))
-            needs = resolve_needs(run, job) if resolve_needs is not None else None
-            dependency_completed_at = None
-            if needs and resolve_dependency_completed_at is not None:
-                dependency_completed_at = resolve_dependency_completed_at(run, job, run_jobs)
-            metrics = compute_job_metrics(job, needs=needs, dependency_completed_at=dependency_completed_at)
             # Sorted so the same label set always serializes identically
             # regardless of the order the API happens to return it in —
             # `job_event` is grouped by this string (see
@@ -621,7 +654,7 @@ def poll_and_store(
 
     if record_runners:
         try:
-            runners = fetch_runners(repo, token, org=runners_org)
+            runners = fetch_runners(repo, token, org=runners_org, require_complete=True)
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             with store.transaction():
                 store_runner_states(store, runners, ts)

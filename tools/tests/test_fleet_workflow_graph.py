@@ -210,6 +210,25 @@ class ResolverTests(unittest.TestCase):
         self.assertIsNone(self.resolver.needs({"id": 1}, {"name": "build"}))
         self.assertEqual([], self.requests)
 
+    @unittest.skipUnless(yaml_available(), "PyYAML is not installed")
+    def test_needs_is_unknown_for_a_job_inside_a_called_reusable_workflow(self):
+        """The API renders a job inside a called reusable workflow as
+        "caller / inner" (see the module docstring). `WorkflowGraph.job_key`
+        attributes that name to the calling job's key for other purposes
+        (see its own docstring), but the inner job's own dependencies live
+        in the *called* workflow file - unfetched and unparsed here - so
+        reporting the caller's `needs:` would misattribute a dependency
+        list the inner job never declared."""
+        self.assertEqual(["test"], self.resolver.needs(self.run, {"name": "deploy"}))
+        self.assertIsNone(self.resolver.needs(self.run, {"name": "deploy / check-completion"}))
+
+    @unittest.skipUnless(yaml_available(), "PyYAML is not installed")
+    def test_dependency_completed_at_is_unknown_for_a_job_inside_a_called_reusable_workflow(self):
+        run_jobs = [{"name": "test (1)", "completed_at": "2026-09-21T10:20:00Z"}]
+        self.assertIsNone(
+            self.resolver.dependency_completed_at(self.run, {"name": "deploy / check-completion"}, run_jobs)
+        )
+
     def test_an_unavailable_file_is_unknown_and_fetched_only_once(self):
         run = dict(self.run, path=".github/workflows/missing.yaml")
         self.assertIsNone(self.resolver.needs(run, {"name": "build"}))
