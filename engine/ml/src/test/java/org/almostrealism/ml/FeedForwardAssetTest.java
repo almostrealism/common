@@ -19,6 +19,8 @@ package org.almostrealism.ml;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -117,6 +119,30 @@ public class FeedForwardAssetTest extends TestSuiteBase implements FeedForwardFe
 	public void swigluAssetMatchesMasterGoldenValues() {
 		Weights w = new Weights(4, 8, 7L);
 		assertClose("standard golden", STANDARD_GOLDEN, runAsset(w));
+	}
+
+	/**
+	 * {@code swiglu_ffn} builds correctly when composed inside another user-defined layer,
+	 * rather than being built directly with an explicit input shape as {@link #runAsset} does.
+	 * Nesting routes construction through {@code PdslInterpreter.inferInputShape}, which
+	 * previously failed with {@code PdslParseException("Undefined identifier: 'dim'")} because
+	 * {@code swiglu_ffn} carried a {@code -> [1, dim]} return-shape annotation referencing an
+	 * undeclared parameter; the asset now carries no such annotation and relies on the
+	 * interpreter's fallback of inferring the shape from the first {@code weight} parameter.
+	 */
+	@Test(timeout = 300000)
+	public void swigluComposesAsNestedLayer() {
+		Weights w = new Weights(4, 8, 7L);
+
+		PdslLoader loader = new PdslLoader();
+		String source = loader.readResource(FEED_FORWARD_ASSET)
+				+ loader.readResource("/pdsl/feed_forward_nested.pdsl");
+		PdslNode.Program program = loader.parse(source);
+
+		Block wrapper = loader.buildLayer(program, "ffn_wrapper", shape(1, w.dim),
+				feedForwardArguments(w.rms, w.w1, w.w2, w.w3, EPSILON));
+
+		assertClose("nested", new HostReference(w).forward(w.input()), run(wrapper, w));
 	}
 
 	/** Builds the asset-backed SwiGLU block for {@code w}, compiles it and runs one forward pass. */
