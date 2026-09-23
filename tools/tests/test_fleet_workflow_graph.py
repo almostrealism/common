@@ -41,11 +41,19 @@ FIXTURE_JOBS = {
         "needs": ["changes", "build"],
         "strategy": {"matrix": {"group": [1, 2, 3]}},
     },
-    "test-cl": {"name": "OpenCL tests", "needs": ["build"]},
+    "test-cl": {
+        "name": "OpenCL tests",
+        "needs": ["build"],
+        "strategy": {"matrix": {"backend": ["rocm"]}},
+    },
     "test-media": {"name": "Media ${{ matrix.group }}", "needs": ["build"]},
     "test-audio": {"name": "Audio ${{ matrix.group }}", "needs": ["build"]},
     "deploy": {"name": "Deploy controller", "needs": ["test-mac", "test-cl"]},
-    "verify": {"uses": "./.github/workflows/verify.yaml", "needs": ["deploy"]},
+    "verify": {
+        "uses": "./.github/workflows/verify.yaml",
+        "needs": ["deploy"],
+        "strategy": {"matrix": {"shard": [1, 2]}},
+    },
 }
 
 
@@ -128,6 +136,19 @@ class JobKeyTests(unittest.TestCase):
     def test_a_matrix_suffixed_match_with_no_colliding_literal_name_is_unambiguous(self):
         graph = WorkflowGraph({"foo": {"strategy": {"matrix": {"group": ["bar"]}}}})
         self.assertEqual("foo", graph.job_key("foo (bar)"))
+
+    def test_a_non_matrix_job_is_not_a_candidate_for_the_stripped_suffix_form(self):
+        """Only an actual matrix job can render with a "(values)" suffix in
+        the jobs API. A non-matrix job `foo` (no `strategy.matrix`) must not
+        be treated as a candidate for the api_name "foo (bar)" just because
+        stripping the suffix happens to match its key - the api_name can
+        only have come from the literal job below, and reporting it as
+        ambiguous would silently drop a valid queue metric."""
+        graph = WorkflowGraph({
+            "foo": {},
+            "collider": {"name": "foo (bar)"},
+        })
+        self.assertEqual("collider", graph.job_key("foo (bar)"))
 
     def test_an_exact_match_and_a_pattern_match_are_one_candidate_set(self):
         """A literal job `name: "test ubuntu"` and a pattern job

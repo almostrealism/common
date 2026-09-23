@@ -84,6 +84,7 @@ class WorkflowGraph:
         self._needs: Dict[str, List[str]] = {}
         self._display: Dict[str, str] = {}
         self._uses: Dict[str, bool] = {}
+        self._matrix: Dict[str, bool] = {}
         for key, definition in (jobs or {}).items():
             definition = definition or {}
             needs = definition.get("needs") or []
@@ -93,6 +94,7 @@ class WorkflowGraph:
             name = definition.get("name")
             self._display[key] = str(name) if name else key
             self._uses[key] = "uses" in definition
+            self._matrix[key] = bool((definition.get("strategy") or {}).get("matrix"))
 
     @classmethod
     def from_yaml(cls, text: str) -> "WorkflowGraph":
@@ -139,14 +141,19 @@ class WorkflowGraph:
         even though a key was found (see
         :meth:`WorkflowGraphResolver.needs`).
 
-        Tries the full name first — exact, then with a matrix suffix
-        removed — and finally treats ``name:`` values that contain
-        ``${{ }}`` expressions as patterns. Every form is a competing
-        hypothesis about what *api_name* actually is, not an independent
-        fallback to try in order: a matrix job ``foo`` and an unrelated
-        literal job ``name: foo (bar)`` are both exact matches for the
-        api_name ``"foo (bar)"`` (one via the matrix-suffix-stripped form,
-        one via the literal form), so matching on the literal form first and
+        Tries the full name first — exact, then as a pattern for a
+        ``name:`` that contains a ``${{ }}`` expression. If that name ends
+        in a ``(...)`` suffix, the stripped form is tried too, but only
+        against jobs whose own definition declares a ``strategy.matrix`` —
+        only an actual matrix job can render with that suffix in the API at
+        all, so a non-matrix job is never a candidate for the stripped form,
+        even when its literal name happens to end in parentheses on its
+        own. Every surviving form is a competing hypothesis about what
+        *api_name* actually is, not an independent fallback to try in
+        order: a matrix job ``foo`` and an unrelated literal job
+        ``name: foo (bar)`` are both exact matches for the api_name
+        ``"foo (bar)"`` (one via the matrix-suffix-stripped form, one via
+        the literal form), so matching on the literal form first and
         returning immediately would silently prefer it over the equally
         valid matrix-job match instead of reporting the ambiguity. Exact and
         pattern matches are candidates for the same job, not two independent
@@ -167,18 +174,26 @@ class WorkflowGraph:
         """
         if not api_name:
             return None, False
-        key, matched = self._match(self._forms(api_name))
+        key, matched = self._match(api_name)
         if matched:
             return key, False
         if " / " in api_name:
             caller = api_name.split(" / ", 1)[0]
-            key, matched = self._match(self._forms(caller), require_uses=True)
+            key, matched = self._match(caller, require_uses=True)
             if matched:
                 return key, True
         return None, False
 
-    def _match(self, forms: List[str], require_uses: bool = False) -> Tuple[Optional[str], bool]:
-        """Every key any of *forms* matches (exactly or as a pattern), merged into one set.
+    def _match(self, name: str, require_uses: bool = False) -> Tuple[Optional[str], bool]:
+        """Every key *name* matches, merged into one set.
+
+        Combines exact and pattern matches against *name* itself with exact
+        and pattern matches against its matrix-suffix-stripped form — the
+        latter restricted to jobs that actually declare a
+        ``strategy.matrix``, since only a matrix job can render with a
+        ``(values)`` suffix in the API at all; a non-matrix job whose
+        literal name simply ends in parentheses on its own is only ever a
+        candidate through the unstripped form.
 
         Returns ``(key, True)`` when that set is a singleton, ``(None, True)``
         when it has more than one member (a real ambiguity), and
@@ -186,24 +201,18 @@ class WorkflowGraph:
         element to tell "ambiguous" from "no evidence at all", since only
         the latter should fall back to a weaker form of matching.
         """
-        matches: Set[str] = set()
-        for form in forms:
-            matches.update(self._exact_matches(form))
-            matches.update(self._pattern_matches(form))
+        matches: Set[str] = self._exact_matches(name) | self._pattern_matches(name)
+        stripped = self._without_matrix_suffix(name)
+        if stripped != name:
+            matches.update(
+                key for key in self._exact_matches(stripped) | self._pattern_matches(stripped)
+                if self._matrix.get(key)
+            )
         if require_uses:
             matches = {key for key in matches if self._uses.get(key)}
         if not matches:
             return None, False
         return (next(iter(matches)) if len(matches) == 1 else None), True
-
-    @staticmethod
-    def _forms(name: str) -> List[str]:
-        """*name* and its matrix-suffix-stripped form, if that differs."""
-        forms = [name]
-        stripped = WorkflowGraph._without_matrix_suffix(name)
-        if stripped != name:
-            forms.append(stripped)
-        return forms
 
     @staticmethod
     def _without_matrix_suffix(name: str) -> str:

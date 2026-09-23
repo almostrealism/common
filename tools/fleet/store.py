@@ -65,6 +65,12 @@ from tools.fleet import schema
 #: letting either recover and try again on the next cycle.
 DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS = 10
 
+#: Postgres advisory-lock key guarding :meth:`FleetStore._widen_runner_state_key`.
+#: An arbitrary but fixed 64-bit integer -- it is only ever compared for
+#: equality between concurrent instances of this same migration, never
+#: interpreted, so any distinct value would do.
+_RUNNER_STATE_MIGRATION_LOCK_KEY = 0x726E7273706B  # "rnrspk" as bytes
+
 
 class Dialect:
     """What differs between the two backends: placeholder and ``ts`` type."""
@@ -386,17 +392,30 @@ class FleetStore:
         target for a concurrent writer's ``ON CONFLICT`` -- for however long
         it takes ``ADD PRIMARY KEY`` to run next; a crash or a concurrent
         migration in that window could leave the table without a key
-        indefinitely. Wrapping both in one transaction also makes concurrent
-        migrations serialize safely instead of racing: ``ALTER TABLE`` takes
-        an ``ACCESS EXCLUSIVE`` lock held for the rest of the transaction, so
-        a second migration's ``DROP CONSTRAINT`` blocks until the first
-        commits, then finds the constraint already renamed to the target and
-        proceeds as a no-op re-add. Like the sqlite branch's legacy ``NULL``
-        ``repo`` coalesce, the backfill runs before the key is widened: the
-        column predates the ``NOT NULL DEFAULT ''`` :data:`schema.RUNNER_STATE`
-        now declares for a freshly created table, so a store old enough to
-        need this migration can still hold real ``NULL`` rows, and
-        ``ADD PRIMARY KEY`` rejects a key column that contains one.
+        indefinitely.
+
+        Serializing two concurrent migrations cannot be left to ``ALTER
+        TABLE``'s own ``ACCESS EXCLUSIVE`` lock: by the time either
+        transaction requests it, both have already taken a
+        ``RowExclusiveLock`` on the table via the backfill ``UPDATE``, and
+        ``ACCESS EXCLUSIVE`` conflicts with every other lock mode including
+        ``RowExclusiveLock`` -- so each transaction wants the lock the other
+        already holds, a genuine deadlock rather than a clean wait. Postgres
+        resolves it by aborting one transaction, but that leaves the
+        survivor's commit racing the victim's post-rollback recheck below.
+        An explicit :data:`_RUNNER_STATE_MIGRATION_LOCK_KEY` advisory lock is
+        acquired first, before any statement that touches ``runner_state``
+        itself: a second migration blocks there, holding no table lock at
+        all, so once the first migration commits (releasing the advisory
+        lock along with everything else) the second acquires it, rechecks
+        the primary key, finds the target already reached, and does nothing
+        further instead of repeating or racing the same statements. Like the
+        sqlite branch's legacy ``NULL`` ``repo`` coalesce, the backfill runs
+        before the key is widened: the column predates the ``NOT NULL
+        DEFAULT ''`` :data:`schema.RUNNER_STATE` now declares for a freshly
+        created table, so a store old enough to need this migration can
+        still hold real ``NULL`` rows, and ``ADD PRIMARY KEY`` rejects a key
+        column that contains one.
         """
         target = ["ts", "host", "runner_name", "repo"]
         if self._primary_key_columns("runner_state") == target:
@@ -419,9 +438,11 @@ class FleetStore:
         else:
             self._conn.execute("BEGIN")
             try:
-                self._conn.execute("UPDATE runner_state SET repo = '' WHERE repo IS NULL")
-                self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
-                self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
+                self._conn.execute("SELECT pg_advisory_xact_lock(%d)" % _RUNNER_STATE_MIGRATION_LOCK_KEY)
+                if self._primary_key_columns("runner_state") != target:
+                    self._conn.execute("UPDATE runner_state SET repo = '' WHERE repo IS NULL")
+                    self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
+                    self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
             except Exception:  # noqa: BLE001 — re-raised below unless a concurrent migration already won
                 self._conn.execute("ROLLBACK")
                 if self._primary_key_columns("runner_state") != target:

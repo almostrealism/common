@@ -45,11 +45,17 @@ class _FakePostgresConnection:
     canned primary-key row list.
     """
 
-    def __init__(self, primary_key_columns, fail_on=None, primary_key_columns_after_fail=None):
+    def __init__(
+        self, primary_key_columns, fail_on=None, primary_key_columns_after_fail=None,
+        primary_key_columns_sequence=None,
+    ):
         self.statements = []
         self._primary_key_columns = primary_key_columns
         self._fail_on = fail_on
         self._primary_key_columns_after_fail = primary_key_columns_after_fail
+        self._primary_key_columns_sequence = (
+            list(primary_key_columns_sequence) if primary_key_columns_sequence is not None else None
+        )
         self._failed = False
 
     def execute(self, sql, params=()):
@@ -58,11 +64,18 @@ class _FakePostgresConnection:
             self._failed = True
             raise RuntimeError("simulated Postgres failure for %r" % sql)
         if "information_schema.table_constraints" in sql:
-            columns = (
-                self._primary_key_columns_after_fail
-                if self._failed and self._primary_key_columns_after_fail is not None
-                else self._primary_key_columns
-            )
+            if self._primary_key_columns_sequence is not None:
+                columns = (
+                    self._primary_key_columns_sequence.pop(0)
+                    if len(self._primary_key_columns_sequence) > 1
+                    else self._primary_key_columns_sequence[0]
+                )
+            else:
+                columns = (
+                    self._primary_key_columns_after_fail
+                    if self._failed and self._primary_key_columns_after_fail is not None
+                    else self._primary_key_columns
+                )
             return [(column,) for column in columns]
         return []
 
@@ -629,6 +642,48 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
             store._widen_runner_state_key()
         self.assertIn("ROLLBACK", connection.statements)
         self.assertNotIn("COMMIT", connection.statements)
+
+    def test_widen_runner_state_key_acquires_an_advisory_lock_before_altering_the_table(self):
+        """The advisory lock must be the very first statement inside the
+        transaction, before the backfill `UPDATE`. Two concurrent
+        migrations both take a `RowExclusiveLock` on `runner_state` via
+        that `UPDATE` before either requests `ALTER TABLE`'s `ACCESS
+        EXCLUSIVE` lock, and `ACCESS EXCLUSIVE` conflicts with
+        `RowExclusiveLock` too - so serializing on the table lock alone
+        deadlocks instead of queuing. Blocking on the advisory lock first
+        means a second migration takes no table lock at all until the
+        first has already committed and released it."""
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        lock_statement = next(sql for sql in connection.statements if "pg_advisory_xact_lock" in sql)
+        self.assertLess(connection.statements.index("BEGIN"), connection.statements.index(lock_statement))
+        self.assertLess(
+            connection.statements.index(lock_statement),
+            connection.statements.index("UPDATE runner_state SET repo = '' WHERE repo IS NULL"),
+        )
+
+    def test_widen_runner_state_key_rechecks_the_primary_key_after_acquiring_the_advisory_lock(self):
+        """A concurrent migration can finish widening the key in the window
+        between this call's initial (lock-free) check and the moment it
+        actually holds the advisory lock. The recheck taken immediately
+        after acquiring the lock must see that and skip the backfill and
+        both `ALTER TABLE` statements entirely, rather than repeating (or
+        racing) work a concurrent transaction already completed."""
+        connection = _FakePostgresConnection(
+            primary_key_columns=["ts", "host", "runner_name"],
+            primary_key_columns_sequence=[
+                ["ts", "host", "runner_name"],
+                ["ts", "host", "runner_name", "repo"],
+            ],
+        )
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        self.assertNotIn(
+            "ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey", connection.statements
+        )
+        self.assertNotIn("UPDATE runner_state SET repo = '' WHERE repo IS NULL", connection.statements)
+        self.assertIn("COMMIT", connection.statements)
 
 
 if __name__ == "__main__":
