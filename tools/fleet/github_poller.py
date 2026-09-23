@@ -437,7 +437,24 @@ def store_runner_states(store: FleetStore, runners: List[Dict], ts: str) -> int:
 
     The host column is left ``''``: the runners API does not say which
     machine a runner is on. Returns the number of rows written.
+
+    A *runners* list that is genuinely empty (a successful fetch that found
+    no registered runners, not a failure — see :func:`fetch_runners`'s
+    ``require_complete``) still writes one row: a heartbeat with no runner
+    identity (``runner_name=''``, ``lane=''``) that exists only to stamp
+    *ts* into the table. Without it this cycle would write zero rows, the
+    dashboard's ``MAX(ts)`` would not advance, and its "latest inventory"
+    query would keep selecting the previous cycle's rows indefinitely —
+    runners that have since deregistered would look current forever instead
+    of the fleet correctly reporting zero. ``lane=''`` excludes the
+    heartbeat from every lane-scoped panel, the same way ``host=''`` already
+    marks "unknown host" for every GitHub-API-sourced row, so it never
+    counts as a real runner. This heartbeat row is not counted in the
+    return value, since it represents zero actual runners.
     """
+    if not runners:
+        store.upsert_runner_state(ts=ts, host="", runner_name="", labels="[]", state="", repo="")
+        return 0
     for runner in runners:
         labels = sorted(str(label.get("name")) for label in (runner.get("labels") or []) if label.get("name"))
         label_class = classify_labels(labels)
@@ -637,6 +654,7 @@ def poll_and_store(
                 conclusion=job.get("conclusion") or "",
                 runner_name=job.get("runner_name") or "",
                 runner_group=job.get("runner_group_name") or "",
+                runner_id=job.get("runner_id"),
                 pre_start_latency_seconds=metrics["pre_start_latency_seconds"],
                 is_entry_point=metrics["is_entry_point"],
                 queue_wait_seconds=metrics["queue_wait_seconds"],

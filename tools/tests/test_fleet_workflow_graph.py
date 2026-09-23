@@ -96,8 +96,18 @@ class JobKeyTests(unittest.TestCase):
         graph = WorkflowGraph({"a": {"name": "same"}, "b": {"name": "same"}})
         self.assertIsNone(graph.job_key("same"))
 
-    def test_a_key_match_beats_a_literal_name_match(self):
+    def test_a_key_match_and_a_literal_name_match_are_one_candidate_set(self):
+        """A `build: {}` job and a separate `other: {name: build}` job both
+        render as "build" in the jobs API and are genuinely indistinguishable
+        from the name alone - a key match must not be preferred over a
+        literal display-name match, since doing so would silently attribute
+        `other`'s dependencies to `build` instead of reporting the
+        ambiguity the documented ambiguous -> None contract promises."""
         graph = WorkflowGraph({"build": {}, "other": {"name": "build"}})
+        self.assertIsNone(graph.job_key("build"))
+
+    def test_a_key_match_with_no_colliding_literal_name_is_unambiguous(self):
+        graph = WorkflowGraph({"build": {}, "other": {"name": "not-build"}})
         self.assertEqual("build", graph.job_key("build"))
 
 

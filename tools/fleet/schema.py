@@ -118,6 +118,13 @@ CREATE TABLE IF NOT EXISTS job_event (
     conclusion TEXT,
     runner_name TEXT,
     runner_group TEXT,
+    -- The numeric id GitHub assigns the runner that executed this job (the
+    -- workflow-jobs API's own `runner_id` field), stable and unique across
+    -- registration scopes -- unlike `runner_name`, which is only unique
+    -- within one scope (see `runner_state`'s own `repo` column). Lets a
+    -- dashboard disambiguate two same-named runners registered to
+    -- different scopes instead of merging their utilization into one bar.
+    runner_id INTEGER,
     pre_start_latency_seconds REAL,
     is_entry_point INTEGER,
     queue_wait_seconds REAL
@@ -164,6 +171,7 @@ INDEXES = [
 ADDED_COLUMNS: List[tuple] = [
     ("job_event", "lane", "TEXT"),
     ("job_event", "platform", "TEXT"),
+    ("job_event", "runner_id", "INTEGER"),
     ("runner_state", "lane", "TEXT"),
     ("runner_state", "platform", "TEXT"),
 ]

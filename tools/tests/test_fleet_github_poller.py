@@ -355,6 +355,33 @@ class PollAndStoreTests(unittest.TestCase):
         self.assertEqual(row[2], json.dumps(["ar-ci", "macos", "self-hosted"]))
         self.assertAlmostEqual(row[3], 300.0)
 
+    def test_poll_and_store_persists_the_executing_runner_id(self):
+        """`runner_id` (unlike `runner_name`) is unique across GitHub
+        registration scopes, so a dashboard grouping utilization by it
+        does not merge two same-named runners from different scopes into
+        one bar - see `WorkflowGraphResolver`'s sibling concern for
+        `runner_state`'s own `repo` column."""
+        run = {"id": 1}
+        job = {"id": 42, "runner_name": "runner-1", "runner_id": 987654}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]):
+            poll_and_store("acme/repo", "tok", self.store)
+        row = self.store._conn.execute(
+            "SELECT runner_id FROM job_event WHERE job_id = ?", ("42",),
+        ).fetchone()
+        self.assertEqual((987654,), row)
+
+    def test_poll_and_store_leaves_runner_id_null_when_the_job_has_none(self):
+        run = {"id": 1}
+        job = {"id": 42}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[run]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]):
+            poll_and_store("acme/repo", "tok", self.store)
+        row = self.store._conn.execute(
+            "SELECT runner_id FROM job_event WHERE job_id = ?", ("42",),
+        ).fetchone()
+        self.assertEqual((None,), row)
+
     def test_poll_and_store_is_idempotent_across_poll_cycles(self):
         run = {"id": 1}
         job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
@@ -636,6 +663,27 @@ class RunnerInventoryTests(unittest.TestCase):
             ("mac-mini-macos", "", json.dumps(["ar-ci", "macOS", "self-hosted"]), "ar-ci", "macos", "idle", "acme/repo"),
             ("mac-studio-macos", "", json.dumps(["ar-ci", "macOS", "self-hosted"]), "ar-ci", "macos", "busy", "acme/repo"),
         ], rows)
+
+    def test_store_runner_states_writes_a_heartbeat_row_when_the_inventory_is_empty(self):
+        """A successful fetch that legitimately finds zero runners must
+        still stamp `ts` into `runner_state` - otherwise this cycle writes
+        no rows at all, `MAX(ts)` never advances, and the dashboard's
+        latest-inventory query keeps selecting the previous cycle's rows
+        forever, showing runners that have since deregistered as current."""
+        written = store_runner_states(self.store, [], "2026-09-21T10:00:00Z")
+        self.assertEqual(0, written)
+        rows = self.store._conn.execute(
+            "SELECT runner_name, host, lane, repo, state, ts FROM runner_state"
+        ).fetchall()
+        self.assertEqual([("", "", "", "", "", "2026-09-21T10:00:00Z")], rows)
+
+    def test_store_runner_states_heartbeat_is_excluded_from_lane_scoped_queries(self):
+        """The heartbeat row must not itself look like a runner to a caller
+        filtering by lane - it carries no lane, the same way `host=''`
+        already means "unknown host" for every GitHub-API-sourced row."""
+        store_runner_states(self.store, [], "2026-09-21T10:00:00Z")
+        rows = self.store._conn.execute("SELECT * FROM runner_state WHERE lane <> ''").fetchall()
+        self.assertEqual([], rows)
 
     def test_poll_and_store_records_runners_only_when_asked(self):
         with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \

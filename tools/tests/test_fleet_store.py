@@ -112,6 +112,19 @@ class FleetStoreIdempotencyTests(unittest.TestCase):
             )
         self.assertEqual(self.store.job_event_count(), 1)
 
+    def test_job_event_upsert_persists_the_executing_runner_id(self):
+        """`runner_id` is unique across GitHub registration scopes, unlike
+        `runner_name` - a dashboard grouping utilization by it does not
+        merge two same-named runners from different scopes together."""
+        self.store.upsert_job_event(job_id="job-42", runner_name="runner-1", runner_id=987654)
+        row = self.store._conn.execute("SELECT runner_id FROM job_event WHERE job_id = 'job-42'").fetchone()
+        self.assertEqual((987654,), row)
+
+    def test_job_event_upsert_leaves_runner_id_null_by_default(self):
+        self.store.upsert_job_event(job_id="job-42")
+        row = self.store._conn.execute("SELECT runner_id FROM job_event WHERE job_id = 'job-42'").fetchone()
+        self.assertEqual((None,), row)
+
     def test_job_step_upsert_is_idempotent_on_job_id_and_number(self):
         for _ in range(2):
             self.store.upsert_job_step("job-42", 1, name="checkout")
@@ -394,6 +407,15 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         row = store._conn.execute("SELECT name, lane FROM job_event WHERE job_id = '1'").fetchone()
         self.assertEqual(("old", None), row)
 
+    def test_init_schema_adds_the_runner_id_column_to_an_existing_job_event_table(self):
+        store = self._store_with_old_job_event_and_runner_state()
+        self.assertNotIn("runner_id", store.columns("job_event"))
+        store.init_schema()
+        self.assertIn("runner_id", store.columns("job_event"))
+        store.upsert_job_event(job_id="3", runner_id=42)
+        row = store._conn.execute("SELECT runner_id FROM job_event WHERE job_id = '3'").fetchone()
+        self.assertEqual((42,), row)
+
     def test_a_migrated_store_accepts_the_current_writers(self):
         store = self._store_with_old_job_event_and_runner_state()
         store.init_schema()
@@ -536,6 +558,42 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         )
         store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
         store._widen_runner_state_key()
+
+    def test_widen_runner_state_key_backfills_null_repo_before_widening_on_postgres(self):
+        """The legacy Postgres `repo` column predates `NOT NULL DEFAULT ''`
+        and can hold real NULLs; `ADD PRIMARY KEY` rejects a key column that
+        contains one, so the backfill must run - and run before the ADD -
+        the same way the sqlite branch coalesces during its copy."""
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        backfill = "UPDATE runner_state SET repo = '' WHERE repo IS NULL"
+        add_key = "ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)"
+        self.assertIn(backfill, connection.statements)
+        self.assertLess(connection.statements.index(backfill), connection.statements.index(add_key))
+
+    def test_widen_runner_state_key_wraps_the_postgres_statements_in_one_transaction(self):
+        """Autocommit would let `DROP CONSTRAINT` land on its own, leaving
+        `runner_state` with no primary key at all until `ADD PRIMARY KEY`
+        runs next; wrapping both in one explicit transaction closes that
+        window and lets a concurrent migration serialize on the resulting
+        table-level lock instead of racing it."""
+        connection = _FakePostgresConnection(primary_key_columns=["ts", "host", "runner_name"])
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        store._widen_runner_state_key()
+        self.assertEqual("COMMIT", connection.statements[-1])
+        self.assertLess(connection.statements.index("BEGIN"), connection.statements.index("COMMIT"))
+        self.assertNotIn("ROLLBACK", connection.statements)
+
+    def test_widen_runner_state_key_rolls_back_the_transaction_on_a_real_postgres_failure(self):
+        connection = _FakePostgresConnection(
+            primary_key_columns=["ts", "host", "runner_name"], fail_on="ADD PRIMARY KEY",
+        )
+        store = FleetStore(dialect=Dialect(Dialect.POSTGRES), connection=connection)
+        with self.assertRaises(RuntimeError):
+            store._widen_runner_state_key()
+        self.assertIn("ROLLBACK", connection.statements)
+        self.assertNotIn("COMMIT", connection.statements)
 
 
 if __name__ == "__main__":

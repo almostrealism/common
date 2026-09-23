@@ -378,6 +378,25 @@ class FleetStore:
         migration; any other failure (a permission error, invalid legacy
         data) is re-raised rather than silently leaving the table on the old
         or no key while writers upsert against a key it does not have.
+
+        The three Postgres statements (backfill, drop, add) run inside one
+        explicit transaction rather than the connection's default autocommit
+        mode. Autocommit would let ``DROP CONSTRAINT`` land on its own,
+        leaving ``runner_state`` with no primary key at all -- and so no
+        target for a concurrent writer's ``ON CONFLICT`` -- for however long
+        it takes ``ADD PRIMARY KEY`` to run next; a crash or a concurrent
+        migration in that window could leave the table without a key
+        indefinitely. Wrapping both in one transaction also makes concurrent
+        migrations serialize safely instead of racing: ``ALTER TABLE`` takes
+        an ``ACCESS EXCLUSIVE`` lock held for the rest of the transaction, so
+        a second migration's ``DROP CONSTRAINT`` blocks until the first
+        commits, then finds the constraint already renamed to the target and
+        proceeds as a no-op re-add. Like the sqlite branch's legacy ``NULL``
+        ``repo`` coalesce, the backfill runs before the key is widened: the
+        column predates the ``NOT NULL DEFAULT ''`` :data:`schema.RUNNER_STATE`
+        now declares for a freshly created table, so a store old enough to
+        need this migration can still hold real ``NULL`` rows, and
+        ``ADD PRIMARY KEY`` rejects a key column that contains one.
         """
         target = ["ts", "host", "runner_name", "repo"]
         if self._primary_key_columns("runner_state") == target:
@@ -398,12 +417,17 @@ class FleetStore:
                 if " ON runner_state " in statement:
                     self._conn.execute(statement)
         else:
+            self._conn.execute("BEGIN")
             try:
+                self._conn.execute("UPDATE runner_state SET repo = '' WHERE repo IS NULL")
                 self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
                 self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
             except Exception:  # noqa: BLE001 — re-raised below unless a concurrent migration already won
+                self._conn.execute("ROLLBACK")
                 if self._primary_key_columns("runner_state") != target:
                     raise
+            else:
+                self._conn.execute("COMMIT")
 
     def columns(self, table: str) -> List[str]:
         """The column names *table* currently has, in declaration order.
@@ -542,6 +566,7 @@ class FleetStore:
         conclusion: str = "",
         runner_name: str = "",
         runner_group: str = "",
+        runner_id: Optional[int] = None,
         pre_start_latency_seconds: Optional[float] = None,
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
@@ -561,15 +586,23 @@ class FleetStore:
         dashboard groups by (the fleet's ``ar-*`` label, and macos / linux /
         windows); :func:`tools.fleet.github_poller.classify_labels` derives
         them, and a writer that has no labels leaves both ``''``.
+
+        *runner_id* is the workflow-jobs API's own ``runner_id`` — a stable
+        identity for the runner that actually executed the job, unique
+        across GitHub registration scopes (unlike *runner_name*, which is
+        only unique within one scope; see :meth:`upsert_runner_state`). A
+        dashboard grouping per-runner utilization by this column, rather
+        than by name alone, does not merge two same-named runners from
+        different scopes into one bar.
         """
         self._upsert(
             "job_event", ("job_id",),
             ("job_id", "run_id", "repo", "name", "labels", "lane", "platform", "created_at",
              "started_at", "completed_at", "status", "conclusion", "runner_name", "runner_group",
-             "pre_start_latency_seconds", "is_entry_point", "queue_wait_seconds"),
+             "runner_id", "pre_start_latency_seconds", "is_entry_point", "queue_wait_seconds"),
             (
                 job_id, run_id, repo, name, labels, lane, platform, created_at, started_at,
-                completed_at, status, conclusion, runner_name, runner_group,
+                completed_at, status, conclusion, runner_name, runner_group, runner_id,
                 pre_start_latency_seconds,
                 None if is_entry_point is None else int(bool(is_entry_point)),
                 queue_wait_seconds,

@@ -155,14 +155,23 @@ class WorkflowGraph:
         return name
 
     def _exact(self, name: str) -> Optional[str]:
-        """The key whose key or literal (expression-free) display name is *name*, if exactly one."""
-        if name in self._needs:
-            return name
-        matches = [
+        """The key whose key or literal (expression-free) display name is *name*, if exactly one.
+
+        A key match and a literal display-name match are candidates for the
+        same job, not two independent tiers to try in priority order: a
+        ``build: {}`` job and a separate ``other: {name: build}`` job both
+        render as ``"build"`` in the jobs API and are genuinely
+        indistinguishable from *name* alone, so returning the key match
+        first would silently prefer one over the other instead of reporting
+        the ambiguity. Every candidate key is collected into one set and a
+        result is returned only when it is unique.
+        """
+        candidates = {key for key in self._needs if key == name}
+        candidates.update(
             key for key, display in self._display.items()
             if display == name and not _EXPRESSION.search(display)
-        ]
-        return matches[0] if len(matches) == 1 else None
+        )
+        return next(iter(candidates)) if len(candidates) == 1 else None
 
     def _by_pattern(self, name: str) -> Optional[str]:
         """The key whose expression-bearing display name can render to *name*, if exactly one."""
