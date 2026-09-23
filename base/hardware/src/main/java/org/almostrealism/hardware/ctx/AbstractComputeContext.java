@@ -24,6 +24,8 @@ import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
@@ -121,6 +123,13 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	public static int threadId = 0;
 
+	/**
+	 * Every {@link ThreadGroup} created by any {@link AbstractComputeContext} instance,
+	 * so that {@link #isAnyExecutorThread()} can recognize a thread belonging to a
+	 * <em>different</em> context's bounded pool, not only the one it is called through.
+	 */
+	private static final Set<ThreadGroup> executorGroups = ConcurrentHashMap.newKeySet();
+
 	/** The data context for memory operations. */
 	private final T dc;
 	/** Thread pool for asynchronous kernel operations. */
@@ -141,6 +150,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 		this.executorGroup = new ThreadGroup("ComputeContext");
 		this.executor = Executors.newFixedThreadPool(KernelPreferences.getEvaluationParallelism(),
 				r -> new Thread(executorGroup, r, "ComputeContext-" + (threadId++)));
+		executorGroups.add(executorGroup);
 	}
 
 	/**
@@ -190,11 +200,33 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * <p>Useful for conditional logic that should only execute on executor threads,
 	 * or for debugging to identify which threads are performing work.</p>
 	 *
+	 * <p>This only recognizes <em>this</em> context's own pool. A caller that needs to
+	 * avoid blocking any bounded {@link AbstractComputeContext} executor &mdash; including
+	 * one belonging to a different context reached through cross-context chaining &mdash;
+	 * must use {@link #isAnyExecutorThread()} instead.</p>
+	 *
 	 * @return true if current thread is from this context's thread pool, false otherwise
 	 */
 	@Override
 	public boolean isExecutorThread() {
 		return Thread.currentThread().getThreadGroup() == executorGroup;
+	}
+
+	/**
+	 * Returns whether the current thread belongs to the bounded executor pool of
+	 * <em>any</em> {@link AbstractComputeContext}, not only one specific instance.
+	 *
+	 * <p>A computation graph can chain arguments across compute contexts (for example,
+	 * a Metal-backed argument feeding an OpenCL kernel), so a thread that is not this
+	 * context's own executor thread may still be another context's bounded executor
+	 * thread. Issuing a blocking request directly on such a thread risks starving that
+	 * other context's pool exactly as issuing it on this context's own pool would.</p>
+	 *
+	 * @return true if the current thread is a bounded executor thread of any compute
+	 *         context, false otherwise
+	 */
+	public static boolean isAnyExecutorThread() {
+		return executorGroups.contains(Thread.currentThread().getThreadGroup());
 	}
 
 	/**

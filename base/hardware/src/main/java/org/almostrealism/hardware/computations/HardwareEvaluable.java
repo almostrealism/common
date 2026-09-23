@@ -370,6 +370,7 @@ public class HardwareEvaluable<T> implements
 				new DestinationEvaluable<>(ev, destination);
 
 		if (resultProcessor == null) {
+			// TODO(review): executor is not propagated here, unlike the @return javadoc claims
 			return destinationEvaluable;
 		}
 

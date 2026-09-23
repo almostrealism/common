@@ -302,10 +302,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private Executor executor;
 
 	/**
-	 * Reports whether the calling thread is one of the owning {@link io.almostrealism.code.ComputeContext}'s
-	 * own bounded executor threads. Used by {@link #construct(PreparedArguments, Semaphore)} to decide
-	 * whether a request that may block (see {@code StreamingEvaluable#isSharedExecutorSafe()}) can be
-	 * issued directly on the calling thread instead of a freshly spawned dedicated one.
+	 * Reports whether the calling thread is a bounded executor thread of any
+	 * {@link io.almostrealism.code.ComputeContext} &mdash; not only the one that owns this
+	 * factory, since a computation graph can chain arguments across contexts and deliver
+	 * this call on a foreign context's own pool. Used by
+	 * {@link #construct(PreparedArguments, Semaphore)} to decide whether a request that may
+	 * block (see {@code StreamingEvaluable#isSharedExecutorSafe()}) can be issued directly
+	 * on the calling thread instead of a freshly spawned dedicated one.
 	 */
 	private BooleanSupplier isExecutorThread;
 
@@ -347,9 +350,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
 	 * @param replacements Supplier of the memory replacement manager
 	 * @param executor Executor for asynchronous kernel dispatch
-	 * @param isExecutorThread Reports whether the calling thread is one of the owning
-	 *                         {@link io.almostrealism.code.ComputeContext}'s own bounded
-	 *                         executor threads
+	 * @param isExecutorThread Reports whether the calling thread is a bounded executor
+	 *                         thread of any {@link io.almostrealism.code.ComputeContext},
+	 *                         not only the one that owns this factory
 	 */
 	public ProcessDetailsFactory(boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
@@ -626,10 +629,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * with a destination can change which evaluable actually answers the request.</p>
 	 *
 	 * <p>An argument that is not shared-executor-safe still does not always need a dedicated
-	 * thread: {@link #isExecutorThread} reports whether the calling thread is itself one of
-	 * the owning {@code ComputeContext}'s bounded executor threads, the only thread this
-	 * blocking request must be kept off of. When it is not, the request is issued directly on
-	 * the calling thread instead of a freshly spawned one, avoiding a new OS thread (and a
+	 * thread: {@link #isExecutorThread} reports whether the calling thread is itself a bounded
+	 * executor thread of any {@code ComputeContext} &mdash; not only the one that owns this
+	 * factory, since a chained argument can be evaluated from a foreign context's own pool
+	 * &mdash; the only kind of thread this blocking request must be kept off of. When it is
+	 * not, the request is issued directly on the calling thread instead of a freshly spawned
+	 * one, avoiding a new OS thread (and a
 	 * blocking hand-off to it) at every level of a computation graph with several levels of
 	 * hoisted arguments, such as a chain of reshape- or repeat-wrapped kernel results. Because
 	 * the direct request reuses the argument's existing {@link StreamingEvaluable} rather than

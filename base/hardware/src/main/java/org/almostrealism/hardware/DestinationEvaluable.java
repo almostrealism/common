@@ -340,8 +340,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that pushes the
-	 * destination bank to {@link #downstream} upon completion. Only supported for
-	 * {@link AcceleratedOperation} kernels.</p>
+	 * destination bank to {@link #downstream} upon completion. When the wrapped operation
+	 * is not an {@link AcceleratedOperation}, it is evaluated on the host instead; see
+	 * {@link #request(Object[], Semaphore, Consumer)} for that fallback.</p>
 	 *
 	 * <p>The dispatch must be awaited via
 	 * {@link AcceleratedProcessDetails#awaitReady() awaitReady} before its completion is
@@ -371,7 +372,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param args      The input arguments ({@link MemoryData} instances)
 	 * @param dependsOn completion that must fire before the dispatch (and its
 	 *                  argument preparation) reads memory, or {@code null}
-	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
