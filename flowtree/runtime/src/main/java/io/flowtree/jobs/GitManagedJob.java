@@ -612,7 +612,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                     + String.join("; ", commitHandler.getSkippedFiles()));
         }
 
-        String unpublished = describeUnpublishedWork();
+        String unpublished = workOutcome.describeUnpublishedWork();
         if (unpublished != null) {
             return JobCompletionEvent.failed(taskId, getTaskString(), unpublished, null);
         }
@@ -1228,29 +1228,49 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Returns the handler that ran this job's git operations, or {@code null}
+     * when none did.
+     *
+     * @return the commit handler, or {@code null}
+     */
+    GitCommitHandler commitHandler() {
+        return commitHandler;
+    }
+
+    /**
+     * Returns this job's work-outcome view.
+     *
+     * <p>Exposed so callers ask it directly. It answers a growing family of
+     * related questions — what was published, what was dropped, what may have
+     * been lost — and giving each one a pass-through on this class spreads one
+     * concern across two files and grows the larger of them every time the
+     * family gains a member.</p>
+     *
+     * @return the outcome view; never {@code null}
+     */
+    JobWorkOutcome workOutcome() {
+        return workOutcome;
+    }
+
+    /**
      * Returns the commit message the agent authored for its own changes, or
      * {@code null} when it authored none.
      *
      * <p>An authored message declares that the job has changes worth
-     * describing, which is why {@link #describeUnpublishedWork()} treats one
+     * describing, which is why {@link JobWorkOutcome#describeUnpublishedWork()} treats one
      * with no commit behind it as work that went missing. The base job has no
      * such protocol; {@link CodingAgentJob} reads {@code commit.txt}.</p>
      *
-     * @return the agent-authored commit message, or {@code null}
-     */
-    protected String authoredCommitMessage() {
-        return null;
-    }
-
-    /**
-     * Returns a description of work this job produced but never published, or
-     * {@code null} when its output and its commit agree; delegates to
-     * {@link JobWorkOutcome#describeUnpublishedWork()}.
+     * <p>A predicate rather than the text, because the text is not what the
+     * question needs and asking for it loses the answer: a message that
+     * exists but cannot be read comes back indistinguishable from one that
+     * was never written, and the job then looks like it had nothing to
+     * publish.</p>
      *
-     * @return the failure description, or {@code null} when nothing was orphaned
+     * @return {@code true} when the agent authored a commit message
      */
-    protected String describeUnpublishedWork() {
-        return workOutcome.describeUnpublishedWork();
+    protected boolean hasAuthoredCommitMessage() {
+        return false;
     }
 
     /**
@@ -1265,19 +1285,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     boolean hasUncommittedChanges() {
         return workOutcome.observedUncommittedChanges();
-    }
-
-    /**
-     * Returns whether uncommitted changes remain anywhere, counting a tree
-     * that could not be read as one that might hold them; see
-     * {@link JobWorkOutcome#mayHaveUncommittedChanges()}. Use this where a
-     * wrong "no" would lose work, not to decide whether there is work to act
-     * on.
-     *
-     * @return {@code true} when changes remain or a tree could not be read
-     */
-    boolean mayHaveUncommittedChanges() {
-        return workOutcome.mayHaveUncommittedChanges();
     }
 
     // ==================== Status Reporting ====================

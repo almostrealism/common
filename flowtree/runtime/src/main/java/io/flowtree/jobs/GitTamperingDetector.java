@@ -331,7 +331,7 @@ class GitTamperingDetector implements ConsoleFeatures {
      * the tree is now consistent, not that the discarded work came back. A job
      * whose restart never ran leaves no other trace of it: the tree is clean
      * and there is no commit, so this is what
-     * {@link GitManagedJob#describeUnpublishedWork()} reads to tell that from
+     * {@link JobWorkOutcome#describeUnpublishedWork()} reads to tell that from
      * a job that simply had nothing to do.</p>
      *
      * @return {@code true} once a revert has happened

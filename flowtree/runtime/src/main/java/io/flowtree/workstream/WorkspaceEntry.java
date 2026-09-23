@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
+import io.flowtree.submission.SubmissionRunnerResolver;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

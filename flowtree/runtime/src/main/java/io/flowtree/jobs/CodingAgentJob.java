@@ -1450,17 +1450,25 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Returns the commit message the agent wrote to {@code commit.txt}, or
-     * {@code null} when it wrote none. This is the agent's own declaration
-     * that it produced changes worth describing, which is what lets
-     * {@link #describeUnpublishedWork()} tell a job that deliberately changed
-     * nothing from one whose changes went missing.
+     * Returns whether the agent wrote a commit message to {@code commit.txt}.
+     * That file is its declaration that it produced changes worth describing,
+     * which is what lets {@link JobWorkOutcome#describeUnpublishedWork()} tell a job that
+     * deliberately changed nothing from one whose changes went missing.
      *
-     * @return the raw {@code commit.txt} content, or {@code null}
+     * <p>A file that exists but cannot be read counts as authored. The
+     * alternative reads an unreadable message as an absent one, and since
+     * {@code commit.txt} is excluded from the working-tree query as a harness
+     * artifact, nothing else would notice it either.</p>
+     *
+     * @return {@code true} when {@code commit.txt} holds a message, or exists
+     *         and could not be read
      */
     @Override
-    protected String authoredCommitMessage() {
-        return CommitMessageBuilder.captureCommitTxt(this);
+    protected boolean hasAuthoredCommitMessage() {
+        String message = CommitMessageBuilder.captureCommitTxt(this);
+        if (message != null) return !message.trim().isEmpty();
+        Path commitFile = resolveWorkingPath("commit.txt");
+        return commitFile != null && Files.exists(commitFile);
     }
 
     @Override

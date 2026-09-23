@@ -79,6 +79,12 @@ class GitCommitHandler implements ConsoleFeatures {
     private final List<String> dependentRepoCommits = new ArrayList<>();
 
     /**
+     * Dependent repositories that had changes but did not publish them, each
+     * with the reason; see {@link #getDependentRepoFailures()}.
+     */
+    private final List<String> dependentRepoFailures = new ArrayList<>();
+
+    /**
      * Repository-relative paths under {@link FlowtreeArtifacts#DIRECTORY} that
      * this handler is permitted to stage. Defaults to the empty production
      * whitelist {@link FlowtreeArtifacts#COMMIT_WHITELIST}; a test may inject a
@@ -473,6 +479,23 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns the dependent repositories that had changes but did not publish
+     * them, each with the reason.
+     *
+     * <p>{@link #hasAnyCommit()} says only that something was committed
+     * somewhere. A job whose primary repository commits cleanly while a
+     * dependent repository's commit fails, or has every file skipped, has
+     * published some of its work and abandoned the rest — and the abandoned
+     * part leaves no other trace, since the primary commit satisfies every
+     * other check.</p>
+     *
+     * @return the unpublished dependent repositories; empty when all published
+     */
+    List<String> getDependentRepoFailures() {
+        return new ArrayList<>(dependentRepoFailures);
+    }
+
+    /**
      * Returns the URL of an open pull request detected after push, or
      * {@code null} if no PR was found or PR detection was not attempted.
      *
@@ -535,12 +558,14 @@ class GitCommitHandler implements ConsoleFeatures {
             }
             if (!anyStagedInDep) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
+                dependentRepoFailures.add(depPath + " (every changed file was skipped)");
                 continue;
             }
 
             int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
                 continue;
             }
             dependentRepoCommits.add(depPath);

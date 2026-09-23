@@ -17,6 +17,8 @@
 package io.flowtree.jobs;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
@@ -89,7 +91,7 @@ class JobWorkOutcome {
      * wrong for one that produced something. The two are told apart by what
      * the session left behind: uncommitted changes to non-excluded files in a
      * working tree, or an
-     * {@linkplain GitManagedJob#authoredCommitMessage() authored commit
+     * {@linkplain GitManagedJob#hasAuthoredCommitMessage() authored commit
      * message}.</p>
      *
      * <p>Either one with no commit behind it means the job's output was
@@ -162,12 +164,20 @@ class JobWorkOutcome {
                     + " and no restart replaced it.";
         }
 
+        GitCommitHandler handler = job.commitHandler();
+        List<String> abandoned = handler != null
+                ? handler.getDependentRepoFailures() : Collections.emptyList();
+        if (!abandoned.isEmpty()) {
+            return "A dependent repository had changes that were never published: "
+                    + String.join("; ", abandoned)
+                    + ". The rest of the job's work may have committed normally.";
+        }
+
         if (job.hasPublishedCommit()) return null;
         if (job.hasAgentCommitted()) return null;
 
         boolean changesRemain = mayHaveUncommittedChanges();
-        String authored = job.authoredCommitMessage();
-        boolean messageAuthored = authored != null && !authored.trim().isEmpty();
+        boolean messageAuthored = job.hasAuthoredCommitMessage();
         if (!changesRemain && !messageAuthored) return null;
 
         String produced;

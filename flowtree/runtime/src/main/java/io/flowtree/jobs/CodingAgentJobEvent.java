@@ -605,7 +605,7 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     "All changes were dropped by staging guardrails: "
                     + String.join("; ", job.getSkippedFiles()));
         }
-        String unpublished = job.describeUnpublishedWork();
+        String unpublished = job.workOutcome().describeUnpublishedWork();
         if (unpublished != null) {
             return failed(job.getTaskId(), job.getTaskString(), unpublished, null);
         }

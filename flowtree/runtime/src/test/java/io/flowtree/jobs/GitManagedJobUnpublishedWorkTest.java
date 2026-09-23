@@ -53,8 +53,8 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
 
     /** Minimal concrete job; the test supplies the working tree directly. */
     private static final class TestGitJob extends GitManagedJob {
-        /** Commit message this job reports as agent-authored, or {@code null} for none. */
-        private String authored;
+        /** Whether this job reports that the agent authored a commit message. */
+        private boolean authored;
 
         /** Creates a job with a fixed task id. */
         TestGitJob() {
@@ -72,16 +72,16 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
         }
 
         @Override
-        protected String authoredCommitMessage() {
+        protected boolean hasAuthoredCommitMessage() {
             return authored;
         }
 
         /**
-         * Sets the message this job reports as agent-authored.
+         * Sets whether this job reports an agent-authored commit message.
          *
-         * @param authored the message, or {@code null} for none
+         * @param authored {@code true} to report one
          */
-        void setAuthoredCommitMessage(String authored) {
+        void setAuthoredCommitMessage(boolean authored) {
             this.authored = authored;
         }
     }
@@ -125,7 +125,7 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
         write("src/main/java/Foo.java", "public class Foo { int x; }\n");
 
         TestGitJob job = newJob();
-        String reason = job.describeUnpublishedWork();
+        String reason = job.workOutcome().describeUnpublishedWork();
         assertNotNull("uncommitted work with no commit must be reported", reason);
         assertTrue("reason must say nothing was committed: " + reason,
                 reason.contains("Nothing was committed or pushed"));
@@ -142,9 +142,9 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
     @Test(timeout = 60000)
     public void authoredCommitMessageWithNoChangesFailsTheJob() throws Exception {
         TestGitJob job = newJob();
-        job.setAuthoredCommitMessage("Fix the thing\n");
+        job.setAuthoredCommitMessage(true);
 
-        String reason = job.describeUnpublishedWork();
+        String reason = job.workOutcome().describeUnpublishedWork();
         assertNotNull("an authored message with no commit must be reported", reason);
         assertTrue("reason must name the commit message: " + reason,
                 reason.contains("commit message"));
@@ -159,7 +159,7 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
     public void noChangesAndNoAuthoredMessageStaysSuccessful() throws Exception {
         TestGitJob job = newJob();
 
-        assertNull(job.describeUnpublishedWork());
+        assertNull(job.workOutcome().describeUnpublishedWork());
         assertEquals(JobCompletionEvent.Status.SUCCESS, job.createEvent(null).getStatus());
     }
 
@@ -174,7 +174,7 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
         write(".flowtree/results.json", "{}\n");
 
         TestGitJob job = newJob();
-        assertNull("harness artifacts must not count as work", job.describeUnpublishedWork());
+        assertNull("harness artifacts must not count as work", job.workOutcome().describeUnpublishedWork());
         assertEquals(JobCompletionEvent.Status.SUCCESS, job.createEvent(null).getStatus());
     }
 
@@ -188,7 +188,7 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
 
         TestGitJob job = newJob();
         job.setTargetBranch(null);
-        assertNull(job.describeUnpublishedWork());
+        assertNull(job.workOutcome().describeUnpublishedWork());
         assertEquals(JobCompletionEvent.Status.SUCCESS, job.createEvent(null).getStatus());
     }
 
@@ -199,7 +199,7 @@ public class GitManagedJobUnpublishedWorkTest extends TestSuiteBase {
 
         TestGitJob job = newJob();
         job.setDryRun(true);
-        assertNull(job.describeUnpublishedWork());
+        assertNull(job.workOutcome().describeUnpublishedWork());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

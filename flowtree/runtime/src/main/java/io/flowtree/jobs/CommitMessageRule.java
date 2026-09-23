@@ -36,7 +36,7 @@ import java.nio.file.Path;
  * — has nothing to describe, and demanding a message from it would both waste
  * a correction session and destroy the file's value as a signal: an authored
  * message with no commit behind it is what tells
- * {@link GitManagedJob#describeUnpublishedWork()} that a job's changes went
+ * {@link JobWorkOutcome#describeUnpublishedWork()} that a job's changes went
  * missing, and that only holds if a message means the agent had changes.</p>
  *
  * <h3>Violation conditions</h3>
@@ -87,7 +87,7 @@ class CommitMessageRule implements EnforcementRule {
             // A session that changed nothing has nothing to describe, and an
             // absent commit.txt is how it says so. Fail-closed: a tree that
             // cannot be read still owes a message -- see the class javadoc.
-            return job.mayHaveUncommittedChanges();
+            return job.workOutcome().mayHaveUncommittedChanges();
         }
         String trimmed = content.trim();
         // Detect verbatim copy of task prompt
