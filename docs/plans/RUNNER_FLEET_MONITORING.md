@@ -510,10 +510,16 @@ caveat to revisit later:
   2. **Subtract the completion time of the job's last dependency** (derivable
      from the run's job graph, persisted alongside `job_event`) to compute a
      dependency-adjusted `queue_wait` field distinct from `pre_start_latency`.
-Option 1 is the simpler Phase A implementation and is what the poller and
-schema in this document assume by default (`job_event` carries both
-`pre_start_latency` and an `is_entry_point` flag); option 2 is the more precise
-follow-up. The exact `created_at` semantics of the workflow-job object should
+Option 1 was the simpler initial Phase A implementation; option 2 has since
+shipped (§8's "Implementation status", third round) as the default, via
+`tools/fleet/workflow_graph.py`, which resolves each job's `needs:` from its
+run's workflow file so `queue_wait_seconds` reflects the last dependency's
+completion for dependent jobs, not just `pre_start_latency`. `job_event`
+always carries `pre_start_latency` and `is_entry_point`; the poller falls
+back to option 1's entry-point-only behaviour (`queue_wait_seconds` left
+`NULL` for dependent jobs) only when `PyYAML` is unavailable or a job cannot
+be matched to its workflow file. The exact `created_at` semantics of the
+workflow-job object should
 still be confirmed against live API responses on this repo before either panel
 is treated as authoritative (§12). Rate limits are a non-issue at this scale
 (5000 req/hr authenticated; a few dozen requests per poll every 5–15 min).
@@ -825,10 +831,13 @@ runtime's processes, and every control verb.
 4. **Runner-state detection.** Cross-platform idle/busy + current-job via
    `Runner.Worker` presence and process tree; map `runner_name → host` via an
    operator manifest. *Depends on 2.*
-5. **GitHub job poller.** Pull runs+jobs, compute `pre_start_latency` and
-   `is_entry_point` per §5.4's corrected definition, per-label aggregates, and
-   step breakdown; reuse the `qa-cadence.sh` curl/jq/date patterns; handle
-   pagination + rate limits. **The poller re-reads recent runs/jobs every
+5. **GitHub job poller.** Pull runs+jobs, compute `pre_start_latency`,
+   `is_entry_point`, and (via `needs:` resolution against each run's workflow
+   file, §5.4 option 2, shipped in `tools/fleet/workflow_graph.py`) a
+   dependency-adjusted `queue_wait_seconds` for non-entry-point jobs too,
+   per-label aggregates, and step breakdown; reuse the `qa-cadence.sh`
+   curl/jq/date patterns; handle pagination + rate limits. **The poller
+   re-reads recent runs/jobs every
    cycle, so `job_event`/`job_step` upserts on the primary/unique keys in
    Appendix B — a naive insert would duplicate events and inflate queue and
    utilization aggregates.** Tests in `tools/tests/`. *Depends on 1.*
