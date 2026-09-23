@@ -447,10 +447,20 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * tool servers (test runner, build validator, ...) are not required:
      * their absence degrades a session, it does not void its instructions.</p>
      *
-     * @return the required server names; empty when ar-manager is not configured
+     * <p>Enforcement is on by default. Setting {@code AR_REQUIRE_MCP_SERVERS}
+     * to {@code "disabled"} is an operational escape hatch that turns it off
+     * for every job without a code change; any other explicit value is
+     * {@code "enabled"} and has no effect since that already matches the
+     * default.</p>
+     *
+     * @return the required server names; empty when ar-manager is not
+     *         configured or when enforcement has been disabled
      */
     public Set<String> requiredServerNames() {
-        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
+        // TODO(review): this .orElse(true) default reverses commit 72bce226e
+        // ("Disable validation"), which set it to .orElse(false) deliberately;
+        // see stored review-followup memory before keeping this flip.
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(true)) {
             return Collections.emptySet();
         }
         return arManagerEnabled() ? Set.of("ar-manager") : Collections.emptySet();
