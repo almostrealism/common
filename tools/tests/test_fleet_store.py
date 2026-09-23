@@ -556,6 +556,26 @@ class FleetStoreSchemaMigrationTests(unittest.TestCase):
         store.init_schema()
         self.assertEqual(before, store._primary_key_columns("runner_state"))
 
+    def test_widening_the_runner_state_key_recovers_from_a_stale_runner_state_old_table(self):
+        """A process that crashes between the `RENAME` and the `DROP TABLE`
+        of a prior migration attempt leaves `runner_state_old` behind. On
+        restart the migration must not fail forever with "table
+        runner_state_old already exists" - the stale table (whatever shape
+        it happens to be, since it could be from an even older schema) is
+        dropped before the rename is retried."""
+        store = self._store_with_old_job_event_and_runner_state()
+        store._conn.execute("CREATE TABLE runner_state_old (leftover TEXT)")
+        store._conn.execute(
+            "INSERT INTO runner_state (ts, host, runner_name, state, repo) "
+            "VALUES ('2026-09-21T00:00:00Z', '', 'r1', 'idle', 'almostrealism/common')"
+        )
+        store.init_schema()
+        self.assertEqual(["ts", "host", "runner_name", "repo"], store._primary_key_columns("runner_state"))
+        row = store._conn.execute(
+            "SELECT runner_name, state, repo FROM runner_state WHERE runner_name = 'r1'"
+        ).fetchone()
+        self.assertEqual(("r1", "idle", "almostrealism/common"), row)
+
     def test_add_column_if_missing_uses_atomic_syntax_on_postgres(self):
         """The Postgres branch must be a single `ADD COLUMN IF NOT EXISTS`
         statement, not a check-then-`ALTER` - see `_add_column_if_missing`'s

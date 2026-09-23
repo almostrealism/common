@@ -367,7 +367,11 @@ class FleetStore:
         alone (the common case, and always true for a table just created by
         :meth:`init_schema` above, since :data:`schema.RUNNER_STATE` already
         declares it). sqlite cannot alter a primary key in place, so an old
-        table is migrated by rename-recreate-copy-drop; the new table's
+        table is migrated by rename-recreate-copy-drop; a stale
+        ``runner_state_old`` from a migration this process crashed in the
+        middle of on a prior run is dropped before the rename, so restarting
+        after such a crash retries the migration instead of failing forever
+        on "table runner_state_old already exists". The new table's
         ``repo`` is ``NOT NULL`` (see :data:`schema.RUNNER_STATE`) while the
         legacy table's was not, so a legacy ``NULL`` is coalesced to ``''``
         during the copy rather than left to fail the insert, and the two
@@ -421,6 +425,7 @@ class FleetStore:
         if self._primary_key_columns("runner_state") == target:
             return
         if self._dialect.name == Dialect.SQLITE:
+            self._conn.execute("DROP TABLE IF EXISTS runner_state_old")
             self._conn.execute("ALTER TABLE runner_state RENAME TO runner_state_old")
             self._conn.execute(schema.RUNNER_STATE.format(ts=self._dialect.timestamp_type))
             columns = self.columns("runner_state_old")
