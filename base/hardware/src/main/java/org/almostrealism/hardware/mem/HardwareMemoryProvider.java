@@ -185,7 +185,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/** Tracks all currently allocated memory blocks by their native pointer. */
-	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	private volatile ConcurrentHashMap<Long, NativeRef<T>> allocated;
 	/**
 	 * How long a release may be held back waiting for the kernels using that
 	 * memory to finish. Past this the memory is released anyway: a reference
@@ -558,9 +558,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
-	 * @throws IllegalStateException if this provider is being destroyed
+	 * @throws IllegalStateException if this provider is being destroyed, or has been
 	 */
-	protected T allocated(T ram) {
+	protected synchronized T allocated(T ram) {
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
 		}

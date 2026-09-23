@@ -295,7 +295,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	private MemoryProvider<Memory> altRam;
 
 	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
-	private boolean destroyed;
+	private volatile boolean destroyed;
 
 	/** Optional delegate memory provider retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer honored. */
 	private MemoryProvider<? extends RAM> delegateMemory;

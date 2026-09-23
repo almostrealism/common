@@ -127,6 +127,9 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	/** Optional consumer to clean up values when contexts are destroyed. */
 	private Consumer<T> disposal;
 
+	/** Whether {@link #init()} registered this instance for context lifecycle callbacks. */
+	private boolean registered;
+
 	/**
 	 * Constructs a context-specific value with the given supplier and no disposal logic.
 	 *
@@ -157,6 +160,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	public void init() {
 		if (val.isEmpty()) push();
 		Hardware.getLocalHardware().addContextListener(this);
+		registered = true;
 	}
 
 	/**
@@ -166,11 +170,14 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 * Returns the value at the top of the stack, which corresponds to the most recently
 	 * started context.</p>
 	 *
-	 * <p>A value whose context has since been destroyed is disposed of first and never
-	 * returned. This is what keeps an instance that was not registered via {@link #init()}
-	 * correct: without a listener nothing pops its values when a context ends, so a kernel
-	 * compiled under a scoped context would otherwise be handed out after that context
-	 * and its memory are gone.</p>
+	 * <p>A value belongs to the data context that was current when it was created. One
+	 * whose context has since been destroyed is disposed of first and never returned, and
+	 * when the value on top belongs to a different context that is still alive, a value
+	 * for the current context is used instead. This is what keeps an instance that was not
+	 * registered via {@link #init()} correct: without a listener nothing pushes or pops its
+	 * values as contexts start and end, so a kernel compiled under one context would
+	 * otherwise be handed out under another, or after its own context and memory are
+	 * gone.</p>
 	 *
 	 * <p><b>Warning:</b> If stack depth exceeds 3, logs a warning indicating potential
 	 * context leaks.</p>
@@ -179,7 +186,21 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 */
 	public T getValue() {
 		discardOrphans();
-		if (val.isEmpty()) push();
+
+		DataContext<?> current = currentContext();
+
+		if (val.isEmpty()) {
+			push();
+		} else if (!val.peek().belongsTo(current)) {
+			ContextValue<T> existing = registered ? null : valueFor(current);
+
+			if (existing == null) {
+				push();
+			} else {
+				val.remove(existing);
+				val.push(existing);
+			}
+		}
 
 		T v = val.peek().getValue();
 
@@ -202,6 +223,19 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	private DataContext<?> currentContext() {
 		Hardware hardware = Hardware.getLocalHardware();
 		return hardware == null ? null : hardware.getDataContext(false, false);
+	}
+
+	/**
+	 * Returns the value on the stack created under the given context, or {@code null}.
+	 * Only consulted for an unregistered instance, whose stack no listener pops, so
+	 * moving a value to the top cannot disturb a later pop.
+	 */
+	private ContextValue<T> valueFor(DataContext<?> context) {
+		for (ContextValue<T> v : val) {
+			if (v.belongsTo(context)) return v;
+		}
+
+		return null;
 	}
 
 	/** Disposes of values at the top of the stack whose context has been destroyed. */
@@ -303,6 +337,14 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		/** Returns whether the context this value was created under has been destroyed. */
 		private boolean isOrphaned() {
 			return context != null && context.isDestroyed();
+		}
+
+		/**
+		 * Returns whether this value may serve the given context: the same one it was
+		 * created under, or either unknown.
+		 */
+		private boolean belongsTo(DataContext<?> current) {
+			return context == null || current == null || context == current;
 		}
 
 		/** Names the context this value was created under, for reporting. */

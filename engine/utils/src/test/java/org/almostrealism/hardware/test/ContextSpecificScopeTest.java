@@ -50,7 +50,7 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		assertTrue("First scope's value was disposed", disposed.contains(inside));
 	}
 
-	/** A value created outside a scope is shared with a nested scope and survives it. */
+	/** A nested scope gets its own value, and the outer value is back once the scope ends. */
 	@Test(timeout = 60_000)
 	public void outerValueSurvivesScope() {
 		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new);
@@ -59,7 +59,7 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		Object inside = dc(specific::getValue);
 		Object after = specific.getValue();
 
-		assertSame("Outer value inside the scope", before, inside);
+		assertNotSame("Scoped value distinct from the outer value", before, inside);
 		assertSame("Outer value after the scope", before, after);
 	}
 }

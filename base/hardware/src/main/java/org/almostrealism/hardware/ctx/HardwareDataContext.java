@@ -98,7 +98,7 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 	private MemoryProvider<? extends RAM> sharedRam;
 
 	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
-	private boolean destroyed;
+	private volatile boolean destroyed;
 
 	/**
 	 * Thread-local memory provider supplier for customizing allocation behavior per-thread.

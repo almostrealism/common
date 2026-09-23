@@ -37,7 +37,9 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.Optional;
 import java.util.ArrayDeque;
 import java.util.function.Consumer;
@@ -194,11 +196,11 @@ import java.util.function.Supplier;
  * );
  * }</pre>
  *
- * <p>Entries are keyed by the operation signature, so structurally identical operations
- * share one compiled kernel. A kernel dispatches through the command runner and memory
- * provider of the context it was compiled under, so an entry whose {@link DataContext}
- * has since been destroyed (a scoped context that has ended) is evicted on access and
- * compiled again under the current context.</p>
+ * <p>Entries are keyed by the operation signature <em>and</em> the compiling
+ * {@link ComputeContext}, so structurally identical operations share one compiled kernel
+ * only under the same context. A kernel dispatches through the command runner and memory
+ * provider of the context it was compiled under, and an entry whose {@link DataContext}
+ * has since been destroyed (a scoped context that has ended) is evicted on access.</p>
  *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>
@@ -386,6 +388,14 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
 
 	/**
+	 * Identity of every {@link ComputeContext} that has compiled through the cache, part of
+	 * each cache key so that a kernel is only shared by operations under the same context.
+	 */
+	private final Map<ComputeContext<?>, Integer> contextIds = new WeakHashMap<>();
+	/** The identity the next previously unseen compute context receives. */
+	private int nextContextId;
+
+	/**
 	 * Constructs a new DefaultComputer associated with the given hardware instance.
 	 * Initializes all caches and sets up eviction listeners for resource cleanup.
 	 *
@@ -527,14 +537,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
-		// Keyed by signature alone: structurally identical computations share one compiled
-		// kernel across the whole DataContext. This is safe because a DataContext exposes a
-		// single ComputeContext (and therefore a single command runner) per backend, so a
-		// reused kernel always encodes into — and is committed by — the same runner. (Earlier
-		// this had to include the ComputeContext identity because Metal handed out a context
-		// per thread, which let a reused kernel encode into a command buffer the executing
-		// thread never committed; MetalDataContext now shares one context.)
-		String cacheKey = Objects.requireNonNull(signature);
+		String cacheKey = Objects.requireNonNull(signature) + ":" + contextId(context);
 
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {
@@ -560,15 +563,18 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 				instructionsCache.computeIfAbsent(cacheKey, create);
 
-		// A kernel compiled under a scoped DataContext dispatches through that
-		// context's command runner and memory provider, neither of which exists
-		// once the scope ends; the signature alone cannot tell the difference
+		// Entries of a context that has ended are left behind until evicted here
 		if (mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
 			mgr = instructionsCache.computeIfAbsent(cacheKey, create);
 		}
 
 		return mgr;
+	}
+
+	/** Returns the number identifying a compute context in cache keys, assigning one on first use. */
+	private synchronized int contextId(ComputeContext<?> context) {
+		return contextIds.computeIfAbsent(context, c -> nextContextId++);
 	}
 
 	/**
