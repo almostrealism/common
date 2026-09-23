@@ -1,13 +1,15 @@
 {
   "uid": "fleet-capacity",
   "title": "Runner Fleet \u2014 Capacity",
+  "description": "Do we need more runner hardware? Wait for a runner against runners available, per lane; host headroom; where CI time goes. docs/plans/RUNNER_FLEET_MONITORING.md \u00a73.",
   "tags": [
     "fleet"
   ],
   "timezone": "browser",
   "editable": false,
+  "graphTooltip": 1,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": {
     "from": "now-24h",
@@ -15,6 +17,25 @@
   },
   "templating": {
     "list": [
+      {
+        "name": "lane",
+        "label": "Lane",
+        "type": "query",
+        "multi": true,
+        "includeAll": true,
+        "datasource": {
+          "type": "postgres",
+          "uid": "fleet-db"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "description": "The fleet's ar-* runner labels: the kind of work a runner is for. GitHub-hosted runners carry none and are excluded throughout.",
+        "query": "SELECT DISTINCT lane FROM job_event WHERE lane <> '' UNION SELECT DISTINCT lane FROM runner_state WHERE lane <> '' ORDER BY 1",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
       {
         "name": "host",
         "label": "Host",
@@ -25,8 +46,9 @@
           "type": "postgres",
           "uid": "fleet-db"
         },
-        "query": "SELECT DISTINCT host FROM host_sample ORDER BY host",
         "refresh": 2,
+        "sort": 1,
+        "query": "SELECT DISTINCT host FROM host_sample ORDER BY host",
         "current": {
           "text": "All",
           "value": "$__all"
@@ -37,18 +59,31 @@
   "panels": [
     {
       "id": 1,
-      "title": "CPU by class (runner / agent / other), per host",
-      "type": "timeseries",
-      "description": "Sum of per-process CPU for each attribution class. Every class is a direct sum of its own processes; 'other' is not a residual.",
+      "type": "row",
+      "title": "Is a lane short? (wait for a runner vs. runners available)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "Runners now, by lane",
+      "type": "barchart",
+      "description": "Every self-hosted runner registered to the repository (and the organization, if the poller is given one), as of the poller's latest inventory sample, split by what it is busy doing. A lane with no idle runner while its wait grows is short; a lane with idle runners and a growing wait has a labelling problem.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
-        "w": 24,
-        "h": 9
+        "y": 1,
+        "w": 9,
+        "h": 7
       },
       "targets": [
         {
@@ -58,33 +93,660 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host || ' ' || class AS metric,\n  AVG(cpu_pct) AS value\nFROM class_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
-          "format": "time_series",
+          "rawSql": "WITH latest_ts AS (\n  SELECT MAX(ts) AS max_ts FROM runner_state\n),\nlatest AS (\n  SELECT rs.lane, rs.state\n  FROM runner_state rs, latest_ts\n  WHERE rs.ts = latest_ts.max_ts AND rs.lane <> '' AND rs.lane IN ($lane)\n)\nSELECT\n  lane,\n  SUM(CASE WHEN state = 'busy' THEN 1 ELSE 0 END) AS busy,\n  SUM(CASE WHEN state = 'idle' THEN 1 ELSE 0 END) AS idle,\n  SUM(CASE WHEN state = 'offline' THEN 1 ELSE 0 END) AS offline\nFROM latest\nGROUP BY lane\nORDER BY lane",
+          "format": "table",
           "editorMode": "code"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent"
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "axisPlacement": "hidden"
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "busy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "idle"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#0ca30c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "offline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8e8e8e"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "stacking": "normal",
+        "xField": "lane",
+        "showValue": "always",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Median wait for a runner (selected range), by lane",
+      "type": "stat",
+      "description": "Median queue_wait_seconds of the lane's jobs created in the range: the time between a job becoming eligible (its last dependency finished, or its creation for an entry-point job) and a runner picking it up. This is the purchasing number: cross it with the runner counts on the left. Colour bands are defaults (5 min, 15 min), not a measured service level.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 9,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  lane,\n  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY queue_wait_seconds) AS p50_wait\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY lane\nORDER BY lane",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "displayName": "${__data.fields.lane}",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 300,
+                "color": "#fab219"
+              },
+              {
+                "value": 900,
+                "color": "#d03b3b"
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^p50_wait$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "justifyMode": "center",
+        "wideLayout": true
+      }
     },
     {
-      "id": 2,
-      "title": "Host CPU %",
+      "id": 4,
+      "title": "Wait measured",
+      "type": "stat",
+      "description": "Share of the lanes' jobs in the range whose queue wait could be measured. Below 100 %, some jobs could not be matched to their workflow file (see tools/fleet/workflow_graph.py), and the wait figures cover only the rest.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT 100.0 * COUNT(queue_wait_seconds) / GREATEST(COUNT(*), 1) AS coverage\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane)",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "#d03b3b"
+              },
+              {
+                "value": 80,
+                "color": "#fab219"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Inventory age",
+      "type": "stat",
+      "description": "How old the runner inventory on the left is. The poller refreshes it every cycle (10 min by default); an age well past that means the poller is down or its token cannot list runners.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT EXTRACT(EPOCH FROM (NOW() - MAX(ts))) AS age FROM runner_state",
+          "format": "table",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1800,
+                "color": "#fab219"
+              },
+              {
+                "value": 3600,
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "noValue": "no inventory"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Wait for a runner, by lane",
       "type": "timeseries",
-      "description": "The host's own CPU counter (top / /proc/stat), independent of the per-process sums above.",
+      "description": "Mean queue_wait_seconds of jobs created in each hour, per lane. Only jobs whose dependency graph was resolved contribute (see 'Wait measured'). A sustained rise here, on a lane whose runners below are all busy, is the signal to add hardware to that lane.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 8,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  lane AS metric,\n  AVG(queue_wait_seconds) AS value\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1h"
+    },
+    {
+      "id": 7,
+      "title": "Jobs running vs. runners online \u2014 $lane",
+      "type": "timeseries",
+      "description": "Jobs of this lane executing at each moment (from GitHub's job start/finish times), against the number of the lane's runners that were online (dashed, from the inventory; only available from when the poller started recording it). Running pinned to the dashed line is a saturated lane.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
         "w": 12,
         "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  b.t AS time,\n  'running' AS metric,\n  COUNT(j.job_id) AS value\nFROM generate_series($__timeFrom()::timestamptz, $__timeTo()::timestamptz,\n                     ($__interval_ms::text || ' milliseconds')::interval) AS b(t)\nLEFT JOIN job_event j\n  ON j.lane = '$lane'\n AND j.started_at IS NOT NULL\n AND j.started_at <= b.t\n AND COALESCE(j.completed_at, NOW()) > b.t\n AND j.started_at <= $__timeTo()::timestamptz\n AND COALESCE(j.completed_at, NOW()) >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  'online' AS metric,\n  COUNT(*)::float / GREATEST(COUNT(DISTINCT ts), 1) AS value\nFROM runner_state\nWHERE $__timeFilter(ts) AND lane = '$lane' AND state <> 'offline'\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto",
+            "decimals": 0
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "running"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "online"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8e8e8e"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "repeat": "lane",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "interval": "5m"
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Is the hardware saturated? (headroom on the selected hosts)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "title": "CPU by class, summed across hosts",
+      "type": "timeseries",
+      "description": "Per-process CPU summed for each attribution class \u2014 CI runner work, FlowTree agent work, and everything else \u2014 then summed across the selected hosts, so 100 % is one fully busy core anywhere in the fleet and the stack's height is total fleet CPU. Every class is a direct sum of its own processes; 'other' is not a residual. Narrow the host variable to see one machine.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  \"time\",\n  class AS metric,\n  SUM(value) AS value\nFROM (\n  SELECT\n    $__timeGroupAlias(ts, $__interval),\n    host,\n    class,\n    AVG(cpu_pct) AS value\n  FROM class_sample\n  WHERE $__timeFilter(ts) AND host IN ($host)\n  GROUP BY 1, 2, 3\n) per_host\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 35,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisPlacement": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runner"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "agent"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "other"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8e8e8e"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Host CPU %",
+      "type": "timeseries",
+      "description": "The host's own CPU counter (top / /proc/stat), as a share of all its cores. Independent of the per-process sums above.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "fleet-db"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 8,
+        "h": 7
       },
       "targets": [
         {
@@ -101,26 +763,74 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent"
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            },
+            "axisPlacement": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "transparent"
+              },
+              {
+                "value": 80,
+                "color": "#fab219"
+              },
+              {
+                "value": 90,
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100
         },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
-      "id": 3,
-      "title": "Host memory used",
+      "id": 11,
+      "title": "Memory used %",
       "type": "timeseries",
-      "description": "Memory in use (MemTotal \u2212 MemAvailable on Linux; hw.memsize \u2212 free pages on macOS).",
+      "description": "Memory in use as a share of the host's total (MemTotal \u2212 MemAvailable on Linux; hw.memsize \u2212 free pages on macOS), so machines of different sizes compare directly. Lines at 80 % and 90 %.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
-        "x": 12,
-        "y": 9,
-        "w": 12,
-        "h": 8
+        "x": 8,
+        "y": 33,
+        "w": 8,
+        "h": 7
       },
       "targets": [
         {
@@ -130,67 +840,176 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host AS metric,\n  AVG(mem_used_mb) AS value\nFROM host_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host AS metric,\n  AVG(100.0 * mem_used_mb / NULLIF(mem_total_mb, 0)) AS value\nFROM host_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
           "format": "time_series",
           "editorMode": "code"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "mbytes"
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            },
+            "axisPlacement": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "transparent"
+              },
+              {
+                "value": 80,
+                "color": "#fab219"
+              },
+              {
+                "value": 90,
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100
         },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
-      "id": 4,
-      "title": "Pre-start latency, entry-point jobs, by executing-runner labels",
+      "id": 12,
+      "title": "Disk used %",
       "type": "timeseries",
-      "description": "started_at \u2212 created_at for jobs with no `needs:` dependency \u2014 where it equals runner-availability wait. Empty until the poller is given a needs resolver (is_entry_point is NULL until then); see the table below for the unrestricted number.",
+      "description": "The runner work volume's usage as a share of its size. Lines at 80 % and 90 %.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
+        "x": 16,
+        "y": 33,
+        "w": 8,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "fleet-db"
+          },
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(ts, $__interval),\n  host AS metric,\n  AVG(100.0 * disk_used_gb / NULLIF(disk_total_gb, 0)) AS value\nFROM host_sample\nWHERE $__timeFilter(ts) AND host IN ($host)\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            },
+            "axisPlacement": "auto"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "transparent"
+              },
+              {
+                "value": 80,
+                "color": "#fab219"
+              },
+              {
+                "value": 90,
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Where does the time go? (selected range)",
+      "collapsed": false,
+      "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 40,
         "w": 24,
-        "h": 8
+        "h": 1
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "fleet-db"
-          },
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '1h'),\n  labels AS metric,\n  AVG(pre_start_latency_seconds) AS value\nFROM job_event\nWHERE $__timeFilter(created_at) AND is_entry_point = 1 AND pre_start_latency_seconds IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1",
-          "format": "time_series",
-          "editorMode": "code"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {}
+      "panels": []
     },
     {
-      "id": 5,
-      "title": "Pre-start latency by executing-runner labels (all jobs in range)",
-      "type": "table",
-      "description": "started_at \u2212 created_at for every job. For a job with `needs:` this includes time blocked on upstream jobs, so it is an upper bound on runner-availability wait. Labels are the executing runner's, not the job's runs-on.",
+      "id": 14,
+      "title": "Runner utilization",
+      "type": "bargauge",
+      "description": "Share of the selected range each runner spent executing jobs (job windows clipped to the range), from GitHub's job records. A lane whose runners all sit high here has no headroom; one runner high and its siblings low points at labels, not hardware.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 41,
         "w": 12,
         "h": 9
       },
@@ -202,29 +1021,71 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  labels,\n  COUNT(pre_start_latency_seconds) AS jobs,\n  ROUND(AVG(pre_start_latency_seconds)::numeric, 1) AS avg_seconds,\n  ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY pre_start_latency_seconds))::numeric, 1) AS p95_seconds,\n  ROUND(MAX(pre_start_latency_seconds)::numeric, 1) AS max_seconds\nFROM job_event\nWHERE $__timeFilter(created_at) AND pre_start_latency_seconds IS NOT NULL\nGROUP BY labels\nORDER BY avg_seconds DESC",
+          "rawSql": "WITH utilization AS (\n  SELECT\n    runner_id,\n    runner_name,\n    lane,\n    ROUND(100 * SUM(EXTRACT(EPOCH FROM (\n        LEAST(COALESCE(completed_at, NOW()), $__timeTo()::timestamptz) - GREATEST(started_at, $__timeFrom()::timestamptz)\n      )))::numeric\n      / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\n  FROM job_event\n  WHERE lane <> '' AND lane IN ($lane) AND runner_name <> ''\n    AND started_at IS NOT NULL\n    AND COALESCE(completed_at, NOW()) >= $__timeFrom()::timestamptz AND started_at <= $__timeTo()::timestamptz\n  GROUP BY runner_id, runner_name, lane\n)\nSELECT\n  runner_name || '  \u00b7  ' || lane ||\n    CASE WHEN COUNT(*) OVER (PARTITION BY runner_name, lane) > 1\n         THEN '  (' || COALESCE(runner_id::text, '?') || ')'\n         ELSE '' END AS runner,\n  utilization_pct\nFROM utilization\nORDER BY 2 DESC",
           "format": "table",
           "editorMode": "code"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "displayName": "${__data.fields.runner}",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "#3987e5"
+              },
+              {
+                "value": 70,
+                "color": "#fab219"
+              },
+              {
+                "value": 90,
+                "color": "#d03b3b"
+              }
+            ]
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "color",
+        "showUnfilled": true,
+        "namePlacement": "left",
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "maxVizHeight": 32,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^utilization_pct$/"
+        }
+      }
     },
     {
-      "id": 6,
-      "title": "Runner busy time (from job windows)",
-      "type": "table",
-      "description": "Sum of [started_at, completed_at] per runner over the selected range, as hours and as a share of the range. Utilization per runner, computed from GitHub's job records rather than host sampling.",
+      "id": 15,
+      "title": "Where CI time goes: hours per step",
+      "type": "barchart",
+      "description": "Total wall-clock hours spent in each workflow step across the lanes' jobs in the range, largest first. If the build step dominates, caching buys more than another runner would.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
       },
       "gridPos": {
         "x": 12,
-        "y": 25,
+        "y": 41,
         "w": 12,
         "h": 9
       },
@@ -236,50 +1097,45 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  runner_name,\n  COUNT(*) AS jobs,\n  ROUND(SUM(EXTRACT(EPOCH FROM (completed_at - started_at)))::numeric / 3600, 2) AS busy_hours,\n  ROUND(100 * SUM(EXTRACT(EPOCH FROM (completed_at - started_at)))::numeric\n        / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\nFROM job_event\nWHERE $__timeFilter(created_at) AND runner_name <> '' AND started_at IS NOT NULL AND completed_at IS NOT NULL\nGROUP BY runner_name\nORDER BY busy_hours DESC",
+          "rawSql": "SELECT\n  s.name AS step,\n  ROUND(SUM(EXTRACT(EPOCH FROM (s.completed_at - s.started_at)))::numeric / 3600, 2) AS total_hours\nFROM job_step s\nJOIN job_event j ON j.job_id = s.job_id\nWHERE $__timeFilter(j.created_at) AND j.lane <> '' AND j.lane IN ($lane)\n  AND s.started_at IS NOT NULL AND s.completed_at IS NOT NULL\nGROUP BY s.name\nORDER BY total_hours DESC\nLIMIT 15",
           "format": "table",
           "editorMode": "code"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {}
-    },
-    {
-      "id": 7,
-      "title": "Where CI time goes: step durations",
-      "type": "table",
-      "description": "Average and total duration per step name across every job in the range. If most wall-clock is in the build step, more runners help less than caching would.",
-      "datasource": {
-        "type": "postgres",
-        "uid": "fleet-db"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 34,
-        "w": 24,
-        "h": 10
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "fleet-db"
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
           },
-          "rawQuery": true,
-          "rawSql": "SELECT\n  s.name AS step,\n  COUNT(*) AS runs,\n  ROUND(AVG(EXTRACT(EPOCH FROM (s.completed_at - s.started_at)))::numeric, 1) AS avg_seconds,\n  ROUND(SUM(EXTRACT(EPOCH FROM (s.completed_at - s.started_at)))::numeric / 3600, 2) AS total_hours\nFROM job_step s\nJOIN job_event j ON j.job_id = s.job_id\nWHERE $__timeFilter(j.created_at) AND s.started_at IS NOT NULL AND s.completed_at IS NOT NULL\nGROUP BY s.name\nORDER BY total_hours DESC\nLIMIT 25",
-          "format": "table",
-          "editorMode": "code"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "axisPlacement": "hidden"
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "orientation": "horizontal",
+        "stacking": "none",
+        "xField": "step",
+        "showValue": "always",
+        "barWidth": 0.7,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     }
   ]
 }

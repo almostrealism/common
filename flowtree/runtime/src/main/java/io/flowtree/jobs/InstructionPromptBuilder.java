@@ -1076,6 +1076,11 @@ public class InstructionPromptBuilder {
             sb.append("what you changed and why.\n\n");
             sb.append("The message must describe the actual work you did — do NOT copy ");
             sb.append("the task description into `commit.txt`, and do NOT leave it empty.\n\n");
+            sb.append("Write it only if you changed files. If you deliberately changed ");
+            sb.append("nothing — you reviewed and found no defect, or you investigated and ");
+            sb.append("only reported — do NOT create `commit.txt`. Its absence is how you ");
+            sb.append("report that there was nothing to commit, and the harness fails a job ");
+            sb.append("that wrote a commit message but produced no changes to go with it.\n\n");
             sb.append("Do NOT attribute authorship of the commit. No `Co-Authored-By` ");
             sb.append("trailer, no \"Generated with\" or \"Created by\" tool credit, no ");
             sb.append("agent name, e-mail address, or product URL — anywhere in the ");

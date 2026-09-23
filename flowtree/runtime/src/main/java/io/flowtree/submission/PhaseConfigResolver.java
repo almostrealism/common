@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 /**
@@ -526,7 +527,7 @@ public final class PhaseConfigResolver {
      * @param body  the raw request body JSON; may be {@code null} or empty
      * @return {@code null} on success; an error message on syntax-validation failure
      */
-    public static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry, String body) {
+    public static String applyToWorkspace(WorkspaceEntry entry, String body) {
         if (entry == null) return null;
         JsonNode root = parseBodyRoot(body);
         if (root == null) return null;

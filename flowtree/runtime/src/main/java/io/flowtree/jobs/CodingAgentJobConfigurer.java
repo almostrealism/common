@@ -97,6 +97,7 @@ final class CodingAgentJobConfigurer {
             job.setArManagerToken(factory.getArManagerToken());
         }
         job.setDispatchCapable(factory.isDispatchCapable());
+        job.setBypassAgentPermissionPrompts(factory.isBypassAgentPermissionPrompts());
         if (factory.getPushedToolsConfig() != null) {
             job.setPushedToolsConfig(factory.getPushedToolsConfig());
         } else {

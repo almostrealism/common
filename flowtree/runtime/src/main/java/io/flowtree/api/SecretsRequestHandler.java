@@ -45,6 +45,7 @@ import javax.crypto.spec.SecretKeySpec;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
+import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.github.GitHubProxyHandler;
 
@@ -77,7 +78,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
     private String sharedSecret;
 
     /** In-memory secrets index, keyed by workspace ID then secret name. */
-    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache =
+    private Map<String, Map<String, WorkspaceSecretEntry>> secretsCache =
             new HashMap<>();
 
     /**
@@ -109,7 +110,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
      * @param cache workspace-ID → (secret-name → entry) map
      */
     public void setSecretsCache(
-            Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache) {
+            Map<String, Map<String, WorkspaceSecretEntry>> cache) {
         this.secretsCache = cache != null ? cache : new HashMap<>();
     }
 
@@ -154,10 +155,10 @@ public class SecretsRequestHandler implements ConsoleFeatures {
                 || secretName == null || secretName.isEmpty()) {
             return null;
         }
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+        Map<String, WorkspaceSecretEntry> wsSecrets =
                 secretsCache.get(workspaceId);
         if (wsSecrets == null) return null;
-        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        WorkspaceSecretEntry entry = wsSecrets.get(secretName);
         if (entry == null) return null;
         Map<String, String> payload;
         try {
@@ -406,7 +407,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
      * @return JSON response with {@code {"names":[...]}}
      */
     private Response handleListSecretNames(String workspaceId) {
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+        Map<String, WorkspaceSecretEntry> wsSecrets =
                 secretsCache.getOrDefault(workspaceId, new HashMap<>());
         StringBuilder json = new StringBuilder("{\"names\":[");
         boolean first = true;
@@ -430,7 +431,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
      */
     private Response handleRetrieveSecret(
             String secretName, String workspaceId, String workstreamId) {
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+        Map<String, WorkspaceSecretEntry> wsSecrets =
                 secretsCache.get(workspaceId);
         if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
             log("event=secret_retrieve secret=" + secretName
@@ -442,7 +443,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
                             + JsonFieldExtractor.escapeJson(secretName) + "\"}");
         }
 
-        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        WorkspaceSecretEntry entry = wsSecrets.get(secretName);
         Map<String, String> payload;
         try {
             payload = readSecretPayload(entry.getFile());
@@ -500,7 +501,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
             return error.respond("Invalid JSON payload: " + e.getMessage());
         }
 
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+        Map<String, WorkspaceSecretEntry> wsSecrets =
                 secretsCache.get(workspaceId);
         if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
@@ -508,7 +509,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
                     "{\"ok\":false,\"error\":\"Secret not declared in config: "
                             + JsonFieldExtractor.escapeJson(secretName) + "\"}");
         }
-        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        WorkspaceSecretEntry entry = wsSecrets.get(secretName);
         try {
             writeSecretPayload(entry.getFile(), payload);
         } catch (IOException e) {
@@ -530,7 +531,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
      * @return JSON response
      */
     private Response handleDeleteSecret(String secretName, String workspaceId) {
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+        Map<String, WorkspaceSecretEntry> wsSecrets =
                 secretsCache.get(workspaceId);
         if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
@@ -538,7 +539,7 @@ public class SecretsRequestHandler implements ConsoleFeatures {
                     "{\"ok\":false,\"error\":\"Secret not found: "
                             + JsonFieldExtractor.escapeJson(secretName) + "\"}");
         }
-        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        WorkspaceSecretEntry entry = wsSecrets.get(secretName);
         try {
             Files.deleteIfExists(Path.of(entry.getFile()));
         } catch (IOException e) {
