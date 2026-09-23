@@ -53,8 +53,12 @@ public class PostCompletionCommandValidator {
 	/** Maximum wall-clock budget for a post-completion / shell-job command: 2400s (40 minutes). */
 	public static final int MAX_TIMEOUT_SECONDS = 2400;
 
-	/** Matches an AR_TEST_GROUP/AR_TEST_GROUPS reference anywhere in the command. */
-	private static final Pattern AR_TEST_GROUP = Pattern.compile("\\bAR_TEST_GROUPS?\\b");
+	/** Matches an AR_TEST_GROUP/AR_TEST_GROUPS reference anywhere in the command. No leading
+	 * word-boundary assertion: the real shard invocation shape is {@code -DAR_TEST_GROUP=2},
+	 * where "AR_TEST_GROUP" is glued directly to the "-D" property prefix with no boundary
+	 * between the "D" and the "A" (both word characters) -- a leading {@code \\b} would never
+	 * match that form and would leave the actual incident shape undetected. */
+	private static final Pattern AR_TEST_GROUP = Pattern.compile("AR_TEST_GROUPS?\\b");
 
 	/** Matches a whole argument token that disables test execution. Matched per-argument via
 	 * {@link Matcher#matches()}, not as a substring search, so {@code -DskipTests=false} (which
@@ -88,6 +92,16 @@ public class PostCompletionCommandValidator {
 	private static final List<String> CMD_PREFIXES = Arrays.asList(
 			"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice");
 
+	/** {@code env} options that consume the following token as their own operand (unless given in
+	 * glued {@code --opt=value} form) rather than being a bare flag -- e.g. {@code env -u FOO mvn
+	 * test} unsets FOO before running {@code mvn}, so "FOO" must not be mistaken for the wrapped
+	 * command's own first token. */
+	private static final List<String> ENV_OPTIONS_WITH_OPERAND = Arrays.asList(
+			"-u", "--unset", "-C", "--chdir", "-S", "--split-string");
+
+	/** Matches a backtick command substitution, capturing its inner text. */
+	private static final Pattern BACKTICK_SUBSTITUTION = Pattern.compile("`([^`]*)`");
+
 	/** The shell command being validated. */
 	private final String command;
 
@@ -114,9 +128,7 @@ public class PostCompletionCommandValidator {
 					+ truncate(command.trim(), 200) + "\". CI-shard partitioning is reserved "
 					+ "for the CI workflow matrix; agents and job submitters must never run a shard.");
 		}
-		for (List<String> segment : shellSegments()) {
-			validateSegment(segment);
-		}
+		validateText(command);
 		return this;
 	}
 
@@ -124,19 +136,21 @@ public class PostCompletionCommandValidator {
 	 * Validates a single simple-command token list, first unwrapping a leading
 	 * chain of command-prefix wrappers ({@code env VAR=val ...}, {@code sudo},
 	 * {@code command}, {@code exec}, ...) and -- when the segment is a shell
-	 * interpreter invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"} --
-	 * recursing into the inline script's own segments instead of checking the
-	 * interpreter invocation itself. Without this, {@code env mvn test},
-	 * {@code command mvn test}, or {@code sh -c 'mvn test'} would see a first
-	 * token other than {@code mvn}/{@code pytest} and be waved through unchecked.
+	 * interpreter invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"} or
+	 * {@code eval <words...>} -- recursing into the inline script's own text
+	 * instead of checking the interpreter/eval invocation itself. Without this,
+	 * {@code env mvn test}, {@code command mvn test}, {@code sh -c 'mvn test'},
+	 * or {@code eval mvn test} would see a first token other than {@code mvn}/
+	 * {@code pytest} and be waved through unchecked.
 	 */
 	private void validateSegment(List<String> tokens) {
 		List<String> unwrapped = unwrapCommandPrefixes(tokens);
 		String script = shellDashCScript(unwrapped);
+		if (script == null) {
+			script = evalScript(unwrapped);
+		}
 		if (script != null) {
-			for (List<String> inner : segmentsForText(script)) {
-				validateSegment(inner);
-			}
+			validateText(script);
 			return;
 		}
 		String reason = mavenSegmentViolation(unwrapped);
@@ -151,20 +165,117 @@ public class PostCompletionCommandValidator {
 	}
 
 	/**
+	 * Validates {@code text} as a shell command string: its own simple-command
+	 * segments plus the contents of any backtick command substitution appearing
+	 * anywhere in it. A substitution executes even when the outer command's own
+	 * first token (e.g. {@code echo}) is not itself Maven or pytest -- {@code
+	 * echo `mvn test -pl engine/utils`} is tokenized as an {@code echo} segment,
+	 * but the shell still runs the embedded {@code mvn test} to produce echo's
+	 * argument.
+	 */
+	private void validateText(String text) {
+		for (List<String> inner : segmentsForText(text)) {
+			validateSegment(inner);
+		}
+		for (String substitution : commandSubstitutions(text)) {
+			validateText(substitution);
+		}
+	}
+
+	/**
 	 * Strips a leading {@code env} invocation's {@code VAR=value} assignments
 	 * and flags (e.g. {@code -i}), returning the wrapped command's own tokens.
 	 * Returns {@code tokens} unchanged when it is not an {@code env} invocation.
+	 *
+	 * <p>A flag in {@link #ENV_OPTIONS_WITH_OPERAND} (e.g. {@code -u}) consumes
+	 * the next token as its own operand unless given in glued {@code
+	 * --opt=value} form -- without this, {@code env -u FOO mvn test} would
+	 * treat {@code FOO} as the wrapped command's own first token instead of
+	 * skipping it, and never recognize {@code mvn} at all.</p>
 	 */
 	private List<String> unwrapEnv(List<String> tokens) {
 		if (tokens.isEmpty() || !"env".equals(baseName(tokens.get(0)))) {
 			return tokens;
 		}
 		int i = 1;
-		while (i < tokens.size()
-				&& (ENV_ASSIGNMENT.matcher(tokens.get(i)).matches() || tokens.get(i).startsWith("-"))) {
+		while (i < tokens.size()) {
+			String tok = tokens.get(i);
+			if (ENV_ASSIGNMENT.matcher(tok).matches()) {
+				i++;
+				continue;
+			}
+			if (!tok.startsWith("-")) {
+				break;
+			}
 			i++;
+			if (ENV_OPTIONS_WITH_OPERAND.contains(tok) && !tok.contains("=") && i < tokens.size()) {
+				i++;
+			}
 		}
 		return tokens.subList(i, tokens.size());
+	}
+
+	/**
+	 * Returns the inline script text when {@code tokens} is {@code eval
+	 * <words...>}, or {@code null} when it is not that shape. Mirrors the
+	 * shell's own behaviour of concatenating eval's arguments with spaces and
+	 * re-parsing the result as a new command line -- without this, {@code eval
+	 * mvn test -pl engine/utils} would see a first token of {@code eval} (not
+	 * {@code mvn}) and be waved through unchecked.
+	 */
+	private String evalScript(List<String> tokens) {
+		if (tokens.isEmpty() || !"eval".equals(baseName(tokens.get(0))) || tokens.size() < 2) {
+			return null;
+		}
+		return String.join(" ", tokens.subList(1, tokens.size()));
+	}
+
+	/**
+	 * Extracts the inner command text of every backtick command substitution
+	 * appearing anywhere in {@code text}.
+	 */
+	private List<String> commandSubstitutions(String text) {
+		List<String> results = new ArrayList<>();
+		Matcher matcher = BACKTICK_SUBSTITUTION.matcher(text);
+		while (matcher.find()) {
+			results.add(matcher.group(1));
+		}
+		results.addAll(dollarParenSubstitutions(text));
+		return results;
+	}
+
+	/**
+	 * Extracts the inner command text of every {@code $(...)} command
+	 * substitution in {@code text}, honoring balanced parentheses so a nested
+	 * {@code $( ... $(...) ... )} is not truncated at the first closing paren.
+	 */
+	private List<String> dollarParenSubstitutions(String text) {
+		List<String> results = new ArrayList<>();
+		int n = text.length();
+		int i = 0;
+		while (i < n) {
+			if (text.charAt(i) == '$' && i + 1 < n && text.charAt(i + 1) == '(') {
+				int depth = 1;
+				int j = i + 2;
+				int start = j;
+				while (j < n && depth > 0) {
+					char c = text.charAt(j);
+					if (c == '(') {
+						depth++;
+					} else if (c == ')') {
+						depth--;
+					}
+					j++;
+				}
+				if (depth == 0) {
+					results.add(text.substring(start, j - 1));
+					i = j;
+					continue;
+				}
+			}
+			i++;
+		}
+		return results;
 	}
 
 	/**
@@ -344,17 +455,6 @@ public class PostCompletionCommandValidator {
 		return "pytest command has no explicit node id (file.py::test_name): \""
 				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "
 				+ "explicit node ids, one test per invocation.";
-	}
-
-	/**
-	 * Splits {@link #command} into simple-command token lists, one per
-	 * {@code &&}/{@code ;}/{@code |}/newline-separated segment. A best-effort
-	 * whitespace/quote tokenizer -- not a full shell grammar -- since the
-	 * only goal is recognising an {@code mvn}/{@code pytest} invocation and
-	 * its flags, not executing the command.
-	 */
-	private List<List<String>> shellSegments() {
-		return segmentsForText(command);
 	}
 
 	/**

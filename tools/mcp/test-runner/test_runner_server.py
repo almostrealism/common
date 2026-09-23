@@ -531,7 +531,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": ["FooTest#bar"],
                 "timeout_minutes": 60,
             })
         mock_start.assert_not_called()
@@ -543,7 +543,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
                 patch.object(server.build_tree, "in_flight", return_value=[]):
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": ["FooTest#bar"],
                 "timeout_minutes": server.MAX_TIMEOUT_MINUTES,
             })
         mock_start.assert_called_once()
@@ -552,7 +552,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
     def test_default_timeout_is_accepted(self):
         with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
                 patch.object(server.build_tree, "in_flight", return_value=[]):
-            response = self._dispatch({"module": "engine/utils", "test_classes": ["FooTest"]})
+            response = self._dispatch({"module": "engine/utils", "test_classes": ["FooTest#bar"]})
         mock_start.assert_called_once()
         self.assertEqual("run-1", response["run_id"])
 
@@ -564,7 +564,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": ["FooTest#bar"],
                 "timeout_minutes": 0,
             })
         mock_start.assert_not_called()
@@ -575,7 +575,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": ["FooTest#bar"],
                 "timeout_minutes": -5,
             })
         mock_start.assert_not_called()
@@ -609,7 +609,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
                 patch.object(server.build_tree, "in_flight", return_value=[]):
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_methods": ["FooTest#bar"],
+                "test_methods": [{"class": "FooTest", "method": "bar"}],
             })
         mock_start.assert_called_once()
         self.assertEqual("run-1", response["run_id"])
@@ -622,7 +622,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest", "BarTest"],
+                "test_classes": ["FooTest#a", "BarTest#b"],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
@@ -632,7 +632,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_methods": ["FooTest#a", "FooTest#b"],
+                "test_methods": [{"class": "FooTest", "method": "a"}, {"class": "FooTest", "method": "b"}],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
@@ -642,12 +642,84 @@ class StartTestRunLimitsTest(unittest.TestCase):
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
-                "test_methods": ["BarTest#baz"],
+                "test_classes": ["FooTest#a"],
+                "test_methods": [{"class": "BarTest", "method": "baz"}],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
         self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_bare_test_classes_entry_is_rejected(self):
+        # A bare class name with no "#method" still runs every test in that
+        # class via "-Dtest=FooTest" -- the same bare-class breadth the
+        # manager and controller validators reject.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("#method selector", response["error"])
+
+    def test_bare_test_classes_entry_with_jmx_monitoring_is_accepted(self):
+        # build-vm-crash-prompt.sh generates exactly this shape to
+        # investigate a JVM crash: Maven Surefire never produced a report
+        # for the crashed run, so there is no method to attribute the
+        # crash to and a whole-class run is the only reproducible signal.
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "jmx_monitoring": True,
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_test_methods_entry_missing_method_field_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("class", response["error"])
+
+    def test_test_methods_entry_as_bare_string_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": ["FooTest#bar"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+
+    def test_jvm_args_with_ar_test_group_is_rejected(self):
+        # jvm_args flows straight into Maven's argLine, so a caller could set
+        # the same TestDepthRule shard properties test_group/test_groups are
+        # rejected for, just through a different argument.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "jvm_args": ["-DAR_TEST_GROUP=2", "-DAR_TEST_GROUPS=8"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("AR_TEST_GROUP", response["error"])
+
+    def test_jvm_args_without_ar_test_group_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "jvm_args": ["-Xmx4g"],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
 
 
 class InvocationReportCopyTest(unittest.TestCase):

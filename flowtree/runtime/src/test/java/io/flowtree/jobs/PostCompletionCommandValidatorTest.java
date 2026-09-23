@@ -139,6 +139,21 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(String.join(" ", violations).contains("AR_TEST_GROUP"));
 	}
 
+	/** The real shard invocation shape glues "AR_TEST_GROUP" directly to the "-D" property
+	 * prefix with no boundary between "D" and "A" (both word characters), as documented in
+	 * TestDepthRule's own javadoc ("mvn test -DAR_TEST_GROUP=0 -DAR_TEST_GROUPS=4"). A regex
+	 * requiring a LEADING word boundary would never match this. Uses a phase outside
+	 * TEST_RUNNING_PHASES and no -Dtest value, so the AR_TEST_GROUP check is the only
+	 * possible source of a violation -- not a message that happens to embed the raw command
+	 * text, which is how the sibling tests above kept passing despite that bug. */
+	@Test(timeout = 10000)
+	public void arTestGroupGluedToDashDPrefixIsDetectedOnItsOwn() {
+		List<String> violations = violationsFor("mvn compile -DAR_TEST_GROUP=2");
+		assertFalse("a bare -DAR_TEST_GROUP=2 with no other broad-run signal must still be caught",
+				violations.isEmpty());
+		assertTrue(violations.get(0).contains("AR_TEST_GROUP"));
+	}
+
 	/** pytest against a directory (no node id) must be rejected. */
 	@Test(timeout = 10000)
 	public void pytestOnDirectoryRejected() {
@@ -296,6 +311,62 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void newlineSeparatedNarrowCommandsAccepted() {
 		assertTrue(violationsFor(
 				"mvn test -Dtest=Foo#bar\npytest tests/test_foo.py::test_bar").isEmpty());
+	}
+
+	/** "env -u FOO" consumes "FOO" as its own operand -- without handling this, "FOO"
+	 * would be mistaken for the wrapped command's own first token instead of "mvn". */
+	@Test(timeout = 10000)
+	public void envWithUnsetOptionOperandWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env -u FOO mvn test -pl engine/utils");
+		assertFalse("env -u FOO mvn test must still be rejected like a direct mvn test",
+				violations.isEmpty());
+	}
+
+	/** "env -u FOO" wrapping a Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void envWithUnsetOptionOperandWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"env -u FOO mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo").isEmpty());
+	}
+
+	/** "eval" re-parses its concatenated arguments as a new command line -- it must not
+	 * hide the wrapped mvn invocation either. */
+	@Test(timeout = 10000)
+	public void evalWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("eval mvn test -pl engine/utils");
+		assertFalse("eval mvn test must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "eval" wrapping a Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void evalWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"eval mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo").isEmpty());
+	}
+
+	/** A backtick command substitution executes even when the outer command's own first
+	 * token (here "echo") is not itself Maven or pytest -- the shell still runs the
+	 * embedded mvn command to produce echo's argument. */
+	@Test(timeout = 10000)
+	public void backtickCommandSubstitutionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("echo `mvn test -pl engine/utils`");
+		assertFalse("a backtick-wrapped mvn test must be rejected even though the outer "
+				+ "command is \"echo\"", violations.isEmpty());
+	}
+
+	/** A $(...) command substitution must be detected the same way as a backtick one. */
+	@Test(timeout = 10000)
+	public void dollarParenCommandSubstitutionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("echo $(mvn test -pl engine/utils)");
+		assertFalse("a $(...)-wrapped mvn test must be rejected even though the outer "
+				+ "command is \"echo\"", violations.isEmpty());
+	}
+
+	/** A backtick command substitution with an explicit selector inside is still accepted. */
+	@Test(timeout = 10000)
+	public void backtickCommandSubstitutionWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"echo `mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo`").isEmpty());
 	}
 
 	// -- Timeout ceiling --------------------------------------------------------

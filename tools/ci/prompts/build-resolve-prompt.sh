@@ -53,7 +53,7 @@ job is to fix the production code so these tests pass again.**
 **Claim the tests "pass individually" as proof of nothing.** CI may run these tests
 together with others (shared state, ordering, resource contention), so a pass in
 isolation does not by itself rule out an ordering-dependent cause. Reproduce and
-verify with the exact test_classes commands listed below; if you have reason to
+verify with the exact test_methods commands listed below; if you have reason to
 believe the failure is order-dependent, say so explicitly rather than running the
 whole module suite yourself -- that investigation belongs to CI.
 
@@ -224,8 +224,8 @@ These tests PASS on origin/master. They FAIL on this branch. The branch changes 
 
 You MUST reproduce the failure locally before attempting a fix and after applying
 your fix. Use the MCP test runner with these exact commands -- one invocation per
-failing class via \`test_classes\`, never a bare module run and never several
-classes grouped into one invocation:
+failing method via \`test_methods\`, never a bare module run and never a bare
+class selector (which would run every method in that class):
 ${CI_COMMANDS}
 
 Run only the specific failing test(s), one at a time. Do NOT run the module's whole

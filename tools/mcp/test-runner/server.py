@@ -45,6 +45,7 @@ import reports  # noqa: E402
 import run_store  # noqa: E402
 import timing  # noqa: E402
 import fork_discovery  # noqa: E402
+from run_validation import validate_start_test_run_arguments, ValidationError  # noqa: E402
 
 # The target Maven project. Re-exported here because the MCP dispatch below
 # resolves the caller's `project` argument, and because tests and other
@@ -1248,66 +1249,18 @@ async def call_tool(name: str, arguments: dict):
     """Handle tool calls."""
     try:
         if name == "start_test_run":
-            # test_group reproduces a whole CI shard (every class hashing to
-            # the group, sharing one JVM) -- exactly the broad run agents and
-            # job submitters must never start. There is no operator bypass:
-            # see tools/mcp/manager/test_execution_limits.py for the same
-            # rule enforced at job submission.
-            if arguments.get("test_group") is not None or arguments.get("test_groups") is not None:
-                return [TextContent(type="text", text=json.dumps({
-                    "error": (
-                        "test_group/test_groups is not permitted: it reproduces a "
-                        "whole CI shard (every test class hashing to the group, run "
-                        "together in one JVM), which agents and job submitters "
-                        "may never run. Pass test_classes or test_methods to "
-                        "select the specific test(s) you need instead."
-                    ),
-                }, indent=2))]
-            timeout_minutes = arguments.get("timeout_minutes", DEFAULT_TIMEOUT)
-            if timeout_minutes is None:
-                timeout_minutes = DEFAULT_TIMEOUT
-            if timeout_minutes <= 0:
-                return [TextContent(type="text", text=json.dumps({
-                    "error": (
-                        f"timeout_minutes={timeout_minutes} must be positive. "
-                        "A zero or negative value arms no timer downstream, "
-                        "silently bypassing the 40-minute ceiling this check "
-                        "exists to enforce."
-                    ),
-                }, indent=2))]
-            if timeout_minutes > MAX_TIMEOUT_MINUTES:
-                return [TextContent(type="text", text=json.dumps({
-                    "error": (
-                        f"timeout_minutes={timeout_minutes} exceeds the maximum "
-                        f"of {MAX_TIMEOUT_MINUTES} minutes (2400s). Broad "
-                        "verification belongs to CI; a test invocation here "
-                        "must be narrow and fast."
-                    ),
-                }, indent=2))]
-            test_classes = arguments.get("test_classes", [])
-            test_methods = arguments.get("test_methods", [])
-            if not test_classes and not test_methods:
-                return [TextContent(type="text", text=json.dumps({
-                    "error": (
-                        "test_classes or test_methods is required. With "
-                        "neither set, this call falls through to "
-                        "'mvn test -pl <module>', running the module's whole "
-                        "test suite -- exactly the broad run agents and job "
-                        "submitters may never start. Pass test_classes or "
-                        "test_methods to select the specific test(s) you need."
-                    ),
-                }, indent=2))]
-            if len(test_classes) + len(test_methods) > 1:
-                return [TextContent(type="text", text=json.dumps({
-                    "error": (
-                        "At most ONE test per invocation is permitted: "
-                        f"got {len(test_classes)} test_classes and "
-                        f"{len(test_methods)} test_methods. A -Dtest= value "
-                        "listing several classes/methods runs them together "
-                        "in one JVM, which agents and job submitters may "
-                        "never do. Call start_test_run once per test."
-                    ),
-                }, indent=2))]
+            # Enforces the "no broad test runs" rule -- see run_validation.py
+            # for the checks and tools/mcp/manager/test_execution_limits.py
+            # for the sibling rule enforced at job submission. No bypass.
+            try:
+                normalized = validate_start_test_run_arguments(
+                    arguments, DEFAULT_TIMEOUT, MAX_TIMEOUT_MINUTES)
+            except ValidationError as exc:
+                return [TextContent(type="text", text=json.dumps({"error": exc.error}, indent=2))]
+            timeout_minutes = normalized["timeout_minutes"]
+            test_classes = normalized["test_classes"]
+            test_methods = normalized["test_methods"]
+            jvm_args = normalized["jvm_args"]
             config = RunConfig(
                 depth=arguments.get("depth"),
                 project=arguments.get("project", ""),
@@ -1315,7 +1268,7 @@ async def call_tool(name: str, arguments: dict):
                 test_classes=test_classes,
                 test_methods=test_methods,
                 timeout_minutes=timeout_minutes,
-                jvm_args=arguments.get("jvm_args", []),
+                jvm_args=jvm_args,
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
                 jfr_settings=arguments.get("jfr_settings", "default"),

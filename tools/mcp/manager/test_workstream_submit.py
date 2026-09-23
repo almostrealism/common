@@ -101,11 +101,18 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
     def test_submit_shell_job_type(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-s1", "jobType": "shell"}
+        # "mvn -q test" (no -pl, no -Dtest selector) is exactly the broad run
+        # test_execution_limits.py's validation now rejects for a shell job's
+        # command; use a narrow, policy-compliant command so this test still
+        # exercises "a shell job's command is forwarded to the payload"
+        # rather than the command-validation rejection path (covered by its
+        # own tests elsewhere in this file).
         result = server.workstream_submit_task(
-            job_type="shell", command="mvn -q test", workstream_id="ws-test")
+            job_type="shell", command="mvn -pl engine/utils test -Dtest=FooTest#testFoo",
+            workstream_id="ws-test")
         payload = mock_post.call_args[0][1]
         self.assertEqual(payload["jobType"], "shell")
-        self.assertEqual(payload["command"], "mvn -q test")
+        self.assertEqual(payload["command"], "mvn -pl engine/utils test -Dtest=FooTest#testFoo")
         self.assertNotIn("prompt", payload)
         self.assertTrue(result["ok"])
 

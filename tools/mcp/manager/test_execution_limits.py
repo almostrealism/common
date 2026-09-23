@@ -44,11 +44,24 @@ _SKIP_TESTS_PATTERN = re.compile(
 # past "test" in the default lifecycle and carry the same risk.
 _MVN_TEST_RUNNING_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
 
-_AR_TEST_GROUP_PATTERN = re.compile(r"\bAR_TEST_GROUPS?\b")
+# No leading word-boundary assertion: the real shard invocation shape is
+# "-DAR_TEST_GROUP=2", where "AR_TEST_GROUP" is glued directly to the "-D"
+# property prefix with no boundary between "D" and "A" (both word
+# characters) -- a leading \b would never match that form and would leave
+# the actual incident shape undetected.
+_AR_TEST_GROUP_PATTERN = re.compile(r"AR_TEST_GROUPS?\b")
 
 _ENV_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 
 _SHELL_INTERPRETERS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+# `env` options that consume the following token as their own operand (unless
+# given in glued `--opt=value` form) rather than being a bare flag -- e.g.
+# `env -u FOO mvn test` unsets FOO before running `mvn`, so "FOO" must not be
+# mistaken for the wrapped command's own first token.
+_ENV_OPTIONS_WITH_OPERAND = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}
+
+_BACKTICK_SUBSTITUTION_PATTERN = re.compile(r"`([^`]*)`")
 
 # Command-prefix wrappers that pass their remaining arguments through to the
 # real command unchanged: a shell builtin/wrapper such as ``command mvn
@@ -129,13 +142,26 @@ def _line_segments(line: str) -> list:
 def _unwrap_env(tokens: list) -> list:
     """Strips a leading ``env`` invocation's ``VAR=value`` assignments and
     flags (e.g. ``-i``), returning the wrapped command's own tokens
-    unchanged when ``tokens`` is not an ``env`` invocation."""
+    unchanged when ``tokens`` is not an ``env`` invocation.
+
+    A flag in ``_ENV_OPTIONS_WITH_OPERAND`` (e.g. ``-u``) consumes the next
+    token as its own operand unless given in glued ``--opt=value`` form --
+    without this, ``env -u FOO mvn test`` would treat ``FOO`` as the wrapped
+    command's own first token instead of skipping it, and never recognize
+    ``mvn`` at all."""
     if not tokens or tokens[0].rsplit("/", 1)[-1] != "env":
         return tokens
     i = 1
-    while i < len(tokens) and (
-            _ENV_ASSIGNMENT_PATTERN.match(tokens[i]) or tokens[i].startswith("-")):
+    while i < len(tokens):
+        tok = tokens[i]
+        if _ENV_ASSIGNMENT_PATTERN.match(tok):
+            i += 1
+            continue
+        if not tok.startswith("-"):
+            break
         i += 1
+        if tok in _ENV_OPTIONS_WITH_OPERAND and "=" not in tok and i < len(tokens):
+            i += 1
     return tokens[i:]
 
 
@@ -189,23 +215,67 @@ def _shell_dash_c_script(tokens: list):
     return tokens[2]
 
 
+def _eval_script(tokens: list):
+    """Returns the inline script text when ``tokens`` is ``eval <words...>``,
+    or ``None`` when it is not that shape. Mirrors the shell's own behaviour
+    of concatenating eval's arguments with spaces and re-parsing the result
+    as a new command line -- without this, ``eval mvn test -pl
+    engine/utils`` would see a first token of ``eval`` (not ``mvn``) and be
+    waved through unchecked."""
+    if not tokens or tokens[0].rsplit("/", 1)[-1] != "eval" or len(tokens) < 2:
+        return None
+    return " ".join(tokens[1:])
+
+
+def _dollar_paren_substitutions(text: str) -> list:
+    """Extract the inner command text of every ``$(...)`` command
+    substitution in ``text``, honoring balanced parentheses so a nested
+    ``$( ... $(...) ... )`` is not truncated at the first closing paren."""
+    results = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "$" and i + 1 < n and text[i + 1] == "(":
+            depth = 1
+            j = i + 2
+            start = j
+            while j < n and depth > 0:
+                if text[j] == "(":
+                    depth += 1
+                elif text[j] == ")":
+                    depth -= 1
+                j += 1
+            if depth == 0:
+                results.append(text[start:j - 1])
+                i = j
+                continue
+        i += 1
+    return results
+
+
+def _command_substitutions(text: str) -> list:
+    """Extract the inner command text of every backtick or ``$(...)``
+    command substitution appearing anywhere in ``text``."""
+    return _BACKTICK_SUBSTITUTION_PATTERN.findall(text) + _dollar_paren_substitutions(text)
+
+
 def _segment_violations(tokens: list) -> list:
     """Return violation reasons for a single shell segment, first unwrapping
     a leading chain of command-prefix wrappers (``env VAR=val ...``,
     ``sudo``, ``command``, ``exec``, ...) and -- when the segment is a shell
-    interpreter invoked as ``sh|bash|zsh|dash|ksh -c "<script>"`` -- recursing
-    into the inline script's own segments instead of checking the
-    interpreter invocation itself. Without this, ``env mvn test``,
-    ``command mvn test``, or ``sh -c 'mvn test'`` would see a first token
-    other than ``mvn``/``pytest`` and be waved through unchecked.
+    interpreter invoked as ``sh|bash|zsh|dash|ksh -c "<script>"`` or ``eval
+    <words...>`` -- recursing into the inline script's own text instead of
+    checking the interpreter/eval invocation itself. Without this, ``env
+    mvn test``, ``command mvn test``, ``sh -c 'mvn test'``, or ``eval mvn
+    test`` would see a first token other than ``mvn``/``pytest`` and be
+    waved through unchecked.
     """
     unwrapped = _unwrap_command_prefixes(tokens)
     script = _shell_dash_c_script(unwrapped)
+    if script is None:
+        script = _eval_script(unwrapped)
     if script is not None:
-        violations = []
-        for inner in _shell_segments(script):
-            violations.extend(_segment_violations(inner))
-        return violations
+        return _text_violations(script)
     reason = _maven_segment_violation(unwrapped)
     if reason:
         return [reason]
@@ -213,6 +283,27 @@ def _segment_violations(tokens: list) -> list:
     if reason:
         return [reason]
     return []
+
+
+def _text_violations(text: str) -> list:
+    """Validate a shell command string: its own simple-command segments plus
+    the contents of any backtick/``$(...)`` command substitution appearing
+    anywhere in it.
+
+    A substitution executes even when the outer command's own first token
+    (e.g. ``echo``) is not itself Maven or pytest -- ``echo \\`mvn test -pl
+    engine/utils\\``` is tokenized as an ``echo`` segment, but the shell
+    still runs the embedded ``mvn test`` to produce echo's argument. Scanning
+    for substitutions is text-based rather than tied to one segment's tokens,
+    so it also catches a substitution embedded inside a quoted argument that
+    the tokenizer would otherwise treat as ordinary text.
+    """
+    violations = []
+    for segment in _shell_segments(text):
+        violations.extend(_segment_violations(segment))
+    for substitution in _command_substitutions(text):
+        violations.extend(_text_violations(substitution))
+    return violations
 
 
 def _dtest_values(args: list) -> list:
@@ -303,8 +394,7 @@ def validate_post_completion_command(command: str) -> list:
             "CI-shard partitioning is reserved for the CI workflow matrix; "
             "agents and job submitters must never run a shard.".format(
                 command.strip()[:200]))
-    for segment in _shell_segments(command):
-        violations.extend(_segment_violations(segment))
+    violations.extend(_text_violations(command))
     return violations
 
 
@@ -340,7 +430,7 @@ _TEST_LINT_PATTERNS = [
      '"run the ... module tests" phrase (a whole module\'s test run)'),
     (re.compile(r"\brun(?:ning)?\s+(?:the\s+)?[\w./-]*\s*(?:CI\s+)?shard\b", re.IGNORECASE),
      '"run(ning) ... shard" phrase'),
-    (re.compile(r"\bAR_TEST_GROUPS?\b"),
+    (re.compile(r"AR_TEST_GROUPS?\b"),
      "AR_TEST_GROUP/AR_TEST_GROUPS reference"),
 ]
 
