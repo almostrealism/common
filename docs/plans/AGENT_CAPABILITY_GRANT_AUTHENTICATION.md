@@ -93,6 +93,26 @@ exists, the documented default-off policy should be read as scoped to the
 Claude runner, which is what `AgentRunRequest#isBypassPermissionPrompts()` now
 says.
 
+## Related gap: dependent repositories run unlocked
+
+`WorkspaceLock` covers one path — the primary working directory. Dependent
+repositories are cloned beside it by `GitRepositorySetup.prepareDependentRepos()`
+and every git operation on them runs without a lock of their own. Two jobs can
+therefore share a path: one job's dependent repository is another job's primary.
+
+The completion snapshot no longer reads them for this reason (it inspects only
+the locked primary tree, and accounts for dependents from `GitCommitHandler`'s
+own record instead), so the reporting path is sound. The underlying exposure is
+not: concurrent jobs can still stage and commit in the same dependent tree.
+
+Closing it is not just a matter of taking more locks. It needs a consistent
+global acquisition order, and ordering alone is insufficient while dependent
+paths are resolved *after* the primary lock is taken — job A can hold X and want
+Y while job B holds Y and wants X. The shape that works is to resolve every
+participating path from job configuration before acquiring anything, then take
+all of them in a deterministic order, releasing all on exit. That is a change to
+the job startup sequence with deadlock stakes and deserves its own pass.
+
 ## Why it is not being done now
 
 The exposure requires a client that can already submit jobs to the controller,

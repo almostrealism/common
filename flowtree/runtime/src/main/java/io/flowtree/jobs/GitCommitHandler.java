@@ -547,10 +547,12 @@ class GitCommitHandler implements ConsoleFeatures {
             log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
             boolean anyStagedInDep = false;
+            List<String> skippedInDep = new ArrayList<>();
             for (String file : changedFiles) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
                     log("Skipping (size) in dependent repo: " + file);
+                    skippedInDep.add(file);
                     continue;
                 }
                 gitOps.execute("add", file);
@@ -558,7 +560,8 @@ class GitCommitHandler implements ConsoleFeatures {
             }
             if (!anyStagedInDep) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
-                dependentRepoFailures.add(depPath + " (every changed file was skipped)");
+                dependentRepoFailures.add(depPath + " (every changed file was skipped: "
+                        + String.join(", ", skippedInDep) + ")");
                 continue;
             }
 
@@ -569,6 +572,12 @@ class GitCommitHandler implements ConsoleFeatures {
                 continue;
             }
             dependentRepoCommits.add(depPath);
+            // A commit here publishes what was staged, not what changed: an
+            // oversized file was dropped on the way and leaves no other trace.
+            if (!skippedInDep.isEmpty()) {
+                dependentRepoFailures.add(depPath + " (committed, but these files were skipped: "
+                        + String.join(", ", skippedInDep) + ")");
+            }
 
             if (job.isPushToOrigin() && !job.isDryRun()) {
                 new GitPushReconciler(job, depPath, gitOps::execute, gitOps::executeWithOutput)

@@ -127,6 +127,14 @@ class JobWorkOutcome {
      * another job's changes as this one's unpublished work. Asking here, at
      * the end of the locked region, reads the tree this job actually left.</p>
      *
+     * <p>Only the primary working directory is read, because only it is under
+     * the lock. {@code GitRepositorySetup} places dependent repositories as
+     * sibling paths that another job may hold as its own primary, so reading
+     * them here could attribute that job's tree to this one. Nothing is lost
+     * by leaving them out: a dependent repository that had changes and did not
+     * publish them is reported from {@link GitCommitHandler}'s own record of
+     * what it committed, which is not a race and not a guess.</p>
+     *
      * <p>{@code locked} says whether that region was in fact exclusive.
      * {@link WorkspaceLock#acquire(String)} can fail — an unwritable parent
      * directory, an I/O error — and lets the job continue unlocked, in which
@@ -176,7 +184,7 @@ class JobWorkOutcome {
         if (job.hasPublishedCommit()) return null;
         if (job.hasAgentCommitted()) return null;
 
-        boolean changesRemain = mayHaveUncommittedChanges();
+        boolean changesRemain = hasUncommittedChanges(job.getWorkingDirectory());
         boolean messageAuthored = job.hasAuthoredCommitMessage();
         if (!changesRemain && !messageAuthored) return null;
 
@@ -214,10 +222,14 @@ class JobWorkOutcome {
      * Returns whether any of the job's repositories holds uncommitted changes,
      * treating a tree that could not be read as one that might.
      *
-     * <p>This is the fail-closed form, for the questions where a wrong "no"
-     * loses work: whether the job published everything it produced, and
-     * whether it still owes a commit message. See
+     * <p>The fail-closed form, for a question where a wrong "no" loses work:
+     * whether the job still owes a commit message. See
      * {@link #hasUncommittedChanges(String)}.</p>
+     *
+     * <p>Covers every repository, which is safe for callers that run while the
+     * job still holds its workspace lock. {@link #capture(boolean)} does not
+     * use it, because by then a dependent repository may belong to whoever
+     * runs next.</p>
      *
      * @return {@code true} when changes remain or a tree could not be read
      */
