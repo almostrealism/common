@@ -140,6 +140,31 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A non-finite duration bypasses the {@code (0, maxSeconds]} comparison, since a {@code NaN}
+	 * comparison against either bound evaluates to false; it must still be rejected, both at
+	 * construction and at {@link StableAudio3#generate}.
+	 */
+	@Test(timeout = 240000)
+	public void nonFiniteDurationIsRejected() {
+		try {
+			smallModel(Double.NaN);
+			throw new AssertionError("a non-finite maximum duration must be rejected");
+		} catch (IllegalArgumentException e) {
+			// expected
+		}
+
+		StableAudio3 model = smallModel().setVerbose(false);
+		try {
+			model.generate(1, new long[]{5}, Double.NaN);
+			throw new AssertionError("a non-finite duration must be rejected");
+		} catch (IllegalArgumentException e) {
+			// expected
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * The small pipeline compiled for clips of up to {@link #MAX_SECONDS}.
 	 *
 	 * @return the model

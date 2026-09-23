@@ -141,7 +141,8 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	public StableAudio3(DiffusionTransformerConfig config, StateDictionary transformerWeights,
 						AudioAttentionConditioner conditioner, SAMEAutoEncoder autoencoder,
 						double sampleRate, double maxSeconds, double headroomSeconds) {
-		if (maxSeconds <= 0.0 || headroomSeconds < 0.0) {
+		if (!Double.isFinite(maxSeconds) || !Double.isFinite(headroomSeconds) ||
+				maxSeconds <= 0.0 || headroomSeconds < 0.0) {
 			throw new IllegalArgumentException("maxSeconds must be positive and headroomSeconds non-negative");
 		}
 
@@ -309,7 +310,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
 	 */
 	public CollectionProducer generate(long seed, long[] prompt, double seconds) {
-		if (seconds <= 0.0 || seconds > maxSeconds) {
+		if (!Double.isFinite(seconds) || seconds <= 0.0 || seconds > maxSeconds) {
 			throw new IllegalArgumentException("Duration " + seconds + " is outside (0, " + maxSeconds + "]");
 		}
 
