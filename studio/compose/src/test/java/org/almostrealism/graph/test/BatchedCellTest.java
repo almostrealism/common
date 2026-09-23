@@ -19,6 +19,7 @@ package org.almostrealism.graph.test;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.BatchedCell;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -63,6 +64,49 @@ public class BatchedCellTest extends TestSuiteBase {
 		}
 		Assert.assertEquals("renderBatch should fire again at next batch boundary",
 				2, renderCount.get());
+	}
+
+	/**
+	 * Verifies that tick counting also works correctly when {@link BatchedCell#renderBatch()}
+	 * returns an {@link OperationList} (a {@link io.almostrealism.code.Computation}), which
+	 * routes {@link BatchedCell#tick()} through the compiled
+	 * {@link org.almostrealism.hardware.HardwareFeatures#periodic} path rather than the plain
+	 * Java-counting fallback exercised by {@link #testTickCountingTriggersRenderAtBatchBoundary}.
+	 * Calls {@code tick()} fresh every cycle (the same idiom every other test in this class uses)
+	 * rather than caching the returned {@link Runnable} once, so the compiled counter must persist
+	 * across those calls on its own.
+	 */
+	@Test(timeout = 30_000)
+	public void testComputationRenderBatchTicksAtBatchBoundary() {
+		int batchSize = 4;
+		PackedCollection renderCount = new PackedCollection(1);
+		BatchedCell cell = new BatchedCell(batchSize, batchSize) {
+			@Override
+			protected Supplier<Runnable> renderBatch() {
+				OperationList ops = new OperationList("Test Computation Render Batch");
+				ops.add(a(p(renderCount), add(p(renderCount), c(1.0))));
+				return ops;
+			}
+		};
+
+		// Tick batchSize - 1 times: no render should happen
+		for (int i = 0; i < batchSize - 1; i++) {
+			cell.tick().get().run();
+		}
+		Assert.assertEquals("renderBatch should not fire before batchSize ticks",
+				0.0, renderCount.toDouble(0), 0.0001);
+
+		// One more tick completes the batch
+		cell.tick().get().run();
+		Assert.assertEquals("renderBatch should fire at batchSize ticks",
+				1.0, renderCount.toDouble(0), 0.0001);
+
+		// Another full batch
+		for (int i = 0; i < batchSize; i++) {
+			cell.tick().get().run();
+		}
+		Assert.assertEquals("renderBatch should fire again at next batch boundary",
+				2.0, renderCount.toDouble(0), 0.0001);
 	}
 
 	/**

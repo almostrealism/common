@@ -102,6 +102,13 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	/** Cached compiled advance operation that increments the batch counter. */
 	private Runnable cachedAdvance;
 
+	/**
+	 * Cached periodic operation wrapping a {@link Computation}-based
+	 * {@link #renderBatch()}, so its internal tick counter survives across
+	 * repeated {@link #tick()} calls.
+	 */
+	private Supplier<Runnable> cachedPeriodic;
+
 	/** The running count of ticks since the last render, used to detect batch boundaries. */
 	private int tickCount;
 
@@ -217,6 +224,14 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 * (e.g., inside a {@link org.almostrealism.hardware.computations.Loop}).
 	 * Otherwise, Java-based counting is used as a fallback.</p>
 	 *
+	 * <p>The compiled periodic operation is cached (like {@link #cachedRender}/
+	 * {@link #cachedAdvance} in the Java fallback below) so its tick counter
+	 * survives calling {@link #tick()} fresh on every clock cycle, rather than
+	 * caching the {@link Runnable} it returns once and reusing that. Without
+	 * this, every call would rebuild {@link HardwareFeatures#periodic} with a
+	 * brand new internal counter, so the batch boundary would never be
+	 * reached for a {@code batchSize} greater than one.</p>
+	 *
 	 * @return an operation that conditionally renders based on tick count
 	 */
 	@Override
@@ -224,15 +239,19 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		Supplier<Runnable> render = renderBatch();
 
 		if (render instanceof Computation) {
-			OperationList body = new OperationList("BatchedCell Batch Body");
-			if (frameCallback != null) {
-				body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
-			}
-			body.add(render);
-			body.add(advanceBatch());
+			if (cachedPeriodic == null) {
+				OperationList body = new OperationList("BatchedCell Batch Body");
+				if (frameCallback != null) {
+					body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
+				}
+				body.add(render);
+				body.add(advanceBatch());
 
-			return HardwareFeatures.getInstance().periodic(
-					(Computation<Void>) body, batchSize);
+				cachedPeriodic = HardwareFeatures.getInstance().periodic(
+						(Computation<Void>) body, batchSize);
+			}
+
+			return cachedPeriodic;
 		}
 
 		return () -> () -> {
@@ -301,6 +320,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		OperationList setup = new OperationList("BatchedCell Setup");
 		setup.add(() -> () -> {
 			cachedRender = null;
+			cachedPeriodic = null;
 			tickCount = 0;
 		});
 		setup.add(a(p(batchCounter), c(0.0)));
@@ -314,6 +334,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	public void reset() {
 		output.clear();
 		cachedRender = null;
+		cachedPeriodic = null;
 		tickCount = 0;
 		batchCounter.clear();
 	}
