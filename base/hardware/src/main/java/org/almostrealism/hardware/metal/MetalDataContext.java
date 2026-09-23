@@ -412,6 +412,8 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public void destroy() {
+		super.destroy();
+
 		if (sharedContext != null) {
 			sharedContext.destroy();
 			sharedContext = null;
@@ -425,6 +427,5 @@ public class MetalDataContext extends HardwareDataContext {
 		if (altRam != null) altRam.destroy();
 		if (mainDevice != null) mainDevice.release();
 		mainDevice = null;
-		super.destroy();
 	}
 }

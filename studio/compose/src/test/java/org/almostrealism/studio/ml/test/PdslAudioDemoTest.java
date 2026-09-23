@@ -111,13 +111,14 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		PackedCollection drySignal = new PackedCollection(totalSamples);
 		PackedCollection lpSignal = new PackedCollection(totalSamples);
 
+		IntFunction<PackedCollection> chord = window(SIGNAL_SIZE, t ->
+				sin(t.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
+						.add(sin(t.multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
+						.add(sin(t.multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33)));
+
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
-					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
-					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
-					.into(input.traverseEach()).evaluate();
+			PackedCollection input = chord.apply(sampleOffset);
 			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
 			drySignal.setFrom(sampleOffset, input);
 			lpSignal.setFrom(sampleOffset, output.range(shape(SIGNAL_SIZE)));
@@ -156,12 +157,12 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		// The delay carries a ring between passes, so the passes run in order and each
 		// output lands in the span it occupies.
+		// 440 Hz tone for the first half second (t < 0.5), silence after
+		IntFunction<PackedCollection> burst = window(SIGNAL_SIZE, t ->
+				sin(t.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(t.lessThan(c(0.5 * SAMPLE_RATE))));
+
 		PackedCollection delaySignal = render(numPasses, SIGNAL_SIZE, sampleOffset -> {
-			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			// 440 Hz tone for the first half second (t < 0.5), silence after
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
-					.multiply(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).lessThan(c(0.5 * SAMPLE_RATE)))
-					.into(input.traverseEach()).evaluate();
+			PackedCollection input = burst.apply(sampleOffset);
 			return delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
 		});
 
@@ -212,12 +213,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		mixModel.add(mixBlock);
 		CompiledModel mixCompiled = mixModel.compile();
 
-		IntFunction<PackedCollection> tone = sampleOffset -> {
-			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
-					.into(input.traverseEach()).evaluate();
-			return input;
-		};
+		IntFunction<PackedCollection> tone = window(SIGNAL_SIZE,
+				t -> sin(t.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)));
 
 		// The dry signal is the tone itself, so it is assembled without invoking the
 		// model; the mix runs its passes in order, the model carrying state between them.

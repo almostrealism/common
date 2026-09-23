@@ -134,8 +134,9 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 	}
 
 	/**
-	 * Marks this context destroyed. Subclasses release their resources and then
-	 * call this, so that {@link #isDestroyed()} answers for every kind of context.
+	 * Marks this context destroyed. Subclasses call this first and release their
+	 * resources afterwards, so that nothing observes the context as alive while
+	 * those resources are going away.
 	 */
 	@Override
 	public void destroy() {

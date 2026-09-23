@@ -183,6 +183,13 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalPolicy mShape = shape(matrix);
 		TraversalPolicy vShape = shape(vector);
 
+		// A column vector (n, 1) whose row count matches the contraction dimension
+		// is one vector of n elements, whichever path follows
+		if (vShape.getDimensions() == 2 && vShape.length(1) == 1 && vShape.length(0) == mShape.length(1)) {
+			vShape = vShape.trim();
+			vector = reshape(vShape, vector);
+		}
+
  		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
 			if (vShape.getDimensions() == 1) {
 				return zeros(shape(mShape.length(0), 1));
@@ -201,14 +208,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		boolean onlyColumns = vShape.getDimensions() > 1 && vShape.length(vShape.getDimensions() - 1) == 1;
 		boolean singleRow = vShape.getDimensions() == 1;
 		boolean isVectorPath = each || onlyColumns || singleRow;
-
-		// A column vector (n, 1) whose row count matches the contraction dimension is
-		// a single vector, not a batch of n one-element vectors, whichever path follows
-		if (onlyColumns && vShape.getDimensions() == 2 && vShape.length(0) == mShape.length(1)) {
-			vShape = vShape.trim();
-			vector = reshape(vShape, vector);
-			onlyColumns = false;
-		}
 
 		// If the matrix is being multiplied by a vector, or by
 		// a batch of vectors, rather than a matrix (or batch of

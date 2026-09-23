@@ -704,6 +704,8 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public void destroy() {
+		destroyed = true;
+
 		// TODO  Destroy any other compute contexts
 		if (computeContexts.get() != null) {
 			computeContexts.get().forEach(cc -> cc.destroy());
@@ -714,7 +716,6 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		if (altRam != null) altRam.destroy();
 		if (ctx != null) CL.clReleaseContext(ctx);
 		ctx = null;
-		destroyed = true;
 	}
 
 	@Override

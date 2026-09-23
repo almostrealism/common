@@ -555,7 +555,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
-	 * @throws IllegalStateException if this provider is being destroyed, or has been
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
 	 */
 	protected synchronized T allocated(T ram) {
 		if (destroying) {

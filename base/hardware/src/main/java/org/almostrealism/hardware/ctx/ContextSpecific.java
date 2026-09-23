@@ -16,15 +16,18 @@
 
 package org.almostrealism.hardware.ctx;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.lifecycle.SuppliedValue;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -118,7 +121,7 @@ import java.util.function.Supplier;
  * @see ContextListener
  */
 public abstract class ContextSpecific<T> implements ContextListener, Destroyable, ConsoleFeatures {
-	/** Stack of context-specific values, one per nested context level. */
+	/** Values by the compute context they were created under, the current one on top. */
 	private Deque<ContextValue<T>> val;
 
 	/** Supplier used to create new values when contexts start. */
@@ -126,9 +129,6 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 
 	/** Optional consumer to clean up values when contexts are destroyed. */
 	private Consumer<T> disposal;
-
-	/** Whether {@link #init()} registered this instance for context lifecycle callbacks. */
-	private boolean registered;
 
 	/**
 	 * Constructs a context-specific value with the given supplier and no disposal logic.
@@ -160,39 +160,35 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	public void init() {
 		if (val.isEmpty()) push();
 		Hardware.getLocalHardware().addContextListener(this);
-		registered = true;
 	}
 
 	/**
 	 * Returns the value for the current context.
 	 *
-	 * <p>If no value exists yet (stack is empty), creates and pushes an initial value.
-	 * Returns the value at the top of the stack, which corresponds to the most recently
-	 * started context.</p>
+	 * <p>A value belongs to the {@link ComputeContext} that was current when it was
+	 * created: a compiled kernel dispatches through that context's command runner and
+	 * memory provider, and a scoped data context, a temporary compute context, and a
+	 * switch between live contexts all change which one that is. A value whose context
+	 * has since been destroyed is disposed of first and never returned. When the value
+	 * on top belongs to a different context that is still alive, the value already held
+	 * for the current context is used, or a new one is created. Registration via
+	 * {@link #init()} adds lifecycle callbacks on top of this; it is not required for
+	 * correctness.</p>
 	 *
-	 * <p>A value belongs to the data context that was current when it was created. One
-	 * whose context has since been destroyed is disposed of first and never returned, and
-	 * when the value on top belongs to a different context that is still alive, a value
-	 * for the current context is used instead. This is what keeps an instance that was not
-	 * registered via {@link #init()} correct: without a listener nothing pushes or pops its
-	 * values as contexts start and end, so a kernel compiled under one context would
-	 * otherwise be handed out under another, or after its own context and memory are
-	 * gone.</p>
-	 *
-	 * <p><b>Warning:</b> If stack depth exceeds 3, logs a warning indicating potential
-	 * context leaks.</p>
+	 * <p><b>Warning:</b> If more than 3 values are held, logs a warning indicating
+	 * potential context leaks.</p>
 	 *
 	 * @return The value for the current context
 	 */
 	public T getValue() {
 		discardOrphans();
 
-		DataContext<?> current = currentContext();
+		ComputeContext<?> current = currentContext();
 
 		if (val.isEmpty()) {
 			push();
 		} else if (!val.peek().belongsTo(current)) {
-			ContextValue<T> existing = registered ? null : valueFor(current);
+			ContextValue<T> existing = valueFor(current);
 
 			if (existing == null) {
 				push();
@@ -211,26 +207,25 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		return v;
 	}
 
-	/** Pushes a new value, recorded as belonging to the current data context. */
+	/** Pushes a new value, recorded as belonging to the current compute context. */
 	private void push() {
 		val.push(new ContextValue<>(createValue(supply), currentContext()));
 	}
 
 	/**
-	 * Returns the data context a value created now belongs to, or {@code null} when
-	 * there is no hardware to ask, in which case the value is never treated as orphaned.
+	 * Returns the compute context a value created now belongs to, or {@code null} when
+	 * there is none to ask, in which case the value serves every context.
 	 */
-	private DataContext<?> currentContext() {
+	private ComputeContext<?> currentContext() {
 		Hardware hardware = Hardware.getLocalHardware();
-		return hardware == null ? null : hardware.getDataContext(false, false);
+		if (hardware == null || hardware.getDataContext(false, false) == null) return null;
+
+		List<ComputeContext<MemoryData>> contexts = hardware.getComputeContexts(false, false);
+		return contexts.isEmpty() ? null : contexts.get(0);
 	}
 
-	/**
-	 * Returns the value on the stack created under the given context, or {@code null}.
-	 * Only consulted for an unregistered instance, whose stack no listener pops, so
-	 * moving a value to the top cannot disturb a later pop.
-	 */
-	private ContextValue<T> valueFor(DataContext<?> context) {
+	/** Returns the value held for the given context, or {@code null}. */
+	private ContextValue<T> valueFor(ComputeContext<?> context) {
 		for (ContextValue<T> v : val) {
 			if (v.belongsTo(context)) return v;
 		}
@@ -241,13 +236,20 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	/** Disposes of values at the top of the stack whose context has been destroyed. */
 	private void discardOrphans() {
 		while (!val.isEmpty() && val.peek().isOrphaned()) {
-			ContextValue<T> orphan = val.pop();
+			dispose(val.pop());
+		}
+	}
 
-			try {
-				orphan.dispose(disposal);
-			} catch (RuntimeException e) {
-				warn("Unable to dispose of value from " + orphan.getContextName(), e);
-			}
+	/**
+	 * Applies the disposal logic to a value that is no longer held. Disposal is best
+	 * effort, since the resources the value refers to may already have gone with
+	 * its context.
+	 */
+	private void dispose(ContextValue<T> value) {
+		try {
+			value.dispose(disposal);
+		} catch (RuntimeException e) {
+			warn("Unable to dispose of value from " + value.getContextName(), e);
 		}
 	}
 
@@ -266,7 +268,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	public abstract SuppliedValue<T> createValue(Supplier<T> supply);
 
 	/**
-	 * Called when a context starts. Pushes a new value onto the stack.
+	 * Called when a context starts. Pushes a new value for it.
 	 *
 	 * @param ctx The context that started
 	 */
@@ -276,29 +278,37 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	}
 
 	/**
-	 * Called when a context is destroyed. Pops the top value and applies disposal logic.
-	 *
-	 * <p>If the stack is already empty (shouldn't happen in normal operation), this is a no-op.</p>
+	 * Called when a context is destroyed. Disposes of every value created under that
+	 * context, wherever it sits, since switches between live contexts may have moved
+	 * it away from the top.
 	 *
 	 * @param ctx The context being destroyed
 	 */
 	@Override
 	public void contextDestroyed(DataContext ctx) {
-		if (val.isEmpty()) return;
+		if (ctx == null) {
+			if (!val.isEmpty()) dispose(val.pop());
+			return;
+		}
 
-		val.pop().dispose(disposal);
+		for (ContextValue<T> v : List.copyOf(val)) {
+			if (v.createdUnder(ctx)) {
+				val.remove(v);
+				dispose(v);
+			}
+		}
 	}
 
 	/**
-	 * Destroys all values in the stack and unregisters this listener.
+	 * Destroys all values held and unregisters this listener.
 	 *
-	 * <p>Pops all values from the stack, applying disposal logic to each, then removes
-	 * this instance from the hardware context's listener list.</p>
+	 * <p>Applies the disposal logic to each value, then removes this instance from
+	 * the hardware context's listener list.</p>
 	 */
 	@Override
 	public void destroy() {
 		while (!val.isEmpty()) {
-			val.pop().dispose(disposal);
+			dispose(val.pop());
 		}
 
 		Hardware.getLocalHardware().removeContextListener(this);
@@ -309,8 +319,8 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	public Console console() { return Hardware.console; }
 
 	/**
-	 * A value on the stack together with the {@link DataContext} it was created under,
-	 * which decides whether it may still be handed out.
+	 * A value together with the {@link ComputeContext} it was created under, which
+	 * decides whether it may still be handed out.
 	 *
 	 * @param <T> Type of context-specific value
 	 */
@@ -319,7 +329,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		private final SuppliedValue<T> value;
 
 		/** The context current when this value was pushed, or null when there was none. */
-		private final DataContext<?> context;
+		private final ComputeContext<?> context;
 
 		/**
 		 * Records a value as belonging to a context.
@@ -327,7 +337,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		 * @param value   the value
 		 * @param context the context current when the value was pushed, or null
 		 */
-		private ContextValue(SuppliedValue<T> value, DataContext<?> context) {
+		private ContextValue(SuppliedValue<T> value, ComputeContext<?> context) {
 			this.value = value;
 			this.context = context;
 		}
@@ -336,20 +346,25 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 
 		/** Returns whether the context this value was created under has been destroyed. */
 		private boolean isOrphaned() {
-			return context != null && context.isDestroyed();
+			return context != null && (context.isDestroyed() || context.getDataContext().isDestroyed());
 		}
 
 		/**
 		 * Returns whether this value may serve the given context: the same one it was
 		 * created under, or either unknown.
 		 */
-		private boolean belongsTo(DataContext<?> current) {
+		private boolean belongsTo(ComputeContext<?> current) {
 			return context == null || current == null || context == current;
+		}
+
+		/** Returns whether this value was created under a compute context of the given data context. */
+		private boolean createdUnder(DataContext<?> dataContext) {
+			return context != null && context.getDataContext() == dataContext;
 		}
 
 		/** Names the context this value was created under, for reporting. */
 		private String getContextName() {
-			return context == null ? "unknown context" : context.getName();
+			return context == null ? "unknown context" : context.getDataContext().getName();
 		}
 
 		/** Applies the disposal logic to the value if it was ever created. */

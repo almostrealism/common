@@ -165,5 +165,5 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	 * Currently a no-op as executables are not cached.
 	 */
 	@Override
-	public void destroy() { }
+	public void destroy() { super.destroy(); }
 }

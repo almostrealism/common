@@ -141,5 +141,5 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 	 * are managed by the native compiler and data context.
 	 */
 	@Override
-	public void destroy() { }
+	public void destroy() { super.destroy(); }
 }

@@ -37,6 +37,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
@@ -564,7 +565,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 				instructionsCache.computeIfAbsent(cacheKey, create);
 
 		// Entries of a context that has ended are left behind until evicted here
-		if (mgr.getComputeContext().getDataContext().isDestroyed()) {
+		if (mgr.getComputeContext().isDestroyed() ||
+				mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
 			mgr = instructionsCache.computeIfAbsent(cacheKey, create);
 		}
@@ -589,7 +591,12 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
-		instructionsCache.evict(signature);
+		String prefix = signature + ":";
+		List<String> keys = new ArrayList<>();
+		instructionsCache.forEach((key, mgr) -> {
+			if (key.startsWith(prefix)) keys.add(key);
+		});
+		keys.forEach(instructionsCache::evict);
 	}
 
 	/**

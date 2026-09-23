@@ -50,6 +50,30 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		assertTrue("First scope's value was disposed", disposed.contains(inside));
 	}
 
+	/**
+	 * A holder registered for lifecycle callbacks has the value it created under a
+	 * scope disposed of when that scope ends, and keeps the outer value untouched.
+	 */
+	@Test(timeout = 60_000)
+	public void registeredValueIsDisposedWithItsScope() {
+		List<Object> disposed = new ArrayList<>();
+		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new, disposed::add);
+		specific.init();
+
+		try {
+			Object before = specific.getValue();
+			Object inside = dc(specific::getValue);
+			Object after = specific.getValue();
+
+			assertNotSame("Scoped value distinct from the outer value", before, inside);
+			assertSame("Outer value after the scope", before, after);
+			assertEquals("Disposals", 1, disposed.size());
+			assertTrue("Scoped value was disposed", disposed.contains(inside));
+		} finally {
+			specific.destroy();
+		}
+	}
+
 	/** A nested scope gets its own value, and the outer value is back once the scope ends. */
 	@Test(timeout = 60_000)
 	public void outerValueSurvivesScope() {

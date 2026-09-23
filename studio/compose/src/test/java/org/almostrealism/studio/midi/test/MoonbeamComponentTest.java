@@ -76,7 +76,9 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	/**
 	 * Embed a single attribute value using FundamentalMusicEmbedding at the
 	 * real embedding dimension (320). Exercises the sinusoidal encoding,
-	 * translation bias, and linear projection.
+	 * translation bias, and linear projection, evaluated the way the generator
+	 * does it: the value is a kernel argument and the producer passes through
+	 * the process optimizer before it is compiled.
 	 */
 	@Test(timeout = 5_000)
 	public void testSingleFmeEmbed() {
@@ -87,7 +89,10 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
 
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = fme.embed(42).evaluate();
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(fme.embed(cp(PackedCollection.of(42.0)))).get();
+
+		PackedCollection result = kernel.evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("FME result should not be null", result);
@@ -163,7 +168,9 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	/**
 	 * Embed a single compound MIDI token at the real hidden dimension (1920).
 	 * This exercises all 6 parallel FME embeddings (5 sinusoidal + 1 lookup)
-	 * and the concatenation to produce the full hidden-size vector.
+	 * and the concatenation to produce the full hidden-size vector, evaluated
+	 * the way the generator does it: the token's values are a kernel argument
+	 * and the producer passes through the process optimizer before compilation.
 	 */
 	@Test(timeout = 10_000)
 	public void testSingleCompoundEmbedding() {
@@ -174,7 +181,10 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 7, 0, 80);
 
 		long computeStart = System.currentTimeMillis();
-		PackedCollection result = embedding.embed(token).evaluate();
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(embedding.embedValues(cp(token.pack()))).get();
+
+		PackedCollection result = kernel.evaluate();
 		long computeTime = System.currentTimeMillis() - computeStart;
 
 		Assert.assertNotNull("Embedding result should not be null", result);
