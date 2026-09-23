@@ -431,9 +431,14 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	 * Verifies that {@link EvaluableStreamingAdapter#request(Object[], Semaphore, Consumer)} honors
 	 * a non-null {@code dependsOn}: submission to the executor must not block the caller, but the
 	 * submitted task must wait for {@code dependsOn} to complete before reading the arguments and
-	 * evaluating, rather than reading them immediately and racing the dependency. Without the wait,
-	 * the delivered value would already be captured from the state that existed at request time,
-	 * well before the state update below and the {@code dependsOn} completion that follows it.
+	 * evaluating, rather than reading them immediately and racing the dependency.
+	 *
+	 * <p>{@code dependsOn} is a {@link DefaultLatchSemaphore} subclass whose {@link
+	 * DefaultLatchSemaphore#waitFor() waitFor()} counts down {@code waitEntered} the instant it is
+	 * called, before blocking &mdash; so the test waits on that latch to prove the requester thread
+	 * actually reached the wait, instead of racing a fixed delay against it. The state update and
+	 * the dependency's release both happen only after that proof, so an implementation that ignored
+	 * {@code dependsOn} and read {@code sharedState} immediately could not pass by scheduling luck.</p>
 	 */
 	@Test(timeout = 10000)
 	public void streamingAdapterRequestWaitsForDependsOn() throws InterruptedException {
@@ -442,7 +447,14 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		Evaluable<Integer> hostEvaluable = args -> sharedState[0];
 		EvaluableStreamingAdapter<Integer> adapter = new EvaluableStreamingAdapter<>(hostEvaluable);
 
-		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((Semaphore) null, 1);
+		CountDownLatch waitEntered = new CountDownLatch(1);
+		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 1) {
+			@Override
+			public void waitFor() {
+				waitEntered.countDown();
+				super.waitFor();
+			}
+		};
 		CountDownLatch delivered = new CountDownLatch(1);
 		Integer[] result = new Integer[1];
 
@@ -453,9 +465,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 				}));
 		requester.start();
 
-		// Give the requester thread ample time to reach (and, if the dependency were
-		// disregarded, run straight past) the wait before the dependency is satisfied
-		Thread.sleep(200);
+		assertTrue(waitEntered.await(5, TimeUnit.SECONDS));
 		assertEquals(1L, delivered.getCount());
 
 		sharedState[0] = 42;

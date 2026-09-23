@@ -356,7 +356,8 @@ public class HardwareEvaluable<T> implements
 	 * delivered. Without a result processor, the destination-based evaluable is returned as is.</p>
 	 *
 	 * @param destination Memory bank to write results into
-	 * @return Evaluable targeting the specified destination
+	 * @return Evaluable targeting the specified destination, dispatched through the same
+	 *         {@link #async(Executor) executor} as this evaluable when one is set
 	 */
 	public Evaluable<T> withDestination(MemoryBank destination) {
 		if (destinationProcessor != null) {
@@ -372,7 +373,7 @@ public class HardwareEvaluable<T> implements
 			return destinationEvaluable;
 		}
 
-		HardwareEvaluable<T> result = new HardwareEvaluable<>(() -> destinationEvaluable, null, null, isKernel);
+		HardwareEvaluable<T> result = new HardwareEvaluable<>(() -> destinationEvaluable, null, null, isKernel, executor);
 		result.setResultProcessor(resultProcessor);
 		return result;
 	}

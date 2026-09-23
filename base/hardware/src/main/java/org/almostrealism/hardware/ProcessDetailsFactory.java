@@ -699,24 +699,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				boolean streaming = kernelArgEvaluables[i] instanceof StreamingEvaluable;
-
-				// See this method's javadoc: isSharedExecutorSafe(), not isDispatchBacked(),
-				// decides whether this factory's own executor may be used here.
-				boolean executorSafe = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isSharedExecutorSafe();
-
-				if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
-					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
-				} else if (streaming && !isExecutorThread.getAsBoolean()) {
-					direct[i] = true;
-					asyncEvaluables[i] = (StreamingEvaluable) kernelArgEvaluables[i];
-				} else {
-					asyncEvaluables[i] = kernelArgEvaluables[i].async();
-				}
-
-				// See this method's javadoc: derived from the pre-wrap evaluable, not the
-				// generic async() wrapper produced above.
-				dispatchBacked[i] = streaming && ((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
+				asyncEvaluables[i] = selectAsyncEvaluable(kernelArgEvaluables[i], direct, i);
+				dispatchBacked[i] = kernelArgEvaluables[i] instanceof StreamingEvaluable &&
+						((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 			}
 		}
 
@@ -762,23 +747,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			Evaluable sized = kernelArgEvaluables[i].into(result);
-
-			// See this method's javadoc: this is the same isSharedExecutorSafe() check
-			// the first pass applies above, repeated here because into() can wrap the
-			// argument in a different evaluable.
-			boolean sizedStreaming = sized instanceof StreamingEvaluable;
-			boolean executorSafe = sizedStreaming && ((StreamingEvaluable<?>) sized).isSharedExecutorSafe();
-
-			if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
-				asyncEvaluables[i] = sized.async(this::execute);
-			} else if (sizedStreaming && !isExecutorThread.getAsBoolean()) {
-				direct[i] = true;
-				asyncEvaluables[i] = (StreamingEvaluable) sized;
-			} else {
-				asyncEvaluables[i] = sized.async();
-			}
-
-			// See this method's javadoc: always a genuine dispatch, never a handle-only reference.
+			asyncEvaluables[i] = selectAsyncEvaluable(sized, direct, i);
 			dispatchBacked[i] = true;
 		}
 
@@ -823,6 +792,38 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		/* The details are ready */
 		return details;
+	}
+
+	/**
+	 * Chooses how a kernel argument's evaluation is dispatched, applying the same
+	 * {@link StreamingEvaluable#isSharedExecutorSafe()} (not {@code isDispatchBacked()},
+	 * which answers a different question — see {@link #construct(PreparedArguments, Semaphore)
+	 * construct}'s javadoc) and {@link #isExecutorThread} selection to both the evaluate-ahead
+	 * pass and the sized-destination pass, so the two can no longer diverge in how they
+	 * schedule a blocking argument request.
+	 *
+	 * @param evaluable the (possibly {@code into(...)}-wrapped) evaluable to select a
+	 *                  dispatch strategy for
+	 * @param direct    marked {@code true} at {@code index} when the returned evaluable
+	 *                  must be requested directly on the calling thread via the
+	 *                  three-argument {@link StreamingEvaluable#request(Object[], Semaphore,
+	 *                  Consumer) request} overload, rather than given a downstream and
+	 *                  requested via the two-argument overload
+	 * @param index     the argument index this selection is for
+	 * @return the {@link StreamingEvaluable} to request the argument's evaluation through
+	 */
+	private StreamingEvaluable selectAsyncEvaluable(Evaluable evaluable, boolean[] direct, int index) {
+		boolean streaming = evaluable instanceof StreamingEvaluable;
+		boolean executorSafe = streaming && ((StreamingEvaluable<?>) evaluable).isSharedExecutorSafe();
+
+		if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
+			return evaluable.async(this::execute);
+		} else if (streaming && !isExecutorThread.getAsBoolean()) {
+			direct[index] = true;
+			return (StreamingEvaluable) evaluable;
+		} else {
+			return evaluable.async();
+		}
 	}
 
 	/**
