@@ -81,6 +81,22 @@ class BuildArtifactSharingTest(unittest.TestCase):
                 self.assertIn('${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism', restore["run"])
                 self.assertIn("${RUNNER_TEMP}/maven-installed-artifacts/.", restore["run"])
 
+    def test_downloads_that_can_cross_attempts_use_the_rest_route(self):
+        """On a retry `build` does not re-run, and auto-resolve runs only on attempt
+        3 or later: their artifacts come from an earlier attempt, which the default
+        lookup cannot find. The REST route (run-id + token) can, given actions: read."""
+        jobs = _jobs()
+        for name, job in jobs.items():
+            for step in _steps_using(job, "actions/download-artifact"):
+                spec = step["with"]
+                crosses = (spec.get("name") == _ARTIFACT or name == "auto-resolve")
+                if not crosses:
+                    continue
+                with self.subTest(job=name, artifact=spec.get("name") or spec.get("pattern")):
+                    self.assertEqual("${{ github.run_id }}", spec.get("run-id"))
+                    self.assertEqual("${{ secrets.GITHUB_TOKEN }}", spec.get("github-token"))
+                    self.assertEqual("read", (job.get("permissions") or {}).get("actions"))
+
     def test_isolated_repositories_export_their_path(self):
         """The restore targets MAVEN_REPO wherever a job moves its Maven repository."""
         for name, job in _jobs().items():

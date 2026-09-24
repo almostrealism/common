@@ -174,6 +174,15 @@ default branch and sends it with `tools/ci/submit-staged-request.sh`, which read
 `auto-resolve-submit.yaml` uses the same script. Keep any new submission path on
 that pattern.
 
+This guards against pull request *scripts*, not against a pull request's edit to
+the *workflow*: a `pull_request` run uses the workflow from the PR's merge with
+the base, and any job in it can read a repository secret, so a branch that edits
+`analysis.yaml` can reach `FLOWTREE_CF_ACCESS_CLIENT_SECRET` (as it can through
+`register-workstream`). This is accepted for now, since pipelines do not run for
+pull requests from outside the organization and agent commits cannot change CI
+files outside `ci/...` branches. The fix is tracked in the ar-manager tracker
+("Keep FlowTree controller credentials out of pull_request workflow runs").
+
 `auto-review-submit` sets `DELAY_SECONDS: "300"`. `auto-review` reports as soon
 as the gates do, which can be before GitHub Copilot has finished reviewing the
 same push (about eight minutes), and a review agent that starts before those

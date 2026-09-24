@@ -312,6 +312,10 @@ jobs:
   code-policy-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -336,6 +340,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -1028,6 +1039,10 @@ jobs:
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -1052,6 +1067,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -1085,6 +1107,10 @@ jobs:
   duplicate-code-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -1109,6 +1135,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -1601,6 +1634,10 @@ jobs:
       (needs.python-tests.result == 'success' || needs.python-tests.result == 'skipped') &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1622,6 +1659,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -1685,6 +1729,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
@@ -1721,6 +1769,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -1888,6 +1943,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Cap direct memory at 8g: enough for one split group, but below runner RAM so an overshoot is a catchable limit, not an OOM kill.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
@@ -1923,6 +1982,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -2065,6 +2131,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       # Let every group finish even when a peer fails (see the test job above); this only
       # affects cancellation among the mac groups themselves.
@@ -2108,6 +2178,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -2226,6 +2303,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci-cl]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
     # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
     # heap. See the test-media job for the full rationale.
@@ -2271,6 +2352,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -2356,6 +2444,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
       # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
@@ -2402,6 +2494,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -2513,6 +2612,10 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci-cl]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # native,cl media tests with the native provider on JNI malloc blocks
     # (AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled, matching the other CL jobs) so the
     # 8g direct-memory cap is spent on CL's own reservations rather than shared with
@@ -2563,6 +2666,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # Into the repository Maven reads: the per-runner one where the job
       # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
@@ -2673,6 +2783,13 @@ jobs:
         with:
           name: maven-installed-artifacts
           path: ${{ runner.temp }}/installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # github-token/repository/run-id route the download through the REST API,
       # which can fetch artifacts uploaded during a previous attempt of this run.
@@ -3247,6 +3364,7 @@ jobs:
       cancel-in-progress: true
     permissions:
       contents: read
+      actions: read
 
     steps:
       - name: Checkout Code
@@ -3270,12 +3388,19 @@ jobs:
           find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
           rm -rf all-surefire-reports
 
+      # auto-resolve runs only on attempt 3 or later, so the reports of every
+      # test job that did not re-run were uploaded in an earlier attempt; the
+      # REST route is the one that can fetch those (see the coverage download
+      # in `analysis`).
       - name: Download Surefire Reports
         uses: actions/download-artifact@v4
         with:
           pattern: surefire-*
           path: all-surefire-reports
           merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Download Crash Reports
         continue-on-error: true
@@ -3284,6 +3409,9 @@ jobs:
           pattern: crash-reports-*
           path: all-crash-reports
           merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Filter to resolvable surefire reports
         run: |
