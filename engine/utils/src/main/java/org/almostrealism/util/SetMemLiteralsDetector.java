@@ -72,6 +72,21 @@ import java.util.regex.Pattern;
  * {@code .setMem(} call's argument list is extracted with balanced-parenthesis matching, so
  * a call split across lines or containing a commented-out fragment cannot evade detection.
  *
+ * <p>The same "computed by Java" question governs the <em>ingest</em> surface —
+ * {@code read(ByteBuffer)} / {@code read(InputStream)} on a {@code MemoryData} — which exists
+ * for data entering the process from outside it, never for shipping values Java has just
+ * computed. Two rules guard it. {@link #INGEST_RULE_A INGEST_OUTSIDE_SANCTIONED_SURFACE}
+ * reports every such {@code read} from a file that is not on the
+ * {@linkplain #ingestAllowlist() ingest allowlist} — a closed set of genuine deserializers,
+ * kept in {@value #INGEST_ALLOWLIST_RESOURCE} and shared verbatim with the
+ * {@code block-computed-ingest.py} hook so the two cannot drift. Membership is by file, not by
+ * inspecting the buffer's contents, because a rule phrased over contents can always be
+ * restructured around whereas an allowlist cannot. {@link #STAGED_RULE
+ * COMPUTED_VALUE_STAGED_FOR_INGEST} reports a buffer obtained from {@code ByteBuffer.allocate}
+ * or {@code ByteBuffer.wrap} that receives a {@code put*} call and is then handed to
+ * {@code read} — a host-filled buffer, not ingest — and applies <em>inside</em> the allowlist
+ * as well, so the evasion cannot be relocated into an allowlisted file.
+ *
  * @see PolicyViolationDetector
  * @see PackedCollectionDetector
  */
@@ -118,6 +133,48 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					+ "when any argument is a non-literal scalar there must be fewer than 16 arguments. "
 					+ "Anything computed per element must be produced by the computation "
 					+ "graph (integers(), producer arithmetic, randn/rand, or a producer assignment).";
+
+	/**
+	 * Classpath location of the ingest allowlist — the closed set of files permitted to call the
+	 * {@code read(ByteBuffer)}/{@code read(InputStream)} ingest surface. Read as a classpath
+	 * resource here and from the same path in the working tree by {@code block-computed-ingest.py},
+	 * so the detector and the hook share one list. Each non-comment line is a path fragment matched
+	 * as a substring (exactly like {@link #SANCTIONED_WRITE_SURFACE}); text after {@code #} is a
+	 * justification naming the outside source that entry reads.
+	 */
+	public static final String INGEST_ALLOWLIST_RESOURCE = "/org/almostrealism/util/ingest-allowlist.txt";
+
+	/** Path fragments of the ingest allowlist, loaded once from {@link #INGEST_ALLOWLIST_RESOURCE}. */
+	private static final List<String> INGEST_ALLOWLIST = loadIngestAllowlist();
+
+	/** Rule code reported for a {@code read(ByteBuffer)}/{@code read(InputStream)} outside the ingest allowlist. */
+	public static final String INGEST_RULE_A = "INGEST_OUTSIDE_SANCTIONED_SURFACE";
+
+	/** Guidance appended to every {@link #INGEST_RULE_A} violation. */
+	private static final String INGEST_A_GUIDANCE =
+			"read(ByteBuffer) / read(InputStream) is the ingest surface for data entering the "
+					+ "process from OUTSIDE it (deserialization, file and network I/O). It may be "
+					+ "called only from the enumerated ingest allowlist of genuine deserializers "
+					+ "(" + INGEST_ALLOWLIST_RESOURCE + "), shared with the block-computed-ingest.py "
+					+ "hook. This file is not on it: a value Java has computed must reach device "
+					+ "memory through a Producer (producer arithmetic, an index comparison supplied "
+					+ "as data, or a producer assignment), never by staging it in a buffer and "
+					+ "shipping it through read(...). If this is a genuine outside-the-process "
+					+ "deserializer, add its path to the allowlist with a justification naming the "
+					+ "outside source; do not add it to make the build green otherwise.";
+
+	/** Rule code reported for a host-filled buffer handed to {@code read(...)}. */
+	public static final String STAGED_RULE = "COMPUTED_VALUE_STAGED_FOR_INGEST";
+
+	/** Guidance appended to every {@link #STAGED_RULE} violation. */
+	private static final String STAGED_GUIDANCE =
+			"a ByteBuffer obtained from ByteBuffer.allocate(...) or ByteBuffer.wrap(...) that "
+					+ "receives a put*(...) call and is then passed to read(...) is a host-filled "
+					+ "buffer, not ingest — the same violation as writing the values element by "
+					+ "element, whatever file it lives in (this rule applies inside the ingest "
+					+ "allowlist too). Produce the values on the device with a Producer instead: a "
+					+ "scalar with fill(value), a mask or index vector with producer arithmetic over "
+					+ "integers()/a comparison, with any length or bound supplied as data.";
 
 	/** Rule code for {@code fill} invoked on a {@code range(...)} view. */
 	public static final String RANGE_FILL_RULE = "FILL_ON_RANGE_VIEW";
@@ -185,12 +242,20 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * {@code domain/space}, and the {@code Tensor} bridge for host-resident boxed values (whose
 	 * correct long-term treatment is an open question); these are expected to shrink to zero.
 	 *
+	 * <p>The {@code CollectionEncoder} entry is a different case, and is not expected to go away:
+	 * it is the protobuf deserializer named on the ingest allowlist, and its
+	 * {@code COMPUTED_VALUE_STAGED_FOR_INGEST} occurrence is inherent — it stages the message's
+	 * repeated {@code float} field into a double buffer before the single bulk transfer, which is
+	 * ingest of external data, not host computation. It is acknowledged here rather than in the
+	 * burn-down baseline so it stays suppressed and is never emitted by {@code --generate}.</p>
+	 *
 	 * <p>The reference filter implementations are a different case, and are not expected to go
 	 * away. They compute on the host deliberately: they are the oracle the framework's own
 	 * coefficient and convolution computations are checked against, and expressing them with
 	 * the producers under test would let a fault agree with itself.</p>
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
+			new String[] {"/persist/assets/CollectionEncoder.java", "decoded.read(buffer);"},
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
@@ -254,6 +319,26 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Locates the start of each unqualified {@code pack(} call. */
 	private static final Pattern PACK_CALL = Pattern.compile("(?<![\\w.$])pack\\s*\\(");
+
+	/**
+	 * Locates each {@code <receiver>.read(} call, capturing the receiver identifier. Only
+	 * lowercase-initial receivers are treated as instance calls; an uppercase-initial receiver
+	 * is a type name (a static call such as {@code ImageIO.read(...)}), which is never the
+	 * {@link org.almostrealism.hardware.MemoryData} instance ingest surface.
+	 */
+	private static final Pattern READ_CALL = Pattern.compile("([A-Za-z_$][\\w$]*)\\s*\\.\\s*read\\s*\\(");
+
+	/**
+	 * Trailing {@link java.nio.Buffer} positional methods that return the buffer itself, stripped
+	 * before an argument is resolved to a variable — {@code buffer.flip()} passed to {@code read}
+	 * is the buffer {@code buffer}.
+	 */
+	private static final Pattern TRAILING_BUFFER_METHOD = Pattern.compile(
+			"(?:\\.\\s*(?:flip|rewind|duplicate|slice|asReadOnlyBuffer|clear|mark|reset)\\s*\\(\\s*\\))+$");
+
+	/** A ByteBuffer origin: {@code <id> = ByteBuffer.allocate(...)} / {@code ByteBuffer.wrap(...)}. */
+	private static final String BYTE_BUFFER_ORIGIN =
+			"\\s*=\\s*ByteBuffer\\s*\\.\\s*(?:allocate|allocateDirect|wrap)\\s*\\(";
 
 	/** The maximum number of individual scalar arguments a {@code fill}/{@code pack} call may pass. */
 	private static final int SCALAR_ALLOWANCE = 16;
@@ -332,6 +417,41 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
+	 * Loads the ingest allowlist path fragments from {@link #INGEST_ALLOWLIST_RESOURCE}. Blank
+	 * lines and comment text (everything from {@code #} onward on a line) are ignored, so each
+	 * remaining entry is a bare path fragment.
+	 *
+	 * @return the allowlist path fragments; empty when the resource is absent
+	 */
+	private static List<String> loadIngestAllowlist() {
+		List<String> entries = new ArrayList<>();
+
+		try (InputStream in = SetMemLiteralsDetector.class.getResourceAsStream(INGEST_ALLOWLIST_RESOURCE)) {
+			if (in == null) return entries;
+
+			for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
+				int comment = line.indexOf('#');
+				String fragment = (comment >= 0 ? line.substring(0, comment) : line).trim();
+				if (!fragment.isEmpty()) entries.add(fragment);
+			}
+		} catch (IOException e) {
+			throw new RuntimeException("Could not read " + INGEST_ALLOWLIST_RESOURCE, e);
+		}
+
+		return entries;
+	}
+
+	/**
+	 * Returns the ingest allowlist path fragments — the closed set of files permitted to call the
+	 * {@code read(ByteBuffer)}/{@code read(InputStream)} ingest surface.
+	 *
+	 * @return an unmodifiable snapshot of the allowlist fragments
+	 */
+	public static List<String> ingestAllowlist() {
+		return new ArrayList<>(INGEST_ALLOWLIST);
+	}
+
+	/**
 	 * Consumes one tolerated occurrence of the given violation from the grandfathered
 	 * baseline, if any budget remains for its file and source line.
 	 *
@@ -372,7 +492,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		try {
 			String content = Files.readString(file);
 			if (!content.contains(".setMem(") && !content.contains(".of(")
-					&& !content.contains(".fill(") && !content.contains("pack(")) {
+					&& !content.contains(".fill(") && !content.contains("pack(")
+					&& !content.contains(".read(")) {
 				return this;
 			}
 
@@ -387,6 +508,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					args -> isWithinScalarAllowance(args, masked), INGEST_RULE, INGEST_GUIDANCE);
 			scanCalls(file, content, masked, PACK_CALL,
 					args -> isWithinScalarAllowance(args, masked), INGEST_RULE, INGEST_GUIDANCE);
+			scanIngestReads(file, content, masked);
 		} catch (IOException e) {
 			warn("Could not read file " + file, e);
 		}
@@ -469,6 +591,158 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		}
 	}
 
+
+	/**
+	 * Scans a file for calls to the {@code read(ByteBuffer)}/{@code read(InputStream)} ingest
+	 * surface on a {@link org.almostrealism.hardware.MemoryData} instance, reporting the two
+	 * ingest rules.
+	 *
+	 * <p>An ingest read is an instance {@code <receiver>.read(arg)} whose single argument resolves
+	 * to a {@code ByteBuffer} or an {@code InputStream} — the only {@code read} overloads taking
+	 * those types belong to {@code MemoryData} — with a lowercase-initial receiver (an
+	 * uppercase-initial receiver is a type name, i.e. a static call, never the instance surface).
+	 * Each such read draws {@link #STAGED_RULE} when the buffer was host-filled
+	 * ({@code ByteBuffer.allocate}/{@code wrap} then {@code put*} before the read), whatever file
+	 * it lives in; and {@link #INGEST_RULE_A} when the file is not on the ingest allowlist. Both
+	 * are subject to the {@link #KNOWN_EXCLUSIONS} and {@linkplain #BASELINE_RESOURCE baseline}
+	 * machinery, exactly like the other rules.</p>
+	 *
+	 * @param file     the file being scanned
+	 * @param content  the raw file content, used for line numbers and display text
+	 * @param masked   the comment- and string-masked content, used for matching
+	 */
+	private void scanIngestReads(Path file, String content, String masked) {
+		boolean allowlisted = isIngestAllowlisted(file);
+
+		Matcher m = READ_CALL.matcher(masked);
+		while (m.find()) {
+			if (Character.isUpperCase(m.group(1).charAt(0))) continue;
+			if (isDeclaredChannel(masked, m.group(1))) continue;
+
+			int argsStart = m.end();
+			int argsEnd = matchingParen(masked, argsStart);
+			if (argsEnd < 0) continue;
+
+			List<String> args = splitTopLevel(masked.substring(argsStart, argsEnd));
+			if (args.size() != 1 || !isIngestArgument(args.get(0), masked)) continue;
+
+			int lineNum = countLines(content, m.start());
+			String line = lineText(content, lineNum);
+
+			String bufferId = bufferIdentifier(args.get(0));
+			if (bufferId != null && isHostStaged(masked, bufferId, m.start())
+					&& !isKnownExclusion(file, line) && !consumeBaseline(file, line)) {
+				violations.add(new Violation(file, lineNum, line, STAGED_RULE, STAGED_GUIDANCE));
+			}
+
+			if (!allowlisted && !isKnownExclusion(file, line) && !consumeBaseline(file, line)) {
+				violations.add(new Violation(file, lineNum, line, INGEST_RULE_A, INGEST_A_GUIDANCE));
+			}
+		}
+	}
+
+	/**
+	 * Returns {@code true} if the file is on the {@linkplain #INGEST_ALLOWLIST ingest allowlist} —
+	 * one of the enumerated genuine deserializers permitted to call the ingest surface.
+	 *
+	 * @param file  the file to test
+	 * @return      whether the file is an allowlisted deserializer
+	 */
+	private boolean isIngestAllowlisted(Path file) {
+		String path = file.toString().replace('\\', '/');
+		for (String fragment : INGEST_ALLOWLIST) {
+			if (path.contains(fragment)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if a {@code read(...)} argument resolves to a {@code ByteBuffer} or an
+	 * {@code InputStream}: a {@code ByteBuffer.wrap(...)}/{@code allocate(...)} expression, a
+	 * {@code (ByteBuffer)} cast, a {@code new ...InputStream(...)}, or a bare identifier declared
+	 * with one of those types (a trailing positional buffer method such as {@code .flip()} is
+	 * stripped first, so {@code buffer.flip()} resolves through {@code buffer}).
+	 *
+	 * @param arg     the raw argument text (comment/string masked)
+	 * @param masked  the whole masked file, used to resolve an identifier's declared type
+	 * @return        whether the argument is a ByteBuffer or InputStream
+	 */
+	private boolean isIngestArgument(String arg, String masked) {
+		String core = TRAILING_BUFFER_METHOD.matcher(arg.trim()).replaceFirst("").trim();
+		if (core.startsWith("ByteBuffer.")) return true;
+		if (core.matches("\\(\\s*ByteBuffer\\s*\\)[\\s\\S]*")) return true;
+		if (core.matches("new\\s+\\w*InputStream\\b[\\s\\S]*")) return true;
+		return IDENTIFIER.matcher(core).matches() && isDeclaredBufferOrStream(masked, core);
+	}
+
+	/**
+	 * Returns the bare buffer identifier an ingest argument resolves to — {@code ids} for
+	 * {@code ids.flip()} or {@code ids} — or {@code null} when the argument is an inline
+	 * expression (a {@code ByteBuffer.wrap(...)} or a call) that names no local buffer.
+	 *
+	 * @param arg  the raw argument text (comment/string masked)
+	 * @return     the buffer identifier, or {@code null}
+	 */
+	private String bufferIdentifier(String arg) {
+		String core = TRAILING_BUFFER_METHOD.matcher(arg.trim()).replaceFirst("").trim();
+		return IDENTIFIER.matcher(core).matches() ? core : null;
+	}
+
+	/**
+	 * Returns {@code true} if {@code bufferId} was host-filled before the {@code read} at
+	 * {@code readStart}: it is assigned from {@code ByteBuffer.allocate(...)}/{@code wrap(...)} and
+	 * then receives a {@code put*} call before the read. The assignment is the nearest one
+	 * preceding the read, which is necessarily in the same method (a local's declaration, writes,
+	 * and read all share one scope), so no explicit method-boundary tracking is needed.
+	 *
+	 * @param masked     the comment/string-masked file content
+	 * @param bufferId   the buffer identifier
+	 * @param readStart  the character offset of the read call
+	 * @return           whether the buffer was staged with computed values before the read
+	 */
+	private boolean isHostStaged(String masked, String bufferId, int readStart) {
+		Matcher origin = Pattern.compile("\\b" + Pattern.quote(bufferId) + BYTE_BUFFER_ORIGIN).matcher(masked);
+		int declPos = -1;
+		while (origin.find() && origin.start() < readStart) declPos = origin.start();
+		if (declPos < 0) return false;
+
+		Matcher put = Pattern.compile("\\b" + Pattern.quote(bufferId) + "\\s*(?:\\.|::)\\s*put").matcher(masked);
+		while (put.find()) {
+			if (put.start() > declPos && put.start() < readStart) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared in the (masked) file as a {@code *Channel}
+	 * type ({@code FileChannel}, {@code SeekableByteChannel}, {@code ReadableByteChannel}, …). This
+	 * rule governs the {@code MemoryData} ingest surface; {@code java.nio} channels share the
+	 * {@code read(ByteBuffer)} signature but read external bytes into a host buffer without ever
+	 * touching device memory, so a channel receiver is not the surface this rule scopes to.
+	 *
+	 * @param masked  the comment/string-masked file content
+	 * @param ident   the receiver identifier
+	 * @return        whether the receiver is a NIO channel rather than a MemoryData
+	 */
+	private boolean isDeclaredChannel(String masked, String ident) {
+		Pattern decl = Pattern.compile(
+				"(?:[A-Za-z_$][\\w$]*)?Channel(?:\\s*<[^;{}=]*>)?\\s+" + Pattern.quote(ident) + "\\b");
+		return decl.matcher(masked).find();
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared in the (masked) file with a {@code ByteBuffer}
+	 * or {@code *InputStream} type — the argument types of the {@code MemoryData} ingest surface.
+	 *
+	 * @param masked  the comment/string-masked file content
+	 * @param ident   the identifier to look up
+	 * @return        whether the identifier names a ByteBuffer or an InputStream
+	 */
+	private boolean isDeclaredBufferOrStream(String masked, String ident) {
+		Pattern decl = Pattern.compile(
+				"(?:ByteBuffer|[A-Za-z_$][\\w$]*InputStream|InputStream)\\s+" + Pattern.quote(ident) + "\\b");
+		return decl.matcher(masked).find();
+	}
 
 	/**
 	 * Determines whether a {@code fill}/{@code pack} argument list is within the scalar

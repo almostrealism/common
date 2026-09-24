@@ -1,3 +1,7 @@
+COMPUTED_VALUE_STAGED_FOR_INGEST	engine/ml/src/main/java/org/almostrealism/ml/audio/StableAudio3Conditioner.java	1	normalizedDuration.read(value.flip());
+COMPUTED_VALUE_STAGED_FOR_INGEST	engine/ml/src/main/java/org/almostrealism/ml/t5gemma/T5GemmaEncoder.java	1	attentionMask.read(mask.flip());
+COMPUTED_VALUE_STAGED_FOR_INGEST	engine/ml/src/main/java/org/almostrealism/ml/t5gemma/T5GemmaEncoder.java	1	tokenIds.read(ids.flip());
+COMPUTED_VALUE_STAGED_FOR_INGEST	engine/utils/src/test/java/org/almostrealism/hardware/test/MemoryDataSerializationTest.java	1	restored.read(direct);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
@@ -8,6 +12,9 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/pers
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	2	input.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getPercScalars().fill(scalars);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getSssScalars().fill(scalars);
+INGEST_OUTSIDE_SANCTIONED_SURFACE	engine/ml/src/main/java/org/almostrealism/ml/audio/StableAudio3Conditioner.java	1	normalizedDuration.read(value.flip());
+INGEST_OUTSIDE_SANCTIONED_SURFACE	engine/ml/src/main/java/org/almostrealism/ml/t5gemma/T5GemmaEncoder.java	1	attentionMask.read(mask.flip());
+INGEST_OUTSIDE_SANCTIONED_SURFACE	engine/ml/src/main/java/org/almostrealism/ml/t5gemma/T5GemmaEncoder.java	1	tokenIds.read(ids.flip());
 PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	values = PackedCollection.of(IntStream.range(0, getShape().getTotalSize())
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(1.5 * in.valueAt(0));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
