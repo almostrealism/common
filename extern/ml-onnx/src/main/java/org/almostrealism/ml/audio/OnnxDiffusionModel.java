@@ -48,6 +48,15 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 	private final OrtSession session;
 
 	/**
+	 * The prediction returned by the previous {@link #forward} call, retained only so it
+	 * can be released before the next one replaces it. {@link DiffusionModel#forward} is
+	 * documented to hand back a model-owned buffer that the caller must not destroy, so
+	 * this class must retire its own previous buffer itself rather than leaving each
+	 * pass's allocation to accumulate.
+	 */
+	private PackedCollection lastOutput;
+
+	/**
 	 * Creates an {@code OnnxDiffusionModel} from a shared environment, session options,
 	 * and the path to the DiT ONNX model file.
 	 *
@@ -67,6 +76,11 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 	 * <p>All four inputs are converted to {@link ai.onnxruntime.OnnxTensor} objects,
 	 * the session is run, and the single output tensor is unpacked into a
 	 * {@link org.almostrealism.collect.PackedCollection}.
+	 *
+	 * <p>Per {@link DiffusionModel#forward}, the returned buffer is owned by this model:
+	 * the buffer returned by the previous call is destroyed here before the new one is
+	 * returned, so a caller that follows the documented contract (never destroying what
+	 * this method hands back) does not accumulate native allocations across repeated calls.
 	 *
 	 * @param x            current noisy audio latent
 	 * @param t            timestep tensor
@@ -92,7 +106,14 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 			// Run DiT model
 			OrtSession.Result ditResult = session.run(ditInputs);
 			ditOutput = (OnnxTensor) ditResult.get(0);
-			return pack(ditOutput);
+			PackedCollection output = pack(ditOutput);
+
+			if (lastOutput != null) {
+				lastOutput.destroy();
+			}
+
+			lastOutput = output;
+			return output;
 		} catch (OrtException e) {
 			throw new RuntimeException("Error running DiT model", e);
 		} finally {
@@ -111,6 +132,11 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 	 */
 	@Override
 	public void destroy() {
+		if (lastOutput != null) {
+			lastOutput.destroy();
+			lastOutput = null;
+		}
+
 		try {
 			session.close();
 		} catch (OrtException e) {

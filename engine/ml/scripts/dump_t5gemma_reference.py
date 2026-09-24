@@ -81,7 +81,18 @@ def apply_learned_padding(embeddings, attention_mask, padding_embedding):
 def run_t5gemma_reference(t5_dir, prompt, max_length):
     """Run the real T5Gemma encoder on ``prompt`` exactly as
     ``T5GemmaConditioner.forward`` does, and return the tokenizer output plus
-    the per-stage hidden states (embeddings, layer 0, layer 1, final).
+    the per-stage hidden states (embeddings, layer 0 attention/feed-forward
+    sub-stages, layer 0, layer 1, final).
+
+    Layer zero's attention and feed-forward branch outputs are not exposed by
+    ``output_hidden_states`` -- that only reports the state *between* whole
+    layers -- so they are captured with forward hooks on the two sandwich-norm
+    submodules whose weights ``extract_t5gemma_weights.py`` already reads as
+    ``encoder.layers.0.post_self_attn_layernorm.weight`` and
+    ``encoder.layers.0.post_feedforward_layernorm.weight``. Resolving the same
+    dotted path with ``get_submodule`` (rather than guessing at attribute
+    names on the model class) ties the hook to the exact submodule the weight
+    extractor already proves exists at that path.
     """
     from transformers import AutoConfig, AutoTokenizer, T5GemmaEncoderModel
 
@@ -93,22 +104,44 @@ def run_t5gemma_reference(t5_dir, prompt, max_length):
     model = T5GemmaEncoderModel.from_pretrained(t5_dir, config=config).float()
     model.eval()
 
+    layer0_stages = {}
+
+    def capture(name):
+        def hook(module, inputs, output):
+            layer0_stages[name] = output.detach()
+        return hook
+
+    handles = [
+        model.get_submodule("encoder.layers.0.post_self_attn_layernorm")
+            .register_forward_hook(capture("post_attn_norm")),
+        model.get_submodule("encoder.layers.0.post_feedforward_layernorm")
+            .register_forward_hook(capture("post_ff_norm")),
+    ]
+
     encoded = tokenizer(
         [prompt], truncation=True, max_length=max_length,
         padding="max_length", return_tensors="pt")
     input_ids = encoded["input_ids"]
     attention_mask = encoded["attention_mask"].to(torch.bool)
 
-    with torch.no_grad():
-        output = model(
-            input_ids=input_ids, attention_mask=attention_mask,
-            output_hidden_states=True)
+    try:
+        with torch.no_grad():
+            output = model(
+                input_ids=input_ids, attention_mask=attention_mask,
+                output_hidden_states=True)
+    finally:
+        for handle in handles:
+            handle.remove()
 
     hidden_states = output.hidden_states
+    embeddings = hidden_states[0]
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "embeddings": hidden_states[0],
+        "embeddings": embeddings,
+        "l0_post_attn_norm": layer0_stages["post_attn_norm"],
+        "l0_after_attn": embeddings + layer0_stages["post_attn_norm"],
+        "l0_post_ff_norm": layer0_stages["post_ff_norm"],
         "hidden_layer0": hidden_states[1],
         "hidden_layer1": hidden_states[2],
         "last_hidden_state": output.last_hidden_state,
@@ -145,6 +178,9 @@ def main():
         "t5_input_ids": reference["input_ids"].float(),
         "t5_attention_mask": reference["attention_mask"].float(),
         "t5_embeddings": reference["embeddings"],
+        "t5_l0_post_attn_norm": reference["l0_post_attn_norm"],
+        "t5_l0_after_attn": reference["l0_after_attn"],
+        "t5_l0_post_ff_norm": reference["l0_post_ff_norm"],
         "t5_hidden_layer0": reference["hidden_layer0"],
         "t5_hidden_layer1": reference["hidden_layer1"],
         "t5_last_hidden_state": reference["last_hidden_state"],
