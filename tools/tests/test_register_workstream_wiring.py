@@ -162,5 +162,63 @@ class RegisterWorkstreamWiringTests(unittest.TestCase):
         self.assertEqual(_job()["needs"], ["changes"])
 
 
+class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
+    """An auto-registered workstream must declare nothing about models.
+
+    A workstream that stores its own runner / model / effort / provider
+    shadows the workspace defaults for every job that ever runs on it, and a
+    workstream created automatically by CI is exactly the one nobody thinks
+    to inspect. Registration therefore sends no model configuration at all,
+    and the workspace's defaults apply until somebody adds an override
+    deliberately. These tests pin that at both ends of the CI path: the
+    environment the workflow hands the script, and the payload the script
+    builds. The controller end is pinned by
+    ``PhaseConfigResolverTest.aRegistrationWithoutPhaseConfigLeavesTheWorkstreamEmpty``.
+    """
+
+    #: Every key the script may place in a request body. A workstream's
+    #: identity and its Slack/planning attachments — nothing that selects a
+    #: model. Adding a key here is the deliberate act the test exists to
+    #: require.
+    _ALLOWED_PAYLOAD_KEYS = frozenset({
+        "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
+    })
+
+    @staticmethod
+    def _payload_keys():
+        """The JSON keys the script's ``jq`` invocations build, from its source.
+
+        Read off the source rather than kept as a second hand-maintained
+        list, so a newly added payload field shows up here on its own.
+        """
+        script = _read(os.path.join(_REPO_ROOT, _SCRIPT))
+        keys = set(re.findall(r"^\s*(\w+):\s*\$\w+", script, re.MULTILINE))
+        keys |= set(re.findall(r"\{(\w+):\s*\$\w+\}", script))
+        return keys
+
+    def test_the_workflow_step_passes_no_model_configuration(self):
+        env = _step(_SECRET_STEP).get("env", {})
+        self.assertTrue(env, "the registration step must declare some env")
+        for name in env:
+            for forbidden in ("MODEL", "EFFORT", "RUNNER", "PROVIDER", "PHASE"):
+                self.assertNotIn(
+                    forbidden, name.upper(),
+                    "env var %r would let the registration step pin model "
+                    "configuration onto an auto-created workstream" % name)
+
+    def test_the_payload_carries_only_workstream_identity_fields(self):
+        keys = self._payload_keys()
+        self.assertIn("defaultBranch", keys,
+                      "the key scan found nothing recognisable — it has stopped "
+                      "matching the script and would pass vacuously")
+        self.assertEqual(
+            set(), keys - self._ALLOWED_PAYLOAD_KEYS,
+            "unexpected field(s) in the registration payload: %s. A field that "
+            "selects a runner, model, effort or provider must not be sent here "
+            "— it would become a permanent default of every job on the "
+            "workstream and shadow the workspace's own."
+            % sorted(keys - self._ALLOWED_PAYLOAD_KEYS))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -158,10 +158,10 @@ def workstream_submit_task(
             primary phase transcript for tool-use and context-efficiency
             improvement opportunities, emitting findings as memories. The
             phase produces no code changes. Disabled by default. The
-            recommended default model for this phase is ``claude-sonnet-4-7``
-            or stronger, since analyzing a transcript benefits from strong
+            recommended default model for this phase is ``sonnet`` or
+            stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
-            ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"retrospective":{"model":"sonnet"}}'``.
         falsification_enabled: When ``True``, activates the falsification phase
             after the primary session and before the enforcement rules. A
             separate agent session extracts the primary attempt's load-bearing
@@ -173,7 +173,7 @@ def workstream_submit_task(
             only be settled by running something on an unavailable configuration
             is reported UNSETTLED rather than confirmed. Disabled by default.
             Configure the analysis model via
-            ``phase_configs='{"falsification":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"falsification":{"model":"sonnet"}}'``.
         use_tmux: Per-job override for tmux-backed launch, using presence
             semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
@@ -279,7 +279,7 @@ def workstream_submit_task(
             Each named phase overrides ``default_phase_config``
             field-by-field. Example::
 
-                '{"review": {"model": "claude-opus-4-7", "effort": "high"},
+                '{"review": {"model": "claude-opus-5-5", "effort": "high"},
                   "commit-message": {"runner": "opencode"}}'
 
             Empty (default) inherits the workstream-level configuration.

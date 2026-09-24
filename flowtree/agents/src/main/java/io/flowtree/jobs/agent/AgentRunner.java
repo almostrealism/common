@@ -19,6 +19,7 @@ package io.flowtree.jobs.agent;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -83,6 +84,33 @@ public interface AgentRunner extends Named {
      *         not support providers (should not happen for modern runners)
      */
     default String defaultProvider() { return null; }
+
+    /**
+     * Returns whether this runner will accept {@code model}.
+     *
+     * <p>This is the question a submission-time validator asks, and it is the
+     * runner's to answer rather than the caller's to infer from
+     * {@link AgentCapabilities#supportedModels()}: that set is what the
+     * runner <em>advertises</em> — the values worth showing an operator — and
+     * a runner may legitimately accept more than it advertises. A CLI that
+     * resolves its own aliases and ships new model identifiers between
+     * releases of this code is exactly that case, and a validator that
+     * demanded set membership would reject a model the runner could in fact
+     * run (see {@link ClaudeCodeRunner#isModelSupported(String)}).</p>
+     *
+     * <p>The default keeps the historical behaviour: membership in the
+     * advertised set, with an empty set meaning "unconstrained". A null or
+     * empty model is always accepted — it means no {@code --model} flag is
+     * passed and the runner's own default applies.</p>
+     *
+     * @param model identifier from {@link AgentRunRequest#getModel()}
+     * @return {@code true} when this runner will accept the model
+     */
+    default boolean isModelSupported(String model) {
+        if (model == null || model.isEmpty()) return true;
+        Set<String> advertised = capabilities().supportedModels();
+        return advertised.isEmpty() || advertised.contains(model);
+    }
 
     /**
      * Returns the stdout-silence duration, in milliseconds, after which the

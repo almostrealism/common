@@ -51,6 +51,12 @@ import static org.junit.Assert.fail;
  * retrospective phase, the output consumer, and the git-commit path are all
  * skipped rather than the exception being swallowed somewhere in between.
  *
+ * <p>Enforcement is off by default (see
+ * {@link McpConfigBuilder#requiredServerNames()}), so these tests turn it on
+ * for their own duration: what they cover is the guard's behaviour when a
+ * required server is lost, which has to keep working for whenever the
+ * default goes back over.</p>
+ *
  * <p>Drives the real (non-overridden) {@code executeSingleRun()}/{@code
  * doWork()}/{@code run()} path via a stub {@link AgentRunner} registered
  * under a unique name, so no subprocess is launched and no real MCP server
@@ -64,16 +70,31 @@ public class CodingAgentJobRequiredMcpServerFailureTest extends TestSuiteBase {
     /** Temporary working directory used as each job's sandbox. */
     private Path tempDir;
 
-    /** Creates a fresh temporary directory and registers the stub runner before each test. */
+    /** Value of the enforcement flag before the test set it, restored afterwards. */
+    private String previousEnforcement;
+
+    /**
+     * Creates a fresh temporary directory, registers the stub runner, and
+     * turns required-server enforcement on for the duration of the test —
+     * it is off by default, and without it these jobs would declare no
+     * required servers and the guard under test would never be reached.
+     */
     @Before
     public void setUp() throws IOException {
         tempDir = Files.createTempDirectory("required-mcp-failure-test");
         AgentRunnerRegistry.register(STUB_RUNNER, UnavailableRequiredServerRunner::new);
+        previousEnforcement = System.getProperty("AR_REQUIRE_MCP_SERVERS");
+        System.setProperty("AR_REQUIRE_MCP_SERVERS", "enabled");
     }
 
-    /** Recursively deletes the temporary directory after each test. */
+    /** Restores the enforcement flag and recursively deletes the temporary directory. */
     @After
     public void tearDown() throws IOException {
+        if (previousEnforcement == null) {
+            System.clearProperty("AR_REQUIRE_MCP_SERVERS");
+        } else {
+            System.setProperty("AR_REQUIRE_MCP_SERVERS", previousEnforcement);
+        }
         if (tempDir != null && Files.exists(tempDir)) {
             try (Stream<Path> walk = Files.walk(tempDir)) {
                 walk.sorted(Comparator.reverseOrder())

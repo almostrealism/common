@@ -1,7 +1,7 @@
 ---
 name: Deduplication Reviewer
 description: Reviews code for duplication violations. Use when adding new methods, classes, or abstractions to ensure no existing equivalent exists in the codebase.
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 You are a deduplication reviewer for the Almost Realism framework. Before any new
