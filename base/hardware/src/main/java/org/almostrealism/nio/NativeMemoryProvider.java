@@ -245,6 +245,11 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			log("Allocating " + (getNumberSize() * (long) size) / 1024 / 1024 + "mb");
 		}
 
+		// Accounted for before registration, so a rejection after the backend has
+		// already produced the block (provider destroyed) is unwound by the matching
+		// subtraction in deallocate(NativeRef) rather than corrupting memoryUsed.
+		memoryUsed += (long) getNumberSize() * size;
+
 		RAM mem;
 		if (direct) {
 			mem = allocated(NativeBuffer.create(this, size,
@@ -257,7 +262,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			mem = allocated(new NativeMemory(this, pointer, bytes));
 		}
 
-		memoryUsed += (long) getNumberSize() * size;
 		allocationSizes.addEntry(getNumberSize() * (long) size);
 		return mem;
 	}

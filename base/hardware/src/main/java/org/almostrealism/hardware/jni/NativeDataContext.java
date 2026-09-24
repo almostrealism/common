@@ -365,7 +365,12 @@ public class NativeDataContext extends HardwareDataContext {
 	@Override
 	public void destroy() {
 		super.destroy();
-		// TODO  Destroy all compute contexts
+
+		if (context != null) {
+			context.destroy();
+			context = null;
+		}
+
 		if (!providedRam && ram != null) ram.destroy();
 	}
 }
