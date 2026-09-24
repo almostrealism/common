@@ -265,6 +265,29 @@ def _is_substitution_executable(token: str) -> bool:
     return "$(" in token or "`" in token
 
 
+def _substitution_argument_violation(tokens: list, args: list) -> str:
+    """Returns a violation reason when any of ``args`` contains a command
+    substitution marker (``$(...)`` or a backtick), or ``""`` when none
+    does. A recognized command's own phase/selector arguments are checked as
+    literal string values elsewhere (e.g. the Maven test-running phases, the
+    ``-Dtest=`` value), so a substitution in argument position is invisible
+    to those checks even though the shell resolves it before Maven or Python
+    ever sees the argument -- e.g. ``mvn $(printf test) -pl engine/utils``
+    has no literal ``test`` token for the phase check to see, but the shell
+    still substitutes ``test`` and runs the whole module suite. Rejected
+    outright rather than accepted by omission, since this validator cannot
+    resolve the substitution's output statically."""
+    for arg in args:
+        if _is_substitution_executable(arg):
+            return (
+                f'Argument "{arg}" in "{" ".join(tokens)}" contains a command '
+                "substitution ($(...) or `...`), which this validator cannot "
+                "resolve statically. Do not construct a Maven phase, -Dtest "
+                "selector, or test id via a substitution."
+            )
+    return ""
+
+
 def _shell_segments(command: str) -> list:
     """Best-effort split of a shell command string into simple-command token
     lists, one per ``&&``/``;``/``|``/newline-separated segment.
@@ -711,6 +734,9 @@ def _maven_segment_violation(tokens: list) -> str:
     if _effective_skip_value(args, _SKIP_TESTS_PROP_PATTERN) is True \
             or _effective_skip_value(args, _MAVEN_TEST_SKIP_PROP_PATTERN) is True:
         return ""
+    substitution_reason = _substitution_argument_violation(tokens, args)
+    if substitution_reason:
+        return substitution_reason
     phases_present = sorted(a for a in args if a in _MVN_TEST_RUNNING_PHASES)
     dtest_values = _dtest_values(args)
     if not phases_present and not dtest_values:
@@ -775,6 +801,9 @@ def _pytest_segment_violation(tokens: list) -> str:
         pass
     else:
         return ""
+    substitution_reason = _substitution_argument_violation(tokens, rest)
+    if substitution_reason:
+        return substitution_reason
     positionals = [a for a in rest if not a.startswith("-")]
     if len(positionals) == 1 and "::" in positionals[0]:
         return ""
@@ -813,6 +842,9 @@ def _unittest_segment_violation(tokens: list) -> str:
     if m_index is None or m_index + 1 >= len(rest) or rest[m_index + 1] != "unittest":
         return ""
     args = rest[m_index + 2:]
+    substitution_reason = _substitution_argument_violation(tokens, args)
+    if substitution_reason:
+        return substitution_reason
     positionals = [a for a in args if not a.startswith("-")]
     if len(positionals) == 1 and positionals[0] != "discover" \
             and positionals[0].count(".") >= 2:
@@ -1045,13 +1077,18 @@ _TEST_LINT_PATTERNS.append(
 
 class _UnittestDiscoveryMatcher:
     """Flags a ``python -m unittest``/``python3 -m unittest`` mention that
-    either uses ``discover`` or names no single dotted ``module.Class.method``
-    test id, mirroring ``_unittest_segment_violation``'s command-line check
-    (see its docstring) for free-text prompt instructions. Without this, a
-    prompt telling the agent to "run python3 -m unittest discover" -- the CI
-    documentation's own example of a forbidden broad run -- passed
+    either uses ``discover`` or does not name EXACTLY ONE single dotted
+    ``module.Class.method`` test id, mirroring
+    ``_unittest_segment_violation``'s "exactly one positional" command-line
+    check (see its docstring) for free-text prompt instructions. Without
+    this, a prompt telling the agent to "run python3 -m unittest discover"
+    -- the CI documentation's own example of a forbidden broad run -- passed
     ``lint_prompt_for_broad_test_instructions`` unflagged, even though the
     equivalent Maven/pytest instructions are caught by the patterns above.
+    A bare ``search()`` that only checks whether a dotted id is present
+    anywhere in the fragment would also accept a prompt naming two dotted
+    ids (e.g. "run python -m unittest foo.Bar.test_a bar.Baz.test_b"),
+    which still runs both tests in one invocation.
     """
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
@@ -1061,9 +1098,10 @@ class _UnittestDiscoveryMatcher:
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
-            if self._UNITTEST_PATTERN.search(fragment) and (
-                    self._DISCOVER_PATTERN.search(fragment)
-                    or not self._DOTTED_ID_PATTERN.search(fragment)):
+            if not self._UNITTEST_PATTERN.search(fragment):
+                continue
+            dotted_id_count = len(self._DOTTED_ID_PATTERN.findall(fragment))
+            if self._DISCOVER_PATTERN.search(fragment) or dotted_id_count != 1:
                 return True
         return None
 

@@ -217,13 +217,23 @@ public class PromptTestInstructionLinter {
 	}
 
 	/** Flags a {@code python -m unittest}/{@code python3 -m unittest} mention that either uses
-	 * {@code discover} or names no single dotted {@code module.Class.method} test id. */
+	 * {@code discover} or does not name EXACTLY ONE dotted {@code module.Class.method} test id --
+	 * mirroring {@link PostCompletionCommandValidator#unittestSegmentViolation}'s "exactly one
+	 * positional" rule, scanned across prose text instead of a tokenized argument list. A bare
+	 * {@code find()} that only checks whether a dotted id is present anywhere in the fragment
+	 * would accept a prompt naming two dotted ids (e.g. {@code python -m unittest
+	 * foo.Bar.test_a bar.Baz.test_b}), which still runs both tests in one invocation. */
 	private static boolean unittestDiscovery(String line) {
 		for (String fragment : CHAIN_SPLIT.split(line)) {
 			if (!UNITTEST_MENTION.matcher(fragment).find()) {
 				continue;
 			}
-			if (DISCOVER.matcher(fragment).find() || !DOTTED_ID.matcher(fragment).find()) {
+			int dottedIdCount = 0;
+			Matcher dottedIdMatcher = DOTTED_ID.matcher(fragment);
+			while (dottedIdMatcher.find()) {
+				dottedIdCount++;
+			}
+			if (DISCOVER.matcher(fragment).find() || dottedIdCount != 1) {
 				return true;
 			}
 		}

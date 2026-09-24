@@ -211,7 +211,8 @@ correct one either. A behavior change that is not explained in the summary is a 
 
 The tests from step 4 still pass, unmodified. Run only those specific tests, one at a time,
 through the MCP test runner -- never a module's whole suite. Also run
-`mvn clean install -DskipTests` (a build, not a test run) and the build validator
+`timeout 2400 mvn clean install -DskipTests` (a build, not a test run, but every build
+invocation still needs an explicit timeout of at most 2400 seconds) and the build validator
 (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`) before you finish. Then read the `.pdsl`
 file back as a stranger would: the header comment names the structure and its source, each
 stage is commented with what it does to the signal and its shape, and the body reads as data

@@ -339,14 +339,40 @@ public class PostCompletionCommandValidator {
 
 	/** True when {@code token} contains a command substitution marker ({@code $(} or a
 	 * backtick) -- meaning the shell determines this token's actual text at run time from a
-	 * subprocess's output, which this validator cannot resolve statically. Used by
+	 * subprocess's output, which this validator cannot resolve statically. */
+	private static boolean containsSubstitutionMarker(String token) {
+		return token.contains("$(") || token.contains("`");
+	}
+
+	/** True when {@code token} contains a command substitution marker. Used by
 	 * {@link #validateSegment} to reject a segment whose executable (first token) is determined
 	 * this way, e.g. {@code $(printf mvn) test -pl engine/utils}: the substitution's own inner
 	 * command ({@code printf mvn}) is harmless in isolation, but its output becomes the broad
 	 * {@code mvn test} command actually executed, which no first-token check can see without
 	 * running the substitution. */
 	private boolean isSubstitutionExecutable(String token) {
-		return token.contains("$(") || token.contains("`");
+		return containsSubstitutionMarker(token);
+	}
+
+	/** Returns a violation reason when any of {@code args} contains a command substitution
+	 * marker ({@code $(...)} or a backtick), or {@code null} when none does. A recognized
+	 * command's own phase/selector arguments are checked as literal string values elsewhere
+	 * (e.g. {@link #TEST_RUNNING_PHASES}, {@link #DTEST_ARG}), so a substitution in argument
+	 * position is invisible to those checks even though the shell resolves it before Maven or
+	 * Python ever sees the argument -- e.g. {@code mvn $(printf test) -pl engine/utils} has no
+	 * literal {@code test} token for the phase check to see, but the shell still substitutes
+	 * {@code test} and runs the whole module suite. Rejected outright rather than accepted by
+	 * omission, since this validator cannot resolve the substitution's output statically. */
+	private String substitutionArgumentViolation(List<String> tokens, List<String> args) {
+		for (String arg : args) {
+			if (containsSubstitutionMarker(arg)) {
+				return "Argument \"" + arg + "\" in \"" + String.join(" ", tokens) + "\" contains "
+						+ "a command substitution ($(...) or `...`), which this validator cannot "
+						+ "resolve statically. Do not construct a Maven phase, -Dtest selector, or "
+						+ "test id via a substitution.";
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -663,6 +689,10 @@ public class PostCompletionCommandValidator {
 				|| Boolean.TRUE.equals(effectiveSkipValue(args, MAVEN_TEST_SKIP_PROP))) {
 			return null;
 		}
+		String substitutionReason = substitutionArgumentViolation(tokens, args);
+		if (substitutionReason != null) {
+			return substitutionReason;
+		}
 		List<String> phasesPresent = new ArrayList<>();
 		List<String> dtestValues = new ArrayList<>();
 		for (String arg : args) {
@@ -778,6 +808,10 @@ public class PostCompletionCommandValidator {
 		} else if (!"pytest".equals(base) && !"py.test".equals(base)) {
 			return null;
 		}
+		String substitutionReason = substitutionArgumentViolation(tokens, rest);
+		if (substitutionReason != null) {
+			return substitutionReason;
+		}
 		List<String> positionals = new ArrayList<>();
 		for (String arg : rest) {
 			if (!arg.startsWith("-")) {
@@ -821,6 +855,10 @@ public class PostCompletionCommandValidator {
 			return null;
 		}
 		List<String> args = rest.subList(mIndex + 2, rest.size());
+		String substitutionReason = substitutionArgumentViolation(tokens, args);
+		if (substitutionReason != null) {
+			return substitutionReason;
+		}
 		List<String> positionals = new ArrayList<>();
 		for (String arg : args) {
 			if (!arg.startsWith("-")) {

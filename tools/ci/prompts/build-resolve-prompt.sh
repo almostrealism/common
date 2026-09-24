@@ -144,7 +144,13 @@ append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 # (every method in that class), both of which agents may never run; see
 # ci/test-execution-limits.
 FAILING_MODULES=""
-MODULE_METHODS=""
+# Maps a module name to its space-joined "Class#method" pairs. An associative
+# array (not `eval "MODULE_METHODS_${module}=..."`) so a crafted failure name
+# is stored as data, never reparsed as shell code -- a nested Java test class
+# name like `Outer$InnerTest` would otherwise be expanded again by `eval` as
+# a `$InnerTest` variable reference, and a crafted name could inject a command
+# substitution.
+declare -A MODULE_METHODS_MAP
 while IFS= read -r line; do
     # Only process lines that start with "- " (test name lines).
     # Skip exception details, stack traces, and blank lines.
@@ -163,9 +169,9 @@ while IFS= read -r line; do
                 fi
                 short_class="${class_name##*.}"
                 pair="${short_class}#${method_name}"
-                existing=$(eval "echo \"\${MODULE_METHODS_${module}:-}\"")
+                existing="${MODULE_METHODS_MAP[$module]:-}"
                 if ! echo "$existing" | grep -qw "$pair"; then
-                    eval "MODULE_METHODS_${module}=\"\${existing:+\$existing }${pair}\""
+                    MODULE_METHODS_MAP[$module]="${existing:+$existing }${pair}"
                 fi
             fi
             ;;
@@ -179,7 +185,7 @@ done < "$FAILURES_FILE"
 # every other surface this rule covers.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
-    pairs=$(eval "echo \"\${MODULE_METHODS_${module}:-}\"")
+    pairs="${MODULE_METHODS_MAP[$module]:-}"
     CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}"
     for pair in $pairs; do

@@ -145,6 +145,16 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertTrue(violationsFor("Run python3 -m unittest tests.test_foo.FooTest.test_bar.").isEmpty());
 	}
 
+	/** A prompt naming TWO dotted test ids for the same unittest invocation still runs both
+	 * tests together, even though each individually names a single dotted id -- a bare "a dotted
+	 * id is present somewhere" check would miss this. */
+	@Test(timeout = 10000)
+	public void unittestTwoDottedIdsPhraseRejected() {
+		assertFalse(violationsFor(
+				"Run python3 -m unittest tests.test_foo.FooTest.test_bar "
+						+ "tests.test_baz.BazTest.test_qux.").isEmpty());
+	}
+
 	/** The rejection message states there is no bypass and includes the line's snippet. */
 	@Test(timeout = 10000)
 	public void formatRejectionListsEachViolation() {

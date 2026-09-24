@@ -438,6 +438,28 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("`printf mvn` test -pl engine/utils")
         self.assertTrue(violations)
 
+    def test_command_substitution_in_maven_phase_argument_rejected(self):
+        # No literal "test" token is present for the phase check to see, but
+        # the shell still substitutes it and runs the whole module suite.
+        violations = validate_post_completion_command(
+            "mvn $(printf test) -pl engine/utils")
+        self.assertTrue(violations, "a substitution constructing the Maven phase must be rejected")
+
+    def test_command_substitution_in_dtest_argument_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn test -pl engine/utils -Dtest=$(printf FooTest#testBar)")
+        self.assertTrue(violations)
+
+    def test_command_substitution_in_pytest_argument_rejected(self):
+        violations = validate_post_completion_command(
+            "pytest $(printf test_foo.py::test_bar)")
+        self.assertTrue(violations)
+
+    def test_command_substitution_in_unittest_argument_rejected(self):
+        violations = validate_post_completion_command(
+            "python3 -m unittest $(printf pkg.FooTest.test_bar)")
+        self.assertTrue(violations)
+
     def test_shell_variable_indirection_rejected(self):
         violations = validate_post_completion_command(
             "cmd='mvn test -pl engine/utils'; $cmd")
@@ -668,6 +690,15 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run python3 -m unittest tests.test_foo.FooTest.test_bar to verify the fix.")
         self.assertFalse(hits, "an unambiguous single unittest method id must not be flagged")
+
+    def test_unittest_two_dotted_ids_prompt_rejected(self):
+        # A bare "a dotted id is present somewhere in the fragment" check
+        # would miss this: naming two dotted ids still runs both tests
+        # together in one invocation.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3 -m unittest tests.test_foo.FooTest.test_bar "
+            "tests.test_baz.BazTest.test_qux to verify the fix.")
+        self.assertTrue(hits, "naming two dotted unittest ids must still be flagged")
 
     def test_later_skip_tests_false_overrides_earlier_true_mention_rejected(self):
         # The mere PRESENCE of "-DskipTests=true" is not sufficient to

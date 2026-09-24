@@ -709,4 +709,37 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void unresolvedVariableReferenceDoesNotThrow() {
 		assertTrue(violationsFor("$undefined").isEmpty());
 	}
+
+	/** A command substitution constructing the Maven phase itself (not the executable) has no
+	 * literal "test" token for the phase check to see, but the shell still substitutes it and
+	 * runs the whole module suite -- so it must be rejected, not accepted by omission. */
+	@Test(timeout = 10000)
+	public void commandSubstitutionInMavenPhaseArgumentRejected() {
+		List<String> violations = violationsFor("mvn $(printf test) -pl engine/utils");
+		assertFalse("a substitution constructing the Maven phase must be rejected",
+				violations.isEmpty());
+	}
+
+	/** The same substitution-in-argument risk applies to a Maven -Dtest value. */
+	@Test(timeout = 10000)
+	public void commandSubstitutionInDtestArgumentRejected() {
+		List<String> violations = violationsFor(
+				"mvn test -pl engine/utils -Dtest=$(printf FooTest#testBar)");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** The same risk applies to a pytest node id argument. */
+	@Test(timeout = 10000)
+	public void commandSubstitutionInPytestArgumentRejected() {
+		List<String> violations = violationsFor("pytest $(printf test_foo.py::test_bar)");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** The same risk applies to a python -m unittest test id argument. */
+	@Test(timeout = 10000)
+	public void commandSubstitutionInUnittestArgumentRejected() {
+		List<String> violations = violationsFor(
+				"python3 -m unittest $(printf pkg.FooTest.test_bar)");
+		assertFalse(violations.isEmpty());
+	}
 }
