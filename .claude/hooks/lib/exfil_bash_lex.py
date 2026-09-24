@@ -136,7 +136,14 @@ _NETWORK_WORD = re.compile(
 _DEFINITION = re.compile(r"(^|[\s;&|])(?:alias|function)\s|^[A-Za-z_][A-Za-z0-9_]*\s*\(\)")
 
 
-def _strip_heredoc_bodies(command):
+def _split_heredocs(command):
+    """The command with heredoc bodies removed, and each body with whether it expands.
+
+    A body whose delimiter is unquoted (``<<EOF``) is subject to command
+    substitution by the local shell before the program reading it ever
+    sees it; a quoted delimiter (``<<'EOF'``, ``<<"EOF"``) makes the body
+    literal text. The flag is what lets the caller tell the two apart.
+    """
     if "<<" not in command:
         return command, []
     lines = command.split("\n")
@@ -156,36 +163,252 @@ def _strip_heredoc_bodies(command):
             body.append(lines[i])
             i += 1
         i += 1
-        bodies.append("\n".join(body))
+        bodies.append(("\n".join(body), not match.group("q")))
     return "\n".join(kept), bodies
+
+
+def _strip_heredoc_bodies(command):
+    stripped, bodies = _split_heredocs(command)
+    return stripped, [body for body, _ in bodies]
+
+
+# What an active command substitution is replaced with before tokenizing:
+# a parameter expansion, so a command name made of one is still "computed at
+# run time" and an argument made of one still reads as a value.
+SUBSTITUTION_PLACEHOLDER = "$__guard_substitution__"
+
+# Characters after which a ``#`` starts a comment rather than being part of
+# a word.
+_WORD_BREAKS = frozenset(" \t\n;&|()<>")
+
+# shlex drops quotes before anyone sees the tokens, so `echo '('` and a real
+# `(` arrive as the same token, and a quoted newline is joined with `;` like
+# a real one. Inside quotes and after a backslash, operator characters and
+# newlines are therefore swapped for private-use stand-ins while scanning,
+# and swapped back only once _simple_commands has told separators from
+# words: quoted text keeps its characters but can never be read as shell
+# syntax.
+_SHIELDED = "();<>|&\n"
+_SHIELD = str.maketrans({c: chr(0xE000 + n) for n, c in enumerate(_SHIELDED)})
+_UNSHIELD = str.maketrans({chr(0xE000 + n): c for n, c in enumerate(_SHIELDED)})
+
+
+def split_substitutions(command):
+    """What the local shell executes inside ``command``, separated from what it reads as text.
+
+    Returns ``(masked, bodies)``: ``masked`` is the command with comments
+    removed and every command substitution the shell will perform —
+    ``$(…)``, backticks and ``<(…)``/``>(…)`` outside single quotes, the
+    first two inside double quotes too — replaced by
+    ``SUBSTITUTION_PLACEHOLDER``; ``bodies`` are those substitutions'
+    commands, for the caller to analyze as commands in their own right.
+    Text inside single quotes (and ``$'…'``) is left exactly as written:
+    the local shell does not execute it, although a program that hands its
+    arguments to another shell (``ssh``, ``bash -c``) may.
+
+    Comments are removed here because the tokenizer never sees the newline
+    that ends one — ``analyze_command`` joins lines with ``;`` first — so a
+    comment left in place would swallow every command after it.
+
+    Raises ``GuardError`` for quoting or a substitution that never closes.
+    """
+    bodies = []
+    masked, _ = _scan_unquoted(command, 0, False, bodies)
+    return masked, bodies
+
+
+def heredoc_substitutions(body):
+    """The commands an expanding (unquoted-delimiter) heredoc body substitutes.
+
+    Quotes are literal in a heredoc body; only backslash escapes,
+    ``$(…)`` and backticks are special.
+    """
+    bodies = []
+    i = 0
+    while i < len(body):
+        if body[i] == "\\":
+            i += 2
+        elif body.startswith("$(", i) or body[i] == "`":
+            i = _take_substitution(body, i, bodies)
+        else:
+            i += 1
+    return bodies
+
+
+def _scan_unquoted(text, i, nested, bodies):
+    """Scan unquoted shell text from ``i``; stop at the ``)`` closing a
+    substitution when ``nested``. Returns ``(masked, end)``."""
+    out = []
+    depth = 0
+    # A `#` starts a comment only at the start of a word: after an unescaped
+    # blank or operator character, never after an escaped one (`a\ #` is one
+    # word, and whatever follows the `#` still runs).
+    word_start = True
+    while i < len(text):
+        c = text[i]
+        if nested and c == ")" and depth == 0:
+            return "".join(out), i
+        starts_word, word_start = word_start, False
+        if c == "\\":
+            out.append(text[i:i + 2].translate(_SHIELD))
+            i += 2
+        elif c == "'":
+            end = text.find("'", i + 1)
+            if end < 0:
+                raise GuardError("the command's quoting cannot be parsed (a single quote is never closed); an unreadable command does not run")
+            out.append(text[i:end + 1].translate(_SHIELD))
+            i = end + 1
+        elif text.startswith("$'", i):
+            end = _ansi_c_end(text, i + 2)
+            out.append(text[i:end].translate(_SHIELD))
+            i = end
+        elif c == '"':
+            piece, end = _scan_double_quoted(text, i + 1, bodies)
+            out.append('"' + piece + '"')
+            i = end + 1
+        elif c == "#" and starts_word:
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+        elif text.startswith(("$(", "<(", ">("), i) or c == "`":
+            i = _take_substitution(text, i, bodies)
+            out.append(SUBSTITUTION_PLACEHOLDER)
+        else:
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            out.append(c)
+            word_start = c in _WORD_BREAKS
+            i += 1
+    if nested:
+        raise GuardError("the command's quoting cannot be parsed (a command substitution is never closed); an unreadable command does not run")
+    return "".join(out), i
+
+
+def _scan_double_quoted(text, i, bodies):
+    """Scan double-quoted text from ``i``. Returns ``(masked, index of the closing quote)``."""
+    out = []
+    while i < len(text):
+        c = text[i]
+        if c == '"':
+            return "".join(out), i
+        if c == "\\":
+            out.append(text[i:i + 2].translate(_SHIELD))
+            i += 2
+        elif text.startswith("$(", i) or c == "`":
+            i = _take_substitution(text, i, bodies)
+            out.append(SUBSTITUTION_PLACEHOLDER)
+        else:
+            out.append(c.translate(_SHIELD))
+            i += 1
+    raise GuardError("the command's quoting cannot be parsed (a double quote is never closed); an unreadable command does not run")
+
+
+def _ansi_c_end(text, i):
+    """The index just past the ``'`` closing a ``$'…'`` string whose body starts at ``i``."""
+    while i < len(text):
+        if text[i] == "\\":
+            i += 2
+        elif text[i] == "'":
+            return i + 1
+        else:
+            i += 1
+    raise GuardError("the command's quoting cannot be parsed (a $'...' string is never closed); an unreadable command does not run")
+
+
+def _take_substitution(text, i, bodies):
+    """Record the substitution starting at ``i``; return the index just past it."""
+    if text[i] == "`":
+        body = []
+        j = i + 1
+        while j < len(text) and text[j] != "`":
+            if text[j] == "\\" and j + 1 < len(text) and text[j + 1] in "`$\\":
+                body.append(text[j + 1])
+                j += 2
+            else:
+                body.append(text[j])
+                j += 1
+        if j >= len(text):
+            raise GuardError("the command's quoting cannot be parsed (a backtick substitution is never closed); an unreadable command does not run")
+        bodies.append("".join(body))
+        return j + 1
+    # The scan only finds where this substitution ends. What it records is the
+    # substitution's raw text, nested substitutions included, not the masked
+    # scan output: analyze_command re-scans that text and so analyzes every
+    # nested substitution in turn, which is why the scan's own list is dropped.
+    _, end = _scan_unquoted(text, i + 2, True, [])
+    bodies.append(text[i + 2:end])
+    return end + 1
 
 
 def _tokenize(command):
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
-        return list(lexer)
+        # Comments are removed by split_substitutions, which knows where a
+        # line ends. Left to shlex, a ``#`` would consume the rest of the
+        # command, newline-joined commands included.
+        lexer.commenters = ""
+        tokens = list(lexer)
     except ValueError:
         return None
+    return [part for tok in tokens for part in _split_operators(tok)]
+
+
+# shlex's punctuation_chars joins any run of these characters into a single
+# token, so `(true); curl …` yields `);`. Left joined, it matches no
+# separator and every word after it is read as an argument of the command
+# before it — a command hidden in plain sight.
+_OPERATOR_CHARS = frozenset("();<>|&")
+_OPERATORS = sorted({";;", "&&", "||", "|&", ">>", "<<", "<<<", "&>", "&>>", ">&", "<&",
+                     "<>", ">|", ";", "|", "&", "(", ")", "<", ">"}, key=len, reverse=True)
+
+
+def _split_operators(tok):
+    """A token of operator characters, split into the operators it is made of."""
+    if len(tok) < 2 or not set(tok) <= _OPERATOR_CHARS:
+        return [tok]
+    parts = []
+    i = 0
+    while i < len(tok):
+        # Every operator character is itself an operator, so a match always exists.
+        op = next(o for o in _OPERATORS if tok.startswith(o, i))
+        parts.append(op)
+        i += len(op)
+    return parts
 
 
 def _simple_commands(tokens):
-    """Split a token stream into (argv, piped_in, has_heredoc) simple commands."""
+    """Split a token stream into (argv, piped_in, has_heredoc, subshells) simple commands.
+
+    ``subshells`` identifies the ``( … )`` groups a command sits inside, outermost
+    first, each by a number unique within the command line: a ``cd`` in a
+    subshell ends with it, and two sibling groups at the same depth are still
+    two different subshells, which the caller needs in order to know where
+    each command runs.
+    """
     commands, current, piped, heredoc = [], [], False, False
     at_start = True
     skip_words = False
+    subshells = []
+    opened = 0
     i = 0
 
     def flush(next_piped):
         nonlocal current, piped, heredoc, at_start, skip_words
         if current:
-            commands.append((current, piped, heredoc))
+            commands.append((current, piped, heredoc, tuple(subshells)))
         current, piped, heredoc, at_start, skip_words = [], next_piped, False, True, False
 
     while i < len(tokens):
         tok = tokens[i]
         if tok in _SEPARATOR_TOKENS:
             flush(tok in _PIPE_TOKENS)
+            if tok == "(":
+                opened += 1
+                subshells.append(opened)
+            elif tok == ")" and subshells:
+                subshells.pop()
             i += 1
             continue
         if tok == "HEREDOC" and i > 0 and tokens[i - 1] == "<<":
@@ -210,7 +433,7 @@ def _simple_commands(tokens):
         if skip_words:
             i += 1
             continue
-        current.append(tok)
+        current.append(tok.translate(_UNSHIELD))
         at_start = False
         i += 1
     flush(False)
