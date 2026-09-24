@@ -1167,10 +1167,13 @@ public class PackedCollection extends MemoryDataAdapter
 	 * <p>A single source that the provider can adopt as it stands is <em>referenced</em> rather
 	 * than copied: the collection is backed by the caller's own region, and nothing reaches a
 	 * device until a kernel requires it. The caller must then keep whatever produced that region
-	 * alive for as long as the collection is used. Everything else — several sources to interleave,
-	 * a heap buffer, a foreign byte order, a read-only region, or values of a width the provider
-	 * does not address — is staged into an allocation of its own, converting precision on the way.
-	 * See {@link MemoryProvider#canWrap} for what qualifies.</p>
+	 * alive for as long as the collection is used. Either way, the source is left positioned past
+	 * the values consumed, so a buffer holding several tensors back to back — a checkpoint read
+	 * tensor by tensor with repeated calls — advances correctly whichever path a given call takes.
+	 * Everything else — several sources to interleave, a heap buffer, a foreign byte order, a
+	 * read-only region, or values of a width the provider does not address — is staged into an
+	 * allocation of its own, converting precision on the way. See {@link MemoryProvider#canWrap}
+	 * for what qualifies.</p>
 	 *
 	 * <p>Referencing additionally requires the provider to address values at the width the sources
 	 * hold them, which is single precision here. That is a stricter condition than
@@ -1205,8 +1208,10 @@ public class PackedCollection extends MemoryDataAdapter
 
 		if (sources.length == 1 && provider.getNumberSize() == Precision.FP32.bytes()
 				&& provider.canWrap(sources[0], total)) {
-			return new PackedCollection(shape, shape.getTraversalAxis(),
+			PackedCollection adopted = new PackedCollection(shape, shape.getTraversalAxis(),
 					Bytes.of(provider.wrap(sources[0], total), total), 0);
+			sources[0].position(sources[0].position() + total * Precision.FP32.bytes());
+			return adopted;
 		}
 
 		Precision destination = Precision.ofBytes(provider.getNumberSize());
@@ -1216,21 +1221,27 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 
 		RAM mem = provider.allocate(total);
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
 
-		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
-		for (int i = 0; i < sources.length; i++) {
-			transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
-		}
+		try {
+			ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
 
-		if (transfers.length == 1) {
-			transfers[0].copy(total);
-		} else {
-			for (int i = 0; i < total; i += transfers.length) {
-				for (ByteBufferTransfer transfer : transfers) {
-					transfer.copyNext();
+			ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
+			for (int i = 0; i < sources.length; i++) {
+				transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
+			}
+
+			if (transfers.length == 1) {
+				transfers[0].copy(total);
+			} else {
+				for (int i = 0; i < total; i += transfers.length) {
+					for (ByteBufferTransfer transfer : transfers) {
+						transfer.copyNext();
+					}
 				}
 			}
+		} catch (RuntimeException e) {
+			mem.getProvider().deallocate(total, mem);
+			throw e;
 		}
 
 		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);

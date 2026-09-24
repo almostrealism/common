@@ -106,6 +106,37 @@ public class PackedCollectionTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that consecutive calls to load with the same source buffer each consume their own
+	 * region of it, rather than every call after the first re-reading values from wherever the
+	 * buffer was positioned when the first call adopted it. This is the pattern
+	 * {@code Llama2Weights} uses to read several tensors in sequence out of one checkpoint
+	 * buffer, so a call that takes the adoption path must leave the buffer positioned past the
+	 * values it referenced, exactly as the staging path already does. Skipped like
+	 * {@link #loadReferencesAWrappableSource()}, since only a single-precision provider takes the
+	 * adoption path this regresses.
+	 */
+	@Test(timeout = 10000)
+	public void loadAdvancesTheSourcePositionOnAdoption() {
+		MemoryProvider<? extends RAM> provider = Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		if (provider.getNumberSize() != Precision.FP32.bytes()) return;
+
+		int size = 4;
+		ByteBuffer source = ByteBuffer.allocateDirect(Precision.FP32.bytes() * size * 2)
+				.order(ByteOrder.nativeOrder());
+		for (int i = 0; i < size * 2; i++) {
+			source.putFloat(i * Precision.FP32.bytes(), i + 0.5f);
+		}
+
+		PackedCollection first = PackedCollection.load(shape(size), source);
+		PackedCollection second = PackedCollection.load(shape(size), source);
+
+		for (int i = 0; i < size; i++) {
+			assertEquals(i + 0.5, first.toDouble(i));
+			assertEquals(size + i + 0.5, second.toDouble(i));
+		}
+	}
+
+	/**
 	 * Tests that load rejects a provider that addresses values at {@link Precision#FP16}
 	 * (bfloat16) before allocating a staging region, rather than allocating one and then failing
 	 * inside {@link org.almostrealism.hardware.mem.ByteBufferTransfer}, which does not support that
