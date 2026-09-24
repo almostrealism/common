@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.IntConsumer;
@@ -101,6 +102,29 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 
 	/** Cached compiled advance operation that increments the batch counter. */
 	private Runnable cachedAdvance;
+
+	/**
+	 * Cached periodic operation wrapping a {@link Computation}-based
+	 * {@link #renderBatch()}, so its internal tick counter survives across
+	 * repeated {@link #tick()} calls.
+	 */
+	private Supplier<Runnable> cachedPeriodic;
+
+	/**
+	 * Persistent counter memory backing {@link #cachedPeriodic}, owned here
+	 * (rather than left internal to the periodic operation) so that
+	 * {@link #setup()} and {@link #reset()} can zero it in place.
+	 *
+	 * <p>A {@code Runnable} obtained from {@link #cachedPeriodic} before a
+	 * {@code setup()}/{@code reset()} call (e.g. the {@code tick().get()}
+	 * before {@code setup().run()} ordering used by {@code AudioScene})
+	 * still reads this same counter when it later runs. Discarding
+	 * {@link #cachedPeriodic} alone would leave that already-materialized
+	 * runnable bound to its own, un-reset counter, letting it fire early
+	 * on stale tick state. Zeroing this shared counter corrects both the
+	 * next {@link #tick()} call and any runnable materialized earlier.</p>
+	 */
+	private final Bytes periodicCounter = new Bytes(1);
 
 	/** The running count of ticks since the last render, used to detect batch boundaries. */
 	private int tickCount;
@@ -217,6 +241,14 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 * (e.g., inside a {@link org.almostrealism.hardware.computations.Loop}).
 	 * Otherwise, Java-based counting is used as a fallback.</p>
 	 *
+	 * <p>The compiled periodic operation is cached (like {@link #cachedRender}/
+	 * {@link #cachedAdvance} in the Java fallback below) so its tick counter
+	 * survives calling {@link #tick()} fresh on every clock cycle, rather than
+	 * caching the {@link Runnable} it returns once and reusing that. Without
+	 * this, every call would rebuild {@link HardwareFeatures#periodic} with a
+	 * brand new internal counter, so the batch boundary would never be
+	 * reached for a {@code batchSize} greater than one.</p>
+	 *
 	 * @return an operation that conditionally renders based on tick count
 	 */
 	@Override
@@ -224,15 +256,19 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		Supplier<Runnable> render = renderBatch();
 
 		if (render instanceof Computation) {
-			OperationList body = new OperationList("BatchedCell Batch Body");
-			if (frameCallback != null) {
-				body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
-			}
-			body.add(render);
-			body.add(advanceBatch());
+			if (cachedPeriodic == null) {
+				OperationList body = new OperationList("BatchedCell Batch Body");
+				if (frameCallback != null) {
+					body.add(() -> () -> frameCallback.accept(getCurrentFrame()));
+				}
+				body.add(render);
+				body.add(advanceBatch());
 
-			return HardwareFeatures.getInstance().periodic(
-					(Computation<Void>) body, batchSize);
+				cachedPeriodic = HardwareFeatures.getInstance().periodic(
+						(Computation<Void>) body, batchSize, periodicCounter);
+			}
+
+			return cachedPeriodic;
 		}
 
 		return () -> () -> {
@@ -301,6 +337,8 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		OperationList setup = new OperationList("BatchedCell Setup");
 		setup.add(() -> () -> {
 			cachedRender = null;
+			cachedPeriodic = null;
+			periodicCounter.setMem(0, 0);
 			tickCount = 0;
 		});
 		setup.add(a(p(batchCounter), c(0.0)));
@@ -314,6 +352,8 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	public void reset() {
 		output.clear();
 		cachedRender = null;
+		cachedPeriodic = null;
+		periodicCounter.setMem(0, 0);
 		tickCount = 0;
 		batchCounter.clear();
 	}

@@ -102,7 +102,7 @@ public class Atom {
 				if (s == sh) {
 					itr.remove();
 				} else if (s.getEnergyLevel() == sh.getEnergyLevel()) {
-					s.merge(sh);
+					s = s.merge(sh);
 					itr.remove();
 				}
 			}
