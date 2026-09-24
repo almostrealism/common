@@ -574,6 +574,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 				mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
 
+			// TODO(review): computation == null falls back to the same dead `context`, defeating this recovery
 			ComputeContext<?> liveContext = computation == null ? context : getContext(computation);
 			String liveCacheKey = Objects.requireNonNull(signature) + ":" + contextId(liveContext);
 			Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> liveAccessListener =
