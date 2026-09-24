@@ -110,6 +110,56 @@ public class BatchedCellTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a {@link Runnable} obtained from {@link BatchedCell#tick()}
+	 * before a {@link BatchedCell#reset()} does not fire {@link BatchedCell#renderBatch()}
+	 * early when it is finally run afterward.
+	 *
+	 * <p>This reproduces the {@code tick().get()} before {@code setup()}/{@code reset()}
+	 * ordering used by {@code AudioScene}: the counter backing the compiled periodic
+	 * operation must be reset in place, not just replaced by a fresh (and therefore
+	 * unreachable from an already-materialized runnable) counter.</p>
+	 */
+	@Test(timeout = 30_000)
+	public void testComputationRenderBatchCounterResetsAcrossReset() {
+		int batchSize = 4;
+		PackedCollection renderCount = new PackedCollection(1);
+		BatchedCell cell = new BatchedCell(batchSize, batchSize) {
+			@Override
+			protected Supplier<Runnable> renderBatch() {
+				OperationList ops = new OperationList("Test Computation Render Batch");
+				ops.add(a(p(renderCount), add(p(renderCount), c(1.0))));
+				return ops;
+			}
+		};
+
+		Runnable materialized = cell.tick().get();
+
+		for (int i = 0; i < batchSize - 1; i++) {
+			cell.tick().get().run();
+		}
+		Assert.assertEquals("renderBatch should not fire before batchSize ticks",
+				0.0, renderCount.toDouble(0), 0.0001);
+
+		cell.reset();
+		materialized.run();
+		Assert.assertEquals("a runnable materialized before reset should not fire early after reset",
+				0.0, renderCount.toDouble(0), 0.0001);
+
+		// materialized.run() above already counts as the first post-reset tick
+		// (against the freshly-zeroed shared counter), so only batchSize - 2
+		// more are needed before the batch completes.
+		for (int i = 0; i < batchSize - 2; i++) {
+			cell.tick().get().run();
+		}
+		Assert.assertEquals("renderBatch should still require a full batch after reset",
+				0.0, renderCount.toDouble(0), 0.0001);
+
+		cell.tick().get().run();
+		Assert.assertEquals("renderBatch should fire once the post-reset batch completes",
+				1.0, renderCount.toDouble(0), 0.0001);
+	}
+
+	/**
 	 * Verifies that push() does not trigger renderBatch().
 	 */
 	@Test(timeout = 30_000)

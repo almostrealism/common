@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.IntConsumer;
@@ -108,6 +109,22 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 	 * repeated {@link #tick()} calls.
 	 */
 	private Supplier<Runnable> cachedPeriodic;
+
+	/**
+	 * Persistent counter memory backing {@link #cachedPeriodic}, owned here
+	 * (rather than left internal to the periodic operation) so that
+	 * {@link #setup()} and {@link #reset()} can zero it in place.
+	 *
+	 * <p>A {@code Runnable} obtained from {@link #cachedPeriodic} before a
+	 * {@code setup()}/{@code reset()} call (e.g. the {@code tick().get()}
+	 * before {@code setup().run()} ordering used by {@code AudioScene})
+	 * still reads this same counter when it later runs. Discarding
+	 * {@link #cachedPeriodic} alone would leave that already-materialized
+	 * runnable bound to its own, un-reset counter, letting it fire early
+	 * on stale tick state. Zeroing this shared counter corrects both the
+	 * next {@link #tick()} call and any runnable materialized earlier.</p>
+	 */
+	private final Bytes periodicCounter = new Bytes(1);
 
 	/** The running count of ticks since the last render, used to detect batch boundaries. */
 	private int tickCount;
@@ -248,7 +265,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 				body.add(advanceBatch());
 
 				cachedPeriodic = HardwareFeatures.getInstance().periodic(
-						(Computation<Void>) body, batchSize);
+						(Computation<Void>) body, batchSize, periodicCounter);
 			}
 
 			return cachedPeriodic;
@@ -321,6 +338,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		setup.add(() -> () -> {
 			cachedRender = null;
 			cachedPeriodic = null;
+			periodicCounter.setMem(0, 0);
 			tickCount = 0;
 		});
 		setup.add(a(p(batchCounter), c(0.0)));
@@ -335,6 +353,7 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		output.clear();
 		cachedRender = null;
 		cachedPeriodic = null;
+		periodicCounter.setMem(0, 0);
 		tickCount = 0;
 		batchCounter.clear();
 	}
