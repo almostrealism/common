@@ -236,6 +236,15 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 		return resolvedCompiler;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>{@code memoryUsed} is incremented before the backend allocation call, so that a
+	 * rejection after the backend has already produced a block (provider destroyed) is
+	 * unwound by the matching subtraction in {@link #deallocate(NativeRef)}. If the backend
+	 * call itself throws before producing a block, there is no {@link NativeRef} for that
+	 * path to unwind through, so the increment is rolled back directly in that case.</p>
+	 */
 	@Override
 	public synchronized RAM allocate(int size) {
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
@@ -252,14 +261,28 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 		RAM mem;
 		if (direct) {
-			NativeBuffer buffer = allocateBackend(added, () -> NativeBuffer.create(this, size,
-					shared && getMemoryName() != null ? getMemoryName().apply(size) : null));
+			NativeBuffer buffer;
+			try {
+				buffer = NativeBuffer.create(this, size,
+						shared && getMemoryName() != null ? getMemoryName().apply(size) : null);
+			} catch (RuntimeException | Error e) {
+				memoryUsed -= added;
+				throw e;
+			}
+
 			mem = allocated(buffer);
 		} else {
 			if (malloc == null) malloc = new Malloc(compiler());
 
 			long bytes = getNumberSize() * (long) size;
-			long pointer = allocateBackend(added, () -> malloc.apply(getNumberSize() * size));
+			long pointer;
+			try {
+				pointer = malloc.apply(getNumberSize() * size);
+			} catch (RuntimeException | Error e) {
+				memoryUsed -= added;
+				throw e;
+			}
+
 			mem = allocated(new NativeMemory(this, pointer, bytes));
 		}
 

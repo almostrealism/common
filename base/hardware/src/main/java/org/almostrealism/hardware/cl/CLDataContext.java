@@ -481,8 +481,8 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	private ComputeContext createContext(ComputeRequirement... expectations) {
 		synchronized (contextLock) {
 			if (destroyed) {
-				throw new IllegalStateException("Cannot create a ComputeContext for DataContext " +
-						name + " because it has been destroyed");
+				throw new IllegalStateException("Cannot create a compute context for " +
+						name + " because the data context has been destroyed");
 			}
 
 			ComputeContext<MemoryData> context = newContext(expectations);
@@ -648,11 +648,12 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		List<ComputeContext<MemoryData>> current = computeContexts.get();
 
-		// A thread's cached list can outlive destroy(), which only clears the calling
-		// thread's own list; discard and rebuild rather than handing back dead contexts.
+		// A thread's cached list can outlive the contexts it holds, if this data context
+		// was destroyed on another thread; discard it so it is rebuilt (or destruction is
+		// surfaced immediately) rather than handing back destroyed contexts.
 		if (!current.isEmpty() && current.stream().anyMatch(ComputeContext::isDestroyed)) {
-			computeContexts.remove();
-			current = computeContexts.get();
+			current = new ArrayList<>();
+			computeContexts.set(current);
 		}
 
 		if (current.isEmpty()) {

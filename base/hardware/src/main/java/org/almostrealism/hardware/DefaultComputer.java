@@ -528,6 +528,11 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>Access listener ensures that using any {@link io.almostrealism.code.InstructionSet}
 	 * from the manager updates the cache frequency or restores an evicted entry.</p>
 	 *
+	 * <p>If the cached manager's context has since been destroyed, the entry is evicted and
+	 * rebuilt: since {@code context} is itself the dead context recorded on that entry,
+	 * recreating under it would just repeat the failure, so a live context is selected via
+	 * {@link #getContext(Computation)} and the manager is cached under that context's key.</p>
+	 *
 	 * @param signature Unique signature identifying the operation structure
 	 * @param computation The computation to manage (used for Process tree substitution if applicable)
 	 * @param context The compute context for compilation
@@ -540,40 +545,52 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Supplier<Scope<?>> scope) {
 		String cacheKey = Objects.requireNonNull(signature) + ":" + contextId(context);
 
-		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr = instructionsCache.computeIfAbsent(cacheKey,
-				() -> newScopeInstructionsManager(cacheKey, computation, context, scope));
+		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
+				accessListener = mgr -> {
+					// Ensure that usage of any InstructionSets updates
+					// the access frequency in the cache if it is present
+					// or restores it to the cache if it had previously
+					// been evicted
+					instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
+				};
+
+		Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> create =
+				() -> {
+					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
+							new ScopeInstructionsManager<>(context, scope, accessListener);
+
+					if (computation instanceof Process<?, ?>) {
+						mgr.setProcess((Process<?, ?>) computation);
+					}
+
+					return mgr;
+				};
+
+		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
+				instructionsCache.computeIfAbsent(cacheKey, create);
 
 		// Entries of a context that has ended are left behind until evicted here
 		if (mgr.getComputeContext().isDestroyed() ||
 				mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
 
-			ComputeContext<MemoryData> live = computation == null ? null : getContext(computation);
-			String liveCacheKey = live == null ? cacheKey :
-					Objects.requireNonNull(signature) + ":" + contextId(live);
-			ComputeContext<?> liveContext = live == null ? context : live;
+			ComputeContext<?> liveContext = computation == null ? context : getContext(computation);
+			String liveCacheKey = Objects.requireNonNull(signature) + ":" + contextId(liveContext);
+			Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> liveAccessListener =
+					m -> instructionsCache.computeIfAbsent(liveCacheKey, () -> m);
 
-			mgr = instructionsCache.computeIfAbsent(liveCacheKey,
-					() -> newScopeInstructionsManager(liveCacheKey, computation, liveContext, scope));
-		}
+			Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> recreate = () -> {
+				ScopeInstructionsManager<ScopeSignatureExecutionKey> m =
+						new ScopeInstructionsManager<>(liveContext, scope, liveAccessListener);
 
-		return mgr;
-	}
+				if (computation instanceof Process<?, ?>) {
+					m.setProcess((Process<?, ?>) computation);
+				}
 
-	/**
-	 * Builds a {@link ScopeInstructionsManager} for the given cache key, wiring its access
-	 * listener to restore the manager to {@link #instructionsCache} under that same key.
-	 */
-	private ScopeInstructionsManager<ScopeSignatureExecutionKey> newScopeInstructionsManager(
-			String cacheKey, Computation<?> computation, ComputeContext<?> context, Supplier<Scope<?>> scope) {
-		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> accessListener =
-				mgr -> instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
+				return m;
+			};
 
-		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
-				new ScopeInstructionsManager<>(context, scope, accessListener);
-
-		if (computation instanceof Process<?, ?>) {
-			mgr.setProcess((Process<?, ?>) computation);
+			mgr = instructionsCache.computeIfAbsent(liveCacheKey, recreate);
 		}
 
 		return mgr;
@@ -596,7 +613,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
-		// TODO(review): prefix match can collide if one signature is a literal prefix of another (see memory)
+		// TODO(review): prefix match on "signature:" can over-evict if another signature starts with this one + ':'
 		String prefix = signature + ":";
 		List<String> keys = new ArrayList<>();
 		instructionsCache.forEach((key, mgr) -> {
