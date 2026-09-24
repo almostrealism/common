@@ -98,6 +98,33 @@ _UNPARSEABLE_SENTINEL = "\0unparseable\0"
 # a command's own first token. Not a value any real shell token can equal.
 _ENV_SPLIT_SCRIPT_SENTINEL = "\0envSplitScript\0"
 
+# Matches a bare shell variable reference used as a whole token, in either the
+# "$VAR" or "${VAR}" form, capturing the variable's name. Used by
+# `_resolve_variable_command` to recognize "$cmd" in "cmd='mvn test -pl
+# engine/utils'; $cmd" as a reference to a variable recorded by
+# `_record_assignment_only_segment` earlier in the same command text.
+_VARIABLE_REFERENCE_PATTERN = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$")
+
+# python/python3 interpreter option flags that take no operand of their own,
+# so they can precede -m without hiding it -- e.g. "python3 -O -m pytest
+# tests/" must still be recognized as "-m pytest" by `_index_of_module_flag`.
+# Not exhaustive of every real Python flag, only the ones that could
+# plausibly appear before -m in an agent- or job-submitter-constructed
+# command.
+_PYTHON_NOARG_FLAGS = {
+    "-O", "-OO", "-B", "-b", "-bb", "-d", "-E", "-h", "-i", "-I",
+    "-q", "-s", "-S", "-t", "-tt", "-u", "-v", "-x", "-3", "-R",
+}
+
+# python/python3 interpreter option flags that consume the following token as
+# their own operand, mirroring _PYTHON_NOARG_FLAGS for flags that are not bare.
+_PYTHON_ARG_FLAGS = {"-W", "-X"}
+
+# Sentinel prefix used by `_mask_command_substitutions` to stand in for a
+# $(...)/backtick command substitution before shlex tokenization, and by
+# `_unmask_token` to restore the original substitution text afterward.
+_SUBST_SENTINEL_PATTERN = re.compile(r"\x00SUBST(\d+)\x00")
+
 # Shell control-flow keywords that can precede a segment's real command after
 # operator splitting -- e.g. "if true; then mvn test -pl engine/utils; fi"
 # splits on ";" into a segment ["then", "mvn", "test", "-pl", "engine/utils"],
@@ -158,6 +185,86 @@ def _tokenize(command: str) -> list:
     return list(lexer)
 
 
+def _mask_command_substitutions(text: str):
+    """Replaces every top-level ``$(...)``/backtick command substitution in
+    ``text`` (outside single quotes, which suppress substitution entirely) with
+    a NUL-delimited sentinel token, returning the masked text and the ordered
+    list of original substitution spans (including their ``$()``/backtick
+    delimiters).
+
+    ``shlex``'s ``punctuation_chars`` splits on a bare ``(``/``)`` regardless
+    of the ``$(`` substitution syntax that encloses them, which would
+    otherwise scatter a substitution's own parens and interior words across
+    unrelated segments and hide it from per-segment command-position
+    analysis. Restoring the exact original text (not just the substitution's
+    inner command) after tokenization via ``_unmask_token`` lets
+    ``_segment_violations`` recognize when a segment's own first token is a
+    substitution, since it can then match on the literal ``$(``/backtick
+    marker.
+    """
+    spans = []
+    result = []
+    i = 0
+    n = len(text)
+    in_single = False
+    while i < n:
+        c = text[i]
+        if in_single:
+            result.append(c)
+            if c == "'":
+                in_single = False
+            i += 1
+            continue
+        if c == "'":
+            in_single = True
+            result.append(c)
+            i += 1
+            continue
+        if c == "$" and i + 1 < n and text[i + 1] == "(":
+            depth = 1
+            j = i + 2
+            while j < n and depth > 0:
+                if text[j] == "(":
+                    depth += 1
+                elif text[j] == ")":
+                    depth -= 1
+                j += 1
+            if depth == 0:
+                spans.append(text[i:j])
+                result.append("\x00SUBST{}\x00".format(len(spans) - 1))
+                i = j
+                continue
+        if c == "`":
+            close = text.find("`", i + 1)
+            end = close + 1 if close >= 0 else n
+            spans.append(text[i:end])
+            result.append("\x00SUBST{}\x00".format(len(spans) - 1))
+            i = end
+            continue
+        result.append(c)
+        i += 1
+    return "".join(result), spans
+
+
+def _unmask_token(token: str, spans: list) -> str:
+    """Restores every sentinel ``_mask_command_substitutions`` embedded in
+    ``token`` back to its original substitution text."""
+    return _SUBST_SENTINEL_PATTERN.sub(lambda m: spans[int(m.group(1))], token)
+
+
+def _is_substitution_executable(token: str) -> bool:
+    """True when ``token`` contains a command substitution marker (``$(`` or
+    a backtick) -- meaning the shell determines this token's actual text at
+    run time from a subprocess's output, which this validator cannot resolve
+    statically. Used by ``_segment_violations`` to reject a segment whose
+    executable (first token) is determined this way, e.g. ``$(printf mvn)
+    test -pl engine/utils``: the substitution's own inner command (``printf
+    mvn``) is harmless in isolation, but its output becomes the broad ``mvn
+    test`` command actually executed, which no first-token check can see
+    without running the substitution."""
+    return "$(" in token or "`" in token
+
+
 def _shell_segments(command: str) -> list:
     """Best-effort split of a shell command string into simple-command token
     lists, one per ``&&``/``;``/``|``/newline-separated segment.
@@ -191,8 +298,9 @@ def _line_segments(line: str) -> list:
     intent. The sentinel makes an unparseable command a violation in its own
     right instead.
     """
+    masked, spans = _mask_command_substitutions(line)
     try:
-        tokens = _tokenize(line)
+        tokens = [_unmask_token(t, spans) for t in _tokenize(masked)]
     except ValueError:
         return [[_UNPARSEABLE_SENTINEL, line]]
     segments = []
@@ -445,6 +553,13 @@ def _segment_violations(tokens: list) -> list:
     unwrapped = _unwrap_command_prefixes(tokens)
     if _is_env_split_string_result(unwrapped):
         return _text_violations(unwrapped[1])
+    if unwrapped and _is_substitution_executable(unwrapped[0]):
+        return [
+            "Command position in \"{}\" is determined by a command "
+            "substitution ($(...) or `...`), which this validator cannot "
+            "resolve statically. Do not construct the executed command "
+            "name via a substitution.".format(" ".join(tokens))
+        ]
     script = _shell_dash_c_script(unwrapped)
     if script is None:
         script = _eval_script(unwrapped)
@@ -465,6 +580,44 @@ def _segment_violations(tokens: list) -> list:
     return []
 
 
+def _record_assignment_only_segment(segment: list, variables: dict) -> bool:
+    """If ``segment`` consists entirely of ``VAR=value`` assignment tokens (as
+    the shell accepts directly in command position, e.g. ``cmd='mvn test -pl
+    engine/utils'``), records each into ``variables`` (later tokens override
+    earlier ones, left to right, matching real shell assignment order) and
+    returns True. Returns False, leaving ``variables`` untouched, when
+    ``segment`` is not entirely assignments -- e.g. it also has its own
+    command to run.
+    """
+    if not segment or _unwrap_leading_assignments(segment):
+        return False
+    for tok in segment:
+        name, _, value = tok.partition("=")
+        variables[name] = value
+    return True
+
+
+def _resolve_variable_command(tokens: list, variables: dict):
+    """Returns ``tokens`` with a leading bare ``$VAR``/``${VAR}`` reference
+    replaced by the recorded variable's own (re-tokenized) words, or
+    ``None`` when ``tokens`` is empty or its first token is not a reference
+    to a variable ``_record_assignment_only_segment`` already recorded
+    earlier in the same command text.
+
+    Without this, ``cmd='mvn test -pl engine/utils'; $cmd`` assigns the
+    broad command to ``cmd`` in one segment and executes it by reference in
+    the next -- the shell resolves ``$cmd`` to the assigned command line,
+    but no first-token check (mvn/pytest/...) can see that without
+    resolving the reference first.
+    """
+    if not tokens:
+        return None
+    match = _VARIABLE_REFERENCE_PATTERN.match(tokens[0])
+    if not match or match.group(1) not in variables:
+        return None
+    return _tokenize(variables[match.group(1)]) + tokens[1:]
+
+
 def _text_violations(text: str) -> list:
     """Validate a shell command string: its own simple-command segments plus
     the contents of any backtick/``$(...)`` command substitution appearing
@@ -477,10 +630,19 @@ def _text_violations(text: str) -> list:
     for substitutions is text-based rather than tied to one segment's tokens,
     so it also catches a substitution embedded inside a quoted argument that
     the tokenizer would otherwise treat as ordinary text.
+
+    Segments are also scanned, in order, for bare ``VAR=value`` assignments
+    and later ``$VAR``/``${VAR}`` references to them, so a broad command
+    assigned to a variable and executed by reference is resolved to the
+    command it actually runs (see ``_resolve_variable_command``).
     """
     violations = []
+    variables = {}
     for segment in _shell_segments(text):
-        violations.extend(_segment_violations(segment))
+        if _record_assignment_only_segment(segment, variables):
+            continue
+        resolved = _resolve_variable_command(segment, variables)
+        violations.extend(_segment_violations(resolved if resolved is not None else segment))
     for substitution in _command_substitutions(text):
         violations.extend(_text_violations(substitution))
     return violations
@@ -571,6 +733,32 @@ def _maven_segment_violation(tokens: list) -> str:
     return ""
 
 
+def _index_of_module_flag(tokens: list):
+    """Returns the index of the ``-m`` flag among ``tokens``, skipping any
+    leading ``_PYTHON_NOARG_FLAGS``/``_PYTHON_ARG_FLAGS`` interpreter option
+    flags that precede it -- e.g. ``python3 -O -m pytest tests/`` must still
+    be recognized as ``-m pytest``, not waved through because ``-O``
+    occupies the position ``-m`` is checked at. Returns ``None`` when
+    ``-m`` is not reachable that way: an unrecognized flag stops the walk
+    rather than guessing past it, so a genuinely unrecognized interpreter
+    invocation shape is left to whatever check runs next instead of being
+    silently unwrapped.
+    """
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "-m":
+            return i
+        if tok in _PYTHON_NOARG_FLAGS:
+            i += 1
+            continue
+        if tok in _PYTHON_ARG_FLAGS:
+            i += 2
+            continue
+        return None
+    return None
+
+
 def _pytest_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``pytest``/``python -m pytest``
     command segment, or ``""`` when it already names explicit node ids."""
@@ -578,8 +766,11 @@ def _pytest_segment_violation(tokens: list) -> str:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
     rest = tokens[1:]
-    if base in ("python", "python3") and len(rest) >= 2 and rest[0] == "-m" and rest[1] == "pytest":
-        rest = rest[2:]
+    if base in ("python", "python3"):
+        m_index = _index_of_module_flag(rest)
+        if m_index is None or m_index + 1 >= len(rest) or rest[m_index + 1] != "pytest":
+            return ""
+        rest = rest[m_index + 2:]
     elif base in ("pytest", "py.test"):
         pass
     else:
@@ -615,11 +806,13 @@ def _unittest_segment_violation(tokens: list) -> str:
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
-    rest = tokens[1:]
-    if base not in ("python", "python3") or len(rest) < 2 \
-            or rest[0] != "-m" or rest[1] != "unittest":
+    if base not in ("python", "python3"):
         return ""
-    args = rest[2:]
+    rest = tokens[1:]
+    m_index = _index_of_module_flag(rest)
+    if m_index is None or m_index + 1 >= len(rest) or rest[m_index + 1] != "unittest":
+        return ""
+    args = rest[m_index + 2:]
     positionals = [a for a in args if not a.startswith("-")]
     if len(positionals) == 1 and positionals[0] != "discover" \
             and positionals[0].count(".") >= 2:
@@ -714,6 +907,21 @@ _TEST_LINT_PATTERNS = [
 ]
 
 
+def _effective_skip_value_in_text(fragment: str, pattern) -> bool:
+    """Returns the effective boolean value of a Maven skip-property mention
+    in free English/prose text, taking the LAST occurrence of ``pattern`` in
+    ``fragment`` -- mirroring ``_effective_skip_value``'s last-``-D``-wins
+    Maven semantics for an already-tokenized args list, but scanned across
+    prose text instead. Returns ``None`` when the property is never
+    mentioned. A bare mention with no ``=value`` means true.
+    """
+    value = None
+    for match in pattern.finditer(fragment):
+        explicit = match.group(1)
+        value = explicit is None or explicit.lower() == "true"
+    return value
+
+
 class _MvnTestSegmentMatcher:
     """Flags an ``mvn <test-running-phase>`` mention whose OWN chained-command
     fragment has no Class#method ``-Dtest`` selector, without being fooled by
@@ -751,16 +959,29 @@ class _MvnTestSegmentMatcher:
         + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
         re.IGNORECASE)
     _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
-    _SKIP_PATTERN = re.compile(
-        r"-DskipTests(?:=true(?!\S)|(?!=))|-Dmaven\.test\.skip(?:=true(?!\S)|(?!=))",
-        re.IGNORECASE)
+    # Captures an explicit true/false value when present (a bare mention
+    # with no "=value" means true) so `_effective_skip_value_in_text` can
+    # resolve repeated mentions in the same fragment to the LAST one's
+    # value, matching real Maven -D semantics -- a single regex that only
+    # checks whether "=true" (or a bare mention) appears ANYWHERE in the
+    # fragment would wrongly exempt "mvn verify -DskipTests=true
+    # -DskipTests=false", even though Maven's last-value-wins semantics
+    # mean tests still run.
+    _SKIP_TESTS_TEXT_PATTERN = re.compile(r"-DskipTests(?:=(true|false)\b)?", re.IGNORECASE)
+    _MAVEN_TEST_SKIP_TEXT_PATTERN = re.compile(
+        r"-Dmaven\.test\.skip(?:=(true|false)\b)?", re.IGNORECASE)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
-            if self._MVN_TEST_PATTERN.search(fragment) \
-                    and not self._SELECTOR_PATTERN.search(fragment) \
-                    and not self._SKIP_PATTERN.search(fragment):
-                return True
+            if not self._MVN_TEST_PATTERN.search(fragment):
+                continue
+            if self._SELECTOR_PATTERN.search(fragment):
+                continue
+            if _effective_skip_value_in_text(fragment, self._SKIP_TESTS_TEXT_PATTERN) is True \
+                    or _effective_skip_value_in_text(
+                        fragment, self._MAVEN_TEST_SKIP_TEXT_PATTERN) is True:
+                continue
+            return True
         return None
 
 
@@ -791,16 +1012,18 @@ class _DTestBroadValueMatcher:
     _VALUE_PATTERN = re.compile(r"-Dtest=(\S+)", re.IGNORECASE)
 
     def search(self, line: str):
-        match = self._VALUE_PATTERN.search(line)
-        if not match:
+        matches = list(self._VALUE_PATTERN.finditer(line))
+        if not matches:
             return None
-        entries = [e for e in match.group(1).split(",") if e]
-        if len(entries) == 1 and entries[0].count("#") == 1:
-            class_name, _, method_name = entries[0].partition("#")
-            if class_name and method_name and not any(
-                    c in "*?" for c in class_name + method_name):
-                return None
-        return match
+        for match in matches:
+            entries = [e for e in match.group(1).split(",") if e]
+            if len(entries) == 1 and entries[0].count("#") == 1:
+                class_name, _, method_name = entries[0].partition("#")
+                if class_name and method_name and not any(
+                        c in "*?" for c in class_name + method_name):
+                    continue
+            return match
+        return None
 
 
 _TEST_LINT_PATTERNS.append(

@@ -662,20 +662,21 @@ class StartTestRunLimitsTest(unittest.TestCase):
         self.assertIn("error", response)
         self.assertIn("#method selector", response["error"])
 
-    def test_bare_test_classes_entry_with_jmx_monitoring_is_accepted(self):
-        # build-vm-crash-prompt.sh generates exactly this shape to
-        # investigate a JVM crash: Maven Surefire never produced a report
-        # for the crashed run, so there is no method to attribute the
-        # crash to and a whole-class run is the only reproducible signal.
-        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
-                patch.object(server.build_tree, "in_flight", return_value=[]):
+    def test_bare_test_classes_entry_with_jmx_monitoring_is_still_rejected(self):
+        # jmx_monitoring is caller-controlled and cannot authenticate a
+        # JVM-crash reproduction request, so it must never exempt the
+        # bare-class check -- otherwise any caller could widen a
+        # single-test invocation into a whole-class run just by setting
+        # jmx_monitoring:true.
+        with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
                 "test_classes": ["FooTest"],
                 "jmx_monitoring": True,
             })
-        mock_start.assert_called_once()
-        self.assertEqual("run-1", response["run_id"])
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("#method selector", response["error"])
 
     def test_test_methods_entry_missing_method_field_is_rejected(self):
         with patch.object(server.runner, "start_run") as mock_start:

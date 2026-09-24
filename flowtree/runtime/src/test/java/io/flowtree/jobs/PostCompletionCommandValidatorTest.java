@@ -631,4 +631,82 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(message.contains("no bypass"));
 		assertTrue(message.contains("AR_TEST_GROUP"));
 	}
+
+	/** "python3 -O -m pytest tests/" must still be recognized as "-m pytest": an interpreter
+	 * option preceding -m must not hide the broad pytest invocation from detection. */
+	@Test(timeout = 10000)
+	public void pythonDashOFlagBeforeModulePytestRejected() {
+		assertFalse(violationsFor("python3 -O -m pytest tests/").isEmpty());
+	}
+
+	/** The same "-O" prefix with an explicit node id is still accepted. */
+	@Test(timeout = 10000)
+	public void pythonDashOFlagBeforeModulePytestWithNodeIdAccepted() {
+		assertTrue(violationsFor("python3 -O -m pytest tests/test_foo.py::test_bar").isEmpty());
+	}
+
+	/** "python3 -B -m unittest discover" must still be recognized as "-m unittest": an
+	 * interpreter option preceding -m must not hide the forbidden "discover" invocation. */
+	@Test(timeout = 10000)
+	public void pythonDashBFlagBeforeModuleUnittestDiscoverRejected() {
+		assertFalse(violationsFor("python3 -B -m unittest discover").isEmpty());
+	}
+
+	/** An unquoted backslash-escaped character must be resolved before the Maven-phase check
+	 * runs, so a phase token spelled with an escaped letter is recognized as the real phase
+	 * instead of a harmless unrecognized token. */
+	@Test(timeout = 10000)
+	public void backslashEscapedTestPhaseTokenRejected() {
+		assertFalse(violationsFor("mvn t\\est -pl engine/utils").isEmpty());
+	}
+
+	/** The same backslash-escape resolution must not falsely flag an escaped character that
+	 * decodes to an already-accepted, narrow selector. */
+	@Test(timeout = 10000)
+	public void backslashEscapedNarrowSelectorAccepted() {
+		assertTrue(violationsFor("mvn t\\est -pl engine/utils -Dtest=FooTest#testBar").isEmpty());
+	}
+
+	/** A "$(printf mvn) test -pl engine/utils" command must be rejected outright: the
+	 * substitution's own inner command is harmless in isolation, but its output becomes the
+	 * broad command actually executed, which cannot be resolved statically. */
+	@Test(timeout = 10000)
+	public void dollarParenSubstitutionInCommandPositionRejected() {
+		List<String> violations = violationsFor("$(printf mvn) test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("command substitution"));
+	}
+
+	/** A backtick command substitution in command position is rejected the same way. */
+	@Test(timeout = 10000)
+	public void backtickSubstitutionInCommandPositionRejected() {
+		assertFalse(violationsFor("`printf mvn` test -pl engine/utils").isEmpty());
+	}
+
+	/** Assigning a broad command to a variable in one segment and executing it by reference in
+	 * the next resolves to the same broad command the shell would run. */
+	@Test(timeout = 10000)
+	public void shellVariableIndirectionRejected() {
+		assertFalse(violationsFor("cmd='mvn test -pl engine/utils'; $cmd").isEmpty());
+	}
+
+	/** The "${cmd}" brace form of the same reference is resolved identically. */
+	@Test(timeout = 10000)
+	public void shellVariableIndirectionBraceFormRejected() {
+		assertFalse(violationsFor("cmd='mvn test -pl engine/utils'; ${cmd}").isEmpty());
+	}
+
+	/** A variable assigned to an already-narrow command is accepted when referenced, so the
+	 * fix does not turn resolution into a blanket rejection of all variable use. */
+	@Test(timeout = 10000)
+	public void shellVariableIndirectionToNarrowCommandAccepted() {
+		assertTrue(violationsFor("cmd='mvn test -pl engine/utils -Dtest=FooTest#testBar'; $cmd").isEmpty());
+	}
+
+	/** A bare "$VAR" reference to a variable never assigned in the same command text is left
+	 * unresolved rather than crashing or being misread as a command name. */
+	@Test(timeout = 10000)
+	public void unresolvedVariableReferenceDoesNotThrow() {
+		assertTrue(violationsFor("$undefined").isEmpty());
+	}
 }

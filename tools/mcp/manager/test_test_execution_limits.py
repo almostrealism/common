@@ -417,6 +417,44 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
     def test_sh_with_script_file_argument_accepted(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
+    def test_python_dash_o_flag_before_module_pytest_rejected(self):
+        violations = validate_post_completion_command("python3 -O -m pytest tests/")
+        self.assertTrue(violations, "an interpreter option before -m must not hide pytest")
+
+    def test_python_dash_o_flag_before_module_pytest_with_node_id_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "python3 -O -m pytest tests/test_foo.py::test_bar"))
+
+    def test_python_dash_b_flag_before_module_unittest_discover_rejected(self):
+        violations = validate_post_completion_command("python3 -B -m unittest discover")
+        self.assertTrue(violations, "an interpreter option before -m must not hide unittest discover")
+
+    def test_dollar_paren_substitution_in_command_position_rejected(self):
+        violations = validate_post_completion_command("$(printf mvn) test -pl engine/utils")
+        self.assertTrue(violations)
+        self.assertIn("command substitution", violations[0])
+
+    def test_backtick_substitution_in_command_position_rejected(self):
+        violations = validate_post_completion_command("`printf mvn` test -pl engine/utils")
+        self.assertTrue(violations)
+
+    def test_shell_variable_indirection_rejected(self):
+        violations = validate_post_completion_command(
+            "cmd='mvn test -pl engine/utils'; $cmd")
+        self.assertTrue(violations, "a variable assigned a broad command and referenced must be resolved")
+
+    def test_shell_variable_indirection_brace_form_rejected(self):
+        violations = validate_post_completion_command(
+            "cmd='mvn test -pl engine/utils'; ${cmd}")
+        self.assertTrue(violations)
+
+    def test_shell_variable_indirection_to_narrow_command_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "cmd='mvn test -pl engine/utils -Dtest=FooTest#testBar'; $cmd"))
+
+    def test_unresolved_variable_reference_does_not_raise(self):
+        self.assertEqual([], validate_post_completion_command("$undefined"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 
@@ -613,6 +651,22 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run python3 -m unittest tests.test_foo.FooTest.test_bar to verify the fix.")
         self.assertFalse(hits, "an unambiguous single unittest method id must not be flagged")
+
+    def test_later_skip_tests_false_overrides_earlier_true_mention_rejected(self):
+        # The mere PRESENCE of "-DskipTests=true" is not sufficient to
+        # exempt the fragment: Maven's last-value-wins -D semantics mean a
+        # later "-DskipTests=false" still runs the tests.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run mvn verify -DskipTests=true -DskipTests=false to confirm.")
+        self.assertTrue(hits, "a later -DskipTests=false override must still be flagged")
+
+    def test_later_broader_dtest_mention_rejected(self):
+        # Only the FIRST -Dtest= occurrence being narrow is not sufficient:
+        # Maven uses the later property value, so a later, broader mention
+        # must still be flagged even though the first one alone is narrow.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run mvn test -Dtest=Foo#bar -Dtest=WholeClass to confirm.")
+        self.assertTrue(hits, "a later, broader -Dtest= mention must still be flagged")
 
 
 if __name__ == "__main__":

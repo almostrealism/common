@@ -808,14 +808,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int maxPostCompletionPasses = extractJsonIntField(body, "maxPostCompletionPasses");
         int delaySeconds = extractJsonIntField(body, "delaySeconds");
 
-        // No bypass exists for either check; see PostCompletionCommandValidator's javadoc.
-        for (String candidate : new String[] {command, postCompletionCommand}) {
-            PostCompletionCommandValidator validator = new PostCompletionCommandValidator(candidate).validate();
-            if (validator.hasViolations()) {
-                log("Rejected job submission for workstream " + workstreamId
-                        + ": broad test-run command (" + validator.getViolations().get(0) + ")");
-                return errorResponse(validator.formatRejection());
-            }
+        // No bypass exists for any of these checks; see TestExecutionLimitsSubmissionValidator.
+        Response testLimitsRejection = new TestExecutionLimitsSubmissionValidator(this::log, this::errorResponse)
+                .validate(workstreamId, command, postCompletionCommand, prompt);
+        if (testLimitsRejection != null) {
+            return testLimitsRejection;
         }
         if (postCompletionTimeoutSeconds > PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS) {
             log("Clamping postCompletionTimeoutSeconds from " + postCompletionTimeoutSeconds

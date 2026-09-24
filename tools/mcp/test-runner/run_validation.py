@@ -149,17 +149,18 @@ def validate_start_test_run_arguments(
             "in one JVM, which agents and job submitters may "
             "never do. Call start_test_run once per test."
         )
-    # A bare class selector (no #method) is only tolerated when JMX
-    # monitoring is requested: that is the shape build-vm-crash-prompt.sh
-    # generates to investigate a JVM crash, where no surefire report was
-    # ever produced and there is no way to attribute the crash to one
-    # method. Every other caller must narrow to Class#method, matching the
-    # manager and controller validators' identical bare-class rejection.
-    jmx_monitoring = arguments.get("jmx_monitoring", False)
+    # A bare class selector (no #method) is never tolerated, including when
+    # JMX monitoring is requested: jmx_monitoring is a caller-controlled
+    # flag with no trust boundary of its own, so exempting the bare-class
+    # check for it let any caller widen a "single test" invocation into a
+    # whole-class run just by setting jmx_monitoring:true. Every caller must
+    # narrow to Class#method, matching the manager and controller
+    # validators' identical bare-class rejection; JMX instrumentation is
+    # orthogonal to which tests run and must never widen that selection.
     if test_classes:
         _reject_selector_delimiter(test_classes[0], "test_classes entry")
         _reject_wildcard(test_classes[0], "test_classes entry")
-        if "#" not in test_classes[0] and not jmx_monitoring:
+        if "#" not in test_classes[0]:
             raise ValidationError(
                 f"test_classes entry \"{test_classes[0]}\" has no "
                 "#method selector: build_maven_command emits "
@@ -167,9 +168,14 @@ def validate_start_test_run_arguments(
                 "method in that class -- the same bare-class breadth "
                 "the manager and controller validators reject. Pass "
                 "\"Class#method\" here, or use test_methods with an "
-                "explicit {\"class\": ..., \"method\": ...} entry. (A bare "
-                "class is tolerated only with jmx_monitoring:true, for "
-                "reproducing a JVM crash that has no method attribution.)"
+                "explicit {\"class\": ..., \"method\": ...} entry. "
+                "jmx_monitoring does not exempt this rule -- it is a "
+                "caller-controlled flag that cannot authenticate a "
+                "JVM-crash reproduction request, so it must never widen "
+                "which tests run. If a crash gave no method attribution, "
+                "identify a specific candidate method (e.g. the most "
+                "resource-intensive test in the class) and target it, "
+                "one test at a time."
             )
         if "#" in test_classes[0]:
             class_part, _, method_part = test_classes[0].partition("#")

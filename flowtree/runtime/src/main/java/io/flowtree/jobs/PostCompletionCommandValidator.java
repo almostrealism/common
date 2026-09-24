@@ -75,8 +75,10 @@ public class PostCompletionCommandValidator {
 			"-Dmaven\\.test\\.skip(?:=(true|false))?", Pattern.CASE_INSENSITIVE);
 
 	/** Default-lifecycle phases that run tests unless the effective {@link #SKIP_TESTS_PROP}/
-	 * {@link #MAVEN_TEST_SKIP_PROP} value is true. */
-	private static final List<String> TEST_RUNNING_PHASES = Arrays.asList(
+	 * {@link #MAVEN_TEST_SKIP_PROP} value is true. Package-private (not private) so
+	 * {@link PromptTestInstructionLinter} can build its own Maven-phase pattern from the same
+	 * list instead of duplicating it. */
+	static final List<String> TEST_RUNNING_PHASES = Arrays.asList(
 			"test", "integration-test", "verify", "install", "package", "deploy");
 
 	/** Matches a Maven {@code -Dtest=...} argument, capturing its value. */
@@ -87,8 +89,10 @@ public class PostCompletionCommandValidator {
 	 * standalone Windows batch launcher. Without these, {@code ./mvnw.cmd test -pl engine/utils}
 	 * would see a base name of {@code mvnw.cmd} (not {@code mvn}) and be waved through as a
 	 * custom command -- {@code baseName()} only strips leading path-directory components, never
-	 * file extensions, so it never normalizes {@code mvnw.cmd} to {@code mvnw}. */
-	private static final List<String> MVN_LAUNCHER_NAMES = Arrays.asList(
+	 * file extensions, so it never normalizes {@code mvnw.cmd} to {@code mvnw}. Package-private
+	 * (not private) so {@link PromptTestInstructionLinter} can build its own Maven-launcher
+	 * pattern from the same list instead of duplicating it. */
+	static final List<String> MVN_LAUNCHER_NAMES = Arrays.asList(
 			"mvn", "mvnw", "mvn.cmd", "mvnw.cmd");
 
 	/** Shell control operators that separate one simple command from the next. */
@@ -162,6 +166,27 @@ public class PostCompletionCommandValidator {
 			"if", "then", "elif", "else", "fi", "while", "until", "do", "done",
 			"for", "case", "esac", "select", "function");
 
+	/** Matches a bare shell variable reference used as a whole token, in either the
+	 * {@code $VAR} or {@code ${VAR}} form, capturing the variable's name. Used by
+	 * {@link #resolveVariableCommand} to recognize {@code $cmd} in {@code cmd='mvn test -pl
+	 * engine/utils'; $cmd} as a reference to a variable recorded by
+	 * {@link #recordAssignmentOnlySegment} earlier in the same command text. */
+	private static final Pattern VARIABLE_REFERENCE = Pattern.compile("^\\$\\{?([A-Za-z_][A-Za-z0-9_]*)\\}?$");
+
+	/** {@code python}/{@code python3} interpreter option flags that take no operand of their
+	 * own, so they can precede {@code -m} without hiding it -- e.g. {@code python3 -O -m pytest
+	 * tests/} must still be recognized as {@code -m pytest} by {@link #indexOfModuleFlag}. Not
+	 * exhaustive of every real Python flag, only the ones that could plausibly appear before
+	 * {@code -m} in an agent- or job-submitter-constructed command. */
+	private static final List<String> PYTHON_NOARG_FLAGS = Arrays.asList(
+			"-O", "-OO", "-B", "-b", "-bb", "-d", "-E", "-h", "-i", "-I",
+			"-q", "-s", "-S", "-t", "-tt", "-u", "-v", "-x", "-3", "-R");
+
+	/** {@code python}/{@code python3} interpreter option flags that consume the following
+	 * token as their own operand, mirroring {@link #PYTHON_NOARG_FLAGS} for flags that are not
+	 * bare. */
+	private static final List<String> PYTHON_ARG_FLAGS = Arrays.asList("-W", "-X");
+
 	/** The shell command being validated. */
 	private final String command;
 
@@ -209,6 +234,13 @@ public class PostCompletionCommandValidator {
 			validateText(unwrapped.get(1));
 			return;
 		}
+		if (!unwrapped.isEmpty() && isSubstitutionExecutable(unwrapped.get(0))) {
+			violations.add("Command position in \"" + String.join(" ", tokens) + "\" is determined "
+					+ "by a command substitution ($(...) or `...`), which this validator cannot "
+					+ "resolve statically. Do not construct the executed command name via a "
+					+ "substitution.");
+			return;
+		}
 		String script = shellDashCScript(unwrapped);
 		if (script == null) {
 			script = evalScript(unwrapped);
@@ -248,12 +280,73 @@ public class PostCompletionCommandValidator {
 	 * argument.
 	 */
 	private void validateText(String text) {
+		Map<String, String> variables = new HashMap<>();
 		for (List<String> inner : segmentsForText(text)) {
-			validateSegment(inner);
+			if (recordAssignmentOnlySegment(inner, variables)) {
+				continue;
+			}
+			List<String> resolved = resolveVariableCommand(inner, variables);
+			validateSegment(resolved != null ? resolved : inner);
 		}
 		for (String substitution : commandSubstitutions(text)) {
 			validateText(substitution);
 		}
+	}
+
+	/**
+	 * Records a bare {@code VAR=value} assignment segment (e.g. {@code cmd='mvn test -pl
+	 * engine/utils'}, as the shell accepts directly in command position with no {@code env}
+	 * keyword) into {@code variables} and returns true, or returns false without recording
+	 * anything when {@code segment} is not entirely assignment tokens -- i.e. it also has its
+	 * own command to run, which must still be validated as a segment rather than treated purely
+	 * as a variable definition. Later tokens override earlier ones, left to right, matching real
+	 * shell assignment order.
+	 */
+	private boolean recordAssignmentOnlySegment(List<String> segment, Map<String, String> variables) {
+		if (segment.isEmpty() || !unwrapLeadingAssignments(segment).isEmpty()) {
+			return false;
+		}
+		for (String token : segment) {
+			int eq = token.indexOf('=');
+			variables.put(token.substring(0, eq), token.substring(eq + 1));
+		}
+		return true;
+	}
+
+	/**
+	 * Returns {@code tokens} with a leading bare {@code $VAR}/{@code ${VAR}} reference replaced
+	 * by the recorded variable's own (re-tokenized) words, or {@code null} when {@code tokens} is
+	 * empty or its first token is not a reference to a variable {@link #recordAssignmentOnlySegment}
+	 * already recorded earlier in the same command text.
+	 *
+	 * <p>Without this, {@code cmd='mvn test -pl engine/utils'; $cmd} assigns the broad command to
+	 * {@code cmd} in one segment and executes it by reference in the next -- the shell resolves
+	 * {@code $cmd} to the assigned command line, but no first-token check (mvn/pytest/...) can see
+	 * that without resolving the reference first.</p>
+	 */
+	private List<String> resolveVariableCommand(List<String> tokens, Map<String, String> variables) {
+		if (tokens.isEmpty()) {
+			return null;
+		}
+		Matcher matcher = VARIABLE_REFERENCE.matcher(tokens.get(0));
+		if (!matcher.matches() || !variables.containsKey(matcher.group(1))) {
+			return null;
+		}
+		List<String> resolved = new ArrayList<>(tokenize(variables.get(matcher.group(1))));
+		resolved.addAll(tokens.subList(1, tokens.size()));
+		return resolved;
+	}
+
+	/** True when {@code token} contains a command substitution marker ({@code $(} or a
+	 * backtick) -- meaning the shell determines this token's actual text at run time from a
+	 * subprocess's output, which this validator cannot resolve statically. Used by
+	 * {@link #validateSegment} to reject a segment whose executable (first token) is determined
+	 * this way, e.g. {@code $(printf mvn) test -pl engine/utils}: the substitution's own inner
+	 * command ({@code printf mvn}) is harmless in isolation, but its output becomes the broad
+	 * {@code mvn test} command actually executed, which no first-token check can see without
+	 * running the substitution. */
+	private boolean isSubstitutionExecutable(String token) {
+		return token.contains("$(") || token.contains("`");
 	}
 
 	/**
@@ -368,21 +461,10 @@ public class PostCompletionCommandValidator {
 		int i = 0;
 		while (i < n) {
 			if (text.charAt(i) == '$' && i + 1 < n && text.charAt(i + 1) == '(') {
-				int depth = 1;
-				int j = i + 2;
-				int start = j;
-				while (j < n && depth > 0) {
-					char c = text.charAt(j);
-					if (c == '(') {
-						depth++;
-					} else if (c == ')') {
-						depth--;
-					}
-					j++;
-				}
-				if (depth == 0) {
-					results.add(text.substring(start, j - 1));
-					i = j;
+				int end = balancedParenEnd(text, i + 2);
+				if (text.charAt(end - 1) == ')') {
+					results.add(text.substring(i + 2, end - 1));
+					i = end;
 					continue;
 				}
 			}
@@ -624,8 +706,12 @@ public class PostCompletionCommandValidator {
 	 * {@code *} and {@code ?} in either half as wildcards, so e.g. {@code FooTest#test*} or
 	 * {@code Foo*#bar} can still select and run several methods/classes in one invocation despite
 	 * naming exactly one comma-separated entry with a {@code #} in it.</p>
+	 *
+	 * <p>Package-private (not private) and static -- it reads no instance state -- so
+	 * {@link PromptTestInstructionLinter} can reuse the identical rule instead of duplicating
+	 * it for {@code -Dtest=} values found in prompt text.</p>
 	 */
-	private boolean dtestIsNarrow(String value) {
+	static boolean dtestIsNarrow(String value) {
 		List<String> entries = new ArrayList<>();
 		for (String entry : value.split(",")) {
 			if (!entry.isEmpty()) {
@@ -647,6 +733,35 @@ public class PostCompletionCommandValidator {
 				&& methodName.indexOf('*') < 0 && methodName.indexOf('?') < 0;
 	}
 
+	/**
+	 * Returns the index of the {@code -m} token among {@code tokens}, skipping any leading
+	 * {@link #PYTHON_NOARG_FLAGS}/{@link #PYTHON_ARG_FLAGS} interpreter option flags that
+	 * precede it -- e.g. {@code python3 -O -m pytest tests/} must still be recognized as
+	 * {@code -m pytest}, not waved through because {@code -O} occupies the position {@code -m}
+	 * is checked at. Returns -1 when {@code -m} is not reachable that way: an unrecognized flag
+	 * stops the walk rather than guessing past it, so a genuinely unrecognized interpreter
+	 * invocation shape is left to whatever check runs next instead of being silently unwrapped.
+	 */
+	private int indexOfModuleFlag(List<String> tokens) {
+		int i = 0;
+		while (i < tokens.size()) {
+			String tok = tokens.get(i);
+			if ("-m".equals(tok)) {
+				return i;
+			}
+			if (PYTHON_NOARG_FLAGS.contains(tok)) {
+				i++;
+				continue;
+			}
+			if (PYTHON_ARG_FLAGS.contains(tok)) {
+				i += 2;
+				continue;
+			}
+			return -1;
+		}
+		return -1;
+	}
+
 	/** Returns a violation reason for a pytest segment, or null when it is acceptable. */
 	private String pytestSegmentViolation(List<String> tokens) {
 		if (tokens.isEmpty()) {
@@ -654,9 +769,12 @@ public class PostCompletionCommandValidator {
 		}
 		String base = baseName(tokens.get(0));
 		List<String> rest = tokens.subList(1, tokens.size());
-		if (("python".equals(base) || "python3".equals(base)) && rest.size() >= 2
-				&& "-m".equals(rest.get(0)) && "pytest".equals(rest.get(1))) {
-			rest = rest.subList(2, rest.size());
+		if ("python".equals(base) || "python3".equals(base)) {
+			int mIndex = indexOfModuleFlag(rest);
+			if (mIndex < 0 || mIndex + 1 >= rest.size() || !"pytest".equals(rest.get(mIndex + 1))) {
+				return null;
+			}
+			rest = rest.subList(mIndex + 2, rest.size());
 		} else if (!"pytest".equals(base) && !"py.test".equals(base)) {
 			return null;
 		}
@@ -694,12 +812,15 @@ public class PostCompletionCommandValidator {
 			return null;
 		}
 		String base = baseName(tokens.get(0));
-		List<String> rest = tokens.subList(1, tokens.size());
-		if (!("python".equals(base) || "python3".equals(base)) || rest.size() < 2
-				|| !"-m".equals(rest.get(0)) || !"unittest".equals(rest.get(1))) {
+		if (!("python".equals(base) || "python3".equals(base))) {
 			return null;
 		}
-		List<String> args = rest.subList(2, rest.size());
+		List<String> rest = tokens.subList(1, tokens.size());
+		int mIndex = indexOfModuleFlag(rest);
+		if (mIndex < 0 || mIndex + 1 >= rest.size() || !"unittest".equals(rest.get(mIndex + 1))) {
+			return null;
+		}
+		List<String> args = rest.subList(mIndex + 2, rest.size());
 		List<String> positionals = new ArrayList<>();
 		for (String arg : args) {
 			if (!arg.startsWith("-")) {
@@ -795,7 +916,17 @@ public class PostCompletionCommandValidator {
 		return segments;
 	}
 
-	/** Splits {@code text} on whitespace and shell operators, honouring quotes. */
+	/**
+	 * Splits {@code text} on whitespace and shell operators, honouring quotes, unquoted
+	 * backslash escapes (e.g. an argument written {@code mv\n} becomes the single word
+	 * {@code mvn} once the escaping backslash is removed, matching what {@code sh -c} actually
+	 * executes), and {@code $(...)}/backtick command substitutions -- the latter
+	 * captured as part of the surrounding token verbatim (including their delimiters) rather
+	 * than split apart by the bare {@code (}/{@code )} entries in {@link #SHELL_OPERATORS},
+	 * which would otherwise scatter a substitution's own parens and interior words across
+	 * unrelated segments and hide a substitution occupying command position from
+	 * {@link #isSubstitutionExecutable}.
+	 */
 	private List<String> tokenize(String text) {
 		List<String> tokens = new ArrayList<>();
 		StringBuilder current = new StringBuilder();
@@ -818,9 +949,15 @@ public class PostCompletionCommandValidator {
 			if (inDouble) {
 				if (c == '"') {
 					inDouble = false;
-				} else {
-					current.append(c);
+					i++;
+					continue;
 				}
+				if (c == '\\' && i + 1 < n) {
+					current.append(text.charAt(i + 1));
+					i += 2;
+					continue;
+				}
+				current.append(c);
 				i++;
 				continue;
 			}
@@ -834,6 +971,29 @@ public class PostCompletionCommandValidator {
 				inDouble = true;
 				haveToken = true;
 				i++;
+				continue;
+			}
+			if (c == '\\') {
+				if (i + 1 < n) {
+					current.append(text.charAt(i + 1));
+					haveToken = true;
+				}
+				i += 2;
+				continue;
+			}
+			if (c == '$' && i + 1 < n && text.charAt(i + 1) == '(') {
+				int end = balancedParenEnd(text, i + 2);
+				current.append(text, i, end);
+				haveToken = true;
+				i = end;
+				continue;
+			}
+			if (c == '`') {
+				int close = text.indexOf('`', i + 1);
+				int end = close < 0 ? n : close + 1;
+				current.append(text, i, end);
+				haveToken = true;
+				i = end;
 				continue;
 			}
 			if (Character.isWhitespace(c)) {
@@ -875,6 +1035,30 @@ public class PostCompletionCommandValidator {
 			tokens.add(current.toString());
 		}
 		return tokens;
+	}
+
+	/**
+	 * Returns the index just past the closing parenthesis that balances the depth-1 open paren
+	 * whose contents start at {@code start} (i.e. the character immediately after a {@code $(}),
+	 * honouring nested parens so a {@code $( ... $(...) ... )} is not truncated at the first
+	 * closing paren. Returns {@code text.length()} when the parens are unbalanced, so an
+	 * unterminated substitution still consumes the rest of the text as one token instead of
+	 * leaving a stray {@code $(} for {@link #SHELL_OPERATORS} to split on.
+	 */
+	private static int balancedParenEnd(String text, int start) {
+		int depth = 1;
+		int j = start;
+		int n = text.length();
+		while (j < n && depth > 0) {
+			char c = text.charAt(j);
+			if (c == '(') {
+				depth++;
+			} else if (c == ')') {
+				depth--;
+			}
+			j++;
+		}
+		return j;
 	}
 
 	/** Returns the last path component of {@code token} (e.g. {@code mvn} from {@code /usr/bin/mvn}). */

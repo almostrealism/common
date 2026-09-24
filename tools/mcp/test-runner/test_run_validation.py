@@ -67,9 +67,15 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
         with self.assertRaises(ValidationError):
             _validate({"test_classes": ["FooTest"]})
 
-    def test_bare_class_with_jmx_monitoring_accepted(self):
-        result = _validate({"test_classes": ["FooTest"], "jmx_monitoring": True})
-        self.assertEqual(["FooTest"], result["test_classes"])
+    def test_bare_class_with_jmx_monitoring_still_rejected(self):
+        # jmx_monitoring is caller-controlled and cannot authenticate a
+        # JVM-crash reproduction request, so it must never exempt the
+        # bare-class check -- otherwise any caller could widen a
+        # single-test invocation into a whole-class run just by setting
+        # jmx_monitoring:true.
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_classes": ["FooTest"], "jmx_monitoring": True})
+        self.assertIn("jmx_monitoring", ctx.exception.error)
 
     def test_comma_delimiter_in_test_classes_still_rejected(self):
         with self.assertRaises(ValidationError):

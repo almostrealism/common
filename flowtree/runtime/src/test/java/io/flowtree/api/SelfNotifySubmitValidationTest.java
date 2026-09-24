@@ -18,18 +18,10 @@ package io.flowtree.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import fi.iki.elonen.NanoHTTPD;
-import io.flowtree.slack.SlackNotifier;
-import org.almostrealism.util.TestSuiteBase;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -44,29 +36,10 @@ import static org.junit.Assert.assertTrue;
  * connectivity, so no workstream needs to be registered and no node needs to
  * be connected for these tests.
  */
-public class SelfNotifySubmitValidationTest extends TestSuiteBase {
+public class SelfNotifySubmitValidationTest extends FlowTreeApiSubmitTestBase {
 
     /** JSON parser for response bodies. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    /** Live API endpoint under test. */
-    private FlowTreeApiEndpoint endpoint;
-    /** Listening port assigned by NanoHTTPD. */
-    private int port;
-
-    /** Starts the API endpoint on an ephemeral port. */
-    @Before
-    public void setUp() throws Exception {
-        endpoint = new FlowTreeApiEndpoint(0, new SlackNotifier(null));
-        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-        port = endpoint.getListeningPort();
-    }
-
-    /** Stops the endpoint. */
-    @After
-    public void tearDown() {
-        if (endpoint != null) endpoint.stop();
-    }
 
     /** selfNotify=true on a coding-agent submission (prompt, no command) is a 400. */
     @Test(timeout = 10000)
@@ -92,23 +65,5 @@ public class SelfNotifySubmitValidationTest extends TestSuiteBase {
         assertEquals(400, conn.getResponseCode());
         JsonNode response = MAPPER.readTree(readErrorBody(conn));
         assertFalse(response.get("error").asText().contains("selfNotify"));
-    }
-
-    /** Open a POST connection with a JSON body to the local endpoint. */
-    private HttpURLConnection openPost(String path, String body) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(
-                "http://localhost:" + port + path).openConnection();
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/json");
-        try (OutputStream os = conn.getOutputStream()) {
-            os.write(body.getBytes(StandardCharsets.UTF_8));
-        }
-        return conn;
-    }
-
-    /** Read the error stream from an HTTP connection. */
-    private static String readErrorBody(HttpURLConnection conn) throws IOException {
-        return new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
     }
 }
