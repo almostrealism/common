@@ -16,11 +16,15 @@
 #
 # The signed bypass: a commit whose message carries
 # `Sensitive-File-Bypass: <job-id>=<signature>`, signed by the controller
-# with AR_AGENT_BYPASS_SECRET, lifts the lock. The secret is not in an
-# agent's environment and the harness strips any agent-written trailer, so
-# an agent cannot authorise itself (see SensitiveFileBypassTrailer in
-# flowtree/runtime and verify-sensitive-bypass.sh). Without the secret no
-# bypass is possible, which is the safe direction to fail.
+# with AR_AGENT_BYPASS_SECRET, is authorised to change locked files. The
+# authorisation belongs to that commit alone: the lock is lifted only when
+# EVERY commit on the branch that touches a locked file carries its own valid
+# trailer, so an earlier authorised job cannot cover a later, unrelated
+# change. The secret is not in an agent's environment and the harness strips
+# any agent-written trailer, so an agent cannot authorise itself (see
+# SensitiveFileBypassTrailer in flowtree/runtime and
+# verify-sensitive-bypass.sh). Without the secret no bypass is possible,
+# which is the safe direction to fail.
 #
 # The check needs nothing but git, so the pipeline runs it in its first job
 # (`changes`) and a violating branch fails before anything is built.
@@ -72,11 +76,13 @@ current_branch() {
     fi
 }
 
-# Each commit on the branch is verified on its own, so that a forged
-# trailer in one commit cannot mask the controller's signature in another.
-# The verified job ID is echoed for the audit trail.
-bypass_job_id() {
-    local sha msgfile jobid
+# Whether every commit on the branch that touches a locked file carries its
+# own valid trailer. A merge commit is judged by what it changes relative to
+# all of its parents (`diff-tree -c`), so merging the base branch in does not
+# count the base branch's own CI changes against this one. The verified job
+# IDs are echoed for the audit trail.
+every_locked_commit_is_signed() {
+    local sha msgfile jobid signed=""
 
     [ -n "${AR_AGENT_BYPASS_SECRET:-}" ] || return 1
     [ -r "$VERIFY_BYPASS" ] || return 1
@@ -85,14 +91,18 @@ bypass_job_id() {
     trap 'rm -f "$msgfile"' RETURN
 
     for sha in $(git rev-list "${BASE_BRANCH}..HEAD"); do
+        git diff-tree -c --no-commit-id --name-only -r "$sha" \
+            | grep -qE "$LOCKED_PATH_PATTERN" || continue
         git log -1 --format='%B' "$sha" > "$msgfile"
-        if jobid=$(bash "$VERIFY_BYPASS" "$msgfile" 2>/dev/null); then
-            printf '%s\n' "$jobid"
-            return 0
+        if ! jobid=$(bash "$VERIFY_BYPASS" "$msgfile" 2>/dev/null); then
+            echo "Commit ${sha} changes a CI/workflow file without a valid bypass trailer." >&2
+            return 1
         fi
+        signed="${signed:+$signed, }${jobid}"
     done
 
-    return 1
+    [ -n "$signed" ] || return 1
+    printf '%s\n' "$signed"
 }
 
 CURRENT_BRANCH="$(current_branch)"
@@ -122,8 +132,8 @@ if [ -n "$CURRENT_BRANCH" ] && printf '%s\n' "$CURRENT_BRANCH" | grep -qE "$CI_B
     exit 0
 fi
 
-if JOB_ID=$(bypass_job_id); then
-    echo "Sensitive-file bypass verified for job ${JOB_ID} — the CI file lock is lifted."
+if JOB_IDS=$(every_locked_commit_is_signed); then
+    echo "Sensitive-file bypass verified for every CI-changing commit (job ${JOB_IDS}) — the CI file lock is lifted."
     output "blocked=false"
     exit 0
 fi

@@ -76,11 +76,13 @@ test_names() {
 }
 
 # Assertions in one revision of a file: bare `assert` and the unittest and
-# pytest forms, since this repository's Python tests use all three.
+# pytest forms, since this repository's Python tests use all three. Every
+# occurrence is counted, not every line holding one, so removing one of two
+# assertions written on the same line still lowers the count.
 assertions() {
     git show "${1}:${2}" 2>/dev/null \
-        | grep -cE '(^|[^A-Za-z0-9_.])(assert|self\.assert[A-Za-z_]+|self\.fail|pytest\.raises|assertRaises)\b' \
-        || true
+        | { grep -oE '(^|[^A-Za-z0-9_.])(assert|self\.assert[A-Za-z_]+|self\.fail|pytest\.raises|assertRaises)\b' || true; } \
+        | wc -l | tr -d ' '
 }
 
 REPORT=""
@@ -88,7 +90,7 @@ VIOLATIONS=0
 
 while IFS= read -r FILE; do
     [ -z "$FILE" ] && continue
-    printf '%s\n' "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|/tests/[^/]*\.py$' || continue
+    printf '%s\n' "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/[^/]*\.py$' || continue
     printf '%s\n' "$BASE_FILES" | grep -qxF "$FILE" || continue
 
     removed=$(LC_ALL=C comm -23 <(test_names "$MERGE_BASE" "$FILE") <(test_names HEAD "$FILE") || true)

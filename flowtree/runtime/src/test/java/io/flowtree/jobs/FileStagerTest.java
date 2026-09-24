@@ -288,6 +288,107 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the CI file lock holds for a job without the test lock:
+	 * a workflow file and a CI tooling file that exist at the merge-base are
+	 * blocked, while an existing test file is staged because only the test
+	 * lock protects it.
+	 */
+	@Test(timeout = 30000)
+	public void ciFileLockHoldsWithoutTheTestLock() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+			Files.createDirectories(tempDir.resolve("tools/ci"));
+			Files.writeString(tempDir.resolve("tools/ci/run.sh"), "echo run\n");
+			Files.createDirectories(tempDir.resolve("src/test/java"));
+			Files.writeString(tempDir.resolve("src/test/java/FooTest.java"), "class FooTest {}\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectCiFiles(true)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/test/java/FooTest.java"),
+				config, tempDir.toFile(),
+				listingGitOps(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/test/java/FooTest.java"));
+
+			assertEquals(Collections.singletonList("src/test/java/FooTest.java"), result.getStagedFiles());
+			assertEquals(2, result.getSkippedFiles().size());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that with neither lock active an existing workflow file is
+	 * staged, as it is for a job on a {@code ci/...} branch.
+	 */
+	@Test(timeout = 30000)
+	public void workflowFileStagedWithoutEitherLock() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList(".github/workflows/analysis.yaml"),
+				config, tempDir.toFile(), listingGitOps(".github/workflows/analysis.yaml"));
+
+			assertEquals(Collections.singletonList(".github/workflows/analysis.yaml"), result.getStagedFiles());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that only a {@code ci/...} target branch is exempt from the
+	 * harness's CI file lock.
+	 */
+	@Test(timeout = 30000)
+	public void onlyCiBranchesAreExemptFromTheCiFileLock() {
+		assertTrue(GitCommitHandler.isCiBranch("ci/pipeline-change"));
+		assertFalse(GitCommitHandler.isCiBranch("feature/ci-thing"));
+		assertFalse(GitCommitHandler.isCiBranch(null));
+	}
+
+	/**
+	 * A {@link FileStager.GitOperations} whose merge-base resolves and whose
+	 * merge-base tree lists exactly {@code files}.
+	 *
+	 * @param files the paths present at the merge-base
+	 * @return the git operations stub
+	 */
+	private static FileStager.GitOperations listingGitOps(String... files) {
+		return new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				if (args.length >= 1 && "merge-base".equals(args[0])) {
+					return "abc1234def5678901234567890abcdef1234567";
+				}
+				if (args.length >= 1 && "ls-tree".equals(args[0])) {
+					return String.join("\n", files) + "\n";
+				}
+				return "";
+			}
+		};
+	}
+
+	/**
 	 * Verifies that a merge-base tree listing that fails outright (the
 	 * {@code ls-tree} command itself exits non-zero, not merely an empty
 	 * result) fails closed and blocks a protected file, rather than

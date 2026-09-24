@@ -129,8 +129,10 @@ make_repo() {
              "$dir/.github/workflows"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
     overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
-    mkdir -p "$dir/tools/example"
+    mkdir -p "$dir/tools/example" "$dir/tests"
     base_python_test > "$dir/tools/example/test_example.py"
+    # A root-level tests/ module, whose test packs two assertions on a line.
+    printf 'def test_pair():\n    assert 1 == 1; assert 2 == 2\n' > "$dir/tests/helpers.py"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
@@ -343,6 +345,16 @@ py_edit_fixture() {
     edit_production "$1"
 }
 
+py_root_tests_edit_only() {
+    sed -i 's/assert 1 == 1; assert 2 == 2/assert 1 == 1; assert 2 == 2  # unchanged/' \
+        "$1/tests/helpers.py"
+}
+
+py_drop_one_of_two_on_a_line() {
+    sed -i 's/assert 1 == 1; assert 2 == 2/assert 1 == 1/' "$1/tests/helpers.py"
+    edit_production "$1"
+}
+
 py_add_new_test_file() {
     cat > "$1/tools/example/test_added.py" <<'PY'
 import unittest
@@ -378,6 +390,7 @@ run_case "test removal alone blocked"           3 "$VALIDATE" feature/x "$SECRET
 run_case "helper edit alone blocked"            3 "$VALIDATE" feature/x "$SECRET" edit_helper_only
 run_case "py test edit alone blocked"           3 "$VALIDATE" feature/x "$SECRET" py_edit_test_body_only
 run_case "py assertion removal alone blocked"   3 "$VALIDATE" feature/x "$SECRET" py_remove_assertion
+run_case "root tests/ edit alone blocked"       3 "$VALIDATE" feature/x "$SECRET" py_root_tests_edit_only
 
 echo "validate-agent-commit — substantive change sets"
 run_case "test edit with production allowed"    0 "$VALIDATE" feature/x "$SECRET" escalate_and_production
@@ -427,6 +440,7 @@ echo "detect-python-test-hiding — findings"
 run_case "py test function removal found"       2 "$PY_HIDING" feature/x "$SECRET" py_remove_function_and_production
 run_case "py test function rename found"        2 "$PY_HIDING" feature/x "$SECRET" py_rename_test_function
 run_case "py assertion removal found"           2 "$PY_HIDING" feature/x "$SECRET" py_remove_assertion_and_production
+run_case "one of two assertions on a line found" 2 "$PY_HIDING" feature/x "$SECRET" py_drop_one_of_two_on_a_line
 
 echo "detect-python-test-hiding — permitted Python test work"
 run_case "py test body edit allowed"            0 "$PY_HIDING" feature/x "$SECRET" py_edit_test_body
@@ -463,6 +477,31 @@ run_case "valid trailer inert without secret"   4 "$CI_LOCK" feature/x "" edit_c
     "adjust the pipeline
 
 Sensitive-File-Bypass: job-77=$SIG"
+
+# A signed commit authorises its own CI changes, not the branch's: a later
+# unsigned commit that changes a CI file is still locked.
+run_signed_then_unsigned_case() {
+    local name="$1" expected_exit="$2"
+    local dir actual_exit=0 output
+    dir=$(mktemp -d)
+    make_repo "$dir" feature/x
+
+    edit_ci_file "$dir"
+    git -C "$dir" add -A
+    git -C "$dir" commit -qm "adjust the pipeline
+
+Sensitive-File-Bypass: job-77=$SIG"
+
+    edit_tools_ci "$dir"
+    git -C "$dir" add -A
+    git -C "$dir" commit -qm "an unrelated later change"
+
+    output=$(run_check "$dir" "$CI_LOCK" "$SECRET" master) || actual_exit=$?
+    record "$name" "$expected_exit" "$actual_exit" "$output"
+    rm -rf "$dir"
+}
+
+run_signed_then_unsigned_case "a signed commit does not cover a later unsigned one" 4
 
 # ── Fail-closed behaviour ───────────────────────────────────────
 #

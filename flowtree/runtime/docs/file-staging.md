@@ -320,8 +320,18 @@ enter the repository. The default patterns provided by
 
 ### Guardrail 2: Test File Protection
 
-**Check:** Is `config.isProtectTestFiles()` true AND does the file path match
-any pattern in `config.getProtectedPathPatterns()`?
+**Check:** Is the file CI configuration (`.github/workflows/**`,
+`.github/actions/**`, `tools/ci/**`) and `config.isProtectCiFiles()` true? Or
+is `config.isProtectTestFiles()` true AND does the file path match any pattern
+in `config.getProtectedPathPatterns()`?
+
+**Two locks.** The CI file lock (`protectCiFiles`) is the harness side of the
+repository's CI file lock (`tools/ci/agent-protection/check-ci-file-lock.sh`).
+`GitCommitHandler` turns it on for every job except one the controller
+authorised to change sensitive files (its commit carries the signed bypass
+trailer) or one working on a `ci/...` branch, the same exemptions CI applies.
+It is independent of the per-job test lock (`protectTestFiles`), which protects
+test files only for jobs that ask for it.
 
 **Granularity:** The check is **whole-file** for `.github/workflows/**` and
 `.github/actions/**` (CI/workflow configuration has no "method" structure and

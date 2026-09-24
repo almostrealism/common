@@ -157,6 +157,14 @@ public class FileStager implements ConsoleFeatures {
      * responsible for staging the files listed in
      * {@link StagingResult#getStagedFiles()}.</p>
      *
+     * <p>Guardrail 2 protects two things independently. CI/workflow files
+     * (see {@link FileStagingConfig#isProtectCiFiles()}) that exist at the
+     * merge-base are blocked whole-file under the CI file lock whatever the
+     * job's test lock says, and under the test lock as well. Test files are
+     * blocked only under the test lock
+     * ({@link FileStagingConfig#isProtectTestFiles()}), at test-method
+     * granularity for Java sources.</p>
+     *
      * @param changedFiles     the list of changed file paths (relative to
      *                         the working directory)
      * @param config           the staging configuration with guardrail rules
@@ -169,7 +177,7 @@ public class FileStager implements ConsoleFeatures {
         List<String> stagedFiles = new ArrayList<>();
         List<String> skippedFiles = new ArrayList<>();
         TestMethodProtection testMethodProtection = new TestMethodProtection();
-        String mergeBase = config.isProtectTestFiles()
+        String mergeBase = config.isProtectTestFiles() || config.isProtectCiFiles()
                 ? testMethodProtection.resolveMergeBase(config.getBaseBranch(), gitOps)
                 : null;
         Set<String> mergeBaseFiles = mergeBase != null
@@ -187,10 +195,14 @@ public class FileStager implements ConsoleFeatures {
                 continue;
             }
 
-            // Guardrail 2: Test file protection
-            if (config.isProtectTestFiles()
-                    && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
-                if (isCiWorkflowFile(file) || !file.endsWith(".java")) {
+            // Guardrail 2: CI/workflow and test file protection
+            boolean ciFile = isCiWorkflowFile(file);
+            boolean inProtectedPath = matchesAnyPattern(file, config.getProtectedPathPatterns());
+            boolean ciLocked = ciFile
+                    && (config.isProtectCiFiles() || (config.isProtectTestFiles() && inProtectedPath));
+            boolean testLocked = !ciFile && config.isProtectTestFiles() && inProtectedPath;
+            if (ciLocked || testLocked) {
+                if (ciLocked || !file.endsWith(".java")) {
                     if (existsOnBaseBranch(file, mergeBaseFiles)) {
                         log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
                         skippedFiles.add(file + " (protected - exists on base branch)");
@@ -338,8 +350,10 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Returns whether {@code file} is a GitHub Actions workflow or action
-     * definition ({@code .github/workflows/**} or {@code .github/actions/**}).
+     * Returns whether {@code file} is CI configuration: a GitHub Actions
+     * workflow or action definition ({@code .github/workflows/**},
+     * {@code .github/actions/**}) or CI tooling ({@code tools/ci/**}) — the
+     * paths the repository's CI file lock covers.
      *
      * <p>These paths keep whole-file protection rather than the test-method
      * granularity {@link TestMethodProtection} applies to Java test sources:
@@ -352,7 +366,8 @@ public class FileStager implements ConsoleFeatures {
      */
     private static boolean isCiWorkflowFile(String file) {
         return matchesGlobPattern(file, ".github/workflows/**")
-                || matchesGlobPattern(file, ".github/actions/**");
+                || matchesGlobPattern(file, ".github/actions/**")
+                || matchesGlobPattern(file, "tools/ci/**");
     }
 
     /**

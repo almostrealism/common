@@ -3161,8 +3161,10 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           ENFORCE_CHANGES: "true"
-          # Sent to make failing tests pass: the harness keeps every test that
-          # exists on master exactly as it is.
+          # Sent to make failing tests pass. The harness's test lock covers
+          # Java tests under src/test/ (and CI files), not the Python suites
+          # under tools/; those are held by detect-python-test-hiding.sh and
+          # this job's prompt, which forbid removing a test or its assertions.
           PROTECT_TEST_FILES: "true"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}

@@ -271,6 +271,8 @@ class GitCommitHandler implements ConsoleFeatures {
                 // default-default job (both true) gets the full protection.
                 .protectTestFiles(job.isProtectTestFiles()
                         && GitCommitHandler.isSensitiveFileProtectionEnabled(job))
+                .protectCiFiles(GitCommitHandler.isSensitiveFileProtectionEnabled(job)
+                        && !isCiBranch(job.getTargetBranch()))
                 .baseBranch(job.getBaseBranch())
                 .maxFileSizeBytes(job.getMaxFileSizeBytes())
                 .build();
@@ -618,5 +620,25 @@ class GitCommitHandler implements ConsoleFeatures {
             return caj.isSensitiveFileProtectionEnabled();
         }
         return true;
+    }
+
+    /**
+     * Returns whether {@code branch} is a CI branch ({@code ci/...}), whose
+     * declared subject is the pipeline itself.
+     *
+     * <p>The harness applies the repository's CI file lock to every job,
+     * independently of the job's test lock: a CI/workflow file that exists
+     * at the merge-base is not staged unless the controller authorised the
+     * job to change sensitive files (its commit then carries the signed
+     * bypass trailer) or the job works on a CI branch. These are the same
+     * exemptions {@code tools/ci/agent-protection/check-ci-file-lock.sh}
+     * applies in CI, so an edit the harness would stage is never one the
+     * pipeline rejects.</p>
+     *
+     * @param branch the target branch, or {@code null}
+     * @return {@code true} when the branch name starts with {@code ci/}
+     */
+    static boolean isCiBranch(String branch) {
+        return branch != null && branch.startsWith("ci/");
     }
 }

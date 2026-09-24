@@ -118,7 +118,7 @@ SUBSTANTIVE=""
 
 while IFS= read -r FILE; do
     [ -z "$FILE" ] && continue
-    if printf '%s\n' "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)|(^|/)(test_[^/]*|[^/]*_test)\.py$|/tests/[^/]*\.py$' \
+    if printf '%s\n' "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)|(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/[^/]*\.py$' \
             && printf '%s\n' "$BASE_FILES" | grep -qxF "$FILE" \
             && ! adds_a_test "$FILE"; then
         BASE_TEST_EDITS="${BASE_TEST_EDITS}${FILE}\n"

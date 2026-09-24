@@ -214,7 +214,10 @@ execution) sets it to `"false"` and is held to `test-integrity-check` alone,
 the rule every branch meets. `tools/tests/test_analysis_yaml_protect_test_files.py`
 pins that mapping. The early submit jobs set the flag themselves;
 `submit-staged-request.sh` lets a staged request turn it on but never off, and
-`submit-agent-job.sh` defaults it to off. In `master-agent-dispatch.yaml` the
+`submit-agent-job.sh` defaults it to off. The lock's protected paths are
+`src/test/`, `src/it/` and the CI directories, so for the Python-failure job it
+adds nothing over `test-integrity-check`'s Python step; the Python suites under
+`tools/` are not in them. In `master-agent-dispatch.yaml` the
 performance, consolidation and PDSL-migration rounds keep it on, because their
 premise is that existing tests stay the reference.
 
@@ -308,7 +311,12 @@ belongs:
   first job when a branch not named `ci/...` changes `.github/workflows/` or
   `tools/ci/` (a controller-signed `Sensitive-File-Bypass` trailer lifts it).
   It needs only git, so a violating branch never gets as far as `build`.
-  Nothing is dispatched for it: every other job needs `changes`.
+  Nothing is dispatched for it: every other job needs `changes`. The harness
+  applies the same lock before a commit exists (`protectCiFiles` in
+  `FileStager`, on for every job but a signed-bypass or `ci/...` one), so an
+  agent's workflow edit is dropped at staging rather than failing a pipeline.
+  A signed bypass covers only the commits that carry it: every commit that
+  changes a CI file must carry its own valid trailer.
 - **`agent-commit-validation` rejects a change set that only edits master's
   tests** — every changed file a test file that exists at the merge-base, none
   of them gaining a new test. Those tests pass on master, so such a change set
