@@ -131,7 +131,14 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param config             the transformer architecture; its latent length is replaced by the
 	 *                           length derived from {@code maxSeconds}
 	 * @param transformerWeights the transformer weights, released by {@link #destroy()}
-	 * @param conditioner        the prompt and duration conditioner, released by {@link #destroy()}
+	 * @param conditioner        the prompt and duration conditioner, released by {@link #destroy()}.
+	 *                           {@link AudioAttentionConditioner.ConditionerOutput#getCrossAttentionMask()}
+	 *                           is not threaded into the transformer: this generator assumes a
+	 *                           conditioner that never needs it, such as the released
+	 *                           {@link StableAudio3Conditioner}, which substitutes a learned padding
+	 *                           embedding at every padded prompt position instead of masking padded
+	 *                           positions out. A conditioner that instead zero-fills padding (and
+	 *                           relies on the mask to exclude it from attention) is not supported here
 	 * @param autoencoder        the latent autoencoder whose decoder is compiled here
 	 * @param sampleRate         the audio sample rate in Hz; must be finite and positive
 	 * @param maxSeconds         the longest duration to generate, in seconds; rejected when it spans
@@ -365,6 +372,8 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		PackedCollection audio;
 		PackedCollection latent = null;
 		try {
+			// getCrossAttentionMask() is intentionally not read here; see the constructor's
+			// @param conditioner javadoc for why this generator does not need it.
 			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(prompt, seconds);
 			context = positive.getCrossAttentionInput().clone();
 			global = positive.getGlobalCond().clone();
