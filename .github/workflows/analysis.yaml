@@ -288,8 +288,25 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
+      # Every job that needs the project's artifacts restores them from this
+      # job rather than running its own `mvn install` (see "Sharing the build"
+      # in .github/CLAUDE.md). The Maven cache restored above may carry
+      # artifacts installed by an earlier commit; clearing them first means the
+      # upload holds this commit's artifacts and nothing else.
+      - name: Clear previously installed project artifacts
+        run: rm -rf ~/.m2/repository/org/almostrealism
+
       - name: Build
         run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Upload installed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ~/.m2/repository/org/almostrealism
+          # Long enough for the flaky-test retries and a manual re-run.
+          retention-days: 3
+          if-no-files-found: error
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
@@ -312,8 +329,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Code Policy Enforcement
         id: check
@@ -1014,8 +1037,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Check Test Timeouts
         id: check
@@ -1057,8 +1086,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Check Duplicate Code
         id: check
@@ -1244,8 +1279,16 @@ jobs:
   # ─── Checkstyle Check ──────────────────────────────────────────────
   # Runs the default checkstyle rules (no var, no @SuppressWarnings)
   # as a dedicated job for clear violation reporting in the PR summary.
+  #
+  # Needs no build, so it does not wait for `build` and runs in parallel with
+  # it. checkstyle.xml uses only Checkstyle's own modules, and the plugin's
+  # `check` goal resolves no project dependencies, so `mvn checkstyle:check`
+  # finds violations with none of this repository's artifacts installed
+  # (verified offline against a local repository with no org.almostrealism
+  # artifacts). The scripts before it read sources only. An `mvn install`
+  # here used to repeat the whole of `build` before the first check ran.
   checkstyle:
-    needs: [changes, build]
+    needs: [changes]
     # Intentionally NOT gated on checkstyle-integrity-check. Correctness and
     # integrity are independent concerns: integrity protects the config from
     # unauthorized *modification* (which can be overridden when a modification
@@ -1270,9 +1313,6 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
           cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
@@ -1551,8 +1591,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Flowtree Tests
         # Every module of the flowtree family, not just runtime. api and python carry no
@@ -1636,8 +1682,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -1824,8 +1876,14 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Audio Tests
         run: |
@@ -1988,11 +2046,21 @@ jobs:
         # preserved while cross-worker pollution is eliminated. $HOME and
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        # -D argument stays a single token. MAVEN_REPO is exported too, so
+        # "Restore build artifacts" installs into this repository.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -2135,10 +2203,19 @@ jobs:
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -2247,11 +2324,21 @@ jobs:
         # preserved while cross-worker pollution is eliminated. $HOME and
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        # -D argument stays a single token. MAVEN_REPO is exported too, so
+        # "Restore build artifacts" installs into this repository.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Audio Tests
         run: |
@@ -2392,10 +2479,19 @@ jobs:
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
+      # its Maven repository.
+      - name: Restore build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
 
       - name: Run Audio Tests
         run: |
@@ -2488,8 +2584,15 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build for Analysis
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # JaCoCo reads the class files from `build`'s installed jars, so nothing
+      # is rebuilt here. Without a successful build no test job ran, so there
+      # is no coverage to report and nothing to download.
+      - name: Download build artifacts
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/installed-artifacts
 
       # github-token/repository/run-id route the download through the REST API,
       # which can fetch artifacts uploaded during a previous attempt of this run.
@@ -2533,9 +2636,12 @@ jobs:
               --destfile merged-jacoco.exec
 
             # Generate XML report for Qodana
-            # Need to specify all class directories (each as separate --classfiles arg)
+            # Every module's main jar, each as a separate --classfiles arg. The
+          # pattern leaves out classifier jars (-tests, -proto, …), whose classes
+          # would be reported twice or are not production code.
             java -jar jacoco-cli/lib/jacococli.jar report merged-jacoco.exec \
-              $(find . -path "*/target/classes" -type d -exec echo --classfiles {} \;) \
+              $(find "${RUNNER_TEMP}/installed-artifacts" -regextype posix-extended \
+                -regex '.*/[a-z-]+-[0-9.]+\.jar' -exec echo --classfiles {} \;) \
               $(find . -path "*/src/main/java" -type d -exec echo --sourcefiles {} \;) \
               --xml .qodana/code-coverage/coverage.xml \
               --html .qodana/code-coverage/html
@@ -2697,7 +2803,7 @@ jobs:
           retention-days: 1
 
   auto-resolve-python-submit:
-    needs: [auto-resolve-python]
+    needs: [changes, auto-resolve-python]
     if: needs.auto-resolve-python.outputs.staged == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -2716,10 +2822,21 @@ jobs:
 
       - name: Submit agent job
         env:
+          # The target comes from this run's event, never from the staged
+          # request, which pull request code wrote.
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-        run: bash ./tools/ci/submit-staged-request.sh staged-request
+        run: |
+          # The script is read from the default branch, which lacks it until
+          # the change that added it has merged; submit nothing rather than fail.
+          if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the staged request is not submitted"
+            exit 0
+          fi
+          bash ./tools/ci/submit-staged-request.sh staged-request
 
   auto-review:
     needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
@@ -2775,8 +2892,11 @@ jobs:
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
-      # auto-review always submits something: the first matching prompt below,
-      # falling through to the general review when every gate passed. The
+      # auto-review submits the first matching prompt below, falling through
+      # to the general review when every gate passed. The one exception is a
+      # gate that failed without recording a cause (check-quality-gates.sh's
+      # `unattributed`): that is left for a human rather than reported to an
+      # agent as a finding, or as a clean branch. The
       # long-running test jobs play no part here; their failures are
       # auto-resolve's, on attempt 3.
       - name: Select prompt
@@ -2786,6 +2906,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           CODE_POLICY_PASSED: ${{ needs.code-policy-check.outputs.passed }}
           QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
+          QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
           DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
         run: |
           if [ "$CODE_CHANGED" != "true" ]; then
@@ -2796,6 +2917,9 @@ jobs:
             ROUTE=code-policy
           elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
             ROUTE=quality-gates
+          elif [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
+            ROUTE=none
+            echo "::warning::A quality gate failed without recording a cause — nothing is submitted; a human should read the job log"
           elif [ "$DOCS_ONLY" = "true" ]; then
             ROUTE=docs-verify
           else
@@ -2960,6 +3084,7 @@ jobs:
                 echo '```'
                 ;;
               general-review) echo "All quality gates passed — submitted a job for general review." ;;
+              none)           echo "**A quality gate failed without recording a cause** — nothing was submitted. A human should read the job log." ;;
               *)              echo "No prompt was selected." ;;
             esac
             echo ""
@@ -2967,7 +3092,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   auto-review-submit:
-    needs: [auto-review]
+    needs: [changes, auto-review]
     if: needs.auto-review.outputs.staged == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -2986,10 +3111,21 @@ jobs:
 
       - name: Submit agent job
         env:
+          # The target comes from this run's event, never from the staged
+          # request, which pull request code wrote.
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-        run: bash ./tools/ci/submit-staged-request.sh staged-request
+        run: |
+          # The script is read from the default branch, which lacks it until
+          # the change that added it has merged; submit nothing rather than fail.
+          if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the staged request is not submitted"
+            exit 0
+          fi
+          bash ./tools/ci/submit-staged-request.sh staged-request
 
   # ─── Auto-Resolve Job ─────────────────────────────────────────────────
   # The slow path: downloads Surefire reports from the long-running test jobs,

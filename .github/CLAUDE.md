@@ -134,7 +134,7 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempts 1–2, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; it always submits) | As soon as the gates report, from this run |
+| `auto-review` | attempts 1–2, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; submits nothing only when a gate failed without a recorded cause, which is left for a human) | As soon as the gates report, from this run |
 | `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The early two exist so that an agent reaches a stopping point — gates green, no
@@ -272,6 +272,33 @@ The `build` job always runs when `code_changed=true`. It is the critical path
 blocker: every downstream job depends on it, so it MUST stay as short as
 possible. It does one thing: `mvn install -DskipTests`. It does not run tests
 and does not upload coverage.
+
+### Sharing the build
+
+`build` is the only job that runs `mvn install`. It clears the
+`org.almostrealism` tree the Maven cache restored, installs, and uploads that
+tree as the `maven-installed-artifacts` artifact. Every job that used to run its
+own `mvn install -DskipTests` — the three `tools` policy checks,
+`test-flowtree`, every test lane, and `analysis` — downloads it instead:
+
+- Jobs run `mvn test -pl <module>` with no `-am`, so Maven takes every other
+  module from the local repository; "Restore build artifacts" puts `build`'s
+  jars there (`~/.m2/repository`, or the per-runner repository the macOS and CL
+  jobs isolate, exported as `MAVEN_REPO` by their "Isolate Maven repository per
+  runner" step).
+- `analysis` downloads the jars to a temporary directory and hands the main
+  ones to JaCoCo as `--classfiles`, rather than rebuilding for `target/classes`.
+
+The restore is a plain `actions/download-artifact` step, not a script, on
+purpose: a pull request runs the workflow from its merge with the base but
+checks out its own head, which may predate any script added for this. A new
+job that needs the project's artifacts restores them the same way and lists
+`build` in `needs`; do not add another `mvn install`.
+
+`checkstyle` does **not** depend on `build` and does not install anything: the
+Checkstyle rules are Checkstyle's own modules and `checkstyle:check` resolves
+no project dependencies, so it runs straight from the sources, in parallel
+with `build`. Do not add an `mvn install` back to it.
 
 ### Every module with tests must be named by some job
 

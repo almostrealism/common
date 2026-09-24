@@ -1,0 +1,77 @@
+"""Guard: the project is built once per pipeline and shared, not rebuilt per job.
+
+Every job in "Build and Test" that needed the project's artifacts used to run
+its own ``mvn install -DskipTests`` — eleven full builds on top of ``build``'s.
+``build`` now uploads what it installed as ``maven-installed-artifacts`` and
+the other jobs download it (see "Sharing the build" in ``.github/CLAUDE.md``).
+These tests keep a new or copied job from quietly bringing the rebuild back,
+and keep every job that restores the artifacts ordered after ``build``.
+"""
+
+import os
+import unittest
+
+import yaml
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
+_ARTIFACT = "maven-installed-artifacts"
+
+
+def _jobs():
+    with open(_WORKFLOW) as f:
+        return yaml.safe_load(f)["jobs"]
+
+
+def _needs(job):
+    needs = job.get("needs", [])
+    return [needs] if isinstance(needs, str) else needs
+
+
+def _steps_using(job, action):
+    return [s for s in job.get("steps", []) if str(s.get("uses", "")).startswith(action)]
+
+
+class BuildArtifactSharingTest(unittest.TestCase):
+    def test_only_build_runs_mvn_install(self):
+        installing = sorted(name for name, job in _jobs().items()
+                            if any("mvn install" in str(s.get("run", "")) for s in job.get("steps", [])))
+        self.assertEqual(["build"], installing)
+
+    def test_build_uploads_what_it_installed(self):
+        uploads = [s["with"] for s in _steps_using(_jobs()["build"], "actions/upload-artifact")
+                   if s["with"].get("name") == _ARTIFACT]
+        self.assertEqual(1, len(uploads))
+        self.assertEqual("~/.m2/repository/org/almostrealism", uploads[0]["path"])
+        self.assertEqual("error", uploads[0]["if-no-files-found"])
+
+    def test_every_job_that_restores_the_artifacts_waits_for_build(self):
+        restoring = {name: job for name, job in _jobs().items()
+                     if any(s["with"].get("name") == _ARTIFACT
+                            for s in _steps_using(job, "actions/download-artifact"))}
+        self.assertTrue(restoring)
+        for name, job in restoring.items():
+            with self.subTest(job=name):
+                self.assertIn("build", _needs(job))
+
+    def test_jobs_that_run_maven_tests_restore_the_artifacts(self):
+        for name, job in _jobs().items():
+            runs_tests = any("mvn test" in str(s.get("run", "")) for s in job.get("steps", []))
+            if not runs_tests:
+                continue
+            with self.subTest(job=name):
+                names = [s["with"].get("name") for s in _steps_using(job, "actions/download-artifact")]
+                self.assertIn(_ARTIFACT, names)
+
+    def test_isolated_repositories_export_their_path(self):
+        """The restore targets MAVEN_REPO wherever a job moves its Maven repository."""
+        for name, job in _jobs().items():
+            for step in job.get("steps", []):
+                run = str(step.get("run", ""))
+                if "maven.repo.local" in run:
+                    with self.subTest(job=name):
+                        self.assertIn("MAVEN_REPO=", run)
+
+
+if __name__ == "__main__":
+    unittest.main()

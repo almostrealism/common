@@ -133,6 +133,10 @@ jobs:
       # no-op when no request was staged.
       - name: Submit agent job
         env:
+          # The target comes from the completed run's event, never from the
+          # staged request, which pull request code wrote.
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

@@ -243,15 +243,20 @@ def analyze_command(command, ctx, depth=0):
     # tracked through the list. A target that cannot be known statically
     # leaves it None, and anything that then needs it fails closed.
     # A subshell's `cd` ends with the subshell, so the directory in force
-    # when each `( … )` group opened is restored when it closes.
+    # when each `( … )` group opened is restored when it closes — including
+    # when the next command is already inside a sibling group.
     cwd = ctx.command_cwd
-    outer_cwds = []
+    open_groups = []
     try:
-        for argv, piped, heredoc, subshell in commands:
-            while len(outer_cwds) < subshell:
-                outer_cwds.append(cwd)
-            while len(outer_cwds) > subshell:
-                cwd = outer_cwds.pop()
+        for argv, piped, heredoc, subshells in commands:
+            shared = 0
+            while (shared < len(open_groups) and shared < len(subshells)
+                   and open_groups[shared][0] == subshells[shared]):
+                shared += 1
+            while len(open_groups) > shared:
+                cwd = open_groups.pop()[1]
+            for group in subshells[shared:]:
+                open_groups.append((group, cwd))
             if argv and os.path.basename(argv[0]) in ("cd", "pushd"):
                 cwd = _follow_cd(argv, cwd)
                 continue

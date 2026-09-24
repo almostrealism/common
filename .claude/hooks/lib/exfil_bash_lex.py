@@ -229,10 +229,15 @@ def _scan_unquoted(text, i, nested, bodies):
     substitution when ``nested``. Returns ``(masked, end)``."""
     out = []
     depth = 0
+    # A `#` starts a comment only at the start of a word: after an unescaped
+    # blank or operator character, never after an escaped one (`a\ #` is one
+    # word, and whatever follows the `#` still runs).
+    word_start = True
     while i < len(text):
         c = text[i]
         if nested and c == ")" and depth == 0:
             return "".join(out), i
+        starts_word, word_start = word_start, False
         if c == "\\":
             out.append(text[i:i + 2])
             i += 2
@@ -250,7 +255,7 @@ def _scan_unquoted(text, i, nested, bodies):
             piece, end = _scan_double_quoted(text, i + 1, bodies)
             out.append('"' + piece + '"')
             i = end + 1
-        elif c == "#" and (i == 0 or text[i - 1] in _WORD_BREAKS):
+        elif c == "#" and starts_word:
             end = text.find("\n", i)
             i = len(text) if end < 0 else end
         elif text.startswith(("$(", "<(", ">("), i) or c == "`":
@@ -262,6 +267,7 @@ def _scan_unquoted(text, i, nested, bodies):
             elif c == ")":
                 depth -= 1
             out.append(c)
+            word_start = c in _WORD_BREAKS
             i += 1
     if nested:
         raise GuardError("the command's quoting cannot be parsed (a command substitution is never closed); an unreadable command does not run")
@@ -315,6 +321,10 @@ def _take_substitution(text, i, bodies):
             raise GuardError("the command's quoting cannot be parsed (a backtick substitution is never closed); an unreadable command does not run")
         bodies.append("".join(body))
         return j + 1
+    # The scan only finds where this substitution ends. What it records is the
+    # substitution's raw text, nested substitutions included, not the masked
+    # scan output: analyze_command re-scans that text and so analyzes every
+    # nested substitution in turn, which is why the scan's own list is dropped.
     _, end = _scan_unquoted(text, i + 2, True, [])
     bodies.append(text[i + 2:end])
     return end + 1
@@ -358,22 +368,25 @@ def _split_operators(tok):
 
 
 def _simple_commands(tokens):
-    """Split a token stream into (argv, piped_in, has_heredoc, subshell_depth) simple commands.
+    """Split a token stream into (argv, piped_in, has_heredoc, subshells) simple commands.
 
-    ``subshell_depth`` counts the ``( … )`` groups a command sits inside:
-    a ``cd`` in a subshell ends with it, which the caller needs in order to
-    know where the commands after the group run.
+    ``subshells`` identifies the ``( … )`` groups a command sits inside, outermost
+    first, each by a number unique within the command line: a ``cd`` in a
+    subshell ends with it, and two sibling groups at the same depth are still
+    two different subshells, which the caller needs in order to know where
+    each command runs.
     """
     commands, current, piped, heredoc = [], [], False, False
     at_start = True
     skip_words = False
-    subshell = 0
+    subshells = []
+    opened = 0
     i = 0
 
     def flush(next_piped):
         nonlocal current, piped, heredoc, at_start, skip_words
         if current:
-            commands.append((current, piped, heredoc, subshell))
+            commands.append((current, piped, heredoc, tuple(subshells)))
         current, piped, heredoc, at_start, skip_words = [], next_piped, False, True, False
 
     while i < len(tokens):
@@ -381,9 +394,10 @@ def _simple_commands(tokens):
         if tok in _SEPARATOR_TOKENS:
             flush(tok in _PIPE_TOKENS)
             if tok == "(":
-                subshell += 1
-            elif tok == ")":
-                subshell = max(0, subshell - 1)
+                opened += 1
+                subshells.append(opened)
+            elif tok == ")" and subshells:
+                subshells.pop()
             i += 1
             continue
         if tok == "HEREDOC" and i > 0 and tokens[i - 1] == "<<":

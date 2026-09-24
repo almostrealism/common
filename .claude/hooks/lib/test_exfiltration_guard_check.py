@@ -1100,6 +1100,22 @@ class BashSubstitutionScopeTests(GuardFixture):
         self.assertBlocked(self.bash("(true)&& " + self.SCP_OUT), "evil.example")
         self.assertBlocked(self.bash("(true)|" + self.CURL_OUT), "evil.example")
 
+    def test_a_hash_after_an_escaped_blank_is_not_a_comment(self):
+        """`a\\ #` is one word, so the `#` starts nothing and `; curl` still runs."""
+        self.assertBlocked(self.bash("echo a\\ #; " + self.CURL_OUT), "evil.example")
+        self.assertBlocked(self.bash("echo 'a'#; " + self.CURL_OUT), "evil.example")
+
+    def test_the_same_payload_nested_two_substitutions_deep_is_analyzed(self):
+        self.assertBlocked(self.bash('echo "$(echo \\"$(' + self.CURL_OUT + ')\\")"'),
+                           "inside a command substitution: inside a command substitution")
+
+    def test_a_sibling_subshell_starts_from_the_outer_directory(self):
+        """`(cd sub); (bash clean.sh)`: the second group is not inside the first."""
+        os.makedirs(os.path.join(self.root, "sub"), exist_ok=True)
+        self._write("clean.sh", "#!/bin/bash\necho ok\n")
+        self.assertAllowed(self.bash("(cd sub && ls); (bash clean.sh)"))
+        self.assertBlocked(self.bash("(cd sub && ls; bash clean.sh)"), "cannot read")
+
     def test_a_command_inside_the_subshell_still_runs_in_its_directory(self):
         self.assertBlocked(self.bash("(cd /tmp && git push origin main)"))
 

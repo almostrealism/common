@@ -141,7 +141,10 @@ class CredentialIsolationTests(unittest.TestCase):
         for producer, (submitter, artifact) in _EARLY_PRODUCERS.items():
             with self.subTest(job=submitter):
                 job = jobs[submitter]
-                self.assertEqual([producer], job["needs"])
+                self.assertEqual(["changes", producer], job["needs"])
+                env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
+                self.assertEqual("${{ needs.changes.outputs.branch }}", env["BRANCH"])
+                self.assertEqual("${{ needs.changes.outputs.base_branch }}", env["BASE_BRANCH"])
                 self.assertIn("needs.%s.outputs.staged == 'true'" % producer, _condition(job))
                 checkouts = [s for s in job["steps"]
                              if str(s.get("uses", "")).startswith("actions/checkout")]
@@ -259,8 +262,16 @@ class SubmitStagedRequestTests(unittest.TestCase):
         with open(os.path.join(self.request, "submit.env"), "w") as f:
             f.write(submit_env)
 
-    def _run(self):
-        env = {k: v for k, v in os.environ.items() if k not in ("BRANCH", "DESCRIPTION")}
+    def _run(self, **overrides):
+        """Runs the script as a trusted caller would: target and credentials set."""
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("BRANCH", "BASE_BRANCH", "DESCRIPTION", "CF_ACCESS_CLIENT_SECRET")}
+        env.update(BRANCH="feature/x", BASE_BRANCH="master", CF_ACCESS_CLIENT_SECRET="secret")
+        for key, value in overrides.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
         return subprocess.run(["bash", self.script, self.request], env=env,
                               capture_output=True, text=True)
 
@@ -271,7 +282,7 @@ class SubmitStagedRequestTests(unittest.TestCase):
     def test_documented_keys_are_exported_verbatim(self):
         self._stage("BRANCH=feature/a b\nBASE_BRANCH=master\nDESCRIPTION=Resolve 3 test failure(s)\n"
                     "PROTECT_TEST_FILES=true\n")
-        result = self._run()
+        result = self._run(BRANCH="feature/a b")
         self.assertEqual(0, result.returncode, result.stderr)
         env = self._captured_env()
         self.assertEqual("feature/a b", env["BRANCH"])
@@ -288,6 +299,36 @@ class SubmitStagedRequestTests(unittest.TestCase):
         self.assertNotEqual("/tmp/evil", env.get("BASH_ENV"))
         self.assertNotEqual("stolen", env.get("CF_ACCESS_CLIENT_SECRET"))
         self.assertIn("Ignoring unexpected key in the staged submit.env: BASH_ENV", result.stdout)
+
+    def test_the_target_comes_from_the_caller_not_the_request(self):
+        """Pull request code wrote the request; it cannot redirect the submission."""
+        self._stage("BRANCH=master\nBASE_BRANCH=other\nREPO_URL=git@github.com:evil/repo.git\n"
+                    "CREATE_WORKSTREAM=true\n")
+        result = self._run()
+        self.assertEqual(0, result.returncode, result.stderr)
+        env = self._captured_env()
+        self.assertEqual("feature/x", env["BRANCH"])
+        self.assertEqual("master", env["BASE_BRANCH"])
+        self.assertNotEqual("git@github.com:evil/repo.git", env.get("REPO_URL"))
+        self.assertIn("submitting for feature/x", result.stdout)
+
+    def test_a_request_cannot_switch_test_protection_off(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=false\n")
+        result = self._run()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotEqual("false", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_the_caller_must_name_the_target(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\n")
+        result = self._run(BRANCH=None)
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(os.path.exists(self.captured))
+
+    def test_nothing_is_submitted_without_credentials(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\n")
+        result = self._run(CF_ACCESS_CLIENT_SECRET=None)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(os.path.exists(self.captured))
 
     def test_nothing_is_submitted_without_a_staged_request(self):
         result = self._run()
