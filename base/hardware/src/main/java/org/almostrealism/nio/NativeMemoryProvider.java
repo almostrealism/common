@@ -37,6 +37,7 @@ import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Memory provider for CPU-side native memory, backed by either NIO direct buffers or JNI malloc.
@@ -245,25 +246,45 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			log("Allocating " + (getNumberSize() * (long) size) / 1024 / 1024 + "mb");
 		}
 
-		// Accounted for before registration, so a rejection after the backend has
-		// already produced the block (provider destroyed) is unwound by the matching
-		// subtraction in deallocate(NativeRef) rather than corrupting memoryUsed.
-		memoryUsed += (long) getNumberSize() * size;
+		// Accounted for before registration, so allocated()'s rejection path can unwind it.
+		long added = (long) getNumberSize() * size;
+		memoryUsed += added;
 
 		RAM mem;
 		if (direct) {
-			mem = allocated(NativeBuffer.create(this, size,
+			NativeBuffer buffer = allocateBackend(added, () -> NativeBuffer.create(this, size,
 					shared && getMemoryName() != null ? getMemoryName().apply(size) : null));
+			mem = allocated(buffer);
 		} else {
 			if (malloc == null) malloc = new Malloc(compiler());
 
 			long bytes = getNumberSize() * (long) size;
-			long pointer = malloc.apply(getNumberSize() * size);
+			long pointer = allocateBackend(added, () -> malloc.apply(getNumberSize() * size));
 			mem = allocated(new NativeMemory(this, pointer, bytes));
 		}
 
 		allocationSizes.addEntry(getNumberSize() * (long) size);
 		return mem;
+	}
+
+	/**
+	 * Runs a backend allocation call that produces a block for a reservation already
+	 * added to {@link #memoryUsed}. {@link #allocated(RAM)}'s own rejection path unwinds
+	 * that reservation once a block exists, via the matching subtraction in
+	 * {@link #deallocate(NativeRef)}; this method covers the earlier failure where the
+	 * backend call itself throws and never produces a block for that path to unwind.
+	 *
+	 * @param reserved the amount already added to {@link #memoryUsed} for this allocation
+	 * @param backendCall the backend allocation call to run
+	 * @return the value produced by {@code backendCall}
+	 */
+	private <T> T allocateBackend(long reserved, Supplier<T> backendCall) {
+		try {
+			return backendCall.get();
+		} catch (RuntimeException | Error e) {
+			memoryUsed -= reserved;
+			throw e;
+		}
 	}
 
 	/**
