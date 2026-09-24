@@ -506,6 +506,25 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/**
+	 * Returns whether the given native address currently names a live allocation.
+	 *
+	 * <p>Tracking is a bijection between address and {@link NativeRef}: {@link #allocated(RAM)}
+	 * keys its map by address, so a second live entry at an address already in the map would
+	 * silently replace the first rather than coexist with it, corrupting lookups and releases
+	 * for whichever entry loses the race. A provider that can register a block at an address
+	 * without allocating it — {@link org.almostrealism.nio.NativeMemoryProvider#wrap} adopts a
+	 * caller-supplied region rather than allocating a fresh one — must check this first and
+	 * refuse rather than register a colliding address.</p>
+	 *
+	 * @param address the native address to test
+	 * @return {@code true} if a live (not yet freed) allocation is tracked at this address
+	 */
+	protected boolean isTracked(long address) {
+		NativeRef<T> ref = allocated.get(address);
+		return ref != null && !ref.isFreed();
+	}
+
+	/**
 	 * Returns whether the given range lies within the allocation it names.
 	 *
 	 * <p>Sizes are compared in bytes, because that is what an allocation is

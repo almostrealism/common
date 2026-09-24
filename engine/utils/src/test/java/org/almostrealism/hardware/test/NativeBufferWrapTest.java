@@ -189,6 +189,27 @@ public class NativeBufferWrapTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Wrapping the same region a second time while the first wrapper is still live is refused: the
+	 * two wrappers would share one native address, and the allocation map that {@link RAM} lookups
+	 * and releases rely on can only hold one live entry per address.
+	 */
+	@Test(timeout = 60000)
+	public void wrappingTheSameRegionTwiceIsRejected() {
+		MemoryProvider<? extends RAM> provider = provider();
+		ByteBuffer source = source();
+
+		PackedCollection first = wrapped(source, SIZE);
+		Assert.assertNotNull(first);
+
+		try {
+			provider.wrap(source, SIZE);
+			throw new AssertionError("a region already adopted by a live wrapper must be refused");
+		} catch (IllegalArgumentException e) {
+			// expected
+		}
+	}
+
+	/**
 	 * A region positioned partway through a buffer is adopted from that position, so a value read
 	 * out of a larger region does not have to be copied out of it first.
 	 */

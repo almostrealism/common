@@ -280,7 +280,11 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * @param source the region to adopt, positioned at the first value
 	 * @param length the number of values to expose, at this provider's number size
 	 * @return memory over the given region
-	 * @throws IllegalArgumentException if {@link #canWrap} would refuse the region
+	 * @throws IllegalArgumentException if {@link #canWrap} would refuse the region, or the region
+	 *         is already adopted by a live wrapper — {@link #allocated(RAM)} tracks by address, so
+	 *         a second live wrapper at an address already registered would silently replace the
+	 *         first entry in the allocation map rather than coexist with it, corrupting lookups and
+	 *         releases for whichever wrapper loses the race
 	 */
 	@Override
 	public synchronized RAM wrap(ByteBuffer source, int length) {
@@ -297,7 +301,14 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 		ByteBuffer root = source.slice().order(ByteOrder.nativeOrder());
 		root.limit(getNumberSize() * length);
-		return allocated(new NativeBuffer(this, root, view(root), null, true));
+
+		NativeBuffer buffer = new NativeBuffer(this, root, view(root), null, true);
+		if (isTracked(buffer.getContainerPointer())) {
+			throw new IllegalArgumentException("Cannot wrap a region already adopted by a live wrapper " +
+					"at this address; wrap a region only once while the first wrapper is live");
+		}
+
+		return allocated(buffer);
 	}
 
 	/**

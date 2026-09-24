@@ -326,7 +326,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @return the valid frame count
 	 */
 	public int validFrames(double seconds) {
-		int covered = seconds(seconds) + seconds(headroomSeconds);
+		int covered = seconds(seconds + headroomSeconds);
 		return Math.min(latentLen, (int) Math.ceil(covered / (double) downsamplingRatio));
 	}
 
