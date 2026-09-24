@@ -531,13 +531,22 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>If the cached manager's context has since been destroyed, the entry is evicted and
 	 * rebuilt: since {@code context} is itself the dead context recorded on that entry,
 	 * recreating under it would just repeat the failure, so a live context is selected via
-	 * {@link #getContext(Computation)} and the manager is cached under that context's key.</p>
+	 * {@link #getContext(Computation)} and the manager is cached under that context's key.
+	 * Selecting a live context this way needs a real {@link Computation} to apply
+	 * {@link #getContext(Computation)}'s count/requirement heuristics, so when {@code computation}
+	 * is {@code null} there is no way to recover: this fails fast with
+	 * {@link IllegalStateException} instead of recreating a manager bound to the same dead
+	 * context that just failed the check above.</p>
 	 *
 	 * @param signature Unique signature identifying the operation structure
-	 * @param computation The computation to manage (used for Process tree substitution if applicable)
+	 * @param computation The computation to manage (used for Process tree substitution if applicable,
+	 *                     and required to recover a live context if the cached manager's context has
+	 *                     been destroyed)
 	 * @param context The compute context for compilation
 	 * @param scope Supplier of the scope to compile
 	 * @return The instruction manager for this signature
+	 * @throws IllegalStateException if the cached manager's context is destroyed and
+	 *         {@code computation} is {@code null}, so no live context can be selected
 	 */
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
 																							Computation<?> computation,
@@ -574,8 +583,13 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 				mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
 
-			// TODO(review): computation == null falls back to the same dead `context`, defeating this recovery
-			ComputeContext<?> liveContext = computation == null ? context : getContext(computation);
+			if (computation == null) {
+				throw new IllegalStateException("Cannot recreate the instructions manager for signature \"" +
+						signature + "\" because its compute context is destroyed and no computation was " +
+						"supplied to select a live one");
+			}
+
+			ComputeContext<?> liveContext = getContext(computation);
 			String liveCacheKey = Objects.requireNonNull(signature) + ":" + contextId(liveContext);
 			Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> liveAccessListener =
 					m -> instructionsCache.computeIfAbsent(liveCacheKey, () -> m);
