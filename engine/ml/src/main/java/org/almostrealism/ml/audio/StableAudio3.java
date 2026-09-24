@@ -332,12 +332,18 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 *
 	 * @param seed    seed of the initial noise and the ping-pong noise injections
 	 * @param prompt  token ids of the prompt
-	 * @param seconds the duration in seconds, at most the duration this instance was built for
+	 * @param seconds the duration in seconds, at most the duration this instance was built for and
+	 *                spanning at least one sample at {@link #getSampleRate()}
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
 	 */
 	public CollectionProducer generate(long seed, long[] prompt, double seconds) {
 		if (!Double.isFinite(seconds) || seconds <= 0.0 || seconds > maxSeconds) {
 			throw new IllegalArgumentException("Duration " + seconds + " is outside (0, " + maxSeconds + "]");
+		}
+
+		if (seconds(seconds) < 1) {
+			throw new IllegalArgumentException("Duration " + seconds + " at " + sampleRate +
+					" Hz spans less than one sample");
 		}
 
 		if (verbose) {
@@ -366,11 +372,12 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		}
 
 		PackedCollection audio;
-		PackedCollection latent = sampler.sample(seed, context, global);
+		PackedCollection latent = null;
 		try {
+			latent = sampler.sample(seed, context, global);
 			audio = decoder.forward(latent);
 		} finally {
-			latent.destroy();
+			if (latent != null) latent.destroy();
 			context.destroy();
 			global.destroy();
 			if (negativeContext != null) negativeContext.destroy();

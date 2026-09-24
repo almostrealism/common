@@ -1168,9 +1168,14 @@ public class PackedCollection extends MemoryDataAdapter
 	 * @param shape   the shape of the resulting collection
 	 * @param sources one or more buffers holding the values, positioned at the first value
 	 * @return a collection rooted over the staging allocation
-	 * @throws IllegalArgumentException if the shape's size is not divisible by the source count
+	 * @throws IllegalArgumentException if no sources are given, or the shape's size is not
+	 *                                   divisible by the source count
 	 */
 	public static PackedCollection load(TraversalPolicy shape, ByteBuffer... sources) {
+		if (sources.length == 0) {
+			throw new IllegalArgumentException("At least one source is required");
+		}
+
 		int total = shape.getTotalSize();
 		if (total % sources.length != 0) {
 			throw new IllegalArgumentException("Shape size " + total +

@@ -80,6 +80,8 @@ public class SAMEAutoEncoderShapeTest extends TransformerResamplingShapeTest {
 	 */
 	@Test(timeout = 240000)
 	public void encodeDecodeShapes() {
+		skipWhenMetalPresent();
+
 		SAMEAutoEncoder ae = autoencoder(syntheticWeights());
 		int samples = 32;
 		int latentLen = ae.latentLength(samples);

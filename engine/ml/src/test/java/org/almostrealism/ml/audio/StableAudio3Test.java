@@ -125,6 +125,24 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A positive duration too short to span a whole sample is rejected at {@link StableAudio3#generate}
+	 * rather than rounding to a zero sample count and returning an empty clip.
+	 */
+	@Test(timeout = 240000)
+	public void subSampleDurationIsRejected() {
+		StableAudio3 model = smallModel().setVerbose(false);
+		double tooShort = 0.5 / SAMPLE_RATE;
+		try {
+			model.generate(1, new long[]{5}, tooShort);
+			throw new AssertionError("a duration shorter than one sample must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains(String.valueOf(tooShort)));
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * A maximum duration whose sample count exceeds the longest clip the decoder can produce is
 	 * rejected at construction rather than accepted and truncated later.
 	 */

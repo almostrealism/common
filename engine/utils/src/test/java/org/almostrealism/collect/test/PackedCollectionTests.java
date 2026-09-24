@@ -55,4 +55,18 @@ public class PackedCollectionTests extends TestSuiteBase {
 		data.clear();
 		assertEquals(0, data.toArray(0, 4)[1]);
 	}
+
+	/**
+	 * Tests that load rejects an empty source list explicitly, rather than reaching the shape's
+	 * divisibility check and dividing by zero.
+	 */
+	@Test(timeout = 10000)
+	public void loadRejectsEmptySources() {
+		try {
+			PackedCollection.load(shape(4));
+			throw new AssertionError("load with no sources must be rejected");
+		} catch (IllegalArgumentException e) {
+			// expected
+		}
+	}
 }
