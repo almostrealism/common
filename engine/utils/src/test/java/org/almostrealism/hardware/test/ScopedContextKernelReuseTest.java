@@ -62,4 +62,31 @@ public class ScopedContextKernelReuseTest extends TestSuiteBase {
 			assertEquals("Difference on pass " + pass, 0.0, difference, 1e-6);
 		}
 	}
+
+	/**
+	 * An operation obtained and first run inside a scoped context, then run again
+	 * after the scope has ended. Unlike an evaluable, the operation holds its
+	 * compiled instructions directly, so it must notice that its context is gone
+	 * and compile again under a live one.
+	 */
+	@Test(timeout = 120_000)
+	public void operationIsRecompiledAfterScopedContextDestroyed() {
+		int length = 512;
+		PackedCollection input = new PackedCollection(shape(length)).randFill();
+		PackedCollection output = new PackedCollection(shape(length));
+		double expected = 2.0 * sum(cp(input)).evaluate().toDouble(0);
+
+		Runnable op = dc(() -> {
+			Runnable inner = a(cp(output), cp(input).multiply(2.0)).get();
+			inner.run();
+			return inner;
+		});
+
+		output.clear();
+		op.run();
+
+		double total = sum(cp(output)).evaluate().toDouble(0);
+		log("expected=" + expected + " total=" + total);
+		assertEquals("Sum after the scope", expected, total, 1e-6);
+	}
 }

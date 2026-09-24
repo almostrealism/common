@@ -214,6 +214,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
 	/**
+	 * Gives this operation the chance to abandon a compute context that has been
+	 * destroyed before anything is dispatched through it. Called at the start of
+	 * every application, ahead of the argument bindings, which are derived from the
+	 * context and must be rebuilt along with it. The default does nothing.
+	 */
+	protected void refreshContext() { }
+
+	/**
+	 * Re-targets this operation at another compute context. Only meaningful once
+	 * the context it was created under has been destroyed and everything derived
+	 * from that context has been reset, so that the next load compiles anew.
+	 *
+	 * @param context the live context to compile and dispatch under from now on
+	 */
+	protected void setComputeContext(ComputeContext<MemoryData> context) {
+		this.context = context;
+	}
+
+	/**
 	 * Returns the {@link InstructionSetManager} responsible for compiling and caching this operation.
 	 *
 	 * <p>The instruction set manager coordinates kernel compilation, caching, and retrieval of
@@ -627,6 +646,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		refreshContext();
+
 		if (getArguments() == null) {
 			if (getInstructionSetManager() == null) {
 				throw new UnsupportedOperationException("Operation was not compiled");

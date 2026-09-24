@@ -558,14 +558,15 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
 	 */
 	protected synchronized T allocated(T ram) {
-		if (destroying) {
-			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
-		}
-		if (destroyed) {
-			throw new IllegalStateException("Cannot allocate " + ram + " as the provider has been destroyed");
+		NativeRef<T> ref = nativeRef(ram);
+
+		if (destroying || destroyed) {
+			// The backend has already produced the block; release it, since nothing will track it
+			release(ref);
+			throw new IllegalStateException("Cannot allocate " + ram + " as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
@@ -577,6 +578,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 
 		return ram;
+	}
+
+	/**
+	 * Frees a block that was never registered, because it was produced after this
+	 * provider stopped accepting allocations. Best effort: the refusal that follows
+	 * is the failure the caller sees.
+	 */
+	private void release(NativeRef<T> ref) {
+		try {
+			if (ref.tryClaimFreed()) deallocate(ref);
+		} catch (RuntimeException e) {
+			warn("Unable to release " + ref + " allocated after destroy", e);
+		}
 	}
 
 	/**

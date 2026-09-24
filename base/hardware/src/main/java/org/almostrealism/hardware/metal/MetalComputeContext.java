@@ -306,6 +306,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public synchronized void destroy() {
+		super.destroy();
+
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(MetalOperatorMap::destroy);
 

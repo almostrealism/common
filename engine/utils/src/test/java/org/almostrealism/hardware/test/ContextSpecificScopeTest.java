@@ -18,10 +18,12 @@ package org.almostrealism.hardware.test;
 
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
+import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertNotSame;
@@ -72,6 +74,26 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		} finally {
 			specific.destroy();
 		}
+	}
+
+	/**
+	 * A thread-local holder disposes of the values every thread created, even when
+	 * the thread doing the disposing never created a value of its own.
+	 */
+	@Test(timeout = 60_000)
+	public void threadLocalValuesAreDisposedFromAnyThread() throws InterruptedException {
+		List<Object> disposed = Collections.synchronizedList(new ArrayList<>());
+		ContextSpecific<Object> specific = new ThreadLocalContextSpecific<>(Object::new, disposed::add);
+		Object[] fromWorker = new Object[1];
+
+		Thread worker = new Thread(() -> fromWorker[0] = specific.getValue());
+		worker.start();
+		worker.join();
+
+		specific.destroy();
+
+		assertTrue("Worker created a value", fromWorker[0] != null);
+		assertTrue("Worker's value was disposed", disposed.contains(fromWorker[0]));
 	}
 
 	/** A nested scope gets its own value, and the outer value is back once the scope ends. */

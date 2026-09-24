@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
@@ -112,8 +113,9 @@ import java.util.function.Supplier;
  *
  * <h2>Thread Safety</h2>
  *
- * <p>This base class is NOT thread-safe. Use {@link ThreadLocalContextSpecific} for
- * thread-specific values or synchronize externally if shared across threads.</p>
+ * <p>The bookkeeping of which value serves which context is synchronized, so the
+ * instance may be shared across threads. The values themselves are shared too unless
+ * {@link ThreadLocalContextSpecific} is used, which keeps one per thread.</p>
  *
  * @param <T> Type of context-specific value
  * @see DefaultContextSpecific
@@ -157,7 +159,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 *
 	 * <p>Call this method once after construction to enable automatic lifecycle management.</p>
 	 */
-	public void init() {
+	public synchronized void init() {
 		if (val.isEmpty()) push();
 		Hardware.getLocalHardware().addContextListener(this);
 	}
@@ -180,7 +182,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 *
 	 * @return The value for the current context
 	 */
-	public T getValue() {
+	public synchronized T getValue() {
 		discardOrphans();
 
 		ComputeContext<?> current = currentContext();
@@ -213,14 +215,20 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	}
 
 	/**
-	 * Returns the compute context a value created now belongs to, or {@code null} when
-	 * there is none to ask, in which case the value serves every context.
+	 * Returns the compute context a value created now belongs to, chosen under the
+	 * requirements active on this thread as an operation compiled now would be, or
+	 * {@code null} when there is none to ask, in which case the value serves every
+	 * context.
 	 */
 	private ComputeContext<?> currentContext() {
 		Hardware hardware = Hardware.getLocalHardware();
-		if (hardware == null || hardware.getDataContext(false, false) == null) return null;
+		if (hardware == null) return null;
 
-		List<ComputeContext<MemoryData>> contexts = hardware.getComputeContexts(false, false);
+		ComputeRequirement[] active = hardware.getComputer().getActiveRequirements()
+				.toArray(ComputeRequirement[]::new);
+		if (hardware.getDataContext(false, false, active) == null) return null;
+
+		List<ComputeContext<MemoryData>> contexts = hardware.getComputeContexts(false, false, active);
 		return contexts.isEmpty() ? null : contexts.get(0);
 	}
 
@@ -273,7 +281,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 * @param ctx The context that started
 	 */
 	@Override
-	public void contextStarted(DataContext ctx) {
+	public synchronized void contextStarted(DataContext ctx) {
 		push();
 	}
 
@@ -285,7 +293,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 * @param ctx The context being destroyed
 	 */
 	@Override
-	public void contextDestroyed(DataContext ctx) {
+	public synchronized void contextDestroyed(DataContext ctx) {
 		if (ctx == null) {
 			if (!val.isEmpty()) dispose(val.pop());
 			return;
@@ -306,7 +314,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 * the hardware context's listener list.</p>
 	 */
 	@Override
-	public void destroy() {
+	public synchronized void destroy() {
 		while (!val.isEmpty()) {
 			dispose(val.pop());
 		}
