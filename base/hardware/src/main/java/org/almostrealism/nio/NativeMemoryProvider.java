@@ -426,10 +426,17 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * usable when the source stores its elements at the same width this provider does. When the
 	 * two precisions differ, the {@code double[]} path is taken instead, converting each element.
 	 * This mirrors what {@code CLMemoryProvider.setMem} does for a copy in the other direction.</p>
+	 *
+	 * <p>The direct {@link NativeBuffer}-to-{@link NativeBuffer} copy below is the same kind of
+	 * bulk transfer, so it is guarded the same way: two {@link NativeBuffer}s can come from
+	 * providers of different precision — the source, for instance, may be one referenced by
+	 * {@link #wrap(ByteBuffer, int)} from a provider whose number size does not match this one's —
+	 * and reading one straight into the other would misread every element rather than convert it.</p>
 	 */
 	@Override
 	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
-		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer) {
+		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer
+				&& source.getProvider().getNumberSize() == getNumberSize()) {
 			copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
 			return;
 		}

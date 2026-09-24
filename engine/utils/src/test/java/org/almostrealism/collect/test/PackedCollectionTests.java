@@ -16,9 +16,16 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Tests for PackedCollection and its operations like transpose and clear.
@@ -68,5 +75,33 @@ public class PackedCollectionTests extends TestSuiteBase {
 		} catch (IllegalArgumentException e) {
 			// expected
 		}
+	}
+
+	/**
+	 * Tests that load references a single source the native buffer provider can wrap instead of
+	 * copying it, so a write through the source after loading is visible through the collection.
+	 * This is skipped when the provider does not address values at single precision, since that is
+	 * the only width the referencing path in {@link PackedCollection#load} accepts.
+	 */
+	@Test(timeout = 10000)
+	public void loadReferencesAWrappableSource() {
+		MemoryProvider<? extends RAM> provider = Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		if (provider.getNumberSize() != Precision.FP32.bytes()) return;
+
+		int size = 8;
+		ByteBuffer source = ByteBuffer.allocateDirect(Precision.FP32.bytes() * size)
+				.order(ByteOrder.nativeOrder());
+		for (int i = 0; i < size; i++) {
+			source.putFloat(i * Precision.FP32.bytes(), i + 0.5f);
+		}
+
+		PackedCollection loaded = PackedCollection.load(shape(size), source);
+
+		for (int i = 0; i < size; i++) {
+			assertEquals(i + 0.5, loaded.toDouble(i));
+		}
+
+		source.putFloat(3 * Precision.FP32.bytes(), 42.5f);
+		assertEquals(42.5, loaded.toDouble(3));
 	}
 }
