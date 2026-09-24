@@ -302,6 +302,7 @@ jobs:
       - name: Upload installed artifacts
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: maven-installed-artifacts
           path: ~/.m2/repository/org/almostrealism
           # Long enough for the flaky-test retries and a manual re-run.
@@ -1492,6 +1493,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: python-tests-output
           path: ${{ runner.temp }}/python-tests.log
           retention-days: 7
@@ -1694,6 +1696,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-flowtree
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1710,6 +1713,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: coverage-flowtree
           path: coverage-data/
           retention-days: 1
@@ -1801,6 +1805,7 @@ jobs:
         if: always() && matrix.group == 0
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-hardware
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1823,6 +1828,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-utils-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1846,6 +1852,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-ml-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1882,6 +1889,7 @@ jobs:
         if: always() && matrix.group == 0
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-render
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1899,6 +1907,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: crash-reports-group-${{ matrix.group }}
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
@@ -1914,6 +1923,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: coverage-group-${{ matrix.group }}
           path: coverage-data/
           retention-days: 1
@@ -2073,6 +2083,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-media-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -2090,6 +2101,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: crash-reports-media-${{ matrix.group }}
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
@@ -2105,6 +2117,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: coverage-media-${{ matrix.group }}
           path: coverage-data/
           retention-days: 1
@@ -2246,6 +2259,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-mac-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -2568,6 +2582,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-media-mac-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -3000,13 +3015,21 @@ jobs:
         if: ${{ inputs.auto_resolve != 'false' && hashFiles('auto-resolve-python-request/submit.env') != '' }}
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: auto-resolve-python-request
           path: auto-resolve-python-request/
           retention-days: 1
 
   auto-resolve-python-submit:
     needs: [changes, auto-resolve-python]
-    if: needs.auto-resolve-python.outputs.staged == 'true'
+    # `!cancelled()` is required, not cosmetic: without a status function the
+    # implicit success() covers every job upstream, not just `needs`, and
+    # auto-resolve-python runs precisely when an upstream job was skipped or failed
+    # (python-tests), so the submission would be skipped with it.
+    if: >-
+      !cancelled() &&
+      needs.auto-resolve-python.result == 'success' &&
+      needs.auto-resolve-python.outputs.staged == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3028,6 +3051,8 @@ jobs:
           # request, which pull request code wrote.
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          ENFORCE_CHANGES: "true"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3176,6 +3201,7 @@ jobs:
         if: steps.route.outputs.route == 'quality-gates'
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: quality-gate-summary
           path: ${{ runner.temp }}/quality-gate-failures.txt
           retention-days: 7
@@ -3271,6 +3297,7 @@ jobs:
         if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-review-request/submit.env') != '' }}
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: auto-review-request
           path: auto-review-request/
           retention-days: 1
@@ -3305,7 +3332,14 @@ jobs:
 
   auto-review-submit:
     needs: [changes, auto-review]
-    if: needs.auto-review.outputs.staged == 'true'
+    # `!cancelled()` is required, not cosmetic: without a status function the
+    # implicit success() covers every job upstream, not just `needs`, and
+    # auto-review runs precisely when an upstream job was skipped or failed
+    # (python-tests), so the submission would be skipped with it.
+    if: >-
+      !cancelled() &&
+      needs.auto-review.result == 'success' &&
+      needs.auto-review.outputs.staged == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3327,6 +3361,7 @@ jobs:
           # request, which pull request code wrote.
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           # auto-review submits as soon as the gates report, which can be
           # before GitHub Copilot's review of the same push (about eight
           # minutes) has posted. The controller holds the job this long before
@@ -3593,6 +3628,7 @@ jobs:
         if: steps.failures.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: test-failure-summary
           path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
@@ -3672,6 +3708,7 @@ jobs:
         if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-resolve-request/submit.env') != '' }}
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: auto-resolve-request
           path: auto-resolve-request/
           retention-days: 1
