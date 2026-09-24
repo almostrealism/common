@@ -97,6 +97,16 @@ class BuildArtifactSharingTest(unittest.TestCase):
                     self.assertEqual("${{ secrets.GITHUB_TOKEN }}", spec.get("github-token"))
                     self.assertEqual("read", (job.get("permissions") or {}).get("actions"))
 
+    def test_every_upload_replaces_an_earlier_attempts_artifact(self):
+        """upload-artifact@v4 refuses a name already used in the run unless told to
+        overwrite. A re-run job re-uploads the same names, so without it the
+        upload fails (a new failed job for the retry gate to see) and the report
+        from the earlier attempt is the one auto-resolve reads on attempt 3."""
+        for name, job in _jobs().items():
+            for step in _steps_using(job, "actions/upload-artifact"):
+                with self.subTest(job=name, artifact=step["with"].get("name")):
+                    self.assertIs(True, step["with"].get("overwrite"))
+
     def test_isolated_repositories_export_their_path(self):
         """The restore targets MAVEN_REPO wherever a job moves its Maven repository."""
         for name, job in _jobs().items():

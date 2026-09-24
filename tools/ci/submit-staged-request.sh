@@ -16,8 +16,11 @@
 #     submit-agent-job.sh derives them from the trusted environment.
 #   - PROTECT_TEST_FILES is accepted only as "true" (its default), so a
 #     request cannot switch test-file protection off.
-#   - DESCRIPTION, STARTED_AFTER and ENFORCE_CHANGES are exported as literal
-#     values.
+#   - ENFORCE_CHANGES and STARTED_AFTER set by the caller win. Otherwise the
+#     request may only turn ENFORCE_CHANGES on ("true"; "false" is the
+#     default anyway), and STARTED_AFTER must be all digits (epoch millis) —
+#     a malformed value would otherwise break the submission's JSON.
+#   - DESCRIPTION is exported as a literal value.
 #
 # Anything else (PATH, BASH_ENV, LD_PRELOAD, credentials, ...) is ignored with
 # a warning, so a crafted request cannot change how this script or
@@ -30,6 +33,9 @@
 #
 # Required environment:
 #   BRANCH, BASE_BRANCH - the branch the request is for, from the event
+#
+# Optional environment (from the caller, never overridden by the request):
+#   ENFORCE_CHANGES, STARTED_AFTER
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller
@@ -57,13 +63,34 @@ if [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
     exit 0
 fi
 
+CALLER_ENFORCE_CHANGES="${ENFORCE_CHANGES:-}"
+CALLER_STARTED_AFTER="${STARTED_AFTER:-}"
+
 while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-        DESCRIPTION|STARTED_AFTER|ENFORCE_CHANGES)
+        DESCRIPTION)
             export "$key=$value"
+            ;;
+        ENFORCE_CHANGES)
+            if [ -n "$CALLER_ENFORCE_CHANGES" ]; then
+                :
+            elif [ "$value" = "true" ]; then
+                export ENFORCE_CHANGES=true
+            elif [ "$value" != "false" ]; then
+                echo "::warning::Ignoring ENFORCE_CHANGES=${value} from the staged request; it is not a boolean"
+            fi
+            ;;
+        STARTED_AFTER)
+            if [ -n "$CALLER_STARTED_AFTER" ]; then
+                :
+            elif [[ "$value" =~ ^[0-9]+$ ]]; then
+                export STARTED_AFTER="$value"
+            else
+                echo "::warning::Ignoring STARTED_AFTER=${value} from the staged request; it is not epoch milliseconds"
+            fi
             ;;
         PROTECT_TEST_FILES)
             if [ "$value" != "true" ]; then
