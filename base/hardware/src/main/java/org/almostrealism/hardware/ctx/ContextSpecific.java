@@ -394,6 +394,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 			return context == null || current == null || context == current;
 		}
 
+		// TODO(review): an unclaimed context==null entry never matches this, so contextDestroyed() can't dispose it; see review-followup memory.
 		/** Returns whether this value was created under a compute context of the given data context. */
 		private boolean createdUnder(DataContext<?> dataContext) {
 			return context != null && context.getDataContext() == dataContext;

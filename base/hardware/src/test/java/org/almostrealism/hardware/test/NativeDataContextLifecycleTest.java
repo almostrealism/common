@@ -54,4 +54,20 @@ public class NativeDataContextLifecycleTest {
 					expected.getMessage().contains("destroyed"));
 		}
 	}
+
+	/** A context whose default memory provider was never lazily created must not resurrect it via getMemoryProvider() after destroy(). */
+	@Test(timeout = 30000)
+	public void getMemoryProviderFailsFastAfterDestroy() {
+		NativeDataContext context = new NativeDataContext("test-native", Precision.FP64, 1024L * 1024);
+		context.init();
+		context.destroy();
+
+		try {
+			context.getMemoryProvider();
+			Assert.fail("getMemoryProvider() should fail fast once the data context is destroyed");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("The message should name the reason",
+					expected.getMessage().contains("destroyed"));
+		}
+	}
 }

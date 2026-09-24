@@ -521,7 +521,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		if (cReq.isPresent()) {
 			cc = new CLNativeComputeContext(this, NativeCompiler.factory(getPrecision(), true).construct());
 		} else {
-			if (start != null) start.run();
+			ensureStarted();
 			cc = new CLComputeContext(this, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
@@ -534,6 +534,32 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public String getName() { return name; }
 
 	/**
+	 * Triggers lazy OpenCL initialization if it has not yet run. Held under the read side of
+	 * {@link #lifecycleLock} so {@link #destroy()} cannot be granted (and cannot have already
+	 * completed) while this runs, and fails fast once this context has been destroyed instead
+	 * of silently reinitializing OpenCL resources — including {@link #mainRam} — for a context
+	 * {@link #destroy()} has already torn down.
+	 *
+	 * @throws IllegalStateException if this data context has already been destroyed
+	 */
+	// TODO(review): readLock() is shared, so two threads racing here can both pass the
+	// destroyed check and both run start(), double-initializing OpenCL; see review-followup memory.
+	private void ensureStarted() {
+		lifecycleLock.readLock().lock();
+
+		try {
+			if (destroyed) {
+				throw new IllegalStateException("Cannot use " + name +
+						" because the data context has been destroyed");
+			}
+
+			if (start != null) start.run();
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
+	}
+
+	/**
 	 * Returns the floating-point precision used by this context.
 	 * Triggers lazy initialization if not already started.
 	 * The device capability yields {@link Precision#FP32} when using a GPU kernel device
@@ -544,7 +570,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public Precision getPrecision() {
-		if (start != null) start.run();
+		ensureStarted();
 		return precision;
 	}
 
@@ -555,7 +581,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return the OpenCL {@link cl_context} for this data context
 	 */
 	public cl_context getClContext() {
-		if (start != null) start.run();
+		ensureStarted();
 		return ctx;
 	}
 
@@ -597,7 +623,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return the main {@link CLMemoryProvider} for this context
 	 */
 	public MemoryProvider<CLMemory> getMemoryProvider() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainRam;
 	}
 
@@ -662,30 +688,41 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * exist for this thread, creates a default OpenCL context and optionally
 	 * a native C compilation context if {@code enableClNative} is true.
 	 *
+	 * <p>Held under the read side of {@link #lifecycleLock} for the entire lookup, discard-if-stale,
+	 * and creation sequence &mdash; not just around {@link #createContext(ComputeRequirement...)}'s
+	 * own body &mdash; so {@link #destroy()} (which takes the write lock) cannot retire a context
+	 * between its creation here and this method actually handing it back to the caller. A thread's
+	 * cached list can also outlive the contexts it holds if this data context was destroyed on
+	 * another thread; that stale list is discarded here so it is rebuilt (or destruction is
+	 * surfaced immediately) rather than handed back.</p>
+	 *
 	 * @return the thread-local list of compute contexts
 	 */
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
-		List<ComputeContext<MemoryData>> current = computeContexts.get();
+		lifecycleLock.readLock().lock();
 
-		// A thread's cached list can outlive the contexts it holds, if this data context
-		// was destroyed on another thread; discard it so it is rebuilt (or destruction is
-		// surfaced immediately) rather than handing back destroyed contexts.
-		if (!current.isEmpty() && current.stream().anyMatch(ComputeContext::isDestroyed)) {
-			current = new ArrayList<>();
-			computeContexts.set(current);
-		}
+		try {
+			List<ComputeContext<MemoryData>> current = computeContexts.get();
 
-		if (current.isEmpty()) {
-			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
-			current.add(createContext());
-
-			if (enableClNative) {
-				current.add(createContext(ComputeRequirement.C));
+			if (!current.isEmpty() && current.stream().anyMatch(ComputeContext::isDestroyed)) {
+				current = new ArrayList<>();
+				computeContexts.set(current);
 			}
-		}
 
-		return current;
+			if (current.isEmpty()) {
+				if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
+				current.add(createContext());
+
+				if (enableClNative) {
+					current.add(createContext(ComputeRequirement.C));
+				}
+			}
+
+			return current;
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
 	}
 
 	/**
@@ -779,6 +816,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 
 		try {
 			destroyed = true;
+			start = null;
 
 			computeContexts.remove();
 			allComputeContexts.forEach(ComputeContext::destroy);

@@ -183,6 +183,32 @@ public class MetalDataContext extends HardwareDataContext {
 	}
 
 	/**
+	 * Triggers deferred Metal initialization if it has not yet run. Held under the read side of
+	 * {@link #lifecycleLock} so {@link #destroy()} cannot be granted (and cannot have already
+	 * completed) while this runs, and fails fast once this context has been destroyed instead of
+	 * silently reinitializing the Metal device and {@link #mainRam} for a context {@link #destroy()}
+	 * has already torn down.
+	 *
+	 * @throws IllegalStateException if this data context has already been destroyed
+	 */
+	// TODO(review): readLock() is shared, so two threads racing here can both pass the
+	// destroyed check and both run start(), double-initializing the Metal device; see review-followup memory.
+	private void ensureStarted() {
+		lifecycleLock.readLock().lock();
+
+		try {
+			if (isDestroyed()) {
+				throw new IllegalStateException("Cannot use " + getName() +
+						" because the data context has been destroyed");
+			}
+
+			if (start != null) start.run();
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
+	}
+
+	/**
 	 * Creates a new {@link MetalComputeContext} for the given compute requirements.
 	 *
 	 * <p>Triggers deferred device initialization if not yet complete, then constructs
@@ -230,7 +256,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @return The {@link MTLDevice} instance for the system default GPU
 	 */
 	public MTLDevice getDevice() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainDevice;
 	}
 
@@ -267,7 +293,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @return {@link MetalMemoryProvider} for Metal GPU buffers
 	 */
 	public MemoryProvider<MetalMemory> getMemoryProvider() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainRam;
 	}
 
@@ -479,6 +505,7 @@ public class MetalDataContext extends HardwareDataContext {
 
 		try {
 			super.destroy();
+			start = null;
 
 			if (sharedContext != null) {
 				sharedContext.destroy();

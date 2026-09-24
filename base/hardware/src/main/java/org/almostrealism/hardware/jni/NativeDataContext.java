@@ -305,15 +305,27 @@ public class NativeDataContext extends HardwareDataContext {
 	 * {@link #setMemoryProvider} (for example the shared-memory bridge, when NIO memory is enabled) is
 	 * used without this context first building — and immediately discarding — a provider of its own.</p>
 	 *
+	 * <p>Synchronized on {@link #contextLock}, shared with {@link #getComputeContexts()} and
+	 * {@link #destroy()}, and fails fast once this context has been destroyed instead of lazily
+	 * constructing a provider against a compiler that teardown has already invalidated.</p>
+	 *
 	 * @return the memory provider for this context
+	 * @throws IllegalStateException if this data context has already been destroyed
 	 */
 	public MemoryProvider<? extends Memory> getMemoryProvider() {
-		if (ram == null) {
-			ram = new NativeMemoryProvider(getPrecision(),
-					getMaxReservation() * getPrecision().bytes(), false, compiler, direct);
-		}
+		synchronized (contextLock) {
+			if (isDestroyed()) {
+				throw new IllegalStateException("Cannot use " + getName() +
+						" because the data context has been destroyed");
+			}
 
-		return ram;
+			if (ram == null) {
+				ram = new NativeMemoryProvider(getPrecision(),
+						getMaxReservation() * getPrecision().bytes(), false, compiler, direct);
+			}
+
+			return ram;
+		}
 	}
 
 	@Override
