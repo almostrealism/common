@@ -600,6 +600,67 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that {@link EvaluableStreamingAdapter#isDispatchBacked()} reports the wrapped
+	 * {@link StreamingEvaluable}'s own capability instead of unconditionally claiming {@code true}.
+	 * The adapter forwards {@code dependsOn} to the wrapped evaluable's own request, so whether that
+	 * dependency is actually chained -- rather than discarded -- is a fact about the wrapped
+	 * implementation. Reporting {@code true} regardless would let {@code ProcessDetailsFactory} treat
+	 * the adapter as dependency-safe even when the wrapped implementation is not, and start it against
+	 * memory a preceding dispatch has not finished writing. Wrapping a plain synchronous evaluable is
+	 * unaffected: the adapter itself waits for the dependency in that case, so it remains {@code true}.
+	 */
+	@Test(timeout = 10000)
+	public void streamingAdapterReportsWrappedDispatchBackedCapability() {
+		/** A streaming host whose {@code isDispatchBacked()} reports {@code false}. */
+		class NotDispatchBackedStreamingHost implements Evaluable<Integer>, StreamingEvaluable<Integer> {
+			@Override
+			public Integer evaluate(Object... args) {
+				return -1;
+			}
+
+			@Override
+			public void request(Object[] args, Semaphore dependency) {
+				request(args, dependency, null);
+			}
+
+			@Override
+			public void request(Object[] args, Semaphore dependency, Consumer<Integer> downstream) {
+				downstream.accept(7);
+			}
+
+			@Override
+			public void setDownstream(Consumer<Integer> consumer) {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public boolean isDispatchBacked() {
+				return false;
+			}
+		}
+
+		EvaluableStreamingAdapter<Integer> notDispatchBacked =
+				new EvaluableStreamingAdapter<>(new NotDispatchBackedStreamingHost());
+		assertFalse(notDispatchBacked.isDispatchBacked());
+
+		/** The same host, but with {@code isDispatchBacked()} reporting {@code true}. */
+		class DispatchBackedStreamingHost extends NotDispatchBackedStreamingHost {
+			@Override
+			public boolean isDispatchBacked() {
+				return true;
+			}
+		}
+
+		EvaluableStreamingAdapter<Integer> dispatchBacked =
+				new EvaluableStreamingAdapter<>(new DispatchBackedStreamingHost());
+		assertTrue(dispatchBacked.isDispatchBacked());
+
+		Evaluable<Integer> hostOnly = args -> -1;
+		EvaluableStreamingAdapter<Integer> wrappingPlainEvaluable = new EvaluableStreamingAdapter<>(hostOnly);
+		assertTrue(wrappingPlainEvaluable.isDispatchBacked());
+	}
+
+	/**
 	 * Verifies that a {@link HardwareEvaluable} short-circuit request with an outstanding
 	 * {@code dependsOn} returns to the requester without waiting for it: the host evaluation is
 	 * ordered after the completion via {@link Semaphore#onComplete(Semaphore, Runnable)} and

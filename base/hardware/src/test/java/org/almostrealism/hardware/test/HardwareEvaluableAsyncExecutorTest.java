@@ -18,7 +18,9 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.streams.StreamingEvaluable;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.hardware.mem.Bytes;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -73,5 +75,41 @@ public class HardwareEvaluableAsyncExecutorTest {
 		Assert.assertNotEquals("request() must not run on the calling thread when an executor is configured",
 				callingThread, executionThread.get());
 		Assert.assertEquals("result", delivered.get());
+	}
+
+	/**
+	 * Reproduces the gap described in the review of {@link HardwareEvaluable#withDestination(MemoryBank)}:
+	 * without a {@link HardwareEvaluable#setResultProcessor(java.util.function.UnaryOperator) result
+	 * processor}, the method used to return the raw destination-based evaluable directly, discarding
+	 * whichever {@link HardwareEvaluable#async(java.util.concurrent.Executor) executor} the caller had
+	 * configured. {@code request(...)} on the value returned by {@code async(executor).withDestination(...)}
+	 * must still dispatch through that executor rather than the calling thread.
+	 */
+	@Test(timeout = 10000)
+	public void withDestinationPreservesConfiguredExecutorWithoutResultProcessor() throws InterruptedException {
+		Evaluable<MemoryBank> kernel = args -> null;
+		HardwareEvaluable<MemoryBank> evaluable = new HardwareEvaluable<>(() -> kernel, null, null, false);
+
+		Thread callingThread = Thread.currentThread();
+		AtomicReference<Thread> executionThread = new AtomicReference<>();
+		CountDownLatch executed = new CountDownLatch(1);
+
+		HardwareEvaluable<MemoryBank> async = (HardwareEvaluable<MemoryBank>) evaluable.async(r -> {
+			Thread worker = new Thread(r, "HardwareEvaluableAsyncExecutorTest-destination-worker");
+			worker.setDaemon(true);
+			worker.start();
+		});
+
+		StreamingEvaluable<MemoryBank> sized = (StreamingEvaluable<MemoryBank>) async.withDestination(new Bytes(0, 1));
+		sized.request(new Object[0], null, result -> {
+			executionThread.set(Thread.currentThread());
+			executed.countDown();
+		});
+
+		Assert.assertTrue("request() should have completed on the configured executor",
+				executed.await(5, TimeUnit.SECONDS));
+		Assert.assertNotEquals("request() must not run on the calling thread when withDestination() is called " +
+						"without a result processor but an executor is configured",
+				callingThread, executionThread.get());
 	}
 }

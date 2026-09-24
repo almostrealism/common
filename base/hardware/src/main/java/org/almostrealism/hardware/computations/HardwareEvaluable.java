@@ -348,12 +348,15 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * Returns an evaluable that writes its results into the given destination memory bank.
 	 *
-	 * <p>When a {@link #getResultProcessor() result processor} is set, the destination-based
-	 * evaluable is wrapped in a new {@link HardwareEvaluable} carrying the same result
-	 * processor, exactly as {@link #evaluate(Object...)} and {@link #request(Object[], Semaphore,
-	 * Consumer)} already do: the underlying operation writes its unprocessed result into
-	 * {@code destination}, and the processor re-views that result before it is returned or
-	 * delivered. Without a result processor, the destination-based evaluable is returned as is.</p>
+	 * <p>When a {@link #getResultProcessor() result processor} is set, an {@link #async(Executor)
+	 * executor} is set, or both, the destination-based evaluable is wrapped in a new
+	 * {@link HardwareEvaluable} carrying whichever of the two apply, exactly as
+	 * {@link #evaluate(Object...)} and {@link #request(Object[], Semaphore, Consumer)} already
+	 * do: the underlying operation writes its unprocessed result into {@code destination}, the
+	 * processor (when set) re-views that result before it is returned or delivered, and the
+	 * executor (when set) is what {@link #request(Object[], Semaphore, Consumer)} dispatches
+	 * through instead of the calling thread. With neither set, the destination-based evaluable
+	 * is returned as is.</p>
 	 *
 	 * @param destination Memory bank to write results into
 	 * @return Evaluable targeting the specified destination, dispatched through the same
@@ -369,13 +372,14 @@ public class HardwareEvaluable<T> implements
 				((HardwareEvaluable) ev).withDestination(destination) :
 				new DestinationEvaluable<>(ev, destination);
 
-		if (resultProcessor == null) {
-			// TODO(review): executor is not propagated here, unlike the @return javadoc claims
+		if (resultProcessor == null && executor == null) {
 			return destinationEvaluable;
 		}
 
 		HardwareEvaluable<T> result = new HardwareEvaluable<>(() -> destinationEvaluable, null, null, isKernel, executor);
-		result.setResultProcessor(resultProcessor);
+		if (resultProcessor != null) {
+			result.setResultProcessor(resultProcessor);
+		}
 		return result;
 	}
 

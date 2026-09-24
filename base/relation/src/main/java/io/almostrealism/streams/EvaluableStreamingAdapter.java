@@ -166,13 +166,25 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Always {@code true}: as documented on {@link #request(Object[], Semaphore, Consumer)},
-	 * the submitted task either hands a non-null {@code dependsOn} to the wrapped evaluable's
-	 * own request or waits for it before reading {@code args}, so this adapter orders its work
-	 * after a supplied dependency instead of disregarding it.</p>
+	 * <p>When the wrapped evaluable is itself a {@link StreamingEvaluable}, this reports that
+	 * evaluable's own {@link StreamingEvaluable#isDispatchBacked() isDispatchBacked()} instead of
+	 * claiming a capability of its own: as documented on {@link #request(Object[], Semaphore,
+	 * Consumer)}, the submitted task forwards {@code dependsOn} to the wrapped evaluable's own
+	 * request, and whether that request actually chains it &mdash; rather than discarding it
+	 * &mdash; is a fact about the wrapped implementation, not about this adapter. Reporting
+	 * {@code true} regardless would let {@code ProcessDetailsFactory} treat the adapter as
+	 * dependency-safe even when the wrapped implementation is not, and start it against memory a
+	 * preceding dispatch has not finished writing.</p>
+	 *
+	 * <p>Otherwise (the wrapped evaluable is a plain synchronous {@link Evaluable}), this is
+	 * {@code true}: the submitted task waits for {@code dependsOn} itself before reading
+	 * {@code args}, so this adapter orders its work after a supplied dependency instead of
+	 * disregarding it.</p>
 	 */
 	@Override
 	public boolean isDispatchBacked() {
-		return true;
+		return evaluable instanceof StreamingEvaluable
+				? ((StreamingEvaluable<?>) evaluable).isDispatchBacked()
+				: true;
 	}
 }
