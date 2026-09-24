@@ -26,7 +26,7 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
@@ -133,7 +133,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	/** The data context for memory operations. */
 	private final T dc;
 	/** Thread pool for asynchronous kernel operations. */
-	private final Executor executor;
+	private final ExecutorService executor;
 	/** Thread group containing all executor threads for identification. */
 	private final ThreadGroup executorGroup;
 
@@ -236,6 +236,24 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	@Override
 	public T getDataContext() { return dc; }
+
+	/**
+	 * Shuts down this context's executor thread pool and removes its {@link ThreadGroup}
+	 * from the {@link #isAnyExecutorThread()} registry.
+	 *
+	 * <p>A context created for the lifetime of a single {@code computeContext(...)} scope
+	 * (see {@code HardwareDataContext#computeContext(Callable, ComputeRequirement...)}) is
+	 * destroyed when that scope ends, so without this call its executor and {@link
+	 * #executorGroup} would remain permanently reachable from {@link #executorGroups} even
+	 * though nothing can use them again &mdash; a leak that accumulates with every scoped
+	 * context created over the process lifetime. Subclasses must call this from their own
+	 * {@link #destroy()} implementation, since {@link AbstractComputeContext} does not
+	 * implement {@code destroy()} itself.</p>
+	 */
+	protected void destroyExecutor() {
+		executorGroups.remove(executorGroup);
+		executor.shutdown();
+	}
 
 	/**
 	 * Records a compilation event if a timing listener is registered.

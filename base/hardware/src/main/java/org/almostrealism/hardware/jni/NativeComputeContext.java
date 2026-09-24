@@ -184,5 +184,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 			compiler.destroy();
 			compiler = null;
 		}
+
+		destroyExecutor();
 	}
 }

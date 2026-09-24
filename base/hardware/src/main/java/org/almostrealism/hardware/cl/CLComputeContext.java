@@ -479,5 +479,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 		queue = null;
 		fastQueue = null;
 		kernelQueue = null;
+
+		destroyExecutor();
 	}
 }

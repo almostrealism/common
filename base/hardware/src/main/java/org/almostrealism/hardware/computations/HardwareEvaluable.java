@@ -419,12 +419,27 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} chains a
-	 * non-null {@code dependsOn} into the underlying kernel's dispatch when it can, and
-	 * otherwise waits for it before the host-side fallback evaluation.</p>
+	 * <p>Mirrors the path {@link #requestNow(Object[], Semaphore, Consumer)} actually takes:
+	 * the {@link #shortCircuit} path and the non-streaming kernel fallback both order their
+	 * host evaluation after {@code dependsOn} with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * and are therefore always {@code true}, but when the kernel is a {@link StreamingEvaluable}
+	 * this method forwards {@code dependsOn} to it directly without waiting itself &mdash; so the
+	 * result must be that kernel's own {@link StreamingEvaluable#isDispatchBacked()}, not an
+	 * unconditional {@code true}. Reporting {@code true} for a wrapped kernel that actually
+	 * disregards {@code dependsOn} would let a caller such as {@code ProcessDetailsFactory} skip
+	 * the dependency handling it would otherwise apply, risking a stale argument read.</p>
 	 */
 	@Override
 	public boolean isDispatchBacked() {
+		if (shortCircuit != null) {
+			return true;
+		}
+
+		Evaluable<T> cev = getKernel().getValue();
+		if (cev instanceof StreamingEvaluable<?>) {
+			return ((StreamingEvaluable<T>) cev).isDispatchBacked();
+		}
+
 		return true;
 	}
 

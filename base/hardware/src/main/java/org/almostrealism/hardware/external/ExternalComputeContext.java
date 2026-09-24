@@ -162,8 +162,10 @@ public class ExternalComputeContext extends AbstractComputeContext {
 
 	/**
 	 * Releases resources held by this compute context.
-	 * Currently a no-op as executables are not cached.
+	 * Executables are not cached; only the executor thread pool is released.
 	 */
 	@Override
-	public void destroy() { }
+	public void destroy() {
+		destroyExecutor();
+	}
 }

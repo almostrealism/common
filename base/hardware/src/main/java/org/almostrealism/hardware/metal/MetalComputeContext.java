@@ -316,6 +316,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 		queue = null;
 		fastQueue = null;
+
+		destroyExecutor();
 	}
 
 	/**
