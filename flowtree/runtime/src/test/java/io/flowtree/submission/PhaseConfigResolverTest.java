@@ -685,6 +685,56 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals("anthropic", r.forPhase(Phase.REVIEW).provider());
     }
 
+    // --- A registration that says nothing about models -----------------------
+
+    /**
+     * A registration body that mentions neither {@code defaultPhaseConfig}
+     * nor {@code phaseConfigs} — which is every body the CI
+     * {@code register-workstream} job sends — leaves the workstream's bundle
+     * empty. An auto-created workstream must contribute nothing of its own
+     * about runner, model, effort, or provider, so the workspace's defaults
+     * are what every job on it resolves to until somebody adds an override
+     * deliberately.
+     */
+    @Test(timeout = 5000)
+    public void aRegistrationWithoutPhaseConfigLeavesTheWorkstreamEmpty() {
+        Workstream ws = new Workstream();
+        assertTrue("a fresh workstream starts with no phase config",
+                ws.getPhaseConfigBundle().isEmpty());
+
+        String err = PhaseConfigResolver.applyToWorkstream(ws,
+                "{\"defaultBranch\":\"feature/x\",\"baseBranch\":\"master\","
+                        + "\"repoUrl\":\"git@github.com:acme/repo.git\"}");
+
+        assertNull(err);
+        assertTrue("registration must not write a phase config",
+                ws.getPhaseConfigBundle().isEmpty());
+        PhaseConfig def = ws.getPhaseConfigBundle().defaultPhaseConfig();
+        assertNull(def.runner());
+        assertNull(def.model());
+        assertNull(def.effort());
+    }
+
+    /**
+     * The consequence of the above, through the resolver: with the workstream
+     * empty, a workspace-level model is what a job gets. This is the property
+     * the CI registration path depends on — it is asserted here rather than
+     * inferred from the emptiness alone, because emptiness only matters if it
+     * actually lets the workspace layer through.
+     */
+    @Test(timeout = 5000)
+    public void anEmptyWorkstreamLetsTheWorkspaceModelThrough() {
+        PhaseConfigBundle workspace = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-5-5", "high"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, workspace);
+        assertNull(r.error());
+        PhaseConfig resolved = r.forPhase(Phase.PRIMARY);
+        assertEquals("claude-opus-5-5", resolved.model());
+        assertEquals("high", resolved.effort());
+        assertEquals(AgentRunnerRegistry.CLAUDE, resolved.runner());
+    }
+
     // --- Clearing semantics for workstream stored configs --------------------
 
     /**
