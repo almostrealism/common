@@ -133,7 +133,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param transformerWeights the transformer weights, released by {@link #destroy()}
 	 * @param conditioner        the prompt and duration conditioner, released by {@link #destroy()}
 	 * @param autoencoder        the latent autoencoder whose decoder is compiled here
-	 * @param sampleRate         the audio sample rate in Hz
+	 * @param sampleRate         the audio sample rate in Hz; must be finite and positive
 	 * @param maxSeconds         the longest duration to generate, in seconds; rejected when it
 	 *                           needs more than {@link #MAX_SAMPLES} samples
 	 * @param headroomSeconds    seconds of latent generated beyond the requested duration
@@ -144,6 +144,10 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		if (!Double.isFinite(maxSeconds) || !Double.isFinite(headroomSeconds) ||
 				maxSeconds <= 0.0 || headroomSeconds < 0.0) {
 			throw new IllegalArgumentException("maxSeconds must be positive and headroomSeconds non-negative");
+		}
+
+		if (!Double.isFinite(sampleRate) || sampleRate <= 0.0) {
+			throw new IllegalArgumentException("sampleRate must be finite and positive");
 		}
 
 		this.conditioner = conditioner;
@@ -242,11 +246,15 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	/**
 	 * Enables classifier-free guidance against a negative prompt. A scale of one disables it.
 	 *
-	 * @param scale          the guidance scale
+	 * @param scale          the guidance scale; must be finite
 	 * @param negativePrompt token ids of the negative prompt; empty for the unconditional prompt
 	 * @return this generator
 	 */
 	public StableAudio3 setGuidance(double scale, long[] negativePrompt) {
+		if (!Double.isFinite(scale)) {
+			throw new IllegalArgumentException("guidance scale must be finite");
+		}
+
 		this.guidanceScale = scale;
 		this.negativePrompt = negativePrompt == null ? new long[0] : negativePrompt;
 		return this;

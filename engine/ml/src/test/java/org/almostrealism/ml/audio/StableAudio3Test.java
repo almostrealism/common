@@ -165,6 +165,39 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A non-finite sample rate is rejected at construction rather than propagated into
+	 * {@link StableAudio3#seconds} conversions, where a {@code NaN} or infinite rate would
+	 * silently produce an unusable sample count.
+	 */
+	@Test(timeout = 240000)
+	public void nonFiniteSampleRateIsRejected() {
+		try {
+			smallModel(MAX_SECONDS, Double.NaN);
+			throw new AssertionError("a non-finite sample rate must be rejected");
+		} catch (IllegalArgumentException e) {
+			// expected
+		}
+	}
+
+	/**
+	 * A non-finite guidance scale is rejected rather than propagated into
+	 * {@link ClassifierFreeGuidance}, where {@code NaN != 1.0} would enable guidance and
+	 * multiply the guided result by {@code NaN}.
+	 */
+	@Test(timeout = 240000)
+	public void nonFiniteGuidanceScaleIsRejected() {
+		StableAudio3 model = smallModel().setVerbose(false);
+		try {
+			model.setGuidance(Double.NaN, new long[]{11});
+			throw new AssertionError("a non-finite guidance scale must be rejected");
+		} catch (IllegalArgumentException e) {
+			// expected
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * The small pipeline compiled for clips of up to {@link #MAX_SECONDS}.
 	 *
 	 * @return the model
@@ -174,14 +207,25 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
-	 * The small pipeline: a two-layer prompt encoder of width 16, a duration embedder of the same
-	 * width, a one-block transformer with adaptive layer-norm conditioning, two memory tokens, a
-	 * local additive input and a padding mask, and the small autoencoder.
+	 * The small pipeline compiled for clips of up to the given duration at {@link #SAMPLE_RATE}.
 	 *
 	 * @param maxSeconds the longest duration the model is compiled for
 	 * @return the model
 	 */
 	private StableAudio3 smallModel(double maxSeconds) {
+		return smallModel(maxSeconds, SAMPLE_RATE);
+	}
+
+	/**
+	 * The small pipeline: a two-layer prompt encoder of width 16, a duration embedder of the same
+	 * width, a one-block transformer with adaptive layer-norm conditioning, two memory tokens, a
+	 * local additive input and a padding mask, and the small autoencoder.
+	 *
+	 * @param maxSeconds the longest duration the model is compiled for
+	 * @param sampleRate the audio sample rate the model is compiled for
+	 * @return the model
+	 */
+	private StableAudio3 smallModel(double maxSeconds, double sampleRate) {
 		T5GemmaWeightFixture prompts = new T5GemmaWeightFixture();
 		T5GemmaConfig encoderConfig = prompts.smallConfig(PROMPT_LENGTH);
 		Random random = new Random(21);
@@ -202,6 +246,6 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 		StateDictionary transformerWeights = new StateDictionary(new DiffusionTransformerWeightFixture().weights(config));
 
 		return new StableAudio3(config, transformerWeights, conditioner, autoencoders.autoencoder(),
-				SAMPLE_RATE, maxSeconds, HEADROOM);
+				sampleRate, maxSeconds, HEADROOM);
 	}
 }
