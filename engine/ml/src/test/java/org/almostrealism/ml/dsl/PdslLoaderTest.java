@@ -382,6 +382,37 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link PdslLoader#readResource} returns the same source text that
+	 * {@link PdslLoader#parseResource} parses, so callers can combine raw resource text (for
+	 * example, concatenating a wrapper layer onto a production asset) before parsing it.
+	 */
+	@Test(timeout = 60000)
+	public void testReadResourceMatchesParseResource() {
+		PdslLoader loader = new PdslLoader();
+		String text = loader.readResource("/pdsl/test_layers.pdsl");
+		PdslNode.Program fromText = loader.parse(text);
+		PdslNode.Program fromResource = loader.parseResource("/pdsl/test_layers.pdsl");
+
+		Assert.assertEquals("Definitions parsed from readResource() text should match parseResource()",
+				fromResource.getDefinitions().size(), fromText.getDefinitions().size());
+	}
+
+	/**
+	 * {@link PdslLoader#readResource} rejects a classpath path with no resource, the same way
+	 * {@link PdslLoader#parseResource} does.
+	 */
+	@Test(timeout = 60000)
+	public void testReadResourceRejectsMissingResource() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.readResource("/pdsl/does_not_exist.pdsl");
+			Assert.fail("readResource() should reject a missing classpath resource");
+		} catch (IllegalStateException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Load the data-block PDSL test fixture from the classpath resource.
 	 *
 	 * @return the PDSL source text

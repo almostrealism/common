@@ -1,7 +1,7 @@
 """Guard: register-workstream must not run an untrusted copy of its script.
 
-register-workstream no longer waits on test-integrity-check or any of the
-other validation gates (it needs only `changes` and `build`), so nothing else
+register-workstream waits on nothing but `changes` — not `build`, and not
+test-integrity-check or any of the other validation gates — so nothing else
 in the pipeline verifies that ``tools/ci/register-workstream.sh`` is unmodified
 before this job executes it with ``FLOWTREE_CF_ACCESS_CLIENT_SECRET`` attached.
 A PR that modified the script itself would otherwise have that modified copy
@@ -150,14 +150,16 @@ class RegisterWorkstreamWiringTests(unittest.TestCase):
                          "cat-file existence check trusts a missing base copy")
 
     def test_the_job_still_does_not_gate_on_the_validation_jobs(self):
-        """This job is deliberately independent of code-policy/checkstyle/etc.
+        """This job is deliberately independent of build/code-policy/checkstyle/etc.
 
         The script-integrity check exists precisely because those gates no
         longer run first — if this job's `needs` ever grew them back, the
         rationale for the integrity step (and this whole test module) would
-        need to be revisited, not silently left in place.
+        need to be revisited, not silently left in place. It does not wait for
+        `build` either, so registration lands well before any remediation job
+        submits against the workstream.
         """
-        self.assertEqual(_job()["needs"], ["changes", "build"])
+        self.assertEqual(_job()["needs"], ["changes"])
 
 
 if __name__ == "__main__":

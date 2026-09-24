@@ -217,11 +217,27 @@ public class PdslLoader {
 	 * @throws IllegalStateException if the resource is not found or cannot be read
 	 */
 	public PdslNode.Program parseResource(String classpathResource) {
+		return parse(readResource(classpathResource));
+	}
+
+	/**
+	 * Read the raw text of a classpath .pdsl resource, without parsing it.
+	 *
+	 * <p>The resource path must be absolute (e.g. {@code "/pdsl/midi/skytnt_block.pdsl"}).
+	 * An {@link IllegalStateException} is thrown if the resource cannot be found or read.
+	 * Useful for combining multiple resources into one source string (for example, a
+	 * production asset with a test-only wrapper layer) before parsing.</p>
+	 *
+	 * @param classpathResource absolute classpath path to the .pdsl resource
+	 * @return the resource's source text
+	 * @throws IllegalStateException if the resource is not found or cannot be read
+	 */
+	public String readResource(String classpathResource) {
 		try (InputStream is = PdslLoader.class.getResourceAsStream(classpathResource)) {
 			if (is == null) {
 				throw new IllegalStateException("PDSL resource not found on classpath: " + classpathResource);
 			}
-			return parse(new String(is.readAllBytes(), StandardCharsets.UTF_8));
+			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to load PDSL resource: " + classpathResource, e);
 		}

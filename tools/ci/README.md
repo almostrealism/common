@@ -23,7 +23,10 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
+| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
+| `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"true"` — every caller here is an automated job, and test-file protection is method-level (see `flowtree/runtime/docs/file-staging.md`), so it costs a caller nothing to leave it on |
+| `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Coverage (`coverage/`)
@@ -39,14 +42,37 @@ See `tools/coverage-data/coverage-exclusions.txt` / `tools/coverage-data/coverag
 for the selector's data files — kept outside `tools/ci/` because they are mutable data an
 agent round appends to, not pipeline logic.
 
+### Remediation jobs: auto-review, auto-resolve-python, auto-resolve
+
+Each attempt of a "Build and Test" run submits at most one coding-agent job, from
+one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
+`.github/CLAUDE.md`):
+
+- `auto-resolve-python` — python-tests failed; submits at once.
+- `auto-review` — attempt 1 only; always submits one of build failure, code
+  policy, quality gates, docs-only verify, or the general review, as soon as the
+  gates report. A gate that failed without recording a cause
+  (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
+  branch gets the general review, with a note that the gate is not the agent's
+  to fix.
+- `auto-resolve` — attempt 3 and later; stages a request for long-running test
+  failures, which `auto-resolve-submit.yaml` submits once `rerun-flaky-tests.sh`
+  has no retry left.
+
+The early two stage their request and a separate `*-submit` job, checked out at
+the default branch, sends it with `submit-staged-request.sh`, so no job that runs
+pull request code holds the controller credentials.
+`tools/tests/test_remediation_job_exclusivity.py` pins the conditions that keep
+the three apart, the attempt threshold matching `MAX_ATTEMPTS`, and the
+credential isolation.
+
 ### Auto-resolve's required-test-job coverage
 
 `analysis.yaml`'s `auto-resolve` job only auto-resolves a test-execution job's
 failure when two things are true for that job: its raw `needs.<job>.result`
 is checked in the `Check for incomplete test execution` step (so a `failure`
 result without parseable Surefire XML still routes to the build-failure path
-instead of falling through to the quality-gate/general-review prompts, which
-report that all tests passed), and its Surefire artifact name is kept by the
+instead of going unresolved once the flaky-test retries are spent), and its Surefire artifact name is kept by the
 `Filter to resolvable surefire reports` allowlist (so a genuine test failure
 is actually parsed and described, not silently deleted before
 `parse-surefire-failures.sh` ever sees it). `test-flowtree` originally had
@@ -100,6 +126,7 @@ it knowingly does not cover are in
 | `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
+| `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests job fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
@@ -120,7 +147,8 @@ Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
 Most take that path as their only argument; a few need additional file input first
 — `build-resolve-prompt.sh <failures-file> <output-file>`,
-`build-quality-gate-prompt.sh <failures-file> <output-file>` and
+`build-quality-gate-prompt.sh <failures-file> <output-file>`,
+`build-python-failure-prompt.sh <log-file> <output-file>` and
 `build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
 file is always the last argument. `tools/tests/test_prompt_builders.py` holds
 them to that contract.
