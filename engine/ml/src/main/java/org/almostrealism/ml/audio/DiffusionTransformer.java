@@ -33,7 +33,6 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -195,6 +194,19 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	 * never writes it gets unmasked attention, and released in {@link #destroy()}.
 	 */
 	private final PackedCollection paddingMask;
+
+	/**
+	 * The number of valid latent positions, held on the device as a single value so that the
+	 * padding mask is produced by a kernel reading it rather than by host code; {@code null}
+	 * when the model takes no padding mask.
+	 */
+	private final PackedCollection validLength;
+
+	/**
+	 * The compiled assignment that writes {@link #paddingMask} from {@link #validLength},
+	 * built on first use and reused by every subsequent {@link #setValidLength(int)}.
+	 */
+	private Runnable paddingMaskUpdate;
 
 	/**
 	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
@@ -459,6 +471,8 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		}
 		this.paddingMask = config.isPaddingMasked() ?
 				new PackedCollection(shape(batchSize, audioSeqLen)).fill(1.0) : null;
+		this.validLength = config.isPaddingMasked() ?
+				new PackedCollection(shape(1)).fill(audioSeqLen) : null;
 		this.stateDictionary = stateDictionary;
 		this.unusedWeights = new HashSet<>();
 
@@ -977,14 +991,16 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			return;
 		}
 
-		ByteBuffer values = ByteBuffer.allocate(Double.BYTES * batchSize * audioSeqLen);
-		for (int b = 0; b < batchSize; b++) {
-			for (int i = 0; i < audioSeqLen; i++) {
-				values.putDouble(i < frames ? 1.0 : 0.0);
-			}
+		validLength.fill(frames);
+
+		if (paddingMaskUpdate == null) {
+			TraversalPolicy maskShape = shape(batchSize, audioSeqLen);
+			CollectionProducer position = integers(0, audioSeqLen).repeat(batchSize).reshape(maskShape);
+			CollectionProducer limit = cp(validLength).repeat(batchSize * audioSeqLen).reshape(maskShape);
+			paddingMaskUpdate = a("paddingMask", p(paddingMask), lessThan(position, limit)).get();
 		}
 
-		paddingMask.read(values.flip());
+		paddingMaskUpdate.run();
 	}
 
 	/**
@@ -1065,6 +1081,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		if (paddingMask != null) {
 			paddingMask.destroy();
+		}
+
+		if (validLength != null) {
+			validLength.destroy();
 		}
 	}
 

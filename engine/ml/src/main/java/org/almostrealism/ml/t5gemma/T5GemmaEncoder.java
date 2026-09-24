@@ -76,6 +76,18 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	/** Validity of each position (one for a prompt token, zero for padding); a leaf of the graph. */
 	private final PackedCollection attentionMask;
 
+	/**
+	 * The number of prompt positions, held on the device as a single value so that the validity
+	 * mask is produced by a kernel reading it rather than written by host code.
+	 */
+	private final PackedCollection promptLength;
+
+	/**
+	 * The compiled assignment that writes {@link #attentionMask} from {@link #promptLength},
+	 * built on first use and reused by every subsequent {@link #loadPrompt(long[])}.
+	 */
+	private Runnable attentionMaskUpdate;
+
 	/** The encoder block, built on first use. */
 	private Block encoder;
 
@@ -95,6 +107,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 		this.tokenIds = new PackedCollection(shape(BATCH, config.getMaxLength()));
 		this.tokenIds.clear();
 		this.attentionMask = new PackedCollection(shape(BATCH, config.getMaxLength()));
+		this.promptLength = new PackedCollection(shape(1));
 		this.attentionMask.clear();
 	}
 
@@ -142,8 +155,8 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	 */
 	public PackedCollection loadPrompt(long[] tokens) {
 		int length = config.getMaxLength();
+		int count = tokens.length < length ? tokens.length : length;
 		ByteBuffer ids = ByteBuffer.allocate(Double.BYTES * length);
-		ByteBuffer mask = ByteBuffer.allocate(Double.BYTES * length);
 		for (int i = 0; i < length; i++) {
 			boolean present = i < tokens.length;
 			if (present && (tokens[i] < 0 || tokens[i] >= config.getVocabularySize())) {
@@ -152,11 +165,19 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 			}
 
 			ids.putDouble(present ? (double) tokens[i] : (double) PAD_TOKEN);
-			mask.putDouble(present ? 1.0 : 0.0);
 		}
 
 		tokenIds.read(ids.flip());
-		attentionMask.read(mask.flip());
+		promptLength.fill(count);
+
+		if (attentionMaskUpdate == null) {
+			TraversalPolicy maskShape = shape(BATCH, length);
+			CollectionProducer position = integers(0, length).repeat(BATCH).reshape(maskShape);
+			CollectionProducer limit = cp(promptLength).repeat(BATCH * length).reshape(maskShape);
+			attentionMaskUpdate = a("attentionMask", p(attentionMask), lessThan(position, limit)).get();
+		}
+
+		attentionMaskUpdate.run();
 		return tokenIds;
 	}
 
@@ -302,5 +323,6 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 
 		tokenIds.destroy();
 		attentionMask.destroy();
+		promptLength.destroy();
 	}
 }
