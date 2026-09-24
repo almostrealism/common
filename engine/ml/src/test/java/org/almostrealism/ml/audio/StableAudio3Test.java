@@ -140,6 +140,21 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A positive maximum duration too short to span a whole sample is rejected at construction: it
+	 * rounds to a zero sample count, which would otherwise compile a decoder over empty shapes.
+	 */
+	@Test(timeout = 240000)
+	public void subSampleMaximumIsRejected() {
+		double tooShort = 0.5 / SAMPLE_RATE;
+		try {
+			smallModel(tooShort);
+			throw new AssertionError("a maximum duration shorter than one sample must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains(String.valueOf(tooShort)));
+		}
+	}
+
+	/**
 	 * A non-finite duration bypasses the {@code (0, maxSeconds]} comparison, since a {@code NaN}
 	 * comparison against either bound evaluates to false; it must still be rejected, both at
 	 * construction and at {@link StableAudio3#generate}.

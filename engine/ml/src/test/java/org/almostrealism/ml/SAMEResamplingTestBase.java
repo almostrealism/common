@@ -16,18 +16,11 @@
 
 package org.almostrealism.ml;
 
-import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.mem.ByteBufferTransfer;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -200,16 +193,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 					+ " values but shape expects " + resultShape.getTotalSize());
 		}
 
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(count);
-
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
-		new ByteBufferTransfer(data, Precision.FP32, staging,
-				Precision.ofBytes(provider.getNumberSize())).copyAll();
-
-		return new PackedCollection(resultShape, resultShape.getTraversalAxis(),
-				Bytes.of(mem, count), 0);
+		return PackedCollection.load(resultShape, data);
 	}
 
 	/**

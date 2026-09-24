@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
@@ -24,14 +26,20 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+
+import java.nio.ByteBuffer;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -1143,6 +1151,55 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 
 		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
+	}
+
+	/**
+	 * Creates a collection of the given shape over a native staging allocation filled from one or
+	 * more buffers of single-precision values, converting to the local hardware's precision on the
+	 * way in. With a single source this is a straight copy of the source's values; with several,
+	 * one value is drawn from each source in turn, as for a tensor stored as separate planes and
+	 * consumed interleaved.
+	 *
+	 * <p>This is the from-buffer ingest factory: the one place values that entered the process from
+	 * outside it — a checkpoint, a serialized message, a reference dump — are staged into device
+	 * memory. It is not a route for values computed by Java code, which belong in a
+	 * {@link io.almostrealism.relation.Producer}.</p>
+	 *
+	 * @param shape   the shape of the resulting collection
+	 * @param sources one or more buffers holding the values, positioned at the first value
+	 * @return a collection rooted over the staging allocation
+	 * @throws IllegalArgumentException if the shape's size is not divisible by the source count
+	 */
+	public static PackedCollection load(TraversalPolicy shape, ByteBuffer... sources) {
+		int total = shape.getTotalSize();
+		if (total % sources.length != 0) {
+			throw new IllegalArgumentException("Shape size " + total +
+					" is not divisible by the " + sources.length + " sources");
+		}
+
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(total);
+
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		Precision destination = Precision.ofBytes(provider.getNumberSize());
+
+		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
+		for (int i = 0; i < sources.length; i++) {
+			transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
+		}
+
+		if (transfers.length == 1) {
+			transfers[0].copy(total);
+		} else {
+			for (int i = 0; i < total; i += transfers.length) {
+				for (ByteBufferTransfer transfer : transfers) {
+					transfer.copyNext();
+				}
+			}
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);
 	}
 
 	/**

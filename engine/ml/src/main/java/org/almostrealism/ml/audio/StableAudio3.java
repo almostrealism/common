@@ -134,8 +134,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param conditioner        the prompt and duration conditioner, released by {@link #destroy()}
 	 * @param autoencoder        the latent autoencoder whose decoder is compiled here
 	 * @param sampleRate         the audio sample rate in Hz; must be finite and positive
-	 * @param maxSeconds         the longest duration to generate, in seconds; rejected when it
-	 *                           needs more than {@link #MAX_SAMPLES} samples
+	 * @param maxSeconds         the longest duration to generate, in seconds; rejected when it spans
+	 *                           less than one sample, and when it needs, with the headroom, more
+	 *                           than {@link #MAX_SAMPLES} samples
 	 * @param headroomSeconds    seconds of latent generated beyond the requested duration
 	 */
 	public StableAudio3(DiffusionTransformerConfig config, StateDictionary transformerWeights,
@@ -148,6 +149,23 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 
 		if (!Double.isFinite(sampleRate) || sampleRate <= 0.0) {
 			throw new IllegalArgumentException("sampleRate must be finite and positive");
+		}
+
+		// Checked in long arithmetic before any int cast: the aligned length is computed by adding
+		// the patch and chunk padding to the sample count, which overflows int for a duration that
+		// saturates the cast, and a duration shorter than one sample would compile empty shapes.
+		long requestedSamples = (long) (maxSeconds * sampleRate);
+		long coveredSamples = (long) ((maxSeconds + headroomSeconds) * sampleRate);
+
+		if (requestedSamples < 1) {
+			throw new IllegalArgumentException("maxSeconds " + maxSeconds + " at " + sampleRate +
+					" Hz spans less than one sample");
+		}
+
+		if (coveredSamples > MAX_SAMPLES) {
+			throw new IllegalArgumentException("maxSeconds " + maxSeconds + " with " + headroomSeconds +
+					" seconds of headroom needs " + coveredSamples + " samples, beyond the " +
+					MAX_SAMPLES + " the decoder can produce");
 		}
 
 		this.conditioner = conditioner;

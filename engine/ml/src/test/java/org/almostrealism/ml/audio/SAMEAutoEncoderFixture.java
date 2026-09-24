@@ -84,7 +84,7 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 	public SAMEAutoEncoder autoencoder(StateDictionary weights) {
 		return new SAMEAutoEncoder(weights, new PatchedPretransform(CHANNELS, PATCH),
 				config(true), config(false), LATENT,
-				SAMEAutoEncoder.softNormBottleneck(weights, LATENT));
+				new SoftNormBottleneck(weights, LATENT));
 	}
 
 	/**
