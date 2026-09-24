@@ -53,7 +53,15 @@ Apply this diff (context lines included for exact placement):
 +# no legitimate agent use of a shard. See
 +# tools/mcp/manager/test_execution_limits.py for the sibling rule enforced
 +# at job submission.
-+AR_TEST_GROUP = re.compile(r"\bAR_TEST_GROUPS?\b")
++#
++# No leading word-boundary assertion: the real shard invocation shape is
++# "-DAR_TEST_GROUP=2", where "AR_TEST_GROUP" is glued directly to the "-D"
++# property prefix with no boundary between "D" and "A" (both word
++# characters) -- a leading \b would never match that form. Matches the same
++# no-leading-boundary pattern already fixed in
++# tools/mcp/manager/test_execution_limits.py's _AR_TEST_GROUP_PATTERN and
++# PostCompletionCommandValidator.java's AR_TEST_GROUP.
++AR_TEST_GROUP = re.compile(r"AR_TEST_GROUPS?\b")
 +
  BLOCK_REASON = (
 -    "BLOCKED: Direct 'mvn test' is not permitted for agents.\n\n"

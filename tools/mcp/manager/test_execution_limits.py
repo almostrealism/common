@@ -44,6 +44,12 @@ _SKIP_TESTS_PATTERN = re.compile(
 # past "test" in the default lifecycle and carry the same risk.
 _MVN_TEST_RUNNING_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
 
+# Maven launcher executable names recognized by _maven_segment_violation: the
+# plain "mvn" plus the Maven Wrapper scripts ("./mvnw") and the Windows batch
+# launcher. Without these, "./mvnw test -pl engine/utils" would see a base
+# name of "mvnw" (not "mvn") and be waved through as a custom command.
+_MVN_LAUNCHER_NAMES = {"mvn", "mvnw", "mvn.cmd"}
+
 # No leading word-boundary assertion: the real shard invocation shape is
 # "-DAR_TEST_GROUP=2", where "AR_TEST_GROUP" is glued directly to the "-D"
 # property prefix with no boundary between "D" and "A" (both word
@@ -63,6 +69,13 @@ _ENV_OPTIONS_WITH_OPERAND = {"-u", "--unset", "-C", "--chdir", "-S", "--split-st
 
 _BACKTICK_SUBSTITUTION_PATTERN = re.compile(r"`([^`]*)`")
 
+# Sentinel first token used by ``_line_segments`` to mark a segment that
+# could not be tokenized, and recognized by ``_segment_violations`` to
+# reject it explicitly rather than routing the raw text through ordinary
+# command detection. Not a value any real shell token can equal, since a
+# NUL byte cannot appear in a shell command line.
+_UNPARSEABLE_SENTINEL = "\0unparseable\0"
+
 # Command-prefix wrappers that pass their remaining arguments through to the
 # real command unchanged: a shell builtin/wrapper such as ``command mvn
 # test`` or ``sudo mvn test`` must not be waved through just because its
@@ -70,6 +83,25 @@ _BACKTICK_SUBSTITUTION_PATTERN = re.compile(r"`([^`]*)`")
 # env is handled separately by ``_unwrap_env`` because it also strips its own
 # VAR=value assignments and flags.
 _CMD_PREFIXES = {"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice"}
+
+# _CMD_PREFIXES wrapper option flags (keyed by the wrapper's base name) that
+# consume the following token as their own operand, unless given in glued
+# `--opt=value` form -- mirroring _ENV_OPTIONS_WITH_OPERAND for `env`.
+# Without this, `nice -n 10 mvn test` would strip only "nice" and leave "-n"
+# as the wrapped command's own first token, never reaching "mvn"; `sudo -u
+# user mvn test` has the same problem with "-u". A wrapper absent from this
+# map, or a flag absent from its set, is still stripped as a bare flag with
+# no operand by `_unwrap_cmd_prefix_options` -- it fails toward stripping
+# less, not toward absorbing an unrecognized flag's operand by mistake.
+_CMD_PREFIX_OPTIONS_WITH_OPERAND = {
+    "sudo": {"-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
+             "-C", "--close-from", "-R", "--chroot", "-T", "--command-timeout"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {"-c", "--class", "-n", "--classdata", "-p", "--pid"},
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "time": {"-o", "--output", "-f", "--format"},
+    "exec": {"-a", "--as"},
+}
 
 
 def _tokenize(command: str) -> list:
@@ -117,14 +149,19 @@ def _shell_segments(command: str) -> list:
 def _line_segments(line: str) -> list:
     """Splits a single (newline-free) line into simple-command token lists.
 
-    Falls back to treating the whole line as one segment when it cannot be
-    tokenized (e.g. unbalanced quotes) -- fail toward flagging it for a
-    human to look at, not toward silently passing it through.
+    Falls back to a sentinel segment recognized by ``_segment_violations``
+    when the line cannot be tokenized (e.g. unbalanced quotes). Routing the
+    raw, unparsed text through the ordinary ``mvn``/``pytest`` first-token
+    checks would silently accept it -- the whole line becomes one token, so
+    it can never equal ``"mvn"`` or ``"pytest"`` and none of the broad-run
+    checks fire, exactly backwards from the "fail toward flagging it"
+    intent. The sentinel makes an unparseable command a violation in its own
+    right instead.
     """
     try:
         tokens = _tokenize(line)
     except ValueError:
-        return [[line]]
+        return [[_UNPARSEABLE_SENTINEL, line]]
     segments = []
     current = []
     for tok in tokens:
@@ -176,6 +213,28 @@ def _unwrap_leading_assignments(tokens: list) -> list:
     return tokens[i:] if i else tokens
 
 
+def _unwrap_cmd_prefix_options(wrapper_base: str, tokens: list) -> list:
+    """Strips the option flags -- and, for a recognized wrapper/flag pair in
+    ``_CMD_PREFIX_OPTIONS_WITH_OPERAND``, their operands -- that immediately
+    follow a stripped ``_CMD_PREFIXES`` wrapper name, so the wrapped
+    command's own first token (the thing actually executed) is what
+    ``_maven_segment_violation``/``_pytest_segment_violation`` see. Without
+    this, ``nice -n 10 mvn test`` or ``sudo -u user mvn test`` would leave
+    ``-n``/``-u`` as the apparent command, never reaching ``mvn``. Stops at
+    the first non-flag token, or after a bare ``--`` end-of-options marker.
+    """
+    operand_flags = _CMD_PREFIX_OPTIONS_WITH_OPERAND.get(wrapper_base, set())
+    i = 0
+    while i < len(tokens) and tokens[i].startswith("-") and tokens[i] != "--":
+        flag = tokens[i]
+        i += 1
+        if flag in operand_flags and "=" not in flag and i < len(tokens):
+            i += 1
+    if i < len(tokens) and tokens[i] == "--":
+        i += 1
+    return tokens[i:]
+
+
 def _unwrap_command_prefixes(tokens: list) -> list:
     """Strips a leading chain of command-prefix wrappers -- ``env``
     (with its own ``VAR=value`` assignments and flags), bare ``VAR=value``
@@ -183,9 +242,11 @@ def _unwrap_command_prefixes(tokens: list) -> list:
     of these directly in command position, e.g. ``FOO=bar mvn test``), and
     simple wrappers in ``_CMD_PREFIXES`` (``sudo``, ``nohup``, ``time``,
     ``exec``, ``command``, ``builtin``, ``stdbuf``, ``nice``, ``ionice``,
-    ``!``) -- so e.g. ``command mvn test``, ``sudo env FOO=bar mvn test``, or
-    ``FOO=bar mvn test`` reach the real command. Returns ``tokens``
-    unchanged when it starts with none of these.
+    ``!``) along with any of that wrapper's own option flags and, for a
+    recognized flag, its operand (see ``_unwrap_cmd_prefix_options``) -- so
+    e.g. ``command mvn test``, ``sudo env FOO=bar mvn test``, ``nice -n 10
+    mvn test``, or ``FOO=bar mvn test`` reach the real command. Returns
+    ``tokens`` unchanged when it starts with none of these.
     """
     while tokens:
         unwrapped = _unwrap_env(tokens)
@@ -198,7 +259,7 @@ def _unwrap_command_prefixes(tokens: list) -> list:
             continue
         base = tokens[0].rsplit("/", 1)[-1]
         if base in _CMD_PREFIXES:
-            tokens = tokens[1:]
+            tokens = _unwrap_cmd_prefix_options(base, tokens[1:])
             continue
         break
     return tokens
@@ -269,7 +330,19 @@ def _segment_violations(tokens: list) -> list:
     mvn test``, ``command mvn test``, ``sh -c 'mvn test'``, or ``eval mvn
     test`` would see a first token other than ``mvn``/``pytest`` and be
     waved through unchecked.
+
+    A segment produced by ``_line_segments``' tokenization-failure fallback
+    (first token ``_UNPARSEABLE_SENTINEL``) is rejected outright here rather
+    than falling through to the ``mvn``/``pytest`` checks below, which could
+    never fire against unparsed raw text anyway.
     """
+    if tokens and tokens[0] == _UNPARSEABLE_SENTINEL:
+        raw = tokens[1] if len(tokens) > 1 else ""
+        return [
+            "Command segment could not be parsed as a shell command "
+            "(e.g. unbalanced quotes): \"{}\". Rewrite it so it "
+            "tokenizes unambiguously; it cannot be validated as written.".format(raw)
+        ]
     unwrapped = _unwrap_command_prefixes(tokens)
     script = _shell_dash_c_script(unwrapped)
     if script is None:
@@ -311,15 +384,19 @@ def _dtest_values(args: list) -> list:
 
 
 def _dtest_is_narrow(value: str) -> bool:
-    """True if every comma-separated -Dtest entry is a Class#method selector.
+    """True if ``value`` is exactly one non-empty Class#method entry.
 
-    A bare class name (no ``#``) still runs every test method in that
-    class, which is exactly the "whole module's suite" shape this rule
-    exists to reject -- see the HARD RULES for this rule: "a bare
-    -Dtest=Class also counts as too broad".
+    A ``-Dtest`` value may name several comma-separated entries, but Maven
+    runs all of them in a single invocation -- accepting more than one,
+    even when each individually names a method, would still let one command
+    run multiple tests, contradicting the "at most ONE test per invocation"
+    rule this validator otherwise enforces. Only a single Class#method entry
+    is narrow enough. A bare class name (no ``#``) also fails this check --
+    see the HARD RULES for this rule: "a bare -Dtest=Class also counts as
+    too broad".
     """
     entries = [e for e in value.split(",") if e]
-    return bool(entries) and all("#" in e for e in entries)
+    return len(entries) == 1 and "#" in entries[0]
 
 
 def _maven_segment_violation(tokens: list) -> str:
@@ -329,7 +406,7 @@ def _maven_segment_violation(tokens: list) -> str:
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
-    if base != "mvn":
+    if base not in _MVN_LAUNCHER_NAMES:
         return ""
     args = tokens[1:]
     if any(_SKIP_TESTS_PATTERN.match(a) for a in args):
@@ -417,8 +494,6 @@ def validate_post_completion_timeout(seconds: int) -> str:
 # bypass: see module docstring.
 # ---------------------------------------------------------------------------
 
-_TEST_LINT_MIN_LEN = 20
-
 _TEST_LINT_PATTERNS = [
     (re.compile(r"\b(full|whole|entire)\s+test\s+suite\b", re.IGNORECASE),
      '"full/whole/entire test suite" phrase'),
@@ -459,15 +534,22 @@ class _MvnTestSegmentMatcher:
     ``test``: ``mvn verify`` and ``mvn install`` run the full default
     lifecycle up to and including tests unless ``-DskipTests`` is present,
     so a prompt telling the agent to "run mvn verify" is exactly as broad
-    as "run mvn test".
+    as "run mvn test". Also matches the Maven Wrapper launcher names in
+    ``_MVN_LAUNCHER_NAMES`` (``mvnw``, ``mvn.cmd``), not just plain
+    ``mvn``: a prompt telling the agent to "run ./mvnw test" is exactly as
+    broad, and the bare ``mvn`` prefix does not match ``mvnw`` (no
+    whitespace between ``mvn`` and ``w``).
     """
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
     _MVN_TEST_PATTERN = re.compile(
-        r"\bmvn\s+(?:" + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
+        r"\b(?:" + "|".join(re.escape(n) for n in sorted(_MVN_LAUNCHER_NAMES)) + r")\s+(?:"
+        + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
         re.IGNORECASE)
     _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
-    _SKIP_PATTERN = re.compile(r"-DskipTests(=true)?\b|-Dmaven\.test\.skip(=true)?\b", re.IGNORECASE)
+    _SKIP_PATTERN = re.compile(
+        r"-DskipTests(?:=true(?!\S)|(?!=))|-Dmaven\.test\.skip(?:=true(?!\S)|(?!=))",
+        re.IGNORECASE)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
@@ -484,14 +566,18 @@ _TEST_LINT_PATTERNS.append(
 
 
 class _DTestBroadValueMatcher:
-    """Flags a ``-Dtest=<value>`` mention whose comma-separated entries are
-    not ALL narrowed to ``Class#method``.
+    """Flags a ``-Dtest=<value>`` mention that does not name exactly one
+    ``Class#method`` entry.
 
     A single regex with a negative lookahead for ``#`` cannot express this: a
     mixed value like ``-Dtest=Foo,Bar#baz`` (where ``Foo`` alone is broad)
     satisfies a lookahead that only checks whether a ``#`` appears somewhere
-    later in the string, because it finds the one in ``Bar#baz``. Exposes the
-    same ``search(line)`` interface as a compiled pattern so it drops into
+    later in the string, because it finds the one in ``Bar#baz``. Requiring
+    exactly one entry also catches ``-Dtest=Foo#bar,Baz#qux``, where every
+    individual entry names a method but Maven still runs both in the same
+    invocation -- matching ``_dtest_is_narrow``'s "at most ONE test per
+    invocation" rule in the command validator. Exposes the same
+    ``search(line)`` interface as a compiled pattern so it drops into
     ``_TEST_LINT_PATTERNS`` unchanged.
     """
 
@@ -502,13 +588,13 @@ class _DTestBroadValueMatcher:
         if not match:
             return None
         entries = [e for e in match.group(1).split(",") if e]
-        if entries and all("#" in e for e in entries):
+        if len(entries) == 1 and "#" in entries[0]:
             return None
         return match
 
 
 _TEST_LINT_PATTERNS.append(
-    (_DTestBroadValueMatcher(), "-Dtest=<Class> selector without #method"))
+    (_DTestBroadValueMatcher(), "-Dtest=<value> not naming exactly one Class#method entry"))
 
 
 def lint_prompt_for_broad_test_instructions(prompt: str) -> list:
@@ -518,9 +604,12 @@ def lint_prompt_for_broad_test_instructions(prompt: str) -> list:
     Returns a list of ``(line_number, snippet, reason)`` tuples -- one per
     matched line (first matching pattern wins per line). There is no
     bypass flag for this linter; a prompt legitimately quoting the phrase
-    must be rewritten instead.
+    must be rewritten instead. Only an empty (or whitespace-only) prompt is
+    exempt -- a short-but-unambiguous instruction such as ``"run all
+    tests"`` or ``"mvn test"`` is well within every pattern's own minimum
+    length and must still be scanned.
     """
-    if len(prompt) < _TEST_LINT_MIN_LEN:
+    if not prompt or not prompt.strip():
         return []
     violations = []
     for lineno, line in enumerate(prompt.splitlines(), 1):

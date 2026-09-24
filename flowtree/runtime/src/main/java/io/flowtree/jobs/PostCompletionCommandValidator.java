@@ -18,7 +18,10 @@ package io.flowtree.jobs;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -73,6 +76,13 @@ public class PostCompletionCommandValidator {
 	/** Matches a Maven {@code -Dtest=...} argument, capturing its value. */
 	private static final Pattern DTEST_ARG = Pattern.compile("^-Dtest=(.+)$");
 
+	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
+	 * {@code mvn} plus the Maven Wrapper script ({@code ./mvnw}) and the Windows batch launcher.
+	 * Without these, {@code ./mvnw test -pl engine/utils} would see a base name of {@code mvnw}
+	 * (not {@code mvn}) and be waved through as a custom command. */
+	// TODO(review): "mvnw.cmd" is not recognized here (baseName() does not strip extensions).
+	private static final List<String> MVN_LAUNCHER_NAMES = Arrays.asList("mvn", "mvnw", "mvn.cmd");
+
 	/** Shell control operators that separate one simple command from the next. */
 	private static final List<String> SHELL_OPERATORS = Arrays.asList(
 			"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}");
@@ -98,6 +108,28 @@ public class PostCompletionCommandValidator {
 	 * command's own first token. */
 	private static final List<String> ENV_OPTIONS_WITH_OPERAND = Arrays.asList(
 			"-u", "--unset", "-C", "--chdir", "-S", "--split-string");
+
+	/** {@link #CMD_PREFIXES} wrapper option flags (keyed by the wrapper's base name) that consume
+	 * the following token as their own operand, unless given in glued {@code --opt=value} form --
+	 * mirroring {@link #ENV_OPTIONS_WITH_OPERAND} for {@code env}. Without this, e.g. {@code nice
+	 * -n 10 mvn test} would strip only "nice" and leave "-n" as the wrapped command's own first
+	 * token, never reaching "mvn"; {@code sudo -u user mvn test} has the same problem with "-u". A
+	 * wrapper absent from this map, or a flag absent from its set, is still stripped as a bare
+	 * flag with no operand by {@link #unwrapCmdPrefixOptions} -- it fails toward stripping less,
+	 * not toward absorbing an unrecognized flag's operand by mistake. */
+	private static final Map<String, List<String>> CMD_PREFIX_OPTIONS_WITH_OPERAND;
+
+	static {
+		Map<String, List<String>> options = new HashMap<>();
+		options.put("sudo", Arrays.asList("-u", "--user", "-g", "--group", "-h", "--host",
+				"-p", "--prompt", "-C", "--close-from", "-R", "--chroot", "-T", "--command-timeout"));
+		options.put("nice", Arrays.asList("-n", "--adjustment"));
+		options.put("ionice", Arrays.asList("-c", "--class", "-n", "--classdata", "-p", "--pid"));
+		options.put("stdbuf", Arrays.asList("-i", "--input", "-o", "--output", "-e", "--error"));
+		options.put("time", Arrays.asList("-o", "--output", "-f", "--format"));
+		options.put("exec", Arrays.asList("-a", "--as"));
+		CMD_PREFIX_OPTIONS_WITH_OPERAND = Collections.unmodifiableMap(options);
+	}
 
 	/** Matches a backtick command substitution, capturing its inner text. */
 	private static final Pattern BACKTICK_SUBSTITUTION = Pattern.compile("`([^`]*)`");
@@ -286,10 +318,12 @@ public class PostCompletionCommandValidator {
 	 * {@code FOO=bar mvn test}), and simple wrappers in {@link #CMD_PREFIXES}
 	 * ({@code sudo}, {@code nohup}, {@code time}, {@code exec}, {@code
 	 * command}, {@code builtin}, {@code stdbuf}, {@code nice}, {@code
-	 * ionice}, {@code !}) -- so e.g. {@code command mvn test}, {@code sudo
-	 * env FOO=bar mvn test}, or {@code FOO=bar mvn test} reach the real
-	 * command. Returns {@code tokens} unchanged when it starts with none of
-	 * these.
+	 * ionice}, {@code !}) -- along with any of that wrapper's own option
+	 * flags and, for a recognized flag, its operand (see
+	 * {@link #unwrapCmdPrefixOptions}) -- so e.g. {@code command mvn test},
+	 * {@code sudo env FOO=bar mvn test}, {@code nice -n 10 mvn test}, or
+	 * {@code FOO=bar mvn test} reach the real command. Returns {@code
+	 * tokens} unchanged when it starts with none of these.
 	 */
 	private List<String> unwrapCommandPrefixes(List<String> tokens) {
 		while (!tokens.isEmpty()) {
@@ -305,12 +339,40 @@ public class PostCompletionCommandValidator {
 			}
 			String base = baseName(tokens.get(0));
 			if (CMD_PREFIXES.contains(base)) {
-				tokens = tokens.subList(1, tokens.size());
+				tokens = unwrapCmdPrefixOptions(base, tokens.subList(1, tokens.size()));
 				continue;
 			}
 			break;
 		}
 		return tokens;
+	}
+
+	/**
+	 * Strips the option flags -- and, for a recognized wrapper/flag pair in
+	 * {@link #CMD_PREFIX_OPTIONS_WITH_OPERAND}, their operands -- that
+	 * immediately follow a stripped {@link #CMD_PREFIXES} wrapper name, so
+	 * the wrapped command's own first token (the thing actually executed) is
+	 * what {@link #mavenSegmentViolation} and {@link #pytestSegmentViolation}
+	 * see. Without this, {@code nice -n 10 mvn test} or {@code sudo -u user
+	 * mvn test} would leave {@code -n}/{@code -u} as the apparent command,
+	 * never reaching {@code mvn}. Stops at the first non-flag token, or after
+	 * a bare {@code --} end-of-options marker.
+	 */
+	private List<String> unwrapCmdPrefixOptions(String wrapperBase, List<String> tokens) {
+		List<String> operandFlags = CMD_PREFIX_OPTIONS_WITH_OPERAND.getOrDefault(
+				wrapperBase, Collections.emptyList());
+		int i = 0;
+		while (i < tokens.size() && tokens.get(i).startsWith("-") && !"--".equals(tokens.get(i))) {
+			String flag = tokens.get(i);
+			i++;
+			if (operandFlags.contains(flag) && !flag.contains("=") && i < tokens.size()) {
+				i++;
+			}
+		}
+		if (i < tokens.size() && "--".equals(tokens.get(i))) {
+			i++;
+		}
+		return tokens.subList(i, tokens.size());
 	}
 
 	/**
@@ -366,7 +428,7 @@ public class PostCompletionCommandValidator {
 
 	/** Returns a violation reason for a Maven segment, or null when it is acceptable. */
 	private String mavenSegmentViolation(List<String> tokens) {
-		if (tokens.isEmpty() || !"mvn".equals(baseName(tokens.get(0)))) {
+		if (tokens.isEmpty() || !MVN_LAUNCHER_NAMES.contains(baseName(tokens.get(0)))) {
 			return null;
 		}
 		List<String> args = tokens.subList(1, tokens.size());
@@ -407,20 +469,22 @@ public class PostCompletionCommandValidator {
 		return null;
 	}
 
-	/** True when every comma-separated {@code -Dtest} entry in {@code value} names a method. */
+	/** True when {@code value} is exactly one non-empty {@code Class#method} entry.
+	 *
+	 * <p>A {@code -Dtest} value may name several comma-separated entries, but Maven runs all of
+	 * them in a single invocation -- accepting more than one, even when each individually names a
+	 * method, would still let one command run multiple tests, contradicting the "at most ONE test
+	 * per invocation" rule this validator otherwise enforces (e.g. via the pytest and MCP runner
+	 * checks). Only a single {@code Class#method} entry is narrow enough.</p>
+	 */
 	private boolean dtestIsNarrow(String value) {
-		String[] entries = value.split(",");
-		boolean any = false;
-		for (String entry : entries) {
-			if (entry.isEmpty()) {
-				continue;
-			}
-			any = true;
-			if (!entry.contains("#")) {
-				return false;
+		List<String> entries = new ArrayList<>();
+		for (String entry : value.split(",")) {
+			if (!entry.isEmpty()) {
+				entries.add(entry);
 			}
 		}
-		return any;
+		return entries.size() == 1 && entries.get(0).contains("#");
 	}
 
 	/** Returns a violation reason for a pytest segment, or null when it is acceptable. */

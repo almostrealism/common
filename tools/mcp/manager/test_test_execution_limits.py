@@ -32,9 +32,9 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
 
-    def test_multiple_single_method_maven_selectors(self):
+    def test_mvnw_launcher_with_selector_accepted(self):
         self.assertEqual([], validate_post_completion_command(
-            "mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz"))
+            "./mvnw -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
 
     def test_maven_install_skiptests_is_a_build_not_a_test_run(self):
         self.assertEqual([], validate_post_completion_command(
@@ -245,6 +245,52 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "mvn test -Dtest=Foo#bar\npytest tests/test_foo.py::test_bar"))
 
+    def test_nice_with_operand_option_wrapped_maven_test_rejected(self):
+        # "nice -n 10 mvn test" previously stripped only "nice", leaving
+        # "-n" as the apparent command -- never reaching "mvn" at all.
+        violations = validate_post_completion_command(
+            "nice -n 10 mvn test -pl engine/utils")
+        self.assertTrue(violations, "nice -n 10 mvn test must be rejected like a direct mvn test")
+
+    def test_sudo_with_operand_option_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "sudo -u user mvn test -pl engine/utils")
+        self.assertTrue(violations, "sudo -u user mvn test must be rejected like a direct mvn test")
+
+    def test_nice_with_operand_option_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "nice -n 10 mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
+
+    def test_sudo_with_operand_option_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "sudo -u user mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"))
+
+    def test_mvnw_launcher_with_no_selector_rejected(self):
+        # "./mvnw test" must be rejected like a direct "mvn test" -- without
+        # recognizing "mvnw" as a Maven launcher, it would be waved through
+        # as an unrecognized custom command.
+        violations = validate_post_completion_command("./mvnw test -pl engine/utils")
+        self.assertTrue(violations, "./mvnw test must be rejected like a direct mvn test")
+
+    def test_multiple_method_dtest_selector_rejected(self):
+        # A -Dtest value naming more than one Class#method entry still runs
+        # multiple tests in a single Maven invocation, contradicting the
+        # "one test per invocation" rule -- even though every individual
+        # entry is itself narrow.
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz")
+        self.assertTrue(violations,
+                         "a -Dtest value naming multiple methods must still be rejected")
+
+    def test_unparseable_command_is_rejected(self):
+        # An unbalanced quote fails _tokenize; the whole line must become a
+        # violation in its own right rather than being routed through the
+        # normal mvn/pytest first-token checks, where the entire raw text
+        # (never equal to "mvn" or "pytest") would silently pass.
+        violations = validate_post_completion_command(
+            "mvn test -pl engine/utils '")
+        self.assertTrue(violations, "an unparseable command must not be silently accepted")
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 
@@ -266,8 +312,20 @@ class TestValidatePostCompletionTimeout(unittest.TestCase):
 
 class TestLintPromptForBroadTestInstructions(unittest.TestCase):
 
-    def test_short_prompt_skipped(self):
+    def test_empty_prompt_skipped(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(""))
+
+    def test_short_narrow_prompt_not_flagged(self):
+        # Short, but scanned like any other prompt -- "fix it" contains no
+        # broad-instruction phrase, so it is correctly not flagged.
         self.assertEqual([], lint_prompt_for_broad_test_instructions("fix it"))
+
+    def test_short_broad_prompt_rejected(self):
+        # A length fast-path previously let a short-but-unambiguous
+        # instruction bypass every pattern below 20 characters -- both of
+        # these are shorter than that and must still be flagged.
+        self.assertTrue(lint_prompt_for_broad_test_instructions("run all tests"))
+        self.assertTrue(lint_prompt_for_broad_test_instructions("mvn test"))
 
     def test_narrow_instruction_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
@@ -324,10 +382,18 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "Run it with -Dtest=NotifierRegistryTest,OtherTest#testFoo to confirm the fix.")
         self.assertTrue(hits, "a mixed narrow/broad -Dtest value must still be flagged")
 
-    def test_fully_narrow_dtest_mention_not_flagged(self):
+    def test_single_method_dtest_mention_not_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=FooTest#bar to confirm the fix.")
+        self.assertEqual([], hits)
+
+    def test_multiple_method_dtest_mention_flagged(self):
+        # Every individual entry names a method, but Maven still runs both
+        # in the same invocation -- this is exactly as broad as a bare
+        # class selector for the "one test per invocation" rule.
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar,BazTest#qux to confirm the fix.")
-        self.assertEqual([], hits)
+        self.assertTrue(hits, "a -Dtest value naming multiple methods must still be flagged")
 
     def test_violation_includes_line_number(self):
         hits = lint_prompt_for_broad_test_instructions(
@@ -384,6 +450,28 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run mvn verify -Dmaven.test.skip=true to confirm it builds.")
         self.assertEqual([], hits)
+
+    def test_mvn_verify_with_skip_tests_equals_false_still_flagged(self):
+        # -DskipTests=false explicitly RE-ENABLES tests -- the skip matcher
+        # previously matched on the "-DskipTests" prefix alone regardless of
+        # what followed "=", so this was wrongly treated as a skip flag and
+        # the broad "mvn verify" instruction slipped past the linter.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -DskipTests=false to confirm it builds.")
+        self.assertTrue(hits, "-DskipTests=false must not suppress the broad-run warning")
+
+    def test_mvn_verify_with_maven_test_skip_equals_false_still_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -Dmaven.test.skip=false to confirm it builds.")
+        self.assertTrue(hits, "-Dmaven.test.skip=false must not suppress the broad-run warning")
+
+    def test_mvnw_test_without_selector_rejected(self):
+        # The bare "mvn" prefix does not match "mvnw" (no whitespace
+        # between "mvn" and "w"), so the Maven Wrapper launcher needs its
+        # own recognition here, mirroring the command validator's fix.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run ./mvnw test to check your change compiles and passes.")
+        self.assertTrue(hits, "a prompt telling the agent to run ./mvnw test must be flagged")
 
 
 if __name__ == "__main__":

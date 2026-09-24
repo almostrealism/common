@@ -65,6 +65,14 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("mvn install -q -DskipTests -pl engine/utils -am").isEmpty());
 	}
 
+	/** The Maven Wrapper launcher (invoked as "./mvnw") with an explicit selector is accepted,
+	 * the same as a plain "mvn" invocation. */
+	@Test(timeout = 10000)
+	public void mvnwLauncherWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"./mvnw -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo").isEmpty());
+	}
+
 	/** A Maven invocation with no test-executing phase is accepted. */
 	@Test(timeout = 10000)
 	public void mavenCompileWithNoTestPhaseAccepted() {
@@ -129,6 +137,26 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 				"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest");
 		assertFalse(violations.isEmpty());
 		assertTrue(violations.get(0).contains("Class#method"));
+	}
+
+	/** The Maven Wrapper launcher must be rejected the same as a plain "mvn" invocation when it
+	 * runs a test-executing phase with no selector -- without recognizing "mvnw" as a Maven
+	 * launcher, "./mvnw test" would be waved through as an unrecognized custom command. */
+	@Test(timeout = 10000)
+	public void mvnwLauncherWithNoSelectorRejected() {
+		List<String> violations = violationsFor("./mvnw test -pl engine/utils");
+		assertFalse("./mvnw test must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** A -Dtest value naming more than one Class#method entry still runs multiple tests in a
+	 * single Maven invocation, contradicting the "one test per invocation" rule -- even though
+	 * every individual entry is itself narrow. */
+	@Test(timeout = 10000)
+	public void multipleMethodDtestSelectorRejected() {
+		List<String> violations = violationsFor(
+				"mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz");
+		assertFalse("a -Dtest value naming multiple methods must still be rejected",
+				violations.isEmpty());
 	}
 
 	/** AR_TEST_GROUP must be rejected even on a phase not itself named "test". */
@@ -263,6 +291,40 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void sudoEnvWrappedMavenTestRejected() {
 		List<String> violations = violationsFor("sudo env FOO=bar mvn test -pl engine/utils");
 		assertFalse(violations.isEmpty());
+	}
+
+	/** "nice -n 10" previously stripped only "nice", leaving "-n" as the apparent
+	 * command -- the wrapped mvn invocation must still be reached and rejected. */
+	@Test(timeout = 10000)
+	public void niceWithOperandOptionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("nice -n 10 mvn test -pl engine/utils");
+		assertFalse("nice -n 10 mvn test must be rejected like a direct mvn test",
+				violations.isEmpty());
+	}
+
+	/** "nice -n 10" wrapping a Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void niceWithOperandOptionWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"nice -n 10 mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo")
+				.isEmpty());
+	}
+
+	/** "sudo -u user" previously stripped only "sudo", leaving "-u" as the apparent
+	 * command -- the wrapped mvn invocation must still be reached and rejected. */
+	@Test(timeout = 10000)
+	public void sudoWithOperandOptionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("sudo -u user mvn test -pl engine/utils");
+		assertFalse("sudo -u user mvn test must be rejected like a direct mvn test",
+				violations.isEmpty());
+	}
+
+	/** "sudo -u user" wrapping a Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void sudoWithOperandOptionWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"sudo -u user mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo")
+				.isEmpty());
 	}
 
 	/** A bare "VAR=value" prefix with no "env" token is exactly as valid to the

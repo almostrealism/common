@@ -61,7 +61,8 @@ because you routed around the violation.
    their existing tests (if any); for Python, read the tool directory's modules and its
    `test_*.py` files.
 2. Run the existing tests for `${TARGET}` first -- one at a time, by name -- using the MCP
-   test runner with `test_classes` (Java) or explicit pytest node ids (Python), and confirm
+   test runner with `test_methods` (one `{class, method}` entry per invocation for Java; a
+   bare class selector is rejected) or explicit pytest node ids (Python), and confirm
    they pass before you add anything. A coverage round on top of a red baseline is not a
    coverage round; a whole-module or whole-directory run is not how you check that.
 3. Write tests that exercise the behavior described above. Follow the repository's test
