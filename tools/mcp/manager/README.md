@@ -138,7 +138,7 @@ before the submission ever reaches the controller:
   full/whole/entire suite, a module's tests, a shard, `mvn test` without a
   single-method selector, or `AR_TEST_GROUP`.
 
-Implemented in [`test_execution_limits.py`](test_execution_limits.py); see its module
+Implemented in [`execution_limits.py`](execution_limits.py); see its module
 docstring for the incident that made this a hard requirement. The controller
 (`FlowTreeApiEndpoint#handleSubmit`) applies the same command validation independently
 via `io.flowtree.jobs.PostCompletionCommandValidator`, so a direct API call cannot

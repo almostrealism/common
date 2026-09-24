@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link PostCompletionCommandValidator}: the controller-side half
  * of the "no broad test runs" rule, mirroring
- * tools/mcp/manager/test_test_execution_limits.py's coverage of the
+ * tools/mcp/manager/test_execution_limits.py's coverage of the
  * Python-side validator.
  */
 public class PostCompletionCommandValidatorTest extends TestSuiteBase {
@@ -741,5 +741,20 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		List<String> violations = violationsFor(
 				"python3 -m unittest $(printf pkg.FooTest.test_bar)");
 		assertFalse(violations.isEmpty());
+	}
+
+	/** {@code timeout DURATION} must not hide a broad Maven run behind its duration operand. */
+	@Test(timeout = 10000)
+	public void timeoutWrappedBroadMavenRejected() {
+		assertFalse(violationsFor("timeout 2400 mvn test -pl engine/utils").isEmpty());
+		assertFalse(violationsFor("timeout -k 5 2400 mvn test").isEmpty());
+		assertFalse(violationsFor("timeout --signal=KILL 60 pytest tools/").isEmpty());
+	}
+
+	/** A narrow command under {@code timeout} is still accepted. */
+	@Test(timeout = 10000)
+	public void timeoutWrappedNarrowCommandAccepted() {
+		assertTrue(violationsFor("timeout 2400 mvn clean install -DskipTests").isEmpty());
+		assertTrue(violationsFor("timeout 60 pytest test_secrets.py::test_render").isEmpty());
 	}
 }

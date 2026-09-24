@@ -144,13 +144,14 @@ append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 # (every method in that class), both of which agents may never run; see
 # ci/test-execution-limits.
 FAILING_MODULES=""
-# Maps a module name to its space-joined "Class#method" pairs. An associative
-# array (not `eval "MODULE_METHODS_${module}=..."`) so a crafted failure name
-# is stored as data, never reparsed as shell code -- a nested Java test class
+# One "<module> <Class#method>" record per line. Plain newline-delimited data
+# (not `eval "MODULE_METHODS_${module}=..."`) so a crafted failure name is
+# stored as data, never reparsed as shell code -- a nested Java test class
 # name like `Outer$InnerTest` would otherwise be expanded again by `eval` as
 # a `$InnerTest` variable reference, and a crafted name could inject a command
-# substitution.
-declare -A MODULE_METHODS_MAP
+# substitution. Not an associative array either: `declare -A` needs bash 4,
+# and macOS still ships bash 3.2 as /bin/bash.
+MODULE_METHOD_RECORDS=""
 while IFS= read -r line; do
     # Only process lines that start with "- " (test name lines).
     # Skip exception details, stack traces, and blank lines.
@@ -169,9 +170,10 @@ while IFS= read -r line; do
                 fi
                 short_class="${class_name##*.}"
                 pair="${short_class}#${method_name}"
-                existing="${MODULE_METHODS_MAP[$module]:-}"
-                if ! echo "$existing" | grep -qw "$pair"; then
-                    MODULE_METHODS_MAP[$module]="${existing:+$existing }${pair}"
+                record="${module} ${pair}"
+                if ! printf '%s\n' "$MODULE_METHOD_RECORDS" | grep -qxF -- "$record"; then
+                    MODULE_METHOD_RECORDS="${MODULE_METHOD_RECORDS:+$MODULE_METHOD_RECORDS
+}${record}"
                 fi
             fi
             ;;
@@ -185,7 +187,7 @@ done < "$FAILURES_FILE"
 # every other surface this rule covers.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
-    pairs="${MODULE_METHODS_MAP[$module]:-}"
+    pairs=$(printf '%s\n' "$MODULE_METHOD_RECORDS" | awk -v m="$module" '$1 == m { print $2 }')
     CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}"
     for pair in $pairs; do

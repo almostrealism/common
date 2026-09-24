@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 
 /**
  * Scans a job's free-text prompt for English-language instructions to run a broad test set,
- * mirroring {@code tools/mcp/manager/test_execution_limits.py}'s
+ * mirroring {@code tools/mcp/manager/execution_limits.py}'s
  * {@code lint_prompt_for_broad_test_instructions}; keep the two in sync.
  *
  * <p>{@code ar-manager}'s {@code workstream_submit_task} applies the Python version to every
@@ -110,6 +110,20 @@ public class PromptTestInstructionLinter {
 	/** Matches a dotted identifier with at least two dots, e.g. {@code module.Class.method}. */
 	private static final Pattern DOTTED_ID = Pattern.compile("\\b\\w+(?:\\.\\w+){2,}\\b");
 
+	/** Matches a {@code python}/{@code python3 -m pytest} invocation, which is always a command. */
+	private static final Pattern PYTEST_MODULE_INVOCATION = Pattern.compile(
+			"\\bpython3?(?:\\s+-\\S+)*\\s+-m\\s+pytest\\b", Pattern.CASE_INSENSITIVE);
+
+	/** Matches a bare {@code pytest}/{@code py.test} word, capturing an optional preceding run
+	 * verb and the following token so {@link #pytestWithoutSingleNodeId} can tell an instruction
+	 * to run it from prose that merely names the tool. */
+	private static final Pattern PYTEST_BARE_INVOCATION = Pattern.compile(
+			"(?<![\\w.-])((?:run|execute)\\s+)?py\\.?test\\b(?![.-]\\w)(?:\\s+(\\S+))?",
+			Pattern.CASE_INSENSITIVE);
+
+	/** Matches an argument-shaped token: a flag, a path, a {@code .py} file or a node id. */
+	private static final Pattern PYTEST_ARGUMENT_SHAPE = Pattern.compile("^-|/|\\.py\\b|::");
+
 	/** One rule: a line-level predicate paired with the human-readable reason to report when it
 	 * matches. Mirrors the Python prompt linter's {@code _TEST_LINT_PATTERNS} list, where each
 	 * entry either a compiled regex or a small matcher class exposing the same {@code search}
@@ -138,6 +152,8 @@ public class PromptTestInstructionLinter {
 		rules.add(new LineRule(PromptTestInstructionLinter::unittestDiscovery,
 				"\"python -m unittest discover\" (or a unittest invocation naming no single "
 						+ "module.Class.method id)"));
+		rules.add(new LineRule(PromptTestInstructionLinter::pytestWithoutSingleNodeId,
+				"pytest invocation not naming exactly one file.py::test_name node id"));
 		return rules;
 	}
 
@@ -234,6 +250,52 @@ public class PromptTestInstructionLinter {
 				dottedIdCount++;
 			}
 			if (DISCOVER.matcher(fragment).find() || dottedIdCount != 1) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Flags a {@code pytest}/{@code py.test}/{@code python -m pytest} invocation whose chained-command
+	 * fragment does not name EXACTLY ONE {@code file.py::test_name} node id, mirroring
+	 * {@link PostCompletionCommandValidator}'s pytest rule for free-text prompt instructions.
+	 * Without this, a prompt such as "Run pytest tools/mcp/manager" was accepted when the
+	 * submission carried no command field for the command validator to inspect.
+	 *
+	 * <p>{@code python -m pytest} is always an invocation. A bare {@code pytest} word is only
+	 * treated as one when a run verb precedes it or an argument-shaped token follows it, so prose
+	 * that merely names the tool -- "add a pytest regression test" -- is not flagged.</p>
+	 */
+	private static boolean pytestWithoutSingleNodeId(String line) {
+		for (String fragment : CHAIN_SPLIT.split(line.replace('`', ' '))) {
+			if (!isPytestInvocation(fragment)) {
+				continue;
+			}
+			int nodeIds = 0;
+			for (String token : fragment.trim().split("\\s+")) {
+				if (token.contains("::")) {
+					nodeIds++;
+				}
+			}
+			if (nodeIds != 1) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Returns whether {@code fragment} instructs a pytest run; see
+	 * {@link #pytestWithoutSingleNodeId}. */
+	private static boolean isPytestInvocation(String fragment) {
+		if (PYTEST_MODULE_INVOCATION.matcher(fragment).find()) {
+			return true;
+		}
+		Matcher matcher = PYTEST_BARE_INVOCATION.matcher(fragment);
+		while (matcher.find()) {
+			String arg = matcher.group(2);
+			if (matcher.group(1) != null
+					|| (arg != null && PYTEST_ARGUMENT_SHAPE.matcher(arg).find())) {
 				return true;
 			}
 		}

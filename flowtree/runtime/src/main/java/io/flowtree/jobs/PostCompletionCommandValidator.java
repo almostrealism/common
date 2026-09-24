@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * half of that rule's enforcement, so a direct API call to
  * {@code /api/submit} cannot bypass what {@code ar-manager}'s
  * {@code workstream_submit_task} already rejects. It mirrors
- * {@code tools/mcp/manager/test_execution_limits.py}'s
+ * {@code tools/mcp/manager/execution_limits.py}'s
  * {@code validate_post_completion_command}; keep the two in sync.</p>
  *
  * <p>There is no bypass for this check. A command may never run a Maven
@@ -112,7 +112,8 @@ public class PostCompletionCommandValidator {
 	 * {@code pytest}. Minus "env" -- env is handled separately by {@link #unwrapEnv} because
 	 * it also strips its own {@code VAR=value} assignments and flags. */
 	private static final List<String> CMD_PREFIXES = Arrays.asList(
-			"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice");
+			"!", "time", "nohup", "sudo", "command", "exec", "builtin", "stdbuf", "nice", "ionice",
+			"timeout");
 
 	/** {@code env} options that consume the following token as their own operand (unless given in
 	 * glued {@code --opt=value} form) rather than being a bare flag -- e.g. {@code env -u FOO mvn
@@ -144,8 +145,17 @@ public class PostCompletionCommandValidator {
 		options.put("stdbuf", Arrays.asList("-i", "--input", "-o", "--output", "-e", "--error"));
 		options.put("time", Arrays.asList("-o", "--output", "-f", "--format"));
 		options.put("exec", Arrays.asList("-a", "--as"));
+		options.put("timeout", Arrays.asList("-s", "--signal", "-k", "--kill-after"));
 		CMD_PREFIX_OPTIONS_WITH_OPERAND = Collections.unmodifiableMap(options);
 	}
+
+	/** {@link #CMD_PREFIXES} wrappers that take positional operands of their own after their
+	 * option flags and before the wrapped command -- {@code timeout DURATION mvn test} -- keyed by
+	 * the wrapper's base name to the number of such operands. Without this, {@code timeout 2400
+	 * mvn test} would leave "2400" as the wrapped command's apparent first token and never reach
+	 * "mvn". */
+	private static final Map<String, Integer> CMD_PREFIX_POSITIONAL_OPERANDS =
+			Collections.singletonMap("timeout", 1);
 
 	/** Matches a backtick command substitution, capturing its inner text. */
 	private static final Pattern BACKTICK_SUBSTITUTION = Pattern.compile("`([^`]*)`");
@@ -560,7 +570,9 @@ public class PostCompletionCommandValidator {
 	 * see. Without this, {@code nice -n 10 mvn test} or {@code sudo -u user
 	 * mvn test} would leave {@code -n}/{@code -u} as the apparent command,
 	 * never reaching {@code mvn}. Stops at the first non-flag token, or after
-	 * a bare {@code --} end-of-options marker.
+	 * a bare {@code --} end-of-options marker, then skips the wrapper's own
+	 * positional operands listed in {@link #CMD_PREFIX_POSITIONAL_OPERANDS}
+	 * (the DURATION of {@code timeout 2400 mvn test}).
 	 */
 	private List<String> unwrapCmdPrefixOptions(String wrapperBase, List<String> tokens) {
 		List<String> operandFlags = CMD_PREFIX_OPTIONS_WITH_OPERAND.getOrDefault(
@@ -576,6 +588,7 @@ public class PostCompletionCommandValidator {
 		if (i < tokens.size() && "--".equals(tokens.get(i))) {
 			i++;
 		}
+		i = Math.min(tokens.size(), i + CMD_PREFIX_POSITIONAL_OPERANDS.getOrDefault(wrapperBase, 0));
 		return tokens.subList(i, tokens.size());
 	}
 

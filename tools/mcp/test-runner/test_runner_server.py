@@ -528,7 +528,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
     the 2400s (40-minute) ceiling before touching Maven or the run store --
     both checks return before ``runner.start_run`` is ever reached, so no
     real process is spawned by these tests. See
-    tools/mcp/manager/test_execution_limits.py for the sibling rule enforced
+    tools/mcp/manager/execution_limits.py for the sibling rule enforced
     at ar-manager job submission; there is no bypass for either.
     """
 

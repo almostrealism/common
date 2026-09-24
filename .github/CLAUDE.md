@@ -807,7 +807,7 @@ did not stop it, so the rule is enforced mechanically at job-submission time and
 MCP test runner, with no operator bypass at either surface; the interactive-session Bash
 hook below is a partial backstop, not yet a closed surface (see its own entry):
 
-- `workstream_submit_task` (`tools/mcp/manager/test_execution_limits.py`) rejects a
+- `workstream_submit_task` (`tools/mcp/manager/execution_limits.py`) rejects a
   `post_completion_command`/`command` that runs a broad Maven phase or an unscoped
   pytest invocation, rejects a `post_completion_timeout_seconds` above 2400, and lints
   the `prompt` text itself for English instructions to run something broad.

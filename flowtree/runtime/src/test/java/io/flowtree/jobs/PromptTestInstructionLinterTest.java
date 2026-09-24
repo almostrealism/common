@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
  * Tests for {@link PromptTestInstructionLinter}: the controller-side check that closes the
  * direct {@code /api/submit} bypass of {@code ar-manager}'s
  * {@code lint_prompt_for_broad_test_instructions}, mirroring
- * tools/mcp/manager/test_test_execution_limits.py's coverage of the Python-side linter.
+ * tools/mcp/manager/test_execution_limits.py's coverage of the Python-side linter.
  */
 public class PromptTestInstructionLinterTest extends TestSuiteBase {
 
@@ -153,6 +153,26 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertFalse(violationsFor(
 				"Run python3 -m unittest tests.test_foo.FooTest.test_bar "
 						+ "tests.test_baz.BazTest.test_qux.").isEmpty());
+	}
+
+	/** A pytest instruction naming a directory, a whole file, no target, or two node ids is broad. */
+	@Test(timeout = 10000)
+	public void pytestWithoutSingleNodeIdRejected() {
+		assertFalse(violationsFor("Run pytest tools/mcp/manager").isEmpty());
+		assertFalse(violationsFor("run python3 -m pytest tools/mcp/manager/test_server.py").isEmpty());
+		assertFalse(violationsFor("Run pytest").isEmpty());
+		assertFalse(violationsFor("pytest -q a.py::test_one b.py::test_two").isEmpty());
+	}
+
+	/** A pytest instruction naming one node id, or prose merely naming pytest, is accepted. */
+	@Test(timeout = 10000)
+	public void pytestSingleNodeIdOrProseAccepted() {
+		assertTrue(violationsFor(
+				"Then run python -m pytest tools/mcp/manager/test_server.py::TestFoo::test_bar").isEmpty());
+		assertTrue(violationsFor(
+				"Verify with `pytest test_secrets.py::test_render` before finishing.").isEmpty());
+		assertTrue(violationsFor(
+				"Add a pytest regression test and use explicit pytest node ids.").isEmpty());
 	}
 
 	/** The rejection message states there is no bypass and includes the line's snippet. */

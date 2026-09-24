@@ -152,7 +152,7 @@ Broad verification is the CI pipeline's job; a prompt that tells an agent sessio
 reproduce it (e.g. "run the full CI command", "run the relevant module's tests") is a
 bug in the prompt, not a fair characterization of what the session should do. This is
 enforced mechanically elsewhere too — `workstream_submit_task`'s prompt/command
-validation (`tools/mcp/manager/test_execution_limits.py`) and the controller's
+validation (`tools/mcp/manager/execution_limits.py`) and the controller's
 `PostCompletionCommandValidator` both reject it with no bypass. An agent-side
 `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what a
 running agent session can do directly, but it is only a partial backstop today: it

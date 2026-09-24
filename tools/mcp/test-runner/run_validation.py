@@ -1,6 +1,6 @@
 """
 Validation for ``start_test_run`` arguments, enforcing the "no broad test
-runs" rule at this MCP surface. See ``tools/mcp/manager/test_execution_limits.py``
+runs" rule at this MCP surface. See ``tools/mcp/manager/execution_limits.py``
 for the sibling rule enforced at ar-manager job submission, and CLAUDE.md's
 "Test Execution Limits" section for the full policy. There is no bypass for
 any of these checks.

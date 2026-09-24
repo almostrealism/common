@@ -85,7 +85,7 @@ def workstream_submit_task(
     (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select an
     explicit ``Class#method`` test; a pytest command must select an
     explicit node id. This is checked mechanically on every submission --
-    see ``tools/mcp/manager/test_execution_limits.py`` for the full rule
+    see ``tools/mcp/manager/execution_limits.py`` for the full rule
     and the incident that made it a hard requirement. There is no operator
     escape hatch, unlike ``allow_commit_language`` below.
 
@@ -263,7 +263,7 @@ def workstream_submit_task(
             node id (``file.py::test_name``). ``mvn install -DskipTests`` is
             a build, not a test run, and remains allowed. This mirrors the
             same-named rule on ``command`` for a shell-command job. See
-            ``tools/mcp/manager/test_execution_limits.py``.
+            ``tools/mcp/manager/execution_limits.py``.
         post_completion_timeout_seconds: Maximum seconds to wait for the
             post-completion command before killing it and treating the run as a
             failure. 0 (default) uses the server-side default of 1800 seconds
@@ -381,7 +381,7 @@ def workstream_submit_task(
     if err:
         return err
     # Test-execution-limits validation -- no bypass flag exists for any of
-    # these checks (tools/mcp/manager/test_execution_limits.py). A shell job's
+    # these checks (tools/mcp/manager/execution_limits.py). A shell job's
     # `command` and a coding-agent job's `post_completion_command` are both
     # shell commands a job submitter can use to run tests directly, so both
     # are checked the same way: reject a command that would run a
@@ -411,7 +411,7 @@ def workstream_submit_task(
     # agent, in English, to run a full/whole/entire suite, a module's
     # tests, a shard, mvn test without a single-method selector, or
     # AR_TEST_GROUP. No bypass flag; unlike allow_commit_language, this
-    # rule has no legitimate exception -- see test_execution_limits.py.
+    # rule has no legitimate exception -- see execution_limits.py.
     prompt_test_hits = server.lint_prompt_for_broad_test_instructions(prompt)
     if prompt_test_hits:
         lines = []

@@ -70,7 +70,7 @@ DEFAULT_MODULE = "engine/utils"
 DEFAULT_TIMEOUT = 15
 # Hard ceiling on timeout_minutes: agents and job submitters may never run a
 # test or build invocation with a timeout over 2400s (40 minutes) -- see
-# tools/mcp/manager/test_execution_limits.py for the ar-manager-side half of
+# tools/mcp/manager/execution_limits.py for the ar-manager-side half of
 # this same rule. There is no bypass.
 MAX_TIMEOUT_MINUTES = 40
 # Output and stacktrace limits are owned by the collaborators that apply them;
@@ -1299,7 +1299,7 @@ async def call_tool(name: str, arguments: dict):
     try:
         if name == "start_test_run":
             # Enforces the "no broad test runs" rule -- see run_validation.py
-            # for the checks and tools/mcp/manager/test_execution_limits.py
+            # for the checks and tools/mcp/manager/execution_limits.py
             # for the sibling rule enforced at job submission. No bypass.
             try:
                 normalized = validate_start_test_run_arguments(

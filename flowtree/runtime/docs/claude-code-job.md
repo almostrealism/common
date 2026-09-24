@@ -464,7 +464,7 @@ for Java -- never a bare `-Dtest=Class`, a module's whole suite, or
 timeout of at most 40 minutes (2400s), and to never leave a background build or test run
 active when the turn ends, since the session is killed for stdout inactivity rather than
 total runtime. This mirrors the same rule enforced at job submission by
-`tools/mcp/manager/test_execution_limits.py` and at the controller by
+`tools/mcp/manager/execution_limits.py` and at the controller by
 `io.flowtree.jobs.PostCompletionCommandValidator` -- the preamble is the agent-facing
 half; the submission-time validators are the mechanical backstop for a prompt or
 post-completion command that tries to violate it anyway.

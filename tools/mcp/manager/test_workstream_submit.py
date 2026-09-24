@@ -102,7 +102,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-s1", "jobType": "shell"}
         # "mvn -q test" (no -pl, no -Dtest selector) is exactly the broad run
-        # test_execution_limits.py's validation now rejects for a shell job's
+        # execution_limits.py's validation now rejects for a shell job's
         # command; use a narrow, policy-compliant command so this test still
         # exercises "a shell job's command is forwarded to the payload"
         # rather than the command-validation rejection path (covered by its
@@ -1222,9 +1222,9 @@ class TestCommitLanguageReadContext(unittest.TestCase):
 
 class TestSubmitTestExecutionLimits(unittest.TestCase):
     """Integration coverage proving workstream_submit_task actually wires in
-    the checks from tools/mcp/manager/test_execution_limits.py. The
+    the checks from tools/mcp/manager/execution_limits.py. The
     fine-grained parsing behaviour (Maven/pytest/AR_TEST_GROUP detection) is
-    covered directly against that module in test_test_execution_limits.py;
+    covered directly against that module in test_execution_limits.py;
     these tests confirm the MCP tool rejects/accepts the same way and that
     there is no bypass flag, unlike allow_commit_language.
     """

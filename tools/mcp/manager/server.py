@@ -269,7 +269,7 @@ from prompt_linting import (  # noqa: E402
     _COMMIT_SEQUENCING_PATTERNS,
     _lint_prompt_for_commit_sequencing,
 )
-from test_execution_limits import (  # noqa: E402
+from execution_limits import (  # noqa: E402
     POST_COMPLETION_MAX_TIMEOUT_SECONDS,
     lint_prompt_for_broad_test_instructions,
     validate_post_completion_command,

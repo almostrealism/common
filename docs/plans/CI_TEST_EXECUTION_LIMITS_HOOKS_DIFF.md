@@ -35,13 +35,13 @@ Apply this diff (context lines included for exact placement):
 +# "-Dmaven.test.skip=false" (both of which explicitly RE-ENABLE tests) as if
 +# they were skip flags, letting a broad `mvn test -DskipTests=false` slip
 +# past this hook uncaught. Matches the same whole-token, true-only pattern
-+# already fixed in tools/mcp/manager/test_execution_limits.py's
++# already fixed in tools/mcp/manager/execution_limits.py's
 +# _SKIP_TESTS_PATTERN and PostCompletionCommandValidator.java's SKIP_TESTS.
 +SKIP = re.compile(r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$")
  
 -TEST_PHASES = {"test", "integration-test"}
 +# Every default-lifecycle phase at or after "test" runs tests unless skipped.
-+# Matches tools/mcp/manager/test_execution_limits.py's _MVN_TEST_RUNNING_PHASES
++# Matches tools/mcp/manager/execution_limits.py's _MVN_TEST_RUNNING_PHASES
 +# -- the same rule enforced at job submission is enforced here for a live
 +# interactive Bash command.
 +TEST_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
@@ -51,7 +51,7 @@ Apply this diff (context lines included for exact placement):
 +# CI-shard partitioning. Referencing this anywhere in the command blocks it
 +# outright, independent of which mvn phase (if any) is present -- there is
 +# no legitimate agent use of a shard. See
-+# tools/mcp/manager/test_execution_limits.py for the sibling rule enforced
++# tools/mcp/manager/execution_limits.py for the sibling rule enforced
 +# at job submission.
 +#
 +# No leading word-boundary assertion: the real shard invocation shape is
@@ -59,7 +59,7 @@ Apply this diff (context lines included for exact placement):
 +# property prefix with no boundary between "D" and "A" (both word
 +# characters) -- a leading \b would never match that form. Matches the same
 +# no-leading-boundary pattern already fixed in
-+# tools/mcp/manager/test_execution_limits.py's _AR_TEST_GROUP_PATTERN and
++# tools/mcp/manager/execution_limits.py's _AR_TEST_GROUP_PATTERN and
 +# PostCompletionCommandValidator.java's AR_TEST_GROUP.
 +AR_TEST_GROUP = re.compile(r"AR_TEST_GROUPS?\b")
 +
@@ -250,7 +250,7 @@ Mirrors `mvn_test_check.py`'s structure exactly (tokenizer, CLI contract,
 Companion to mvn_test_check.py: blocks `pytest`/`python -m pytest` /
 `python3 -m pytest` commands that do not name an explicit node id
 (`file.py::test_name`), which otherwise runs an entire file or directory.
-See tools/mcp/manager/test_execution_limits.py for the same rule enforced
+See tools/mcp/manager/execution_limits.py for the same rule enforced
 at job submission.
 
 Same two CLI entry points as mvn_test_check.py:
