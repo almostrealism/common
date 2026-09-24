@@ -200,7 +200,10 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 			}
 		}
 
-		T v = val.peek().getValue();
+		ContextValue<T> top = val.peek();
+		boolean firstMaterialization = !top.isAvailable();
+		T v = top.getValue();
+		if (firstMaterialization) top.bindTo(current);
 
 		if (val.size() > 3) {
 			warn(val.size() + " context layers for " + v.getClass().getSimpleName());
@@ -343,8 +346,12 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		/** The value, created on first use. */
 		private final SuppliedValue<T> value;
 
-		/** The context current when this value was pushed, or null when there was none. */
-		private final ComputeContext<?> context;
+		/**
+		 * The context current when this value was pushed, or null when there was none.
+		 * Left mutable so a value pushed with no context available can bind to whichever
+		 * context is current at the moment it is first materialized; see {@link #bindTo}.
+		 */
+		private ComputeContext<?> context;
 
 		/**
 		 * Records a value as belonging to a context.
@@ -358,6 +365,21 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		}
 
 		private T getValue() { return value.getValue(); }
+
+		/** Returns whether this value has already been materialized (the supplier has run). */
+		private boolean isAvailable() { return value.isAvailable(); }
+
+		/**
+		 * Binds this value to the given context if it was pushed with no context known
+		 * (see {@link ContextSpecific#currentContext()}). Called right after the value is
+		 * first materialized, so a value created lazily while no compute context was
+		 * active is tagged with the context that was actually current when its content
+		 * came into existence, instead of remaining a permanent wildcard that {@link #belongsTo}
+		 * would keep matching against every context that comes along afterwards.
+		 */
+		private void bindTo(ComputeContext<?> current) {
+			if (context == null && current != null) context = current;
+		}
 
 		/** Returns whether the context this value was created under has been destroyed. */
 		private boolean isOrphaned() {

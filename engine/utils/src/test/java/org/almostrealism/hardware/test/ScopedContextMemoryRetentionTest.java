@@ -17,10 +17,14 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -60,5 +64,50 @@ public class ScopedContextMemoryRetentionTest extends TestSuiteBase {
 		assertTrue("Retained values are not zero", first != 0.0 || total != 0.0);
 
 		kept.destroy();
+	}
+
+	/**
+	 * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider#onFullyReleased(Runnable)}
+	 * is what lets a {@code DataContext} keep the backend resource retained blocks point
+	 * into (an OpenCL context, a Metal device) alive until they are actually gone, instead
+	 * of releasing it out from under memory the provider promised would stay valid. The
+	 * callback must not fire while any retained block is still tracked, and must fire
+	 * exactly once, the moment the last one is released.
+	 */
+	@Test(timeout = 60_000)
+	public void onFullyReleasedFiresOnceLastRetainedBlockIsGone() {
+		NativeMemoryProvider provider = new NativeMemoryProvider(Precision.FP64,
+				1024 * 1024, false, null, true);
+
+		RAM first = provider.allocate(16);
+		RAM second = provider.allocate(16);
+
+		provider.destroy();
+
+		boolean[] fired = {false};
+		provider.onFullyReleased(() -> fired[0] = true);
+		assertFalse("Callback should not fire while blocks are still retained", fired[0]);
+
+		provider.deallocate(16, first);
+		assertFalse("Callback should not fire until every retained block is gone", fired[0]);
+
+		provider.deallocate(16, second);
+		assertTrue("Callback should fire once the last retained block is released", fired[0]);
+	}
+
+	/**
+	 * When nothing is tracked at the time {@code onFullyReleased} is registered — either
+	 * because destroy() retained nothing, or every retained block is already gone — the
+	 * callback runs immediately rather than waiting for a release that will never come.
+	 */
+	@Test(timeout = 60_000)
+	public void onFullyReleasedFiresImmediatelyWhenNothingRetained() {
+		NativeMemoryProvider provider = new NativeMemoryProvider(Precision.FP64,
+				1024 * 1024, false, null, true);
+		provider.destroy();
+
+		boolean[] fired = {false};
+		provider.onFullyReleased(() -> fired[0] = true);
+		assertTrue("Callback should fire immediately when nothing is tracked", fired[0]);
 	}
 }

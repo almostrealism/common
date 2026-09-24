@@ -211,6 +211,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private volatile boolean destroyed;
 
 	/**
+	 * Registered by {@link #onFullyReleased(Runnable)}; run once every block retained
+	 * through {@link #destroy()} has actually been released.
+	 */
+	private Runnable onFullyReleased;
+
+	/**
 	 * Initializes allocation tracking and starts the background deallocation threads.
 	 */
 	public HardwareMemoryProvider() {
@@ -354,10 +360,49 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		} finally {
 			if (released) {
 				allocated.remove(ref.getAddress());
+				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
 			}
 		}
+	}
+
+	/**
+	 * Registers a callback to run once every block that {@link #destroy()} retained
+	 * has actually been released (including one retained after destruction and freed
+	 * as a leaked block, but never one still blocked awaiting a kernel via
+	 * {@link #deferIfInUse}, since that resolves through this same release path). If
+	 * nothing is currently tracked, the callback runs immediately.
+	 *
+	 * <p>This lets a backend whose device/context resource the retained blocks point
+	 * into keep that resource alive until the blocks are truly gone, instead of
+	 * releasing it out from under blocks this provider promised would remain valid.
+	 * Only one callback may be registered at a time.</p>
+	 *
+	 * @param action the action to run once every retained block is released
+	 */
+	public synchronized void onFullyReleased(Runnable action) {
+		if (allocated.isEmpty()) {
+			action.run();
+		} else {
+			this.onFullyReleased = action;
+		}
+	}
+
+	/**
+	 * Runs and clears the {@link #onFullyReleased} callback once the tracked
+	 * allocation map has been drained, so the callback fires exactly once.
+	 */
+	private void notifyIfFullyReleased() {
+		Runnable action;
+
+		synchronized (this) {
+			if (!allocated.isEmpty() || onFullyReleased == null) return;
+			action = onFullyReleased;
+			onFullyReleased = null;
+		}
+
+		action.run();
 	}
 
 	/**

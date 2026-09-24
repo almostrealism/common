@@ -26,6 +26,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -44,6 +45,7 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -291,8 +293,14 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The OpenCL context handle. */
 	private cl_context ctx;
 
-	/** The main OpenCL memory provider for RAM allocations. */
-	private MemoryProvider<CLMemory> mainRam;
+	/**
+	 * The main OpenCL memory provider for RAM allocations. Typed as {@link HardwareMemoryProvider}
+	 * (always a {@link CLMemoryProvider}), not the plain {@link MemoryProvider} interface, so
+	 * {@link #destroy()} can register a completion callback via
+	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} to defer releasing the OpenCL
+	 * context this provider's retained blocks point into.
+	 */
+	private HardwareMemoryProvider<CLMemory> mainRam;
 
 	/** The alternate JVM heap-based memory provider for small allocations. */
 	private MemoryProvider<Memory> altRam;
@@ -300,8 +308,16 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
 	private volatile boolean destroyed;
 
-	/** Serializes context creation against {@link #destroy()} so a context is never created after teardown. */
-	private final Object contextLock = new Object();
+	/**
+	 * Serializes context creation and use against {@link #destroy()}, so a compute-context
+	 * scope in progress on any thread cannot have its context destroyed underneath it.
+	 * {@link #createContext(ComputeRequirement...)} and {@link #computeContext(Callable, ComputeRequirement...)}
+	 * hold the read lock for as long as a context they created may still be dispatched
+	 * through (shared, so unrelated calls on other threads still run concurrently);
+	 * {@link #destroy()} takes the write lock, which cannot be granted until every such
+	 * call has finished, so teardown never runs while a scope is still starting or running.
+	 */
+	private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
 
 	/** Optional delegate memory provider retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer honored. */
 	private MemoryProvider<? extends RAM> delegateMemory;
@@ -479,7 +495,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return a new {@link ComputeContext} configured for the specified requirements
 	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
-		synchronized (contextLock) {
+		lifecycleLock.readLock().lock();
+
+		try {
 			if (destroyed) {
 				throw new IllegalStateException("Cannot create a compute context for " +
 						name + " because the data context has been destroyed");
@@ -488,6 +506,8 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 			ComputeContext<MemoryData> context = newContext(expectations);
 			allComputeContexts.add(context);
 			return context;
+		} finally {
+			lifecycleLock.readLock().unlock();
 		}
 	}
 
@@ -681,28 +701,37 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		List<ComputeContext<MemoryData>> current = computeContexts.get();
-		List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
-
-		String ccName = next.toString();
-		if (ccName.contains(".")) {
-			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
-		}
+		// Held for the whole scope, not just creation, so destroy() (which takes the
+		// write lock) cannot retire the context this scope is about to dispatch through
+		// between its creation here and its use inside exec.call().
+		lifecycleLock.readLock().lock();
 
 		try {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
-			computeContexts.set(next);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			List<ComputeContext<MemoryData>> current = computeContexts.get();
+			List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
+
+			String ccName = next.toString();
+			if (ccName.contains(".")) {
+				ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
+			}
+
+			try {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
+				computeContexts.set(next);
+				return exec.call();
+			} catch (RuntimeException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			} finally {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
+				allComputeContexts.remove(next.get(0));
+				next.get(0).destroy();
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
+				computeContexts.set(current);
+			}
 		} finally {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
-			allComputeContexts.remove(next.get(0));
-			next.get(0).destroy();
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContexts.set(current);
+			lifecycleLock.readLock().unlock();
 		}
 	}
 
@@ -736,21 +765,44 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/**
 	 * Releases all resources held by this data context including compute contexts,
 	 * memory providers, and the underlying OpenCL context.
+	 *
+	 * <p>{@link HardwareMemoryProvider#destroy()} retains blocks that are still referenced
+	 * rather than freeing them, so that a caller still holding one keeps seeing valid memory.
+	 * Releasing the OpenCL context immediately would break that promise, since a retained
+	 * {@link CLMemory} points into it — so the context is released only once
+	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} reports every retained block
+	 * actually gone (immediately, if none were retained).</p>
 	 */
 	@Override
 	public void destroy() {
-		synchronized (contextLock) {
+		lifecycleLock.writeLock().lock();
+
+		try {
 			destroyed = true;
 
 			computeContexts.remove();
 			allComputeContexts.forEach(ComputeContext::destroy);
 			allComputeContexts.clear();
+		} finally {
+			lifecycleLock.writeLock().unlock();
 		}
 
-		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();
-		if (ctx != null) CL.clReleaseContext(ctx);
-		ctx = null;
+
+		if (mainRam != null) {
+			mainRam.destroy();
+			mainRam.onFullyReleased(this::releaseClContext);
+		} else {
+			releaseClContext();
+		}
+	}
+
+	/** Releases the underlying OpenCL context, once, if it has not already been released. */
+	private synchronized void releaseClContext() {
+		if (ctx != null) {
+			CL.clReleaseContext(ctx);
+			ctx = null;
+		}
 	}
 
 	@Override
