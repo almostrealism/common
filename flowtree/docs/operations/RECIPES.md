@@ -83,16 +83,16 @@ effort; everything else runs on the lighter sonnet at low effort):
 {
   "default_phase_config": {
     "runner": "claude",
-    "model": "claude-sonnet-4-6",
+    "model": "claude-sonnet-5",
     "effort": "low"
   },
   "phase_configs": {
     "review": {
-      "model": "claude-opus-4-7",
+      "model": "claude-opus-5-5",
       "effort": "high"
     },
     "primary": {
-      "model": "claude-opus-4-7",
+      "model": "claude-opus-5-5",
       "effort": "high"
     }
   }
@@ -106,7 +106,7 @@ review and audits with explicit model + effort per audit phase):
 {
   "default_phase_config": {
     "runner": "claude",
-    "model": "claude-sonnet-4-6"
+    "model": "claude-sonnet-5"
   },
   "phase_configs": {
     "primary": {
@@ -114,7 +114,7 @@ review and audits with explicit model + effort per audit phase):
       "model": "qwen3-coder-30b"
     },
     "review": {
-      "model": "claude-opus-4-7",
+      "model": "claude-opus-5-5",
       "effort": "high"
     },
     "deduplication": {"effort": "medium"},
@@ -136,14 +136,14 @@ workstreams:
   - workstreamId: ws-frugal
     defaultPhaseConfig:
       runner: claude
-      model: claude-sonnet-4-6
+      model: claude-sonnet-5
       effort: low
     phaseConfigs:
       review:
-        model: claude-opus-4-7
+        model: claude-opus-5-5
         effort: high
       primary:
-        model: claude-opus-4-7
+        model: claude-opus-5-5
         effort: high
 ```
 
@@ -172,7 +172,7 @@ workspaces:
     appToken: "xapp-..."
     defaultPhaseConfig:
       runner: claude
-      model: claude-sonnet-4-6
+      model: claude-sonnet-5
     phaseConfigs:
       commit-message:
         runner: opencode
@@ -181,7 +181,7 @@ workspaces:
         runner: opencode
         model: qwen3-coder-30b
       review:
-        model: claude-opus-4-7
+        model: claude-opus-5-5
         effort: high
 ```
 
@@ -207,11 +207,11 @@ Discover the workspace ID via the `workspaceId` field on each
 ```python
 workspace_update_config(
     workspace_id="almostrealism",
-    default_phase_config='{"runner":"claude","model":"claude-sonnet-4-6"}',
+    default_phase_config='{"runner":"claude","model":"claude-sonnet-5"}',
     phase_configs='''{
       "commit-message": {"runner":"opencode","model":"qwen3-coder-30b"},
       "organizational-placement": {"runner":"opencode","model":"qwen3-coder-30b"},
-      "review": {"model":"claude-opus-4-7","effort":"high"}
+      "review": {"model":"claude-opus-5-5","effort":"high"}
     }''',
 )
 ```

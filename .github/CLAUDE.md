@@ -295,6 +295,24 @@ blocker: every downstream job depends on it, so it MUST stay as short as
 possible. It does one thing: `mvn install -DskipTests`. It does not run tests
 and does not upload coverage.
 
+### Re-run jobs and artifacts
+
+A retry ("Auto-Resolve Submit" re-running failed jobs) runs jobs again inside
+the same workflow run, so two rules hold for every artifact:
+
+- **Every upload sets `overwrite: true`.** `upload-artifact@v4` refuses a name
+  already used in the run otherwise, so a re-run job's `if: always()` upload
+  would fail even when its tests passed, and `auto-resolve` on attempt 3 would
+  read the earlier attempt's report.
+- **A download that can span attempts uses the REST route** (`github-token`,
+  `repository`, `run-id`, with `actions: read`): the default lookup 404s on an
+  artifact uploaded in an earlier attempt.
+
+`tools/tests/test_build_artifact_sharing.py` pins both. One gap remains: a
+re-run job that uploads nothing (it crashed before writing any report) leaves
+the earlier attempt's report in place. The job still fails, so a remediation is
+still warranted, but its prompt can name the earlier failures.
+
 ### Sharing the build
 
 `build` is the only job that runs `mvn install`. It clears the
@@ -403,10 +421,17 @@ never a module.
 
 ### A `needs` chain requires `!cancelled()` to tolerate a skipped stage
 
-GitHub applies an implicit `success()` to every job in `needs` when a job-level
-`if:` contains no status check function (`always()`, `!cancelled()`, `failure()`,
-`success()`). A `needs.<job>.result == 'skipped'` clause is therefore **dead
-code** on its own — the dependent job is skipped before the `if` is evaluated.
+GitHub applies an implicit `success()` when a job-level `if:` contains no status
+check function (`always()`, `!cancelled()`, `failure()`, `success()`), and that
+`success()` covers **every job upstream**, not only the ones in `needs`. A
+`needs.<job>.result == 'skipped'` clause is therefore **dead code** on its own —
+the dependent job is skipped before the `if` is evaluated — and a job whose
+direct `needs` all succeeded is still skipped when any job further up was
+skipped or failed. That is how run 35998737943 skipped `auto-review-submit`:
+`auto-review` succeeded and staged a request, but `python-tests`, upstream of
+it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
+`python-tests` was skipped or failed, so both submit jobs start their `if:` with
+`!cancelled()` and check the producer's `result` explicitly.
 
 Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
 `test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their
