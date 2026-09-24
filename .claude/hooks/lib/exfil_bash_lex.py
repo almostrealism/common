@@ -148,10 +148,17 @@ def _split_heredocs(command):
         return command, []
     lines = command.split("\n")
     kept, bodies, i = [], [], 0
+    quote = None
     while i < len(lines):
         line = lines[i]
-        match = _HEREDOC_START.search(line)
-        if not match or line[max(0, match.start() - 1):match.start()] == "<":
+        # Only a `<<` the shell itself reads starts a heredoc: one inside
+        # quotes or a comment is text, and treating it as a marker would
+        # hide the real commands after it as the "body".
+        active, quote = _shell_active_positions(line, quote)
+        match = next((m for m in _HEREDOC_START.finditer(line)
+                      if m.start() in active and line[max(0, m.start() - 1):m.start()] != "<"),
+                     None)
+        if not match:
             kept.append(line)
             i += 1
             continue
@@ -165,6 +172,51 @@ def _split_heredocs(command):
         i += 1
         bodies.append(("\n".join(body), not match.group("q")))
     return "\n".join(kept), bodies
+
+
+def _shell_active_positions(line, quote):
+    """Indices of ``line`` the shell reads as syntax, and the quote open at its end.
+
+    ``quote`` is the quote open when the line starts (``None``, ``"'"``,
+    ``'"'`` or ``"$'"``), so a string spanning lines is followed. Text inside
+    quotes, after a backslash, or in a comment is not active. Where this is
+    unsure it errs toward "not active", which only leaves a heredoc body to be
+    analyzed as commands.
+    """
+    active = set()
+    word_start = True
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if quote == "'":
+            quote = None if c == "'" else quote
+            i += 1
+            continue
+        if quote is not None:
+            if c == "\\":
+                i += 2
+                continue
+            if c == ("'" if quote == "$'" else '"'):
+                quote = None
+            i += 1
+            continue
+        starts_word, word_start = word_start, False
+        if c == "\\":
+            i += 2
+            continue
+        if line.startswith("$'", i):
+            quote = "$'"
+            i += 2
+            continue
+        if c in ("'", '"'):
+            quote = c
+        elif c == "#" and starts_word:
+            break
+        else:
+            active.add(i)
+            word_start = c in _WORD_BREAKS
+        i += 1
+    return active, quote
 
 
 def _strip_heredoc_bodies(command):
@@ -249,7 +301,13 @@ def _scan_unquoted(text, i, nested, bodies):
         if nested and c == ")" and depth == 0:
             return "".join(out), i
         starts_word, word_start = word_start, False
-        if c == "\\":
+        if text.startswith("\\\n", i):
+            # A line continuation is removed outright, as the shell removes
+            # it: the word it interrupts carries on (`safe\<newline>#` is the
+            # one word `safe#`, not a word and a comment).
+            word_start = starts_word
+            i += 2
+        elif c == "\\":
             out.append(text[i:i + 2].translate(_SHIELD))
             i += 2
         elif c == "'":
@@ -292,7 +350,9 @@ def _scan_double_quoted(text, i, bodies):
         c = text[i]
         if c == '"':
             return "".join(out), i
-        if c == "\\":
+        if text.startswith("\\\n", i):
+            i += 2
+        elif c == "\\":
             out.append(text[i:i + 2].translate(_SHIELD))
             i += 2
         elif text.startswith("$(", i) or c == "`":
