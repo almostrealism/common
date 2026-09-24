@@ -70,6 +70,61 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         return new PhaseConfigBundle(def == null ? PhaseConfig.EMPTY : def, overrides);
     }
 
+    // --- Model validation ----------------------------------------------------
+
+    /**
+     * A current Claude model — Opus 5.5 among them — passes submission-time
+     * validation. This is the check a workstream update or a job submission
+     * hits first, so a model the runner can run must not be rejected here.
+     */
+    @Test(timeout = 5000)
+    public void aCurrentClaudeModelPassesValidation() {
+        for (String model : new String[] {"claude-opus-5-5", "claude-sonnet-5", "opus", "sonnet"}) {
+            PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                    bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, model, null), null, null),
+                    PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+            assertNull("model " + model + " must validate: " + r.error(), r.error());
+        }
+    }
+
+    /**
+     * A model identifier this code has not heard of passes too, as long as
+     * it is an Anthropic one: the runner decides, and it accepts anything
+     * the installed CLI might have gained since this code was written.
+     */
+    @Test(timeout = 5000)
+    public void anUnrecognisedClaudeModelPassesValidation() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-9-3", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+    }
+
+    /**
+     * A runner that cannot be instantiated — the registry's supplier throws,
+     * or yields null — cannot be asked about a model, so validation passes
+     * rather than failing on a runner nobody can question. Regression test:
+     * asking the instance without that guard threw a
+     * {@link NullPointerException} out of submission.
+     */
+    @Test(timeout = 5000)
+    public void aRunnerThatCannotBeInstantiatedDoesNotBlockValidation() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(TEST_RUNNER, "any-model-at-all", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+    }
+
+    /** A model from another vendor is still rejected, and the error names it. */
+    @Test(timeout = 5000)
+    public void aModelFromAnotherVendorIsRejected() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, "gpt-4", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull(r.error());
+        assertTrue(r.error(), r.error().contains("gpt-4"));
+    }
+
     // --- Runner resolution (mirror SubmissionRunnerResolverTest cases) -------
 
     /**

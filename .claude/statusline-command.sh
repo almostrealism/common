@@ -9,19 +9,18 @@ git_branch=$(cd "$(echo "$input" | sed -n 's/.*"current_dir"[[:space:]]*:[[:spac
 # Extract context window percentage using sed (no jq dependency)
 used_pct=$(echo "$input" | sed -n 's/.*"used_percentage"[[:space:]]*:[[:space:]]*\([0-9.]*\).*/\1/p' | head -1)
 
-# Extract token counts for spend calculation
-total_input=$(echo "$input" | sed -n 's/.*"total_input_tokens"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
-total_output=$(echo "$input" | sed -n 's/.*"total_output_tokens"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
-
-# Calculate total spend (Opus 4.5 pricing: $15 input, $75 output per million tokens)
-total_input=${total_input:-0}
-total_output=${total_output:-0}
-if command -v bc &>/dev/null; then
-    total_spend=$(echo "scale=4; ($total_input * 15 + $total_output * 75) / 1000000" | bc)
-else
-    # Fallback: rough calculation using awk
-    total_spend=$(awk "BEGIN {printf \"%.4f\", ($total_input * 15 + $total_output * 75) / 1000000}")
-fi
+# Session spend, as Claude Code itself reports it (cost.total_cost_usd).
+#
+# This used to be computed here, multiplying token counts by hardcoded Opus
+# 4.5 rates, which was wrong twice over: the rates went stale with every
+# model release (Opus 5.5 is $4/$20 per Mtok, not $15/$75), and
+# total_input_tokens/total_output_tokens are the tokens *currently in the
+# context window*, not the session's cumulative usage — so the figure was
+# not a session total at all. The field below is the real one, priced per
+# the model actually running, and needs no maintenance here. It resets to $0
+# when /clear starts a new session.
+total_spend=$(echo "$input" | sed -n 's/.*"total_cost_usd"[[:space:]]*:[[:space:]]*\([0-9.]*\).*/\1/p' | head -1)
+total_spend=${total_spend:-0}
 spend_display=$(printf "\$%.4f" "$total_spend")
 
 # Build progress bar for context window usage

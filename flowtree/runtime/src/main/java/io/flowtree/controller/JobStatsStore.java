@@ -103,7 +103,7 @@ public class JobStatsStore implements ConsoleFeatures {
     /**
      * Table storing per-model cost breakdowns per job. Mirrors the structure
      * of {@code job_runner_cost} but keyed by provider/model identifier
-     * (e.g. {@code "openrouter/claude-opus-4-7"}) instead of runner name.
+     * (e.g. {@code "openrouter/claude-opus-5-5"}) instead of runner name.
      */
     private static final String CREATE_MODEL_COST_TABLE = ""
         + "CREATE TABLE IF NOT EXISTS job_model_cost ("
