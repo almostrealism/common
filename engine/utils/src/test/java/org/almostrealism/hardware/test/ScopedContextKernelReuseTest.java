@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -61,6 +62,34 @@ public class ScopedContextKernelReuseTest extends TestSuiteBase {
 
 			assertEquals("Difference on pass " + pass, 0.0, difference, 1e-6);
 		}
+	}
+
+	/**
+	 * The compiled evaluable itself, not the context-specific holder around it, is
+	 * taken inside a scope and evaluated after the scope has ended. Its output
+	 * metadata is read from the instruction manager before anything is dispatched,
+	 * so the dead context must be noticed before that read.
+	 */
+	@Test(timeout = 120_000)
+	public void compiledEvaluableIsRecompiledAfterScopedContextDestroyed() {
+		int length = 512;
+		CollectionProducer doubled = c(new PassThroughProducer<>(shape(length), 0)).multiply(2.0);
+		HardwareEvaluable<PackedCollection> ev = (HardwareEvaluable<PackedCollection>) doubled.get();
+
+		Evaluable<PackedCollection> compiled = dc(() -> {
+			Evaluable<PackedCollection> inner = ev.getKernel().getValue();
+			inner.evaluate(new PackedCollection(shape(length)).randFill());
+			return inner;
+		});
+
+		PackedCollection input = new PackedCollection(shape(length)).randFill();
+		PackedCollection out = compiled.evaluate(input);
+		double diff = sum(cp(out).subtract(cp(input).multiply(2.0)).abs()).evaluate().toDouble(0);
+		double total = sum(cp(out)).evaluate().toDouble(0);
+		log("total=" + total + " difference=" + diff);
+
+		assertTrue("Output is not entirely zero", total != 0.0);
+		assertEquals("Difference after the scope", 0.0, diff, 1e-6);
 	}
 
 	/**

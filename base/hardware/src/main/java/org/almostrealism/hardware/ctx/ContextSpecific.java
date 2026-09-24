@@ -241,10 +241,17 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		return null;
 	}
 
-	/** Disposes of values at the top of the stack whose context has been destroyed. */
+	/**
+	 * Disposes of every value whose context has been destroyed, wherever it sits:
+	 * switching between live contexts moves values around, so an orphan is not
+	 * necessarily on top.
+	 */
 	private void discardOrphans() {
-		while (!val.isEmpty() && val.peek().isOrphaned()) {
-			dispose(val.pop());
+		for (ContextValue<T> v : List.copyOf(val)) {
+			if (v.isOrphaned()) {
+				val.remove(v);
+				dispose(v);
+			}
 		}
 	}
 

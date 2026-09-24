@@ -217,7 +217,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Gives this operation the chance to abandon a compute context that has been
 	 * destroyed before anything is dispatched through it. Called at the start of
 	 * every application, ahead of the argument bindings, which are derived from the
-	 * context and must be rebuilt along with it. The default does nothing.
+	 * context and must be rebuilt along with it, and by an evaluable before it reads
+	 * instruction metadata for its output. The default does nothing.
 	 */
 	protected void refreshContext() { }
 

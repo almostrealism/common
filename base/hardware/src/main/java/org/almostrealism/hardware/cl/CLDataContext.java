@@ -39,6 +39,9 @@ import org.jocl.cl_platform_id;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
@@ -303,6 +306,10 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** Thread-local list of compute contexts for concurrent access. */
 	private ThreadLocal<List<ComputeContext<MemoryData>>> computeContexts;
 
+	/** Every compute context created for this data context, on any thread, so all are released with it. */
+	private final Set<ComputeContext<MemoryData>> allComputeContexts =
+			Collections.newSetFromMap(new ConcurrentHashMap<>());
+
 	/** Thread-local memory provider function for size-based allocation. */
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
@@ -469,6 +476,13 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return a new {@link ComputeContext} configured for the specified requirements
 	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
+		ComputeContext<MemoryData> context = newContext(expectations);
+		allComputeContexts.add(context);
+		return context;
+	}
+
+	/** Builds a compute context for the given requirements without recording it. */
+	private ComputeContext<MemoryData> newContext(ComputeRequirement... expectations) {
 		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
 		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();
 
@@ -665,6 +679,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 			throw new RuntimeException(e);
 		} finally {
 			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
+			allComputeContexts.remove(next.get(0));
 			next.get(0).destroy();
 			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
 			computeContexts.set(current);
@@ -706,11 +721,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public void destroy() {
 		destroyed = true;
 
-		// TODO  Destroy any other compute contexts
-		if (computeContexts.get() != null) {
-			computeContexts.get().forEach(cc -> cc.destroy());
-			computeContexts.remove();
-		}
+		computeContexts.remove();
+		allComputeContexts.forEach(ComputeContext::destroy);
+		allComputeContexts.clear();
 
 		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();

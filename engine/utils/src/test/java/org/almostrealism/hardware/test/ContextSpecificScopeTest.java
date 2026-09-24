@@ -96,6 +96,25 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		assertTrue("Worker's value was disposed", disposed.contains(fromWorker[0]));
 	}
 
+	/**
+	 * An orphaned value is disposed of even when it is not on top: a value created
+	 * in a scope, then buried under the outer value by a switch back to the outer
+	 * context inside that scope, is still disposed of once the scope ends.
+	 */
+	@Test(timeout = 60_000)
+	public void buriedOrphanIsDisposed() {
+		List<Object> disposed = new ArrayList<>();
+		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new, disposed::add);
+
+		Object outer = specific.getValue();
+		Object inner = dc(specific::getValue);
+		Object after = specific.getValue();
+
+		assertNotSame("Scoped value distinct from the outer value", outer, inner);
+		assertSame("Outer value after the scope", outer, after);
+		assertTrue("Scoped value was disposed", disposed.contains(inner));
+	}
+
 	/** A nested scope gets its own value, and the outer value is back once the scope ends. */
 	@Test(timeout = 60_000)
 	public void outerValueSurvivesScope() {
