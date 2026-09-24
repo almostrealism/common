@@ -157,16 +157,21 @@ public class FileStager implements ConsoleFeatures {
      * responsible for staging the files listed in
      * {@link StagingResult#getStagedFiles()}.</p>
      *
-     * <p>Guardrail 2 protects two things independently. CI/workflow files
-     * (see {@link FileStagingConfig#isProtectCiFiles()}) are blocked whole-file
-     * under the CI file lock whatever the job's test lock says, and under the
-     * test lock as well — whether or not they existed at the merge-base, since
-     * {@code check-ci-file-lock.sh} rejects a branch-new workflow exactly as it
-     * rejects an edit to an existing one, and the harness must drop the same
-     * files the pipeline would refuse. Test files are blocked only under the
-     * test lock ({@link FileStagingConfig#isProtectTestFiles()}), and only when
-     * they exist at the merge-base (a branch-new test is allowed), at
-     * test-method granularity for Java sources.</p>
+     * <p>Guardrail 2 protects two things under separate locks with separate
+     * exemptions. CI/workflow files (see {@link FileStagingConfig#isProtectCiFiles()})
+     * are blocked whole-file under the CI file lock — whether or not they
+     * existed at the merge-base, since {@code check-ci-file-lock.sh} rejects a
+     * branch-new workflow exactly as it rejects an edit to an existing one, and
+     * the harness must drop the same files the pipeline would refuse. That lock
+     * is the sole gate on CI files in production: {@code buildStagingConfig}
+     * does not list the CI paths in {@link FileStagingConfig#getProtectedPathPatterns()},
+     * so the test lock never re-locks them, and a {@code ci/...} branch (where
+     * {@code protectCiFiles} is off) can stage a workflow edit even with the
+     * per-job test lock on, matching the pipeline's {@code ci/...} exemption.
+     * Test files are blocked only under the test lock
+     * ({@link FileStagingConfig#isProtectTestFiles()}), and only when they
+     * exist at the merge-base (a branch-new test is allowed), at test-method
+     * granularity for Java sources.</p>
      *
      * @param changedFiles     the list of changed file paths (relative to
      *                         the working directory)
@@ -198,7 +203,9 @@ public class FileStager implements ConsoleFeatures {
                 continue;
             }
 
-            // Guardrail 2: CI/workflow and test file protection
+            // Guardrail 2: CI/workflow and test file protection. In production
+            // protectCiFiles is the sole gate on CI files (the test-lock operand
+            // is inert -- see the guardrail-2 note in evaluateFiles' javadoc).
             boolean ciFile = isCiWorkflowFile(file);
             boolean inProtectedPath = matchesAnyPattern(file, config.getProtectedPathPatterns());
             boolean ciLocked = ciFile

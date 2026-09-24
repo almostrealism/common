@@ -386,6 +386,58 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the per-job test lock does not re-lock CI/workflow files.
+	 *
+	 * <p>This is the configuration a {@code ci/...} branch produces: the CI
+	 * lock is off ({@code buildStagingConfig} disables {@code protectCiFiles}
+	 * for such a branch) while the per-job test lock is on, with the production
+	 * {@link GitJobConfig#PROTECTED_PATH_PATTERNS}. Because those patterns list
+	 * test paths only, an existing workflow file is staged — matching
+	 * {@code check-ci-file-lock.sh}'s {@code ci/...} exemption — while an
+	 * existing test source on the same job stays protected by the test lock.
+	 * This guards the regression where the test lock caught CI files via a
+	 * shared protected-path set and blocked a CI branch from editing the
+	 * pipeline.</p>
+	 */
+	@Test(timeout = 30000)
+	public void testLockDoesNotReLockCiFiles() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+			Files.createDirectories(tempDir.resolve("tools/ci"));
+			Files.writeString(tempDir.resolve("tools/ci/run.sh"), "echo run\n");
+			Files.createDirectories(tempDir.resolve("src/it/java"));
+			Files.writeString(tempDir.resolve("src/it/java/FooIT.txt"), "fixture\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectTestFiles(true)
+				.protectCiFiles(false)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/it/java/FooIT.txt"),
+				config, tempDir.toFile(),
+				listingGitOps(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/it/java/FooIT.txt"));
+
+			assertTrue("workflow file must stage on a ci/ branch config",
+				result.getStagedFiles().contains(".github/workflows/analysis.yaml"));
+			assertTrue("tools/ci file must stage on a ci/ branch config",
+				result.getStagedFiles().contains("tools/ci/run.sh"));
+			assertFalse("an existing integration-test file stays test-locked",
+				result.getStagedFiles().contains("src/it/java/FooIT.txt"));
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("src/it/java/FooIT.txt"));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
 	 * Verifies that only a {@code ci/...} target branch is exempt from the
 	 * harness's CI file lock.
 	 */
