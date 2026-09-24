@@ -22,8 +22,10 @@ if __name__ != "__main__" and not __package__:
         sys.path.insert(0, HERE)
 
 from exfil_bash_lex import (_DEFINITION, _DEV_TCP, _NETWORK_WORD, _SUBSTITUTION,
-                             _find_exec, _simple_commands, _strip_heredoc_bodies,
-                             _tokenize, _unwrap, GuardError, owner_repo)
+                             SUBSTITUTION_PLACEHOLDER, _find_exec, _simple_commands,
+                             _split_heredocs, _strip_heredoc_bodies, _tokenize, _unwrap,
+                             GuardError, heredoc_substitutions, owner_repo,
+                             split_substitutions)
 from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
@@ -152,7 +154,16 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     sensitive = (prog in UPLOAD_TOOLS or prog in SSH_FAMILY or prog in RAW_SOCKET_TOOLS
                  or prog in PROBE_TOOLS or prog in INTERPRETERS or prog in SHELLS
                  or prog in ("git", "gh") or prog in BLOCKED_SUBCOMMANDS)
-    if sensitive and has_substitution:
+    # A substitution the local shell performs anywhere on the line can feed
+    # a sensitive program, through its arguments or through a variable. One
+    # the local shell leaves as text (inside single quotes) cannot — unless
+    # the program itself hands its arguments to a shell or runs them as
+    # code, as ssh's remote command, `bash -c` and an interpreter's inline
+    # program do, where the text is evaluated after all.
+    evaluates_arguments = prog in SSH_FAMILY or prog in SHELLS or prog in INTERPRETERS
+    carries_substitution = evaluates_arguments and any(
+        _SUBSTITUTION.search(a) or SUBSTITUTION_PLACEHOLDER in a for a in argv[1:])
+    if sensitive and (has_substitution or carries_substitution):
         raise _GuardError(f"{prog} appears in a command line that uses command substitution "
                           f"($(...), backticks or process substitution) — even inside a quoted "
                           f"remote command or argument; what it expands to cannot be verified, so "
@@ -198,26 +209,49 @@ def analyze_command(command, ctx, depth=0):
     for m in _DEV_TCP.finditer(command):
         if not ctx.allowlist.is_lab_host(m.group(1)):
             return f"/dev/tcp redirection to {m.group(1)!r}, which is not an allowlisted lab host"
-    stripped, bodies = _strip_heredoc_bodies(command)
+    stripped, heredocs = _split_heredocs(command)
+    bodies = [body for body, _ in heredocs]
+    # A backslash-newline continuation is joined first so a command split
+    # across lines stays one command.
+    stripped = re.sub(r"\\\n", " ", stripped)
+    # Comments come out, and every substitution the shell performs is
+    # replaced by a placeholder and kept aside: what runs inside one is a
+    # command like any other and is analyzed as one below.
+    try:
+        masked, substitutions = split_substitutions(stripped)
+    except GuardError as exc:
+        return str(exc)
+    for body, expands in heredocs:
+        if expands:
+            try:
+                substitutions += heredoc_substitutions(body)
+            except GuardError as exc:
+                return str(exc)
     # shlex treats a newline as whitespace, but in a shell it ends the
-    # command. A backslash-newline continuation is joined first so a
-    # command split across lines stays one command.
-    stripped = re.sub(r"\\\n", " ", stripped).replace("\n", " ; ")
-    tokens = _tokenize(stripped)
+    # command.
+    masked = masked.replace("\n", " ; ")
+    tokens = _tokenize(masked)
     if tokens is None:
         return "the command's quoting cannot be parsed; an unreadable command does not run"
-    if _DEFINITION.search(stripped) and (_NETWORK_WORD.search(stripped) or any(
+    if _DEFINITION.search(masked) and (_NETWORK_WORD.search(stripped) or any(
             os.path.basename(t) in ALWAYS_BLOCKED for t in tokens)):
         return "alias/function definition alongside a network tool; indirection is denied"
     commands = _simple_commands(tokens)
-    has_substitution = bool(_SUBSTITUTION.search(stripped))
+    has_substitution = bool(substitutions)
     # A `cd` earlier in the same command line changes where relative paths
     # resolve for everything after it, so the effective directory is
     # tracked through the list. A target that cannot be known statically
     # leaves it None, and anything that then needs it fails closed.
+    # A subshell's `cd` ends with the subshell, so the directory in force
+    # when each `( … )` group opened is restored when it closes.
     cwd = ctx.command_cwd
+    outer_cwds = []
     try:
-        for argv, piped, heredoc in commands:
+        for argv, piped, heredoc, subshell in commands:
+            while len(outer_cwds) < subshell:
+                outer_cwds.append(cwd)
+            while len(outer_cwds) > subshell:
+                cwd = outer_cwds.pop()
             if argv and os.path.basename(argv[0]) in ("cd", "pushd"):
                 cwd = _follow_cd(argv, cwd)
                 continue
@@ -225,6 +259,17 @@ def analyze_command(command, ctx, depth=0):
                                   has_substitution, analyze_command)
     except _GuardError as exc:
         return str(exc)
+    # A substitution runs in whatever directory the line had reached by
+    # then, which is not tracked per substitution: once the line changes
+    # directory, its substitutions are analyzed with the directory unknown,
+    # so anything that depends on it fails closed.
+    changes_directory = any(argv and os.path.basename(argv[0]) in ("cd", "pushd")
+                            for argv, _, _, _ in commands)
+    body_ctx = ctx.at(None) if changes_directory else ctx
+    for body in substitutions:
+        reason = analyze_command(body, body_ctx, depth + 1)
+        if reason:
+            return f"inside a command substitution: {reason}"
     return ""
 
 
@@ -233,7 +278,7 @@ def bash_targets(command, ctx):
     stripped, _ = _strip_heredoc_bodies(command)
     tokens = _tokenize(stripped) or []
     names = []
-    for argv, _, _ in _simple_commands(tokens):
+    for argv, _, _, _ in _simple_commands(tokens):
         unwrapped = _unwrap(argv)
         if unwrapped:
             names.append(os.path.basename(unwrapped[0]))

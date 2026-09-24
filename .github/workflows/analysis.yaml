@@ -89,6 +89,14 @@ jobs:
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
+      # The branch this run is for, its base, and the commit under test, for
+      # the remediation jobs' prompts and submissions. Read from the event
+      # here once rather than recomputed in each of those jobs, and consumed
+      # through env: — the branch name is attacker-controlled on a
+      # pull_request run and must never be interpolated into a script body.
+      branch: ${{ github.head_ref || github.ref_name }}
+      base_branch: ${{ github.base_ref || 'master' }}
+      head_sha: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -1073,61 +1081,33 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as `build` succeeds,
-  # rather than waiting for auto-resolve at the end of the run.
+  # Registers a workstream for this branch as soon as `changes` has run —
+  # in parallel with `build`, not after it.
   #
-  # auto-resolve already creates a workstream on demand
-  # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
-  # `analysis`, which waits on `build`, `test`, `test-flowtree`, `test-media`,
-  # `test-mac` and `test-media-mac` (any may be skipped) — and those lanes are
-  # long. (The ROCm lane, `test-cl` and `test-media-cl`, is also self-hosted
-  # and long, but uploads no coverage, so `analysis` does not wait on it — see
-  # .github/CLAUDE.md.) That leaves a branch with no workstream for the whole
-  # wait — so no workstream ID to submit other improvement jobs against, and
-  # nothing for another session to address memory to. Registering here
-  # closes that gap.
+  # Every remediation job submits against the branch's workstream, and the
+  # submission creates one on demand (createWorkstreamIfMissing in
+  # submit-agent-job.sh) when none exists. Registering here means the
+  # workstream already exists well before any of them submit, so there is a
+  # workstream ID to submit other jobs against and to address memory to for
+  # the whole run. It also keeps registration from racing a submission:
+  # `auto-review` and `auto-resolve-python` now submit from inside this
+  # pipeline, and `auto-resolve-python` can do so as soon as python-tests
+  # fails, a few minutes in. Waiting for `build` would have put
+  # registration in the same window.
   #
-  # This job is deliberately independent of the validation gates
-  # (code-policy-check, test-timeout-check, duplicate-code-check,
-  # test-integrity-check, checkstyle). Four of those five DO gate the lanes
-  # `analysis` waits on: `test`, `test-flowtree`, `test-media`, `test-mac`
-  # and `test-media-mac` (and, for that matter, `test-cl`/`test-media-cl`)
-  # all list code-policy-check, test-timeout-check, duplicate-code-check and
-  # test-integrity-check directly in `needs` — see .github/CLAUDE.md. So a
-  # failure in any of those four already skip-fails the lanes `analysis`
-  # waits on just as fast as it would skip-fail this job if it kept the same
-  # `needs`; decoupling from them buys nothing on that failure path. What it
-  # does buy is not waiting on them when they are going to pass: those four
-  # checks run in parallel with `build` and can still take real time to
-  # finish, and this job has no functional dependency on their outcome, so
-  # there is no reason to sit idle until they report before registering.
+  # Nothing here depends on `build`: the job runs one script against the
+  # controller, and whether the branch compiles says nothing about whether
+  # the branch should have a workstream. Registration is idempotent on the
+  # controller (an existing workstream is returned with `existing: true`),
+  # so the submissions' own on-demand creation is harmless alongside it.
   #
-  # checkstyle is the actual outlier: it is NOT a prerequisite of `test`,
-  # `test-flowtree`, `test-media`, `test-mac` or `test-media-mac` — unlike
-  # the four checks above, none of the test-matrix jobs list it in `needs`.
-  # A branch that only trips checkstyle therefore runs the full matrix to
-  # completion while register-workstream — back when it still depended on
-  # checkstyle as a "fast-fail fallback" — sat skipped the whole time
-  # (observed: 90+ minutes on PR #500, still waiting on queued test-cl lanes
-  # with no workstream to submit against). Registering unconditionally once
-  # `build` succeeds removes that gap regardless of which gate, if any,
-  # eventually fails.
-  #
-  # Running both this job and auto-resolve's own registration is harmless:
-  # registration is idempotent on the controller (an existing workstream is
-  # returned with `existing: true`), so there is nothing to avoid by
-  # narrowing this job's `needs`.
-  #
-  # The code_changed check handles the docs-only case: `build` itself is
-  # gated on code_changed, so a docs-only PR skips it and therefore skips
-  # this job too. The explicit check documents that dependency rather than
-  # relying on it silently.
+  # The code_changed check keeps docs-only PRs out: they submit a verify job
+  # from `auto-review` at once, and that submission creates the workstream
+  # itself, so registering here would only race it.
   #
   # Deliberately NOT declaring `environment:`. A job with an environment in
   # a pull_request run attaches a GitHub Deployment to the PR head, and a
   # cancelled one then shows as a spurious "had a problem deploying" red X.
-  # Avoiding that is the whole reason the auto-resolve submission lives in a
-  # separate workflow_run workflow; see auto-resolve-submit.yaml.
   #
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
@@ -1138,10 +1118,9 @@ jobs:
   # skips registration (fail closed) instead of falling through to the
   # "script is new on master" trust-as-is branch.
   register-workstream:
-    needs: [changes, build]
+    needs: [changes]
     if: >-
       github.ref != 'refs/heads/master' &&
-      needs.build.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -1171,7 +1150,7 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
-      # This job no longer waits on test-integrity-check, so nothing else in
+      # This job waits on nothing but `changes`, so nothing else in
       # the pipeline has verified by this point that tools/ci/register-workstream.sh
       # is the trusted copy before it runs with FLOWTREE_CF_ACCESS_CLIENT_SECRET in
       # its environment. The checkout above is the PR's own tree, so a branch that
@@ -1207,7 +1186,7 @@ jobs:
           fi
 
           if [ "$FETCH_FAILED" = "true" ]; then
-            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. the remediation submission will create it on demand."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1219,7 +1198,7 @@ jobs:
           fi
 
           if git diff --name-only origin/master...HEAD -- tools/ci/register-workstream.sh | grep -q .; then
-            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. the remediation submission will create it on demand."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -1257,9 +1236,9 @@ jobs:
           if [ "$STATUS" -eq 0 ]; then
             echo "::notice::Workstream registered early for branch ${BRANCH}"
           else
-            # auto-resolve still creates the workstream at the end of the run,
+            # The remediation submission still creates the workstream on demand,
             # so a failure here costs the head start and nothing else.
-            echo "::warning::Early workstream registration failed — auto-resolve will register on its normal path"
+            echo "::warning::Early workstream registration failed — the remediation submission will create it on demand"
           fi
 
   # ─── Checkstyle Check ──────────────────────────────────────────────
@@ -1345,7 +1324,8 @@ jobs:
   #   - the exfiltration guard's Python and CI-verifier regression suites
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
-  # when any test fails. Gated on python_changed OR exfil_guard_changed so
+  # when any test fails, and a failure is submitted straight away by
+  # auto-resolve-python, which quotes the output this job uploads. Gated on python_changed OR exfil_guard_changed so
   # the guard suites still run when only its shell adapter, allowlist, or
   # settings.json registration changed — none of which set python_changed.
   python-tests:
@@ -1354,6 +1334,11 @@ jobs:
       needs.changes.outputs.code_changed == 'true' &&
       (needs.changes.outputs.python_changed == 'true' || needs.changes.outputs.exfil_guard_changed == 'true')
     runs-on: ubuntu-latest
+    # `bash` (rather than the default shell) runs every step with pipefail, so
+    # piping a suite through `tee` still fails the step when the suite fails.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1376,25 +1361,25 @@ jobs:
           python3 -m pip install -r tools/mcp/requirements.txt pyyaml
 
       - name: Run ar-manager MCP tests
-        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run shared MCP library tests
-        run: python3 -m unittest discover -v -s tools/mcp/common -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/mcp/common -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run migration tool tests
-        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
-        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py"
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run exfiltration guard CI-verifier tests
-        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
+        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run exfiltration guard registration helper tests
-        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py"
+        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # check-quality-gates.sh selects the test-integrity-check failure
       # message from that job's failure_reason output, and — more
@@ -1402,7 +1387,18 @@ jobs:
       # says a detector could not run. This pins both halves down
       # independently of the guard's own regression suite above.
       - name: Run quality-gate messaging regression tests
-        run: bash tools/ci/agent-protection/test-check-quality-gates.sh
+        run: bash tools/ci/agent-protection/test-check-quality-gates.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # auto-resolve-python quotes this output in the prompt it submits, so the
+      # agent starts from the actual failure rather than a bare job status.
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-tests-output
+          path: ${{ runner.temp }}/python-tests.log
+          retention-days: 7
+          if-no-files-found: ignore
 
   # ─── Agent Volume Isolation ────────────────────────────────────────
   # Enforces the hard invariant that FlowTree agent containers can never
@@ -1524,6 +1520,10 @@ jobs:
     # Gated on python-tests success-or-skipped: the flowtree runtime drives the Python
     # tooling (ar-manager, the fleet scripts, the CI helpers), so when the Python suite ran
     # and failed there is nothing sound for this job to prove, only runner time to spend.
+    # That is also why this job is not gated on Java changes the way the layer lanes are.
+    # The gate keeps the remediation paths apart: a python-tests failure is submitted at
+    # once by auto-resolve-python, and this job — a long-running, retry-eligible test job
+    # whose failures are auto-resolve's — never runs alongside it (see "Remediation Jobs").
     # python-tests is skipped only by its own path gate (no .py change, off master), never
     # by an upstream failure, so its `skipped` is unambiguous and tolerated. `!cancelled()`
     # is required for that tolerance to take effect — see test-media.
@@ -2589,20 +2589,416 @@ jobs:
       #   with:
       #     sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
 
-  # ─── Auto-Resolve Job ─────────────────────────────────────────────────
-  # Downloads Surefire reports from all test jobs, parses them for failures,
-  # decides which prompt to build, and STAGES a FlowTree coding-agent request
-  # as an artifact. The environment-gated controller submission happens in the
-  # separate "Auto-Resolve Submit" workflow
-  # (.github/workflows/auto-resolve-submit.yaml).
+  # ─── Remediation Jobs ─────────────────────────────────────────────────
+  # Three jobs decide what, if anything, a FlowTree coding agent is sent to do
+  # about this pipeline. Each attempt of a run submits AT MOST ONE of them:
+  # two agents working the same branch at once make conflicting edits, and at
+  # least one of them fails.
   #
-  # Why the submission is not performed here: it is gated on the `worker`
-  # GitHub Environment (required-reviewers). A job carrying `environment:` in a
-  # pull_request run attaches a deployment status to the PR head commit; an
-  # abandoned/cancelled `worker` deployment then surfaces as a spurious "had a
-  # problem deploying" red X on the PR. Submitting from a workflow_run workflow
-  # keeps that deployment status off the pull request while preserving the
-  # approval gate.
+  #   auto-resolve-python  python-tests failed. Submits at once, from inside
+  #                        this run, without waiting for anything else.
+  #   auto-review          Every other case on attempts 1 and 2: a build
+  #                        failure, code policy violations, other quality gate
+  #                        failures, a docs-only verify, or — when every gate
+  #                        passed — the general review. Submits as soon as the
+  #                        gates report, from inside this run, while the
+  #                        long-running test jobs are still going. The gates
+  #                        are deterministic, so there is nothing to retry.
+  #   auto-resolve         The slow path: long-running test jobs (test,
+  #                        test-flowtree, test-media, the mac and CL lanes)
+  #                        still failing after the flaky-test retries. Runs
+  #                        only on attempt 3 or later, and only STAGES its
+  #                        request; "Auto-Resolve Submit"
+  #                        (.github/workflows/auto-resolve-submit.yaml)
+  #                        submits it once the run completes and the retries
+  #                        are spent.
+  #
+  # Exclusivity comes from two facts rather than from a handoff between jobs:
+  #   - auto-review and auto-resolve are split by attempt number
+  #     (run_attempt < 3 and >= 3). 3 is MAX_ATTEMPTS in
+  #     auto-resolve-submit.yaml: rerun-flaky-tests.sh re-runs a failed run
+  #     until attempt 3, so attempt 3 is the first one whose test failures
+  #     are handed to an agent. tools/tests/test_remediation_job_exclusivity.py
+  #     holds the two numbers together.
+  #   - A python-tests failure skips both of them (and test-flowtree, which
+  #     gates on python-tests), and rerun-flaky-tests.sh never retries such a
+  #     run, so auto-resolve-python is the only submission it gets.
+  #
+  # auto-review and auto-resolve-python run the pull request's own scripts
+  # (the prompt builders), so they hold no controller credentials: each only
+  # stages its request as an artifact. The submission happens in a separate
+  # *-submit job that checks out the DEFAULT branch and runs
+  # tools/ci/submit-staged-request.sh from there, which loads the staged
+  # submit.env through a key allowlist. No pull request code runs in a job
+  # that holds FLOWTREE_CF_ACCESS_CLIENT_SECRET.
+  #
+  # None of these jobs declares `environment:`: in a pull_request run that
+  # attaches a deployment status to the PR head, and a cancelled deployment
+  # shows as a spurious "had a problem deploying" red X.
+
+  auto-resolve-python:
+    needs: [changes, python-tests]
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      needs.python-tests.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      staged: ${{ steps.upload.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+
+      - name: Download test output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: python-tests-output
+          path: python-tests-output
+
+      - name: Build prompt (python test failures)
+        id: prompt
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          # The workflow comes from the merge with the base, the checkout from
+          # the PR head, which may predate this builder.
+          if [ ! -f ./tools/ci/prompts/build-python-failure-prompt.sh ]; then
+            echo "::warning::This branch predates build-python-failure-prompt.sh — no python-tests remediation is staged. Merge master to enable it."
+            exit 0
+          fi
+          bash ./tools/ci/prompts/build-python-failure-prompt.sh python-tests-output/python-tests.log "${{ runner.temp }}/agent-prompt.txt"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Stage submit request (python test failures)
+        if: steps.prompt.outputs.built == 'true'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve Python test failures"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-python-request
+
+      - name: Upload staged request
+        id: upload
+        if: ${{ inputs.auto_resolve != 'false' && hashFiles('auto-resolve-python-request/submit.env') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-resolve-python-request
+          path: auto-resolve-python-request/
+          retention-days: 1
+
+  auto-resolve-python-submit:
+    needs: [auto-resolve-python]
+    if: needs.auto-resolve-python.outputs.staged == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-resolve-python-request
+          path: staged-request
+
+      - name: Submit agent job
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash ./tools/ci/submit-staged-request.sh staged-request
+
+  auto-review:
+    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
+    # Attempts 1 and 2 only — see "Remediation Jobs" above. A python-tests
+    # failure belongs to auto-resolve-python.
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      fromJSON(github.run_attempt) < 3 &&
+      needs.changes.result == 'success' &&
+      needs.python-tests.result != 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      staged: ${{ steps.upload.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Check for docs-only changes
+        id: docs-check
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...${HEAD_SHA}" || true)
+          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
+          if [ -n "$CHANGED_FILES" ] && [ -z "$NON_DOCS" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::All changes are under docs/ — will use verify prompt instead of review"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check quality gates
+        if: needs.changes.outputs.code_changed == 'true' && needs.build.result == 'success' && needs.code-policy-check.outputs.passed == 'true'
+        id: quality
+        env:
+          TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
+          DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
+          TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
+          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
+          AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
+          AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
+          DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
+          DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
+        run: |
+          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
+
+      # auto-review always submits something: the first matching prompt below,
+      # falling through to the general review when every gate passed. The
+      # long-running test jobs play no part here; their failures are
+      # auto-resolve's, on attempt 3.
+      - name: Select prompt
+        id: route
+        env:
+          CODE_CHANGED: ${{ needs.changes.outputs.code_changed }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          CODE_POLICY_PASSED: ${{ needs.code-policy-check.outputs.passed }}
+          QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
+          DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
+        run: |
+          if [ "$CODE_CHANGED" != "true" ]; then
+            ROUTE=docs-verify
+          elif [ "$BUILD_RESULT" != "success" ]; then
+            ROUTE=build-failure
+          elif [ "$CODE_POLICY_PASSED" != "true" ]; then
+            ROUTE=code-policy
+          elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
+            ROUTE=quality-gates
+          elif [ "$DOCS_ONLY" = "true" ]; then
+            ROUTE=docs-verify
+          else
+            ROUTE=general-review
+          fi
+          echo "route=${ROUTE}" >> "$GITHUB_OUTPUT"
+          echo "::notice::auto-review prompt: ${ROUTE}"
+
+      # ── Build failure path ──────────────────────────────────────
+      - name: Build prompt (build failure)
+        if: steps.route.outputs.route == 'build-failure'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (build failure)
+        if: steps.route.outputs.route == 'build-failure'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve build failure"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Code policy violation path ──────────────────────────────
+      # A dedicated prompt that explains the policies and forbids
+      # circumvention.
+      - name: Build prompt (code policy violations)
+        if: steps.route.outputs.route == 'code-policy'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (code policy violations)
+        if: steps.route.outputs.route == 'code-policy'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve code policy violations"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Other quality gate path ─────────────────────────────────
+      - name: Upload quality gate summary
+        if: steps.route.outputs.route == 'quality-gates'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-summary
+          path: ${{ runner.temp }}/quality-gate-failures.txt
+          retention-days: 7
+
+      - name: Build prompt (quality gates)
+        if: steps.route.outputs.route == 'quality-gates'
+        env:
+          FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (quality gates)
+        if: steps.route.outputs.route == 'quality-gates'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve quality gate failures"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Docs-only verify path ───────────────────────────────────
+      # Docs-only changes are typically plan documents for a workstream, so
+      # they get the verify-completion prompt instead of the general review.
+      - name: Build prompt (docs-only verify)
+        if: steps.route.outputs.route == 'docs-verify'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
+          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (docs-only verify)
+        if: steps.route.outputs.route == 'docs-verify'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Verify docs changes"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── General review path ─────────────────────────────────────
+      # Every gate passed: review design, test quality, correctness,
+      # documentation, and consistency with existing patterns.
+      - name: Build prompt (general review)
+        if: steps.route.outputs.route == 'general-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (general review)
+        if: steps.route.outputs.route == 'general-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          # PR #492 reached CI because a general-review job ran without this
+          # flag, added new test methods to an existing base-branch file, and
+          # one of them was broken. Test-file protection now permits
+          # branch-introduced test methods (see
+          # flowtree/runtime/docs/file-staging.md), so there is no tradeoff
+          # between protection and adding tests here.
+          PROTECT_TEST_FILES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Review branch changes"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      - name: Upload staged request
+        id: upload
+        if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-review-request/submit.env') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-review-request
+          path: auto-review-request/
+          retention-days: 1
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          ROUTE: ${{ steps.route.outputs.route }}
+          QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+        run: |
+          {
+            echo "## Auto-Review"
+            echo ""
+            case "$ROUTE" in
+              docs-verify)    echo "**Docs-only change** — submitted a job to verify the docs changes." ;;
+              build-failure)  echo "**Build failed** — submitted a job to fix the build." ;;
+              code-policy)    echo "**Code policy violations detected** — submitted a job with the dedicated policy violation prompt." ;;
+              quality-gates)
+                echo "Found **${QUALITY_FAILURE_COUNT}** quality gate failure(s) — submitted a job to resolve them."
+                echo ""
+                echo "### Failing quality gates"
+                echo '```'
+                cat "${{ runner.temp }}/quality-gate-failures.txt" 2>/dev/null || echo "(no failure file)"
+                echo '```'
+                ;;
+              general-review) echo "All quality gates passed — submitted a job for general review." ;;
+              *)              echo "No prompt was selected." ;;
+            esac
+            echo ""
+            echo "_Long-running test failures are not considered here: they are auto-resolve's, once the flaky-test retries are spent._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  auto-review-submit:
+    needs: [auto-review]
+    if: needs.auto-review.outputs.staged == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-review-request
+          path: staged-request
+
+      - name: Submit agent job
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash ./tools/ci/submit-staged-request.sh staged-request
+
+  # ─── Auto-Resolve Job ─────────────────────────────────────────────────
+  # The slow path: downloads Surefire reports from the long-running test jobs,
+  # parses them for failures, and STAGES a request as the
+  # `auto-resolve-request` artifact. Runs only on attempt 3 or later (see
+  # "Remediation Jobs" above); "Auto-Resolve Submit" submits the request once
+  # the run completes, if rerun-flaky-tests.sh has no retry left to spend.
+  # Stages nothing when no test failed — the review for this commit was
+  # auto-review's, on an earlier attempt.
   #
   # Concurrency note: GitHub Actions does not natively support "skip if
   # already running" semantics. The concurrency group below ensures only
@@ -2612,8 +3008,13 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
-    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
+    needs: [changes, build, python-tests, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      fromJSON(github.run_attempt) >= 3 &&
+      needs.build.result == 'success' &&
+      needs.python-tests.result != 'failure'
     runs-on: ubuntu-latest
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -2625,87 +3026,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.changes.outputs.head_sha }}
           fetch-depth: 0
 
-      - name: Check build result
-        id: build-check
-        run: |
-          if [ "${{ needs.changes.outputs.code_changed }}" = "false" ]; then
-            echo "build_failed=false" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Build skipped — docs-only change"
-          elif [ "${{ needs.build.result }}" != "success" ]; then
-            echo "build_failed=true" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Build failed — treating as total test failure"
-          else
-            echo "build_failed=false" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine branch context
-        id: ctx
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
-            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-            echo "base=master" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check for docs-only changes
-        id: docs-check
-        run: |
-          CHANGED_FILES=$(git diff --name-only origin/${{ steps.ctx.outputs.base }}...${{ steps.ctx.outputs.head_sha }} || true)
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
-          if [ -z "$NON_DOCS" ]; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::All changes are under docs/ — will use verify prompt instead of review"
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ── Build failure path ──────────────────────────────────────
-      # When the build itself fails, no tests run. Submit an agent
-      # job to fix the compilation error directly.
-
-      - name: Build prompt (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve build failure"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Test failure path ───────────────────────────────────────
-      # When the build succeeded, download and parse Surefire reports.
-      # Linux (test, test-media) and Metal mac (test-mac, test-media-mac) results are
-      # considered — a Metal-specific failure a Linux run would not surface is still
-      # auto-resolved. The CL jobs (test-cl, test-media-cl) upload no surefire and remain the
-      # only test results NOT treated as requiring auto-resolution.
+      # Linux (test, test-media), flowtree and Metal mac (test-mac,
+      # test-media-mac) results are considered — a Metal-specific failure a
+      # Linux run would not surface is still auto-resolved. The CL jobs
+      # (test-cl, test-media-cl) upload no surefire and remain the only test
+      # results NOT treated as requiring auto-resolution.
 
       - name: Clean stale surefire reports
-        if: steps.build-check.outputs.build_failed != 'true'
         run: |
           # Defensive cleanup so locally-produced surefire reports cannot
           # contaminate the artifact download directory. On the ephemeral
@@ -2715,7 +3045,6 @@ jobs:
           rm -rf all-surefire-reports
 
       - name: Download Surefire Reports
-        if: steps.build-check.outputs.build_failed != 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: surefire-*
@@ -2723,7 +3052,6 @@ jobs:
           merge-multiple: false
 
       - name: Download Crash Reports
-        if: steps.build-check.outputs.build_failed != 'true'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -2732,7 +3060,6 @@ jobs:
           merge-multiple: true
 
       - name: Filter to resolvable surefire reports
-        if: steps.build-check.outputs.build_failed != 'true'
         run: |
           # Keep artifacts from every required test job (the set `analysis.needs`
           # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
@@ -2757,7 +3084,6 @@ jobs:
           done
 
       - name: Parse test failures
-        if: steps.build-check.outputs.build_failed != 'true'
         id: failures
         run: |
           eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports "${{ runner.temp }}/test-failures.txt")"
@@ -2770,7 +3096,7 @@ jobs:
           fi
 
       - name: Check for incomplete test execution
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        if: steps.failures.outputs.has_failures != 'true'
         id: test-completeness
         run: |
           # A job result of "failure" means the job ran and hit a real error
@@ -2800,8 +3126,8 @@ jobs:
           # Every job in `analysis.needs` other than `build` (the required
           # test-execution jobs; see tools/tests/test_auto_resolve_test_job_coverage.py)
           # must be checked here: this is the invariant that keeps a required job's
-          # "failure" result from ever falling through to the quality-gate or
-          # general-review paths, which report that all tests passed.
+          # "failure" result from ever going unresolved once the flaky-test
+          # retries are spent — nothing after this step would stage anything.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
@@ -2834,9 +3160,8 @@ jobs:
           # Check whether any validation gate that "test" depends on has
           # failed.  When a gate fails the test job is skipped by GitHub
           # Actions (dependency not met).  That skip is *explained* — it
-          # is not an infrastructure-level incompleteness.  The validation
-          # failures have their own resolution paths downstream (code
-          # policy, quality gates).
+          # is not an infrastructure-level incompleteness.  Validation
+          # failures are auto-review's to resolve, not this job's.
           VALIDATION_FAILED="false"
           if [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
             VALIDATION_FAILED="true"
@@ -2901,7 +3226,7 @@ jobs:
           echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
 
       - name: Upload failure summary
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: test-failure-summary
@@ -2909,20 +3234,19 @@ jobs:
           retention-days: 7
 
       - name: Build prompt (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         env:
           FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -2936,19 +3260,18 @@ jobs:
       # crash-specific prompt with Maven output and dumpstream details.
 
       - name: Build prompt (test job crash)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (test job crash)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -2963,159 +3286,21 @@ jobs:
       # are NOT considered incomplete — that's expected fail-fast.
 
       - name: Build prompt (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Quality gate fallback ──────────────────────────────────────
-      # When no test failures exist, check quality gates and submit
-      # those for auto-resolution instead. This ensures style and
-      # reusability issues are addressed only after correctness.
-
-      # ── Code policy violation path ────────────────────────────────
-      # When code policy enforcement failed, use the dedicated prompt
-      # that explains the policies and forbids circumvention.
-
-      - name: Build prompt (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve code policy violations"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Other quality gate fallback ──────────────────────────────
-      # When no test failures or policy violations exist, check
-      # remaining quality gates.
-
-      - name: Check quality gates
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true'
-        id: quality
-        env:
-          TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
-          DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
-          TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
-          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
-          AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
-          AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
-          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
-          DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
-          DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
-          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
-        run: |
-          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
-
-      - name: Upload quality gate summary
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-gate-summary
-          path: ${{ runner.temp }}/quality-gate-failures.txt
-          retention-days: 7
-
-      - name: Build prompt (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        env:
-          FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve quality gate failures"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Docs-only verify path ──────────────────────────────────
-      # When all changes are under docs/, skip the general review
-      # and use the verify-completion prompt instead, since these
-      # are typically plan documents for a workstream.
-
-      - name: Build prompt (docs-only verify)
-        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-        run: |
-          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (docs-only verify)
-        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Verify docs changes"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── General review fallback ─────────────────────────────────
-      # When all tests and quality gates pass, submit a general
-      # review job covering design, test quality, correctness,
-      # documentation, and consistency with existing patterns.
-
-      - name: Build prompt (general review)
-        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-        run: |
-          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (general review)
-        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          # This is the all-checks-green path: PR #492 reached CI because a
-          # job here ran without this flag, added new test methods to an
-          # existing base-branch file, and one of them was broken. Test-file
-          # protection now permits branch-introduced test methods (see
-          # flowtree/runtime/docs/file-staging.md), so there is no longer a
-          # tradeoff between protection and adding tests here.
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
@@ -3132,17 +3317,11 @@ jobs:
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "_The request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it to the controller after the \`worker\` environment approval._" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Any request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it once this run completes and no flaky-test retry is left._" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.build-check.outputs.docs_only_skip }}" = "true" ]; then
-            echo "**Docs-only change** — test pipeline was skipped." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
-            echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
+          if [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
             echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -3150,35 +3329,21 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
             echo "**Test execution incomplete** — some test jobs were cancelled or skipped without an upstream failure to explain it." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to investigate." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
-            echo "**Code policy violations detected.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted with a dedicated policy violation prompt." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.quality.outputs.has_failures }}" = "true" ]; then
-            echo "No test failures. Found **${{ steps.quality.outputs.failure_count }}** quality gate failure(s)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to resolve quality issues." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat "${{ runner.temp }}/quality-gate-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
-            echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
+            echo "No test failure to resolve — nothing was staged." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Merge Gate ───────────────────────────────────────────────────────
   # Single required branch-protection check. Passes when every job that
   # ran for this pipeline completed successfully. Skipped jobs (due to
   # layer filtering or docs-only optimisation) are treated as passing.
-  # auto-resolve is intentionally excluded — it is a background automation
-  # task, not a quality signal.
+  # The remediation jobs (auto-review, auto-resolve-python, auto-resolve, and
+  # the *-submit jobs) are intentionally excluded — they are background
+  # automation, not quality signals.
   #
   # Configure this as the ONLY required status check under:
   #   Settings → Branches → Branch protection rules → Require status checks

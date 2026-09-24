@@ -1,4 +1,9 @@
-All tests and quality gates are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}).
+All quality gates are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}).
+
+This review is dispatched as soon as the quality gates pass, while the
+long-running test suites are still running (or were skipped because the change
+does not reach them). Nothing here says whether the tests pass: if they fail,
+the next pipeline will report it and a separate job will be dispatched for it.
 
 Your job is to **review the changes on this branch and fix every issue you find.**
 You are a coding agent, not a reviewer. Do not post comments suggesting changes —
@@ -9,9 +14,9 @@ understand the full scope of changes.
 
 ## How to fix what you find
 
-Nothing has been flagged against this branch. You are here because the pipeline
-is green and the changes are due for review — every gate passed, including
-`agent-commit-validation`. (Had one failed, you would be reading a different
+Nothing has been flagged against this branch. You are here because every quality
+gate passed, including `agent-commit-validation`, and the changes are due for
+review. (Had one failed, you would be reading a different
 prompt that named it.) This section is about the means available to you as you
 fix things, not an accusation.
 

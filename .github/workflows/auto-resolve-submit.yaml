@@ -1,7 +1,11 @@
 name: "Auto-Resolve Submit"
 
 # Submits the FlowTree coding-agent request prepared by the `auto-resolve` job
-# in the "Build and Test" workflow.
+# in the "Build and Test" workflow — the slow path, for long-running test jobs
+# that are still failing after the flaky-test retries below. The early
+# remediation jobs (`auto-review`, `auto-resolve-python`) submit from inside
+# "Build and Test" as soon as they decide, and never reach this workflow; see
+# "Remediation Jobs" in analysis.yaml.
 #
 # Why this is a separate workflow_run workflow:
 # The submission is gated on the `worker` GitHub Environment (required-reviewers
@@ -18,9 +22,11 @@ name: "Auto-Resolve Submit"
 # approval gate is fully preserved — it just prompts on this run instead of
 # inside the main pipeline.
 #
-# It fires on every completion of "Build and Test" (success and failure), since
-# the prepare job stages a request on green pipelines too (a general review).
-# When no request artifact is present, this workflow is a no-op.
+# It fires on every completion of "Build and Test". `auto-resolve` stages a
+# request only on attempt 3 or later — MAX_ATTEMPTS below, and the attempt
+# threshold in analysis.yaml must stay equal to it — so on any earlier attempt
+# there is no request artifact and `submit` is a no-op; `retry-flaky-tests` is
+# what carries a failing run to that attempt.
 
 on:
   workflow_run:
@@ -36,8 +42,9 @@ jobs:
   # The main pipeline's test-execution jobs (test, test-*) are occasionally
   # flaky and pass on re-run. Before an auto-resolve agent is dispatched,
   # give a red pipeline more attempts: when the failed set contains a flaky-
-  # eligible test job and the run has had fewer than 3 total attempts, re-run
-  # the failed jobs instead of submitting. Each re-run increments the run's
+  # eligible test job, python-tests did not fail (auto-resolve-python owns
+  # that run), and the run has had fewer than 3 total attempts, re-run the
+  # failed jobs instead of submitting. Each re-run increments the run's
   # attempt count and fires this workflow again on completion, so the gate is
   # re-evaluated until the failure either clears or survives 3 attempts. Only
   # a failure that survives (or a deterministic failure with no test job in
@@ -120,27 +127,13 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check for request
-        id: check
-        run: |
-          if [ -f auto-resolve-request/submit.env ] && [ -f auto-resolve-request/agent-prompt.txt ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Auto-resolve request found — submitting"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No auto-resolve request artifact — nothing to submit"
-          fi
-
-      - name: Load request parameters
-        if: steps.check.outputs.present == 'true'
-        run: cat auto-resolve-request/submit.env >> "$GITHUB_ENV"
-
+      # The artifact was written by a job that ran the pull request's code, so
+      # its submit.env is untrusted: submit-staged-request.sh exports only the
+      # documented keys rather than appending the file to $GITHUB_ENV, and is a
+      # no-op when no request was staged.
       - name: Submit agent job
-        if: steps.check.outputs.present == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          chmod +x ./tools/ci/submit-agent-job.sh
-          ./tools/ci/submit-agent-job.sh auto-resolve-request/agent-prompt.txt
+        run: bash ./tools/ci/submit-staged-request.sh auto-resolve-request
