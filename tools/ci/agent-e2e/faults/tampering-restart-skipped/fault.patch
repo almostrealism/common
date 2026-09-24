@@ -1,0 +1,15 @@
+diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java
+index dc44f7195..6d4a4d09f 100644
+--- a/flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java
++++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java
+@@ -1190,7 +1190,9 @@ public class CodingAgentJob extends GitManagedJob {
+         // The GIT_TAMPERING_RESTART phase lets the per-phase runner map route
+         // this restart to a more conservative agent than the primary work.
+         gitTamperingViolation = violation;
+-        restartAfterViolation(Phase.GIT_TAMPERING_RESTART, () -> gitTamperingViolation = null);
++        if (gitTamperingViolation == null) {
++            restartAfterViolation(Phase.GIT_TAMPERING_RESTART, () -> gitTamperingViolation = null);
++        }
+         return true;
+     }
+ 

@@ -1,0 +1,16 @@
+# The enumerated seam
+#
+# Everything the end-to-end agent tests replace, and why. One entry per
+# substitution. `check-seam.sh` fails the build on any substitution it finds
+# in the end-to-end sources that is not declared here.
+#
+# The point is not that the list is short. It is that the list exists, that
+# growing it requires editing this file, and that the edit shows up in a diff
+# next to the test it excuses. A stub added quietly to make a red test green
+# is the cheapest way to fake an end-to-end guarantee, and it is invisible in
+# a diff that only shows a test going from failing to passing.
+#
+# Format: <token>|<justification>
+# The token is matched as a literal substring of the test source.
+
+fake-agent.sh|The model, and only the model. ClaudeCodeRunner is constructed with a path to tools/ci/agent-e2e/fake-agent.sh, which speaks real stream-json on stdout and makes real edits in the working tree. Everything above the process boundary — the runner's command line, its NDJSON parsing, the MCP init-event handling, phase dispatch, staging guardrails, commit and push — is production code. The seam is placed here because a language model is the one component whose output cannot be made deterministic, and because the outage this suite exists for was a decision about a stream-json init event, which no test that stubs the runner can reach.

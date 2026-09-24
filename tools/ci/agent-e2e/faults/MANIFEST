@@ -1,0 +1,23 @@
+# Every fault that must exist.
+#
+# Without this file, deleting a fault directory is a silent way to make the
+# catalogue pass: fewer entries, all green, nothing to see. That is the same
+# move as deleting a failing test, one level up, and it is cheaper because a
+# fault has no obvious owner and its absence looks like it was never there.
+#
+# run-fault-catalogue.sh requires every name here to exist, and every
+# directory present to be named here. Removing a fault stays allowed — a
+# defect can genuinely stop being expressible — but it takes an edit to this
+# file, which lands in the diff where a reviewer will see the entry and its
+# why.md disappearing together.
+#
+# One name per line. Comments and blank lines ignored.
+
+control-no-defect
+required-mcp-server-kills-job
+test-method-lock-lifted
+dropped-work-reported-as-success
+all-changes-dropped-not-reported
+missing-commit-message-drops-work
+reverted-work-not-reported
+tampering-restart-skipped

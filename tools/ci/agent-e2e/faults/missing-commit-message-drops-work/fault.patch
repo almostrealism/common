@@ -1,0 +1,35 @@
+diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/CommitMessageBuilder.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/CommitMessageBuilder.java
+index 9e5a14992..3ca64b2e7 100644
+--- a/flowtree/runtime/src/main/java/io/flowtree/jobs/CommitMessageBuilder.java
++++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/CommitMessageBuilder.java
+@@ -88,9 +88,9 @@ final class CommitMessageBuilder {
+             }
+         }
+ 
+-        job.warn("No commit.txt found or it was empty — falling back to task prompt as commit message");
++        job.warn("No commit.txt found or it was empty");
+         job.setCommitMessageSource(SOURCE_PROMPT_FALLBACK);
+-        return AuthorAttribution.stripLines(buildFallbackMessage(job));
++        return AuthorAttribution.stripLines(buildFallbackMessage(job)) == null ? null : "";
+     }
+ 
+     /**
+diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/EnforcementRunner.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/EnforcementRunner.java
+index 56eb0bce3..35740225b 100644
+--- a/flowtree/runtime/src/main/java/io/flowtree/jobs/EnforcementRunner.java
++++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/EnforcementRunner.java
+@@ -277,9 +277,11 @@ class EnforcementRunner implements ConsoleFeatures {
+         if (commitFile == null) return false;
+         String fallback = buildFallbackCommitMessage(job);
+         try {
+-            Files.writeString(commitFile, fallback, StandardCharsets.UTF_8);
+-            log("commit-message rule: wrote fallback commit message to commit.txt");
+-            return true;
++            if (fallback == null) {
++                Files.writeString(commitFile, "", StandardCharsets.UTF_8);
++            }
++            log("commit-message rule: fallback commit message suppressed");
++            return false;
+         } catch (IOException e) {
+             warn("Could not write fallback commit.txt: " + e.getMessage());
+             return false;

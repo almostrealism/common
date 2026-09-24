@@ -1593,6 +1593,75 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
+  # ─── Agent end-to-end: proof the tests can fail ────────────────────
+  # `test-flowtree` runs AgentJobEndToEndTest and reports it green. This job
+  # answers the question that a green result does not: green for what reason?
+  #
+  # It reintroduces each defect in tools/ci/agent-e2e/faults/ and requires the
+  # test named for that defect to fail. The need is not hypothetical — during
+  # the outage this tooling was built after, the end-to-end test named for the
+  # live defect passed, because the job it constructed never configured the
+  # credentials that make the failing policy reachable. The test was green and
+  # covered nothing, and the entire pipeline agreed with it.
+  #
+  # One catalogue entry is a control that must PASS, so a runner that reported
+  # "detected" unconditionally fails here rather than certifying everything
+  # forever. No coverage is produced, so this job is not in `analysis` needs.
+  agent-e2e-faults:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The catalogue runs each fault in a `git worktree`, which needs
+          # real history rather than a shallow clone.
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      # Primes ~/.m2 with every plugin and third-party artifact, so the
+      # per-fault builds inside the scratch worktree can run offline.
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      # Cheap, offline, and it runs here rather than only at deploy time: the
+      # post-deploy canary's verifier is the thing that decides whether a
+      # deploy broke the fleet, and a PR that breaks that verifier must not
+      # reach master and find out later.
+      - name: Prove the post-deploy canary verifier discriminates
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh selftest
+
+      - name: Prove the deployed-build check discriminates
+        run: ./tools/ci/agent-e2e/verify-deployed-build.sh selftest
+
+      - name: Prove the seam check discriminates
+        run: ./tools/ci/agent-e2e/check-seam.sh selftest
+
+      # The cheapest way to turn a red end-to-end test green is to stub one
+      # more thing, and in a diff that looks like a test being fixed. Every
+      # substitution has to be declared in seam.txt, so growing the seam
+      # shows up next to the test it excuses.
+      - name: Every substitution must be declared
+        run: ./tools/ci/agent-e2e/check-seam.sh
+
+      - name: Every fault must break its test
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh
+
   test:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: engine tests only run when engine-or-below layers are modified
@@ -3200,6 +3269,7 @@ jobs:
       - agent-volume-isolation
       - docker-build
       - test-flowtree
+      - agent-e2e-faults
       - test
       - test-media
       - test-mac
@@ -3225,6 +3295,7 @@ jobs:
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
           DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
+          AGENT_E2E_FAULTS_RESULT: ${{ needs.agent-e2e-faults.result }}
           TEST_RESULT: ${{ needs.test.result }}
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
@@ -3262,6 +3333,7 @@ jobs:
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
           check_job "docker-build"            "$DOCKER_BUILD_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
+          check_job "agent-e2e-faults"        "$AGENT_E2E_FAULTS_RESULT"
           check_job "test"                    "$TEST_RESULT"
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
@@ -3299,6 +3371,7 @@ jobs:
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-e2e-faults | ${{ needs.agent-e2e-faults.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"

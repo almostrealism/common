@@ -1,0 +1,13 @@
+diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/JobWorkOutcome.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/JobWorkOutcome.java
+index 3d579be22..df72d0ebd 100644
+--- a/flowtree/runtime/src/main/java/io/flowtree/jobs/JobWorkOutcome.java
++++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/JobWorkOutcome.java
+@@ -166,7 +166,7 @@ class JobWorkOutcome {
+ 
+         String primaryCommit = job.getCommitHash();
+         boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();
+-        if (job.hasRevertedAgentWork() && !primaryCommitted) {
++        if (job.hasRevertedAgentWork() && primaryCommitted) {
+             return "Nothing was committed to the primary repository, and the agent's own changes"
+                     + " to it were reverted as git tampering. Whatever they held was destroyed"
+                     + " and no restart replaced it.";

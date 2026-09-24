@@ -271,6 +271,11 @@ jobs:
     environment: production
     permissions:
       contents: read
+    # The commit this job actually installed, published so the canary can
+    # check the install against it. Re-reading master in the later job would
+    # race: master advancing between the two would look like a stale deploy.
+    outputs:
+      deployed-sha: ${{ steps.provenance.outputs.sha }}
     env:
       CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
       # Where the agent is installed, as seen by the runner's account. The
@@ -339,6 +344,10 @@ jobs:
           [ -n "${FLOWTREE_AGENT_ENV}" ] || unset FLOWTREE_AGENT_ENV
           ./flowtree/runtime/agent/macos/install.sh
 
+      - name: Record the commit that was installed
+        id: provenance
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Resume accepting agent jobs
         if: always() && steps.quiesce.outputs.reopen == 'true'
         run: |
@@ -346,3 +355,72 @@ jobs:
             -H 'Content-Type: application/json' -d '{"accept":true}' >/dev/null \
             && echo "::notice::Job intake reopened" \
             || echo "::error::FAILED to reopen job intake — do this manually: POST {\"accept\":true} to $CONTROLLER_URL/api/config/accept-automated-jobs"
+
+  # Runs one real job, on the real fleet, and checks the git remote for the
+  # result. Everything else that verifies agent behaviour runs against a fake
+  # agent inside a unit test; this is the only step that exercises the thing
+  # that was actually deployed.
+  #
+  # It exists because of a specific failure: a policy change made every job in
+  # the fleet die before publishing anything, the whole test suite stayed
+  # green, a large change was merged and deployed against the outage, and the
+  # outage continued unchanged for a full working day. No layer of testing
+  # short of running a real job could have caught it, and none did.
+  #
+  # Separate from deploy-macos-agent rather than a step inside it, because
+  # that job closes job intake for the duration of the install. The canary has
+  # to submit after intake reopens, which is only true once that job is done.
+  verify-agent-canary:
+    needs: deploy-macos-agent
+    if: needs.deploy-macos-agent.result == 'success'
+    runs-on: [self-hosted, macos, ar-deploy-agent]
+    permissions:
+      contents: read
+    env:
+      CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+      CANARY_BRANCH: ${{ vars.FLOWTREE_CANARY_BRANCH || 'agent-canary' }}
+      CANARY_BASE_BRANCH: master
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # Before trusting the canary's verdict, establish that its verdict can
+      # be negative. The check builds a scratch repository and requires the
+      # verifier to accept a nonce that is present and reject one that is
+      # not. A verifier that says yes unconditionally would certify a dead
+      # fleet on every deploy, which is worse than having no canary at all.
+      - name: Prove the canary verifier discriminates
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh selftest
+
+      - name: Prove the deployed-build check discriminates
+        run: ./tools/ci/agent-e2e/verify-deployed-build.sh selftest
+
+      # Before asking whether the fleet works, establish that the fleet is
+      # running what was merged. A host on last week's build can pass the
+      # canary perfectly well and still not contain the change the deploy
+      # was run for — which is exactly what "merged and deployed and nothing
+      # changed" looks like from outside.
+      - name: Verify the deployed build is the one that was installed
+        env:
+          EXPECTED_SHA: ${{ needs.deploy-macos-agent.outputs.deployed-sha }}
+          FLOWTREE_AGENT_HOME: ${{ vars.FLOWTREE_MACOS_AGENT_HOME || '' }}
+        run: |
+          [ -n "${FLOWTREE_AGENT_HOME}" ] || unset FLOWTREE_AGENT_HOME
+          ./tools/ci/agent-e2e/verify-deployed-build.sh verify
+
+      # The oracle is the git remote, never the job's own status. A job that
+      # reports success while publishing nothing is reported as its own
+      # distinct failure, because that combination is the outage signature.
+      - name: Run one real job on the deployed fleet
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh run
+
+      - name: Report a broken fleet
+        if: failure()
+        run: |
+          curl -fsS -X POST "$CONTROLLER_URL/api/alerts" \
+            -H 'Content-Type: application/json' \
+            -d '{"message":"Post-deploy agent canary FAILED — the deployed fleet did not publish a commit. Agent jobs are likely broken fleet-wide. See the Deploy Controller Stack run."}' \
+            >/dev/null || echo "::warning::Could not reach the controller to raise an alert"

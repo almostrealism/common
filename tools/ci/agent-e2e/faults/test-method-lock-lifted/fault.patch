@@ -1,0 +1,14 @@
+diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/TestMethodProtection.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/TestMethodProtection.java
+index 98b65341b..f4dc0f86e 100644
+--- a/flowtree/runtime/src/main/java/io/flowtree/jobs/TestMethodProtection.java
++++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/TestMethodProtection.java
+@@ -286,9 +286,6 @@ class TestMethodProtection implements ConsoleFeatures {
+ 
+         Set<String> modifiedOrRemoved = new LinkedHashSet<>(baseMethods);
+         modifiedOrRemoved.removeAll(currentMethods);
+-        if (!modifiedOrRemoved.isEmpty()) {
+-            return Verdict.blocked("existing test method(s) changed or removed: " + methodNames(modifiedOrRemoved));
+-        }
+ 
+         Set<String> added = new LinkedHashSet<>(currentMethods);
+         added.removeAll(baseMethods);

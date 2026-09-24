@@ -68,3 +68,6 @@ flowtree/runtime/controller/.env
 # Data
 flowtreedb**
 graphpersistdb**
+
+# Agent session captures written beside a job working directory
+.flowtree/

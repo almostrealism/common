@@ -1,0 +1,4 @@
+module=flowtree/runtime
+test=AgentJobEndToEndTest
+method=agentWorkReachesTheRemote
+outcome=pass
