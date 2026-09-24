@@ -16,6 +16,13 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.Precision;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.MappedMemoryProvider;
+
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,6 +38,9 @@ import java.nio.file.Path;
  * paths at test time and is never committed.
  */
 public class ReferenceActivations {
+
+	/** Size of the value-count header each reference file starts with. */
+	private static final int HEADER_BYTES = 4;
 
 	/** The directory holding the reference files. */
 	private final File directory;
@@ -79,7 +89,54 @@ public class ReferenceActivations {
 	}
 
 	/**
+	 * Creates a collection of the given shape over a reference file, reading the values through a
+	 * mapping of the file rather than copying them out of it.
+	 *
+	 * <p>Nothing is materialized on the host: the payload is served from the operating system's page
+	 * cache, and reaches a device only when a kernel requires it. These files are written by the
+	 * extraction scripts and read exactly as written, so there is nothing to convert and no reason
+	 * to hold a second copy of a dump that can be gigabytes.</p>
+	 *
+	 * @param name  the file name within the directory
+	 * @param shape the shape to read the values as
+	 * @return a collection reading through a mapping of the file
+	 * @throws IOException if the file cannot be read
+	 * @throws IllegalStateException if the file's value count does not match the shape
+	 */
+	public PackedCollection collection(String name, TraversalPolicy shape) throws IOException {
+		File file = new File(directory, name);
+		int count = count(file.toPath());
+
+		if (count != shape.getTotalSize()) {
+			throw new IllegalStateException(name + ": file has " + count
+					+ " values but shape expects " + shape.getTotalSize());
+		}
+
+		Memory mem = MappedMemoryProvider.getInstance()
+				.allocate(file, Precision.FP32, HEADER_BYTES, count);
+		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, count), 0);
+	}
+
+	/**
+	 * Reads the value count from a reference file's header.
+	 *
+	 * @param path the file path
+	 * @return the number of values that follow the header
+	 * @throws IOException if the file cannot be read
+	 */
+	public static int count(Path path) throws IOException {
+		try (DataInputStream in = new DataInputStream(new FileInputStream(path.toFile()))) {
+			byte[] header = new byte[HEADER_BYTES];
+			in.readFully(header);
+			return ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt();
+		}
+	}
+
+	/**
 	 * Reads a reference file into a buffer positioned over its payload values.
+	 *
+	 * <p>Prefer {@link #collection(String, TraversalPolicy)} when the values are going into a
+	 * collection: this copies the whole payload onto the Java heap first.</p>
 	 *
 	 * @param path the file path
 	 * @return a little-endian buffer holding the payload values
@@ -87,10 +144,10 @@ public class ReferenceActivations {
 	 */
 	public static ByteBuffer loadBuffer(Path path) throws IOException {
 		try (DataInputStream in = new DataInputStream(new FileInputStream(path.toFile()))) {
-			byte[] header = new byte[4];
+			byte[] header = new byte[HEADER_BYTES];
 			in.readFully(header);
 			int count = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt();
-			byte[] payload = new byte[count * 4];
+			byte[] payload = new byte[count * Precision.FP32.bytes()];
 			in.readFully(payload);
 			return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
 		}

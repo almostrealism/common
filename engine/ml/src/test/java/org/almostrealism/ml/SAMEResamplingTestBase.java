@@ -185,15 +185,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @throws IOException if the file cannot be read
 	 */
 	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
-		ByteBuffer data = loadBuffer(new File(dir, name + ".bin").toPath());
-		TraversalPolicy resultShape = shape(shape);
-		int count = data.remaining() / 4;
-		if (count != resultShape.getTotalSize()) {
-			throw new IllegalStateException(name + ": file has " + count
-					+ " values but shape expects " + resultShape.getTotalSize());
-		}
-
-		return PackedCollection.load(resultShape, data);
+		return new ReferenceActivations(dir).collection(name + ".bin", shape(shape));
 	}
 
 	/**

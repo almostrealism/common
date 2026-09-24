@@ -1160,28 +1160,14 @@ public class PackedCollection extends MemoryDataAdapter
 	 * one value is drawn from each source in turn, as for a tensor stored as separate planes and
 	 * consumed interleaved.
 	 *
-	 * <p>This is for values that entered the process from outside it — a checkpoint, a serialized
-	 * message, a reference dump. It is not a route for values computed by Java code, which belong
-	 * in a {@link io.almostrealism.relation.Producer}.</p>
-	 *
-	 * <p>A single source that the provider can adopt as it stands is <em>referenced</em> rather
-	 * than copied: the collection is backed by the caller's own region, and nothing reaches a
-	 * device until a kernel requires it. The caller must then keep whatever produced that region
-	 * alive for as long as the collection is used. Everything else — several sources to interleave,
-	 * a heap buffer, a foreign byte order, a read-only region, or values of a width the provider
-	 * does not address — is staged into an allocation of its own, converting precision on the way.
-	 * See {@link MemoryProvider#canWrap} for what qualifies.</p>
-	 *
-	 * <p>Referencing additionally requires the provider to address values at the width the sources
-	 * hold them, which is single precision here. That is a stricter condition than
-	 * {@link MemoryProvider#canWrap} tests on its own, because a source carrying slack beyond the
-	 * values requested — one tensor read out of a larger mapping, say — can satisfy a wider
-	 * provider's byte count while holding narrower values, and would then be read at the wrong
-	 * width rather than converted.</p>
+	 * <p>This is the from-buffer ingest factory: the one place values that entered the process from
+	 * outside it — a checkpoint, a serialized message, a reference dump — are staged into device
+	 * memory. It is not a route for values computed by Java code, which belong in a
+	 * {@link io.almostrealism.relation.Producer}.</p>
 	 *
 	 * @param shape   the shape of the resulting collection
 	 * @param sources one or more buffers holding the values, positioned at the first value
-	 * @return a collection over the referenced or staged values
+	 * @return a collection rooted over the staging allocation
 	 * @throws IllegalArgumentException if no sources are given, or the shape's size is not
 	 *                                   divisible by the source count
 	 */
@@ -1198,13 +1184,6 @@ public class PackedCollection extends MemoryDataAdapter
 
 		MemoryProvider<? extends RAM> provider =
 				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-
-		if (sources.length == 1 && provider.getNumberSize() == Precision.FP32.bytes()
-				&& provider.canWrap(sources[0], total)) {
-			return new PackedCollection(shape, shape.getTraversalAxis(),
-					Bytes.of(provider.wrap(sources[0], total), total), 0);
-		}
-
 		RAM mem = provider.allocate(total);
 
 		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();

@@ -52,13 +52,11 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 	private final Buffer buffer;
 	/** Shared memory path, or null if this buffer uses private memory. */
 	private final String sharedLocation;
-	/** Whether the backing region came from outside this provider rather than being allocated by it. */
-	private final boolean foreign;
 	/** Listeners notified when this buffer is deallocated. */
 	private List<Consumer<NativeBuffer>> deallocationListeners;
 
 	/**
-	 * Creates a native buffer backed by the given direct buffers, allocated by the provider.
+	 * Creates a native buffer backed by the given direct buffers.
 	 *
 	 * @param provider       Memory provider that owns this buffer
 	 * @param rootBuffer     Root byte buffer for capacity and mapping operations
@@ -68,45 +66,14 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 	protected NativeBuffer(NativeMemoryProvider provider,
 						   ByteBuffer rootBuffer, Buffer buffer,
 						   String sharedLocation) {
-		this(provider, rootBuffer, buffer, sharedLocation, false);
-	}
-
-	/**
-	 * Creates a native buffer backed by the given direct buffers.
-	 *
-	 * @param provider       Memory provider that manages this buffer
-	 * @param rootBuffer     Root byte buffer for capacity and mapping operations
-	 * @param buffer         Typed view used for kernel argument passing
-	 * @param sharedLocation Shared memory path, or null for private allocation
-	 * @param foreign        Whether the region came from outside the provider, in which case the
-	 *                       provider neither counts it against its reservation nor releases it
-	 */
-	protected NativeBuffer(NativeMemoryProvider provider,
-						   ByteBuffer rootBuffer, Buffer buffer,
-						   String sharedLocation, boolean foreign) {
 		if (!rootBuffer.isDirect() || !buffer.isDirect())
 			throw new UnsupportedOperationException();
 		this.provider = provider;
 		this.rootBuffer = rootBuffer;
 		this.buffer = buffer;
 		this.sharedLocation = sharedLocation;
-		this.foreign = foreign;
 		this.deallocationListeners = new ArrayList<>();
 	}
-
-	/**
-	 * Returns whether the backing region came from outside the provider.
-	 *
-	 * <p>A foreign buffer is one the provider was handed rather than one it allocated — see
-	 * {@link NativeMemoryProvider#wrap(ByteBuffer, int)}. The provider tracks it so that the
-	 * ordinary lifecycle applies, but does not count its bytes against its reservation and never
-	 * frees or unmaps it: whatever produced the region still owns it. This instance holds the
-	 * region strongly through {@link #getRootBuffer()}, which is what keeps the JVM's cleaner from
-	 * reclaiming a direct buffer while a kernel is still reading it.</p>
-	 *
-	 * @return true if this buffer wraps a region the provider did not allocate
-	 */
-	public boolean isForeign() { return foreign; }
 
 	@Override
 	public MemoryProvider getProvider() { return provider; }
@@ -222,7 +189,17 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 	 * @throws HardwareException If the provider's precision is not supported
 	 */
 	public static NativeBuffer create(NativeMemoryProvider provider, int len, String sharedLocation) {
-		ByteBuffer bufferByte = buffer(provider, len * provider.getPrecision().bytes(), sharedLocation);
-		return new NativeBuffer(provider, bufferByte, provider.view(bufferByte), sharedLocation);
+		if (provider.getPrecision() == Precision.FP16) {
+			ByteBuffer bufferByte = buffer(provider, len * 2, sharedLocation);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asShortBuffer(), sharedLocation);
+		} else if (provider.getPrecision() == Precision.FP32) {
+			ByteBuffer bufferByte = buffer(provider, len * 4, sharedLocation);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asFloatBuffer(), sharedLocation);
+		} else if (provider.getPrecision() == Precision.FP64) {
+			ByteBuffer bufferByte = buffer(provider, len * 8, sharedLocation);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asDoubleBuffer(), sharedLocation);
+		} else {
+			throw new HardwareException("Unsupported precision");
+		}
 	}
 }

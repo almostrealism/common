@@ -211,96 +211,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public boolean isShared() { return shared; }
 
 	/**
-	 * Returns the typed view through which a kernel addresses the given region under this
-	 * provider's precision.
-	 *
-	 * <p>No conversion happens: a region holding values of a different width is misread rather
-	 * than converted, which is why {@link #canWrap} refuses one. Data of another precision is
-	 * converted on the way in, with {@link org.almostrealism.hardware.mem.ByteBufferTransfer}.</p>
-	 *
-	 * @param bytes the region to view
-	 * @return a short, float or double view over the same storage
-	 * @throws HardwareException if this provider's precision is not supported
-	 */
-	public Buffer view(ByteBuffer bytes) {
-		if (precision == Precision.FP16) {
-			return bytes.asShortBuffer();
-		} else if (precision == Precision.FP32) {
-			return bytes.asFloatBuffer();
-		} else if (precision == Precision.FP64) {
-			return bytes.asDoubleBuffer();
-		} else {
-			throw new HardwareException("Unsupported precision");
-		}
-	}
-
-	/**
-	 * Reports whether {@link #wrap(ByteBuffer, int)} would accept the given region, so a caller
-	 * that can fall back to staging decides without provoking an exception.
-	 *
-	 * <p>Four conditions have to hold, and each corresponds to a way the wrap would otherwise be
-	 * wrong rather than merely inconvenient:</p>
-	 * <ul>
-	 *   <li>the buffer is <b>direct</b> — a heap buffer has no address a kernel can be handed;</li>
-	 *   <li>its byte order is the <b>native</b> one — the region is read as raw storage, not decoded;</li>
-	 *   <li>it holds at least {@code length} values <b>at this provider's number size</b>, since the
-	 *       view follows the provider's precision and performs no conversion;</li>
-	 *   <li>it is <b>writable</b> — read-only is expressed per provider rather than per region, so a
-	 *       read-only mapping wrapped by a writable provider would be offered to a kernel as a
-	 *       destination and fault on the first store. A read-only source is staged, or served
-	 *       through a read-only provider of its own.</li>
-	 * </ul>
-	 *
-	 * @param source the region to test, positioned at the first value
-	 * @param length the number of values it must hold
-	 * @return true if the region can back a collection as it stands
-	 */
-	@Override
-	public boolean canWrap(ByteBuffer source, int length) {
-		return source != null && length >= 0
-				&& source.isDirect() && !source.isReadOnly()
-				&& source.order() == ByteOrder.nativeOrder()
-				&& source.remaining() >= (long) getNumberSize() * length;
-	}
-
-	/**
-	 * Adopts an existing region as memory of this provider, so values already in the process back a
-	 * collection directly instead of being copied into an allocation of their own. Nothing is copied
-	 * and nothing reaches a device until a kernel requires it.
-	 *
-	 * <p>The provider tracks the result so the ordinary lifecycle applies — deallocation listeners
-	 * fire, and the reference is registered the way an allocation's is — but the region stays the
-	 * caller's: its bytes are not counted against this provider's reservation, and
-	 * {@link #deallocate(NativeRef)} neither frees nor unmaps it. The returned memory holds the
-	 * region strongly, which is what stops the JVM reclaiming a direct buffer while a kernel is
-	 * still reading it; the caller must still keep whatever produced the region alive for at least
-	 * as long, since a mapping closed underneath a live buffer is not something the JVM can
-	 * protect against.</p>
-	 *
-	 * @param source the region to adopt, positioned at the first value
-	 * @param length the number of values to expose, at this provider's number size
-	 * @return memory over the given region
-	 * @throws IllegalArgumentException if {@link #canWrap} would refuse the region
-	 */
-	@Override
-	public synchronized RAM wrap(ByteBuffer source, int length) {
-		if (!canWrap(source, length)) {
-			throw new IllegalArgumentException("Cannot wrap " +
-					(source == null ? "a null buffer" :
-							!source.isDirect() ? "a heap buffer" :
-							source.isReadOnly() ? "a read-only buffer" :
-							source.order() != ByteOrder.nativeOrder() ? "a buffer in " + source.order() :
-							"a buffer holding " + source.remaining() + " bytes, short of the " +
-									(long) getNumberSize() * length + " required") +
-					"; stage it instead");
-		}
-
-		ByteBuffer root = source.slice().order(ByteOrder.nativeOrder());
-		root.limit(getNumberSize() * length);
-		return allocated(new NativeBuffer(this, root, view(root), null, true));
-	}
-
-	/**
 	 * Returns the compiler used to build this provider's native operations.
 	 *
 	 * <p>Uses the {@link NativeCompiler} supplied at construction when present; otherwise (the
@@ -382,13 +292,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public synchronized void deallocate(NativeRef<RAM> ref) {
 		NativeRef<?> tracked = ref;
 		if (tracked instanceof NativeBufferRef bufferRef) {
-			if (bufferRef.isForeign()) {
-				// The region belongs to whatever produced it: nothing to release, and its bytes
-				// were never counted against the reservation, so nothing to credit back either.
-				bufferRef.getDeallocationListeners().forEach(l -> l.accept(null));
-				return;
-			}
-
 			if (bufferRef.getSharedLocation() != null && bufferRef.getRootBuffer() != null) {
 				unmapSharedMemory(bufferRef.getRootBuffer(), bufferRef.getRootBuffer().capacity());
 			}

@@ -581,6 +581,10 @@ Consult the linked references before writing related code.
 
 # AGENT INTEGRITY
 
+> "I was optimizing for not being blamed for a regression rather than for the platform being better."
+
+That is an agent — one of you — accounting for why it built a new mechanism beside a broken one instead of repairing the broken one, and the impulse it names is wrong in essentially every case it arises, because avoiding blame and improving the platform are not the same objective and only the second one is your job.
+
 Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
 
 ## Known Deception Patterns
