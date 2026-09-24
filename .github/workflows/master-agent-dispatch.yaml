@@ -199,7 +199,7 @@ jobs:
           BASE_BRANCH: master
           DESCRIPTION: "Plan new work branch"
           AUTO_CREATE_PR: "true"
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
@@ -341,7 +341,7 @@ jobs:
           BRANCH: ${{ steps.qa_branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Review documentation for staleness"
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           AUTO_CREATE_PR: "true"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
@@ -492,7 +492,7 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Hunt for a defect and prove it with a failing test"
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           AUTO_CREATE_PR: "true"
           PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
         run: |
@@ -723,14 +723,14 @@ jobs:
           chmod +x ./tools/ci/prompts/build-coverage-prompt.sh
           ./tools/ci/prompts/build-coverage-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      # PROTECT_TEST_FILES stays "true" and no sensitive-file bypass is
-      # requested: a coverage round only ever adds new tests, appends to
-      # tools/coverage-data/coverage-history.tsv, and may already carry the
-      # workflow's own auto-exclusion commit to
+      # No sensitive-file bypass is requested: a coverage round only ever
+      # adds new tests, appends to tools/coverage-data/coverage-history.tsv,
+      # and may already carry the workflow's own auto-exclusion commit to
       # tools/coverage-data/coverage-exclusions.txt from the step above.
-      # Neither data file lives under tools/ci/, so validate-agent-commit.sh
-      # classifies both as ordinary (non-CI) files and RULE 3 never applies
-      # to them — no allowlist or bypass is needed. New tests satisfy RULE 2.
+      # Neither data file lives under tools/ci/, so the CI file lock never
+      # applies to them. The harness's per-job test lock is off: nothing in
+      # this round's premise depends on existing tests staying byte-identical,
+      # and test-integrity-check holds it to the same rule as every branch.
       - name: Submit coverage agent job
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
@@ -739,7 +739,7 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Raise test coverage of ${{ steps.select.outputs.target }}"
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           AUTO_CREATE_PR: "true"
           ENFORCE_CHANGES: "true"
         run: |

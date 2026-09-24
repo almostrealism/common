@@ -174,6 +174,16 @@ class CredentialIsolationTests(unittest.TestCase):
         self.assertIn("steps.quality.outputs.unattributed", review["env"]["QUALITY_UNATTRIBUTED"])
         self.assertIn("QUALITY_UNATTRIBUTED", review["run"])
 
+    def test_the_submit_jobs_decide_the_test_lock_themselves(self):
+        """auto-resolve-python fixes failing tests, so the harness keeps master's
+        tests as they are; no auto-review prompt does, so the lock stays off."""
+        jobs = _jobs()
+        expected = {"auto-resolve-python-submit": "true", "auto-review-submit": "false"}
+        for submitter, value in expected.items():
+            with self.subTest(job=submitter):
+                env = [s.get("env", {}) for s in jobs[submitter]["steps"] if "run" in s][0]
+                self.assertEqual(value, env["PROTECT_TEST_FILES"])
+
     def test_auto_review_waits_for_the_copilot_review(self):
         """auto-review can finish before Copilot's review of the push has posted.
 
@@ -352,9 +362,20 @@ class SubmitStagedRequestTests(unittest.TestCase):
 
     def test_a_request_cannot_switch_test_protection_off(self):
         self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=false\n")
-        result = self._run()
+        result = self._run(PROTECT_TEST_FILES="true")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertNotEqual("false", self._captured_env().get("PROTECT_TEST_FILES"))
+        self.assertEqual("true", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_a_request_may_turn_test_protection_on(self):
+        """auto-resolve-submit cannot tell which route was staged; the request can."""
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=true\n")
+        self.assertEqual(0, self._run(PROTECT_TEST_FILES=None).returncode)
+        self.assertEqual("true", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_the_callers_test_protection_wins_either_way(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=true\n")
+        self.assertEqual(0, self._run(PROTECT_TEST_FILES="false").returncode)
+        self.assertEqual("false", self._captured_env().get("PROTECT_TEST_FILES"))
 
     def test_a_request_cannot_switch_enforce_changes_off_the_caller_set(self):
         self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nENFORCE_CHANGES=false\n")

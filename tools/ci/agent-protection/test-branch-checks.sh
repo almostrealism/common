@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# ─── Regression tests for validate-agent-commit.sh ──────────────
+# ─── Regression tests for the branch checks ─────────────────────
+#
+# Covers the three checks a branch's change set is held to:
+#   check-ci-file-lock.sh          CI/workflow files change only on ci/...
+#   detect-python-test-hiding.sh   base-branch Python tests are not weakened
+#   validate-agent-commit.sh       a change set is more than edits to
+#                                  base-branch tests
 #
 # Each case builds a throwaway repository with a master commit and a
-# branch commit, runs the validator against it, and asserts the exit
-# code. The repository is real rather than mocked because the validator
-# reads the base and head images of every changed file out of git.
+# branch commit, runs one check against it, and asserts the exit code.
+# The repository is real rather than mocked because the checks read the
+# base and head images of every changed file out of git.
 #
 # Usage:
-#   test-validate-agent-commit.sh
+#   test-branch-checks.sh
 #
 # Exit codes:
 #   0  - all tests passed
@@ -17,6 +23,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VALIDATE="$SCRIPT_DIR/validate-agent-commit.sh"
+CI_LOCK="$SCRIPT_DIR/check-ci-file-lock.sh"
+PY_HIDING="$SCRIPT_DIR/detect-python-test-hiding.sh"
 
 PASS=0
 FAIL=0
@@ -133,23 +141,9 @@ make_repo() {
     git -C "$dir" checkout -qb "$branch"
 }
 
-# run_case NAME EXPECTED_EXIT BRANCH SECRET_VALUE MUTATE_FN [COMMIT_MSG] [BASE]
-run_case() {
-    local name="$1" expected_exit="$2" branch="$3" secret="$4" mutate="$5"
-    local msg="${6:-agent commit}" base="${7:-master}"
-
-    local dir actual_exit output
-    dir=$(mktemp -d)
-    make_repo "$dir" "$branch"
-
-    "$mutate" "$dir"
-    git -C "$dir" add -A
-    git -C "$dir" commit -qm "$msg" --allow-empty
-
-    actual_exit=0
-    output=$(cd "$dir" && AR_AGENT_BYPASS_SECRET="$secret" \
-        GITHUB_HEAD_REF="" GITHUB_REF_NAME="" \
-        bash "$VALIDATE" "$base" --require-production-changes 2>&1) || actual_exit=$?
+# record NAME EXPECTED_EXIT ACTUAL_EXIT OUTPUT
+record() {
+    local name="$1" expected_exit="$2" actual_exit="$3" output="$4"
 
     if [ "$actual_exit" -eq "$expected_exit" ]; then
         PASS=$((PASS + 1))
@@ -160,6 +154,32 @@ run_case() {
         printf '  FAIL  %s  expected=%d got=%d\n' "$name" "$expected_exit" "$actual_exit"
         printf '%s\n' "$output" | sed 's/^/        /'
     fi
+}
+
+# run_check DIR SCRIPT SECRET_VALUE BASE — runs a check in DIR; prints its
+# output and returns its exit code.
+run_check() {
+    (cd "$1" && AR_AGENT_BYPASS_SECRET="$3" \
+        GITHUB_HEAD_REF="" GITHUB_REF_NAME="" GITHUB_OUTPUT="" \
+        bash "$2" "$4" 2>&1)
+}
+
+# run_case NAME EXPECTED_EXIT SCRIPT BRANCH SECRET_VALUE MUTATE_FN [COMMIT_MSG] [BASE]
+run_case() {
+    local name="$1" expected_exit="$2" script="$3" branch="$4" secret="$5" mutate="$6"
+    local msg="${7:-agent commit}" base="${8:-master}"
+
+    local dir actual_exit output
+    dir=$(mktemp -d)
+    make_repo "$dir" "$branch"
+
+    "$mutate" "$dir"
+    git -C "$dir" add -A
+    git -C "$dir" commit -qm "$msg" --allow-empty
+
+    actual_exit=0
+    output=$(run_check "$dir" "$script" "$secret" "$base") || actual_exit=$?
+    record "$name" "$expected_exit" "$actual_exit" "$output"
 
     rm -rf "$dir"
 }
@@ -246,13 +266,6 @@ ADDOVERLOAD
     edit_production "$1"
 }
 
-edit_overload() {
-    local file="$1/src/test/java/org/example/OverloadTest.java"
-    sed -i.bak 's/assertEquals(value, value, 0\.0001);/assertEquals(value, value, 0.5);/' \
-        "$file" && rm -f "$file.bak"
-    edit_production "$1"
-}
-
 edit_ci_only() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
 }
@@ -271,11 +284,6 @@ rename_test_file() {
     sed -i.bak 's/@TestDepth(2)/@TestDepth(10)/' \
         "$1/src/test/java/org/example/RenamedTest.java"
     rm -f "$1/src/test/java/org/example/RenamedTest.java.bak"
-}
-
-edit_helper_and_production() {
-    edit_helper_only "$1"
-    edit_production "$1"
 }
 
 escalate_and_production() {
@@ -304,11 +312,21 @@ py_remove_assertion() {
         "$1/tools/example/test_example.py"
 }
 
-py_edit_test_body() {
+py_edit_test_body_only() {
     # An ordinary edit: the assertion is rewritten, not removed, and both
-    # test functions stay. Java would block this; Python deliberately does not.
+    # test functions stay.
     sed -i 's/self.assertEqual(8, self.fixture() \* 2)/self.assertEqual(12, self.fixture() * 3)/' \
         "$1/tools/example/test_example.py"
+}
+
+py_edit_test_body() {
+    py_edit_test_body_only "$1"
+    edit_production "$1"
+}
+
+edit_tools_ci() {
+    mkdir -p "$1/tools/ci"
+    echo "echo skip" > "$1/tools/ci/run-tests.sh"
     edit_production "$1"
 }
 
@@ -346,53 +364,39 @@ py_remove_function_and_production() {
     edit_production "$1"
 }
 
-# ── RULE 1: existing test methods are locked ────────────────────
-
-echo "RULE 1 — test method write lock"
-run_case "TestDepth escalation blocked"        2 feature/x "$SECRET" escalate_test_depth
-run_case "tolerance weakening blocked"         2 feature/x "$SECRET" weaken_tolerance
-run_case "test method removal blocked"         2 feature/x "$SECRET" remove_test_method
-run_case "test class rename blocked"           2 feature/x "$SECRET" rename_test_file
-
-echo "RULE 1 — permitted test work"
-run_case "added test method allowed"           0 feature/x "$SECRET" append_test_method
-run_case "helper edit allowed"                 0 feature/x "$SECRET" edit_helper_and_production
-run_case "new test file allowed"               0 feature/x "$SECRET" add_new_test_file
-run_case "production change allowed"           0 feature/x "$SECRET" edit_production
-run_case "added overload allowed"              0 feature/x "$SECRET" add_overload
-run_case "edited overload blocked"             2 feature/x "$SECRET" edit_overload
-
-# ── RULE 1: the weaker Python form of the same lock ─────────────
+# ── validate-agent-commit.sh: more than edits to base-branch tests ──
 #
-# The two ways a Python test stops testing are blocked; editing the
-# inside of one is not, which is the leniency the extractor's precision
-# obliges. Each blocked case also changes production code, so what it
-# proves is RULE 1 firing rather than RULE 2.
+# Only a change set confined to existing test files, with no new test in
+# them, is blocked. Whether an edit weakens a test is test-integrity-check's
+# question, so an escalated @TestDepth that arrives with a production change
+# passes here.
 
-echo "RULE 1 — Python test lock"
-run_case "py test function removal blocked"    2 feature/x "$SECRET" py_remove_function_and_production
-run_case "py test function rename blocked"     2 feature/x "$SECRET" py_rename_test_function
-run_case "py assertion removal blocked"        2 feature/x "$SECRET" py_remove_assertion_and_production
+echo "validate-agent-commit — base-branch-test-only change sets"
+run_case "TestDepth edit alone blocked"         3 "$VALIDATE" feature/x "$SECRET" escalate_test_depth
+run_case "tolerance edit alone blocked"         3 "$VALIDATE" feature/x "$SECRET" weaken_tolerance
+run_case "test removal alone blocked"           3 "$VALIDATE" feature/x "$SECRET" remove_test_method
+run_case "helper edit alone blocked"            3 "$VALIDATE" feature/x "$SECRET" edit_helper_only
+run_case "py test edit alone blocked"           3 "$VALIDATE" feature/x "$SECRET" py_edit_test_body_only
+run_case "py assertion removal alone blocked"   3 "$VALIDATE" feature/x "$SECRET" py_remove_assertion
 
-echo "RULE 1 — permitted Python test work"
-run_case "py test body edit allowed"           0 feature/x "$SECRET" py_edit_test_body
-run_case "py added test function allowed"      0 feature/x "$SECRET" py_append_test_function
-run_case "py fixture edit allowed"             0 feature/x "$SECRET" py_edit_fixture
-run_case "py new test file allowed"            0 feature/x "$SECRET" py_add_new_test_file
+echo "validate-agent-commit — substantive change sets"
+run_case "test edit with production allowed"    0 "$VALIDATE" feature/x "$SECRET" escalate_and_production
+run_case "added test method allowed"            0 "$VALIDATE" feature/x "$SECRET" append_test_method
+run_case "added overload allowed"               0 "$VALIDATE" feature/x "$SECRET" add_overload
+run_case "new test file allowed"                0 "$VALIDATE" feature/x "$SECRET" add_new_test_file
+run_case "test class rename allowed"            0 "$VALIDATE" feature/x "$SECRET" rename_test_file
+run_case "production change allowed"            0 "$VALIDATE" feature/x "$SECRET" edit_production
+run_case "py added test function allowed"       0 "$VALIDATE" feature/x "$SECRET" py_append_test_function
+run_case "py new test file allowed"             0 "$VALIDATE" feature/x "$SECRET" py_add_new_test_file
+run_case "CI-only change set not its concern"   0 "$VALIDATE" feature/x "$SECRET" edit_ci_only
 
-# ── Merge-base, not base-branch tip ──────────────────────────────
-#
-# The branch only adds a new test method. Master, unrelated to the
-# branch, evolves the SAME file afterward (its own @TestDepth bump).
-# Comparing against master's current tip would make that master-side
-# edit look like the branch's own file diverged from an "existing"
-# state that never actually matched what the branch started from,
-# misattributing master's change to the agent. Comparing against the
-# merge-base (the commit the branch actually forked from) does not.
-
+# The branch only adds a new test method. Master, unrelated to the branch,
+# evolves the SAME file afterward (its own @TestDepth bump). Comparing
+# against master's current tip would make that master-side edit look like
+# the branch's own; comparing against the merge-base does not.
 run_merge_base_case() {
     local name="$1" expected_exit="$2"
-    local dir
+    local dir actual_exit=0 output
     dir=$(mktemp -d)
     make_repo "$dir" feature/x
 
@@ -406,74 +410,71 @@ run_merge_base_case() {
     git -C "$dir" commit -qm "master: bump TestDepth independently of the branch"
     git -C "$dir" checkout -q feature/x
 
-    local actual_exit=0 output
-    output=$(cd "$dir" && AR_AGENT_BYPASS_SECRET="$SECRET" \
-        GITHUB_HEAD_REF="" GITHUB_REF_NAME="" \
-        bash "$VALIDATE" master --require-production-changes 2>&1) || actual_exit=$?
-
-    if [ "$actual_exit" -eq "$expected_exit" ]; then
-        PASS=$((PASS + 1))
-        printf '  PASS  %s\n' "$name"
-    else
-        FAIL=$((FAIL + 1))
-        FAILED_TESTS+=("$name (expected $expected_exit, got $actual_exit)")
-        printf '  FAIL  %s  expected=%d got=%d\n' "$name" "$expected_exit" "$actual_exit"
-        printf '%s\n' "$output" | sed 's/^/        /'
-    fi
-
+    output=$(run_check "$dir" "$VALIDATE" "$SECRET" master) || actual_exit=$?
+    record "$name" "$expected_exit" "$actual_exit" "$output"
     rm -rf "$dir"
 }
 
-echo "RULE 1 — merge-base, not base-branch tip"
+echo "validate-agent-commit — merge-base, not base-branch tip"
 run_merge_base_case "branch-only addition allowed despite master's own later edit" 0
 
-# ── RULE 2: substantive changes ─────────────────────────────────
+# ── detect-python-test-hiding.sh ─────────────────────────────────
+#
+# The two ways a Python test stops testing are findings; editing the inside
+# of one is not.
 
-echo "RULE 2 — substantive changes"
-run_case "helper-only commit not substantive"  3 feature/x "$SECRET" edit_helper_only
-run_case "added test is substantive"           0 feature/x "$SECRET" append_test_method
+echo "detect-python-test-hiding — findings"
+run_case "py test function removal found"       2 "$PY_HIDING" feature/x "$SECRET" py_remove_function_and_production
+run_case "py test function rename found"        2 "$PY_HIDING" feature/x "$SECRET" py_rename_test_function
+run_case "py assertion removal found"           2 "$PY_HIDING" feature/x "$SECRET" py_remove_assertion_and_production
 
-# ── RULE 3: CI lock and the ci/ exemption ───────────────────────
+echo "detect-python-test-hiding — permitted Python test work"
+run_case "py test body edit allowed"            0 "$PY_HIDING" feature/x "$SECRET" py_edit_test_body
+run_case "py added test function allowed"       0 "$PY_HIDING" feature/x "$SECRET" py_append_test_function
+run_case "py fixture edit allowed"              0 "$PY_HIDING" feature/x "$SECRET" py_edit_fixture
+run_case "py new test file allowed"             0 "$PY_HIDING" feature/x "$SECRET" py_add_new_test_file
+run_case "Java test edits not its concern"      0 "$PY_HIDING" feature/x "$SECRET" escalate_test_depth
 
-echo "RULE 3 — CI/workflow lock"
-run_case "CI edit blocked on feature branch"   4 feature/x "$SECRET" edit_ci_file
-run_case "CI edit allowed on ci/ branch"       0 ci/issue-1 "$SECRET" edit_ci_file
-run_case "CI edit allowed on ci/issues/2"      0 ci/issues/2 "$SECRET" edit_ci_file
-run_case "CI-only commit substantive on ci/"   0 ci/issue-1 "$SECRET" edit_ci_only
-run_case "CI-only commit blocked elsewhere"    4 feature/x "$SECRET" edit_ci_only
+# ── check-ci-file-lock.sh ─────────────────────────────────────────
 
-# ── Sensitive-file bypass ───────────────────────────────────────
+echo "check-ci-file-lock — the lock and the ci/ exemption"
+run_case "workflow edit blocked on feature"     4 "$CI_LOCK" feature/x "$SECRET" edit_ci_file
+run_case "workflow-only edit blocked"           4 "$CI_LOCK" feature/x "$SECRET" edit_ci_only
+run_case "tools/ci edit blocked on feature"     4 "$CI_LOCK" feature/x "$SECRET" edit_tools_ci
+run_case "workflow edit allowed on ci/"         0 "$CI_LOCK" ci/issue-1 "$SECRET" edit_ci_file
+run_case "workflow edit allowed on ci/a/b"      0 "$CI_LOCK" ci/issues/2 "$SECRET" edit_ci_file
+run_case "no CI change allowed"                 0 "$CI_LOCK" feature/x "$SECRET" edit_production
 
-echo "Sensitive-file bypass"
+echo "check-ci-file-lock — sensitive-file bypass"
 SIG=$(expected_sig "$SECRET" "job-77")
-run_case "signed trailer lifts RULE 1"         0 feature/x "$SECRET" escalate_and_production \
-    "fix the test
-
-Sensitive-File-Bypass: job-77=$SIG"
-run_case "signed trailer lifts RULE 3"         0 feature/x "$SECRET" edit_ci_file \
+run_case "signed trailer lifts the lock"        0 "$CI_LOCK" feature/x "$SECRET" edit_ci_file \
     "adjust the pipeline
 
 Sensitive-File-Bypass: job-77=$SIG"
-run_case "forged trailer does not lift RULE 1" 2 feature/x "$SECRET" escalate_and_production \
-    "fix the test
+run_case "forged trailer does not"              4 "$CI_LOCK" feature/x "$SECRET" edit_ci_file \
+    "adjust the pipeline
 
 Sensitive-File-Bypass: job-77=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-run_case "trailer for another job rejected"    2 feature/x "$SECRET" escalate_and_production \
-    "fix the test
+run_case "trailer for another job rejected"     4 "$CI_LOCK" feature/x "$SECRET" edit_ci_file \
+    "adjust the pipeline
 
 Sensitive-File-Bypass: job-OTHER=$SIG"
-run_case "valid trailer inert without secret"  2 feature/x "" escalate_and_production \
-    "fix the test
+run_case "valid trailer inert without secret"   4 "$CI_LOCK" feature/x "" edit_ci_file \
+    "adjust the pipeline
 
 Sensitive-File-Bypass: job-77=$SIG"
 
 # ── Fail-closed behaviour ───────────────────────────────────────
 #
-# A diff that cannot be taken is not a clean branch. The validator has to
-# stop rather than report an unvalidated commit as passing.
+# A diff that cannot be taken is not a clean branch: every check has to
+# stop rather than report an unchecked change set as passing.
 
 echo "Fail-closed behaviour"
-run_case "unusable base ref fails closed"      1 feature/x "$SECRET" edit_production \
+run_case "validator: unusable base fails closed"  1 "$VALIDATE" feature/x "$SECRET" edit_production \
+    "agent commit" "origin/no-such-base"
+run_case "py hiding: unusable base fails closed"  1 "$PY_HIDING" feature/x "$SECRET" edit_production \
+    "agent commit" "origin/no-such-base"
+run_case "CI lock: unusable base fails closed"    1 "$CI_LOCK" feature/x "$SECRET" edit_ci_file \
     "agent commit" "origin/no-such-base"
 
 # ── Report ──────────────────────────────────────────────────────

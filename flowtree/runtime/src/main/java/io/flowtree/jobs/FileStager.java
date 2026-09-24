@@ -344,8 +344,8 @@ public class FileStager implements ConsoleFeatures {
      * <p>These paths keep whole-file protection rather than the test-method
      * granularity {@link TestMethodProtection} applies to Java test sources:
      * a workflow file has no "test method" structure to reason about, and
-     * CI/workflow configuration is locked in full by design (see RULE 3 in
-     * {@code validate-agent-commit.sh}).</p>
+     * CI/workflow configuration is locked in full by design (see
+     * {@code tools/ci/agent-protection/check-ci-file-lock.sh}).</p>
      *
      * @param file the file path to test
      * @return true if the path is a protected CI/workflow path

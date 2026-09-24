@@ -352,10 +352,17 @@ forks from it; comparing against its current tip would misattribute the base
 branch's own later edits to the agent's branch.
 
 **Shared implementation:** The method-level check invokes
-`tools/ci/agent-protection/test-method-lines.awk` — the exact awk script the
-CI gate (`validate-agent-commit.sh`) uses — as a subprocess, so the
-harness-side guardrail and the CI-side gate can never disagree about which
-methods changed.
+`tools/ci/agent-protection/test-method-lines.awk` as a subprocess, read from
+the merge-base so a branch cannot alter the extractor it is judged by. The
+same script is what `validate-agent-commit.sh` uses to tell a new test
+method from an edited one.
+
+**A per-job lock, not the repository rule.** Guardrail 2 is on only for a job
+submitted with `protectTestFiles` — one whose premise is that the existing
+tests are the reference, above all a job sent to make failing tests pass.
+Every branch, locked or not, is held to `test-integrity-check` in CI, which
+allows an existing test to be edited but not weakened (see the root
+`CLAUDE.md`, "Agent integrity").
 
 **Fail-safe behavior:** Any failure along the way — the merge-base cannot be
 resolved, the merge-base file listing cannot be read, base or current content
@@ -367,9 +374,8 @@ step failed.
 **Rationale:** This guardrail prevents automated agents from hiding test
 failures by modifying existing tests instead of fixing production code, while
 still letting an agent add new test methods (or edit ones it introduced on
-the branch) to an existing test class — see `TestMethodProtection` and
-`tools/ci/agent-protection/validate-agent-commit.sh` (RULE 1) for the full
-rationale, including why fixtures/helpers/fields are never locked.
+the branch) to an existing test class — see `TestMethodProtection` for the
+full rationale, including why fixtures/helpers/fields are never locked.
 
 ### Guardrail 3: File Size Limit
 
@@ -751,14 +757,15 @@ the listing's own success judged exactly once.
 
 ### Rationale
 
-This guardrail exists to prevent automated coding agents from modifying
-existing tests or CI workflows to make failing tests pass. The correct
-response to a test failure is to fix the production code, not to weaken the
-test. New test files, new test methods, and edits to fixtures/helpers/fields
-are all allowed because agents may legitimately need to add or extend
-coverage for new functionality — see `TestMethodProtection` and
-`validate-agent-commit.sh` RULE 1 for the full reasoning, including why the
-lock is scoped to test methods rather than whole test classes.
+This guardrail exists to stop an agent sent to make failing tests pass from
+modifying the existing tests or CI workflows instead. The correct response to
+a test failure is to fix the production code, not to weaken the test; agents
+on such jobs have repeatedly loosened the test, which fails
+`test-integrity-check` and dispatches another agent to restore it, in a loop.
+New test files, new test methods, and edits to fixtures/helpers/fields are all
+allowed because agents may legitimately need to add or extend coverage — see
+`TestMethodProtection` for the full reasoning, including why the lock is
+scoped to test methods rather than whole test classes.
 
 ### Determining "New" vs "Existing" Files
 
