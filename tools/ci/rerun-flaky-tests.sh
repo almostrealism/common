@@ -13,8 +13,20 @@
 # attempts, this re-runs the failed jobs (GitHub re-runs the failed jobs and
 # their dependents, producing a new attempt) and reports retried=true. Only a
 # failure that survives MAX_ATTEMPTS attempts — or a failure with no flaky
-# test job in it (a deterministic failure such as build/checkstyle/policy) —
-# reports retried=false, letting the caller proceed to submit an agent job.
+# test job in it — reports retried=false, letting the caller proceed to submit
+# whatever request the `auto-resolve` job staged.
+#
+# Retries are for the slow path only. The early remediation jobs in "Build and
+# Test" submit from inside the pipeline, without waiting for this script:
+# `auto-resolve-python` when python-tests fails, and `auto-review` (build
+# failure, code policy, quality gates, docs-only verify, or the general
+# review) on attempt 1 only. `auto-resolve` stages its request
+# only on attempt MAX_ATTEMPTS or later, so the only thing a retry can lead to
+# is that slow-path request. Retrying therefore requires that the pipeline got
+# as far as the long-running test jobs (a failed flaky-eligible job, below),
+# and is refused outright when python-tests failed: that run's remediation has
+# already been submitted by auto-resolve-python, and auto-resolve is skipped
+# for it, so another attempt would only spend test capacity.
 #
 # A run whose head commit is no longer the tip of its branch is superseded: a
 # newer commit has been pushed and its own pipeline is authoritative. Retrying
@@ -96,11 +108,22 @@ if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
     exit 0
 fi
 
-# Failed jobs for the attempt that just completed. Cancelled/skipped jobs are
-# not "failures" here — only a job that ran and failed counts.
-FAILED_JOBS=$(gh api --paginate \
+# Every job of the attempt that just completed, as "<conclusion>\t<name>".
+JOBS=$(gh api --paginate \
     "/repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-    --jq '.jobs[] | select(.conclusion == "failure") | .name')
+    --jq '.jobs[] | "\(.conclusion)\t\(.name)"')
+
+# A python-tests failure is handled by auto-resolve-python: see the header.
+PYTHON_TESTS_CONCLUSION=$(printf '%s\n' "$JOBS" | awk -F '\t' '$2 == "python-tests" { print $1 }')
+if [ "$PYTHON_TESTS_CONCLUSION" = "failure" ]; then
+    echo "::notice::python-tests failed in run $RUN_ID attempt $RUN_ATTEMPT — auto-resolve-python already submitted a remediation, so the run is not retried"
+    emit false
+    exit 0
+fi
+
+# Failed jobs for the attempt. Cancelled/skipped jobs are not "failures"
+# here — only a job that ran and failed counts.
+FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" { print $2 }')
 
 if [ -z "$FAILED_JOBS" ]; then
     echo "::notice::No failed jobs found for run $RUN_ID attempt $RUN_ATTEMPT — proceeding to auto-resolve"
