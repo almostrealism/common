@@ -127,8 +127,24 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	private final ThreadLocal<ComputeContext<MemoryData>> scopedContext = new ThreadLocal<>();
 
-	/** Deferred initialization runnable; invoked on first device access, then set to null. */
-	private Runnable start;
+	/**
+	 * Deferred initialization runnable; invoked on first device access, then set to null.
+	 * Volatile so that a thread observing it become {@code null} (in {@link #ensureStarted()},
+	 * after acquiring {@link #startLock}) also observes every field {@link #start()} wrote
+	 * before clearing it.
+	 */
+	private volatile Runnable start;
+
+	/**
+	 * Serializes the lazy {@link #start} callback itself, independent of
+	 * {@link #lifecycleLock}. {@link #lifecycleLock}'s read side is shared, so without
+	 * this, two threads racing in {@link #ensureStarted()} could both pass the
+	 * {@code destroyed} check and both invoke {@link #start} concurrently,
+	 * double-initializing the Metal device. Always acquired only after
+	 * {@link #lifecycleLock}'s read lock (never the other way around), so it introduces
+	 * no new lock-ordering cycle with {@link #destroy()}'s write lock.
+	 */
+	private final Object startLock = new Object();
 
 	/**
 	 * Creates a Metal data context with specified memory limits.
@@ -189,10 +205,15 @@ public class MetalDataContext extends HardwareDataContext {
 	 * silently reinitializing the Metal device and {@link #mainRam} for a context {@link #destroy()}
 	 * has already torn down.
 	 *
+	 * <p>{@link #lifecycleLock}'s read side is shared, so it does not by itself stop two
+	 * threads from both observing {@link #start} as non-null and both running it. The nested
+	 * {@link #startLock} monitor serializes the callback itself with a standard double-checked
+	 * check: a thread that loses the race to {@link #startLock} re-checks {@link #start} once
+	 * inside and finds it already cleared by the winner, so the Metal device is only
+	 * initialized once.</p>
+	 *
 	 * @throws IllegalStateException if this data context has already been destroyed
 	 */
-	// TODO(review): readLock() is shared, so two threads racing here can both pass the
-	// destroyed check and both run start(), double-initializing the Metal device; see review-followup memory.
 	private void ensureStarted() {
 		lifecycleLock.readLock().lock();
 
@@ -202,7 +223,11 @@ public class MetalDataContext extends HardwareDataContext {
 						" because the data context has been destroyed");
 			}
 
-			if (start != null) start.run();
+			if (start != null) {
+				synchronized (startLock) {
+					if (start != null) start.run();
+				}
+			}
 		} finally {
 			lifecycleLock.readLock().unlock();
 		}
@@ -211,8 +236,11 @@ public class MetalDataContext extends HardwareDataContext {
 	/**
 	 * Creates a new {@link MetalComputeContext} for the given compute requirements.
 	 *
-	 * <p>Triggers deferred device initialization if not yet complete, then constructs
-	 * a {@link MetalComputeContext} backed by the main device.</p>
+	 * <p>Triggers deferred device initialization if not yet complete, via
+	 * {@link #ensureStarted()} rather than invoking {@link #start} directly, so this call
+	 * shares that method's fail-fast destroyed check and {@link #startLock} serialization
+	 * instead of racing a concurrent {@link #ensureStarted()} call to double-initialize the
+	 * Metal device. Then constructs a {@link MetalComputeContext} backed by the main device.</p>
 	 *
 	 * @param expectations Compute requirements (e.g., profiling); C and PROFILING are not supported
 	 * @return A new {@link MetalComputeContext} initialized with the main Metal device
@@ -232,7 +260,7 @@ public class MetalDataContext extends HardwareDataContext {
 		if (cReq.isPresent() || pReq.isPresent()) {
 			throw new UnsupportedOperationException();
 		} else {
-			if (start != null) start.run();
+			ensureStarted();
 			cc = new MetalComputeContext(this);
 			((MetalComputeContext) cc).init(mainDevice);
 		}

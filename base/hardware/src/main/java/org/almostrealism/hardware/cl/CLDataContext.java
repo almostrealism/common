@@ -332,8 +332,24 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** Thread-local memory provider function for size-based allocation. */
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
-	/** Lazy initialization callback for OpenCL resources. */
-	private Runnable start;
+	/**
+	 * Lazy initialization callback for OpenCL resources. Volatile so that a thread
+	 * observing it become {@code null} (in {@link #ensureStarted()}, after acquiring
+	 * {@link #startLock}) also observes every field this callback wrote before
+	 * clearing it.
+	 */
+	private volatile Runnable start;
+
+	/**
+	 * Serializes the lazy {@link #start} callback itself, independent of
+	 * {@link #lifecycleLock}. {@link #lifecycleLock}'s read side is shared, so without
+	 * this, two threads racing in {@link #ensureStarted()} could both pass the
+	 * {@code destroyed} check and both invoke {@link #start} concurrently,
+	 * double-initializing OpenCL. Always acquired only after {@link #lifecycleLock}'s
+	 * read lock (never the other way around), so it introduces no new lock-ordering
+	 * cycle with {@link #destroy()}'s write lock.
+	 */
+	private final Object startLock = new Object();
 
 	/**
 	 * Constructs a new CLDataContext with the specified configuration.
@@ -540,10 +556,14 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * of silently reinitializing OpenCL resources — including {@link #mainRam} — for a context
 	 * {@link #destroy()} has already torn down.
 	 *
+	 * <p>{@link #lifecycleLock}'s read side is shared, so it does not by itself stop two
+	 * threads from both observing {@link #start} as non-null and both running it. The nested
+	 * {@link #startLock} monitor serializes the callback itself with a standard double-checked
+	 * check: a thread that loses the race to {@link #startLock} re-checks {@link #start} once
+	 * inside and finds it already cleared by the winner, so OpenCL is only initialized once.</p>
+	 *
 	 * @throws IllegalStateException if this data context has already been destroyed
 	 */
-	// TODO(review): readLock() is shared, so two threads racing here can both pass the
-	// destroyed check and both run start(), double-initializing OpenCL; see review-followup memory.
 	private void ensureStarted() {
 		lifecycleLock.readLock().lock();
 
@@ -553,7 +573,11 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 						" because the data context has been destroyed");
 			}
 
-			if (start != null) start.run();
+			if (start != null) {
+				synchronized (startLock) {
+					if (start != null) start.run();
+				}
+			}
 		} finally {
 			lifecycleLock.readLock().unlock();
 		}

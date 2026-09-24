@@ -217,6 +217,15 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private Runnable onFullyReleased;
 
 	/**
+	 * Count of allocations that have reserved a lease via {@link #beginAllocation()} but
+	 * have not yet reached {@link #endAllocation()}. While positive, {@link #destroy()} may
+	 * still run to completion, but the {@link #onFullyReleased(Runnable)} callback is held
+	 * back so a backend resource that an in-flight allocation is about to use (or register)
+	 * is not released out from under it.
+	 */
+	private int pendingAllocations;
+
+	/**
 	 * Initializes allocation tracking and starts the background deallocation threads.
 	 */
 	public HardwareMemoryProvider() {
@@ -382,7 +391,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @param action the action to run once every retained block is released
 	 */
 	public synchronized void onFullyReleased(Runnable action) {
-		if (allocated.isEmpty()) {
+		if (allocated.isEmpty() && pendingAllocations == 0) {
 			action.run();
 		} else {
 			this.onFullyReleased = action;
@@ -391,18 +400,51 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 	/**
 	 * Runs and clears the {@link #onFullyReleased} callback once the tracked
-	 * allocation map has been drained, so the callback fires exactly once.
+	 * allocation map has been drained and no allocation is still in flight
+	 * (see {@link #beginAllocation()}), so the callback fires exactly once.
 	 */
 	private void notifyIfFullyReleased() {
 		Runnable action;
 
 		synchronized (this) {
-			if (!allocated.isEmpty() || onFullyReleased == null) return;
+			if (pendingAllocations > 0 || !allocated.isEmpty() || onFullyReleased == null) return;
 			action = onFullyReleased;
 			onFullyReleased = null;
 		}
 
 		action.run();
+	}
+
+	/**
+	 * Reserves a lease for an allocation that is about to create its backend resource
+	 * (e.g. an OpenCL buffer or Metal buffer) outside of any lock this provider holds.
+	 * While the lease is held, {@link #onFullyReleased(Runnable)}'s callback cannot fire,
+	 * so a backend resource (an OpenCL context, a Metal device) that this allocation's
+	 * backend call or subsequent {@link #allocated(RAM)} registration depends on
+	 * cannot be released underneath it — even if {@link #destroy()} runs concurrently.
+	 *
+	 * <p>Must be paired with {@link #endAllocation()} once the backend call and any
+	 * registration attempt have both finished, whether they succeeded or failed.</p>
+	 *
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
+	 */
+	protected synchronized void beginAllocation() {
+		if (destroying || destroyed) {
+			throw new IllegalStateException("Cannot allocate as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
+		}
+
+		pendingAllocations++;
+	}
+
+	/**
+	 * Releases the lease reserved by {@link #beginAllocation()}. If this was the last
+	 * outstanding lease, re-evaluates whether the {@link #onFullyReleased(Runnable)}
+	 * callback should now fire.
+	 */
+	protected synchronized void endAllocation() {
+		pendingAllocations--;
+		notifyIfFullyReleased();
 	}
 
 	/**
