@@ -70,6 +70,39 @@ class DefaultTimeoutTest(unittest.TestCase):
         self.assertEqual(15, server.DEFAULT_TIMEOUT)
 
 
+class RemainingTimeoutBudgetTest(unittest.TestCase):
+    """``_remaining_timeout_seconds`` subtracts preflight's elapsed time from
+    the run's configured timeout, so the test process's own timer does not
+    re-grant the full budget on top of what preflight already spent.
+    Regression coverage for the fix: ``start_run`` used to pass
+    ``config.timeout_minutes * 60`` to preflight AND then arm the test
+    process's timer with the same full value again, letting a run capped
+    at 40 minutes occupy the runner for close to 80.
+    """
+
+    def test_no_timeout_minutes_returns_none(self):
+        self.assertIsNone(server._remaining_timeout_seconds(None, 5.0))
+
+    def test_zero_timeout_minutes_returns_none(self):
+        self.assertIsNone(server._remaining_timeout_seconds(0, 5.0))
+
+    def test_no_preflight_time_returns_full_budget(self):
+        self.assertEqual(2400.0, server._remaining_timeout_seconds(40, 0.0))
+
+    def test_preflight_time_subtracted_from_budget(self):
+        # 40 minutes total, 5 minutes (300s) spent on preflight -> 35 minutes left.
+        self.assertEqual(2100.0, server._remaining_timeout_seconds(40, 300.0))
+
+    def test_preflight_time_exceeding_budget_clamped_to_zero(self):
+        # Preflight itself is capped at the same budget by start_run, but a
+        # run this close to the ceiling must still arm a (near-instant)
+        # timer rather than a negative one or none at all.
+        self.assertEqual(0.0, server._remaining_timeout_seconds(40, 5000.0))
+
+    def test_preflight_time_exactly_equal_to_budget_clamped_to_zero(self):
+        self.assertEqual(0.0, server._remaining_timeout_seconds(40, 2400.0))
+
+
 class JmxMonitoringJvmArgsTest(unittest.TestCase):
     """jmx_monitoring must not inject startup JVM flags.
 

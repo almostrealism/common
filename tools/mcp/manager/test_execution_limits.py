@@ -951,12 +951,24 @@ class _MvnTestSegmentMatcher:
     ``mvn``: a prompt telling the agent to "run ./mvnw test" is exactly as
     broad, and the bare ``mvn`` prefix does not match ``mvnw`` (no
     whitespace between ``mvn`` and ``w``).
+
+    The launcher and the phase are matched as two INDEPENDENT patterns
+    rather than one pattern requiring the phase immediately after the
+    launcher: a prose fragment such as "run mvn -pl engine/utils test" or
+    "run mvn clean test" has other words between the launcher and the
+    phase, exactly like `` mavenSegmentViolation``'s argument-aware scan of
+    every tokenized argument in
+    ``flowtree/runtime/.../PostCompletionCommandValidator.java`` (it does
+    not require the phase to be the first argument either). A single
+    combined regex requiring adjacency missed both forms.
     """
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
-    _MVN_TEST_PATTERN = re.compile(
-        r"\b(?:" + "|".join(re.escape(n) for n in sorted(_MVN_LAUNCHER_NAMES)) + r")\s+(?:"
-        + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
+    _MVN_LAUNCHER_PATTERN = re.compile(
+        r"\b(?:" + "|".join(re.escape(n) for n in sorted(_MVN_LAUNCHER_NAMES)) + r")\b",
+        re.IGNORECASE)
+    _MVN_TEST_PHASE_PATTERN = re.compile(
+        r"\b(?:" + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
         re.IGNORECASE)
     _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
     # Captures an explicit true/false value when present (a bare mention
@@ -973,7 +985,8 @@ class _MvnTestSegmentMatcher:
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
-            if not self._MVN_TEST_PATTERN.search(fragment):
+            if not self._MVN_LAUNCHER_PATTERN.search(fragment) \
+                    or not self._MVN_TEST_PHASE_PATTERN.search(fragment):
                 continue
             if self._SELECTOR_PATTERN.search(fragment):
                 continue

@@ -62,12 +62,22 @@ public class PromptTestInstructionLinter {
 	private static final Pattern CHAIN_SPLIT = Pattern.compile("&&|\\|\\||;|\\|");
 
 	/** Matches an {@code mvn}/{@code mvnw}/... launcher name (see
-	 * {@link PostCompletionCommandValidator#MVN_LAUNCHER_NAMES}) followed by a test-running
-	 * phase (see {@link PostCompletionCommandValidator#TEST_RUNNING_PHASES}), anywhere in a
-	 * prompt fragment. */
-	private static final Pattern MVN_TEST_PATTERN = Pattern.compile(
-			"\\b(?:" + alternation(PostCompletionCommandValidator.MVN_LAUNCHER_NAMES) + ")\\s+(?:"
-					+ alternation(PostCompletionCommandValidator.TEST_RUNNING_PHASES) + ")\\b",
+	 * {@link PostCompletionCommandValidator#MVN_LAUNCHER_NAMES}), anywhere in a prompt fragment.
+	 * Matched independently of {@link #MVN_TEST_PHASE_PATTERN} rather than as one combined
+	 * regex requiring the phase immediately after the launcher -- a prose fragment such as
+	 * "run mvn -pl engine/utils test" or "run mvn clean test" has other words between the
+	 * launcher and the phase, exactly like {@code mavenSegmentViolation}'s argument-aware scan
+	 * of every tokenized argument in {@link PostCompletionCommandValidator} (it does not
+	 * require the phase to be the first argument either). */
+	private static final Pattern MVN_LAUNCHER_PATTERN = Pattern.compile(
+			"\\b(?:" + alternation(PostCompletionCommandValidator.MVN_LAUNCHER_NAMES) + ")\\b",
+			Pattern.CASE_INSENSITIVE);
+
+	/** Matches a test-running Maven phase (see
+	 * {@link PostCompletionCommandValidator#TEST_RUNNING_PHASES}), anywhere in a prompt
+	 * fragment. See {@link #MVN_LAUNCHER_PATTERN} for why this is matched independently. */
+	private static final Pattern MVN_TEST_PHASE_PATTERN = Pattern.compile(
+			"\\b(?:" + alternation(PostCompletionCommandValidator.TEST_RUNNING_PHASES) + ")\\b",
 			Pattern.CASE_INSENSITIVE);
 
 	/** Matches an explicit {@code -Dtest=Class#method}-shaped mention in a prompt fragment. */
@@ -158,7 +168,8 @@ public class PromptTestInstructionLinter {
 	 */
 	private static boolean mvnSegmentWithoutSelector(String line) {
 		for (String fragment : CHAIN_SPLIT.split(line)) {
-			if (!MVN_TEST_PATTERN.matcher(fragment).find()) {
+			if (!MVN_LAUNCHER_PATTERN.matcher(fragment).find()
+					|| !MVN_TEST_PHASE_PATTERN.matcher(fragment).find()) {
 				continue;
 			}
 			if (SELECTOR_PATTERN.matcher(fragment).find()) {

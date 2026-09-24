@@ -637,6 +637,23 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "Please run ./mvnw test to check your change compiles and passes.")
         self.assertTrue(hits, "a prompt telling the agent to run ./mvnw test must be flagged")
 
+    def test_mvn_test_with_module_flag_between_launcher_and_phase_rejected(self):
+        # The old matcher required the phase immediately after the
+        # launcher; "mvn -pl engine/utils test" has other tokens in
+        # between and slipped through undetected.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn -pl engine/utils test to check your change compiles and passes.")
+        self.assertTrue(hits, "mvn <flags> test must be flagged even with tokens between "
+                              "the launcher and the phase")
+
+    def test_mvn_clean_test_with_goal_between_launcher_and_phase_rejected(self):
+        # Same adjacency gap for a preceding lifecycle goal: "mvn clean
+        # test" is exactly as broad as "mvn test".
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn clean test to check your change compiles and passes.")
+        self.assertTrue(hits, "mvn clean test must be flagged even though \"test\" does not "
+                              "immediately follow \"mvn\"")
+
     def test_unittest_discover_prompt_rejected(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run python3 -m unittest discover to check your change.")

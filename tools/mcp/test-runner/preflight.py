@@ -366,7 +366,7 @@ def _default_runner(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
-        preexec_fn=os.setsid,
+        start_new_session=True,
     )
     timed_out = threading.Event()
 

@@ -91,6 +91,20 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertFalse(violationsFor("Run mvn test -pl engine/utils to check your fix.").isEmpty());
 	}
 
+	/** The old matcher required the test phase immediately after the launcher, so tokens like a
+	 * module flag in between let a broad command slip past undetected. */
+	@Test(timeout = 10000)
+	public void mvnTestWithModuleFlagBetweenLauncherAndPhaseRejected() {
+		assertFalse(violationsFor("Run mvn -pl engine/utils test to check your fix.").isEmpty());
+	}
+
+	/** Same adjacency gap for a preceding lifecycle goal: "mvn clean test" is exactly as broad
+	 * as "mvn test" even though "test" does not immediately follow "mvn". */
+	@Test(timeout = 10000)
+	public void mvnCleanTestWithGoalBetweenLauncherAndPhaseRejected() {
+		assertFalse(violationsFor("Run mvn clean test to check your fix.").isEmpty());
+	}
+
 	/** "mvn test -Dtest=Class#method" is accepted. */
 	@Test(timeout = 10000)
 	public void mvnTestWithSelectorAccepted() {

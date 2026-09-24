@@ -129,6 +129,36 @@ class RunConfig:
                        jvm_args=list(self.jvm_args))
 
 
+def _remaining_timeout_seconds(timeout_minutes: Optional[int],
+                                elapsed_seconds: float) -> Optional[float]:
+    """Return the timeout budget left for the test process after preflight.
+
+    ``timeout_minutes`` documents the run's total wall-clock ceiling, but the
+    synchronous preflight seed step (see ``start_run``) runs BEFORE the test
+    process's own timer is armed. Arming that timer with the full
+    ``timeout_minutes * 60`` again would let a run occupy the server for up
+    to 2x its documented budget (the preflight time plus a fresh full
+    timeout for the test process). This subtracts what preflight already
+    spent, so the two together never exceed ``timeout_minutes``.
+
+    Args:
+        timeout_minutes: The run's configured timeout, or falsy when no
+            timeout applies (``None`` is returned in that case, matching the
+            "no timer armed" behavior for an unbounded run).
+        elapsed_seconds: Wall-clock time already spent on preflight before
+            the test process's timer is armed.
+
+    Returns:
+        The remaining seconds available for the test process, clamped to
+        ``0.0`` at minimum (preflight consuming the entire budget still
+        arms a timer, just one that fires immediately rather than never).
+        ``None`` when ``timeout_minutes`` is falsy.
+    """
+    if not timeout_minutes:
+        return None
+    return max(0.0, timeout_minutes * 60 - elapsed_seconds)
+
+
 @dataclass
 class RunMetadata:
     """Metadata for a test run."""
@@ -304,9 +334,20 @@ class TestRunner:
         # it must finish before the test process launches against the same
         # module. Skipped path is a few-millisecond pom scan; only the
         # genuinely-uninstalled case blocks for the duration of mvn install.
+        preflight_started = time.monotonic()
         preflight_result = preflight_runner.run(
             run_dir, config.module, config.project_root(),
             timeout_seconds=(config.timeout_minutes or MAX_TIMEOUT_MINUTES) * 60)
+        preflight_elapsed = time.monotonic() - preflight_started
+        # The test process's own timeout timer is armed below, AFTER this
+        # preflight step already spent part of the run's timeout_minutes
+        # budget. Without subtracting that elapsed time, a run capped at
+        # timeout_minutes could occupy the runner for close to 2x that
+        # budget (up to timeout_minutes for preflight, then a fresh
+        # timeout_minutes for the test process). remaining_timeout_seconds
+        # is what's left of the budget for the test process alone.
+        remaining_timeout_seconds = _remaining_timeout_seconds(
+            config.timeout_minutes, preflight_elapsed)
         if preflight_result.action == "failed":
             # Short-circuit: mark the run failed and return early. The
             # preflight banner already explains the failure in output.txt.
@@ -341,10 +382,13 @@ class TestRunner:
             )
             self._save_metadata(run_id, metadata)
 
-            # Start timeout timer (applies to entire run)
-            if config.timeout_minutes:
+            # Start timeout timer (applies to entire run). Uses
+            # remaining_timeout_seconds, not config.timeout_minutes * 60, so
+            # the preflight time already spent above counts against this
+            # run's timeout budget instead of extending it.
+            if remaining_timeout_seconds is not None:
                 timer = threading.Timer(
-                    config.timeout_minutes * 60,
+                    remaining_timeout_seconds,
                     self._timeout_run,
                     [run_id]
                 )
@@ -418,10 +462,14 @@ class TestRunner:
             )
             pid_discovery.start()
 
-        # Start timeout timer
-        if config.timeout_minutes:
+        # Start timeout timer. Uses remaining_timeout_seconds, not
+        # config.timeout_minutes * 60, so the preflight time already spent
+        # above counts against this run's timeout budget instead of
+        # extending it -- see the comment where remaining_timeout_seconds
+        # is computed, above.
+        if remaining_timeout_seconds is not None:
             timer = threading.Timer(
-                config.timeout_minutes * 60,
+                remaining_timeout_seconds,
                 self._timeout_run,
                 [run_id]
             )

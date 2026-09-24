@@ -28,6 +28,7 @@ import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -454,6 +455,35 @@ class DefaultRunnerTimeoutTests(unittest.TestCase):
                 [sys.executable, "-c", "print('done')"],
                 Path(tmp), None, timeout_seconds=10)
             self.assertEqual(0, exit_code)
+
+    def test_uses_start_new_session_not_preexec_fn(self):
+        """``preexec_fn`` runs arbitrary Python in the forked child between
+        fork() and exec(), which can deadlock in a multi-threaded process
+        (the interpreter lock a background thread holds is never released
+        into the child). ``start_new_session=True`` gets the identical
+        setsid() process-group isolation from the C library instead, with
+        no Python callback running post-fork. Regression test for the
+        preexec_fn=os.setsid bug this function used to have."""
+        captured_kwargs = {}
+
+        class _FakeCompletedProcess:
+            pid = 99999
+            returncode = 0
+            stdout = None
+
+            def wait(self):
+                return 0
+
+        def _fake_popen(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return _FakeCompletedProcess()
+
+        with TemporaryDirectory() as tmp:
+            with mock.patch("preflight.subprocess.Popen", side_effect=_fake_popen):
+                preflight._default_runner(["true"], Path(tmp), None, timeout_seconds=5)
+
+        self.assertNotIn("preexec_fn", captured_kwargs)
+        self.assertTrue(captured_kwargs.get("start_new_session"))
 
 
 class ArtifactPathTests(unittest.TestCase):
