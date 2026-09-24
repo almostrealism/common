@@ -344,6 +344,79 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "mvn test -pl engine/utils '")
         self.assertTrue(violations, "an unparseable command must not be silently accepted")
 
+    def test_env_dash_s_split_string_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "env -S 'mvn test -pl engine/utils'")
+        self.assertTrue(violations, "env -S 'mvn test' must be rejected like a direct mvn test")
+
+    def test_env_dash_s_glued_split_string_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "env -S'mvn test -pl engine/utils'")
+        self.assertTrue(violations)
+
+    def test_env_dash_dash_split_string_equals_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "env --split-string='mvn test -pl engine/utils'")
+        self.assertTrue(violations)
+
+    def test_env_dash_s_split_string_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "env -S 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'"))
+
+    def test_if_then_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "if true; then mvn test -pl engine/utils; fi")
+        self.assertTrue(violations, "if/then must not hide a broad mvn test")
+
+    def test_for_do_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "for i in 1 2 3; do mvn test -pl engine/utils; done")
+        self.assertTrue(violations, "for/do must not hide a broad mvn test")
+
+    def test_if_then_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "if true; then mvn -pl flowtree/runtime test "
+            "-Dtest=NotifierRegistryTest#testFoo; fi"))
+
+    def test_wildcard_method_dtest_selector_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=FooTest#test*")
+        self.assertTrue(violations, "a wildcard method selector must be rejected")
+
+    def test_wildcard_class_dtest_selector_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=Foo*#bar")
+        self.assertTrue(violations, "a wildcard class selector must be rejected")
+
+    def test_question_mark_wildcard_dtest_selector_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=FooTest#test?")
+        self.assertTrue(violations)
+
+    def test_unittest_discover_rejected(self):
+        violations = validate_post_completion_command("python3 -m unittest discover")
+        self.assertTrue(violations, "unittest discover must be rejected")
+
+    def test_unittest_with_no_args_rejected(self):
+        violations = validate_post_completion_command("python -m unittest")
+        self.assertTrue(violations)
+
+    def test_unittest_bare_module_rejected(self):
+        violations = validate_post_completion_command("python3 -m unittest tests.test_foo")
+        self.assertTrue(violations)
+
+    def test_unittest_single_method_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "python3 -m unittest tests.test_foo.FooTest.test_bar"))
+
+    def test_bare_sh_with_no_script_argument_rejected(self):
+        violations = validate_post_completion_command(
+            "printf 'mvn test -pl engine/utils' | sh")
+        self.assertTrue(violations, "a bare sh reading a script from stdin must be rejected")
+
+    def test_sh_with_script_file_argument_accepted(self):
+        self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 
@@ -525,6 +598,21 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run ./mvnw test to check your change compiles and passes.")
         self.assertTrue(hits, "a prompt telling the agent to run ./mvnw test must be flagged")
+
+    def test_unittest_discover_prompt_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3 -m unittest discover to check your change.")
+        self.assertTrue(hits, "a prompt telling the agent to run unittest discover must be flagged")
+
+    def test_unittest_bare_module_prompt_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python -m unittest tests.test_foo to check your change.")
+        self.assertTrue(hits)
+
+    def test_unittest_single_method_prompt_not_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3 -m unittest tests.test_foo.FooTest.test_bar to verify the fix.")
+        self.assertFalse(hits, "an unambiguous single unittest method id must not be flagged")
 
 
 if __name__ == "__main__":

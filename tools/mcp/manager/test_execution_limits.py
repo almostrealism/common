@@ -74,8 +74,13 @@ _SHELL_INTERPRETERS = {"sh", "bash", "zsh", "dash", "ksh"}
 # `env` options that consume the following token as their own operand (unless
 # given in glued `--opt=value` form) rather than being a bare flag -- e.g.
 # `env -u FOO mvn test` unsets FOO before running `mvn`, so "FOO" must not be
-# mistaken for the wrapped command's own first token.
-_ENV_OPTIONS_WITH_OPERAND = {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}
+# mistaken for the wrapped command's own first token. Excludes -S/
+# --split-string: unlike every other entry here, that option's operand is not
+# passed through unchanged as the wrapped command's argument -- env
+# word-splits it into a brand-new command line and executes that, so
+# `_unwrap_env` handles it separately via `_ENV_SPLIT_SCRIPT_SENTINEL`
+# instead of treating it as an operand to skip.
+_ENV_OPTIONS_WITH_OPERAND = {"-u", "--unset", "-C", "--chdir"}
 
 _BACKTICK_SUBSTITUTION_PATTERN = re.compile(r"`([^`]*)`")
 
@@ -85,6 +90,24 @@ _BACKTICK_SUBSTITUTION_PATTERN = re.compile(r"`([^`]*)`")
 # command detection. Not a value any real shell token can equal, since a
 # NUL byte cannot appear in a shell command line.
 _UNPARSEABLE_SENTINEL = "\0unparseable\0"
+
+# Sentinel first token used by ``_unwrap_env`` to signal that it found an
+# ``env -S``/``--split-string`` script rather than an ordinary wrapped
+# command, and recognized by ``_segment_violations`` to route the second
+# element (the script text) to ``_text_violations`` instead of treating it as
+# a command's own first token. Not a value any real shell token can equal.
+_ENV_SPLIT_SCRIPT_SENTINEL = "\0envSplitScript\0"
+
+# Shell control-flow keywords that can precede a segment's real command after
+# operator splitting -- e.g. "if true; then mvn test -pl engine/utils; fi"
+# splits on ";" into a segment ["then", "mvn", "test", "-pl", "engine/utils"],
+# whose first token is "then", not "mvn". Without stripping these,
+# `_maven_segment_violation` and `_pytest_segment_violation` never see the
+# wrapped command at all.
+_SHELL_CONTROL_WORDS = {
+    "if", "then", "elif", "else", "fi", "while", "until", "do", "done",
+    "for", "case", "esac", "select", "function",
+}
 
 # Command-prefix wrappers that pass their remaining arguments through to the
 # real command unchanged: a shell builtin/wrapper such as ``command mvn
@@ -186,6 +209,20 @@ def _line_segments(line: str) -> list:
     return segments
 
 
+def _env_split_string_operand(tok: str, tokens: list, i: int):
+    """Returns the script text of an ``env -S``/``--split-string`` flag at
+    ``tokens[i]``, in any of its three forms (``-S <script>``, glued
+    ``-S<script>``, or ``--split-string=<script>``), or ``None`` when
+    ``tokens[i]`` is not that flag."""
+    if tok in ("-S", "--split-string"):
+        return tokens[i + 1] if i + 1 < len(tokens) else ""
+    if tok.startswith("--split-string="):
+        return tok[len("--split-string="):]
+    if tok.startswith("-S") and len(tok) > 2:
+        return tok[2:]
+    return None
+
+
 def _unwrap_env(tokens: list) -> list:
     """Strips a leading ``env`` invocation's ``VAR=value`` assignments and
     flags (e.g. ``-i``), returning the wrapped command's own tokens
@@ -195,7 +232,16 @@ def _unwrap_env(tokens: list) -> list:
     token as its own operand unless given in glued ``--opt=value`` form --
     without this, ``env -u FOO mvn test`` would treat ``FOO`` as the wrapped
     command's own first token instead of skipping it, and never recognize
-    ``mvn`` at all."""
+    ``mvn`` at all.
+
+    ``-S``/``--split-string`` is different in kind, not just another
+    operand-flag: ``env`` word-splits that operand and executes the result as
+    a brand-new command line, the same way ``sh -c`` does -- it does not pass
+    the operand through unchanged as an argument to the wrapped command.
+    Skipping it like an ordinary operand would silently discard ``env -S
+    'mvn test -pl engine/utils'``'s actual payload instead of validating it,
+    so this returns the ``_ENV_SPLIT_SCRIPT_SENTINEL`` marker pair instead.
+    """
     if not tokens or tokens[0].rsplit("/", 1)[-1] != "env":
         return tokens
     i = 1
@@ -206,6 +252,9 @@ def _unwrap_env(tokens: list) -> list:
             continue
         if not tok.startswith("-"):
             break
+        split_script = _env_split_string_operand(tok, tokens, i)
+        if split_script is not None:
+            return [_ENV_SPLIT_SCRIPT_SENTINEL, split_script]
         i += 1
         if tok in _ENV_OPTIONS_WITH_OPERAND and "=" not in tok and i < len(tokens):
             i += 1
@@ -245,21 +294,36 @@ def _unwrap_cmd_prefix_options(wrapper_base: str, tokens: list) -> list:
     return tokens[i:]
 
 
+def _is_env_split_string_result(unwrapped: list) -> bool:
+    """True when ``unwrapped`` is the ``_ENV_SPLIT_SCRIPT_SENTINEL`` marker
+    pair ``_unwrap_env`` returns for an ``env -S``/``--split-string``
+    invocation."""
+    return len(unwrapped) == 2 and unwrapped[0] == _ENV_SPLIT_SCRIPT_SENTINEL
+
+
 def _unwrap_command_prefixes(tokens: list) -> list:
     """Strips a leading chain of command-prefix wrappers -- ``env``
     (with its own ``VAR=value`` assignments and flags), bare ``VAR=value``
     assignments with no leading ``env`` token (the shell accepts one or more
-    of these directly in command position, e.g. ``FOO=bar mvn test``), and
+    of these directly in command position, e.g. ``FOO=bar mvn test``),
     simple wrappers in ``_CMD_PREFIXES`` (``sudo``, ``nohup``, ``time``,
     ``exec``, ``command``, ``builtin``, ``stdbuf``, ``nice``, ``ionice``,
     ``!``) along with any of that wrapper's own option flags and, for a
-    recognized flag, its operand (see ``_unwrap_cmd_prefix_options``) -- so
-    e.g. ``command mvn test``, ``sudo env FOO=bar mvn test``, ``nice -n 10
-    mvn test``, or ``FOO=bar mvn test`` reach the real command. Returns
-    ``tokens`` unchanged when it starts with none of these.
+    recognized flag, its operand (see ``_unwrap_cmd_prefix_options``), and a
+    leading ``_SHELL_CONTROL_WORDS`` keyword (e.g. ``then``, ``do``) left in
+    front of a segment's real command by operator-splitting a chain like
+    ``if true; then mvn test; fi`` -- so e.g. ``command mvn test``, ``sudo
+    env FOO=bar mvn test``, ``nice -n 10 mvn test``, ``FOO=bar mvn test``, or
+    ``then mvn test`` reach the real command. Returns ``tokens`` unchanged
+    when it starts with none of these -- or, when ``tokens`` is an ``env
+    -S``/``--split-string`` invocation, returns the
+    ``_ENV_SPLIT_SCRIPT_SENTINEL`` marker pair from ``_unwrap_env`` unchanged,
+    since that shape has no further tokens of its own left to unwrap.
     """
     while tokens:
         unwrapped = _unwrap_env(tokens)
+        if _is_env_split_string_result(unwrapped):
+            return unwrapped
         if unwrapped is not tokens:
             tokens = unwrapped
             continue
@@ -270,6 +334,9 @@ def _unwrap_command_prefixes(tokens: list) -> list:
         base = tokens[0].rsplit("/", 1)[-1]
         if base in _CMD_PREFIXES:
             tokens = _unwrap_cmd_prefix_options(base, tokens[1:])
+            continue
+        if base in _SHELL_CONTROL_WORDS:
+            tokens = tokens[1:]
             continue
         break
     return tokens
@@ -376,6 +443,8 @@ def _segment_violations(tokens: list) -> list:
             "tokenizes unambiguously; it cannot be validated as written.".format(raw)
         ]
     unwrapped = _unwrap_command_prefixes(tokens)
+    if _is_env_split_string_result(unwrapped):
+        return _text_violations(unwrapped[1])
     script = _shell_dash_c_script(unwrapped)
     if script is None:
         script = _eval_script(unwrapped)
@@ -385,6 +454,12 @@ def _segment_violations(tokens: list) -> list:
     if reason:
         return [reason]
     reason = _pytest_segment_violation(unwrapped)
+    if reason:
+        return [reason]
+    reason = _unittest_segment_violation(unwrapped)
+    if reason:
+        return [reason]
+    reason = _bare_shell_interpreter_violation(unwrapped)
     if reason:
         return [reason]
     return []
@@ -416,7 +491,8 @@ def _dtest_values(args: list) -> list:
 
 
 def _dtest_is_narrow(value: str) -> bool:
-    """True if ``value`` is exactly one non-empty Class#method entry.
+    """True if ``value`` is exactly one Class#method entry with non-empty,
+    wildcard-free class and method names.
 
     A ``-Dtest`` value may name several comma-separated entries, but Maven
     runs all of them in a single invocation -- accepting more than one,
@@ -425,10 +501,18 @@ def _dtest_is_narrow(value: str) -> bool:
     rule this validator otherwise enforces. Only a single Class#method entry
     is narrow enough. A bare class name (no ``#``) also fails this check --
     see the HARD RULES for this rule: "a bare -Dtest=Class also counts as
-    too broad".
+    too broad". Surefire treats ``*`` and ``?`` in either half as
+    wildcards, so e.g. ``FooTest#test*`` or ``Foo*#bar`` can still select
+    and run several methods/classes in one invocation despite naming
+    exactly one comma-separated entry with a ``#`` in it.
     """
     entries = [e for e in value.split(",") if e]
-    return len(entries) == 1 and "#" in entries[0]
+    if len(entries) != 1 or entries[0].count("#") != 1:
+        return False
+    class_name, _, method_name = entries[0].partition("#")
+    if not class_name or not method_name:
+        return False
+    return not any(c in "*?" for c in class_name + method_name)
 
 
 def _effective_skip_value(args: list, pattern) -> bool:
@@ -514,6 +598,66 @@ def _pytest_segment_violation(tokens: list) -> str:
         "pytest command has no explicit node id (file.py::test_name): "
         "\"{}\". This runs an entire file or directory. Pass explicit "
         "node ids, one test per invocation.".format(" ".join(tokens)))
+
+
+def _unittest_segment_violation(tokens: list) -> str:
+    """Return a violation reason for a ``python -m unittest`` command
+    segment, or ``""`` when it already names a single dotted test id.
+
+    Unlike pytest's ``file.py::test_name`` node id, ``unittest`` addresses a
+    single test with a dotted ``module.Class.method`` path (two or more
+    dots) -- a bare module or ``module.Class`` still runs every test in it,
+    and ``discover`` explicitly walks and runs a whole test tree. Without
+    this check, ``python3 -m unittest discover`` (the CI documentation's own
+    example of a forbidden broad run) passed through both the Maven and
+    pytest checks unrecognized, and was accepted.
+    """
+    if not tokens:
+        return ""
+    base = tokens[0].rsplit("/", 1)[-1]
+    rest = tokens[1:]
+    if base not in ("python", "python3") or len(rest) < 2 \
+            or rest[0] != "-m" or rest[1] != "unittest":
+        return ""
+    args = rest[2:]
+    positionals = [a for a in args if not a.startswith("-")]
+    if len(positionals) == 1 and positionals[0] != "discover" \
+            and positionals[0].count(".") >= 2:
+        return ""
+    return (
+        "python -m unittest command in \"{}\" does not name a single "
+        "dotted module.Class.method test id. \"discover\", a bare module, "
+        "or a module.Class runs many tests at once, which agents and job "
+        "submitters may never do. Pass exactly one module.Class.method id "
+        "per invocation.".format(" ".join(tokens)))
+
+
+def _bare_shell_interpreter_violation(tokens: list) -> str:
+    """Return a violation reason when ``tokens`` invokes a
+    ``_SHELL_INTERPRETERS`` interpreter with no script-file positional
+    argument -- meaning it reads its script from standard input, as in
+    ``printf 'mvn test -pl engine/utils' | sh`` or a heredoc. That shape
+    cannot be validated as written: the script text is not present anywhere
+    in the command line for this validator to inspect (unlike ``sh -c
+    "<script>"``, which ``_shell_dash_c_script`` already recurses into).
+
+    Returns ``""`` when the interpreter has a positional argument -- a
+    script file path, e.g. ``bash scripts/verify-foo.sh`` -- since that is a
+    deliberately supported, trusted use of a post-completion command (see
+    ``PostCompletionCommandRule``'s javadoc) that this validator cannot and
+    does not attempt to inspect the contents of.
+    """
+    if not tokens or tokens[0].rsplit("/", 1)[-1] not in _SHELL_INTERPRETERS:
+        return ""
+    for tok in tokens[1:]:
+        if not tok.startswith("-"):
+            return ""
+    return (
+        "Shell interpreter invoked with no script file or -c argument in "
+        "\"{}\" reads its script from standard input (e.g. via a pipe or "
+        "heredoc), which cannot be validated as written. Run mvn/pytest "
+        "directly, or invoke an explicit script file instead of piping one "
+        "into the interpreter.".format(" ".join(tokens)))
 
 
 def validate_post_completion_command(command: str) -> list:
@@ -636,9 +780,12 @@ class _DTestBroadValueMatcher:
     exactly one entry also catches ``-Dtest=Foo#bar,Baz#qux``, where every
     individual entry names a method but Maven still runs both in the same
     invocation -- matching ``_dtest_is_narrow``'s "at most ONE test per
-    invocation" rule in the command validator. Exposes the same
-    ``search(line)`` interface as a compiled pattern so it drops into
-    ``_TEST_LINT_PATTERNS`` unchanged.
+    invocation" rule in the command validator. Also matches
+    ``_dtest_is_narrow`` in requiring non-empty, wildcard-free class and
+    method names: Surefire treats ``*``/``?`` as wildcards, so
+    ``-Dtest=FooTest#test*`` still runs several methods despite naming one
+    entry with a ``#`` in it. Exposes the same ``search(line)`` interface as
+    a compiled pattern so it drops into ``_TEST_LINT_PATTERNS`` unchanged.
     """
 
     _VALUE_PATTERN = re.compile(r"-Dtest=(\S+)", re.IGNORECASE)
@@ -648,13 +795,47 @@ class _DTestBroadValueMatcher:
         if not match:
             return None
         entries = [e for e in match.group(1).split(",") if e]
-        if len(entries) == 1 and "#" in entries[0]:
-            return None
+        if len(entries) == 1 and entries[0].count("#") == 1:
+            class_name, _, method_name = entries[0].partition("#")
+            if class_name and method_name and not any(
+                    c in "*?" for c in class_name + method_name):
+                return None
         return match
 
 
 _TEST_LINT_PATTERNS.append(
     (_DTestBroadValueMatcher(), "-Dtest=<value> not naming exactly one Class#method entry"))
+
+
+class _UnittestDiscoveryMatcher:
+    """Flags a ``python -m unittest``/``python3 -m unittest`` mention that
+    either uses ``discover`` or names no single dotted ``module.Class.method``
+    test id, mirroring ``_unittest_segment_violation``'s command-line check
+    (see its docstring) for free-text prompt instructions. Without this, a
+    prompt telling the agent to "run python3 -m unittest discover" -- the CI
+    documentation's own example of a forbidden broad run -- passed
+    ``lint_prompt_for_broad_test_instructions`` unflagged, even though the
+    equivalent Maven/pytest instructions are caught by the patterns above.
+    """
+
+    _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
+    _UNITTEST_PATTERN = re.compile(r"\bpython3?\s+-m\s+unittest\b", re.IGNORECASE)
+    _DISCOVER_PATTERN = re.compile(r"\bdiscover\b", re.IGNORECASE)
+    _DOTTED_ID_PATTERN = re.compile(r"\b\w+(?:\.\w+){2,}\b")
+
+    def search(self, line: str):
+        for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
+            if self._UNITTEST_PATTERN.search(fragment) and (
+                    self._DISCOVER_PATTERN.search(fragment)
+                    or not self._DOTTED_ID_PATTERN.search(fragment)):
+                return True
+        return None
+
+
+_TEST_LINT_PATTERNS.append(
+    (_UnittestDiscoveryMatcher(),
+     '"python -m unittest discover" (or a unittest invocation naming no '
+     "single module.Class.method id)"))
 
 
 def lint_prompt_for_broad_test_instructions(prompt: str) -> list:

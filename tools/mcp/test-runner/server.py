@@ -305,7 +305,8 @@ class TestRunner:
         # module. Skipped path is a few-millisecond pom scan; only the
         # genuinely-uninstalled case blocks for the duration of mvn install.
         preflight_result = preflight_runner.run(
-            run_dir, config.module, config.project_root())
+            run_dir, config.module, config.project_root(),
+            timeout_seconds=(config.timeout_minutes or MAX_TIMEOUT_MINUTES) * 60)
         if preflight_result.action == "failed":
             # Short-circuit: mark the run failed and return early. The
             # preflight banner already explains the failure in output.txt.

@@ -24,6 +24,7 @@ Run from the repo root::
 
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -419,6 +420,40 @@ class SeedingTests(unittest.TestCase):
                 repository=repository, runner=fake_runner,
                 output_writer=writer_that_explodes)
             self.assertEqual("seeded", result.action)
+
+
+class DefaultRunnerTimeoutTests(unittest.TestCase):
+    """Cover :func:`preflight._default_runner`'s enforced subprocess
+    timeout directly (real subprocesses, no ``runner`` stub), since the
+    ``SeedingTests`` above all exercise a stub that bypasses it entirely."""
+
+    def test_kills_process_that_exceeds_timeout(self):
+        with TemporaryDirectory() as tmp:
+            start = time.monotonic()
+            exit_code = preflight._default_runner(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                Path(tmp), None, timeout_seconds=0.3)
+            elapsed = time.monotonic() - start
+            self.assertLess(
+                elapsed, 4.0,
+                "a subprocess past its timeout must be killed near the deadline, not run to completion")
+            self.assertNotEqual(0, exit_code)
+
+    def test_reports_timeout_banner_to_output_writer(self):
+        chunks = []
+        with TemporaryDirectory() as tmp:
+            preflight._default_runner(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                Path(tmp), chunks.append, timeout_seconds=0.3)
+        self.assertTrue(any("exceeded" in c and "killed" in c for c in chunks),
+                        "a killed preflight subprocess must report why in its output")
+
+    def test_process_finishing_within_timeout_is_not_killed(self):
+        with TemporaryDirectory() as tmp:
+            exit_code = preflight._default_runner(
+                [sys.executable, "-c", "print('done')"],
+                Path(tmp), None, timeout_seconds=10)
+            self.assertEqual(0, exit_code)
 
 
 class ArtifactPathTests(unittest.TestCase):

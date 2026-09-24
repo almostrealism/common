@@ -113,9 +113,13 @@ public class PostCompletionCommandValidator {
 	/** {@code env} options that consume the following token as their own operand (unless given in
 	 * glued {@code --opt=value} form) rather than being a bare flag -- e.g. {@code env -u FOO mvn
 	 * test} unsets FOO before running {@code mvn}, so "FOO" must not be mistaken for the wrapped
-	 * command's own first token. */
+	 * command's own first token. Excludes {@code -S}/{@code --split-string}: unlike every other
+	 * entry here, that option's operand is not passed through unchanged as the wrapped command's
+	 * argument -- {@code env} word-splits it into a brand-new command line and executes that, so
+	 * {@link #unwrapEnv} handles it separately via {@link #envSplitStringOperand} instead of
+	 * treating it as an operand to skip. */
 	private static final List<String> ENV_OPTIONS_WITH_OPERAND = Arrays.asList(
-			"-u", "--unset", "-C", "--chdir", "-S", "--split-string");
+			"-u", "--unset", "-C", "--chdir");
 
 	/** {@link #CMD_PREFIXES} wrapper option flags (keyed by the wrapper's base name) that consume
 	 * the following token as their own operand, unless given in glued {@code --opt=value} form --
@@ -141,6 +145,22 @@ public class PostCompletionCommandValidator {
 
 	/** Matches a backtick command substitution, capturing its inner text. */
 	private static final Pattern BACKTICK_SUBSTITUTION = Pattern.compile("`([^`]*)`");
+
+	/** Sentinel first element used by {@link #unwrapEnv} to signal that it found an
+	 * {@code env -S}/{@code --split-string} script rather than an ordinary wrapped command, and
+	 * recognized by {@link #isEnvSplitStringResult} to route the second element (the script text)
+	 * to {@link #validateText} instead of treating it as a command's own first token. Not a value
+	 * any real shell token can equal, since a NUL byte cannot appear in a shell command line. */
+	private static final String ENV_SPLIT_SCRIPT_SENTINEL = "\0envSplitScript\0";
+
+	/** Shell control-flow keywords that can precede a segment's real command after operator
+	 * splitting -- e.g. {@code if true; then mvn test -pl engine/utils; fi} splits on {@code ;}
+	 * into a segment {@code [then, mvn, test, -pl, engine/utils]}, whose first token is {@code
+	 * then}, not {@code mvn}. Without stripping these, {@link #mavenSegmentViolation} and
+	 * {@link #pytestSegmentViolation} never see the wrapped command at all. */
+	private static final List<String> SHELL_CONTROL_WORDS = Arrays.asList(
+			"if", "then", "elif", "else", "fi", "while", "until", "do", "done",
+			"for", "case", "esac", "select", "function");
 
 	/** The shell command being validated. */
 	private final String command;
@@ -185,6 +205,10 @@ public class PostCompletionCommandValidator {
 	 */
 	private void validateSegment(List<String> tokens) {
 		List<String> unwrapped = unwrapCommandPrefixes(tokens);
+		if (isEnvSplitStringResult(unwrapped)) {
+			validateText(unwrapped.get(1));
+			return;
+		}
 		String script = shellDashCScript(unwrapped);
 		if (script == null) {
 			script = evalScript(unwrapped);
@@ -199,6 +223,16 @@ public class PostCompletionCommandValidator {
 			return;
 		}
 		reason = pytestSegmentViolation(unwrapped);
+		if (reason != null) {
+			violations.add(reason);
+			return;
+		}
+		reason = unittestSegmentViolation(unwrapped);
+		if (reason != null) {
+			violations.add(reason);
+			return;
+		}
+		reason = bareShellInterpreterViolation(unwrapped);
 		if (reason != null) {
 			violations.add(reason);
 		}
@@ -232,6 +266,16 @@ public class PostCompletionCommandValidator {
 	 * --opt=value} form -- without this, {@code env -u FOO mvn test} would
 	 * treat {@code FOO} as the wrapped command's own first token instead of
 	 * skipping it, and never recognize {@code mvn} at all.</p>
+	 *
+	 * <p>{@code -S}/{@code --split-string} is different in kind, not just
+	 * another operand-flag: {@code env} word-splits that operand and executes
+	 * the result as a brand-new command line, the same way {@code sh -c}
+	 * does -- it does not pass the operand through unchanged as an argument
+	 * to the wrapped command. Skipping it like an ordinary operand (as
+	 * {@code env -u FOO} does for {@code FOO}) would silently discard {@code
+	 * env -S 'mvn test -pl engine/utils'}'s actual payload instead of
+	 * validating it, so this returns the {@link #ENV_SPLIT_SCRIPT_SENTINEL}
+	 * marker pair instead; see {@link #isEnvSplitStringResult}.</p>
 	 */
 	private List<String> unwrapEnv(List<String> tokens) {
 		if (tokens.isEmpty() || !"env".equals(baseName(tokens.get(0)))) {
@@ -247,12 +291,41 @@ public class PostCompletionCommandValidator {
 			if (!tok.startsWith("-")) {
 				break;
 			}
+			String splitScript = envSplitStringOperand(tok, tokens, i);
+			if (splitScript != null) {
+				return Arrays.asList(ENV_SPLIT_SCRIPT_SENTINEL, splitScript);
+			}
 			i++;
 			if (ENV_OPTIONS_WITH_OPERAND.contains(tok) && !tok.contains("=") && i < tokens.size()) {
 				i++;
 			}
 		}
 		return tokens.subList(i, tokens.size());
+	}
+
+	/**
+	 * Returns the script text of an {@code env -S}/{@code --split-string} flag at {@code
+	 * tokens.get(i)}, in any of its three forms ({@code -S <script>}, glued {@code -S<script>}, or
+	 * {@code --split-string=<script>}), or {@code null} when {@code tokens.get(i)} is not that
+	 * flag.
+	 */
+	private String envSplitStringOperand(String tok, List<String> tokens, int i) {
+		if ("-S".equals(tok) || "--split-string".equals(tok)) {
+			return i + 1 < tokens.size() ? tokens.get(i + 1) : "";
+		}
+		if (tok.startsWith("--split-string=")) {
+			return tok.substring("--split-string=".length());
+		}
+		if (tok.startsWith("-S") && tok.length() > 2) {
+			return tok.substring(2);
+		}
+		return null;
+	}
+
+	/** True when {@code unwrapped} is the {@link #ENV_SPLIT_SCRIPT_SENTINEL} marker pair
+	 * {@link #unwrapEnv} returns for an {@code env -S}/{@code --split-string} invocation. */
+	private boolean isEnvSplitStringResult(List<String> unwrapped) {
+		return unwrapped.size() == 2 && ENV_SPLIT_SCRIPT_SENTINEL.equals(unwrapped.get(0));
 	}
 
 	/**
@@ -330,12 +403,23 @@ public class PostCompletionCommandValidator {
 	 * flags and, for a recognized flag, its operand (see
 	 * {@link #unwrapCmdPrefixOptions}) -- so e.g. {@code command mvn test},
 	 * {@code sudo env FOO=bar mvn test}, {@code nice -n 10 mvn test}, or
-	 * {@code FOO=bar mvn test} reach the real command. Returns {@code
-	 * tokens} unchanged when it starts with none of these.
+	 * {@code FOO=bar mvn test} reach the real command. Also strips a leading
+	 * {@link #SHELL_CONTROL_WORDS} keyword (e.g. {@code then}, {@code do}),
+	 * since operator-splitting a chain like {@code if true; then mvn test;
+	 * fi} leaves the keyword as a segment's first token, in front of the
+	 * segment's real command. Returns {@code tokens} unchanged when it
+	 * starts with none of these -- or, when {@code tokens} is an {@code env
+	 * -S}/{@code --split-string} invocation, returns the
+	 * {@link #ENV_SPLIT_SCRIPT_SENTINEL} marker pair from {@link
+	 * #unwrapEnv} unchanged, since that shape has no further tokens of its
+	 * own left to unwrap.
 	 */
 	private List<String> unwrapCommandPrefixes(List<String> tokens) {
 		while (!tokens.isEmpty()) {
 			List<String> afterEnv = unwrapEnv(tokens);
+			if (isEnvSplitStringResult(afterEnv)) {
+				return afterEnv;
+			}
 			if (afterEnv != tokens) {
 				tokens = afterEnv;
 				continue;
@@ -348,6 +432,10 @@ public class PostCompletionCommandValidator {
 			String base = baseName(tokens.get(0));
 			if (CMD_PREFIXES.contains(base)) {
 				tokens = unwrapCmdPrefixOptions(base, tokens.subList(1, tokens.size()));
+				continue;
+			}
+			if (SHELL_CONTROL_WORDS.contains(base)) {
+				tokens = tokens.subList(1, tokens.size());
 				continue;
 			}
 			break;
@@ -525,13 +613,17 @@ public class PostCompletionCommandValidator {
 		return null;
 	}
 
-	/** True when {@code value} is exactly one non-empty {@code Class#method} entry.
+	/** True when {@code value} is exactly one {@code Class#method} entry with non-empty,
+	 * wildcard-free class and method names.
 	 *
 	 * <p>A {@code -Dtest} value may name several comma-separated entries, but Maven runs all of
 	 * them in a single invocation -- accepting more than one, even when each individually names a
 	 * method, would still let one command run multiple tests, contradicting the "at most ONE test
 	 * per invocation" rule this validator otherwise enforces (e.g. via the pytest and MCP runner
-	 * checks). Only a single {@code Class#method} entry is narrow enough.</p>
+	 * checks). Only a single {@code Class#method} entry is narrow enough -- and Surefire treats
+	 * {@code *} and {@code ?} in either half as wildcards, so e.g. {@code FooTest#test*} or
+	 * {@code Foo*#bar} can still select and run several methods/classes in one invocation despite
+	 * naming exactly one comma-separated entry with a {@code #} in it.</p>
 	 */
 	private boolean dtestIsNarrow(String value) {
 		List<String> entries = new ArrayList<>();
@@ -540,7 +632,19 @@ public class PostCompletionCommandValidator {
 				entries.add(entry);
 			}
 		}
-		return entries.size() == 1 && entries.get(0).contains("#");
+		if (entries.size() != 1) {
+			return false;
+		}
+		String entry = entries.get(0);
+		int hash = entry.indexOf('#');
+		if (hash < 0 || entry.indexOf('#', hash + 1) >= 0) {
+			return false;
+		}
+		String className = entry.substring(0, hash);
+		String methodName = entry.substring(hash + 1);
+		return !className.isEmpty() && !methodName.isEmpty()
+				&& className.indexOf('*') < 0 && className.indexOf('?') < 0
+				&& methodName.indexOf('*') < 0 && methodName.indexOf('?') < 0;
 	}
 
 	/** Returns a violation reason for a pytest segment, or null when it is acceptable. */
@@ -574,6 +678,81 @@ public class PostCompletionCommandValidator {
 		return "pytest command has no explicit node id (file.py::test_name): \""
 				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "
 				+ "explicit node ids, one test per invocation.";
+	}
+
+	/**
+	 * Returns a violation reason for a {@code python -m unittest} segment, or null when it is
+	 * acceptable. Unlike pytest's {@code file.py::test_name} node id, {@code unittest} addresses a
+	 * single test with a dotted {@code module.Class.method} path (two or more dots) -- a bare
+	 * module or {@code module.Class} still runs every test in it, and {@code discover} explicitly
+	 * walks and runs a whole test tree. Without this check, {@code python3 -m unittest discover}
+	 * (the CI documentation's own example of a forbidden broad run) passed through both the
+	 * Maven and pytest checks unrecognized, and was accepted.
+	 */
+	private String unittestSegmentViolation(List<String> tokens) {
+		if (tokens.isEmpty()) {
+			return null;
+		}
+		String base = baseName(tokens.get(0));
+		List<String> rest = tokens.subList(1, tokens.size());
+		if (!("python".equals(base) || "python3".equals(base)) || rest.size() < 2
+				|| !"-m".equals(rest.get(0)) || !"unittest".equals(rest.get(1))) {
+			return null;
+		}
+		List<String> args = rest.subList(2, rest.size());
+		List<String> positionals = new ArrayList<>();
+		for (String arg : args) {
+			if (!arg.startsWith("-")) {
+				positionals.add(arg);
+			}
+		}
+		if (positionals.size() == 1 && !"discover".equals(positionals.get(0))
+				&& countChar(positionals.get(0), '.') >= 2) {
+			return null;
+		}
+		return "python -m unittest command in \"" + String.join(" ", tokens) + "\" does not name "
+				+ "a single dotted module.Class.method test id. \"discover\", a bare module, or a "
+				+ "module.Class runs many tests at once, which agents and job submitters may "
+				+ "never do. Pass exactly one module.Class.method id per invocation.";
+	}
+
+	/** Counts occurrences of {@code target} in {@code s}. */
+	private static int countChar(String s, char target) {
+		int count = 0;
+		for (int i = 0; i < s.length(); i++) {
+			if (s.charAt(i) == target) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * Returns a violation reason when {@code tokens} invokes a {@link #SHELL_INTERPRETERS}
+	 * interpreter with no script-file positional argument -- meaning it reads its script from
+	 * standard input, as in {@code printf 'mvn test -pl engine/utils' | sh} or a heredoc. That
+	 * shape cannot be validated as written: the script text is not present anywhere in the
+	 * command line for this validator to inspect (unlike {@code sh -c "<script>"}, which {@link
+	 * #shellDashCScript} already recurses into). Returns null when the interpreter has a
+	 * positional argument -- a script file path, e.g. {@code bash scripts/verify-foo.sh} -- since
+	 * that is a deliberately supported, trusted use of a post-completion command (see {@link
+	 * PostCompletionCommandRule}'s javadoc) that this validator cannot and does not attempt to
+	 * inspect the contents of.
+	 */
+	private String bareShellInterpreterViolation(List<String> tokens) {
+		if (tokens.isEmpty() || !SHELL_INTERPRETERS.contains(baseName(tokens.get(0)))) {
+			return null;
+		}
+		for (int i = 1; i < tokens.size(); i++) {
+			if (!tokens.get(i).startsWith("-")) {
+				return null;
+			}
+		}
+		return "Shell interpreter invoked with no script file or -c argument in \""
+				+ String.join(" ", tokens) + "\" reads its script from standard input (e.g. via "
+				+ "a pipe or heredoc), which cannot be validated as written. Run mvn/pytest "
+				+ "directly, or invoke an explicit script file instead of piping one into the "
+				+ "interpreter.";
 	}
 
 	/**

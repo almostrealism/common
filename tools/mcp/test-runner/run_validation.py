@@ -27,6 +27,29 @@ class ValidationError(Exception):
         self.error = error
 
 
+_WILDCARD_CHARS = frozenset("*?")
+
+
+def _reject_wildcard(value: str, field_description: str) -> None:
+    """Raises ValidationError when ``value`` contains a Surefire wildcard.
+
+    Surefire treats ``*`` and ``?`` in a ``-Dtest`` pattern as wildcards, so
+    a selector such as ``FooTest#test*`` or ``Foo*#bar`` can match and run
+    several methods/classes in a single invocation even though it passes
+    the "exactly one selector" and "has a #" checks -- exactly the
+    multi-test bypass the one-test-per-invocation rule exists to prevent.
+    """
+    if any(c in _WILDCARD_CHARS for c in value):
+        raise ValidationError(
+            "{} \"{}\" contains a Surefire wildcard character (* or ?), "
+            "which can match multiple classes/methods in a single -Dtest "
+            "invocation -- exactly the multi-test bypass the "
+            "one-test-per-invocation rule exists to prevent. Call "
+            "start_test_run once per test, naming it exactly.".format(
+                field_description, value)
+        )
+
+
 def _reject_selector_delimiter(value: str, field_description: str) -> None:
     """Raises ValidationError when ``value`` contains a comma.
 
@@ -135,6 +158,7 @@ def validate_start_test_run_arguments(
     jmx_monitoring = arguments.get("jmx_monitoring", False)
     if test_classes:
         _reject_selector_delimiter(test_classes[0], "test_classes entry")
+        _reject_wildcard(test_classes[0], "test_classes entry")
         if "#" not in test_classes[0] and not jmx_monitoring:
             raise ValidationError(
                 f"test_classes entry \"{test_classes[0]}\" has no "
@@ -147,6 +171,15 @@ def validate_start_test_run_arguments(
                 "class is tolerated only with jmx_monitoring:true, for "
                 "reproducing a JVM crash that has no method attribution.)"
             )
+        if "#" in test_classes[0]:
+            class_part, _, method_part = test_classes[0].partition("#")
+            if not class_part or not method_part:
+                raise ValidationError(
+                    f"test_classes entry \"{test_classes[0]}\" has an "
+                    "empty class or method component around '#'. Both "
+                    "must be non-empty exact names, e.g. "
+                    "\"FooTest#testBar\"."
+                )
     for entry in test_methods:
         if not isinstance(entry, dict) or not entry.get("class") or not entry.get("method"):
             raise ValidationError(
@@ -156,6 +189,8 @@ def validate_start_test_run_arguments(
             )
         _reject_selector_delimiter(entry["class"], "test_methods class field")
         _reject_selector_delimiter(entry["method"], "test_methods method field")
+        _reject_wildcard(entry["class"], "test_methods class field")
+        _reject_wildcard(entry["method"], "test_methods method field")
     return {
         "timeout_minutes": timeout_minutes,
         "test_classes": test_classes,

@@ -495,6 +495,123 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 				"echo `mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo`").isEmpty());
 	}
 
+	/** "env -S" word-splits its operand and executes the result as a brand-new command line --
+	 * it must not hide the wrapped mvn invocation as if the operand were an ordinary argument. */
+	@Test(timeout = 10000)
+	public void envDashSSplitStringWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env -S 'mvn test -pl engine/utils'");
+		assertFalse("env -S 'mvn test' must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** The glued "-S<script>" form must be recognized the same as the separated "-S <script>". */
+	@Test(timeout = 10000)
+	public void envDashSGluedSplitStringWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env -S'mvn test -pl engine/utils'");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** The long-option "--split-string=<script>" form must be recognized too. */
+	@Test(timeout = 10000)
+	public void envDashDashSplitStringEqualsWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("env --split-string='mvn test -pl engine/utils'");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** "env -S" wrapping a Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void envDashSSplitStringWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"env -S 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'")
+				.isEmpty());
+	}
+
+	/** "if COND; then mvn test; fi" splits on ";" into a segment beginning with "then" --
+	 * the control word must be stripped so the wrapped mvn invocation is still reached. */
+	@Test(timeout = 10000)
+	public void ifThenWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("if true; then mvn test -pl engine/utils; fi");
+		assertFalse("if/then must not hide a broad mvn test", violations.isEmpty());
+	}
+
+	/** "for i in 1 2 3; do mvn test; done" must have its "do"-prefixed body inspected. */
+	@Test(timeout = 10000)
+	public void forDoWrappedMavenTestRejected() {
+		List<String> violations = violationsFor(
+				"for i in 1 2 3; do mvn test -pl engine/utils; done");
+		assertFalse("for/do must not hide a broad mvn test", violations.isEmpty());
+	}
+
+	/** A control-word-wrapped Maven command with an explicit selector is still accepted. */
+	@Test(timeout = 10000)
+	public void ifThenWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"if true; then mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo; fi")
+				.isEmpty());
+	}
+
+	/** Surefire treats "*" as a wildcard: "FooTest#test*" can match and run several methods
+	 * despite naming exactly one comma-separated entry with a "#" in it. */
+	@Test(timeout = 10000)
+	public void wildcardMethodDtestSelectorRejected() {
+		List<String> violations = violationsFor("mvn -pl engine/utils test -Dtest=FooTest#test*");
+		assertFalse("a wildcard method selector must be rejected", violations.isEmpty());
+	}
+
+	/** Surefire treats "*" in the class half as a wildcard too. */
+	@Test(timeout = 10000)
+	public void wildcardClassDtestSelectorRejected() {
+		List<String> violations = violationsFor("mvn -pl engine/utils test -Dtest=Foo*#bar");
+		assertFalse("a wildcard class selector must be rejected", violations.isEmpty());
+	}
+
+	/** Surefire also treats "?" as a single-character wildcard. */
+	@Test(timeout = 10000)
+	public void questionMarkWildcardDtestSelectorRejected() {
+		List<String> violations = violationsFor("mvn -pl engine/utils test -Dtest=FooTest#test?");
+		assertFalse(violations.isEmpty());
+	}
+
+	/** "python3 -m unittest discover" runs the whole test tree and must be rejected --
+	 * this is the CI documentation's own example of a forbidden broad run. */
+	@Test(timeout = 10000)
+	public void unittestDiscoverRejected() {
+		List<String> violations = violationsFor("python3 -m unittest discover");
+		assertFalse("unittest discover must be rejected", violations.isEmpty());
+	}
+
+	/** A bare "python -m unittest" with no target discovers and runs everything. */
+	@Test(timeout = 10000)
+	public void unittestWithNoArgsRejected() {
+		assertFalse(violationsFor("python -m unittest").isEmpty());
+	}
+
+	/** "python -m unittest package.module" (no class/method) still runs every test in it. */
+	@Test(timeout = 10000)
+	public void unittestBareModuleRejected() {
+		assertFalse(violationsFor("python3 -m unittest tests.test_foo").isEmpty());
+	}
+
+	/** A fully-qualified "module.Class.method" test id is accepted. */
+	@Test(timeout = 10000)
+	public void unittestSingleMethodAccepted() {
+		assertTrue(violationsFor("python3 -m unittest tests.test_foo.FooTest.test_bar").isEmpty());
+	}
+
+	/** A shell interpreter piped a constructed script from stdin cannot be validated as
+	 * written, since the script text never appears in the command line this validator sees. */
+	@Test(timeout = 10000)
+	public void bareShWithNoScriptArgumentRejected() {
+		List<String> violations = violationsFor("printf 'mvn test -pl engine/utils' | sh");
+		assertFalse("a bare sh reading a script from stdin must be rejected", violations.isEmpty());
+	}
+
+	/** A shell interpreter invoked with an explicit script file is accepted -- this is the
+	 * same documented, trusted custom-script use as {@link #customScriptAccepted()}. */
+	@Test(timeout = 10000)
+	public void shWithScriptFileArgumentAccepted() {
+		assertTrue(violationsFor("bash scripts/verify-foo.sh").isEmpty());
+	}
+
 	// -- Timeout ceiling --------------------------------------------------------
 
 	/** Pins the timeout ceiling so a silent regression is caught immediately. */
