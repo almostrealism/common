@@ -223,7 +223,25 @@ fi
 # Mirrors analysis.yaml's python-tests "Install dependencies" step so the
 # same package set covers PYTHON_DIRS below (tools/mcp/manager needs
 # `mcp`; tools/tests needs `pyyaml`).
+#
+# On the self-hosted macOS runner this job actually runs on, a Homebrew-
+# installed Python 3.10+ can exist on disk without being on this process's
+# PATH: launchd starts services (the CI runner among them) with almost no
+# PATH, and Homebrew's bin directory is only restored when a service
+# definition adds it back explicitly (tools/ci/macos/README.md documents
+# this same gap for the flowtree agent daemon and the deploy-agent runner).
+# Append the conventional Homebrew bin directories for both CPU
+# architectures so select-python-env.sh's PATH search can still find a
+# versioned `pythonX.Y` (Homebrew's python@3.1x formulas are keg-only but
+# still symlink their versioned binary into these directories) even when
+# the runner's own PATH omits them. A no-op on any host without Homebrew
+# at these locations, and it only widens the search — select-python-env.sh
+# still picks the newest interpreter that actually satisfies the minimum
+# version, wherever it is found.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "$(uname -s)" = "Darwin" ]; then
+    PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
+fi
 PYTHON=$(REQUIREMENTS_FILE=tools/mcp/requirements.txt bash "${SCRIPT_DIR}/select-python-env.sh" pyyaml coverage)
 
 PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
