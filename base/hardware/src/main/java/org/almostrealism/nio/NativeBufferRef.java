@@ -43,6 +43,8 @@ public class NativeBufferRef extends NativeRef<NativeBuffer> {
 	private final String sharedLocation;
 	/** Deallocation listeners cached from the buffer for post-GC notification. */
 	private final List<Consumer<NativeBuffer>> deallocationListeners;
+	/** Whether the tracked region came from outside the provider, cached for post-GC decisions. */
+	private final boolean foreign;
 
 	/**
 	 * Creates a reference for tracking NativeBuffer memory lifecycle.
@@ -59,6 +61,21 @@ public class NativeBufferRef extends NativeRef<NativeBuffer> {
 		this.rootBuffer = buffer.getRootBuffer();
 		this.sharedLocation = buffer.getSharedLocation();
 		this.deallocationListeners = new ArrayList<>(buffer.getDeallocationListeners());
+		this.foreign = buffer.isForeign();
+	}
+
+	/**
+	 * Returns whether the tracked region came from outside the provider.
+	 *
+	 * <p>Cached at construction because the decision it governs — that the provider neither
+	 * releases the region nor credits its bytes back to the reservation — is made after the
+	 * referent has been collected and can no longer be asked.</p>
+	 *
+	 * @return true if the tracked buffer wrapped a region the provider did not allocate
+	 * @see NativeBuffer#isForeign()
+	 */
+	public boolean isForeign() {
+		return foreign;
 	}
 
 	/**

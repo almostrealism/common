@@ -18,6 +18,8 @@ package io.almostrealism.code;
 
 import io.almostrealism.uml.Named;
 
+import java.nio.ByteBuffer;
+
 import java.util.stream.IntStream;
 
 /**
@@ -125,6 +127,42 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 * @return whether writes are rejected
 	 */
 	default boolean isReadOnly() { return false; }
+
+	/**
+	 * Returns whether this provider can adopt the given region as memory of its own, exposing
+	 * {@code length} values without copying them.
+	 *
+	 * <p>Asking is separate from doing for the same reason as {@link #isReadOnly()}: a caller that
+	 * can fall back to copying should learn that adoption is unavailable while it is still
+	 * choosing, not from an exception raised once it has committed. Most providers cannot adopt a
+	 * host region at all — a device allocation has no relationship to a buffer in this process —
+	 * so the default is to refuse, and a provider that can do it overrides both this and
+	 * {@link #wrap}.</p>
+	 *
+	 * @param source the region in question, positioned at the first value
+	 * @param length the number of values it must expose
+	 * @return whether {@link #wrap} would accept the region
+	 */
+	default boolean canWrap(ByteBuffer source, int length) { return false; }
+
+	/**
+	 * Adopts the given region as memory of this provider, exposing {@code length} values without
+	 * copying them.
+	 *
+	 * <p>The region remains the caller's: a provider that implements this does not count the
+	 * adopted bytes against whatever reservation it enforces, and does not release the region when
+	 * the memory is deallocated. The caller keeps whatever produced the region alive for as long
+	 * as the memory is in use.</p>
+	 *
+	 * @param source the region to adopt, positioned at the first value
+	 * @param length the number of values to expose
+	 * @return memory over the given region
+	 * @throws UnsupportedOperationException if this provider cannot adopt a region
+	 * @throws IllegalArgumentException if this provider cannot adopt <em>this</em> region
+	 */
+	default T wrap(ByteBuffer source, int length) {
+		throw new UnsupportedOperationException(getName() + " cannot adopt an existing region");
+	}
 
 	/**
 	 * Copies data from a source memory region into the destination memory region.
