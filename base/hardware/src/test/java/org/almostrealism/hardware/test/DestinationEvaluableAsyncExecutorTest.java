@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * ("the executor is not currently used"), so
  * {@link DestinationEvaluable#request(Object[], io.almostrealism.streams.Semaphore, java.util.function.Consumer)}
  * always ran (and could block in {@code awaitReady()}) on the calling thread regardless of which executor
- * {@code ProcessDetailsFactory} selected via {@code isSharedExecutorSafe()}.
+ * {@code ProcessDetailsFactory} selected.
  *
  * <p>The wrapped operation here is a plain {@link Evaluable}, not an {@code AcceleratedOperation}, so
  * {@code requestNow} evaluates it on the host exactly as {@link DestinationEvaluable#evaluate(Object...)}

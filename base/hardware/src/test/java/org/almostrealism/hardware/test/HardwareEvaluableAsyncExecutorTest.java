@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * the method used to build a new {@link HardwareEvaluable} without ever storing the supplied executor, so
  * {@link HardwareEvaluable#request(Object[], io.almostrealism.streams.Semaphore, java.util.function.Consumer)}
  * always ran (and could block) on the calling thread regardless of which executor {@code ProcessDetailsFactory}
- * selected via {@code isSharedExecutorSafe()}.
+ * selected.
  *
  * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}: that class
  * lives in the engine layer, which sits above this module.</p>

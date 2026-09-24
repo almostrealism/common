@@ -30,6 +30,14 @@ import java.util.function.Consumer;
  * When a request is made, the adapter submits the evaluation task to an {@link Executor}
  * and delivers the result to the downstream consumer when complete.</p>
  *
+ * <p>An evaluable that is itself a {@link StreamingEvaluable} already knows how to deliver
+ * its result asynchronously (a compiled kernel chains its completion through the provider,
+ * for example). Wrapping such an evaluable does not fall back to its blocking
+ * {@link Evaluable#evaluate(Object...) evaluate}: the adapter forwards each request to the
+ * evaluable's own {@link StreamingEvaluable#request(Object[], Semaphore, Consumer) request}
+ * on the executor, so the executor only carries the issuance of the request and the result
+ * keeps whatever completion the evaluable delivers it with.</p>
+ *
  * <p>This is the primary mechanism for converting synchronous evaluables to streaming
  * evaluables, and is used internally by {@link Evaluable#async()}:</p>
  * <pre>{@code
@@ -99,13 +107,15 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * The method returns immediately without waiting for the computation to complete
 	 * (unless a synchronous executor is used).</p>
 	 *
-	 * <p>The adapter wraps a synchronous {@link Evaluable} and performs no hardware
-	 * dispatch of its own, so there is no provider into which {@code dependsOn} could be
-	 * chained. Unlike a hardware dispatch, which only chains a device handle, the wrapped
-	 * evaluable reads the actual contents of {@code args} on the thread that calls it, so
-	 * the dependency is still honored: submission to the executor is non-blocking, but the
-	 * submitted task waits for {@code dependsOn} before evaluating, exactly as
-	 * {@link #request(Object[], Semaphore, Consumer)} does.</p>
+	 * <p>When the wrapped evaluable is a synchronous {@link Evaluable}, the adapter performs
+	 * no hardware dispatch of its own, so there is no provider into which {@code dependsOn}
+	 * could be chained. Unlike a hardware dispatch, which only chains a device handle, the
+	 * wrapped evaluable reads the actual contents of {@code args} on the thread that calls
+	 * it, so the dependency is still honored: submission to the executor is non-blocking,
+	 * but the submitted task waits for {@code dependsOn} before evaluating, exactly as
+	 * {@link #request(Object[], Semaphore, Consumer)} does. A wrapped evaluable that is
+	 * itself a {@link StreamingEvaluable} receives {@code dependsOn} through its own
+	 * request instead, and chains it however it chains any dependency.</p>
 	 *
 	 * @param args      the arguments to pass to the underlying evaluable
 	 * @param dependsOn completion this evaluation must be ordered after, or
@@ -125,12 +135,15 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * streaming pipeline's lifetime, for example) without any of them contending for
 	 * {@link #setDownstream}.</p>
 	 *
-	 * <p>Submission to the executor is non-blocking, but the submitted task waits for
-	 * {@code dependsOn} (when non-null) before calling {@link Evaluable#evaluate(Object...)
-	 * evaluate}. The wrapped evaluable is a host function that reads the contents of
-	 * {@code args} rather than chaining a device handle, so a dispatch it depends on must
-	 * have completed before those contents are read; otherwise the evaluation could observe
-	 * memory the dependency has not finished writing.</p>
+	 * <p>Submission to the executor is non-blocking. When the wrapped evaluable is itself a
+	 * {@link StreamingEvaluable}, the submitted task forwards {@code args}, {@code dependsOn}
+	 * and {@code downstream} to its own {@link StreamingEvaluable#request(Object[], Semaphore,
+	 * Consumer) request}, so its result is delivered exactly as it would be without this
+	 * adapter, completion included. Otherwise the submitted task waits for {@code dependsOn}
+	 * (when non-null) before calling {@link Evaluable#evaluate(Object...) evaluate}: a host
+	 * function reads the contents of {@code args} rather than chaining a device handle, so a
+	 * dispatch it depends on must have completed before those contents are read, or the
+	 * evaluation could observe memory the dependency has not finished writing.</p>
 	 *
 	 * @param args       the arguments to pass to the underlying evaluable
 	 * @param dependsOn  completion this evaluation must be ordered after, or
@@ -140,6 +153,11 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	@Override
 	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		executor.execute(() -> {
+			if (evaluable instanceof StreamingEvaluable) {
+				((StreamingEvaluable<T>) evaluable).request(args, dependsOn, downstream);
+				return;
+			}
+
 			if (dependsOn != null) dependsOn.waitFor();
 			downstream.accept(evaluable.evaluate(args));
 		});
@@ -149,27 +167,12 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * {@inheritDoc}
 	 *
 	 * <p>Always {@code true}: as documented on {@link #request(Object[], Semaphore, Consumer)},
-	 * the submitted task waits for a non-null {@code dependsOn} before reading {@code args}, so
-	 * this adapter orders its work after a supplied dependency instead of disregarding it.</p>
+	 * the submitted task either hands a non-null {@code dependsOn} to the wrapped evaluable's
+	 * own request or waits for it before reading {@code args}, so this adapter orders its work
+	 * after a supplied dependency instead of disregarding it.</p>
 	 */
 	@Override
 	public boolean isDispatchBacked() {
 		return true;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Always {@code false}: submitting the request to {@link #executor} does not itself
-	 * block the calling thread, but the task it submits blocks on {@code dependsOn.waitFor()}
-	 * before reading {@code args} (see {@link #request(Object[], Semaphore, Consumer)}). When
-	 * {@link #executor} is a bounded, shared pool (a {@code ComputeContext}'s own executor,
-	 * for example) that wait can starve or deadlock it, since the dependency this task waits
-	 * for may itself need a thread from that same pool to complete. Such a request must
-	 * instead be issued on a dedicated thread.</p>
-	 */
-	@Override
-	public boolean isSharedExecutorSafe() {
-		return false;
 	}
 }

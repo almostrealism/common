@@ -195,8 +195,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	/**
 	 * Optional executor used to dispatch {@link #request(Object[], Semaphore, Consumer)}.
 	 * When set, request work runs on this executor instead of the calling thread, so the
-	 * blocking wait in {@link AcceleratedProcessDetails#awaitReady() awaitReady} (see
-	 * {@link #isSharedExecutorSafe()}) lands on the executor's thread rather than the caller's.
+	 * readiness wait in {@link AcceleratedProcessDetails#awaitReady() awaitReady} lands on
+	 * the executor's thread rather than the caller's; when absent, the request is issued
+	 * on the calling thread.
 	 */
 	private Executor executor;
 
@@ -392,20 +393,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	}
 
 	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Always {@code false}: {@link #request(Object[], Semaphore, Consumer)} calls
-	 * {@link AcceleratedProcessDetails#awaitReady()} before returning, which blocks the
-	 * calling thread while argument preparation is still pending. Submitting this to a
-	 * bounded, shared executor risks starving or deadlocking it; it must instead be
-	 * requested on a dedicated thread.</p>
-	 */
-	@Override
-	public boolean isSharedExecutorSafe() {
-		return false;
-	}
-
-	/**
 	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
 	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
 	 * is stored on this evaluable, so a destination evaluable that is reached through several
@@ -417,8 +404,10 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * <p>When the wrapped operation is not an {@link AcceleratedOperation}, it is evaluated on
 	 * the host via {@link #evaluate(Object...)} &mdash; the {@link Provider} and element-wise
 	 * strategies that method documents have no device dispatch to chain {@code dependsOn} into,
-	 * so it is waited for directly, and the result is delivered without a dispatch completion
-	 * ({@code null}, for a {@link CompletionConsumer} downstream).</p>
+	 * so the evaluation is ordered after it with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * (running on the completion's callback thread once it fires, without this method waiting),
+	 * and the result is delivered without a dispatch completion ({@code null}, for a
+	 * {@link CompletionConsumer} downstream).</p>
 	 *
 	 * @param args       The input arguments ({@link MemoryData} instances)
 	 * @param dependsOn  completion that must fire before the dispatch (and its
@@ -464,15 +453,16 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		} else {
 			// The Provider and element-wise strategies evaluate() supports (see its javadoc)
 			// are host evaluations with no device dispatch to chain dependsOn into, exactly
-			// like a HardwareEvaluable short-circuit, so it is waited for directly here.
-			if (dependsOn != null) dependsOn.waitFor();
-			T result = evaluate(args);
+			// like a HardwareEvaluable short-circuit, so they run once it has completed.
+			Semaphore.onComplete(dependsOn, () -> {
+				T result = evaluate(args);
 
-			if (downstream instanceof CompletionConsumer) {
-				((CompletionConsumer<T>) downstream).accept(result, null);
-			} else {
-				downstream.accept(result);
-			}
+				if (downstream instanceof CompletionConsumer) {
+					((CompletionConsumer<T>) downstream).accept(result, null);
+				} else {
+					downstream.accept(result);
+				}
+			});
 		}
 	}
 

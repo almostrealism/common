@@ -306,9 +306,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * {@link io.almostrealism.code.ComputeContext} &mdash; not only the one that owns this
 	 * factory, since a computation graph can chain arguments across contexts and deliver
 	 * this call on a foreign context's own pool. Used by
-	 * {@link #construct(PreparedArguments, Semaphore)} to decide whether a request that may
-	 * block (see {@code StreamingEvaluable#isSharedExecutorSafe()}) can be issued directly
-	 * on the calling thread instead of a freshly spawned dedicated one.
+	 * {@link #construct(PreparedArguments, Semaphore)} to decide whether an argument's
+	 * request can be issued directly on the calling thread instead of a freshly spawned
+	 * dedicated one: a request may wait for its dispatch to be issued, and a bounded pool
+	 * thread must never be held for that.
 	 */
 	private BooleanSupplier isExecutorThread;
 
@@ -616,25 +617,20 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * dispatch-backed, since it only reaches that path by being a genuine kernel evaluation
 	 * rather than a handle-only reference.</p>
 	 *
-	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is submitted
-	 * to this factory's own executor only when {@link StreamingEvaluable#isSharedExecutorSafe()}
-	 * confirms the request itself never blocks the calling thread. {@code isDispatchBacked()} is
-	 * not sufficient for that decision, since it also covers an evaluable that honors {@code
-	 * dependsOn} by blocking a worker thread rather than chaining into a non-blocking dispatch;
-	 * submitting that kind of evaluation to the {@code ComputeContext}'s own executor risks it
-	 * blocking one of that executor's own threads, which {@code AcceleratedComputationOperation}
-	 * refuses to allow. Such an evaluable is instead requested on a dedicated thread. This same
-	 * {@code isSharedExecutorSafe()} check applies to an argument that needs a sized destination:
-	 * the evaluable returned by {@code Evaluable::into} is checked again there, since wrapping
-	 * with a destination can change which evaluable actually answers the request.</p>
+	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is never
+	 * submitted to the {@code ComputeContext}'s own bounded executor while dispatch is
+	 * asynchronous. Issuing a request may wait for the argument's own dispatch to be issued
+	 * (its readiness, not its completion), and that readiness is itself produced on that
+	 * executor, so holding one of its threads for the wait is a starvation hazard that
+	 * {@code AcceleratedComputationOperation} refuses outright. The executor is used only
+	 * when dispatch is synchronous, where it runs the request inline.</p>
 	 *
-	 * <p>An argument that is not shared-executor-safe still does not always need a dedicated
-	 * thread: {@link #isExecutorThread} reports whether the calling thread is itself a bounded
-	 * executor thread of any {@code ComputeContext} &mdash; not only the one that owns this
-	 * factory, since a chained argument can be evaluated from a foreign context's own pool
-	 * &mdash; the only kind of thread this blocking request must be kept off of. When it is
-	 * not, the request is issued directly on the calling thread instead of a freshly spawned
-	 * one, avoiding a new OS thread (and a
+	 * <p>An argument still does not always need a dedicated thread: {@link #isExecutorThread}
+	 * reports whether the calling thread is itself a bounded executor thread of any {@code
+	 * ComputeContext} &mdash; not only the one that owns this factory, since a chained argument
+	 * can be evaluated from a foreign context's own pool &mdash; the only kind of thread the
+	 * request must be kept off of. When it is not, the request is issued directly on the
+	 * calling thread instead of a freshly spawned one, avoiding a new OS thread (and a
 	 * blocking hand-off to it) at every level of a computation graph with several levels of
 	 * hoisted arguments, such as a chain of reshape- or repeat-wrapped kernel results. Because
 	 * the direct request reuses the argument's existing {@link StreamingEvaluable} rather than
@@ -801,11 +797,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 	/**
 	 * Chooses how a kernel argument's evaluation is dispatched, applying the same
-	 * {@link StreamingEvaluable#isSharedExecutorSafe()} (not {@code isDispatchBacked()},
-	 * which answers a different question — see {@link #construct(PreparedArguments, Semaphore)
-	 * construct}'s javadoc) and {@link #isExecutorThread} selection to both the evaluate-ahead
-	 * pass and the sized-destination pass, so the two can no longer diverge in how they
-	 * schedule a blocking argument request.
+	 * {@link #isExecutorThread} selection (see {@link #construct(PreparedArguments, Semaphore)
+	 * construct}'s javadoc) to both the evaluate-ahead pass and the sized-destination pass,
+	 * so the two can no longer diverge in how they schedule an argument request.
 	 *
 	 * @param evaluable the (possibly {@code into(...)}-wrapped) evaluable to select a
 	 *                  dispatch strategy for
@@ -819,9 +813,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 */
 	private StreamingEvaluable selectAsyncEvaluable(Evaluable evaluable, boolean[] direct, int index) {
 		boolean streaming = evaluable instanceof StreamingEvaluable;
-		boolean executorSafe = streaming && ((StreamingEvaluable<?>) evaluable).isSharedExecutorSafe();
 
-		if (!Hardware.getLocalHardware().isAsync() || executorSafe) {
+		if (!Hardware.getLocalHardware().isAsync()) {
 			return evaluable.async(this::execute);
 		} else if (streaming && !isExecutorThread.getAsBoolean()) {
 			direct[index] = true;

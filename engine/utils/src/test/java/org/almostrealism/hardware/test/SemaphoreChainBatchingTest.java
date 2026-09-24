@@ -41,6 +41,8 @@ import org.junit.Test;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -547,6 +549,137 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		for (int i = 0; i < n; i++) {
 			assertEquals(src.toDouble(i), dst.toDouble(i));
 		}
+	}
+
+	/**
+	 * Verifies that an {@link EvaluableStreamingAdapter} wrapping an evaluable that is itself a
+	 * {@link StreamingEvaluable} forwards the request -- arguments, dependency and downstream --
+	 * to that evaluable's own {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)}
+	 * rather than calling its blocking {@link Evaluable#evaluate(Object...)}. This is what lets
+	 * a compiled kernel reached through {@code Evaluable.async()} keep delivering its result with
+	 * its completion instead of forcing a host wait on the executor's thread.
+	 */
+	@Test(timeout = 10000)
+	public void streamingAdapterForwardsToStreamingEvaluable() {
+		AtomicBoolean evaluated = new AtomicBoolean();
+		AtomicReference<Semaphore> receivedDependsOn = new AtomicReference<>();
+		Semaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 0);
+
+		/** A host evaluable that can also stream, recording which of the two paths the adapter takes. */
+		class StreamingHost implements Evaluable<Integer>, StreamingEvaluable<Integer> {
+			@Override
+			public Integer evaluate(Object... args) {
+				evaluated.set(true);
+				return -1;
+			}
+
+			@Override
+			public void request(Object[] args, Semaphore dependency) {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public void request(Object[] args, Semaphore dependency, Consumer<Integer> downstream) {
+				receivedDependsOn.set(dependency);
+				downstream.accept(7);
+			}
+
+			@Override
+			public void setDownstream(Consumer<Integer> consumer) {
+				throw new UnsupportedOperationException();
+			}
+		}
+
+		EvaluableStreamingAdapter<Integer> adapter = new EvaluableStreamingAdapter<>(new StreamingHost());
+		Integer[] result = new Integer[1];
+		adapter.request(new Object[0], dependsOn, (Consumer<Integer>) value -> result[0] = value);
+
+		assertEquals(7, (int) result[0]);
+		assertTrue(dependsOn == receivedDependsOn.get());
+		assertFalse(evaluated.get());
+	}
+
+	/**
+	 * Verifies that a {@link HardwareEvaluable} short-circuit request with an outstanding
+	 * {@code dependsOn} returns to the requester without waiting for it: the host evaluation is
+	 * ordered after the completion via {@link Semaphore#onComplete(Semaphore, Runnable)} and
+	 * delivered once the dependency fires, so {@code request} honors the non-blocking contract
+	 * of {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)} even on a path that
+	 * cannot chain the dependency into a dispatch.
+	 */
+	@Test(timeout = 10000)
+	public void hardwareEvaluableShortCircuitRequestDoesNotBlockOnDependsOn() throws InterruptedException {
+		int[] sharedState = { 0 };
+		Evaluable<Integer> shortCircuit = args -> sharedState[0];
+		HardwareEvaluable<Integer> evaluable = new HardwareEvaluable<>(
+				() -> { throw new UnsupportedOperationException("kernel should not be reached"); },
+				null, shortCircuit, false);
+
+		CountDownLatch waitEntered = new CountDownLatch(1);
+		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 1) {
+			@Override
+			public void waitFor() {
+				waitEntered.countDown();
+				super.waitFor();
+			}
+		};
+		CountDownLatch delivered = new CountDownLatch(1);
+		Integer[] result = new Integer[1];
+
+		evaluable.request(new Object[0], dependsOn, value -> {
+			result[0] = value;
+			delivered.countDown();
+		});
+
+		// The request has returned while the dependency is still outstanding
+		assertTrue(waitEntered.await(5, TimeUnit.SECONDS));
+		assertEquals(1L, delivered.getCount());
+
+		sharedState[0] = 42;
+		dependsOn.countDown();
+
+		assertTrue(delivered.await(5, TimeUnit.SECONDS));
+		assertEquals(42, (int) result[0]);
+	}
+
+	/**
+	 * Verifies the same non-blocking ordering for a {@link DestinationEvaluable} whose operation
+	 * is a plain host {@link Evaluable} rather than an accelerated kernel: with a {@code dependsOn}
+	 * outstanding, {@code request} returns at once and the element-wise host evaluation into the
+	 * destination runs only after the dependency completes.
+	 */
+	@Test(timeout = 10000)
+	public void destinationEvaluableHostRequestDoesNotBlockOnDependsOn() throws InterruptedException {
+		PackedCollection element = new PackedCollection(1);
+		PackedCollection destination = new PackedCollection(1);
+		Evaluable<PackedCollection> operation = args -> element;
+		DestinationEvaluable<PackedCollection> evaluable = new DestinationEvaluable<>(operation, destination);
+
+		CountDownLatch waitEntered = new CountDownLatch(1);
+		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 1) {
+			@Override
+			public void waitFor() {
+				waitEntered.countDown();
+				super.waitFor();
+			}
+		};
+		CountDownLatch delivered = new CountDownLatch(1);
+		PackedCollection[] result = new PackedCollection[1];
+
+		evaluable.request(new Object[0], dependsOn, value -> {
+			result[0] = value;
+			delivered.countDown();
+		});
+
+		assertTrue(waitEntered.await(5, TimeUnit.SECONDS));
+		assertEquals(1L, delivered.getCount());
+
+		element.setMem(0, 42.0);
+		dependsOn.countDown();
+
+		assertTrue(delivered.await(5, TimeUnit.SECONDS));
+		assertTrue(destination == result[0]);
+		assertEquals(42.0, destination.toDouble(0));
 	}
 
 	/**

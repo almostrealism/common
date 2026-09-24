@@ -23,14 +23,12 @@ import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.streams.EvaluableStreamingAdapter;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
@@ -539,26 +537,6 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 					"Cannot change downstream on AcceleratedComputationEvaluable; use async() to get a fresh wrapper");
 		}
 		this.downstream = consumer;
-	}
-
-	/**
-	 * Returns a new streaming evaluable wrapper for asynchronous execution.
-	 *
-	 * <p>This method creates a new {@link EvaluableStreamingAdapter} wrapper around
-	 * this evaluable. Each call returns a fresh wrapper with its own downstream
-	 * consumer, allowing the same underlying evaluable to be used in multiple
-	 * concurrent execution contexts without race conditions.</p>
-	 *
-	 * <p>Note: Unlike the previous implementation that returned {@code this}, this
-	 * now creates a wrapper to avoid the race condition where multiple construct()
-	 * calls would overwrite each other's downstream consumers.</p>
-	 *
-	 * @param executor The executor for asynchronous operations
-	 * @return A new streaming evaluable wrapper
-	 */
-	@Override
-	public StreamingEvaluable<T> async(Executor executor) {
-		return new EvaluableStreamingAdapter<>(this, executor);
 	}
 
 	/**

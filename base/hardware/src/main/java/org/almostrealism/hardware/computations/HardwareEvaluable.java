@@ -207,8 +207,8 @@ public class HardwareEvaluable<T> implements
 
 	/**
 	 * Optional executor used to dispatch {@link #request(Object[], Semaphore, Consumer)}.
-	 * When set, request work runs on this executor instead of the calling thread, so a
-	 * blocking dispatch (see {@link #isSharedExecutorSafe()}) never ties up the caller.
+	 * When set, request work runs on this executor instead of the calling thread; when
+	 * absent, the request is issued on the calling thread.
 	 */
 	private Executor executor;
 
@@ -425,23 +425,6 @@ public class HardwareEvaluable<T> implements
 	}
 
 	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Always {@code false}: {@link #request(Object[], Semaphore, Consumer)} can still
-	 * block the calling thread. The short-circuit path waits on {@code dependsOn} directly,
-	 * the non-chaining fallback does the same, and the kernel path's delegation to the
-	 * underlying {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)} blocks
-	 * whenever that implementation waits for its own dispatch to be issued (as {@code
-	 * org.almostrealism.hardware.AcceleratedComputationEvaluable#request(Object[], Semaphore,
-	 * Consumer)} does via {@code awaitReady()}). Submitting this to a bounded, shared executor
-	 * risks starving or deadlocking it; it must instead be requested on a dedicated thread.</p>
-	 */
-	@Override
-	public boolean isSharedExecutorSafe() {
-		return false;
-	}
-
-	/**
 	 * Initiates evaluation ordered after the given completion. The dependency is
 	 * delegated to the underlying kernel evaluable, which chains it through the
 	 * provider without blocking, and the result is delivered to {@code downstream}
@@ -450,15 +433,17 @@ public class HardwareEvaluable<T> implements
 	 * through {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)}, so a
 	 * kernel shared by several wrappers serves each request without any wrapper
 	 * installing itself as the kernel's downstream. The short-circuit path is a
-	 * genuine host evaluation — it cannot chain the dependency into a dispatch, so
-	 * it waits for the completion on the thread performing the evaluation before
-	 * reading. A kernel evaluable that is not a {@link StreamingEvaluable} (a plain
-	 * host function, for example) cannot chain either, and is evaluated the same way.
+	 * genuine host evaluation — it cannot chain the dependency into a dispatch, so it
+	 * is ordered after the completion with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * instead: the evaluation runs once the dependency has completed, on the completion's
+	 * callback thread, and this method does not wait for it. A kernel evaluable that is
+	 * not a {@link StreamingEvaluable} (a plain host function, for example) cannot chain
+	 * either, and is evaluated the same way.
 	 *
 	 * <p>When this instance carries an {@link #async(Executor) executor}, all of the above
-	 * runs on that executor instead of the calling thread, so this method itself returns
-	 * immediately: a blocking wait (see {@link #isSharedExecutorSafe()}) lands on the
-	 * executor's thread, never on the caller's.</p>
+	 * is issued on that executor instead of the calling thread. Either way this method
+	 * never waits for a computation to finish; the only wait a request may perform is the
+	 * readiness wait of the kernel's own dispatch.</p>
 	 *
 	 * @param args       the arguments for the evaluation
 	 * @param dependsOn  completion this evaluation must be ordered after, or
@@ -482,7 +467,9 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * Performs the work described by {@link #request(Object[], Semaphore, Consumer)} on
 	 * whichever thread calls it &mdash; either the caller, when no {@link #executor} is
-	 * set, or the executor's own thread otherwise.
+	 * set, or the executor's own thread otherwise. A host evaluation with an outstanding
+	 * {@code dependsOn} is the exception: it is deferred to that completion's callback
+	 * thread via {@link Semaphore#onComplete(Semaphore, Runnable)} rather than waited for.
 	 *
 	 * @param args       the arguments for the evaluation
 	 * @param dependsOn  completion this evaluation must be ordered after, or
@@ -491,9 +478,10 @@ public class HardwareEvaluable<T> implements
 	 */
 	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (shortCircuit != null) {
-			if (dependsOn != null) dependsOn.waitFor();
-			T result = shortCircuit.evaluate(args);
-			downstream.accept(resultProcessor == null ? result : resultProcessor.apply(result));
+			Semaphore.onComplete(dependsOn, () -> {
+				T result = shortCircuit.evaluate(args);
+				downstream.accept(resultProcessor == null ? result : resultProcessor.apply(result));
+			});
 			return;
 		}
 
@@ -504,8 +492,7 @@ public class HardwareEvaluable<T> implements
 		}
 
 		// A kernel that cannot chain is completed on the host, exactly as a short-circuit is
-		if (dependsOn != null) dependsOn.waitFor();
-		downstream.accept(evaluate(args));
+		Semaphore.onComplete(dependsOn, () -> downstream.accept(evaluate(args)));
 	}
 
 	/**
