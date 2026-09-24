@@ -46,7 +46,7 @@ import java.util.function.Supplier;
  * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
- * causal_mask, weighted_values, sqrt, attention, transformer, feed_forward,
+ * causal_mask, weighted_values, sqrt, attention, transformer,
  * shape, range). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -102,7 +102,6 @@ final class PdslBuiltins {
 			case "sqrt": return callSqrt(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
-			case "feed_forward": return callFeedForward(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
 			default: return null;
@@ -742,33 +741,6 @@ final class PdslBuiltins {
 		}
 		throw new PdslParseException(
 				"transformer() expects 19 arguments, got " + args.size());
-	}
-
-	/**
-	 * Builds a feed-forward (MLP) block from 4 or 5 evaluated weight arguments.
-	 *
-	 * @param args Evaluated arguments: RMSNorm weight, w1, w2, w3, and optionally epsilon
-	 * @return A feed-forward {@link Block}
-	 */
-	private static Block callFeedForward(List<Object> args) {
-		if (args.size() == 4) {
-			// feed_forward(rms, w1, w2, w3)
-			return FEATURES.feedForward(
-					(PackedCollection) args.get(0),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3));
-		} else if (args.size() == 5) {
-			// feed_forward(rms, w1, w2, w3, epsilon)
-			return FEATURES.feedForward(
-					(PackedCollection) args.get(0),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					toDouble(args.get(4)));
-		}
-		throw new PdslParseException(
-				"feed_forward() expects 4 or 5 arguments, got " + args.size());
 	}
 
 	/**

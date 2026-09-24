@@ -1,0 +1,37 @@
+/**
+ * SwiGLU feed-forward network — the position-wise MLP sub-layer of a transformer block.
+ *
+ * This file replaces the Java assembly that used to live in
+ * FeedForwardFeatures.feedForward(...), which built this same structure as a SequentialBlock
+ * (rmsnorm, two parallel dense projections, a SiLU gate, an element-wise product and a down
+ * projection). The Java feedForward(rms, w1, w2, w3[, epsilon]) methods now only bind the
+ * weights and load this asset, so there is one definition of the structure and it is here.
+ *
+ * Data flow of one forward pass. The input is the residual-stream vector [1, dim]:
+ *
+ *   [1, dim] token vector
+ *     └─ rmsnorm(norm_weights, epsilon)                          [1, dim]
+ *        ├─ gate: dense(w1) → silu()                             [1, hidden_dim]
+ *        └─ up:   dense(w3)                                      [1, hidden_dim]
+ *        product(gate, up)   (element-wise, one multiply)        [1, hidden_dim]
+ *     └─ dense(w2)                                               [1, dim]
+ *
+ * SwiGLU: FFN(x) = w2 · ( silu(w1 · rmsnorm(x)) ⊙ (w3 · rmsnorm(x)) ). The gate and up
+ * projections both read the normalized vector; the down projection maps the gated hidden
+ * activation back to the model dimension. w1 is the gate projection [hidden_dim, dim], w3 the
+ * up projection [hidden_dim, dim] and w2 the down projection [dim, hidden_dim]. This is the
+ * standard Llama/Qwen MLP; the transformer stacks wrap it in a residual branch (see the
+ * accum-wrapped feed-forward in skytnt_block.pdsl).
+ *
+ * Stage 1 rmsnorm normalizes the residual stream to [1, dim]. Stage 2 product forms the gated
+ * hidden activation [1, hidden_dim] as the SiLU-gated gate path (w1) times the linear up path
+ * (w3), both reading the normalized vector. Stage 3 dense(w2) projects back to [1, dim].
+ */
+layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsilon: float) {
+    rmsnorm(norm_weights, epsilon)
+    product(
+        { dense(w1); silu() },
+        { dense(w3) }
+    )
+    dense(w2)
+}
