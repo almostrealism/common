@@ -81,6 +81,23 @@ class ExampleTest(unittest.TestCase):
 PY
 }
 
+# A Python test that asserts through unittest.mock's dotted assertion
+# methods, called on the mock object rather than on self.
+base_python_mock_test() {
+    cat <<'PY'
+import unittest
+from unittest.mock import patch
+
+
+class MockTest(unittest.TestCase):
+    @patch("mod.post")
+    def test_calls_post(self, mock_post):
+        do_work()
+        mock_post.assert_called_once()
+        mock_post.assert_called_with(1)
+PY
+}
+
 expected_sig() {
     SECRET="$1" JOB_ID="$2" python3 - <<'PY'
 import base64, hashlib, hmac, os
@@ -126,16 +143,21 @@ make_repo() {
 
     mkdir -p "$dir/src/test/java/org/example" \
              "$dir/src/main/java/org/example" \
-             "$dir/.github/workflows"
+             "$dir/.github/workflows" \
+             "$dir/.github/actions/setup"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
     overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
-    mkdir -p "$dir/tools/example" "$dir/tests"
+    mkdir -p "$dir/tools/example" "$dir/tests" "$dir/tools/pkg/tests/sub"
     base_python_test > "$dir/tools/example/test_example.py"
+    base_python_mock_test > "$dir/tools/example/test_mock.py"
     # A root-level tests/ module, whose test packs two assertions on a line.
     printf 'def test_pair():\n    assert 1 == 1; assert 2 == 2\n' > "$dir/tests/helpers.py"
+    # A nested tests/ module, to prove the classifier reaches below one level.
+    printf 'def test_nested():\n    assert 1 == 1\n' > "$dir/tools/pkg/tests/sub/support.py"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
+    echo "name: setup" > "$dir/.github/actions/setup/action.yml"
 
     git -C "$dir" add -A
     git -C "$dir" commit -qm "initial"
@@ -272,6 +294,15 @@ edit_ci_only() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
 }
 
+edit_action_only() {
+    echo "name: setup (edited)" > "$1/.github/actions/setup/action.yml"
+}
+
+edit_action_file() {
+    echo "name: setup (edited)" > "$1/.github/actions/setup/action.yml"
+    edit_production "$1"
+}
+
 edit_ci_file() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
     edit_production "$1"
@@ -350,6 +381,24 @@ py_root_tests_edit_only() {
         "$1/tests/helpers.py"
 }
 
+py_nested_tests_edit_only() {
+    sed -i 's/assert 1 == 1/assert 1 == 1  # unchanged/' \
+        "$1/tools/pkg/tests/sub/support.py"
+}
+
+py_remove_mock_assertion() {
+    sed -i '/mock_post.assert_called_with(1)/d' "$1/tools/example/test_mock.py"
+    edit_production "$1"
+}
+
+py_remove_mock_assertion_in_comment() {
+    # Remove a real mock assertion but leave its text behind in a comment, to
+    # prove a commented-out assertion does not keep the count from falling.
+    sed -i 's/mock_post.assert_called_with(1)/# mock_post.assert_called_with(1)/' \
+        "$1/tools/example/test_mock.py"
+    edit_production "$1"
+}
+
 py_drop_one_of_two_on_a_line() {
     sed -i 's/assert 1 == 1; assert 2 == 2/assert 1 == 1/' "$1/tests/helpers.py"
     edit_production "$1"
@@ -368,6 +417,11 @@ PY
 
 py_remove_assertion_and_production() {
     py_remove_assertion "$1"
+    edit_production "$1"
+}
+
+py_remove_nested_assertion() {
+    sed -i '/assert 1 == 1/d' "$1/tools/pkg/tests/sub/support.py"
     edit_production "$1"
 }
 
@@ -391,6 +445,7 @@ run_case "helper edit alone blocked"            3 "$VALIDATE" feature/x "$SECRET
 run_case "py test edit alone blocked"           3 "$VALIDATE" feature/x "$SECRET" py_edit_test_body_only
 run_case "py assertion removal alone blocked"   3 "$VALIDATE" feature/x "$SECRET" py_remove_assertion
 run_case "root tests/ edit alone blocked"       3 "$VALIDATE" feature/x "$SECRET" py_root_tests_edit_only
+run_case "nested tests/ edit alone blocked"     3 "$VALIDATE" feature/x "$SECRET" py_nested_tests_edit_only
 
 echo "validate-agent-commit — substantive change sets"
 run_case "test edit with production allowed"    0 "$VALIDATE" feature/x "$SECRET" escalate_and_production
@@ -441,6 +496,9 @@ run_case "py test function removal found"       2 "$PY_HIDING" feature/x "$SECRE
 run_case "py test function rename found"        2 "$PY_HIDING" feature/x "$SECRET" py_rename_test_function
 run_case "py assertion removal found"           2 "$PY_HIDING" feature/x "$SECRET" py_remove_assertion_and_production
 run_case "one of two assertions on a line found" 2 "$PY_HIDING" feature/x "$SECRET" py_drop_one_of_two_on_a_line
+run_case "dotted mock assertion removal found"  2 "$PY_HIDING" feature/x "$SECRET" py_remove_mock_assertion
+run_case "mock assertion moved to comment found" 2 "$PY_HIDING" feature/x "$SECRET" py_remove_mock_assertion_in_comment
+run_case "nested tests/ assertion removal found" 2 "$PY_HIDING" feature/x "$SECRET" py_remove_nested_assertion
 
 echo "detect-python-test-hiding — permitted Python test work"
 run_case "py test body edit allowed"            0 "$PY_HIDING" feature/x "$SECRET" py_edit_test_body
@@ -455,6 +513,9 @@ echo "check-ci-file-lock — the lock and the ci/ exemption"
 run_case "workflow edit blocked on feature"     4 "$CI_LOCK" feature/x "$SECRET" edit_ci_file
 run_case "workflow-only edit blocked"           4 "$CI_LOCK" feature/x "$SECRET" edit_ci_only
 run_case "tools/ci edit blocked on feature"     4 "$CI_LOCK" feature/x "$SECRET" edit_tools_ci
+run_case "action edit blocked on feature"       4 "$CI_LOCK" feature/x "$SECRET" edit_action_file
+run_case "action-only edit blocked"             4 "$CI_LOCK" feature/x "$SECRET" edit_action_only
+run_case "action edit allowed on ci/"           0 "$CI_LOCK" ci/issue-1 "$SECRET" edit_action_file
 run_case "workflow edit allowed on ci/"         0 "$CI_LOCK" ci/issue-1 "$SECRET" edit_ci_file
 run_case "workflow edit allowed on ci/a/b"      0 "$CI_LOCK" ci/issues/2 "$SECRET" edit_ci_file
 run_case "no CI change allowed"                 0 "$CI_LOCK" feature/x "$SECRET" edit_production

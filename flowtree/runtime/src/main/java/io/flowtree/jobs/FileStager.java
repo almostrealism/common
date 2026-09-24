@@ -158,12 +158,15 @@ public class FileStager implements ConsoleFeatures {
      * {@link StagingResult#getStagedFiles()}.</p>
      *
      * <p>Guardrail 2 protects two things independently. CI/workflow files
-     * (see {@link FileStagingConfig#isProtectCiFiles()}) that exist at the
-     * merge-base are blocked whole-file under the CI file lock whatever the
-     * job's test lock says, and under the test lock as well. Test files are
-     * blocked only under the test lock
-     * ({@link FileStagingConfig#isProtectTestFiles()}), at test-method
-     * granularity for Java sources.</p>
+     * (see {@link FileStagingConfig#isProtectCiFiles()}) are blocked whole-file
+     * under the CI file lock whatever the job's test lock says, and under the
+     * test lock as well — whether or not they existed at the merge-base, since
+     * {@code check-ci-file-lock.sh} rejects a branch-new workflow exactly as it
+     * rejects an edit to an existing one, and the harness must drop the same
+     * files the pipeline would refuse. Test files are blocked only under the
+     * test lock ({@link FileStagingConfig#isProtectTestFiles()}), and only when
+     * they exist at the merge-base (a branch-new test is allowed), at
+     * test-method granularity for Java sources.</p>
      *
      * @param changedFiles     the list of changed file paths (relative to
      *                         the working directory)
@@ -201,8 +204,15 @@ public class FileStager implements ConsoleFeatures {
             boolean ciLocked = ciFile
                     && (config.isProtectCiFiles() || (config.isProtectTestFiles() && inProtectedPath));
             boolean testLocked = !ciFile && config.isProtectTestFiles() && inProtectedPath;
-            if (ciLocked || testLocked) {
-                if (ciLocked || !file.endsWith(".java")) {
+            if (ciLocked) {
+                // Blocked whole-file whether branch-new or pre-existing; see
+                // the guardrail-2 note in evaluateFiles' javadoc.
+                log("Blocked (protected - CI/workflow file): " + file);
+                skippedFiles.add(file + " (protected - CI/workflow file)");
+                continue;
+            }
+            if (testLocked) {
+                if (!file.endsWith(".java")) {
                     if (existsOnBaseBranch(file, mergeBaseFiles)) {
                         log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
                         skippedFiles.add(file + " (protected - exists on base branch)");

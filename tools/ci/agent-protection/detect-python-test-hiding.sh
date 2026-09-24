@@ -75,13 +75,24 @@ test_names() {
         | LC_ALL=C sort -u
 }
 
-# Assertions in one revision of a file: bare `assert` and the unittest and
-# pytest forms, since this repository's Python tests use all three. Every
+# Assertions in one revision of a file: the bare `assert` statement, the
+# unittest forms (`self.assertEqual`, `assertRaises`, `self.fail`), pytest's
+# `pytest.raises`, and — crucially — the dotted `unittest.mock` assertion
+# methods (`mock_post.assert_called_once()`, `assert_not_called()`), which are
+# called on the mock object rather than on `self`. Missing those let a base
+# test drop its only mock assertion while the count held steady. Every
 # occurrence is counted, not every line holding one, so removing one of two
 # assertions written on the same line still lowers the count.
+#
+# `#`-comments are stripped before counting so that an `assert` word parked in
+# a comment cannot keep the count from falling when a real assertion is
+# removed. The strip is naive about `#` inside a string literal, but it is
+# applied identically to both revisions, so an unchanged such line contributes
+# equally to each and never manufactures a spurious drop.
 assertions() {
     git show "${1}:${2}" 2>/dev/null \
-        | { grep -oE '(^|[^A-Za-z0-9_.])(assert|self\.assert[A-Za-z_]+|self\.fail|pytest\.raises|assertRaises)\b' || true; } \
+        | sed 's/#.*$//' \
+        | { grep -oE '(^|[^A-Za-z0-9_.])assert\b|\.assert[A-Za-z0-9_]*|\.fail\b|pytest\.raises|\bassertRaises\b' || true; } \
         | wc -l | tr -d ' '
 }
 
@@ -90,8 +101,13 @@ VIOLATIONS=0
 
 while IFS= read -r FILE; do
     [ -z "$FILE" ] && continue
-    printf '%s\n' "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/[^/]*\.py$' || continue
-    printf '%s\n' "$BASE_FILES" | grep -qxF "$FILE" || continue
+    # grep against a here-string rather than through a pipe: under pipefail a
+    # matching `grep -q` exits before draining a large `BASE_FILES` listing,
+    # SIGPIPEs the producer, and turns the match into a non-zero pipeline that
+    # `|| continue` would swallow — skipping the integrity check for the file.
+    # A here-string has no producer process to signal.
+    grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/([^/]+/)*[^/]*\.py$' <<< "$FILE" || continue
+    grep -qxF -- "$FILE" <<< "$BASE_FILES" || continue
 
     removed=$(LC_ALL=C comm -23 <(test_names "$MERGE_BASE" "$FILE") <(test_names HEAD "$FILE") || true)
     if [ -n "$removed" ]; then

@@ -10,7 +10,8 @@
 #
 # What counts as an edit to the base branch's tests: a change to a test
 # file that exists at the merge-base — Java under src/test/ or matching
-# *Test*.java, Python matching test_*.py, *_test.py or tests/*.py — that
+# *Test*.java, Python matching test_*.py, *_test.py or any module under a
+# tests/ directory at any depth — that
 # adds no new test to it. Anything else in the change set (production code,
 # a test file the branch introduced, a new test method or function, config,
 # docs) makes it substantive, and the set passes.
@@ -118,8 +119,8 @@ SUBSTANTIVE=""
 
 while IFS= read -r FILE; do
     [ -z "$FILE" ] && continue
-    if printf '%s\n' "$FILE" | grep -qE '(src/test/|Test[^/]*\.java$)|(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/[^/]*\.py$' \
-            && printf '%s\n' "$BASE_FILES" | grep -qxF "$FILE" \
+    if grep -qE '(src/test/|Test[^/]*\.java$)|(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/([^/]+/)*[^/]*\.py$' <<< "$FILE" \
+            && grep -qxF -- "$FILE" <<< "$BASE_FILES" \
             && ! adds_a_test "$FILE"; then
         BASE_TEST_EDITS="${BASE_TEST_EDITS}${FILE}\n"
     else

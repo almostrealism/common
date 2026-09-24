@@ -54,7 +54,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_BYPASS="${SCRIPT_DIR}/verify-sensitive-bypass.sh"
 
 CI_BRANCH_PATTERN='^ci/'
-LOCKED_PATH_PATTERN='(\.github/workflows/|tools/ci/)'
+# Anchored at the start of a repository-relative path so that only the CI
+# directories match and an unrelated path like vendor/tools/ci/example does
+# not. .github/actions/ is covered as well, because the harness (FileStager)
+# treats it as CI and the two enforcement sides must agree on the same scope.
+LOCKED_PATH_PATTERN='^(\.github/workflows/|\.github/actions/|tools/ci/)'
 
 output() {
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -90,9 +94,20 @@ every_locked_commit_is_signed() {
     msgfile=$(mktemp)
     trap 'rm -f "$msgfile"' RETURN
 
+    local tree
     for sha in $(git rev-list "${BASE_BRANCH}..HEAD"); do
-        git diff-tree -c --no-commit-id --name-only -r "$sha" \
-            | grep -qE "$LOCKED_PATH_PATTERN" || continue
+        # Capture the commit's changed paths first rather than piping straight
+        # into grep: under `set -o pipefail` a `grep -q` that matches early
+        # exits before consuming the stream, sending SIGPIPE to `git diff-tree`
+        # and making the pipeline exit non-zero even on a match — a failure
+        # `|| continue` would then swallow, skipping the lock for that commit.
+        # A failed diff-tree is a reason to stop, not to pass.
+        if ! tree=$(git diff-tree -c --no-commit-id --name-only -r "$sha" 2>&1); then
+            echo "Cannot inspect commit ${sha} — the CI file lock cannot be checked:" >&2
+            echo "$tree" >&2
+            return 1
+        fi
+        grep -qE "$LOCKED_PATH_PATTERN" <<< "$tree" || continue
         git log -1 --format='%B' "$sha" > "$msgfile"
         if ! jobid=$(bash "$VERIFY_BYPASS" "$msgfile" 2>/dev/null); then
             echo "Commit ${sha} changes a CI/workflow file without a valid bypass trailer." >&2

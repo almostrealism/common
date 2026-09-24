@@ -261,21 +261,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws InterruptedException if a git command is interrupted
      */
     private void stageFiles(List<String> files) throws IOException, InterruptedException {
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(job.getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                // The harness-side test-file staging guardrail is gated on
-                // BOTH the legacy protectTestFiles flag AND the new
-                // sensitiveFileProtectionEnabled flag. Either one being off
-                // disables the guardrail — they are ANDed, not ORed, so a
-                // default-default job (both true) gets the full protection.
-                .protectTestFiles(job.isProtectTestFiles()
-                        && GitCommitHandler.isSensitiveFileProtectionEnabled(job))
-                .protectCiFiles(GitCommitHandler.isSensitiveFileProtectionEnabled(job)
-                        && !isCiBranch(job.getTargetBranch()))
-                .baseBranch(job.getBaseBranch())
-                .maxFileSizeBytes(job.getMaxFileSizeBytes())
-                .build();
+        FileStagingConfig config = buildStagingConfig(job);
 
         FileStager stager = new FileStager();
         File workDir = job.getWorkingDirectory() != null
@@ -606,6 +592,38 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the {@link FileStagingConfig} that governs which of a job's
+     * changed files may be staged. This is the single source of truth for the
+     * two locks so that {@link #stageFiles(List)} and
+     * {@link GitManagedJob#previewStaging()} cannot drift apart: a preview that
+     * showed a file as stageable while the commit silently dropped it would
+     * cost the agent its correction turn.
+     *
+     * <p>The test-file lock is gated on BOTH the legacy {@code protectTestFiles}
+     * flag AND {@code sensitiveFileProtectionEnabled} — ANDed, not ORed, so a
+     * default job (both true) gets the full protection and either being off
+     * disables it. The CI file lock is independent of the test lock: it is on
+     * for every job whose sensitive-file protection is enabled, except one on a
+     * {@code ci/...} branch, matching the exemptions
+     * {@code check-ci-file-lock.sh} applies in CI.</p>
+     *
+     * @param job the job whose staging configuration is being built
+     * @return the immutable staging configuration for the job
+     */
+    static FileStagingConfig buildStagingConfig(GitManagedJob job) {
+        return FileStagingConfig.builder()
+                .excludedPatterns(job.getAllExcludedPatterns())
+                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+                .protectTestFiles(job.isProtectTestFiles()
+                        && isSensitiveFileProtectionEnabled(job))
+                .protectCiFiles(isSensitiveFileProtectionEnabled(job)
+                        && !isCiBranch(job.getTargetBranch()))
+                .baseBranch(job.getBaseBranch())
+                .maxFileSizeBytes(job.getMaxFileSizeBytes())
+                .build();
+    }
+
+    /**
      * Returns whether the broader per-job sensitive-file protections are
      * active. {@link CodingAgentJob} (the only job type that runs an
      * agent) implements the flag explicitly; for any other job type we
@@ -627,8 +645,8 @@ class GitCommitHandler implements ConsoleFeatures {
      * declared subject is the pipeline itself.
      *
      * <p>The harness applies the repository's CI file lock to every job,
-     * independently of the job's test lock: a CI/workflow file that exists
-     * at the merge-base is not staged unless the controller authorised the
+     * independently of the job's test lock: a CI/workflow file (branch-new or
+     * pre-existing) is not staged unless the controller authorised the
      * job to change sensitive files (its commit then carries the signed
      * bypass trailer) or the job works on a CI branch. These are the same
      * exemptions {@code tools/ci/agent-protection/check-ci-file-lock.sh}

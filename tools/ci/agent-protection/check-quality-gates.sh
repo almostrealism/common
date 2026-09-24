@@ -122,7 +122,7 @@ if [ "${AGENT_COMMIT_BLOCKED:-false}" = "true" ]; then
             FAILURE_COUNT=$((FAILURE_COUNT + 1))
             ;;
         test_file_modification|ci_file_modification)
-            echo "::notice::agent-commit-validation reported ${AGENT_BLOCK_REASON} from a validator older than this pipeline; that rule is no longer its to enforce"
+            echo "::notice::agent-commit-validation reported ${AGENT_BLOCK_REASON} from a validator older than this pipeline; that rule is no longer this job's to enforce"
             ;;
         *)
             UNATTRIBUTED=true

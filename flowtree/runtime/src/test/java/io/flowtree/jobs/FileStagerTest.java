@@ -325,6 +325,41 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a branch-new CI/workflow file (absent from the merge-base
+	 * listing) is still blocked under the CI file lock. The shell lock
+	 * ({@code check-ci-file-lock.sh}) rejects a new workflow just as it rejects
+	 * an edit to an existing one, so the harness must not stage a new CI file
+	 * the pipeline would later refuse. Unlike a branch-new test file, which is
+	 * allowed, a branch-new CI file is not.
+	 */
+	@Test(timeout = 30000)
+	public void blocksBranchNewCiWorkflowFile() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/new.yaml"), "name: new\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectCiFiles(true)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			// The merge-base listing is empty: the new workflow has no entry
+			// there, yet the CI lock must still block it.
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList(".github/workflows/new.yaml"),
+				config, tempDir.toFile(), listingGitOps());
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("CI/workflow"));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
 	 * Verifies that with neither lock active an existing workflow file is
 	 * staged, as it is for a job on a {@code ci/...} branch.
 	 */
