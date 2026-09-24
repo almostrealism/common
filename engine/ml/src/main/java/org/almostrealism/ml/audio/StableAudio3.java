@@ -358,28 +358,30 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 				steps, shape(BATCH, latentDim, latentLen))
 				.setVerbose(verbose);
 
-		AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(prompt, seconds);
-		PackedCollection context = positive.getCrossAttentionInput().clone();
-		PackedCollection global = positive.getGlobalCond().clone();
+		PackedCollection context = null;
+		PackedCollection global = null;
 		PackedCollection negativeContext = null;
 		PackedCollection negativeGlobal = null;
-
-		if (guidanceScale != 1.0) {
-			AudioAttentionConditioner.ConditionerOutput negative = conditioner.runConditioners(negativePrompt, seconds);
-			negativeContext = negative.getCrossAttentionInput().clone();
-			negativeGlobal = negative.getGlobalCond().clone();
-			sampler.setGuidance(new ClassifierFreeGuidance(guidanceScale), negativeContext, negativeGlobal);
-		}
-
 		PackedCollection audio;
 		PackedCollection latent = null;
 		try {
+			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(prompt, seconds);
+			context = positive.getCrossAttentionInput().clone();
+			global = positive.getGlobalCond().clone();
+
+			if (guidanceScale != 1.0) {
+				AudioAttentionConditioner.ConditionerOutput negative = conditioner.runConditioners(negativePrompt, seconds);
+				negativeContext = negative.getCrossAttentionInput().clone();
+				negativeGlobal = negative.getGlobalCond().clone();
+				sampler.setGuidance(new ClassifierFreeGuidance(guidanceScale), negativeContext, negativeGlobal);
+			}
+
 			latent = sampler.sample(seed, context, global);
 			audio = decoder.forward(latent);
 		} finally {
 			if (latent != null) latent.destroy();
-			context.destroy();
-			global.destroy();
+			if (context != null) context.destroy();
+			if (global != null) global.destroy();
 			if (negativeContext != null) negativeContext.destroy();
 			if (negativeGlobal != null) negativeGlobal.destroy();
 		}

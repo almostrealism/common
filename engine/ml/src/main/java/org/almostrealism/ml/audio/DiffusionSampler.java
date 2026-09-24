@@ -234,8 +234,12 @@ public class DiffusionSampler implements ConsoleFeatures {
 		// Add noise to start latent at the target timestep
 		double startT = timesteps[startStep];
 		PackedCollection noise = sampleNoise(startLatent.getShape().extent(), random);
-		PackedCollection x = strategy.addNoise(startLatent, startT, noise).evaluate();
-		noise.destroy();
+		PackedCollection x;
+		try {
+			x = strategy.addNoise(startLatent, startT, noise).evaluate();
+		} finally {
+			noise.destroy();
+		}
 
 		if (verbose) {
 			log("Starting diffusion from step " + startStep + "/" + numInferenceSteps +
@@ -267,7 +271,11 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 * and must not be released here). Each is destroyed once superseded by the next
 	 * step's result, and the timestep tensor is destroyed when the loop exits, so a
 	 * generator that calls this repeatedly does not accumulate native allocations beyond
-	 * the latent it ultimately returns.</p>
+	 * the latent it ultimately returns. A step's noise and guided prediction are also
+	 * tracked outside the loop body so that an exception from {@link #predict}, the NaN
+	 * checks, {@link SamplingStrategy#step}, or the progress callback still releases
+	 * them (and the latent then in flight) on the way out, rather than only on the
+	 * normal path.</p>
 	 */
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection crossAttnCond,
@@ -286,6 +294,10 @@ public class DiffusionSampler implements ConsoleFeatures {
 		int totalSteps = numInferenceSteps - startStep;
 		boolean guided = guidance != null && guidance.isActive();
 
+		PackedCollection currentNoise = null;
+		PackedCollection currentModelOutput = null;
+		boolean completed = false;
+
 		try {
 			for (int step = startStep; step < numInferenceSteps; step++) {
 				double t = timesteps[step];
@@ -295,12 +307,14 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 				long start = System.currentTimeMillis();
 				PackedCollection modelOutput = predict(x, tTensor, t, crossAttnCond, globalCond);
+				currentModelOutput = guided ? modelOutput : null;
 				modelTotal += System.currentTimeMillis() - start;
 
 				checkNan(x, "input at step " + step);
 				checkNan(modelOutput, "output at step " + step);
 
 				PackedCollection noise = (tPrev > 0) ? sampleNoise(shapeArray, random) : null;
+				currentNoise = noise;
 
 				start = System.currentTimeMillis();
 				PackedCollection next = strategy.step(x, modelOutput, t, tPrev, noise).evaluate();
@@ -308,7 +322,9 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 				x.destroy();
 				if (noise != null) noise.destroy();
+				currentNoise = null;
 				if (guided) modelOutput.destroy();
+				currentModelOutput = null;
 				x = next;
 
 				checkNan(x, "result at step " + step);
@@ -321,8 +337,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 					log(String.format("Step %d/%d (t=%.4f)", step - startStep + 1, totalSteps, t));
 				}
 			}
+
+			completed = true;
 		} finally {
 			tTensor.destroy();
+			if (currentNoise != null) currentNoise.destroy();
+			if (currentModelOutput != null) currentModelOutput.destroy();
+			if (!completed) x.destroy();
 		}
 
 		if (verbose) {
