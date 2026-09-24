@@ -528,6 +528,11 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>Access listener ensures that using any {@link io.almostrealism.code.InstructionSet}
 	 * from the manager updates the cache frequency or restores an evicted entry.</p>
 	 *
+	 * <p>If the cached manager's context has since been destroyed, the entry is evicted and
+	 * rebuilt: since {@code context} is itself the dead context recorded on that entry,
+	 * recreating under it would just repeat the failure, so a live context is selected via
+	 * {@link #getContext(Computation)} and the manager is cached under that context's key.</p>
+	 *
 	 * @param signature Unique signature identifying the operation structure
 	 * @param computation The computation to manage (used for Process tree substitution if applicable)
 	 * @param context The compute context for compilation
@@ -568,7 +573,24 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		if (mgr.getComputeContext().isDestroyed() ||
 				mgr.getComputeContext().getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
-			mgr = instructionsCache.computeIfAbsent(cacheKey, create);
+
+			ComputeContext<?> liveContext = computation == null ? context : getContext(computation);
+			String liveCacheKey = Objects.requireNonNull(signature) + ":" + contextId(liveContext);
+			Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> liveAccessListener =
+					m -> instructionsCache.computeIfAbsent(liveCacheKey, () -> m);
+
+			Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> recreate = () -> {
+				ScopeInstructionsManager<ScopeSignatureExecutionKey> m =
+						new ScopeInstructionsManager<>(liveContext, scope, liveAccessListener);
+
+				if (computation instanceof Process<?, ?>) {
+					m.setProcess((Process<?, ?>) computation);
+				}
+
+				return m;
+			};
+
+			mgr = instructionsCache.computeIfAbsent(liveCacheKey, recreate);
 		}
 
 		return mgr;
@@ -591,6 +613,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
+		// TODO(review): prefix match on "signature:" can over-evict if another signature starts with this one + ':'
 		String prefix = signature + ":";
 		List<String> keys = new ArrayList<>();
 		instructionsCache.forEach((key, mgr) -> {

@@ -313,6 +313,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** Thread-local memory provider function for size-based allocation. */
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
+	/** Serializes compute context creation against {@link #destroy()} so neither can race the other. */
+	private final Object contextLock = new Object();
+
 	/** Lazy initialization callback for OpenCL resources. */
 	private Runnable start;
 
@@ -476,9 +479,16 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return a new {@link ComputeContext} configured for the specified requirements
 	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
-		ComputeContext<MemoryData> context = newContext(expectations);
-		allComputeContexts.add(context);
-		return context;
+		synchronized (contextLock) {
+			if (destroyed) {
+				throw new IllegalStateException("Cannot create a compute context for " +
+						name + " because the data context has been destroyed");
+			}
+
+			ComputeContext<MemoryData> context = newContext(expectations);
+			allComputeContexts.add(context);
+			return context;
+		}
 	}
 
 	/** Builds a compute context for the given requirements without recording it. */
@@ -636,16 +646,26 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
-		if (computeContexts.get().isEmpty()) {
+		List<ComputeContext<MemoryData>> current = computeContexts.get();
+
+		// A thread's cached list can outlive the contexts it holds, if this data context
+		// was destroyed on another thread; discard it so it is rebuilt (or destruction is
+		// surfaced immediately) rather than handing back destroyed contexts.
+		if (!current.isEmpty() && current.stream().anyMatch(ComputeContext::isDestroyed)) {
+			current = new ArrayList<>();
+			computeContexts.set(current);
+		}
+
+		if (current.isEmpty()) {
 			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContexts.get().add(createContext());
+			current.add(createContext());
 
 			if (enableClNative) {
-				computeContexts.get().add(createContext(ComputeRequirement.C));
+				current.add(createContext(ComputeRequirement.C));
 			}
 		}
 
-		return computeContexts.get();
+		return current;
 	}
 
 	/**
@@ -719,11 +739,13 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public void destroy() {
-		destroyed = true;
+		synchronized (contextLock) {
+			destroyed = true;
 
-		computeContexts.remove();
-		allComputeContexts.forEach(ComputeContext::destroy);
-		allComputeContexts.clear();
+			computeContexts.remove();
+			allComputeContexts.forEach(ComputeContext::destroy);
+			allComputeContexts.clear();
+		}
 
 		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();
