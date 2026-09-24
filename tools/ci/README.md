@@ -49,12 +49,12 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 `.github/CLAUDE.md`):
 
 - `auto-resolve-python` — python-tests failed; submits at once.
-- `auto-review` — attempt 1 only; submits one of build failure, code policy,
-  quality gates, docs-only verify, or the general review, as soon as the gates
-  report. The one exception: a gate that failed without recording a cause
-  (`check-quality-gates.sh`'s `unattributed`) submits nothing and is left for a
-  human, since it means a detector could not run, not that the branch is at
-  fault.
+- `auto-review` — attempt 1 only; always submits one of build failure, code
+  policy, quality gates, docs-only verify, or the general review, as soon as the
+  gates report. A gate that failed without recording a cause
+  (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
+  branch gets the general review, with a note that the gate is not the agent's
+  to fix.
 - `auto-resolve` — attempt 3 and later; stages a request for long-running test
   failures, which `auto-resolve-submit.yaml` submits once `rerun-flaky-tests.sh`
   has no retry left.

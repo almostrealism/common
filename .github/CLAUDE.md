@@ -134,7 +134,7 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; submits nothing only when a gate failed without a recorded cause, which is left for a human) | As soon as the gates report, from this run |
+| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
 | `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The early two exist so that an agent reaches a stopping point — gates green, no
@@ -250,8 +250,10 @@ run), or empty — written by the step that reached the verdict, since only that
 step knows whether a non-zero exit was a finding or a crash.
 `check-quality-gates.sh` lists the three findings and reports nothing for
 anything else, so a missing script, a skipped job, or a detector that died
-blocks the pipeline for a human instead of dispatching an agent against an
-innocent branch. When adding a detector to that job: emit a reason for the
+blocks the pipeline for a human instead of being reported to an agent as a
+finding against an innocent branch. `auto-review` still submits the general
+review for such a run, with a note that the failed gate is not the agent's to
+fix. When adding a detector to that job: emit a reason for the
 finding, emit `infrastructure` for every other non-zero exit, and add the arm
 to `check-quality-gates.sh` — `tools/tests/test_integrity_check_wiring.py`
 holds the two ends together.

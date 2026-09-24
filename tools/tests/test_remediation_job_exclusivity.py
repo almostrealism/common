@@ -158,6 +158,22 @@ class CredentialIsolationTests(unittest.TestCase):
                 self.assertEqual(1, len(runs))
                 self.assertIn("tools/ci/submit-staged-request.sh", runs[0])
 
+    def test_auto_review_always_selects_a_prompt(self):
+        """Every route auto-review can pick has a staging step; there is no route
+        that submits nothing. A gate that failed without a recorded cause falls
+        through to the general review, whose prompt then says so."""
+        steps = _jobs()["auto-review"]["steps"]
+        select = next(s for s in steps if s.get("name") == "Select prompt")["run"]
+        routes = set(re.findall(r"ROUTE=([a-z-]+)", select))
+        self.assertEqual({"docs-verify", "build-failure", "code-policy", "quality-gates",
+                          "general-review"}, routes)
+        staged = {m for s in steps if s.get("name", "").startswith("Stage submit request")
+                  for m in re.findall(r"route == '([a-z-]+)'", str(s.get("if", "")))}
+        self.assertEqual(routes, staged)
+        review = next(s for s in steps if s.get("name") == "Build prompt (general review)")
+        self.assertIn("steps.quality.outputs.unattributed", review["env"]["QUALITY_UNATTRIBUTED"])
+        self.assertIn("QUALITY_UNATTRIBUTED", review["run"])
+
     def test_auto_review_waits_for_the_copilot_review(self):
         """auto-review can finish before Copilot's review of the push has posted.
 

@@ -3094,11 +3094,13 @@ jobs:
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
-      # auto-review submits the first matching prompt below, falling through
-      # to the general review when every gate passed. The one exception is a
-      # gate that failed without recording a cause (check-quality-gates.sh's
-      # `unattributed`): that is left for a human rather than reported to an
-      # agent as a finding, or as a clean branch. The
+      # auto-review always submits: the first matching prompt below, falling
+      # through to the general review when no gate reported a finding. That
+      # includes a gate that failed without recording a cause
+      # (check-quality-gates.sh's `unattributed`): it is never reported to an
+      # agent as a finding, but the branch still gets its review, with a note
+      # that the failure is not the agent's to chase. Nothing else would pick
+      # it up — auto-resolve only handles long-running test failures. The
       # long-running test jobs play no part here; their failures are
       # auto-resolve's, on attempt 3.
       - name: Select prompt
@@ -3108,7 +3110,6 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           CODE_POLICY_PASSED: ${{ needs.code-policy-check.outputs.passed }}
           QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
-          QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
           DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
         run: |
           if [ "$CODE_CHANGED" != "true" ]; then
@@ -3119,9 +3120,6 @@ jobs:
             ROUTE=code-policy
           elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
             ROUTE=quality-gates
-          elif [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
-            ROUTE=none
-            echo "::warning::A quality gate failed without recording a cause — nothing is submitted; a human should read the job log"
           elif [ "$DOCS_ONLY" = "true" ]; then
             ROUTE=docs-verify
           else
@@ -3227,7 +3225,7 @@ jobs:
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
 
       # ── General review path ─────────────────────────────────────
-      # Every gate passed: review design, test quality, correctness,
+      # No gate reported a finding: review design, test quality, correctness,
       # documentation, and consistency with existing patterns.
       - name: Build prompt (general review)
         if: steps.route.outputs.route == 'general-review'
@@ -3235,8 +3233,21 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+          QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
         run: |
           ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          if [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
+            echo "::warning::A quality gate failed without recording a cause — submitting the general review; a human should read that gate's job log"
+            cat >> "${{ runner.temp }}/agent-prompt.txt" <<'NOTE'
+
+          ## A note on this pipeline
+
+          One quality gate failed without recording a cause: a detector could not
+          run, which says nothing about this branch. It is not yours to fix, and
+          you should not change CI or enforcement files to make it pass. A human
+          will look at that job's log. Review the branch as described above.
+          NOTE
+          fi
 
       - name: Stage submit request (general review)
         if: steps.route.outputs.route == 'general-review'
@@ -3286,7 +3297,6 @@ jobs:
                 echo '```'
                 ;;
               general-review) echo "All quality gates passed — submitted a job for general review." ;;
-              none)           echo "**A quality gate failed without recording a cause** — nothing was submitted. A human should read the job log." ;;
               *)              echo "No prompt was selected." ;;
             esac
             echo ""
