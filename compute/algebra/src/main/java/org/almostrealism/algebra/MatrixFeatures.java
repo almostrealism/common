@@ -187,7 +187,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		// is one vector of n elements, whichever path follows; a single element
 		// is left to the scalar shortcut below
 		if (vShape.getDimensions() == 2 && vShape.length(1) == 1 && vShape.length(0) > 1
-				&& vShape.length(0) == mShape.length(1)) {
+				&& mShape.getDimensions() == 2 && vShape.length(0) == mShape.length(1)) {
 			vShape = vShape.trim();
 			vector = reshape(vShape, vector);
 		}

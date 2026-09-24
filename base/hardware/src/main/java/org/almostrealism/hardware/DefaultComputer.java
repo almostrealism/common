@@ -610,14 +610,21 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>This exists so tests can exercise the eviction lifecycle deterministically
 	 * instead of flooding the cache past capacity.</p>
 	 *
+	 * <p>Cache keys are {@code signature:contextId}, and a signature may itself
+	 * contain a colon, so entries are matched by comparing everything before the
+	 * final colon (the {@code contextId} suffix is always a plain integer) rather
+	 * than by a prefix match, which would also evict an unrelated signature that
+	 * happens to start with this one followed by {@code ':'}.</p>
+	 *
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
-		// TODO(review): prefix match on "signature:" can over-evict if another signature starts with this one + ':'
-		String prefix = signature + ":";
 		List<String> keys = new ArrayList<>();
 		instructionsCache.forEach((key, mgr) -> {
-			if (key.startsWith(prefix)) keys.add(key);
+			int contextIdStart = key.lastIndexOf(':');
+			if (contextIdStart >= 0 && key.substring(0, contextIdStart).equals(signature)) {
+				keys.add(key);
+			}
 		});
 		keys.forEach(instructionsCache::evict);
 	}
