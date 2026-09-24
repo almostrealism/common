@@ -235,6 +235,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 		double startT = timesteps[startStep];
 		PackedCollection noise = sampleNoise(startLatent.getShape().extent(), random);
 		PackedCollection x = strategy.addNoise(startLatent, startT, noise).evaluate();
+		noise.destroy();
 
 		if (verbose) {
 			log("Starting diffusion from step " + startStep + "/" + numInferenceSteps +
@@ -259,6 +260,14 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 * batch advances through the schedule together, so every element of that tensor
 	 * carries the current step — writing only the first would leave the rest of the
 	 * batch denoising at a timestep of zero.</p>
+	 *
+	 * <p>Every step allocates fresh native buffers for the noise sample and the denoised
+	 * latent, and {@link #predict} allocates a fresh guided prediction whenever guidance
+	 * is active (the unguided model prediction is the model's own reused output buffer
+	 * and must not be released here). Each is destroyed once superseded by the next
+	 * step's result, and the timestep tensor is destroyed when the loop exits, so a
+	 * generator that calls this repeatedly does not accumulate native allocations beyond
+	 * the latent it ultimately returns.</p>
 	 */
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection crossAttnCond,
@@ -275,42 +284,45 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 		PackedCollection tTensor = new PackedCollection(new TraversalPolicy(latentShape.length(0), 1));
 		int totalSteps = numInferenceSteps - startStep;
+		boolean guided = guidance != null && guidance.isActive();
 
-		for (int step = startStep; step < numInferenceSteps; step++) {
-			double t = timesteps[step];
-			double tPrev = timesteps[step + 1];
+		try {
+			for (int step = startStep; step < numInferenceSteps; step++) {
+				double t = timesteps[step];
+				double tPrev = timesteps[step + 1];
 
-			// TODO  The schedule is a device-resident table indexed by the step, once
-			// TODO  SamplingStrategy can express it as a producer instead of a double[].
-			tTensor.fill(t);
+				tTensor.fill(t);
 
-			// Model forward pass
-			long start = System.currentTimeMillis();
-			PackedCollection modelOutput = predict(x, tTensor, t, crossAttnCond, globalCond);
-			modelTotal += System.currentTimeMillis() - start;
+				long start = System.currentTimeMillis();
+				PackedCollection modelOutput = predict(x, tTensor, t, crossAttnCond, globalCond);
+				modelTotal += System.currentTimeMillis() - start;
 
-			// Check for NaN
-			checkNan(x, "input at step " + step);
-			checkNan(modelOutput, "output at step " + step);
+				checkNan(x, "input at step " + step);
+				checkNan(modelOutput, "output at step " + step);
 
-			// Sample noise for stochastic steps (CPU-bound, done outside Producer)
-			PackedCollection noise = (tPrev > 0) ? sampleNoise(shapeArray, random) : null;
+				PackedCollection noise = (tPrev > 0) ? sampleNoise(shapeArray, random) : null;
 
-			// Sampling step - returns Producer, we evaluate here
-			start = System.currentTimeMillis();
-			x = strategy.step(x, modelOutput, t, tPrev, noise).evaluate();
-			samplingTotal += System.currentTimeMillis() - start;
+				start = System.currentTimeMillis();
+				PackedCollection next = strategy.step(x, modelOutput, t, tPrev, noise).evaluate();
+				samplingTotal += System.currentTimeMillis() - start;
 
-			checkNan(x, "result at step " + step);
+				x.destroy();
+				if (noise != null) noise.destroy();
+				if (guided) modelOutput.destroy();
+				x = next;
 
-			// Progress reporting
-			if (progressCallback != null) {
-				progressCallback.accept((double) (step - startStep + 1) / totalSteps);
+				checkNan(x, "result at step " + step);
+
+				if (progressCallback != null) {
+					progressCallback.accept((double) (step - startStep + 1) / totalSteps);
+				}
+
+				if (verbose && (step - startStep + 1) % 10 == 0) {
+					log(String.format("Step %d/%d (t=%.4f)", step - startStep + 1, totalSteps, t));
+				}
 			}
-
-			if (verbose && (step - startStep + 1) % 10 == 0) {
-				log(String.format("Step %d/%d (t=%.4f)", step - startStep + 1, totalSteps, t));
-			}
+		} finally {
+			tTensor.destroy();
 		}
 
 		if (verbose) {
