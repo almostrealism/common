@@ -461,6 +461,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * the operand values being reported by the integer value accessors, since a
 	 * floating-point constant with an integral value also reports through those.</p>
 	 *
+	 * <p>The bounded-numerator collapse uses truncating division, matching the
+	 * runtime semantics of {@link #evaluate} and {@link #computeValue}: it divides
+	 * each numerator bound by the divisor toward zero and folds to that constant
+	 * only when both bounds agree. Truncation toward zero (not {@code Math.floor})
+	 * is required so that a negative numerator folds to the same value it would
+	 * compute; {@code -3 / 2} is {@code -1}, whereas {@code floor(-3 / 2)} is
+	 * {@code -2}. Truncating division by a fixed divisor is monotonic over the
+	 * integers, so matching bounds still guarantee a constant quotient.</p>
+	 *
 	 * <p>A product numerator with a constant factor {@code c} folds exactly against an
 	 * integer divisor {@code d} in either direction, for either sign: when {@code d}
 	 * divides {@code c} the quotient becomes {@code a * (c / d)}, and when {@code c}
@@ -515,11 +524,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
 		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
-			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());
-			double high = Math.floor(lower.getAsLong() / (double) d.getAsLong());
+			// Truncating division, not floor, to match the runtime quotient for negative bounds
+			long low = upper.getAsLong() / d.getAsLong();
+			long high = lower.getAsLong() / d.getAsLong();
 
 			if (low == high) {
-				return ExpressionFeatures.getInstance().e((long) low);
+				return ExpressionFeatures.getInstance().e(low);
 			}
 		}
 
