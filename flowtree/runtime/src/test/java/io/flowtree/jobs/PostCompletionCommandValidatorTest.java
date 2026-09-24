@@ -91,11 +91,15 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("bash scripts/verify-foo.sh").isEmpty());
 	}
 
-	/** pytest with every positional argument naming an explicit node id is accepted. */
+	/** pytest naming more than one node id still runs both tests in a single invocation,
+	 * contradicting the "one test per invocation" rule -- even though every individual
+	 * positional is itself an explicit node id. */
 	@Test(timeout = 10000)
-	public void pytestMultipleNodeIdsAccepted() {
-		assertTrue(violationsFor(
-				"pytest test_foo.py::test_bar test_baz.py::test_qux").isEmpty());
+	public void pytestMultipleNodeIdsRejected() {
+		List<String> violations = violationsFor(
+				"pytest test_foo.py::test_bar test_baz.py::test_qux");
+		assertFalse("multiple pytest node ids in one invocation must still be rejected",
+				violations.isEmpty());
 	}
 
 	// -- Rejected commands ------------------------------------------------------
@@ -146,6 +150,16 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void mvnwLauncherWithNoSelectorRejected() {
 		List<String> violations = violationsFor("./mvnw test -pl engine/utils");
 		assertFalse("./mvnw test must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** The Windows Maven Wrapper batch launcher is "mvnw.cmd", not "mvn.cmd" -- without
+	 * recognizing it explicitly, "./mvnw.cmd test" would see a base name of "mvnw.cmd"
+	 * (baseName() strips leading path components only, never file extensions) and be
+	 * waved through as an unrelated custom command. */
+	@Test(timeout = 10000)
+	public void mvnwCmdLauncherWithNoSelectorRejected() {
+		List<String> violations = violationsFor("./mvnw.cmd test -pl engine/utils");
+		assertFalse("./mvnw.cmd test must be rejected like a direct mvn test", violations.isEmpty());
 	}
 
 	/** A -Dtest value naming more than one Class#method entry still runs multiple tests in a
@@ -226,6 +240,32 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("mvn verify -Dmaven.test.skip=false").isEmpty());
 	}
 
+	/** When -DskipTests is followed by a later -DskipTests=false, Maven's last-value-wins
+	 * semantics mean tests actually run -- an early-return on the first skip-shaped flag
+	 * would wrongly treat this as build-only and miss the broad, selector-less test run. */
+	@Test(timeout = 10000)
+	public void laterSkipTestsFalseOverridesEarlierSkipTestsFlag() {
+		List<String> violations = violationsFor("mvn test -DskipTests -DskipTests=false -pl engine/utils");
+		assertFalse("a later -DskipTests=false must override an earlier bare -DskipTests",
+				violations.isEmpty());
+	}
+
+	/** Same conflicting-property scenario for maven.test.skip. */
+	@Test(timeout = 10000)
+	public void laterMavenTestSkipFalseOverridesEarlierMavenTestSkipFlag() {
+		List<String> violations = violationsFor(
+				"mvn test -Dmaven.test.skip=true -Dmaven.test.skip=false -pl engine/utils");
+		assertFalse("a later -Dmaven.test.skip=false must override an earlier true value",
+				violations.isEmpty());
+	}
+
+	/** A later -DskipTests (bare, meaning true) overriding an earlier "=false" must still
+	 * be treated as build-only -- last value wins in both directions. */
+	@Test(timeout = 10000)
+	public void laterSkipTestsTrueOverridesEarlierSkipTestsFalse() {
+		assertTrue(violationsFor("mvn install -DskipTests=false -DskipTests -pl engine/utils").isEmpty());
+	}
+
 	/** A broad "mvn test" wrapped in "env" must not bypass detection just because
 	 * the first token isn't literally "mvn". */
 	@Test(timeout = 10000)
@@ -256,6 +296,30 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void bashDashCWrappedMavenTestWithSelectorAccepted() {
 		assertTrue(violationsFor(
 				"bash -c 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'").isEmpty());
+	}
+
+	/** "bash -ec" combines "-e" (errexit) and "-c" (inline script) in one token -- only
+	 * recognizing a literal "-c" token would let this form's embedded broad Maven run
+	 * slip through unchecked. */
+	@Test(timeout = 10000)
+	public void bashDashEcCombinedOptionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("bash -ec 'mvn test -pl engine/utils'");
+		assertFalse("bash -ec 'mvn test' must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "bash -e -c" (separated short options) must be recognized the same as a combined
+	 * "-ec" or a bare "-c". */
+	@Test(timeout = 10000)
+	public void bashDashEDashCSeparatedOptionWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("bash -e -c 'mvn test -pl engine/utils'");
+		assertFalse("bash -e -c 'mvn test' must be rejected like a direct mvn test", violations.isEmpty());
+	}
+
+	/** "bash -ec" with an explicit selector inside the script is still accepted. */
+	@Test(timeout = 10000)
+	public void bashDashEcCombinedOptionWrappedMavenTestWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"bash -ec 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'").isEmpty());
 	}
 
 	/** A broad pytest run wrapped in "sh -c" must also be rejected. */

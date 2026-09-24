@@ -58,10 +58,6 @@ class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
     def test_custom_script(self):
         self.assertEqual([], validate_post_completion_command("bash scripts/verify-foo.sh"))
 
-    def test_pytest_multiple_node_ids(self):
-        self.assertEqual([], validate_post_completion_command(
-            "pytest test_foo.py::test_bar test_baz.py::test_qux"))
-
 
 class TestValidatePostCompletionCommandRejected(unittest.TestCase):
     """Commands that must be rejected, with a clear reason."""
@@ -281,6 +277,63 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz")
         self.assertTrue(violations,
                          "a -Dtest value naming multiple methods must still be rejected")
+
+    def test_pytest_multiple_node_ids_rejected(self):
+        # Even when every positional is an explicit node id, pytest still
+        # runs them together in a single invocation -- "one test per
+        # invocation" means exactly one node id, not "every positional
+        # happens to be narrow".
+        violations = validate_post_completion_command(
+            "pytest test_foo.py::test_bar test_baz.py::test_qux")
+        self.assertTrue(violations, "multiple pytest node ids in one invocation must be rejected")
+
+    def test_mvnw_cmd_launcher_with_no_selector_rejected(self):
+        # The Windows Maven Wrapper batch launcher is "mvnw.cmd", not
+        # "mvn.cmd" -- without recognizing it explicitly, base-name
+        # extraction (which strips leading path components only, never
+        # file extensions) would leave it unrecognized as Maven.
+        violations = validate_post_completion_command("./mvnw.cmd test -pl engine/utils")
+        self.assertTrue(violations, "./mvnw.cmd test must be rejected like a direct mvn test")
+
+    def test_bash_dash_ec_combined_option_wrapped_maven_test_rejected(self):
+        # "bash -ec" combines "-e" (errexit) and "-c" (inline script) in one
+        # token -- only recognizing a literal "-c" token would let this
+        # form's embedded broad Maven run slip through unchecked.
+        violations = validate_post_completion_command(
+            "bash -ec 'mvn test -pl engine/utils'")
+        self.assertTrue(violations, "bash -ec 'mvn test' must be rejected like a direct mvn test")
+
+    def test_bash_dash_e_dash_c_separated_option_wrapped_maven_test_rejected(self):
+        violations = validate_post_completion_command(
+            "bash -e -c 'mvn test -pl engine/utils'")
+        self.assertTrue(violations, "bash -e -c 'mvn test' must be rejected like a direct mvn test")
+
+    def test_bash_dash_ec_combined_option_wrapped_maven_test_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "bash -ec 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'"))
+
+    def test_later_skip_tests_false_overrides_earlier_skip_tests_flag(self):
+        # Maven system properties set via repeated -D take the LAST
+        # occurrence's value: -DskipTests followed by -DskipTests=false
+        # actually RUNS the tests, but an early-return on the first
+        # skip-shaped flag would wrongly treat this as build-only.
+        violations = validate_post_completion_command(
+            "mvn test -DskipTests -DskipTests=false -pl engine/utils")
+        self.assertTrue(violations,
+                         "a later -DskipTests=false must override an earlier bare -DskipTests")
+
+    def test_later_maven_test_skip_false_overrides_earlier_true(self):
+        violations = validate_post_completion_command(
+            "mvn test -Dmaven.test.skip=true -Dmaven.test.skip=false -pl engine/utils")
+        self.assertTrue(violations,
+                         "a later -Dmaven.test.skip=false must override an earlier true value")
+
+    def test_later_skip_tests_true_overrides_earlier_false(self):
+        # Same last-value-wins rule in the other direction: a later bare
+        # -DskipTests (implicitly true) after an earlier "=false" must
+        # still be treated as build-only.
+        self.assertEqual([], validate_post_completion_command(
+            "mvn install -DskipTests=false -DskipTests -pl engine/utils"))
 
     def test_unparseable_command_is_rejected(self):
         # An unbalanced quote fails _tokenize; the whole line must become a

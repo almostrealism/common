@@ -36,8 +36,15 @@ POST_COMPLETION_MAX_TIMEOUT_SECONDS = 2400
 
 _SHELL_OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}"}
 
-_SKIP_TESTS_PATTERN = re.compile(
-    r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$", re.IGNORECASE)
+# Matches a whole -DskipTests argument token, capturing an explicit true/false
+# value when present (a bare flag with no "=value" means true). Used with
+# re.match against a single token, not a substring search, so a plain
+# occurrence never wrongly reads "-DskipTests=false" as bare-true.
+_SKIP_TESTS_PROP_PATTERN = re.compile(r"^-DskipTests(?:=(true|false))?$", re.IGNORECASE)
+
+# Same shape as _SKIP_TESTS_PROP_PATTERN for the maven.test.skip property.
+_MAVEN_TEST_SKIP_PROP_PATTERN = re.compile(
+    r"^-Dmaven\.test\.skip(?:=(true|false))?$", re.IGNORECASE)
 
 # Maven lifecycle phases that execute tests unless skipped. "install" and
 # "verify" are the two the incident used; "package" and "deploy" sit at or
@@ -45,10 +52,13 @@ _SKIP_TESTS_PATTERN = re.compile(
 _MVN_TEST_RUNNING_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
 
 # Maven launcher executable names recognized by _maven_segment_violation: the
-# plain "mvn" plus the Maven Wrapper scripts ("./mvnw") and the Windows batch
-# launcher. Without these, "./mvnw test -pl engine/utils" would see a base
-# name of "mvnw" (not "mvn") and be waved through as a custom command.
-_MVN_LAUNCHER_NAMES = {"mvn", "mvnw", "mvn.cmd"}
+# plain "mvn" plus the Maven Wrapper scripts ("./mvnw", "./mvnw.cmd") and the
+# standalone Windows batch launcher. Without these, "./mvnw.cmd test -pl
+# engine/utils" would see a base name of "mvnw.cmd" (not "mvn") and be waved
+# through as a custom command -- base-name extraction only strips leading
+# path-directory components, never file extensions, so it never normalizes
+# "mvnw.cmd" to "mvnw".
+_MVN_LAUNCHER_NAMES = {"mvn", "mvnw", "mvn.cmd", "mvnw.cmd"}
 
 # No leading word-boundary assertion: the real shard invocation shape is
 # "-DAR_TEST_GROUP=2", where "AR_TEST_GROUP" is glued directly to the "-D"
@@ -267,13 +277,35 @@ def _unwrap_command_prefixes(tokens: list) -> list:
 
 def _shell_dash_c_script(tokens: list):
     """Returns the inline script text when ``tokens`` is a shell interpreter
-    invoked as ``sh|bash|zsh|dash|ksh -c "<script>"``, or ``None`` when it
-    is not that shape."""
-    if len(tokens) < 3 or tokens[0].rsplit("/", 1)[-1] not in _SHELL_INTERPRETERS:
+    invoked with a ``-c`` option -- whether as its own token (``sh -c
+    "<script>"``) or combined with other short options in the same token
+    (``bash -ec "<script>"``, ``bash -e -c "<script>"``) -- or ``None`` when
+    it is not that shape.
+
+    Walks the leading run of single-dash short-option tokens (stopping at
+    the first token that is not one, a ``--`` form, or the end of the list)
+    looking for one containing ``c``. Mirrors ``getopt``: any characters in
+    that token after the ``c`` are its glued-on argument (``-cSCRIPT``);
+    when none remain, the following whole token is the argument instead
+    (``-ec "<script>"``). Without this, ``bash -ec 'mvn test -pl
+    engine/utils'`` would see option token ``-ec``, not literally ``-c``,
+    and be waved through as an unrecognized interpreter invocation instead
+    of having its embedded script inspected.
+    """
+    if len(tokens) < 2 or tokens[0].rsplit("/", 1)[-1] not in _SHELL_INTERPRETERS:
         return None
-    if tokens[1] != "-c":
-        return None
-    return tokens[2]
+    for i in range(1, len(tokens)):
+        tok = tokens[i]
+        if not tok.startswith("-") or tok.startswith("--"):
+            return None
+        c_index = tok.find("c", 1)
+        if c_index < 0:
+            continue
+        remainder = tok[c_index + 1:]
+        if remainder:
+            return remainder
+        return tokens[i + 1] if i + 1 < len(tokens) else None
+    return None
 
 
 def _eval_script(tokens: list):
@@ -399,6 +431,27 @@ def _dtest_is_narrow(value: str) -> bool:
     return len(entries) == 1 and "#" in entries[0]
 
 
+def _effective_skip_value(args: list, pattern) -> bool:
+    """Returns the effective boolean value of a Maven skip property (e.g.
+    skipTests) given every matching token in ``args``, or ``None`` when the
+    property never appears.
+
+    Maven system properties set via repeated ``-D`` take the LAST
+    occurrence's value, so a command such as ``-DskipTests
+    -DskipTests=false`` does NOT skip tests even though an earlier flag says
+    otherwise -- returning as soon as any matching flag is seen, regardless
+    of order, would wrongly accept that command as build-only. A bare flag
+    with no ``=value`` means true.
+    """
+    value = None
+    for arg in args:
+        match = pattern.match(arg)
+        if match:
+            explicit = match.group(1)
+            value = explicit is None or explicit.lower() == "true"
+    return value
+
+
 def _maven_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``mvn ...`` command segment,
     or ``""`` when the segment is not Maven, skips tests, or already
@@ -409,7 +462,8 @@ def _maven_segment_violation(tokens: list) -> str:
     if base not in _MVN_LAUNCHER_NAMES:
         return ""
     args = tokens[1:]
-    if any(_SKIP_TESTS_PATTERN.match(a) for a in args):
+    if _effective_skip_value(args, _SKIP_TESTS_PROP_PATTERN) is True \
+            or _effective_skip_value(args, _MAVEN_TEST_SKIP_PROP_PATTERN) is True:
         return ""
     phases_present = sorted(a for a in args if a in _MVN_TEST_RUNNING_PHASES)
     dtest_values = _dtest_values(args)
@@ -447,9 +501,15 @@ def _pytest_segment_violation(tokens: list) -> str:
     else:
         return ""
     positionals = [a for a in rest if not a.startswith("-")]
-    node_ids = [a for a in positionals if "::" in a]
-    if positionals and len(node_ids) == len(positionals):
+    if len(positionals) == 1 and "::" in positionals[0]:
         return ""
+    if len(positionals) > 1:
+        return (
+            "pytest command names {} positional arguments in \"{}\". Even "
+            "when each one is an explicit node id, pytest runs them "
+            "together in a single invocation, which agents and job "
+            "submitters may never do. Pass exactly one node id per "
+            "invocation.".format(len(positionals), " ".join(tokens)))
     return (
         "pytest command has no explicit node id (file.py::test_name): "
         "\"{}\". This runs an entire file or directory. Pass explicit "

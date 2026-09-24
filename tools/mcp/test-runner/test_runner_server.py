@@ -696,6 +696,44 @@ class StartTestRunLimitsTest(unittest.TestCase):
         mock_start.assert_not_called()
         self.assertIn("error", response)
 
+    def test_test_classes_entry_with_comma_separated_selectors_is_rejected(self):
+        # A single test_classes entry passes the "at most ONE" length check
+        # even when its own text names multiple Class#method patterns joined
+        # by a comma -- build_maven_command emits that text verbatim as
+        # -Dtest, so Maven still runs both in one invocation.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#first,BarTest#second"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
+    def test_test_methods_entry_with_comma_in_method_field_is_rejected(self):
+        # A comma embedded in the method field alone is enough to inject a
+        # second Surefire pattern into the comma-joined -Dtest value, even
+        # though the entry is schema-valid (an object with non-empty class
+        # and method fields) and the selector count is exactly one.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest", "method": "first,BarTest#second"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
+    def test_test_methods_entry_with_comma_in_class_field_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest,BarTest", "method": "bar"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
     def test_jvm_args_with_ar_test_group_is_rejected(self):
         # jvm_args flows straight into Maven's argLine, so a caller could set
         # the same TestDepthRule shard properties test_group/test_groups are

@@ -63,13 +63,19 @@ public class PostCompletionCommandValidator {
 	 * match that form and would leave the actual incident shape undetected. */
 	private static final Pattern AR_TEST_GROUP = Pattern.compile("AR_TEST_GROUPS?\\b");
 
-	/** Matches a whole argument token that disables test execution. Matched per-argument via
-	 * {@link Matcher#matches()}, not as a substring search, so {@code -DskipTests=false} (which
-	 * starts with the same prefix but explicitly re-enables tests) is not misread as a skip flag. */
-	private static final Pattern SKIP_TESTS = Pattern.compile(
-			"-DskipTests(=true)?|-Dmaven\\.test\\.skip(=true)?", Pattern.CASE_INSENSITIVE);
+	/** Matches a whole {@code -DskipTests} argument token, capturing an explicit {@code true}/
+	 * {@code false} value when present (a bare flag with no {@code =value} means {@code true}).
+	 * Matched per-argument via {@link Matcher#matches()}, not as a substring search, so a
+	 * plain occurrence never wrongly reads {@code -DskipTests=false} as bare-true. */
+	private static final Pattern SKIP_TESTS_PROP = Pattern.compile(
+			"-DskipTests(?:=(true|false))?", Pattern.CASE_INSENSITIVE);
 
-	/** Default-lifecycle phases that run tests unless {@link #SKIP_TESTS} is present. */
+	/** Same shape as {@link #SKIP_TESTS_PROP} for the {@code maven.test.skip} property. */
+	private static final Pattern MAVEN_TEST_SKIP_PROP = Pattern.compile(
+			"-Dmaven\\.test\\.skip(?:=(true|false))?", Pattern.CASE_INSENSITIVE);
+
+	/** Default-lifecycle phases that run tests unless the effective {@link #SKIP_TESTS_PROP}/
+	 * {@link #MAVEN_TEST_SKIP_PROP} value is true. */
 	private static final List<String> TEST_RUNNING_PHASES = Arrays.asList(
 			"test", "integration-test", "verify", "install", "package", "deploy");
 
@@ -77,11 +83,13 @@ public class PostCompletionCommandValidator {
 	private static final Pattern DTEST_ARG = Pattern.compile("^-Dtest=(.+)$");
 
 	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
-	 * {@code mvn} plus the Maven Wrapper script ({@code ./mvnw}) and the Windows batch launcher.
-	 * Without these, {@code ./mvnw test -pl engine/utils} would see a base name of {@code mvnw}
-	 * (not {@code mvn}) and be waved through as a custom command. */
-	// TODO(review): "mvnw.cmd" is not recognized here (baseName() does not strip extensions).
-	private static final List<String> MVN_LAUNCHER_NAMES = Arrays.asList("mvn", "mvnw", "mvn.cmd");
+	 * {@code mvn} plus the Maven Wrapper scripts ({@code ./mvnw}, {@code ./mvnw.cmd}) and the
+	 * standalone Windows batch launcher. Without these, {@code ./mvnw.cmd test -pl engine/utils}
+	 * would see a base name of {@code mvnw.cmd} (not {@code mvn}) and be waved through as a
+	 * custom command -- {@code baseName()} only strips leading path-directory components, never
+	 * file extensions, so it never normalizes {@code mvnw.cmd} to {@code mvnw}. */
+	private static final List<String> MVN_LAUNCHER_NAMES = Arrays.asList(
+			"mvn", "mvnw", "mvn.cmd", "mvnw.cmd");
 
 	/** Shell control operators that separate one simple command from the next. */
 	private static final List<String> SHELL_OPERATORS = Arrays.asList(
@@ -391,15 +399,41 @@ public class PostCompletionCommandValidator {
 
 	/**
 	 * Returns the inline script text when {@code tokens} is a shell interpreter
-	 * invoked as {@code sh|bash|zsh|dash|ksh -c "<script>"}, or {@code null}
-	 * when it is not that shape.
+	 * invoked with a {@code -c} option -- whether as its own token
+	 * ({@code sh -c "<script>"}) or combined with other short options in the
+	 * same token ({@code bash -ec "<script>"}, {@code bash -e -c "<script>"}) --
+	 * or {@code null} when it is not that shape.
+	 *
+	 * <p>Walks the leading run of single-dash short-option tokens (stopping at
+	 * the first token that is not one, a {@code --} form, or the end of the
+	 * list) looking for one containing {@code c}. Mirrors {@code getopt}: any
+	 * characters in that token after the {@code c} are its glued-on argument
+	 * ({@code -cSCRIPT}); when none remain, the following whole token is the
+	 * argument instead ({@code -ec "<script>"}). Without this, {@code bash -ec
+	 * 'mvn test -pl engine/utils'} would see option token {@code -ec}, not
+	 * literally {@code -c}, and be waved through as an unrecognized interpreter
+	 * invocation instead of having its embedded script inspected.</p>
 	 */
 	private String shellDashCScript(List<String> tokens) {
-		if (tokens.size() < 3 || !SHELL_INTERPRETERS.contains(baseName(tokens.get(0)))
-				|| !"-c".equals(tokens.get(1))) {
+		if (tokens.size() < 2 || !SHELL_INTERPRETERS.contains(baseName(tokens.get(0)))) {
 			return null;
 		}
-		return tokens.get(2);
+		for (int i = 1; i < tokens.size(); i++) {
+			String tok = tokens.get(i);
+			if (!tok.startsWith("-") || tok.startsWith("--")) {
+				return null;
+			}
+			int cIndex = tok.indexOf('c', 1);
+			if (cIndex < 0) {
+				continue;
+			}
+			String remainder = tok.substring(cIndex + 1);
+			if (!remainder.isEmpty()) {
+				return remainder;
+			}
+			return i + 1 < tokens.size() ? tokens.get(i + 1) : null;
+		}
+		return null;
 	}
 
 	/** Returns the violations found by {@link #validate()}; empty until called. */
@@ -426,16 +460,38 @@ public class PostCompletionCommandValidator {
 		return sb.toString();
 	}
 
+	/**
+	 * Returns the effective boolean value of a Maven skip property (e.g.
+	 * {@code skipTests}) given every matching token in {@code args}, or
+	 * {@code null} when the property never appears. Maven system properties
+	 * set via repeated {@code -D} take the LAST occurrence's value, so a
+	 * command such as {@code -DskipTests -DskipTests=false} does NOT skip
+	 * tests even though an earlier flag says otherwise -- returning as soon
+	 * as any matching flag is seen, regardless of order, would wrongly
+	 * accept that command as build-only. A bare flag with no {@code =value}
+	 * means {@code true}.
+	 */
+	private static Boolean effectiveSkipValue(List<String> args, Pattern pattern) {
+		Boolean value = null;
+		for (String arg : args) {
+			Matcher m = pattern.matcher(arg);
+			if (m.matches()) {
+				String explicit = m.group(1);
+				value = explicit == null || "true".equalsIgnoreCase(explicit);
+			}
+		}
+		return value;
+	}
+
 	/** Returns a violation reason for a Maven segment, or null when it is acceptable. */
 	private String mavenSegmentViolation(List<String> tokens) {
 		if (tokens.isEmpty() || !MVN_LAUNCHER_NAMES.contains(baseName(tokens.get(0)))) {
 			return null;
 		}
 		List<String> args = tokens.subList(1, tokens.size());
-		for (String arg : args) {
-			if (SKIP_TESTS.matcher(arg).matches()) {
-				return null;
-			}
+		if (Boolean.TRUE.equals(effectiveSkipValue(args, SKIP_TESTS_PROP))
+				|| Boolean.TRUE.equals(effectiveSkipValue(args, MAVEN_TEST_SKIP_PROP))) {
+			return null;
 		}
 		List<String> phasesPresent = new ArrayList<>();
 		List<String> dtestValues = new ArrayList<>();
@@ -506,15 +562,14 @@ public class PostCompletionCommandValidator {
 				positionals.add(arg);
 			}
 		}
-		boolean allNodeIds = !positionals.isEmpty();
-		for (String positional : positionals) {
-			if (!positional.contains("::")) {
-				allNodeIds = false;
-				break;
-			}
-		}
-		if (allNodeIds) {
+		if (positionals.size() == 1 && positionals.get(0).contains("::")) {
 			return null;
+		}
+		if (positionals.size() > 1) {
+			return "pytest command names " + positionals.size() + " positional arguments in \""
+					+ String.join(" ", tokens) + "\". Even when each one is an explicit node id, "
+					+ "pytest runs them together in a single invocation, which agents and job "
+					+ "submitters may never do. Pass exactly one node id per invocation.";
 		}
 		return "pytest command has no explicit node id (file.py::test_name): \""
 				+ String.join(" ", tokens) + "\". This runs an entire file or directory. Pass "

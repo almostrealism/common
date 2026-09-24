@@ -27,6 +27,29 @@ class ValidationError(Exception):
         self.error = error
 
 
+def _reject_selector_delimiter(value: str, field_description: str) -> None:
+    """Raises ValidationError when ``value`` contains a comma.
+
+    ``build_maven_command`` joins a single ``test_classes``/``test_methods``
+    entry's class/method text directly into Maven's ``-Dtest`` value with no
+    further escaping. A comma embedded in that text (e.g. a ``test_classes``
+    entry of ``"FooTest#first,BarTest#second"``, or a ``test_methods`` entry
+    whose ``method`` field is ``"first,BarTest#second"``) survives into the
+    rendered ``-Dtest`` value unchanged and is read by Maven as multiple
+    test patterns in one invocation -- passing the earlier "at most one
+    selector" length check while still running more than one test, exactly
+    the bypass the one-test-per-invocation rule exists to prevent.
+    """
+    if "," in value:
+        raise ValidationError(
+            "{} \"{}\" contains a comma, which Maven reads as a list of "
+            "multiple test patterns in a single -Dtest invocation -- "
+            "exactly the multi-test bypass the one-test-per-invocation "
+            "rule exists to prevent. Call start_test_run once per "
+            "test instead.".format(field_description, value)
+        )
+
+
 def validate_start_test_run_arguments(
         arguments: dict, default_timeout: int, max_timeout_minutes: int) -> dict:
     """Validates ``start_test_run``'s raw MCP arguments against the "no
@@ -110,18 +133,20 @@ def validate_start_test_run_arguments(
     # method. Every other caller must narrow to Class#method, matching the
     # manager and controller validators' identical bare-class rejection.
     jmx_monitoring = arguments.get("jmx_monitoring", False)
-    if test_classes and "#" not in test_classes[0] and not jmx_monitoring:
-        raise ValidationError(
-            f"test_classes entry \"{test_classes[0]}\" has no "
-            "#method selector: build_maven_command emits "
-            f"-Dtest={test_classes[0]} for it, which runs every "
-            "method in that class -- the same bare-class breadth "
-            "the manager and controller validators reject. Pass "
-            "\"Class#method\" here, or use test_methods with an "
-            "explicit {\"class\": ..., \"method\": ...} entry. (A bare "
-            "class is tolerated only with jmx_monitoring:true, for "
-            "reproducing a JVM crash that has no method attribution.)"
-        )
+    if test_classes:
+        _reject_selector_delimiter(test_classes[0], "test_classes entry")
+        if "#" not in test_classes[0] and not jmx_monitoring:
+            raise ValidationError(
+                f"test_classes entry \"{test_classes[0]}\" has no "
+                "#method selector: build_maven_command emits "
+                f"-Dtest={test_classes[0]} for it, which runs every "
+                "method in that class -- the same bare-class breadth "
+                "the manager and controller validators reject. Pass "
+                "\"Class#method\" here, or use test_methods with an "
+                "explicit {\"class\": ..., \"method\": ...} entry. (A bare "
+                "class is tolerated only with jmx_monitoring:true, for "
+                "reproducing a JVM crash that has no method attribution.)"
+            )
     for entry in test_methods:
         if not isinstance(entry, dict) or not entry.get("class") or not entry.get("method"):
             raise ValidationError(
@@ -129,6 +154,8 @@ def validate_start_test_run_arguments(
                 "with non-empty \"class\" and \"method\" fields, "
                 "e.g. {\"class\": \"FooTest\", \"method\": \"bar\"}."
             )
+        _reject_selector_delimiter(entry["class"], "test_methods class field")
+        _reject_selector_delimiter(entry["method"], "test_methods method field")
     return {
         "timeout_minutes": timeout_minutes,
         "test_classes": test_classes,
