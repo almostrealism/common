@@ -20,7 +20,7 @@
 # Test" submit from inside the pipeline, without waiting for this script:
 # `auto-resolve-python` when python-tests fails, and `auto-review` (build
 # failure, code policy, quality gates, docs-only verify, or the general
-# review) on attempts before MAX_ATTEMPTS. `auto-resolve` stages its request
+# review) on attempt 1 only. `auto-resolve` stages its request
 # only on attempt MAX_ATTEMPTS or later, so the only thing a retry can lead to
 # is that slow-path request. Retrying therefore requires that the pipeline got
 # as far as the long-running test jobs (a failed flaky-eligible job, below),

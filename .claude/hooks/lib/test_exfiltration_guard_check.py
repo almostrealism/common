@@ -1116,6 +1116,22 @@ class BashSubstitutionScopeTests(GuardFixture):
         self.assertAllowed(self.bash("(cd sub && ls); (bash clean.sh)"))
         self.assertBlocked(self.bash("(cd sub && ls; bash clean.sh)"), "cannot read")
 
+    def test_quoted_parentheses_do_not_open_or_close_a_subshell(self):
+        """`echo '('; cd sub; echo ')'` changes directory for good; `(` and `)` are text."""
+        os.makedirs(os.path.join(self.root, "sub"), exist_ok=True)
+        self._write("clean.sh", "#!/bin/bash\necho ok\n")
+        self._write("sub/clean.sh", "#!/bin/bash\n" + self.CURL_OUT + "\n")
+        self.assertBlocked(self.bash("echo '('; cd sub; echo ')'; bash clean.sh"), "curl")
+        self.assertBlocked(self.bash('echo "("; cd sub; echo \\); bash clean.sh'), "curl")
+
+    def test_quoted_operators_stay_inside_their_argument(self):
+        self.assertBlocked(self.bash("bash -c 'true; " + self.CURL_OUT + "'"), "evil.example")
+        self.assertAllowed(self.bash("find . -name '*.tmp' -exec rm {} \\;"))
+        self.assertAllowed(self.bash("grep -E 'a|b' f.txt && echo ';'"))
+
+    def test_a_quoted_multi_line_program_keeps_its_lines(self):
+        self.assertAllowed(self.bash("python3 -c 'import os\nprint(os.getcwd())'"))
+
     def test_a_command_inside_the_subshell_still_runs_in_its_directory(self):
         self.assertBlocked(self.bash("(cd /tmp && git push origin main)"))
 

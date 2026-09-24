@@ -330,13 +330,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Code Policy Enforcement
         id: check
@@ -1038,13 +1046,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Check Test Timeouts
         id: check
@@ -1087,13 +1103,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Check Duplicate Code
         id: check
@@ -1592,13 +1616,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Flowtree Tests
         # Every module of the flowtree family, not just runtime. api and python carry no
@@ -1683,13 +1715,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -1877,13 +1917,21 @@ jobs:
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -2047,20 +2095,28 @@ jobs:
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
         # -D argument stays a single token. MAVEN_REPO is exported too, so
-        # "Restore build artifacts" installs into this repository.
+        # "Restore build artifacts" copies into this repository.
         run: |
           MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
           echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
           echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -2209,13 +2265,21 @@ jobs:
           echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -2325,20 +2389,28 @@ jobs:
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
         # -D argument stays a single token. MAVEN_REPO is exported too, so
-        # "Restore build artifacts" installs into this repository.
+        # "Restore build artifacts" copies into this repository.
         run: |
           MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
           echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
           echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -2485,13 +2557,21 @@ jobs:
           echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
-      # in .github/CLAUDE.md. MAVEN_REPO is set only where the job isolates
-      # its Maven repository.
-      - name: Restore build artifacts
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ runner.temp }}/maven-installed-artifacts
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -2703,7 +2783,7 @@ jobs:
   #
   #   auto-resolve-python  python-tests failed. Submits at once, from inside
   #                        this run, without waiting for anything else.
-  #   auto-review          Every other case on attempts 1 and 2: a build
+  #   auto-review          Every other case, on attempt 1 only: a build
   #                        failure, code policy violations, other quality gate
   #                        failures, a docs-only verify, or — when every gate
   #                        passed — the general review. Submits as soon as the
@@ -2720,12 +2800,17 @@ jobs:
   #                        are spent.
   #
   # Exclusivity comes from two facts rather than from a handoff between jobs:
-  #   - auto-review and auto-resolve are split by attempt number
-  #     (run_attempt < 3 and >= 3). 3 is MAX_ATTEMPTS in
+  #   - auto-review and auto-resolve are split by attempt number: auto-review
+  #     runs on attempt 1 only, auto-resolve on attempt 3 or later, and
+  #     attempt 2 submits nothing. 3 is MAX_ATTEMPTS in
   #     auto-resolve-submit.yaml: rerun-flaky-tests.sh re-runs a failed run
   #     until attempt 3, so attempt 3 is the first one whose test failures
   #     are handed to an agent. tools/tests/test_remediation_job_exclusivity.py
   #     holds the two numbers together.
+  #     auto-review is held to attempt 1 because a retry re-runs it whenever
+  #     one of its inputs failed (checkstyle, say) — and its agent, submitted
+  #     minutes into attempt 1, is very likely still working when a test
+  #     failure brings attempt 2 around.
   #   - A python-tests failure skips both of them (and test-flowtree, which
   #     gates on python-tests), and rerun-flaky-tests.sh never retries such a
   #     run, so auto-resolve-python is the only submission it gets.
@@ -2840,12 +2925,12 @@ jobs:
 
   auto-review:
     needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
-    # Attempts 1 and 2 only — see "Remediation Jobs" above. A python-tests
-    # failure belongs to auto-resolve-python.
+    # Attempt 1 only — see "Remediation Jobs" above. A python-tests failure
+    # belongs to auto-resolve-python.
     if: >-
       !cancelled() &&
       github.ref != 'refs/heads/master' &&
-      fromJSON(github.run_attempt) < 3 &&
+      fromJSON(github.run_attempt) == 1 &&
       needs.changes.result == 'success' &&
       needs.python-tests.result != 'failure'
     runs-on: ubuntu-latest
@@ -3115,6 +3200,11 @@ jobs:
           # request, which pull request code wrote.
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          # auto-review submits as soon as the gates report, which can be
+          # before GitHub Copilot's review of the same push (about eight
+          # minutes) has posted. The controller holds the job this long before
+          # dispatching it, so the agent starts with that review to act on.
+          DELAY_SECONDS: "300"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3134,7 +3224,7 @@ jobs:
   # "Remediation Jobs" above); "Auto-Resolve Submit" submits the request once
   # the run completes, if rerun-flaky-tests.sh has no retry left to spend.
   # Stages nothing when no test failed — the review for this commit was
-  # auto-review's, on an earlier attempt.
+  # auto-review's, on attempt 1.
   #
   # Concurrency note: GitHub Actions does not natively support "skip if
   # already running" semantics. The concurrency group below ensures only

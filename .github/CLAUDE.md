@@ -134,7 +134,7 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempts 1–2, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; submits nothing only when a gate failed without a recorded cause, which is left for a human) | As soon as the gates report, from this run |
+| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; submits nothing only when a gate failed without a recorded cause, which is left for a human) | As soon as the gates report, from this run |
 | `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The early two exist so that an agent reaches a stopping point — gates green, no
@@ -148,10 +148,14 @@ are flaky, so their failures are only handed to an agent once
 
 Exclusivity is structural, not a handoff between jobs:
 
-- `auto-review` runs on `run_attempt < 3` and `auto-resolve` on `>= 3`. 3 is
-  `MAX_ATTEMPTS` in `auto-resolve-submit.yaml`: the retry gate re-runs a failed
-  run's failed jobs until attempt 3, so attempt 3 is the first whose test
-  failures reach an agent. Change one number and you must change the other.
+- `auto-review` runs on attempt 1 only and `auto-resolve` on `>= 3`; attempt 2
+  submits nothing. 3 is `MAX_ATTEMPTS` in `auto-resolve-submit.yaml`: the retry
+  gate re-runs a failed run's failed jobs until attempt 3, so attempt 3 is the
+  first whose test failures reach an agent. Change one number and you must
+  change the other. `auto-review` is not allowed a second attempt because a
+  retry re-runs it whenever one of its inputs failed, and its first agent —
+  submitted minutes into attempt 1 — is very likely still working when a test
+  failure brings attempt 2 around.
 - A `python-tests` failure skips both `auto-review` and `auto-resolve`, skips
   `test-flowtree` (which gates on python-tests success-or-skipped), and is never
   retried by `rerun-flaky-tests.sh`, so `auto-resolve-python` is its only
@@ -169,6 +173,13 @@ default branch and sends it with `tools/ci/submit-staged-request.sh`, which read
 `submit.env` through a key allowlist instead of appending it to `$GITHUB_ENV`.
 `auto-resolve-submit.yaml` uses the same script. Keep any new submission path on
 that pattern.
+
+`auto-review-submit` sets `DELAY_SECONDS: "300"`. `auto-review` reports as soon
+as the gates do, which can be before GitHub Copilot has finished reviewing the
+same push (about eight minutes), and a review agent that starts before those
+comments exist cannot act on them. The controller holds the job for the delay
+before dispatching it. The delay comes from the submit job's own environment,
+never from the staged request.
 
 No remediation job declares `environment:` — in a `pull_request` run that
 attaches a deployment status to the PR head, and an abandoned one shows as a
@@ -282,14 +293,17 @@ own `mvn install -DskipTests` — the three `tools` policy checks,
 `test-flowtree`, every test lane, and `analysis` — downloads it instead:
 
 - Jobs run `mvn test -pl <module>` with no `-am`, so Maven takes every other
-  module from the local repository; "Restore build artifacts" puts `build`'s
-  jars there (`~/.m2/repository`, or the per-runner repository the macOS and CL
-  jobs isolate, exported as `MAVEN_REPO` by their "Isolate Maven repository per
-  runner" step).
+  module from the local repository. "Download build artifacts" fetches
+  `build`'s jars into `runner.temp`, and "Restore build artifacts" copies them
+  into the repository Maven reads: `$MAVEN_REPO` where the macOS and CL jobs
+  isolate one ("Isolate Maven repository per runner" exports it), otherwise
+  `$HOME/.m2/repository`. The copy is done by the shell on purpose: those are
+  environment variables, and an action input cannot rely on seeing a value an
+  earlier step wrote to `GITHUB_ENV`.
 - `analysis` downloads the jars to a temporary directory and hands the main
   ones to JaCoCo as `--classfiles`, rather than rebuilding for `target/classes`.
 
-The restore is a plain `actions/download-artifact` step, not a script, on
+The restore is a download step and three lines of shell, not a script, on
 purpose: a pull request runs the workflow from its merge with the base but
 checks out its own head, which may predate any script added for this. A new
 job that needs the project's artifacts restores them the same way and lists

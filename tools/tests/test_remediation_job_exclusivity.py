@@ -71,13 +71,13 @@ def _uploaded_artifacts(job):
 class RemediationJobConditionTests(unittest.TestCase):
     """The static wiring in analysis.yaml and auto-resolve-submit.yaml."""
 
-    def test_auto_review_and_auto_resolve_split_on_the_same_attempt(self):
-        jobs = _jobs()
-        review = _attempt_threshold(_condition(jobs["auto-review"]), "<")
-        resolve = _attempt_threshold(_condition(jobs["auto-resolve"]), ">=")
-        self.assertEqual(review, resolve,
-                         "auto-review (< N) and auto-resolve (>= N) must use the same N, "
-                         "or some attempt runs both or neither")
+    def test_auto_review_runs_on_the_first_attempt_only(self):
+        """A retry re-runs auto-review whenever one of its inputs failed; its first
+        agent is likely still working by then, so it must not submit again."""
+        self.assertEqual(1, _attempt_threshold(_condition(_jobs()["auto-review"]), "=="))
+
+    def test_auto_resolve_never_shares_an_attempt_with_auto_review(self):
+        self.assertGreater(_attempt_threshold(_condition(_jobs()["auto-resolve"]), ">="), 1)
 
     def test_the_attempt_threshold_is_the_retry_limit(self):
         """auto-resolve must be staging on exactly the attempt retries stop at."""
@@ -157,6 +157,16 @@ class CredentialIsolationTests(unittest.TestCase):
                 runs = [s["run"] for s in job["steps"] if "run" in s]
                 self.assertEqual(1, len(runs))
                 self.assertIn("tools/ci/submit-staged-request.sh", runs[0])
+
+    def test_auto_review_waits_for_the_copilot_review(self):
+        """auto-review can finish before Copilot's review of the push has posted.
+
+        The submission asks the controller to hold the job, so the agent
+        starts with that review available to it.
+        """
+        job = _jobs()["auto-review-submit"]
+        env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
+        self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
 
     def test_no_analysis_job_declares_an_environment(self):
         for name, job in _jobs().items():

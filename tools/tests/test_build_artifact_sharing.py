@@ -63,6 +63,24 @@ class BuildArtifactSharingTest(unittest.TestCase):
                 names = [s["with"].get("name") for s in _steps_using(job, "actions/download-artifact")]
                 self.assertIn(_ARTIFACT, names)
 
+    def test_every_restore_copies_into_the_repository_maven_reads(self):
+        """The copy resolves MAVEN_REPO in the shell, falling back to the default repository."""
+        for name, job in _jobs().items():
+            if name in ("build", "analysis"):
+                continue
+            downloads = [s for s in _steps_using(job, "actions/download-artifact")
+                         if s["with"].get("name") == _ARTIFACT]
+            if not downloads:
+                continue
+            with self.subTest(job=name):
+                self.assertEqual("${{ runner.temp }}/maven-installed-artifacts",
+                                 downloads[0]["with"]["path"])
+                steps = job["steps"]
+                restore = steps[steps.index(downloads[0]) + 1]
+                self.assertEqual("Restore build artifacts", restore.get("name"))
+                self.assertIn('${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism', restore["run"])
+                self.assertIn("${RUNNER_TEMP}/maven-installed-artifacts/.", restore["run"])
+
     def test_isolated_repositories_export_their_path(self):
         """The restore targets MAVEN_REPO wherever a job moves its Maven repository."""
         for name, job in _jobs().items():

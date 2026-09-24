@@ -181,6 +181,17 @@ SUBSTITUTION_PLACEHOLDER = "$__guard_substitution__"
 # a word.
 _WORD_BREAKS = frozenset(" \t\n;&|()<>")
 
+# shlex drops quotes before anyone sees the tokens, so `echo '('` and a real
+# `(` arrive as the same token, and a quoted newline is joined with `;` like
+# a real one. Inside quotes and after a backslash, operator characters and
+# newlines are therefore swapped for private-use stand-ins while scanning,
+# and swapped back only once _simple_commands has told separators from
+# words: quoted text keeps its characters but can never be read as shell
+# syntax.
+_SHIELDED = "();<>|&\n"
+_SHIELD = str.maketrans({c: chr(0xE000 + n) for n, c in enumerate(_SHIELDED)})
+_UNSHIELD = str.maketrans({chr(0xE000 + n): c for n, c in enumerate(_SHIELDED)})
+
 
 def split_substitutions(command):
     """What the local shell executes inside ``command``, separated from what it reads as text.
@@ -239,17 +250,17 @@ def _scan_unquoted(text, i, nested, bodies):
             return "".join(out), i
         starts_word, word_start = word_start, False
         if c == "\\":
-            out.append(text[i:i + 2])
+            out.append(text[i:i + 2].translate(_SHIELD))
             i += 2
         elif c == "'":
             end = text.find("'", i + 1)
             if end < 0:
                 raise GuardError("the command's quoting cannot be parsed (a single quote is never closed); an unreadable command does not run")
-            out.append(text[i:end + 1])
+            out.append(text[i:end + 1].translate(_SHIELD))
             i = end + 1
         elif text.startswith("$'", i):
             end = _ansi_c_end(text, i + 2)
-            out.append(text[i:end])
+            out.append(text[i:end].translate(_SHIELD))
             i = end
         elif c == '"':
             piece, end = _scan_double_quoted(text, i + 1, bodies)
@@ -282,13 +293,13 @@ def _scan_double_quoted(text, i, bodies):
         if c == '"':
             return "".join(out), i
         if c == "\\":
-            out.append(text[i:i + 2])
+            out.append(text[i:i + 2].translate(_SHIELD))
             i += 2
         elif text.startswith("$(", i) or c == "`":
             i = _take_substitution(text, i, bodies)
             out.append(SUBSTITUTION_PLACEHOLDER)
         else:
-            out.append(c)
+            out.append(c.translate(_SHIELD))
             i += 1
     raise GuardError("the command's quoting cannot be parsed (a double quote is never closed); an unreadable command does not run")
 
@@ -422,7 +433,7 @@ def _simple_commands(tokens):
         if skip_words:
             i += 1
             continue
-        current.append(tok)
+        current.append(tok.translate(_UNSHIELD))
         at_start = False
         i += 1
     flush(False)

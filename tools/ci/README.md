@@ -49,7 +49,7 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 `.github/CLAUDE.md`):
 
 - `auto-resolve-python` — python-tests failed; submits at once.
-- `auto-review` — attempts 1 and 2; always submits: build failure, code policy,
+- `auto-review` — attempt 1 only; always submits: build failure, code policy,
   quality gates, docs-only verify, or the general review, as soon as the gates
   report.
 - `auto-resolve` — attempt 3 and later; stages a request for long-running test

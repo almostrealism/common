@@ -4,7 +4,7 @@
 # Assembles a prompt telling the coding agent that the pipeline's
 # `python-tests` job failed, with the tail of that job's captured output.
 # Used by the `auto-resolve-python` job, which submits as soon as
-# python-tests fails, before any Java test suite has run.
+# python-tests fails, whatever state the Java test suites are in.
 #
 # Usage:
 #   build-python-failure-prompt.sh <log-file> <output-file>
@@ -60,8 +60,11 @@ correct. Your branch broke it. Fix the code under test, not the test.**
 
 The \`python-tests\` job failed on branch "${BRANCH}" (commit ${COMMIT_SHA}).
 
-This was reported as soon as the Python suites failed. The Java test suites
-have not run for this commit, so nothing here says whether they pass.
+This was reported as soon as the Python suites failed. The rest of the
+pipeline runs alongside them, so the Java test suites for this commit may not
+have started, may still be running, or may have finished; nothing here says
+whether they pass. Fix the Python failure — the next pipeline will report the
+Java suites.
 
 ## Captured output (last 200 lines)
 
