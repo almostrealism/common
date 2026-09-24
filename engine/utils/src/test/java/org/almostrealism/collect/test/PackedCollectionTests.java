@@ -104,4 +104,28 @@ public class PackedCollectionTests extends TestSuiteBase {
 		source.putFloat(3 * Precision.FP32.bytes(), 42.5f);
 		assertEquals(42.5, loaded.toDouble(3));
 	}
+
+	/**
+	 * Tests that load rejects a provider that addresses values at {@link Precision#FP16}
+	 * (bfloat16) before allocating a staging region, rather than allocating one and then failing
+	 * inside {@link org.almostrealism.hardware.mem.ByteBufferTransfer}, which does not support that
+	 * precision. This is skipped unless the local hardware's native buffer provider is actually
+	 * configured for that precision.
+	 */
+	@Test(timeout = 10000)
+	public void loadRejectsAnFp16Destination() {
+		MemoryProvider<? extends RAM> provider = Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		if (provider.getNumberSize() != Precision.FP16.bytes()) return;
+
+		int size = 4;
+		ByteBuffer source = ByteBuffer.allocateDirect(Precision.FP32.bytes() * size)
+				.order(ByteOrder.nativeOrder());
+
+		try {
+			PackedCollection.load(shape(size), source);
+			throw new AssertionError("load into an FP16 provider must be rejected");
+		} catch (UnsupportedOperationException e) {
+			// expected
+		}
+	}
 }

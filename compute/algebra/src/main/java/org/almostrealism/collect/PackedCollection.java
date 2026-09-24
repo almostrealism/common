@@ -1184,6 +1184,10 @@ public class PackedCollection extends MemoryDataAdapter
 	 * @return a collection over the referenced or staged values
 	 * @throws IllegalArgumentException if no sources are given, or the shape's size is not
 	 *                                   divisible by the source count
+	 * @throws UnsupportedOperationException if the local hardware's native buffer provider
+	 *                                        addresses values at {@link Precision#FP16}
+	 *                                        (bfloat16), which {@link ByteBufferTransfer} cannot
+	 *                                        convert into
 	 */
 	public static PackedCollection load(TraversalPolicy shape, ByteBuffer... sources) {
 		if (sources.length == 0) {
@@ -1205,10 +1209,14 @@ public class PackedCollection extends MemoryDataAdapter
 					Bytes.of(provider.wrap(sources[0], total), total), 0);
 		}
 
-		RAM mem = provider.allocate(total);
-
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
 		Precision destination = Precision.ofBytes(provider.getNumberSize());
+		if (destination == Precision.FP16) {
+			throw new UnsupportedOperationException("Cannot stage values into a provider " +
+					"that addresses " + destination + " (bfloat16) precision");
+		}
+
+		RAM mem = provider.allocate(total);
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
 
 		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
 		for (int i = 0; i < sources.length; i++) {
