@@ -318,7 +318,9 @@ def test_dump_over_a_legacy_dump_removes_its_stage_files(tmp_path):
     assert not (out_dir / "cond_bias.bin").exists()
     assert (out_dir / "unrelated.bin").exists()
 
-    os.remove(str(out_dir / "unrelated.bin"))
+    # The leftover `.bin` for a stage this dump did not write stays on disk, but
+    # the directory reader skips legacy `.bin` files, so the dump reads back as
+    # protobuf without removing it first.
     reloaded = core.read_state_dictionary(str(out_dir))
     assert set(reloaded) == set(stages)
     np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
@@ -368,9 +370,25 @@ def test_read_skips_json_sidecars(tmp_path):
     np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
 
 
+def test_read_skips_legacy_bin_files(tmp_path):
+    """A directory dumped into before the protobuf migration may hold bespoke
+    `<stage>.bin` files for stages not in the current dump; reading the directory
+    back skips them rather than failing to parse them as protobuf."""
+    stages = {"dit_output": np.arange(6, dtype=np.float32).reshape(2, 3)}
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(stages, out_dir)
+    core.save_reference_output(np.arange(3, dtype=np.float32),
+                               os.path.join(out_dir, "legacy_stage.bin"))
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output"}
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
-    """Only the .json sidecars are skipped: any other non-hidden file is read as a shard,
-    so a corrupt one is an error rather than being silently dropped."""
+    """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
+    file is read as a shard, so a corrupt one is an error rather than being silently
+    dropped."""
     out_dir = str(tmp_path / "reference")
     core.dump_reference_activations({"only": np.arange(4, dtype=np.float32)}, out_dir)
     with open(os.path.join(out_dir, "references_9"), "wb") as f:

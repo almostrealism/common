@@ -441,15 +441,21 @@ def read_state_dictionary(path):
     round-trip ``write_state_dictionary`` output without a JVM. Arrays are
     reshaped to their stored ``traversal_policy.dims``.
 
-    In a directory, hidden files and ``.json`` metadata sidecars are skipped: the
-    dump scripts write ``shapes.json`` / ``meta.json`` / ``weight_shapes.json``
-    beside the shards they produce, and those are not protobuf.
+    In a directory, hidden files, ``.json`` metadata sidecars, and legacy
+    ``.bin`` reference files are skipped: the dump scripts write ``shapes.json`` /
+    ``meta.json`` / ``weight_shapes.json`` beside the shards they produce, and a
+    directory dumped into before the protobuf migration may still hold bespoke
+    ``<stage>.bin`` files for stages not in the current dump. Neither is protobuf,
+    and shards carry no extension, so skipping both leaves only real shards. This
+    mirrors the Java ``StateDictionary`` reader, which tolerates such files
+    through its per-file try/catch.
     """
     if os.path.isdir(path):
         files = sorted(
             os.path.join(path, name)
             for name in os.listdir(path)
             if not name.startswith(".") and not name.endswith(SIDECAR_SUFFIX)
+            and not name.endswith(LEGACY_REFERENCE_SUFFIX)
             and os.path.isfile(os.path.join(path, name))
         )
     else:
@@ -514,10 +520,13 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     (``generate_protobuf_python.sh``), and a second serialization format is not
     worth avoiding it.
 
-    A ``<name>.bin`` file the bespoke format left for any stage being written is
-    removed first: both readers load every non-sidecar file in the directory, so
-    a leftover from a dump made before the migration would fail to parse as
-    protobuf when the same directory is dumped into again.
+    A ``<name>.bin`` file the bespoke format left for a stage now being written is
+    removed first, so the directory holds one representation of that stage rather
+    than a stale raw file beside its protobuf shard. A ``.bin`` for some other
+    stage is left alone: it does not have to be this writer's to remove for the
+    dump to read back, because :func:`read_state_dictionary` skips legacy ``.bin``
+    files (and the Java ``StateDictionary`` reader tolerates them, logging a
+    warning per unparseable file rather than failing).
 
     The activations themselves must come from a real reference forward pass (see
     :func:`run_reference_stages`); this function only serializes them.
