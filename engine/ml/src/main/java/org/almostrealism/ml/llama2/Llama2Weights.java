@@ -20,12 +20,7 @@ import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.ByteBufferTransfer;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
 
 import java.nio.ByteBuffer;
 
@@ -139,36 +134,9 @@ public class Llama2Weights implements CodeFeatures {
 	 * @param shape   the shape of the tensor being staged
 	 * @param sources one or more checkpoint regions holding the tensor's values
 	 * @return a collection rooted over the staging allocation
+	 * @see PackedCollection#load(TraversalPolicy, ByteBuffer...)
 	 */
 	static PackedCollection stage(TraversalPolicy shape, ByteBuffer... sources) {
-		int total = shape.getTotalSize();
-		if (total % sources.length != 0)
-			throw new IllegalArgumentException();
-
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(total);
-
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
-		Precision destination = Precision.ofBytes(provider.getNumberSize());
-
-		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
-		for (int i = 0; i < sources.length; i++) {
-			transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32,
-					staging, destination);
-		}
-
-		if (transfers.length == 1) {
-			transfers[0].copy(total);
-		} else {
-			for (int i = 0; i < total; i += transfers.length) {
-				for (ByteBufferTransfer transfer : transfers) {
-					transfer.copyNext();
-				}
-			}
-		}
-
-		return new PackedCollection(shape, shape.getTraversalAxis(),
-				Bytes.of(mem, total), 0);
+		return PackedCollection.load(shape, sources);
 	}
 }

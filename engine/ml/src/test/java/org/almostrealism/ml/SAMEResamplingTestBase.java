@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -25,6 +26,10 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -121,7 +126,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @param encoder {@code true} for an encoder (downsampling) config
 	 * @return the small configuration
 	 */
-	protected ResamplingConfig smallConfig(boolean encoder) {
+	public static ResamplingConfig smallConfig(boolean encoder) {
 		int inChannels = encoder ? 4 : 8;
 		int outChannels = encoder ? 8 : 4;
 		int mappingKernel = encoder ? 1 : 3;
@@ -168,5 +173,105 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected double maxAbsDiff(PackedCollection actual, float[] reference) {
 		return diffStats(actual, reference)[0];
+	}
+
+	/**
+	 * Loads a flat {@code .bin} tensor into a {@link PackedCollection} of the given shape.
+	 *
+	 * @param dir   the directory containing {@code name.bin}
+	 * @param name  the tensor name (without the {@code .bin} suffix)
+	 * @param shape the target shape
+	 * @return the loaded collection
+	 * @throws IOException if the file cannot be read
+	 */
+	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
+		return new ReferenceActivations(dir).collection(name + ".bin", shape(shape));
+	}
+
+	/**
+	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file into a flat array.
+	 *
+	 * @param path the file path
+	 * @return the flat float values
+	 * @throws IOException if the file cannot be read
+	 */
+	protected float[] loadFlat(Path path) throws IOException {
+		return ReferenceActivations.load(path);
+	}
+
+	/**
+	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file
+	 * into a buffer positioned over the payload values.
+	 *
+	 * @param path the file path
+	 * @return a little-endian buffer holding the payload values
+	 * @throws IOException if the file cannot be read
+	 */
+	protected ByteBuffer loadBuffer(Path path) throws IOException {
+		return ReferenceActivations.loadBuffer(path);
+	}
+
+	/**
+	 * Returns the first directory among {@code candidates} that exists and contains {@code marker}, or
+	 * {@code null} if none do.
+	 *
+	 * @param candidates candidate directory paths (entries may be {@code null})
+	 * @param marker     a file that must exist within the directory
+	 * @return the resolved directory, or {@code null}
+	 */
+	protected File firstExisting(String[] candidates, String marker) {
+		return ReferenceActivations.firstExisting(candidates, marker);
+	}
+
+	/**
+	 * Logs the difference statistics for one stage.
+	 *
+	 * @param stage     the stage label
+	 * @param actual    the computed collection
+	 * @param reference the flat reference values
+	 */
+	protected void report(String stage, PackedCollection actual, float[] reference) {
+		double[] stats = diffStats(actual, reference);
+		log(String.format("%-18s maxAbs=%.3e meanAbs=%.3e rmse=%.3e (refMaxAbs=%.3e, n=%d)",
+				stage, stats[0], stats[1], stats[2], stats[3], reference.length));
+	}
+
+	/**
+	 * Asserts that the maximum absolute difference for one stage is within tolerance.
+	 *
+	 * @param stage     the stage label
+	 * @param actual    the computed collection
+	 * @param reference the flat reference values
+	 * @param tolerance the maximum permitted absolute difference
+	 */
+	protected void assertWithin(String stage, PackedCollection actual, float[] reference, double tolerance) {
+		double maxAbs = maxAbsDiff(actual, reference);
+		// maxAbs > tolerance is false when maxAbs is NaN, so a NaN result (a real computation
+		// failure) would otherwise silently pass; negating a <= comparison catches it.
+		if (!(maxAbs <= tolerance)) {
+			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
+		}
+	}
+
+	/**
+	 * Reports one stage against its reference and asserts parity within a fraction of the
+	 * reference magnitude. A computed collection of a different size fails outright, since it
+	 * means the capture and the reference dump disagree about the layout.
+	 *
+	 * @param stage             the stage label
+	 * @param actual            the computed collection
+	 * @param reference         the flat reference values
+	 * @param relativeTolerance the permitted largest absolute error as a fraction of the largest
+	 *                          reference magnitude
+	 */
+	protected void assertWithinRelative(String stage, PackedCollection actual, float[] reference,
+										double relativeTolerance) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		report(stage, actual, reference);
+		assertWithin(stage, actual, reference, relativeTolerance * diffStats(actual, reference)[3]);
 	}
 }

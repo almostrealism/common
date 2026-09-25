@@ -43,11 +43,23 @@ import safetensors_extractor as core
 
 ENCODER_PREFIX = "encoder."
 
+# The released google/t5gemma checkpoints nest both halves under ``model.``:
+# ``model.encoder.*`` and ``model.decoder.*``.
+MODEL_ENCODER_PREFIX = "model." + ENCODER_PREFIX
+
 LAYER_PATTERN = re.compile(r"^(encoder\.layers\.\d+)\.")
 
 
 def ensure_encoder_prefix(state):
-    """Keep the ``encoder.`` tensors of a full checkpoint, or prefix an encoder-only export."""
+    """Keep the encoder tensors of a checkpoint under bare ``encoder.`` keys.
+
+    Three layouts are handled: a released full checkpoint (``model.encoder.*`` and
+    ``model.decoder.*``, of which only the encoder survives, with ``model.``
+    stripped), a checkpoint already keyed ``encoder.*`` (the decoder, if any, is
+    dropped), and an encoder-only export without any prefix (which is prefixed).
+    """
+    if any(key.startswith(MODEL_ENCODER_PREFIX) for key in state):
+        return {k[len("model."):]: v for k, v in state.items() if k.startswith(MODEL_ENCODER_PREFIX)}
     if any(key.startswith(ENCODER_PREFIX) for key in state):
         return {k: v for k, v in state.items() if k.startswith(ENCODER_PREFIX)}
     return {ENCODER_PREFIX + k: v for k, v in state.items()}

@@ -21,6 +21,7 @@ import org.almostrealism.ml.ResamplingConfig;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.audio.PatchedPretransform;
 import org.almostrealism.ml.audio.SAMEAutoEncoder;
+import org.almostrealism.ml.audio.SoftNormBottleneck;
 import org.almostrealism.studio.ml.CompiledModelAutoEncoder;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -102,6 +103,6 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 
 		StateDictionary weights = new StateDictionary(w);
 		return new SAMEAutoEncoder(weights, new PatchedPretransform(CHANNELS, PATCH),
-				encoder, decoder, LATENT, SAMEAutoEncoder.softNormBottleneck(weights, LATENT));
+				encoder, decoder, LATENT, new SoftNormBottleneck(weights, LATENT));
 	}
 }

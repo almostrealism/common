@@ -213,6 +213,21 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	}
 
 	/**
+	 * Normalizes a scalar supplied as a producer onto {@code [0, 1]} relative to the configured
+	 * range, clamping it to {@code [minVal, maxVal]} first, so a value that changes between runs
+	 * is normalized by the compiled graph rather than by host arithmetic. Named for the range it
+	 * maps onto, since {@code normalize} on a producer is vector normalization.
+	 *
+	 * @param value producer of the raw scalar, shape {@code [1, 1]}
+	 * @return a producer of the normalized scalar, shape {@code [1, 1]}
+	 */
+	public CollectionProducer normalizeRange(Producer<PackedCollection> value) {
+		CollectionProducer clamped = max(min(c(value), c(shape(BATCH, 1), maxVal)),
+				c(shape(BATCH, 1), minVal));
+		return clamped.subtract(c(shape(BATCH, 1), minVal)).divide(maxVal - minVal);
+	}
+
+	/**
 	 * Produces the learned embedding of the given scalar as a {@code [1, outDim]} producer.
 	 * <p>
 	 * The scalar is normalized onto {@code [0, 1]}, expanded into Fourier features via the shared
