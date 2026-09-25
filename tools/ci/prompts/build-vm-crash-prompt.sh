@@ -142,19 +142,9 @@ Your branch broke it. Fix the production code, not the test.
 
 ---
 
-## AUTOMATED ENFORCEMENT
-
-Your commit will be validated by `validate-agent-commit.sh` which BLOCKS:
-1. Changes to, or removal of, test methods that exist on the base branch (exit code 2)
-2. Modifications to CI/workflow files (exit code 4)
-3. Commits with no production code, branch-new test, or newly added test method when
-   fixing test failures (exit code 3)
-
-**There is no way around these checks. They are mechanical, not judgment-based.**
-
----
-
 PROMPT_HEADER
+
+append_prompt_fragment test-lock-enforcement.txt "$OUTPUT_FILE"
 
 append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 

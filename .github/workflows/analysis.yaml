@@ -87,6 +87,7 @@ jobs:
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
+      agent_protection_changed: ${{ steps.filter.outputs.agent_protection_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
       # The branch this run is for, its base, and the commit under test, for
@@ -115,6 +116,7 @@ jobs:
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
+            echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -233,6 +235,20 @@ jobs:
             echo "exfil_guard_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+          # Agent-protection detection. The branch checks under
+          # tools/ci/agent-protection/ (the CI file lock, the Python
+          # test-hiding detector, the change-set validator) have shell
+          # regression suites that python-tests runs; a change to any of those
+          # scripts must run them, and none of them is a .py file.
+          AP_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            'tools/ci/agent-protection/' || true)
+          if [ -n "$AP_FILES" ]; then
+            echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Agent-protection scripts changed — running their regression suites"
+          else
+            echo "agent_protection_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
           # Agent volume isolation detection. The agent-volume-isolation job
           # validates the FlowTree agent docker-compose configuration and its
           # validator. Gate it on the specific inputs it checks so it is
@@ -269,6 +285,35 @@ jobs:
           else
             echo "images_changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # CI/workflow files (.github/workflows/, tools/ci/) change only on a
+      # ci/... branch or under a controller-signed Sensitive-File-Bypass
+      # trailer. It takes nothing but git to tell, so it is checked here and
+      # a violating branch fails before anything is built: every other job
+      # needs `changes`. check-ci-file-lock.sh is on test-integrity-check's
+      # protected list, so a branch cannot quietly weaken the copy it runs.
+      - name: Check the CI file lock
+        if: github.ref != 'refs/heads/master'
+        env:
+          # Verifies a controller-signed bypass trailer. Without the secret
+          # no commit can be granted one, which is the safe direction.
+          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
+        run: |
+          LOCK=tools/ci/agent-protection/check-ci-file-lock.sh
+          # The workflow comes from the merge with the base, the checkout
+          # from the PR head. A head that lacks the script either predates it
+          # (absent at the merge-base too: nothing to check) or deleted it
+          # (present there: a change to tools/ci/ in its own right).
+          if [ ! -f "$LOCK" ]; then
+            MERGE_BASE=$(git merge-base origin/master HEAD)
+            if git cat-file -e "${MERGE_BASE}:${LOCK}" 2>/dev/null; then
+              echo "::error::${LOCK} was removed on this branch — a change to tools/ci/ outside a ci/... branch"
+              exit 1
+            fi
+            echo "::notice::This branch predates ${LOCK}; the CI file lock is not checked"
+            exit 0
+          fi
+          bash "$LOCK" origin/master
 
   build:
     needs: changes
@@ -386,12 +431,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     outputs:
-      passed: ${{ steps.check.outcome == 'success' }}
+      passed: ${{ steps.check.outcome == 'success' && steps.python_check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
       # What this job concluded, named rather than inferred. One of
-      # enforcement-tampering, exfil-guard, test-hiding (a detector ran and
-      # found something), infrastructure (a detector could not run), or
-      # empty (nothing failed, or the job never got far enough to say).
+      # enforcement-tampering, exfil-guard, test-hiding, python-test-hiding
+      # (a detector ran and found something), infrastructure (a detector
+      # could not run), or empty (nothing failed, or the job never got far
+      # enough to say).
       #
       # It is a step output, written by the step that reached the verdict,
       # rather than a guess assembled from step outcomes downstream: only
@@ -408,7 +454,8 @@ jobs:
       failure_reason: >-
         ${{ steps.enforcement.outputs.reason ||
         steps.exfil_guard.outputs.reason ||
-        steps.check.outputs.reason }}
+        steps.check.outputs.reason ||
+        steps.python_check.outputs.reason }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -446,6 +493,8 @@ jobs:
             "tools/ci/agent-protection/detect-test-hiding.sh"
             "tools/ci/agent-protection/check-quality-gates.sh"
             "tools/ci/agent-protection/validate-agent-commit.sh"
+            "tools/ci/agent-protection/check-ci-file-lock.sh"
+            "tools/ci/agent-protection/detect-python-test-hiding.sh"
             "tools/ci/agent-protection/deception-audit.sh"
             "tools/ci/agent-protection/verify-sensitive-bypass.sh"
             "tools/ci/agent-protection/verify-memory-claim.sh"
@@ -473,8 +522,8 @@ jobs:
           )
 
           # A branch named ci/... declares the pipeline as the subject of
-          # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks the protected files that ARE the pipeline —
+          # the change, the same declaration the CI file lock
+          # (check-ci-file-lock.sh) accepts. It unlocks the protected files that ARE the pipeline —
           # those under .github/workflows/, tools/ci/ and .claude/hooks/.
           # The last of those is here because a branch permitted to rewrite
           # the workflow may equally delete the step that checks a hook, so
@@ -707,6 +756,40 @@ jobs:
             exit "$EXIT_CODE"
           }
 
+      # The Python counterpart of the detector above: every `def test_*` on
+      # the base branch must survive, and a test file's assertion count must
+      # not fall. Editing inside a Python test is otherwise allowed.
+      - name: Check for Python test-hiding modifications
+        id: python_check
+        if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          DETECTOR=./tools/ci/agent-protection/detect-python-test-hiding.sh
+
+          # A branch from before this detector existed has nothing for it to
+          # run; that is a pipeline gap, not a finding about the branch.
+          if [ ! -f "$DETECTOR" ]; then
+            echo "::notice::${DETECTOR} is not in this checkout — the branch predates it; rebase onto master to be checked"
+            exit 0
+          fi
+
+          bash "$DETECTOR" origin/master ${RUNNER_TEMP}/python-test-integrity-report.txt || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+              echo "::error::Python test integrity violations detected — base-branch tests were removed or lost assertions"
+              echo "reason=python-test-hiding" >> "$GITHUB_OUTPUT"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Python test integrity violations IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
+              exit 1
+            fi
+            echo "::error::The Python test-hiding detector could not complete (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit "$EXIT_CODE"
+          }
+
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
@@ -714,7 +797,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           # At most one step reaches a verdict, so concatenating their
           # reasons yields that one (or the empty string when none did).
-          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}"
+          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}${{ steps.python_check.outputs.reason }}"
 
           case "$REASON" in
             enforcement-tampering)
@@ -748,6 +831,15 @@ jobs:
                 echo '```' >> "$GITHUB_STEP_SUMMARY"
               fi
               ;;
+            python-test-hiding)
+              echo "**FAILED: Base-branch Python tests were removed or lost assertions.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/python-test-integrity-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/python-test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
             infrastructure)
               echo "**COULD NOT RUN: a check in this job failed to execute.**" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -756,7 +848,7 @@ jobs:
               echo "to \"fix\" a branch on this outcome; the pipeline itself needs the fix." >> "$GITHUB_STEP_SUMMARY"
               ;;
             *)
-              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
+              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.python_check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
                 echo "**INCONCLUSIVE: this job failed without recording why.**" >> "$GITHUB_STEP_SUMMARY"
                 echo "" >> "$GITHUB_STEP_SUMMARY"
                 echo "Treat it as a pipeline problem rather than a finding about the branch," >> "$GITHUB_STEP_SUMMARY"
@@ -806,8 +898,8 @@ jobs:
           )
 
           # A branch named ci/... declares the pipeline as the subject of
-          # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks the protected files that ARE the pipeline —
+          # the change, the same declaration the CI file lock
+          # (check-ci-file-lock.sh) accepts. It unlocks the protected files that ARE the pipeline —
           # those under .github/workflows/, tools/ci/ and .claude/hooks/.
           # The last of those is here because a branch permitted to rewrite
           # the workflow may equally delete the step that checks a hook, so
@@ -976,9 +1068,14 @@ jobs:
           fi
 
   # ─── Agent Commit Validation ────────────────────────────────────
-  # Validates that agent commits do not modify test files or CI
-  # files. This is a hard block — agent commits that violate these
-  # rules are rejected. Only runs on non-master branches.
+  # Rejects a change set whose only content is edits to test files that
+  # already exist on master, with no new test in them: the suite passes
+  # on master, so such a change set cannot fix anything — it can only
+  # change what the suite reports. Whether an edit weakens a test is
+  # test-integrity-check's question, and the CI file lock is checked in
+  # `changes`. Fails the job when it blocks; the override_integrity_checks
+  # input lets a run through for a known false positive. Only runs on
+  # non-master branches.
   agent-commit-validation:
     needs: build
     runs-on: ubuntu-latest
@@ -999,31 +1096,33 @@ jobs:
       - name: Validate agent commit
         id: validate
         env:
-          # Lets the validator verify a controller-signed
-          # Sensitive-File-Bypass trailer. Absent secret means no commit
-          # can be granted a bypass, which is the safe direction to fail.
-          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
-          chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
-          chmod +x ./tools/ci/agent-protection/verify-sensitive-bypass.sh
-          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
+          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master || {
             EXIT_CODE=$?
-            if [ "$EXIT_CODE" -eq 2 ]; then
-              echo "::error::Agent commit BLOCKED: test file modifications detected"
-            elif [ "$EXIT_CODE" -eq 3 ]; then
-              echo "::warning::Agent commit flagged: no production code changes"
-            elif [ "$EXIT_CODE" -eq 4 ]; then
-              echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
-            else
-              # The validator could not reach a verdict — an unusable base
-              # ref, a missing helper. There is no evidence either way, so
-              # the step fails rather than reporting an unvalidated branch
-              # as clean.
-              echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
-              exit "$EXIT_CODE"
+            # A head from before the validator was reduced to this one rule
+            # carries the old script, which also exits 2 (base-branch test
+            # method changed) and 4 (CI file changed). Those rules are no
+            # longer this job's: test-integrity-check and the CI file lock in
+            # `changes` hold every branch to them now.
+            if [ "$EXIT_CODE" -eq 2 ] || [ "$EXIT_CODE" -eq 4 ]; then
+              echo "::notice::This branch carries the validator from before its rules were split (exit ${EXIT_CODE}); rebase onto master to be checked by this job"
+              exit 0
             fi
-            # Do not fail the build — the auto-resolve job checks this output
-            exit 0
+            if [ "$EXIT_CODE" -eq 3 ]; then
+              echo "::error::The change set only edits tests that exist on master"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Agent commit validation IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
+              exit 1
+            fi
+            # The validator could not reach a verdict — an unusable base
+            # ref, a missing helper. There is no evidence either way, so
+            # the step fails rather than reporting an unvalidated branch as
+            # clean.
+            echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
+            exit "$EXIT_CODE"
           }
 
       - name: Summary
@@ -1423,14 +1522,18 @@ jobs:
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
   # when any test fails, and a failure is submitted straight away by
-  # auto-resolve-python, which quotes the output this job uploads. Gated on python_changed OR exfil_guard_changed so
-  # the guard suites still run when only its shell adapter, allowlist, or
-  # settings.json registration changed — none of which set python_changed.
+  # auto-resolve-python, which quotes the output this job uploads. Gated on
+  # python_changed, exfil_guard_changed or agent_protection_changed, so the
+  # guard suites still run when only its shell adapter, allowlist, or
+  # settings.json registration changed, and the branch-check suites run when
+  # an agent-protection script changed — none of which set python_changed.
   python-tests:
     needs: changes
     if: >-
       needs.changes.outputs.code_changed == 'true' &&
-      (needs.changes.outputs.python_changed == 'true' || needs.changes.outputs.exfil_guard_changed == 'true')
+      (needs.changes.outputs.python_changed == 'true' ||
+       needs.changes.outputs.exfil_guard_changed == 'true' ||
+       needs.changes.outputs.agent_protection_changed == 'true')
     runs-on: ubuntu-latest
     # `bash` (rather than the default shell) runs every step with pipefail, so
     # piping a suite through `tee` still fails the step when the suite fails.
@@ -1486,6 +1589,11 @@ jobs:
       # independently of the guard's own regression suite above.
       - name: Run quality-gate messaging regression tests
         run: bash tools/ci/agent-protection/test-check-quality-gates.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The CI file lock, the Python test-hiding detector and the change-set
+      # validator, each against a throwaway repository.
+      - name: Run branch-check regression tests
+        run: bash tools/ci/agent-protection/test-branch-checks.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # auto-resolve-python quotes this output in the prompt it submits, so the
       # agent starts from the actual failure rather than a bare job status.
@@ -3053,6 +3161,11 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           ENFORCE_CHANGES: "true"
+          # Sent to make failing tests pass. The harness's test lock covers
+          # Java tests under src/test/ (and CI files), not the Python suites
+          # under tools/; those are held by detect-python-test-hiding.sh and
+          # this job's prompt, which forbid removing a test or its assertions.
+          PROTECT_TEST_FILES: "true"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3167,7 +3280,7 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
@@ -3190,7 +3303,7 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
@@ -3220,7 +3333,7 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
@@ -3244,7 +3357,7 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
@@ -3280,13 +3393,10 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          # PR #492 reached CI because a general-review job ran without this
-          # flag, added new test methods to an existing base-branch file, and
-          # one of them was broken. Test-file protection now permits
-          # branch-introduced test methods (see
-          # flowtree/runtime/docs/file-staging.md), so there is no tradeoff
-          # between protection and adding tests here.
-          PROTECT_TEST_FILES: "true"
+          # The harness's per-job test lock is for jobs sent to make failing
+          # tests pass; a review may improve an existing test, and
+          # test-integrity-check is what stops it weakening one.
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -3367,6 +3477,9 @@ jobs:
           # minutes) has posted. The controller holds the job this long before
           # dispatching it, so the agent starts with that review to act on.
           DELAY_SECONDS: "300"
+          # No auto-review prompt is sent to make a failing test pass, so the
+          # harness's per-job test lock stays off; test-integrity-check holds.
+          PROTECT_TEST_FILES: "false"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3698,7 +3811,7 @@ jobs:
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |

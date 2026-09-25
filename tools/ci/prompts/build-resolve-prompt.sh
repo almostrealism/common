@@ -108,31 +108,15 @@ base branch (master) before this branch was created. Run:
 - Claim "the failure is unrelated to my changes" without PROOF (see below)
 
 **Tests that exist on the base branch are the specification. Fix the production code.**
-**Modifications to base-branch test methods will be automatically rejected by
-validate-agent-commit.sh.** You MAY fix tests that your branch introduced, you MAY
-add new test methods to an existing test class, and you MAY edit the fixtures and
-helpers of a test class — none of those can hide the failure of an existing test.
-
----
-
-## AUTOMATED ENFORCEMENT
-
-Your commit will be validated by `validate-agent-commit.sh` which BLOCKS:
-1. Changes to, or removal of, test methods that exist on the base branch (exit code 2)
-2. Modifications to CI/workflow files (exit code 4)
-3. Commits with no production code, branch-new test, or newly added test method when
-   fixing test failures (exit code 3)
-
-Additionally, `detect-test-hiding.sh` checks for 12 specific evasion patterns
-including TestDepth escalation, timeout inflation, dimension reduction,
-tolerance weakening, assertion removal, and numeric literal shrinkage.
-
-**There is no way around these checks. They are mechanical, not judgment-based.**
-
+You MAY fix tests that your branch introduced, you MAY add new test methods to an
+existing test class, and you MAY edit the fixtures and helpers of a test class —
+none of those can hide the failure of an existing test.
 
 ---
 
 PROMPT_HEADER
+
+append_prompt_fragment test-lock-enforcement.txt "$OUTPUT_FILE"
 
 append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 

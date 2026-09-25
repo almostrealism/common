@@ -43,15 +43,17 @@
 #                       have the controller reject such a submission instead.
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
-#   PROTECT_TEST_FILES - block edits to pre-existing test-method content on
-#                       the base branch (default: true). Test-file protection
-#                       is method-level, not whole-file: an agent may still
-#                       add new test methods or edit ones it introduced on
-#                       this branch (see flowtree/runtime/docs/file-staging.md).
-#                       Every caller here is an automated (unattended) job, so
-#                       this defaults on; set to "false" only for a path that
-#                       has a documented reason to allow unrestricted test
-#                       edits (e.g. a bypass-signed job).
+#   PROTECT_TEST_FILES - have the harness keep every test method that exists
+#                       on the base branch exactly as it is for this job
+#                       (default: false). It is method-level, not whole-file:
+#                       the agent may still add test methods and edit ones it
+#                       introduced (see flowtree/runtime/docs/file-staging.md).
+#                       Turn it on only for a job whose premise is that the
+#                       existing tests are the reference — one sent to make
+#                       failing tests pass, or to change code without
+#                       changing what its tests assert. Every other job is
+#                       held to test-integrity-check, which every branch
+#                       meets anyway.
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
@@ -135,7 +137,7 @@ PAYLOAD=$(jq -n \
     --arg prompt "$PROMPT" \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
-    --argjson protect "${PROTECT_TEST_FILES:-true}" \
+    --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
     --argjson automated true \

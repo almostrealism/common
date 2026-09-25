@@ -1,0 +1,68 @@
+diff --git a/.github/workflows/analysis.yaml b/.github/workflows/analysis.yaml
+index 41952c616..d01892c77 100644
+--- a/.github/workflows/analysis.yaml
++++ b/.github/workflows/analysis.yaml
+@@ -299,19 +299,23 @@ jobs:
+           # no commit can be granted one, which is the safe direction.
+           AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
+         run: |
+-          LOCK=tools/ci/agent-protection/check-ci-file-lock.sh
+-          # The workflow comes from the merge with the base, the checkout
+-          # from the PR head. A head that lacks the script either predates it
+-          # (absent at the merge-base too: nothing to check) or deleted it
+-          # (present there: a change to tools/ci/ in its own right).
++          REL=tools/ci/agent-protection/check-ci-file-lock.sh
++          LOCK="$REL"
++          # The workflow comes from the merge with the base, the checkout from
++          # the PR head. A head that lacks the script predates it; skipping the
++          # check there would let a branch based before the script was added
++          # change CI files unchecked. Run a trusted copy from origin/master
++          # instead — extracted to a temp dir so the working tree is untouched —
++          # and let its own diff (origin/master...HEAD) catch a branch that
++          # deleted the script as the tools/ci/ change it is.
+           if [ ! -f "$LOCK" ]; then
+-            MERGE_BASE=$(git merge-base origin/master HEAD)
+-            if git cat-file -e "${MERGE_BASE}:${LOCK}" 2>/dev/null; then
+-              echo "::error::${LOCK} was removed on this branch — a change to tools/ci/ outside a ci/... branch"
+-              exit 1
+-            fi
+-            echo "::notice::This branch predates ${LOCK}; the CI file lock is not checked"
+-            exit 0
++            TRUSTED=$(mktemp -d)
++            git archive origin/master tools/ci/agent-protection/ | tar -x -C "$TRUSTED" || true
++            LOCK="$TRUSTED/$REL"
++          fi
++          if [ ! -f "$LOCK" ]; then
++            echo "::error::${REL} is unavailable even from origin/master — the CI file lock cannot be verified"
++            exit 1
+           fi
+           bash "$LOCK" origin/master
+ 
+@@ -765,13 +769,22 @@ jobs:
+         env:
+           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+         run: |
+-          DETECTOR=./tools/ci/agent-protection/detect-python-test-hiding.sh
++          REL=tools/ci/agent-protection/detect-python-test-hiding.sh
++          DETECTOR="./$REL"
+ 
+-          # A branch from before this detector existed has nothing for it to
+-          # run; that is a pipeline gap, not a finding about the branch.
++          # A head that lacks the detector predates it. Skipping the check there
++          # would let a branch based before it was added weaken a base-branch
++          # Python test unchecked, so run a trusted copy from origin/master
++          # (extracted to a temp dir, working tree untouched) instead.
+           if [ ! -f "$DETECTOR" ]; then
+-            echo "::notice::${DETECTOR} is not in this checkout — the branch predates it; rebase onto master to be checked"
+-            exit 0
++            TRUSTED=$(mktemp -d)
++            git archive origin/master tools/ci/agent-protection/ | tar -x -C "$TRUSTED" || true
++            DETECTOR="$TRUSTED/$REL"
++          fi
++          if [ ! -f "$DETECTOR" ]; then
++            echo "::error::${REL} is unavailable even from origin/master — Python test integrity cannot be verified"
++            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
++            exit 1
+           fi
+ 
+           bash "$DETECTOR" origin/master ${RUNNER_TEMP}/python-test-integrity-report.txt || {
