@@ -1195,13 +1195,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             return new StagingResult(Collections.emptyList(), Collections.emptyList());
         }
 
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                .protectTestFiles(protectTestFiles && GitCommitHandler.isSensitiveFileProtectionEnabled(this))
-                .baseBranch(baseBranch)
-                .maxFileSizeBytes(maxFileSizeBytes)
-                .build();
+        FileStagingConfig config = GitCommitHandler.buildStagingConfig(this);
         File workDir = workingDirectory != null ? new File(workingDirectory) : new File(".");
         return new FileStager().evaluateFiles(changedFiles, config, workDir, asGitOperations());
     }

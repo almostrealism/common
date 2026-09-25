@@ -29,9 +29,8 @@ import java.util.regex.Pattern;
 /**
  * Builds and verifies the {@code Sensitive-File-Bypass} commit-message trailer
  * that authorises a specific job to modify files normally protected by the
- * repo-level rules in
- * {@code tools/ci/agent-protection/validate-agent-commit.sh}
- * (RULE 1 — test files, RULE 3 — CI/workflow files).
+ * CI/workflow file lock in
+ * {@code tools/ci/agent-protection/check-ci-file-lock.sh}.
  *
  * <h2>Threat model</h2>
  * <p>The agent controls {@code commit.txt} and every file in its working tree.
