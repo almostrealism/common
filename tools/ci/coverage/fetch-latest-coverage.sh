@@ -49,6 +49,9 @@
 #                        artifact is reused (default: master)
 #   OUTPUT_DIR         - where to write coverage.xml / python-coverage.xml
 #                        (default: current directory)
+#   ARTIFACT_PAGE_LIMIT - how many 100-artifact pages of the repo-wide
+#                        merged-coverage-report listing to search for a
+#                        BRANCH artifact before giving up (default: 10)
 #   ALLOW_RECOMPUTE    - "false" forbids the Java recompute path entirely
 #                        (default: true). A caller whose host cannot run
 #                        the full Maven suite meaningfully — a GitHub-hosted
@@ -71,6 +74,7 @@ FORCE="${FORCE:-false}"
 ALLOW_RECOMPUTE="${ALLOW_RECOMPUTE:-true}"
 BRANCH="${BRANCH:-master}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
+ARTIFACT_PAGE_LIMIT="${ARTIFACT_PAGE_LIMIT:-10}"
 JACOCO_VERSION="0.8.11"
 
 mkdir -p "$OUTPUT_DIR"
@@ -98,25 +102,33 @@ fetch_merged_report() {
     # workflow run by overall status first: an unrelated flaky job elsewhere
     # in the same analysis.yaml run must not hide an artifact that the
     # analysis job itself already produced successfully.
-    # TODO(review): this endpoint has no server-side branch filter, and
-    # analysis.yaml's `analysis` job uploads this same artifact name on
-    # every pull_request run too, not just master pushes. per_page=100 is
-    # the API's maximum, so if more than that many merged-coverage-report
-    # artifacts (across all branches) accumulate between master runs, the
-    # master artifact can still scroll off this page and the jq filter
-    # below will find nothing to reuse. Raising the page size no further
-    # helps; closing this properly means paging until a match is found.
-    # See review-followup memory for workstream c9ad5512.
-    artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=merged-coverage-report&per_page=100") \
-        || { echo "::warning::Could not list merged-coverage-report artifacts"; return 1; }
+    # The endpoint has no server-side branch filter, and analysis.yaml's
+    # `analysis` job uploads this same artifact name on every pull_request
+    # run too, not just master pushes, so busy PR traffic can push the
+    # newest BRANCH artifact past the first page. Artifacts are listed
+    # newest first; page through them (per_page=100 is the API maximum)
+    # until one for BRANCH turns up, the listing runs out, or
+    # ARTIFACT_PAGE_LIMIT pages have been read. A miss matters: a caller
+    # with ALLOW_RECOMPUTE=false has no fallback.
+    local page=0 page_count
+    selected=""
+    while [ -z "$selected" ] && [ "$page" -lt "$ARTIFACT_PAGE_LIMIT" ]; do
+        page=$((page + 1))
+        artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=merged-coverage-report&per_page=100&page=${page}") \
+            || { echo "::warning::Could not list merged-coverage-report artifacts (page ${page})"; return 1; }
 
-    selected=$(echo "$artifacts_json" | jq -r --arg branch "$BRANCH" '
-        [.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)]
-        | sort_by(.created_at) | reverse | .[0]
-        | if . == null then "" else (.id|tostring) + " " + (.workflow_run.id|tostring) end
-    ')
+        selected=$(echo "$artifacts_json" | jq -r --arg branch "$BRANCH" '
+            [.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)]
+            | sort_by(.created_at) | reverse | .[0]
+            | if . == null then "" else (.id|tostring) + " " + (.workflow_run.id|tostring) end
+        ')
+        page_count=$(echo "$artifacts_json" | jq -r '.artifacts | length')
+        if [ "$page_count" -lt 100 ]; then
+            break
+        fi
+    done
     if [ -z "$selected" ]; then
-        echo "::warning::No unexpired merged-coverage-report artifact found for branch ${BRANCH}"
+        echo "::warning::No unexpired merged-coverage-report artifact found for branch ${BRANCH} in the ${page} most recent page(s) of artifacts"
         return 1
     fi
     artifact_id=${selected%% *}
@@ -208,7 +220,9 @@ recompute_java_report() {
 if [ "$FORCE" = "true" ]; then
     recompute_java_report
 elif ! fetch_merged_report; then
-    echo "::notice::Falling back to a fresh recompute (no reusable report was found)"
+    if [ "$ALLOW_RECOMPUTE" != "false" ]; then
+        echo "::notice::Falling back to a fresh recompute (no reusable report was found)"
+    fi
     recompute_java_report
 fi
 
