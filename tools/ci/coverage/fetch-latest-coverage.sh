@@ -203,27 +203,62 @@ if [ ! -f "${OUTPUT_DIR}/coverage.xml" ]; then
 fi
 
 # ─── Python: always fresh (fast) ───────────────────────────────────────
-
-if ! python3 -m coverage --version >/dev/null 2>&1; then
-    echo "::notice::Installing coverage.py"
-    pip3 install --quiet coverage
+#
+# tools/mcp/manager/server.py imports mcp.server.fastmcp at module load
+# (discovered when PYTHON_DIRS below runs unittest discover over
+# tools/mcp/manager), and the `mcp` package requires Python >=3.10
+# (tools/mcp/requirements.txt). A bare `python3` on a self-hosted macOS
+# runner can resolve to the OS-bundled Python 3.9, which cannot install
+# `mcp` at all. select-python-env.sh selects the newest interpreter on
+# PATH that actually satisfies the requirement (verified via
+# sys.version_info, not just its name), and provisions a venv for it in a
+# cache directory outside the checkout — a plain `pip3 install` is not an
+# option because a Homebrew-installed Python marks its site-packages
+# externally-managed and refuses a global install outright. The cached
+# venv is invalidated (recreated) whenever the interpreter,
+# tools/mcp/requirements.txt, or the extra package list below changes;
+# without that, a venv created once by an old interpreter would be reused
+# forever, and pip's `Requires-Python` filtering would silently make every
+# release of a dependency look unavailable ("from versions: none").
+# Mirrors analysis.yaml's python-tests "Install dependencies" step so the
+# same package set covers PYTHON_DIRS below (tools/mcp/manager needs
+# `mcp`; tools/tests needs `pyyaml`).
+#
+# On the self-hosted macOS runner this job actually runs on, a Homebrew-
+# installed Python 3.10+ can exist on disk without being on this process's
+# PATH: launchd starts services (the CI runner among them) with almost no
+# PATH, and Homebrew's bin directory is only restored when a service
+# definition adds it back explicitly (tools/ci/macos/README.md documents
+# this same gap for the flowtree agent daemon and the deploy-agent runner).
+# Append the conventional Homebrew bin directories for both CPU
+# architectures so select-python-env.sh's PATH search can still find a
+# versioned `pythonX.Y` (Homebrew's python@3.1x formulas are keg-only but
+# still symlink their versioned binary into these directories) even when
+# the runner's own PATH omits them. A no-op on any host without Homebrew
+# at these locations, and it only widens the search — select-python-env.sh
+# still picks the newest interpreter that actually satisfies the minimum
+# version, wherever it is found.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "$(uname -s)" = "Darwin" ]; then
+    PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
 fi
+PYTHON=$(REQUIREMENTS_FILE=tools/mcp/requirements.txt bash "${SCRIPT_DIR}/select-python-env.sh" pyyaml coverage)
 
 PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
 FIRST=true
 for dir in "${PYTHON_DIRS[@]}"; do
     [ -d "$dir" ] || continue
     if [ "$FIRST" = "true" ]; then
-        python3 -m coverage run --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
+        "$PYTHON" -m coverage run --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
         FIRST=false
     else
-        python3 -m coverage run -a --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
+        "$PYTHON" -m coverage run -a --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
     fi
 done
 
 # --omit is the caveat the plan's appendix documents: --source=<dir> alone
 # instruments the test_*.py files too, which inflates the directory's
 # reported coverage with lines that are never production code.
-python3 -m coverage xml -o "${OUTPUT_DIR}/python-coverage.xml" --omit='*/test_*.py'
+"$PYTHON" -m coverage xml -o "${OUTPUT_DIR}/python-coverage.xml" --omit='*/test_*.py'
 
 echo "Coverage reports written to ${OUTPUT_DIR}/coverage.xml and ${OUTPUT_DIR}/python-coverage.xml"

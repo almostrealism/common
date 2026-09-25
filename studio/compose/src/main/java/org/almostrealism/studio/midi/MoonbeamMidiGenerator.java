@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Consumer;
 import javax.sound.midi.InvalidMidiDataException;
 
 import org.almostrealism.music.midi.MidiFileReader;
@@ -136,12 +138,26 @@ public class MoonbeamMidiGenerator {
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
 		PackedCollection temperature = new PackedCollection(1);
 
+		Consumer<MidiCompoundToken> loadOrdinary = AutoregressiveModel.tokenLoader(
+				input, MoonbeamConfig.NUM_ATTRIBUTES,
+				(token, values) -> {
+					try (PackedCollection packed = token.pack()) {
+						values.setFrom(0, packed);
+					}
+				},
+				embedding::embedValues);
+
 		this.inner = new AutoregressiveModel<>(
 				model.getPosition(),
 				token -> {
 					model.setAttributePositions(token);
-					PackedCollection emb = embedding.embed(token).evaluate();
-					input.setFrom(0, emb, 0, hiddenSize);
+
+					if (token.isSpecial()) {
+						input.setFrom(0, Process.optimized(embedding.embed(token)).get().evaluate(),
+								0, hiddenSize);
+					} else {
+						loadOrdinary.accept(token);
+					}
 				},
 				() -> model.forward(input),
 				hidden -> {

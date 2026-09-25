@@ -128,4 +128,17 @@ public interface DataContext<MEM> extends Named {
 	 * Releases all resources held by this data context.
 	 */
 	void destroy();
+
+	/**
+	 * Returns whether {@link #destroy()} has released this context's resources.
+	 *
+	 * <p>A value derived under a context, such as a compiled kernel or memory it
+	 * allocated, is only usable while that context is alive; a holder of such a
+	 * value consults this before reusing it.</p>
+	 *
+	 * @return {@code true} once this context has been destroyed
+	 */
+	default boolean isDestroyed() {
+		return false;
+	}
 }

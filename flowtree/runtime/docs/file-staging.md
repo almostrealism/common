@@ -320,30 +320,50 @@ enter the repository. The default patterns provided by
 
 ### Guardrail 2: Test File Protection
 
-**Check:** Is `config.isProtectTestFiles()` true AND does the file path match
-any pattern in `config.getProtectedPathPatterns()`?
+**Check:** Is the file CI configuration (`.github/workflows/**`,
+`.github/actions/**`, `tools/ci/**`) and `config.isProtectCiFiles()` true? Or
+is `config.isProtectTestFiles()` true AND does the file path match any pattern
+in `config.getProtectedPathPatterns()`?
 
-**Granularity:** The check is **whole-file** for `.github/workflows/**` and
-`.github/actions/**` (CI/workflow configuration has no "method" structure and
-is locked in full), and for any non-`.java` file matching a protected pattern
-(e.g. a test resource file). For a `.java` file it is **test-method-level**,
-delegated to `TestMethodProtection`:
+**Two locks.** The CI file lock (`protectCiFiles`) is the harness side of the
+repository's CI file lock (`tools/ci/agent-protection/check-ci-file-lock.sh`).
+`GitCommitHandler` turns it on for every job except one the controller
+authorised to change sensitive files (its commit carries the signed bypass
+trailer) or one working on a `ci/...` branch, the same exemptions CI applies.
+It is independent of the per-job test lock (`protectTestFiles`), which protects
+test files only for jobs that ask for it.
 
-- If the file did not exist at the merge-base of `origin/<baseBranch>` and
-  `HEAD`, it is a branch-new file and is allowed through in full.
-- Otherwise its `@Test`-annotated methods at the merge-base are compared
-  against its current content. A file is blocked only when an existing test
-  method's exact content (annotations through the closing brace) differs or
-  the method is gone — "differs" includes a pure addition, such as an early
-  `return` or a newly added `@Ignore`/`@TestDepth` annotation on an existing
-  method, since an addition-only diff can still hide a test. Adding a new
-  `@Test` method, and editing fixtures, helpers, fields, or a method that was
-  itself absent at the merge-base, are all allowed.
+**Granularity:** three cases, by what the file is.
+
+- **CI/workflow files** (`.github/workflows/**`, `.github/actions/**`,
+  `tools/ci/**`) under the CI lock are **whole-file and unconditional**:
+  blocked whether they are branch-new or already existed at the merge-base.
+  `check-ci-file-lock.sh` rejects a new workflow exactly as it rejects an edit
+  to an existing one, so the harness must not stage a CI change the pipeline
+  would only refuse later. CI/workflow configuration also has no "method"
+  structure to reason about.
+- **Non-`.java` protected test files** (e.g. a test resource) are
+  **whole-file but existence-gated**: blocked only when the file existed at
+  the merge-base of `origin/<baseBranch>` and `HEAD`; a branch-new one is
+  allowed.
+- **`.java` test files** are **test-method-level**, delegated to
+  `TestMethodProtection`:
+  - If the file did not exist at the merge-base, it is a branch-new file and
+    is allowed through in full.
+  - Otherwise its `@Test`-annotated methods at the merge-base are compared
+    against its current content. A file is blocked only when an existing test
+    method's exact content (annotations through the closing brace) differs or
+    the method is gone — "differs" includes a pure addition, such as an early
+    `return` or a newly added `@Ignore`/`@TestDepth` annotation on an existing
+    method, since an addition-only diff can still hide a test. Adding a new
+    `@Test` method, and editing fixtures, helpers, fields, or a method that
+    was itself absent at the merge-base, are all allowed.
 
 **Effect:** A blocked file is skipped with reason
-`"(protected - <detail>)"`, where `<detail>` names why — e.g. `"exists on
-base branch"` (whole-file path), or `"existing test method(s) changed or
-removed: testFoo"` (method-level path).
+`"(protected - <detail>)"`, where `<detail>` names why — e.g. `"CI/workflow
+file"` (CI lock, whole-file), `"exists on base branch"` (test resource,
+whole-file), or `"existing test method(s) changed or removed: testFoo"`
+(method-level path).
 
 **Merge-base, not base-branch tip:** Every existence and content check is
 against the merge-base of `origin/<baseBranch>` and `HEAD`, not the live tip
@@ -352,10 +372,17 @@ forks from it; comparing against its current tip would misattribute the base
 branch's own later edits to the agent's branch.
 
 **Shared implementation:** The method-level check invokes
-`tools/ci/agent-protection/test-method-lines.awk` — the exact awk script the
-CI gate (`validate-agent-commit.sh`) uses — as a subprocess, so the
-harness-side guardrail and the CI-side gate can never disagree about which
-methods changed.
+`tools/ci/agent-protection/test-method-lines.awk` as a subprocess, read from
+the merge-base so a branch cannot alter the extractor it is judged by. The
+same script is what `validate-agent-commit.sh` uses to tell a new test
+method from an edited one.
+
+**A per-job lock, not the repository rule.** Guardrail 2 is on only for a job
+submitted with `protectTestFiles` — one whose premise is that the existing
+tests are the reference, above all a job sent to make failing tests pass.
+Every branch, locked or not, is held to `test-integrity-check` in CI, which
+allows an existing test to be edited but not weakened (see the root
+`CLAUDE.md`, "Agent integrity").
 
 **Fail-safe behavior:** Any failure along the way — the merge-base cannot be
 resolved, the merge-base file listing cannot be read, base or current content
@@ -367,9 +394,8 @@ step failed.
 **Rationale:** This guardrail prevents automated agents from hiding test
 failures by modifying existing tests instead of fixing production code, while
 still letting an agent add new test methods (or edit ones it introduced on
-the branch) to an existing test class — see `TestMethodProtection` and
-`tools/ci/agent-protection/validate-agent-commit.sh` (RULE 1) for the full
-rationale, including why fixtures/helpers/fields are never locked.
+the branch) to an existing test class — see `TestMethodProtection` for the
+full rationale, including why fixtures/helpers/fields are never locked.
 
 ### Guardrail 3: File Size Limit
 
@@ -430,8 +456,18 @@ for each file in changedFiles:
         skip("excluded pattern")
         continue
 
-    if protectTestFiles AND matchesAnyPattern(file, protectedPathPatterns):
-        if isCiWorkflowFile(file) OR NOT file.endsWith(".java"):
+    ciFile = isCiWorkflowFile(file)
+    inProtectedPath = matchesAnyPattern(file, protectedPathPatterns)
+    ciLocked = ciFile AND (protectCiFiles OR (protectTestFiles AND inProtectedPath))
+    testLocked = NOT ciFile AND protectTestFiles AND inProtectedPath
+
+    if ciLocked:
+        # CI/workflow files are locked whole-file, branch-new or not.
+        skip("protected - CI/workflow file")
+        continue
+
+    if testLocked:
+        if NOT file.endsWith(".java"):
             if existsOnBaseBranch(file, mergeBase):
                 skip("protected - exists on base branch")
                 continue
@@ -712,19 +748,27 @@ that receive special protection when `protectTestFiles` is enabled.
 
 ### Protection Logic
 
-When `protectTestFiles` is `true` and a file matches a protected path
-pattern, one of two checks applies, chosen by `isCiWorkflowFile(file)` and
-the file's extension:
+One of three checks applies, chosen by whether the file is CI configuration
+(`isCiWorkflowFile(file)`), which lock is active, and the file's extension:
 
-**Whole-file** (`.github/workflows/**`, `.github/actions/**`, and any
-non-`.java` protected file, e.g. a test resource):
+**Whole-file, unconditional** (CI configuration — `.github/workflows/**`,
+`.github/actions/**`, `tools/ci/**` — under the CI lock `protectCiFiles`, or
+under the test lock when it also matches a protected path):
+
+1. The file is **blocked** whether or not it existed at the merge-base. The CI
+   file lock rejects a branch-new workflow exactly as it rejects an edit to an
+   existing one, so a new CI file is not "branch-new and therefore allowed" the
+   way a new test file is.
+
+**Whole-file, existence-gated** (any non-`.java` protected file under the test
+lock `protectTestFiles`, e.g. a test resource):
 
 1. If the file already exists at the merge-base of `origin/<baseBranch>` and
    `HEAD`, it is **blocked** from staging.
 2. If it does not, it is **allowed** through (it is a branch-new file).
 
-**Test-method-level** (any `.java` file under a protected path), delegated to
-`TestMethodProtection`:
+**Test-method-level** (any `.java` file under a protected path with the test
+lock active), delegated to `TestMethodProtection`:
 
 1. If the file did not exist at the merge-base, it is **allowed** through in
    full (branch-new file) — no method comparison is needed.
@@ -751,14 +795,15 @@ the listing's own success judged exactly once.
 
 ### Rationale
 
-This guardrail exists to prevent automated coding agents from modifying
-existing tests or CI workflows to make failing tests pass. The correct
-response to a test failure is to fix the production code, not to weaken the
-test. New test files, new test methods, and edits to fixtures/helpers/fields
-are all allowed because agents may legitimately need to add or extend
-coverage for new functionality — see `TestMethodProtection` and
-`validate-agent-commit.sh` RULE 1 for the full reasoning, including why the
-lock is scoped to test methods rather than whole test classes.
+This guardrail exists to stop an agent sent to make failing tests pass from
+modifying the existing tests or CI workflows instead. The correct response to
+a test failure is to fix the production code, not to weaken the test; agents
+on such jobs have repeatedly loosened the test, which fails
+`test-integrity-check` and dispatches another agent to restore it, in a loop.
+New test files, new test methods, and edits to fixtures/helpers/fields are all
+allowed because agents may legitimately need to add or extend coverage — see
+`TestMethodProtection` for the full reasoning, including why the lock is
+scoped to test methods rather than whole test classes.
 
 ### Determining "New" vs "Existing" Files
 
@@ -770,11 +815,15 @@ git merge-base origin/<baseBranch> HEAD
 git ls-tree -r --name-only <mergeBase>
 ```
 
+This new-vs-existing distinction governs test files only; a CI file under the
+CI lock is blocked either way, so its merge-base membership is not consulted.
+
 - Present in the listing: the file exists at the merge-base (it is an
-  "existing" file and is protected — in full for non-`.java`/CI paths, at
+  "existing" file and is protected — in full for non-`.java` paths, at
   method granularity for `.java` test sources).
 - Absent from the listing: the file does not exist at the merge-base (it is a
-  "new" file and is allowed through).
+  "new" file and is allowed through — for test files; a branch-new CI file is
+  still blocked by the CI lock).
 - Listing unreadable (the `ls-tree` command itself fails): the file is treated
   as protected, the same as "present" — a listing failure must never be read
   as "every file is branch-new."
@@ -827,6 +876,7 @@ Skipped files include a parenthesized reason suffix:
 | Reason String | Guardrail |
 |---------------|-----------|
 | `"(excluded pattern)"` | Pattern exclusion (guardrail 1) |
+| `"(protected - CI/workflow file)"` | CI file lock (guardrail 2), whole-file, branch-new or not |
 | `"(protected - exists on base branch)"` | Test file protection (guardrail 2) |
 | `"(exceeds 1.0 MB)"` | File size limit (guardrail 3), with formatted threshold |
 | `"(binary file)"` | Binary detection (guardrail 4) |

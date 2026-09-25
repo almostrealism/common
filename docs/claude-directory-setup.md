@@ -78,7 +78,7 @@ Sub-agent definition for code review.
 ---
 name: Code Reviewer
 description: Reviews code changes for Producer pattern violations, naming convention issues, and other policy compliance requirements specific to the Almost Realism framework. Use when reviewing PRs or checking code before commit.
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 You are a code reviewer for the Almost Realism framework. Your primary responsibility is
@@ -128,7 +128,7 @@ Sub-agent definition for deduplication review.
 ---
 name: Deduplication Reviewer
 description: Reviews code for duplication violations. Use when adding new methods, classes, or abstractions to ensure no existing equivalent exists in the codebase.
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 You are a deduplication reviewer for the Almost Realism framework. Before any new
@@ -170,7 +170,7 @@ Sub-agent definition for overall policy compliance.
 ---
 name: Policy Compliance
 description: Verifies that completed work meets all Almost Realism project standards before marking a task done. Use at the end of any coding task to validate the work.
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 You are a policy compliance reviewer for the Almost Realism framework. You verify

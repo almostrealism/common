@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
@@ -36,7 +37,10 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.Optional;
 import java.util.ArrayDeque;
 import java.util.function.Consumer;
@@ -193,10 +197,11 @@ import java.util.function.Supplier;
  * );
  * }</pre>
  *
- * <p>Entries are keyed by the operation signature <em>and</em> the {@link ComputeContext},
- * because a compiled kernel dispatches through the command runner of the context it was
- * compiled under. Operations reuse a kernel only when they share both structure and
- * context; a structurally-identical operation from another context compiles its own.</p>
+ * <p>Entries are keyed by the operation signature <em>and</em> the compiling
+ * {@link ComputeContext}, so structurally identical operations share one compiled kernel
+ * only under the same context. A kernel dispatches through the command runner and memory
+ * provider of the context it was compiled under, and an entry whose {@link DataContext}
+ * has since been destroyed (a scoped context that has ended) is evicted on access.</p>
  *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>
@@ -384,6 +389,14 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
 
 	/**
+	 * Identity of every {@link ComputeContext} that has compiled through the cache, part of
+	 * each cache key so that a kernel is only shared by operations under the same context.
+	 */
+	private final Map<ComputeContext<?>, Integer> contextIds = new WeakHashMap<>();
+	/** The identity the next previously unseen compute context receives. */
+	private int nextContextId;
+
+	/**
 	 * Constructs a new DefaultComputer associated with the given hardware instance.
 	 * Initializes all caches and sets up eviction listeners for resource cleanup.
 	 *
@@ -515,27 +528,26 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>Access listener ensures that using any {@link io.almostrealism.code.InstructionSet}
 	 * from the manager updates the cache frequency or restores an evicted entry.</p>
 	 *
+	 * <p>A manager is only ever handed out for the context it was compiled under. If that
+	 * context has since been destroyed the entry is evicted and the request fails: the
+	 * operation asking for it was placed under that context deliberately, and nothing
+	 * here may move its work to another.</p>
+	 *
 	 * @param signature Unique signature identifying the operation structure
 	 * @param computation The computation to manage (used for Process tree substitution if applicable)
 	 * @param context The compute context for compilation
 	 * @param scope Supplier of the scope to compile
 	 * @return The instruction manager for this signature
+	 * @throws IllegalStateException if {@code context} has been destroyed
 	 */
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
-		// Keyed by signature alone: structurally identical computations share one compiled
-		// kernel across the whole DataContext. This is safe because a DataContext exposes a
-		// single ComputeContext (and therefore a single command runner) per backend, so a
-		// reused kernel always encodes into — and is committed by — the same runner. (Earlier
-		// this had to include the ComputeContext identity because Metal handed out a context
-		// per thread, which let a reused kernel encode into a command buffer the executing
-		// thread never committed; MetalDataContext now shares one context.)
-		String cacheKey = Objects.requireNonNull(signature);
+		String cacheKey = Objects.requireNonNull(signature) + ":" + contextId(context);
 
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
-				accessListener =mgr -> {
+				accessListener = mgr -> {
 					// Ensure that usage of any InstructionSets updates
 					// the access frequency in the cache if it is present
 					// or restores it to the cache if it had previously
@@ -543,7 +555,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
 				};
 
-		return instructionsCache.computeIfAbsent(cacheKey,
+		Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> create =
 				() -> {
 					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 							new ScopeInstructionsManager<>(context, scope, accessListener);
@@ -553,7 +565,20 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					}
 
 					return mgr;
-				});
+				};
+
+		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+			instructionsCache.evict(cacheKey);
+			throw new IllegalStateException("Cannot compile signature \"" + signature +
+					"\" because the compute context it was placed under has been destroyed");
+		}
+
+		return instructionsCache.computeIfAbsent(cacheKey, create);
+	}
+
+	/** Returns the number identifying a compute context in cache keys, assigning one on first use. */
+	private synchronized int contextId(ComputeContext<?> context) {
+		return contextIds.computeIfAbsent(context, c -> nextContextId++);
 	}
 
 	/**
@@ -565,10 +590,23 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>This exists so tests can exercise the eviction lifecycle deterministically
 	 * instead of flooding the cache past capacity.</p>
 	 *
+	 * <p>Cache keys are {@code signature:contextId}, and a signature may itself
+	 * contain a colon, so entries are matched by comparing everything before the
+	 * final colon (the {@code contextId} suffix is always a plain integer) rather
+	 * than by a prefix match, which would also evict an unrelated signature that
+	 * happens to start with this one followed by {@code ':'}.</p>
+	 *
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
-		instructionsCache.evict(signature);
+		List<String> keys = new ArrayList<>();
+		instructionsCache.forEach((key, mgr) -> {
+			int contextIdStart = key.lastIndexOf(':');
+			if (contextIdStart >= 0 && key.substring(0, contextIdStart).equals(signature)) {
+				keys.add(key);
+			}
+		});
+		keys.forEach(instructionsCache::evict);
 	}
 
 	/**

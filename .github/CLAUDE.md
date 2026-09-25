@@ -97,13 +97,22 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/`                  | `test-media`                     |
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
+| `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
 
 **No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
-flowtree tests always run in the `test-flowtree` job regardless of what changed.
+flowtree tests always run in the `test-flowtree` job regardless of what changed
+— with one gate: `test-flowtree` needs `python-tests` success-or-skipped. The
+flowtree runtime drives the Python tooling (which is also why it is not gated
+on Java changes), so when the Python suite ran and failed there is nothing sound
+for the Java suite to prove. The gate also keeps the remediation paths apart: a
+python failure goes to `auto-resolve-python`, while `test-flowtree` is a
+long-running, retry-eligible job whose failures belong to `auto-resolve`. `python-tests` is
+skipped only by its own path gate, never by an upstream failure, so that
+`skipped` is unambiguous.
 The `python_changed` flag is a path-based (not layer-based) flag that gates
 `python-tests`; Python sources are not part of the layered Java module graph.
 The `agent_isolation_changed` flag is likewise path-based and gates
@@ -117,49 +126,109 @@ volume. Path-gated on `agent_isolation_changed`; depends only on `changes` (no
 Maven build). Does not upload coverage. Part of the `all-checks` gate (skipped →
 treated as passing).
 
-### What the `auto-resolve` job covers (and the `Auto-Resolve Submit` split)
+### Remediation jobs: `auto-review`, `auto-resolve-python`, `auto-resolve`
 
-`auto-resolve` parses the pipeline results, decides which agent prompt to build,
-and **stages** the request as the `auto-resolve-request` artifact. Whichever
-prompt it picks — test failures, a build failure, a JVM crash, policy or quality
-gate failures, the docs-only verify, or the general review — carries the same
-pull-request review-comment policy, patched in from
-`tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`). The job carries no
-`environment:` and never submits to the controller itself. A separate
-`workflow_run`-triggered workflow (`.github/workflows/auto-resolve-submit.yaml`)
-downloads that artifact and performs the `worker`-environment-gated submission.
+Three jobs decide what a coding agent is sent to do about a pipeline, and each
+**attempt of a run submits at most one of them** — two agents on one branch make
+conflicting edits and at least one of them fails.
 
-This split exists because a job with `environment:` in a `pull_request` run
-attaches a GitHub Deployment status to the PR head; an abandoned/cancelled
-`worker` deployment then shows as a spurious "had a problem deploying" red X on
-the PR. Running the environment-gated submit from `workflow_run` attaches the
-deployment to the default-branch context instead, keeping it off the PR while
-preserving the required-reviewers approval gate. `auto-resolve` is excluded from
-`all-checks`; neither it nor the submit workflow is a quality signal.
+| Job | When | Prompts | Submission |
+|-----|------|---------|------------|
+| `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
+| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
-**Every "Stage submit request" step sets `PROTECT_TEST_FILES: "true"`,
-including the green-pipeline "general review" step.** Test-file protection
-is method-level, not whole-file (see
-`flowtree/runtime/docs/file-staging.md`), so an agent may still add new test
-methods or edit ones it introduced on the branch — there is no tradeoff left
-between enabling the flag and letting an agent write tests. Before this, the
-general-review path ran unprotected; a job on that path once added test
-methods to an existing base-branch file, one of them was broken, and the
-guardrail of the day (whole-file blocking) silently discarded the entire
-file including the fix. Keep every new "Stage submit request" step — in this
-job and in `master-agent-dispatch.yaml`'s QA rounds — setting the flag unless
-you can document a specific reason not to.
+The early two exist so that an agent reaches a stopping point — gates green, no
+simple fixes or review comments outstanding — before anyone pays for the
+long-running suites. The quality gates are deterministic, so there is nothing to
+retry before acting on them; `auto-review` submits while the test jobs are still
+running, and its prompts say that test results are not yet known. The
+long-running jobs (`test`, `test-flowtree`, `test-media`, the mac and CL lanes)
+are flaky, so their failures are only handed to an agent once
+`rerun-flaky-tests.sh` has spent its retries.
 
-**A required test job's `failure` result must never reach the quality-gate or
-general-review prompts.** Those prompts tell the agent all tests are passing;
-they must only run when every required test job (see below) succeeded or was
-skipped by the layer gates. This is enforced by the `Check for incomplete
-test execution` step: it reads every required job's raw `needs.<job>.result`
-and, if any is `failure`, routes to the build-failure-style path regardless
-of whether Surefire XML was parsed, before the quality-gate/general-review
-steps' `if:` conditions are even evaluated. `test-flowtree` originally had no
-`needs.test-flowtree.result` check here at all — a `test-flowtree` failure
-fell straight through to a prompt claiming everything had passed.
+Exclusivity is structural, not a handoff between jobs:
+
+- `auto-review` runs on attempt 1 only and `auto-resolve` on `>= 3`; attempt 2
+  submits nothing. 3 is `MAX_ATTEMPTS` in `auto-resolve-submit.yaml`: the retry
+  gate re-runs a failed run's failed jobs until attempt 3, so attempt 3 is the
+  first whose test failures reach an agent. Change one number and you must
+  change the other. `auto-review` is not allowed a second attempt because a
+  retry re-runs it whenever one of its inputs failed, and its first agent —
+  submitted minutes into attempt 1 — is very likely still working when a test
+  failure brings attempt 2 around.
+- A `python-tests` failure skips both `auto-review` and `auto-resolve`, skips
+  `test-flowtree` (which gates on python-tests success-or-skipped), and is never
+  retried by `rerun-flaky-tests.sh`, so `auto-resolve-python` is its only
+  submission.
+- Retries only happen when a long-running test job (`test`, `test (N)`,
+  `test-*`) failed, i.e. the pipeline got past the gates to the slow stage.
+
+`tools/tests/test_remediation_job_exclusivity.py` pins all of this.
+
+**No job that runs pull request code holds controller credentials.**
+`auto-review` and `auto-resolve-python` run the branch's prompt builders, so they
+only stage a request (`auto-review-request`, `auto-resolve-python-request`); a
+separate `auto-review-submit` / `auto-resolve-python-submit` job checks out the
+default branch and sends it with `tools/ci/submit-staged-request.sh`, which reads
+`submit.env` through a key allowlist instead of appending it to `$GITHUB_ENV`.
+`auto-resolve-submit.yaml` uses the same script. Keep any new submission path on
+that pattern.
+
+This guards against pull request *scripts*, not against a pull request's edit to
+the *workflow*: a `pull_request` run uses the workflow from the PR's merge with
+the base, and any job in it can read a repository secret, so a branch that edits
+`analysis.yaml` can reach `FLOWTREE_CF_ACCESS_CLIENT_SECRET` (as it can through
+`register-workstream`). This is accepted for now, since pipelines do not run for
+pull requests from outside the organization and agent commits cannot change CI
+files outside `ci/...` branches. The fix is tracked in the ar-manager tracker
+("Keep FlowTree controller credentials out of pull_request workflow runs").
+
+`auto-review-submit` sets `DELAY_SECONDS: "300"`. `auto-review` reports as soon
+as the gates do, which can be before GitHub Copilot has finished reviewing the
+same push (about eight minutes), and a review agent that starts before those
+comments exist cannot act on them. The controller holds the job for the delay
+before dispatching it. The delay comes from the submit job's own environment,
+never from the staged request.
+
+No remediation job declares `environment:` — in a `pull_request` run that
+attaches a deployment status to the PR head, and an abandoned one shows as a
+spurious "had a problem deploying" red X. `auto-resolve-submit.yaml` keeps its
+`worker` environment as an emergency bulkhead; approval is not a design
+assumption, and the early jobs do not go through it. None of the remediation
+jobs is part of `all-checks`.
+
+Every prompt carries the same pull-request review-comment policy, patched in
+from `tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`).
+
+**`PROTECT_TEST_FILES` is on only for the jobs sent to make failing tests
+pass.** It turns on the harness's per-job test lock (`TestMethodProtection`;
+see `flowtree/runtime/docs/file-staging.md`): every test method that exists
+on master stays exactly as it is for that job. An agent sent to fix a failing
+test has repeatedly loosened it instead, which fails `test-integrity-check`,
+which dispatches an agent to restore it, which fails the test again — the lock
+breaks that loop. So the "test failures", "test job crash" and "python test
+failures" requests set it to `"true"`, and every other request (build failure,
+code policy, quality gates, docs-only verify, general review, incomplete test
+execution) sets it to `"false"` and is held to `test-integrity-check` alone,
+the rule every branch meets. `tools/tests/test_analysis_yaml_protect_test_files.py`
+pins that mapping. The early submit jobs set the flag themselves;
+`submit-staged-request.sh` lets a staged request turn it on but never off, and
+`submit-agent-job.sh` defaults it to off. The lock's protected paths are
+`src/test/`, `src/it/` and the CI directories, so for the Python-failure job it
+adds nothing over `test-integrity-check`'s Python step; the Python suites under
+`tools/` are not in them. In `master-agent-dispatch.yaml` the
+performance, consolidation and PDSL-migration rounds keep it on, because their
+premise is that existing tests stay the reference.
+
+**A required test job's `failure` result must never go unresolved on
+`auto-resolve`'s attempt.** The `Check for incomplete test execution` step
+reads every required job's raw `needs.<job>.result` and, if any is `failure`,
+routes to the crash prompt regardless of whether Surefire XML was parsed.
+`test-flowtree` originally had no `needs.test-flowtree.result` check here at
+all — back when one job owned every prompt, a `test-flowtree` failure fell
+straight through to a prompt claiming everything had passed. (The quality-gate
+and general-review prompts now go out before test results exist, and say so.)
 
 **Every required test job must upload a Surefire artifact the allowlist
 keeps.** The "required" set is `analysis.needs` minus `build` — the same set
@@ -181,16 +250,18 @@ pins both wirings for the full required set, so adding a job to
 allowlist fails that test.
 
 **A gate is reported to an agent only when its cause is known.** The message
-`auto-resolve` builds becomes an instruction, and an agent handed "this branch
+`auto-review` builds becomes an instruction, and an agent handed "this branch
 weakened its tests" will act on it. `test-integrity-check` therefore publishes
-`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`
-(a detector ran and found something), `infrastructure` (a detector could not
-run), or empty — written by the step that reached the verdict, since only that
-step knows whether a non-zero exit was a finding or a crash.
-`check-quality-gates.sh` lists the three findings and reports nothing for
+`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`,
+`python-test-hiding` (a detector ran and found something), `infrastructure`
+(a detector could not run), or empty — written by the step that reached the
+verdict, since only that step knows whether a non-zero exit was a finding or a
+crash. `check-quality-gates.sh` lists the four findings and reports nothing for
 anything else, so a missing script, a skipped job, or a detector that died
-blocks the pipeline for a human instead of dispatching an agent against an
-innocent branch. When adding a detector to that job: emit a reason for the
+blocks the pipeline for a human instead of being reported to an agent as a
+finding against an innocent branch. `auto-review` still submits the general
+review for such a run, with a note that the failed gate is not the agent's to
+fix. When adding a detector to that job: emit a reason for the
 finding, emit `infrastructure` for every other non-zero exit, and add the arm
 to `check-quality-gates.sh` — `tools/tests/test_integrity_check_wiring.py`
 holds the two ends together.
@@ -225,12 +296,95 @@ the branch — so a `ci/` branch may rewrite the guard, and may not remove or
 unregister it. The policy detectors under `engine/utils` stay locked on every
 branch.
 
+### Branch checks: test integrity, the CI file lock, and agent-commit-validation
+
+Three separate checks hold a branch's change set, each in the job where it
+belongs:
+
+- **`test-integrity-check` is the test rule.** An existing test may be edited
+  but not weakened: `detect-test-hiding.sh` (Java patterns) and
+  `detect-python-test-hiding.sh` (every base-branch `def test_*` survives, and
+  a test file's assertion count does not fall), plus the
+  enforcement-tampering check and the exfiltration guard. Instructions to
+  agents cite this rule, not a stricter one.
+- **The CI file lock runs in `changes`.** `check-ci-file-lock.sh` fails the
+  first job when a branch not named `ci/...` changes `.github/workflows/` or
+  `tools/ci/` (a controller-signed `Sensitive-File-Bypass` trailer lifts it).
+  It needs only git, so a violating branch never gets as far as `build`.
+  Nothing is dispatched for it: every other job needs `changes`. The harness
+  applies the same lock before a commit exists (`protectCiFiles` in
+  `FileStager`, on for every job but a signed-bypass or `ci/...` one), so an
+  agent's workflow edit is dropped at staging rather than failing a pipeline.
+  A signed bypass covers only the commits that carry it: every commit that
+  changes a CI file must carry its own valid trailer.
+- **`agent-commit-validation` rejects a change set that only edits master's
+  tests** — every changed file a test file that exists at the merge-base, none
+  of them gaining a new test. Those tests pass on master, so such a change set
+  can only change what the suite reports. The job fails when it blocks, and
+  the `override_integrity_checks` dispatch input lets a run through for a known
+  false positive, as it does for the integrity checks. A head from before these
+  checks were split carries the old validator; its retired exits (2, 4) are
+  passed with a notice, and `check-quality-gates.sh` does not report their
+  reasons to an agent.
+
+All three scripts are on `test-integrity-check`'s protected list, and
+`tools/ci/agent-protection/test-branch-checks.sh` covers them (run by
+`python-tests` when `agent_protection_changed`).
+
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
 blocker: every downstream job depends on it, so it MUST stay as short as
 possible. It does one thing: `mvn install -DskipTests`. It does not run tests
 and does not upload coverage.
+
+### Re-run jobs and artifacts
+
+A retry ("Auto-Resolve Submit" re-running failed jobs) runs jobs again inside
+the same workflow run, so two rules hold for every artifact:
+
+- **Every upload sets `overwrite: true`.** `upload-artifact@v4` refuses a name
+  already used in the run otherwise, so a re-run job's `if: always()` upload
+  would fail even when its tests passed, and `auto-resolve` on attempt 3 would
+  read the earlier attempt's report.
+- **A download that can span attempts uses the REST route** (`github-token`,
+  `repository`, `run-id`, with `actions: read`): the default lookup 404s on an
+  artifact uploaded in an earlier attempt.
+
+`tools/tests/test_build_artifact_sharing.py` pins both. One gap remains: a
+re-run job that uploads nothing (it crashed before writing any report) leaves
+the earlier attempt's report in place. The job still fails, so a remediation is
+still warranted, but its prompt can name the earlier failures.
+
+### Sharing the build
+
+`build` is the only job that runs `mvn install`. It clears the
+`org.almostrealism` tree the Maven cache restored, installs, and uploads that
+tree as the `maven-installed-artifacts` artifact. Every job that used to run its
+own `mvn install -DskipTests` — the three `tools` policy checks,
+`test-flowtree`, every test lane, and `analysis` — downloads it instead:
+
+- Jobs run `mvn test -pl <module>` with no `-am`, so Maven takes every other
+  module from the local repository. "Download build artifacts" fetches
+  `build`'s jars into `runner.temp`, and "Restore build artifacts" copies them
+  into the repository Maven reads: `$MAVEN_REPO` where the macOS and CL jobs
+  isolate one ("Isolate Maven repository per runner" exports it), otherwise
+  `$HOME/.m2/repository`. The copy is done by the shell on purpose: those are
+  environment variables, and an action input cannot rely on seeing a value an
+  earlier step wrote to `GITHUB_ENV`.
+- `analysis` downloads the jars to a temporary directory and hands the main
+  ones to JaCoCo as `--classfiles`, rather than rebuilding for `target/classes`.
+
+The restore is a download step and three lines of shell, not a script, on
+purpose: a pull request runs the workflow from its merge with the base but
+checks out its own head, which may predate any script added for this. A new
+job that needs the project's artifacts restores them the same way and lists
+`build` in `needs`; do not add another `mvn install`.
+
+`checkstyle` does **not** depend on `build` and does not install anything: the
+Checkstyle rules are Checkstyle's own modules and `checkstyle:check` resolves
+no project dependencies, so it runs straight from the sources, in parallel
+with `build`. Do not add an `mvn install` back to it.
 
 ### Every module with tests must be named by some job
 
@@ -310,10 +464,17 @@ never a module.
 
 ### A `needs` chain requires `!cancelled()` to tolerate a skipped stage
 
-GitHub applies an implicit `success()` to every job in `needs` when a job-level
-`if:` contains no status check function (`always()`, `!cancelled()`, `failure()`,
-`success()`). A `needs.<job>.result == 'skipped'` clause is therefore **dead
-code** on its own — the dependent job is skipped before the `if` is evaluated.
+GitHub applies an implicit `success()` when a job-level `if:` contains no status
+check function (`always()`, `!cancelled()`, `failure()`, `success()`), and that
+`success()` covers **every job upstream**, not only the ones in `needs`. A
+`needs.<job>.result == 'skipped'` clause is therefore **dead code** on its own —
+the dependent job is skipped before the `if` is evaluated — and a job whose
+direct `needs` all succeeded is still skipped when any job further up was
+skipped or failed. That is how run 35998737943 skipped `auto-review-submit`:
+`auto-review` succeeded and staged a request, but `python-tests`, upstream of
+it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
+`python-tests` was skipped or failed, so both submit jobs start their `if:` with
+`!cancelled()` and check the producer's `result` explicitly.
 
 Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
 `test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their
@@ -338,7 +499,13 @@ heavy suites do not contend on their fleet:
 The CPU and GPU lanes run in parallel. The CL lane starts only after **both**
 of them have finished: `test-cl` gates on `test`, `test-media`, `test-mac` and
 `test-media-mac` (each success-or-skipped), and `test-media-cl` gates on
-`test-cl`. This is admission control, not GPU serialisation — the fleets are
+`test-cl` **and on those same four lanes directly**. The second part is not
+redundant: `test-cl` is skipped either by its own layer gate or by an upstream
+failure, and its `skipped` result cannot tell the two apart — gating
+`test-media-cl` on `test-cl` alone let it run after a Linux suite had failed.
+A downstream job must never infer "upstream was fine" from a `skipped` that has
+more than one cause; it gates on the upstream lanes itself. This is admission
+control, not GPU serialisation — the fleets are
 different machines. The CL lane is sixteen matrix jobs on a single host, the
 most expensive thing a pipeline schedules, and it is "Linux plus an accelerator
 other than Metal": a branch that cannot pass the Linux CPU suites, or cannot
@@ -654,8 +821,8 @@ here.
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`, and
 `test-media-mac` (any may be skipped). The mac jobs upload no coverage; they are
 in `needs` so that the input to `analysis` is not narrower than the input to
-`all-checks` — `auto-resolve` depends on `analysis`, so it does not proceed until
-the same set of jobs that decide `all-checks` has reported. Downloads all
+`all-checks` — `auto-resolve` depends on `analysis`, so on its attempt it does
+not proceed until the same set of jobs that decide `all-checks` has reported. Downloads all
 `coverage-*` artifacts, merges them with JaCoCo CLI, generates an XML report for
 Qodana. The `mkdir -p all-coverage` guard ensures it tolerates missing artifacts
 when test jobs are skipped.

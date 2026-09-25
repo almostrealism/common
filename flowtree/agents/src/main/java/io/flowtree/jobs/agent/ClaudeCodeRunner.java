@@ -32,9 +32,14 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * {@link AgentRunner} that launches the Claude Code CLI to run an agent
@@ -64,14 +69,56 @@ public class ClaudeCodeRunner implements AgentRunner {
     /** Canonical runner name on the wire. */
     public static final String NAME = "claude";
 
+    /**
+     * Value passed to {@code --permission-mode}. See
+     * {@link #buildCommandLine(AgentRunRequest)} for why a headless session
+     * needs it even with an explicit allow list.
+     */
+    public static final String PERMISSION_MODE = "bypassPermissions";
+
     /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
     public static final List<String> VALID_EFFORT_LEVELS =
             List.of("low", "medium", "high", "xhigh", "max");
 
-    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
-    public static final List<String> VALID_MODELS = List.of(
-            "sonnet", "opus", "haiku",
-            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
+    /**
+     * Tier aliases the Claude Code {@code --model} flag accepts. Each one
+     * resolves, inside the CLI and at the moment the session starts, to the
+     * current model of that tier for the configured provider — so a session
+     * that asks for {@code opus} runs whatever Opus the installed CLI
+     * considers current, and nothing in this codebase pins it to a version.
+     * That is the point of them: the deployment updates the CLI, and the
+     * alias follows, with no change here.
+     */
+    public static final List<String> MODEL_ALIASES =
+            List.of("opus", "sonnet", "haiku", "fable", "best", "opusplan", "default");
+
+    /**
+     * Full model identifiers worth offering an operator alongside the
+     * aliases — the current lineup, plus the recent versions a workstream
+     * may already pin. This list is <em>advertised</em>, not exhaustive:
+     * {@link #isModelSupported(String)} accepts any {@code claude-} identifier,
+     * so a model released after this list was written can be used the day the
+     * CLI supports it. Keep it current for the sake of the operator reading
+     * {@code GET /api/agents}, but nothing breaks when it falls behind.
+     */
+    public static final List<String> KNOWN_MODEL_IDS = List.of(
+            "claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5-1",
+            "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001");
+
+    /** Aliases and full identifiers this runner advertises, aliases first. */
+    public static final List<String> VALID_MODELS = Stream
+            .concat(MODEL_ALIASES.stream(), KNOWN_MODEL_IDS.stream())
+            .collect(Collectors.toUnmodifiableList());
+
+    /** Prefix shared by every Anthropic model identifier. */
+    private static final String MODEL_ID_PREFIX = "claude-";
+
+    /**
+     * Matches the context-window suffix an alias may carry, as in
+     * {@code opus[1m]} — a property of the session, not a different model.
+     */
+    private static final Pattern CONTEXT_VARIANT_SUFFIX = Pattern.compile("\\[[^\\[\\]]+\\]$");
 
     /** Path of the binary the runner will launch. Overridable for tests. */
     private final String binaryPath;
@@ -120,13 +167,31 @@ public class ClaudeCodeRunner implements AgentRunner {
     }
 
     /**
-     * Returns {@code true} when {@code model} is recognised by this runner.
+     * Returns {@code true} when the Claude Code CLI will accept {@code model}.
+     *
+     * <p>Accepted are: a tier alias from {@link #MODEL_ALIASES}, optionally
+     * carrying a context-window suffix ({@code opus[1m]}); and any full
+     * Anthropic model identifier, recognised by its {@code claude-} prefix
+     * rather than by membership in {@link #KNOWN_MODEL_IDS}. The prefix rule
+     * is deliberate. Anthropic ships models faster than this list is edited,
+     * and the CLI that actually runs them is upgraded separately — when the
+     * deployment's image pulls a newer Claude Code, every model that release
+     * supports becomes usable here the same day, without waiting on a code
+     * change to permit a string the CLI already understands. The check that
+     * matters — whether the model exists — belongs to the CLI, which reports
+     * an unknown one immediately on launch; what is worth catching here is a
+     * value from the wrong universe entirely ({@code gpt-4}, {@code opus5},
+     * an empty-looking typo), which this still rejects.</p>
      *
      * @param model identifier from {@link AgentRunRequest#getModel()}
-     * @return {@code true} when {@code model} is null, empty, or in {@link #VALID_MODELS}
+     * @return {@code true} when {@code model} is null, empty, an alias, or an
+     *         Anthropic model identifier
      */
+    @Override
     public boolean isModelSupported(String model) {
-        return model == null || model.isEmpty() || VALID_MODELS.contains(model);
+        if (model == null || model.isEmpty()) return true;
+        String base = CONTEXT_VARIANT_SUFFIX.matcher(model).replaceFirst("");
+        return MODEL_ALIASES.contains(base) || base.startsWith(MODEL_ID_PREFIX);
     }
 
     /**
@@ -193,7 +258,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         }
 
         return parseClaudeNdjson(
-                rawOutput, processResult.exitCode(), processResult.killedForInactivity(), logger);
+                rawOutput, processResult.exitCode(), processResult.killedForInactivity(), logger,
+                request.getRequiredMcpServers());
     }
 
     /**
@@ -205,7 +271,9 @@ public class ClaudeCodeRunner implements AgentRunner {
     public void validateRequest(AgentRunRequest request) {
         if (!isModelSupported(request.getModel())) {
             throw new IllegalArgumentException("Invalid model '" + request.getModel()
-                    + "'. Must be one of " + VALID_MODELS);
+                    + "'. Must be a tier alias " + MODEL_ALIASES
+                    + " (optionally with a context suffix, e.g. opus[1m]) or an Anthropic model"
+                    + " identifier such as " + KNOWN_MODEL_IDS.get(0));
         }
         if (!isEffortSupported(request.getEffort())) {
             throw new IllegalArgumentException("Invalid effort level '" + request.getEffort()
@@ -216,6 +284,19 @@ public class ClaudeCodeRunner implements AgentRunner {
     /**
      * Builds the {@code claude} command line for {@code request}. Exposed so
      * tests can assert the exact flags without running the subprocess.
+     *
+     * <p>{@code --permission-mode bypassPermissions} appears only when the
+     * request carries {@link AgentRunRequest#isBypassPermissionPrompts()}.
+     * {@code --allowedTools} decides which tools exist for the session, but it
+     * does not answer permission prompts, and the CLI holds back a class of
+     * paths — anything under {@code .claude/}, environment and credential
+     * files — for a human to approve per call. With no human on the other end
+     * those calls are denied outright ("... which is a sensitive file"), so a
+     * job told to edit a hook cannot do it and reports the refusal instead of
+     * the work. The flag is what lifts that, and it lifts it for the guardrails
+     * the session itself runs under, which is why it is granted per job rather
+     * than assumed here. Without the grant no permission flag is emitted at
+     * all, leaving the CLI's own default in place.</p>
      *
      * @param request the source of prompt, flags, and MCP config
      * @return the argv list passed to {@link ProcessBuilder}
@@ -231,6 +312,10 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("--verbose");
         command.add("--allowedTools");
         command.add(request.getAllowedTools() != null ? request.getAllowedTools() : "");
+        if (request.isBypassPermissionPrompts()) {
+            command.add("--permission-mode");
+            command.add(PERMISSION_MODE);
+        }
         command.add("--max-turns");
         command.add(String.valueOf(request.getMaxTurns()));
 
@@ -313,6 +398,44 @@ public class ClaudeCodeRunner implements AgentRunner {
                                             int exitCode,
                                             boolean killedForInactivity,
                                             ConsoleFeatures logger) {
+        return parseClaudeNdjson(jsonOutput, exitCode, killedForInactivity, logger, Collections.emptySet());
+    }
+
+    /**
+     * Parses Claude Code NDJSON output into an {@link AgentRunResult}, also
+     * checking the session's {@code init} event for MCP servers that failed
+     * to connect.
+     *
+     * <p>The first event of a {@code stream-json} session is
+     * {@code {"type":"system","subtype":"init",...}} and carries
+     * {@code mcp_servers: [{name, status}, ...]}. A server whose status is
+     * not {@code connected} contributed no tools to the session — every
+     * {@code mcp__<name>__*} entry on the allow list was simply absent, and
+     * the model could not tell that from a server that was never configured.
+     * Every such server is logged; the ones in {@code requiredMcpServers}
+     * are reported on the result, where the job turns them into a failure.</p>
+     *
+     * @param jsonOutput           the captured stdout (may be NDJSON or a single object)
+     * @param exitCode             the process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param logger               target for diagnostics on parse failure
+     * @param requiredMcpServers   servers the session could not do its job without
+     * @return the parsed result
+     */
+    public AgentRunResult parseClaudeNdjson(String jsonOutput,
+                                            int exitCode,
+                                            boolean killedForInactivity,
+                                            ConsoleFeatures logger,
+                                            Set<String> requiredMcpServers) {
+        List<String> unavailableRequired = new ArrayList<>();
+        for (Map.Entry<String, String> failed : failedMcpServersAtInit(jsonOutput).entrySet()) {
+            logger.warn("mcpServerFailed=" + failed.getKey() + " status=" + failed.getValue()
+                    + " -- its tools were absent from the session");
+            if (requiredMcpServers != null && requiredMcpServers.contains(failed.getKey())) {
+                unavailableRequired.add(failed.getKey());
+            }
+        }
+
         String resultJson = null;
         if (jsonOutput != null && !jsonOutput.isEmpty()) {
             resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
@@ -375,6 +498,46 @@ public class ClaudeCodeRunner implements AgentRunner {
                 subtype,
                 sessionIsError,
                 deniedToolNames,
-                Collections.emptyMap());
+                Collections.emptyMap(),
+                unavailableRequired);
+    }
+
+    /**
+     * Reads the MCP servers that did not connect from the session's
+     * {@code init} event.
+     *
+     * @param jsonOutput the captured {@code stream-json} output
+     * @return server name to reported status, in the order the event listed
+     *         them, for every server whose status is not {@code connected};
+     *         empty when there is no init event or every server connected
+     */
+    public Map<String, String> failedMcpServersAtInit(String jsonOutput) {
+        Map<String, String> failed = new LinkedHashMap<>();
+        if (jsonOutput == null || jsonOutput.isEmpty()) return failed;
+
+        for (String line : jsonOutput.split("\n")) {
+            if (!line.startsWith("{") || !line.contains("\"init\"") || !line.contains("\"mcp_servers\"")) {
+                continue;
+            }
+            JsonNode root;
+            try {
+                root = MAPPER.readTree(line);
+            } catch (IOException e) {
+                continue;
+            }
+            if (!"system".equals(JsonFieldExtractor.getTextOrNull(root, "type"))
+                    || !"init".equals(JsonFieldExtractor.getTextOrNull(root, "subtype"))) {
+                continue;
+            }
+            for (JsonNode server : root.path("mcp_servers")) {
+                String name = JsonFieldExtractor.getTextOrNull(server, "name");
+                String status = JsonFieldExtractor.getTextOrNull(server, "status");
+                if (name != null && !"connected".equals(status)) {
+                    failed.put(name, status == null ? "unknown" : status);
+                }
+            }
+            return failed;
+        }
+        return failed;
     }
 }

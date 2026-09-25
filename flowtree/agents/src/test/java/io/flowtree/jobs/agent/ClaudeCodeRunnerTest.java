@@ -78,6 +78,116 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
     }
 
     /**
+     * The current lineup is advertised to an operator choosing a model,
+     * newest tier first, alongside the tier aliases.
+     */
+    @Test(timeout = 5000)
+    public void capabilitiesAdvertiseTheCurrentModelLineupAndTheAliases() {
+        AgentCapabilities cap = new ClaudeCodeRunner().capabilities();
+        assertTrue(cap.supportedModels().contains("claude-opus-5-5"));
+        assertTrue(cap.supportedModels().contains("claude-sonnet-5"));
+        assertTrue(cap.supportedModels().contains("opus"));
+        assertTrue(cap.supportedModels().contains("sonnet"));
+    }
+
+    /**
+     * A tier alias is passed through untouched — never resolved to a
+     * versioned identifier here. The CLI resolves it when the session
+     * starts, so {@code opus} follows the installed CLI's current Opus and
+     * an upgrade of that CLI is the only thing needed to move it.
+     */
+    @Test(timeout = 5000)
+    public void aTierAliasReachesTheCliUnresolved() {
+        for (String alias : ClaudeCodeRunner.MODEL_ALIASES) {
+            ClaudeCodeRunner runner = new ClaudeCodeRunner();
+            AgentRunRequest request = AgentRunRequest.builder()
+                    .prompt("do the thing")
+                    .workingDirectory(Path.of("/tmp"))
+                    .model(alias)
+                    .build();
+            assertTrue(alias + " must be accepted", runner.isModelSupported(alias));
+            assertFlagFollows(runner.buildCommandLine(request), "--model", alias);
+        }
+    }
+
+    /** A current full identifier, Opus 5.5 among them, is accepted and passed through. */
+    @Test(timeout = 5000)
+    public void aFullModelIdentifierIsAcceptedAndPassedThrough() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertTrue(runner.isModelSupported("claude-opus-5-5"));
+        assertTrue(runner.isModelSupported("claude-sonnet-5"));
+        assertTrue(runner.isModelSupported("claude-haiku-4-5-20251001"));
+
+        AgentRunRequest request = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .workingDirectory(Path.of("/tmp"))
+                .model("claude-opus-5-5")
+                .build();
+        assertFlagFollows(runner.buildCommandLine(request), "--model", "claude-opus-5-5");
+    }
+
+    /**
+     * An identifier this code has never heard of is accepted as long as it
+     * is an Anthropic one. Anthropic ships models between releases of this
+     * code, and the CLI is upgraded separately; requiring a code change to
+     * permit a name the installed CLI already runs is the failure this
+     * avoids. Whether the model exists is the CLI's to report.
+     */
+    @Test(timeout = 5000)
+    public void anUnknownAnthropicIdentifierIsStillAccepted() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertFalse("the test's premise is that this is not an advertised value",
+                ClaudeCodeRunner.KNOWN_MODEL_IDS.contains("claude-opus-9-3"));
+        assertTrue(runner.isModelSupported("claude-opus-9-3"));
+        assertTrue(runner.isModelSupported("claude-something-entirely-new"));
+    }
+
+    /** The context-window suffix an alias may carry is part of the accepted form. */
+    @Test(timeout = 5000)
+    public void aContextWindowSuffixIsAccepted() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertTrue(runner.isModelSupported("opus[1m]"));
+        assertTrue(runner.isModelSupported("sonnet[1m]"));
+        assertTrue(runner.isModelSupported("claude-opus-5-5[1m]"));
+    }
+
+    /** No model means no {@code --model} flag: the CLI's own default applies. */
+    @Test(timeout = 5000)
+    public void noModelIsAcceptedAndOmitsTheFlag() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertTrue(runner.isModelSupported(null));
+        assertTrue(runner.isModelSupported(""));
+        assertFalse(runner.buildCommandLine(minimalRequest()).contains("--model"));
+    }
+
+    /**
+     * A value from another vendor's universe, or a mangled alias, is still
+     * rejected — the loosened rule keeps the check that catches a
+     * configuration mistake, and only gives up the one that could not tell
+     * a new model from a typo.
+     */
+    @Test(timeout = 5000)
+    public void aModelFromAnotherUniverseIsRejected() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertFalse(runner.isModelSupported("gpt-4"));
+        assertFalse(runner.isModelSupported("opus5"));
+        assertFalse(runner.isModelSupported("claude opus"));
+        assertFalse(runner.isModelSupported("anthropic.claude-opus-5-5"));
+
+        AgentRunRequest request = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .workingDirectory(Path.of("/tmp"))
+                .model("gpt-4")
+                .build();
+        try {
+            runner.validateRequest(request);
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("gpt-4"));
+        }
+    }
+
+    /**
      * Verifies the command line includes the expected core flags and ordering.
      * Avoids asserting positional indices to keep the test resilient to
      * future flag additions; instead checks that each required flag and its
@@ -134,6 +244,43 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertFlagFollows(cmd, "--effort", "high");
         // Budget cap off → flag must be omitted.
         assertFalse(cmd.contains("--max-budget-usd"));
+    }
+
+    /**
+     * A granted session runs in {@code bypassPermissions}. Without it the CLI
+     * holds back writes to {@code .claude/}, environment and credential files
+     * for a human to approve per call, and a headless job has no human: the
+     * call is refused as "a sensitive file" and a job told to edit a hook
+     * reports the refusal instead of doing the work. {@code --allowedTools}
+     * does not cover this, and neither does a {@code permissions.allow} rule.
+     */
+    @Test(timeout = 5000)
+    public void grantedRequestRunsWithoutPermissionPrompts() {
+        AgentRunRequest granted = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .allowedTools("Read,Edit")
+                .maxTurns(7)
+                .bypassPermissionPrompts(true)
+                .build();
+
+        assertFlagFollows(new ClaudeCodeRunner().buildCommandLine(granted),
+                "--permission-mode", "bypassPermissions");
+        assertEquals("bypassPermissions", ClaudeCodeRunner.PERMISSION_MODE);
+    }
+
+    /**
+     * Without the grant no permission flag is emitted at all, so the CLI keeps
+     * its own default and the session cannot edit the guardrails it runs
+     * under. The grant is a per-job decision (see
+     * {@code Workstream#permitsAgentPermissionBypass}), never this layer's.
+     */
+    @Test(timeout = 5000)
+    public void ungrantedRequestEmitsNoPermissionFlag() {
+        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
+        assertFalse("an ungranted request must not weaken permissions: " + cmd,
+                cmd.contains("--permission-mode"));
+        assertFalse("an ungranted request must not skip permissions: " + cmd,
+                cmd.contains("--dangerously-skip-permissions"));
     }
 
     /** Validation rejects unknown models. */

@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJobFactory;
+import io.flowtree.jobs.agent.AgentCapabilities;
+import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
@@ -32,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 /**
@@ -361,10 +364,18 @@ public final class PhaseConfigResolver {
     }
 
     /**
-     * Validates the resolved model for {@code config} against the resolved
-     * runner's supported set, if any. Empty {@code supportedModels} on the
-     * runner means "unconstrained" (e.g. opencode against arbitrary
-     * OpenAI-compatible endpoints) and the check is skipped.
+     * Validates the resolved model for {@code config} by asking the resolved
+     * runner whether it would accept it
+     * ({@link AgentRunner#isModelSupported(String)}).
+     *
+     * <p>The runner is asked rather than its
+     * {@link AgentCapabilities#supportedModels()} set compared against,
+     * because a runner may accept more than it advertises: a CLI that
+     * resolves its own tier aliases and gains models with each release
+     * knows what it will run, and this layer does not. The advertised set
+     * remains what {@code GET /api/agents} shows an operator choosing a
+     * model. A runner that declares nothing specific still behaves as
+     * before — unconstrained — through the interface's default.</p>
      */
     private static String validateModelForRunner(PhaseConfig config, String phaseLabel) {
         String model = config.model();
@@ -375,21 +386,23 @@ public final class PhaseConfigResolver {
             // Already caught by validateRunners; defensive guard.
             return null;
         }
-        Set<String> supported;
+        AgentRunner instance;
         try {
-            supported = AgentRunnerRegistry.get(runner).capabilities().supportedModels();
+            instance = AgentRunnerRegistry.get(runner);
         } catch (Exception e) {
             // Runners that fail to instantiate (e.g. opencode without a
             // configured binary) should not block validation; treat as
             // unconstrained.
             return null;
         }
-        if (supported == null || supported.isEmpty()) return null;
-        if (!supported.contains(model)) {
-            return "Invalid model '" + model + "' for runner '" + runner
-                    + "' (phase " + phaseLabel + "). Must be one of " + supported;
-        }
-        return null;
+        // A registered supplier may also yield null rather than throw; that
+        // is the same "cannot ask this runner" case.
+        if (instance == null) return null;
+        if (instance.isModelSupported(model)) return null;
+        Set<String> advertised = instance.capabilities().supportedModels();
+        return "Invalid model '" + model + "' for runner '" + runner
+                + "' (phase " + phaseLabel + "). Expected one of " + advertised
+                + ", or another identifier that runner accepts";
     }
 
     /**
@@ -526,7 +539,7 @@ public final class PhaseConfigResolver {
      * @param body  the raw request body JSON; may be {@code null} or empty
      * @return {@code null} on success; an error message on syntax-validation failure
      */
-    public static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry, String body) {
+    public static String applyToWorkspace(WorkspaceEntry entry, String body) {
         if (entry == null) return null;
         JsonNode root = parseBodyRoot(body);
         if (root == null) return null;

@@ -75,6 +75,15 @@ class GitCommitHandler implements ConsoleFeatures {
     /** Set to {@code true} when all git operations complete without error. */
     private boolean successful;
 
+    /** Dependent repository paths this handler committed to; see {@link #hasAnyCommit()}. */
+    private final List<String> dependentRepoCommits = new ArrayList<>();
+
+    /**
+     * Dependent repositories that had changes but did not publish them, each
+     * with the reason; see {@link #getDependentRepoFailures()}.
+     */
+    private final List<String> dependentRepoFailures = new ArrayList<>();
+
     /**
      * Repository-relative paths under {@link FlowtreeArtifacts#DIRECTORY} that
      * this handler is permitted to stage. Defaults to the empty production
@@ -252,19 +261,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws InterruptedException if a git command is interrupted
      */
     private void stageFiles(List<String> files) throws IOException, InterruptedException {
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(job.getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                // The harness-side test-file staging guardrail is gated on
-                // BOTH the legacy protectTestFiles flag AND the new
-                // sensitiveFileProtectionEnabled flag. Either one being off
-                // disables the guardrail — they are ANDed, not ORed, so a
-                // default-default job (both true) gets the full protection.
-                .protectTestFiles(job.isProtectTestFiles()
-                        && GitCommitHandler.isSensitiveFileProtectionEnabled(job))
-                .baseBranch(job.getBaseBranch())
-                .maxFileSizeBytes(job.getMaxFileSizeBytes())
-                .build();
+        FileStagingConfig config = buildStagingConfig(job);
 
         FileStager stager = new FileStager();
         File workDir = job.getWorkingDirectory() != null
@@ -454,6 +451,39 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether this handler committed anything at all, in the primary
+     * repository or in a dependent one.
+     *
+     * <p>{@link #getCommitHash()} answers only for the primary repository, so
+     * a job whose changes live entirely in a dependent repo commits, pushes,
+     * and still reports a {@code null} hash. Anything deciding whether the
+     * job published its work has to ask this instead, or it will read a
+     * successful dependent-repo job as having published nothing.</p>
+     *
+     * @return {@code true} when a commit was made in any repository
+     */
+    boolean hasAnyCommit() {
+        return (commitHash != null && !commitHash.isEmpty()) || !dependentRepoCommits.isEmpty();
+    }
+
+    /**
+     * Returns the dependent repositories that had changes but did not publish
+     * them, each with the reason.
+     *
+     * <p>{@link #hasAnyCommit()} says only that something was committed
+     * somewhere. A job whose primary repository commits cleanly while a
+     * dependent repository's commit fails, or has every file skipped, has
+     * published some of its work and abandoned the rest — and the abandoned
+     * part leaves no other trace, since the primary commit satisfies every
+     * other check.</p>
+     *
+     * @return the unpublished dependent repositories; empty when all published
+     */
+    List<String> getDependentRepoFailures() {
+        return new ArrayList<>(dependentRepoFailures);
+    }
+
+    /**
      * Returns the URL of an open pull request detected after push, or
      * {@code null} if no PR was found or PR detection was not attempted.
      *
@@ -505,10 +535,12 @@ class GitCommitHandler implements ConsoleFeatures {
             log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
             boolean anyStagedInDep = false;
+            List<String> skippedInDep = new ArrayList<>();
             for (String file : changedFiles) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
                     log("Skipping (size) in dependent repo: " + file);
+                    skippedInDep.add(file);
                     continue;
                 }
                 gitOps.execute("add", file);
@@ -516,13 +548,23 @@ class GitCommitHandler implements ConsoleFeatures {
             }
             if (!anyStagedInDep) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
+                dependentRepoFailures.add(depPath + " (every changed file was skipped: "
+                        + String.join(", ", skippedInDep) + ")");
                 continue;
             }
 
             int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
                 continue;
+            }
+            dependentRepoCommits.add(depPath);
+            // A commit here publishes what was staged, not what changed: an
+            // oversized file was dropped on the way and leaves no other trace.
+            if (!skippedInDep.isEmpty()) {
+                dependentRepoFailures.add(depPath + " (committed, but these files were skipped: "
+                        + String.join(", ", skippedInDep) + ")");
             }
 
             if (job.isPushToOrigin() && !job.isDryRun()) {
@@ -550,6 +592,38 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the {@link FileStagingConfig} that governs which of a job's
+     * changed files may be staged. This is the single source of truth for the
+     * two locks so that {@link #stageFiles(List)} and
+     * {@link GitManagedJob#previewStaging()} cannot drift apart: a preview that
+     * showed a file as stageable while the commit silently dropped it would
+     * cost the agent its correction turn.
+     *
+     * <p>The test-file lock is gated on BOTH the legacy {@code protectTestFiles}
+     * flag AND {@code sensitiveFileProtectionEnabled} — ANDed, not ORed, so a
+     * default job (both true) gets the full protection and either being off
+     * disables it. The CI file lock is independent of the test lock: it is on
+     * for every job whose sensitive-file protection is enabled, except one on a
+     * {@code ci/...} branch, matching the exemptions
+     * {@code check-ci-file-lock.sh} applies in CI.</p>
+     *
+     * @param job the job whose staging configuration is being built
+     * @return the immutable staging configuration for the job
+     */
+    static FileStagingConfig buildStagingConfig(GitManagedJob job) {
+        return FileStagingConfig.builder()
+                .excludedPatterns(job.getAllExcludedPatterns())
+                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+                .protectTestFiles(job.isProtectTestFiles()
+                        && isSensitiveFileProtectionEnabled(job))
+                .protectCiFiles(isSensitiveFileProtectionEnabled(job)
+                        && !isCiBranch(job.getTargetBranch()))
+                .baseBranch(job.getBaseBranch())
+                .maxFileSizeBytes(job.getMaxFileSizeBytes())
+                .build();
+    }
+
+    /**
      * Returns whether the broader per-job sensitive-file protections are
      * active. {@link CodingAgentJob} (the only job type that runs an
      * agent) implements the flag explicitly; for any other job type we
@@ -564,5 +638,25 @@ class GitCommitHandler implements ConsoleFeatures {
             return caj.isSensitiveFileProtectionEnabled();
         }
         return true;
+    }
+
+    /**
+     * Returns whether {@code branch} is a CI branch ({@code ci/...}), whose
+     * declared subject is the pipeline itself.
+     *
+     * <p>The harness applies the repository's CI file lock to every job,
+     * independently of the job's test lock: a CI/workflow file (branch-new or
+     * pre-existing) is not staged unless the controller authorised the
+     * job to change sensitive files (its commit then carries the signed
+     * bypass trailer) or the job works on a CI branch. These are the same
+     * exemptions {@code tools/ci/agent-protection/check-ci-file-lock.sh}
+     * applies in CI, so an edit the harness would stage is never one the
+     * pipeline rejects.</p>
+     *
+     * @param branch the target branch, or {@code null}
+     * @return {@code true} when the branch name starts with {@code ci/}
+     */
+    static boolean isCiBranch(String branch) {
+        return branch != null && branch.startsWith("ci/");
     }
 }

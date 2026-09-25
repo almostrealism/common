@@ -71,20 +71,27 @@ class WorkspaceLock implements ConsoleFeatures {
 
     /**
      * Acquires the exclusive lock for the repository at {@code workspacePath},
-     * blocking until it becomes available. Failures (including an unresolvable
-     * parent directory or I/O errors) are logged and leave the job unlocked
-     * rather than aborting it.
+     * blocking until it becomes available.
+     *
+     * <p>Failures — an unresolvable parent directory, an I/O error creating or
+     * opening the lock file — are logged and leave the job unlocked. The
+     * return value says which happened, because "unlocked" is not a detail a
+     * caller can ignore: everything the job then does to that working tree,
+     * including reading it at completion, may be interleaved with another job
+     * doing the same.</p>
      *
      * @param workspacePath the git repository root to lock
+     * @return {@code true} when the lock is held, {@code false} when the job
+     *         is proceeding without it
      */
-    void acquire(String workspacePath) {
+    boolean acquire(String workspacePath) {
         try {
             Path repoRoot = Paths.get(workspacePath);
             Path parentDir = repoRoot.getParent();
             if (parentDir == null) {
                 warn("Cannot resolve parent of workspace " + workspacePath
                         + " -- workspace lock skipped");
-                return;
+                return false;
             }
             Path repoNamePath = repoRoot.getFileName();
             String repoName = repoNamePath != null ? repoNamePath.toString() : "unknown";
@@ -100,8 +107,10 @@ class WorkspaceLock implements ConsoleFeatures {
                     + " (job=" + taskId + ", repo=" + repoName + ")");
             lock = channel.lock();
             log("[" + host + "] Workspace lock acquired: " + lockFile);
+            return true;
         } catch (IOException e) {
             warn("Failed to acquire workspace lock for " + workspacePath + ": " + e.getMessage());
+            return false;
         }
     }
 

@@ -128,6 +128,9 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	/** Thread group containing all executor threads for identification. */
 	private final ThreadGroup executorGroup;
 
+	/** Set as soon as {@link #destroy()} begins; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
 	/**
 	 * Constructs a compute context wrapping the given data context.
 	 *
@@ -155,6 +158,19 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	public void runLater(Runnable runnable) {
 		executor.execute(runnable);
 	}
+
+	/**
+	 * Marks this context destroyed. Subclasses call this first and release their
+	 * resources afterwards, so that nothing observes the context as alive while
+	 * those resources are going away.
+	 */
+	@Override
+	public void destroy() {
+		destroyed = true;
+	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
 
 	/**
 	 * Copies all of {@code source} into {@code destination} with a direct host-mediated

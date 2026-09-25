@@ -205,12 +205,21 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	 */
 	public CLDataContext getContext() { return context; }
 
-	/** {@inheritDoc} */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Reserves a {@link #beginAllocation()} lease before {@link #buffer(int)} creates the
+	 * backend OpenCL buffer, so a concurrent {@link #destroy()} cannot release the OpenCL
+	 * context this call depends on until the buffer has been created and either registered
+	 * via {@link #allocated(RAM)} or released again.</p>
+	 */
 	@Override
 	public CLMemory allocate(int size) {
 		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
+
+		beginAllocation();
 
 		try {
 			long s = numberSize * (long) size;
@@ -219,6 +228,8 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			return mem;
 		} catch (CLException e) {
 			throw new HardwareException(e, (long) size * getNumberSize());
+		} finally {
+			endAllocation();
 		}
 	}
 

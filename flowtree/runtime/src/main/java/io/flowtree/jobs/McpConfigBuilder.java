@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -429,6 +430,47 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 + "refusing to build an MCP configuration without a token.");
         }
         return true;
+    }
+
+    /**
+     * The servers in the configuration this builder produces that an agent
+     * session cannot do its job without.
+     *
+     * <p>ar-manager is the one: the instruction protocol — status messages,
+     * memories, pull-request review tools, alerts — exists only through it.
+     * A session it failed to connect to has every one of those instructions
+     * silently voided, and the model, finding no {@code mcp__ar-manager__*}
+     * tools, substitutes whatever else looks similar. The runner reports any
+     * of these that did not connect (see
+     * {@link io.flowtree.jobs.agent.AgentRunResult#unavailableRequiredMcpServers()})
+     * and the job fails on it rather than keep the session's work. Pushed
+     * tool servers (test runner, build validator, ...) are not required:
+     * their absence degrades a session, it does not void its instructions.</p>
+     *
+     * <p>Enforcement is off by default, because the availability detection
+     * it rests on does not yet report reliably: sessions whose ar-manager
+     * tools were in fact present have been failed by it, which costs more
+     * work than the failure mode it guards against. {@code
+     * AR_REQUIRE_MCP_SERVERS=enabled} turns it on for an operator who wants
+     * it (or a test that exercises it) without a code change; unset, or any
+     * value other than {@code enabled}, leaves it off. Turn the default back
+     * over once the detection is trustworthy — the machinery downstream of
+     * this method is complete and stays under test either way.</p>
+     *
+     * <p>A configuration error is reported whether or not enforcement is on:
+     * a URL without a token raises here exactly as it does in
+     * {@link #buildMcpConfig()}, since that is a fact about the
+     * configuration, not about this flag.</p>
+     *
+     * @return the required server names; empty when ar-manager is not
+     *         configured or enforcement is off
+     */
+    public Set<String> requiredServerNames() {
+        boolean configured = arManagerEnabled();
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
+            return Collections.emptySet();
+        }
+        return configured ? Set.of("ar-manager") : Collections.emptySet();
     }
 
     /**

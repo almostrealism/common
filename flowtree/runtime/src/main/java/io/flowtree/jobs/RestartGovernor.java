@@ -149,6 +149,12 @@ public class RestartGovernor {
     private String lastBlockReason;
 
     /**
+     * Reason no further session may launch at all, or {@code null} while
+     * launches are permitted. See {@link #stopLaunching(String)}.
+     */
+    private String terminalStopReason;
+
+    /**
      * Creates a governor bound to the given job.
      *
      * @param job the job whose session launches this governor controls
@@ -167,6 +173,10 @@ public class RestartGovernor {
      *         has been reached (see {@link #blockReason()})
      */
     boolean canLaunchSession() {
+        if (terminalStopReason != null) {
+            lastBlockReason = terminalStopReason;
+            return false;
+        }
         if (sessionsLaunched == 0) {
             return true;
         }
@@ -246,6 +256,26 @@ public class RestartGovernor {
         }
         sessionsLaunched++;
         return true;
+    }
+
+    /**
+     * Refuses every further session launch for this job.
+     *
+     * <p>Unlike the counting ceilings, this holds from the moment it is set
+     * rather than when a count runs out: it records a condition a relaunch
+     * cannot clear. A required MCP server that did not connect is the case it
+     * exists for — every later session configures the same server and finds it
+     * missing again, so continuing only spends money to produce work that will
+     * not be kept.</p>
+     *
+     * @param reason human-readable reason, surfaced via {@link #blockReason()}
+     */
+    void stopLaunching(String reason) {
+        this.terminalStopReason = reason;
+        // Also the current block reason, so a status or completion report that
+        // reads it before the next launch attempt names this failure rather
+        // than whatever refused a launch last, or nothing at all.
+        this.lastBlockReason = reason;
     }
 
     /**
@@ -350,6 +380,13 @@ public class RestartGovernor {
      * first non-killed one, or the final killed one when all relaunches are
      * exhausted), or {@code null} if no attempt ran.</p>
      *
+     * <p>An attempt whose result reports {@link AgentRunResult#hasUnavailableRequiredMcpServer()}
+     * ends the loop immediately, whether or not the watchdog also killed it.
+     * A relaunch does not reset the working tree, so an earlier attempt that
+     * ran without a required tool has already left its untrusted changes in
+     * place; retrying would only spend more budget on top of that same
+     * tainted state instead of on a session whose output can be kept.</p>
+     *
      * @param runnerName name of the agent runner, used in status messages
      * @param attempt    runs a single agent attempt for the given index
      * @return the final attempt's result, or {@code null} if none ran
@@ -362,6 +399,9 @@ public class RestartGovernor {
             AgentRunResult result = attempt.apply(i);
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
+            if (result.hasUnavailableRequiredMcpServer()) {
+                break;
+            }
             if (!wasKilledForInactivity) {
                 break;
             }

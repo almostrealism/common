@@ -87,6 +87,31 @@ public enum Phase {
     }
 
     /**
+     * Returns whether a session in this phase is expected to change the
+     * repository working tree.
+     *
+     * <p>Only {@link #RETROSPECTIVE} does not: it reads the previous
+     * session's transcript and writes memories and a results file under
+     * {@code .flowtree/}, which never reaches a commit. Every other phase
+     * either produces the job's changes ({@link #PRIMARY}), corrects them (the
+     * enforcement phases), redoes them after a guardrail tripped
+     * ({@link #GIT_TAMPERING_RESTART}, which runs against a tree that has
+     * already been reverted), or resolves conflicts in them
+     * ({@link #PUSH_CONFLICT_RESOLUTION}).</p>
+     *
+     * <p>The distinction matters when a session cannot be trusted — it ran
+     * without a required tool, say. A phase that touched the tree has left
+     * untrusted content in it and there is no way to tell that content from
+     * the work around it, so the job cannot go on to commit. A phase that
+     * touched nothing has cost the job only that phase.</p>
+     *
+     * @return {@code true} when a session in this phase may edit the tree
+     */
+    public boolean modifiesWorkingTree() {
+        return this != RETROSPECTIVE;
+    }
+
+    /**
      * Returns a short human-readable description of this phase.
      *
      * @return the description; never {@code null}

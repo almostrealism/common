@@ -1,0 +1,5 @@
+// Wraps swiglu_ffn so building this layer exercises inferInputShape() for
+// swiglu_ffn, a path a direct buildLayer() call on swiglu_ffn never reaches.
+layer ffn_wrapper(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsilon: float) {
+    swiglu_ffn(norm_weights, w1, w2, w3, epsilon)
+}

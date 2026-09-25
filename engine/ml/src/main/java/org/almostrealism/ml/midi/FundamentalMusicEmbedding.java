@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -121,6 +122,23 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (dim,) producing the embedding vector
 	 */
 	public CollectionProducer embed(int value) {
+		return embed(c((double) value));
+	}
+
+	/**
+	 * Embeds a value supplied at evaluation time.
+	 *
+	 * <p>The value is an argument of the resulting kernel rather than a literal in
+	 * its source, so the same compiled kernel serves every value: a consumer that
+	 * embeds one token after another holds one evaluable and writes each token's
+	 * value into the collection behind {@code value} before evaluating. Passing a
+	 * literal via {@link #embed(int)} instead compiles a kernel per distinct value,
+	 * which is the whole cost of an embedding at this size.</p>
+	 *
+	 * @param value producer of the value to embed, shape (1)
+	 * @return CollectionProducer of shape (dim,) producing the embedding vector
+	 */
+	public CollectionProducer embed(Producer<PackedCollection> value) {
 		CollectionProducer sincos = encodeSinusoidal(value);
 		return add(matmul(cp(linearWeight), sincos), cp(linearBias));
 	}
@@ -135,7 +153,18 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (dim,) producing the sin/cos encoding
 	 */
 	public CollectionProducer encodeSinusoidal(int value) {
-		CollectionProducer biasedValue = cp(translationBias).add(c((double) value));
+		return encodeSinusoidal(c((double) value));
+	}
+
+	/**
+	 * Computes the interleaved sin/cos encoding of a value supplied at evaluation
+	 * time; see {@link #embed(Producer)} for why the value is an argument.
+	 *
+	 * @param value producer of the value to encode, shape (1)
+	 * @return CollectionProducer of shape (dim,) producing the sin/cos encoding
+	 */
+	public CollectionProducer encodeSinusoidal(Producer<PackedCollection> value) {
+		CollectionProducer biasedValue = cp(translationBias).add(value);
 
 		// angles = invFreqs * biasedValue, shape (dim/2,)
 		int halfDim = dim / 2;

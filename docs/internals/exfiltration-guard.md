@@ -79,6 +79,14 @@ keep working when any of those rules is changed.
 | `bash -c`, `sh -c`, `eval`, nested | recursive analysis, depth-limited |
 | An option's argument attached to its letter (`-c'curl …'`) | the option grammar is parsed, not searched |
 | Variable as command, `$(echo curl)` | computed command → block |
+| A command inside backticks, `"$(…)"`, `<(…)`, or an unquoted heredoc body | every substitution the local shell performs is analyzed as a command in its own right (`split_substitutions`) |
+| A `#` comment line ahead of the real command | comments are removed where their line ends, before lines are joined; shlex never strips them, so a comment cannot swallow what follows |
+| Substitution text inside single quotes | inert for the local shell, so it no longer blocks other programs on the line; it still blocks `ssh`, shells and interpreters, which evaluate their arguments |
+| A substitution after `cd` | analyzed with the directory unknown, so a `git push` in it fails closed |
+| A line continuation mid-word (`safe\⏎#; curl …`) | the continuation is removed outright, as the shell removes it, so the `#` stays inside the word; `/dev/tcp` is checked again on the joined text |
+| `<<EOF` inside a comment or quotes, ahead of the real command | only a `<<` the shell reads (outside quotes and comments, quote state followed across lines) starts a heredoc |
+| A command glued to a closing subshell (`(true); curl …`) | shlex joins `);` into one token; it is split back into operators, so the command after it is its own command |
+| `(cd other && …); next` | a subshell's `cd` ends with the subshell, as it does in the shell, so `next` resolves paths from the outer directory |
 | `alias x=curl; x …`, `f() { curl …; }; f` | definition + network word → block |
 | `echo <b64> \| base64 -d \| sh` | pipe into shell → block |
 | `cat script \| python3`, `python3 - <<EOF` | pipe → block; heredoc body scanned |
@@ -240,7 +248,7 @@ For a human holding a legitimate blocked command:
 | Path | Role |
 |---|---|
 | `.claude/hooks/lib/exfiltration_guard_check.py` | the decision core, `decide(payload, hook_cwd, log_path)`; harness-neutral; re-exports `Allowlist`, `_shell_invocation`, `normalize_host`, `owner_repo`, `SHELLS`, `GuardError` for backward compatibility |
-| `.claude/hooks/lib/exfil_bash_lex.py` | shell command tokenization, wrapper unwrapping, and the shared `GuardError`, `SHELLS`, `normalize_host`, `owner_repo` |
+| `.claude/hooks/lib/exfil_bash_lex.py` | shell command tokenization, comment removal and command-substitution extraction (`split_substitutions`), wrapper unwrapping, and the shared `GuardError`, `SHELLS`, `normalize_host`, `owner_repo` |
 | `.claude/hooks/lib/exfil_bash_network.py` | URL handling, curl/wget upload checks, ssh family, raw-socket and probe tools, the network-code patterns an inline program is scanned for |
 | `.claude/hooks/lib/exfil_bash_runner.py` | shell option grammar (`_shell_invocation`) and interpreter / script-file checks |
 | `.claude/hooks/lib/exfil_bash_vcs.py` | `git push` and `gh` checks, including the origin/host allowlist pin |

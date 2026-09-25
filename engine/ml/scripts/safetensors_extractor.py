@@ -368,10 +368,16 @@ def write_group(entries, output_dir, prefix):
     current_size = 0
     file_index = 0
 
+    def shard_path(index):
+        # The first shard is named by the bare prefix (the marker file tests and
+        # loaders look for); later shards carry a numeric suffix.
+        suffix = f"_{index}" if index > 0 else ""
+        return os.path.join(output_dir, f"{prefix}{suffix}")
+
     for entry in entries:
         entry_size = estimate_size(entry)
         if current_size + entry_size > PROTOBUF_SIZE_LIMIT and current:
-            path = os.path.join(output_dir, f"{prefix}_{file_index}")
+            path = shard_path(file_index)
             write_protobuf_file(current, path)
             written.append(path)
             current = []
@@ -381,8 +387,7 @@ def write_group(entries, output_dir, prefix):
         current_size += entry_size
 
     if current:
-        suffix = f"_{file_index}" if file_index > 0 else ""
-        path = os.path.join(output_dir, f"{prefix}{suffix}")
+        path = shard_path(file_index)
         write_protobuf_file(current, path)
         written.append(path)
 
