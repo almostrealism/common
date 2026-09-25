@@ -175,8 +175,10 @@ import java.util.stream.Stream;
  * // Save to file
  * data.save(new File("tensor.dat"));
  *
- * // Load from file
- * PackedCollection loaded = PackedCollection.load(new File("tensor.dat"));
+ * // Load the saved collections back from the file
+ * for (PackedCollection loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
+ *     // ... use loaded ...
+ * }
  *
  * // Print for debugging
  * data.print();  // Pretty-printed to console
