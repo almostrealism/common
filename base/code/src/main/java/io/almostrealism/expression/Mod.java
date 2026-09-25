@@ -320,7 +320,12 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 *
 	 * <p>Outside that tight case the bound falls back to {@code |modulus| - 1},
 	 * which is sound for any dividend range and either sign of modulus, since a
-	 * residue's magnitude is always strictly less than the modulus magnitude.</p>
+	 * residue's magnitude is always strictly less than the modulus magnitude.
+	 * The sentinel {@code modulus == Long.MIN_VALUE} is also covered: its
+	 * magnitude is not representable, so {@code Math.abs} returns
+	 * {@code Long.MIN_VALUE} and the decrement wraps to {@code Long.MAX_VALUE},
+	 * which is exactly the largest residue a non-negative dividend can take
+	 * modulo {@code Long.MIN_VALUE} — still a sound bound.</p>
 	 */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
