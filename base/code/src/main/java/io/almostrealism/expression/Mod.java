@@ -305,6 +305,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
 	}
 
+	/**
+	 * Computes a sound upper bound for {@code (dividend % modulus)}.
+	 *
+	 * <p>For a non-negative dividend whose value range is known, the result is
+	 * bounded tightly: when the whole range falls within a single multiple-of-
+	 * {@code modulus} block the maximum residue is the residue of the range's
+	 * upper bound, and when the range crosses a multiple of {@code modulus} the
+	 * residue reaches {@code modulus - 1} just before the wrap. Deriving the
+	 * bound from the residues of the range endpoints alone is unsound, because a
+	 * range that straddles a multiple of {@code modulus} — even one narrower than
+	 * {@code modulus} itself — reaches {@code modulus - 1} at an interior point
+	 * that is neither endpoint.</p>
+	 */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalLong lower = getLeft().lowerBound(context);
@@ -312,22 +325,20 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong m = getRight().longValue();
 
 		if (!isFP() && m.isPresent()) {
-			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()) {
+			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()
+					&& !getLeft().isPossiblyNegative()) {
 				long top = upper.getAsLong();
 				long bottom = lower.getAsLong();
 				long ml = m.getAsLong();
 
-				boolean contained = ml > bottom && ml < top;
-				long span = top - bottom;
-				if (!contained && span < ml) {
-					// (1) The modulus is not between the lower and upper bound
-					//     of the dividend,
-					// and
-					// (2) The span of the bounds is no greater than the modulo;
-					//
-					// then the upper bound of the result must obtain at
-					// either the upper or lower bound of the dividend
-					return OptionalLong.of(Math.max(lower.getAsLong() % ml, upper.getAsLong() % ml));
+				if (ml > 0 && bottom >= 0) {
+					// Within one ml-block the residue is monotonic; crossing a
+					// multiple of ml the value just before the wrap reaches ml - 1.
+					if (bottom / ml == top / ml) {
+						return OptionalLong.of(top % ml);
+					}
+
+					return OptionalLong.of(ml - 1);
 				}
 			}
 
@@ -337,6 +348,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return getChildren().get(1).upperBound(context);
 	}
 
+	/**
+	 * Computes a sound lower bound for {@code (dividend % modulus)}.
+	 *
+	 * <p>For a non-negative dividend whose value range falls within a single
+	 * multiple-of-{@code modulus} block, the minimum residue is the residue of
+	 * the range's lower bound. When the range crosses a multiple of
+	 * {@code modulus} the residue wraps through {@code 0}, so {@code 0} is the
+	 * tightest sound bound. Deriving the bound from the residues of the range
+	 * endpoints alone is unsound, because such a straddling range attains
+	 * {@code 0} at an interior point that is neither endpoint.</p>
+	 */
 	@Override
 	public OptionalLong lowerBound(KernelStructureContext context) {
 		if (isFP() || getLeft().isPossiblyNegative() || getRight().isPossiblyNegative())
@@ -347,11 +369,15 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong m = getRight().longValue();
 
 		if (lower.isPresent() && upper.isPresent() && m.isPresent()) {
-			long span = upper.getAsLong() - lower.getAsLong();
+			long bottom = lower.getAsLong();
+			long top = upper.getAsLong();
 			long ml = m.getAsLong();
 
-			if (span < ml) {
-				return OptionalLong.of(Math.min(lower.getAsLong() % ml, upper.getAsLong() % ml));
+			// Within one ml-block the residue is monotonic, so the minimum is the
+			// residue of the lower bound; crossing a multiple of ml it wraps
+			// through 0, which is the default below.
+			if (ml > 0 && bottom >= 0 && bottom / ml == top / ml) {
+				return OptionalLong.of(bottom % ml);
 			}
 		}
 
