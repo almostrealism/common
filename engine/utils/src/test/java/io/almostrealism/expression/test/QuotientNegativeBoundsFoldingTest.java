@@ -119,4 +119,37 @@ public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 		Assert.assertTrue("a zero-divisor quotient must remain a Quotient, not fold",
 				q instanceof Quotient);
 	}
+
+	/**
+	 * A {@link Long}-typed zero divisor must also be left unfolded at construction,
+	 * for the same reason as the {@link Integer} case: {@code isFP()} is false, so
+	 * the integer-division fold paths apply and a zero divisor would either throw
+	 * during simplification or fold the degenerate quotient to a constant.
+	 */
+	@Test(timeout = 5000)
+	public void longZeroDivisorIsNotFoldedAtConstruction() {
+		Expression<?> q = Quotient.of(new LongConstant(5L), new LongConstant(0L));
+		Assert.assertTrue("a long zero-divisor quotient must remain a Quotient, not fold",
+				q instanceof Quotient);
+	}
+
+	/**
+	 * The unfolded zero-divisor quotient must surface the division-by-zero when it is
+	 * finally evaluated. Integer division by zero throws {@link ArithmeticException},
+	 * which is the intended place for the degenerate operation to fail rather than
+	 * during constant folding.
+	 */
+	@Test(timeout = 5000)
+	public void zeroDivisorThrowsAtEvaluation() {
+		Expression<?> q = Quotient.of(new IntegerConstant(5), new IntegerConstant(0));
+		Assert.assertTrue("a zero-divisor quotient must remain a Quotient, not fold",
+				q instanceof Quotient);
+
+		try {
+			q.evaluate(5, 0);
+			Assert.fail("integer division by zero must throw at evaluation");
+		} catch (ArithmeticException expected) {
+			// division by zero surfaces here, as intended
+		}
+	}
 }

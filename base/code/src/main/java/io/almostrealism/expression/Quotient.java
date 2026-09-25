@@ -667,7 +667,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
+		// An integer zero divisor is left unfolded here just as it is in the
+		// bounded-numerator branch above, so the division-by-zero surfaces at
+		// evaluation rather than folding to a casted infinity during simplification.
+		boolean integerZeroDivisor = !fp && d.isPresent() && d.getAsLong() == 0;
+
+		if (!integerZeroDivisor &&
+				numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
 			double r = numerator.doubleValue().getAsDouble() / denominator.doubleValue().getAsDouble();
 			return fp ? new DoubleConstant(r) : ExpressionFeatures.getInstance().e((long) r);
 		}
