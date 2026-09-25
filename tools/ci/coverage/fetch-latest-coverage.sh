@@ -49,16 +49,26 @@
 #                        artifact is reused (default: master)
 #   OUTPUT_DIR         - where to write coverage.xml / python-coverage.xml
 #                        (default: current directory)
+#   ALLOW_RECOMPUTE    - "false" forbids the Java recompute path entirely
+#                        (default: true). A caller whose host cannot run
+#                        the full Maven suite meaningfully — a GitHub-hosted
+#                        runner, which lacks the native hardware setup the
+#                        real coverage lanes use — sets this so a missing
+#                        artifact (or FORCE=true) fails fast with a clear
+#                        error instead of spending hours producing a report
+#                        that does not match the CI lanes.
 #
 # Exit codes:
 #   0 - both reports were produced (an empty Java report counts as
 #       produced when recompute finds no coverage data)
-#   1 - invalid arguments, or neither the reuse nor the recompute path
-#       could produce a Java report
+#   1 - invalid arguments, neither the reuse nor the recompute path
+#       could produce a Java report, or a recompute was needed while
+#       ALLOW_RECOMPUTE=false
 
 set -euo pipefail
 
 FORCE="${FORCE:-false}"
+ALLOW_RECOMPUTE="${ALLOW_RECOMPUTE:-true}"
 BRANCH="${BRANCH:-master}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
 JACOCO_VERSION="0.8.11"
@@ -136,6 +146,11 @@ fetch_merged_report() {
 }
 
 recompute_java_report() {
+    if [ "$ALLOW_RECOMPUTE" = "false" ]; then
+        echo "::error::Java coverage would have to be recomputed (FORCE=${FORCE}), but ALLOW_RECOMPUTE=false on this host. Run \"Build and Test\" on ${BRANCH} to publish a fresh merged-coverage-report artifact, then re-run this job." >&2
+        exit 1
+    fi
+
     echo "::notice::Recomputing Java coverage fresh — this runs the full test suite and can take hours"
 
     # Online, matching every other mvn invocation in analysis.yaml: a
@@ -224,7 +239,9 @@ fi
 # same package set covers PYTHON_DIRS below (tools/mcp/manager needs
 # `mcp`; tools/tests needs `pyyaml`).
 #
-# On the self-hosted macOS runner this job actually runs on, a Homebrew-
+# The coverage-qa workflow job pins its interpreter with setup-python on a
+# GitHub-hosted runner, but this script still runs on self-hosted macOS
+# hosts (and by hand). There, a Homebrew-
 # installed Python 3.10+ can exist on disk without being on this process's
 # PATH: launchd starts services (the CI runner among them) with almost no
 # PATH, and Homebrew's bin directory is only restored when a service

@@ -18,9 +18,12 @@ name: "Master Agent Dispatch"
 # set a merge would. Deploy deliberately remains its own workflow: it is
 # triggered by hand often enough that it earns a dedicated entry.
 #
-# Every job here runs on a GitHub-hosted runner. None of them builds, tests or
-# needs a GPU: each one reads git and the GitHub API, pushes a branch, and makes
-# HTTP calls to the FlowTree controller. The controller is reached through its
+# Every job here runs on a GitHub-hosted runner. None of them builds the Java
+# reactor, runs its tests or needs a GPU: each one reads git and the GitHub
+# API, pushes a branch, and makes HTTP calls to the FlowTree controller. The
+# one exception to "no tests" is coverage-qa, which runs the Python suites
+# under coverage.py (seconds); it reuses master's merged Java coverage report
+# and has its Maven recompute path switched off (ALLOW_RECOMPUTE=false). The controller is reached through its
 # Cloudflare Access tunnel (vars.FLOWTREE_CONTROLLER_URL with the
 # FLOWTREE_CF_ACCESS_CLIENT_ID / _SECRET service token), exactly as
 # auto-resolve-submit.yaml and the early submit jobs in analysis.yaml do, so no
@@ -628,15 +631,18 @@ jobs:
       # suite; recomputes Python fresh either way (it runs in seconds).
       # See tools/ci/coverage/fetch-latest-coverage.sh for the FORCE=true
       # recompute path. That path — also taken when no master artifact can
-      # be found — runs the full Maven suite, which is not something a
-      # GitHub-hosted runner is sized for; it is a degraded fallback, and
-      # the fix for hitting it is a fresh master "Build and Test" run, not a
-      # bigger runner for this job.
+      # be found — runs the full Maven suite, which a GitHub-hosted runner
+      # is neither sized for nor equipped to run the way the real coverage
+      # lanes do (they use the self-hosted hardware setup). ALLOW_RECOMPUTE
+      # is therefore off here: a missing artifact fails this step with an
+      # error naming the fix — a fresh master "Build and Test" run — rather
+      # than spending hours producing a report that does not match CI.
       - name: Fetch latest coverage report
         if: steps.decide.outputs.run == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          ALLOW_RECOMPUTE: "false"
         run: |
           chmod +x ./tools/ci/coverage/fetch-latest-coverage.sh
           ./tools/ci/coverage/fetch-latest-coverage.sh

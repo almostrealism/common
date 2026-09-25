@@ -135,6 +135,22 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         "in fetch-latest-coverage.sh remains reachable")
         self.assertGreaterEqual(found, 1, "no setup-python step found in coverage-qa")
 
+    def test_coverage_qa_never_recomputes_java_coverage_on_a_hosted_runner(self):
+        """coverage-qa must not fall back to the full Maven suite.
+
+        fetch-latest-coverage.sh recomputes Java coverage with a full
+        ``mvn test`` when no master artifact is found. On a GitHub-hosted
+        runner that is hours of work producing a report that does not match
+        the self-hosted coverage lanes, so the fetch step must switch the
+        recompute path off and fail fast instead.
+        """
+        job = self.jobs["coverage-qa"]
+        fetch_steps = [step for step in job["steps"]
+                       if "fetch-latest-coverage.sh" in step.get("run", "")]
+        self.assertEqual(1, len(fetch_steps))
+        self.assertEqual("false", fetch_steps[0].get("env", {}).get("ALLOW_RECOMPUTE"))
+        self.assertNotIn("FORCE", fetch_steps[0].get("env", {}))
+
     def test_every_job_reaches_the_controller_through_the_tunnel(self):
         """No dispatch job needs a host inside the private network.
 
