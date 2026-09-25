@@ -20,6 +20,12 @@ Three detectors, from that incident's mechanical signature:
     concrete class that a constructor of this class accepts and adapts behind
     an interface. The constructor taking the concrete type is a convenience;
     handing it back out makes the abstraction a lie.
+
+    Two shapes are not that and are excluded, because in both the premise
+    "accepted only to adapt" is false: the class's OWN type (a copy
+    constructor, and a self-returning member excludes no implementation), and
+    a type the class ALREADY hands out from an existing public member (already
+    published vocabulary). See constructor_adapted_types and exposed_types.
  2. ABSTRACTION FORK (warns): a new member whose name extends an existing
     member's name (getStemOutput vs getStem) but returns a concrete class
     where the existing member returns an interface. Two abstraction levels
@@ -104,7 +110,17 @@ def methods(source):
 
 
 def constructor_adapted_types(source, class_name):
-    """Concrete classes accepted by constructors of the class."""
+    """Concrete classes a constructor accepts that could be adapted behind an
+    interface.
+
+    The class's own type is never one of them. A constructor taking it is a copy
+    constructor, and a member returning it cannot bypass an interface contract,
+    because the return type IS the class the member lives on - no other
+    implementation is excluded by it. Static factories (`of(...)`, `range(...)`,
+    `load(...)`) are the ordinary shape of that, and treating them as
+    re-exposure blocks every class that has both a copy constructor and an
+    interface-returning member from ever gaining another factory.
+    """
     adapted = set()
     ctor = re.compile(
         r'(?:public|protected)\s+' + re.escape(class_name) + r'\s*\(([^)]*)\)')
@@ -112,7 +128,26 @@ def constructor_adapted_types(source, class_name):
         for name in type_names(m.group(1)):
             if type_kind(name) == "class":
                 adapted.add(name)
+    adapted.discard(class_name)
     return adapted
+
+
+def exposed_types(source):
+    """Types already handed out by public/protected members of the class.
+
+    A type the class already returns is part of its published vocabulary, not
+    something it hides behind an interface, so a further member returning it
+    re-exposes nothing: `PackedCollection.getShape()` returns the
+    `TraversalPolicy` its own constructor takes. This is judged on the text
+    BEFORE the edit on purpose - reading the edited text would let the new
+    member exempt itself and the detector would never fire at all.
+    """
+    out = set()
+    for name, ret, modifiers in methods(source):
+        mods = modifiers.split()
+        if "public" in mods or "protected" in mods:
+            out |= type_names(ret)
+    return out
 
 
 def interface_returning(source):
@@ -190,7 +225,7 @@ def main():
     blocks = []
     warnings = []
 
-    adapted = constructor_adapted_types(after, class_name)
+    adapted = constructor_adapted_types(after, class_name) - exposed_types(before)
     iface_members = interface_returning(before)
     has_interface_surface = bool(iface_members) or any(
         type_kind(t) == "interface"
