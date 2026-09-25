@@ -184,6 +184,20 @@ _PYTHON_NOARG_FLAGS = {
 # their own operand, mirroring _PYTHON_NOARG_FLAGS for flags that are not bare.
 _PYTHON_ARG_FLAGS = {"-W", "-X"}
 
+# Matches a Python interpreter executable base name, including versioned forms
+# such as "python", "python3", "python3.11" or "python2.7". A versioned
+# launcher must be recognized wherever the bare "python"/"python3" names are,
+# or "python3.11 -m pytest tools/mcp/manager" slips a whole-directory run past
+# the pytest/unittest checks. Used with fullmatch against an already-stripped
+# base name (see _is_python_interpreter).
+_PYTHON_INTERPRETER_PATTERN = re.compile(r"python(?:\d+(?:\.\d+)*)?$", re.IGNORECASE)
+
+
+def _is_python_interpreter(base: str) -> bool:
+    """Whether ``base`` names a Python interpreter executable, including a
+    versioned form like ``python3.11`` (see ``_PYTHON_INTERPRETER_PATTERN``)."""
+    return bool(_PYTHON_INTERPRETER_PATTERN.match(base))
+
 # Sentinel prefix used by `_mask_command_substitutions` to stand in for a
 # $(...)/backtick command substitution before shlex tokenization, and by
 # `_unmask_token` to restore the original substitution text afterward.
@@ -1006,7 +1020,7 @@ def _pytest_segment_violation(tokens: list) -> str:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
     rest = tokens[1:]
-    if base in ("python", "python3"):
+    if _is_python_interpreter(base):
         m_index = _index_of_module_flag(rest)
         if m_index is None or m_index + 1 >= len(rest) or rest[m_index + 1] != "pytest":
             return ""
@@ -1049,7 +1063,7 @@ def _unittest_segment_violation(tokens: list) -> str:
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]
-    if base not in ("python", "python3"):
+    if not _is_python_interpreter(base):
         return ""
     rest = tokens[1:]
     m_index = _index_of_module_flag(rest)
@@ -1238,9 +1252,15 @@ class _MvnTestSegmentMatcher:
     # value like "-DskipTests=$(printf false)" or "-DskipTests=$SKIP" is seen
     # as an occurrence and classified as non-skipping by _classify_skip_value
     # rather than leaving the bare "-DskipTests" prefix to read as true.
-    _SKIP_TESTS_TEXT_PATTERN = re.compile(r"-DskipTests(?:=(\S+))?", re.IGNORECASE)
+    # The no-value form ends at a property boundary (\b) so the bare
+    # "-DskipTests" prefix is not read out of a longer, unrelated property
+    # such as "-DskipTestsFoo" -- Maven would treat that as a distinct
+    # property and still run tests, so "mvn verify -DskipTestsFoo" must not be
+    # exempted as build-only. The "=value" branch still captures the whole
+    # value (including a trailing "." that the prompt path tolerates).
+    _SKIP_TESTS_TEXT_PATTERN = re.compile(r"-DskipTests(?:=(\S+)|\b)", re.IGNORECASE)
     _MAVEN_TEST_SKIP_TEXT_PATTERN = re.compile(
-        r"-Dmaven\.test\.skip(?:=(\S+))?", re.IGNORECASE)
+        r"-Dmaven\.test\.skip(?:=(\S+)|\b)", re.IGNORECASE)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
@@ -1322,7 +1342,7 @@ class _UnittestDiscoveryMatcher:
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
     _UNITTEST_PATTERN = re.compile(
-        r"\bpython3?(?:\s+-\S+)*\s+-m\s+unittest\b", re.IGNORECASE)
+        r"\bpython(?:\d+(?:\.\d+)*)?(?:\s+-\S+)*\s+-m\s+unittest\b", re.IGNORECASE)
     _DISCOVER_PATTERN = re.compile(r"\bdiscover\b", re.IGNORECASE)
     _DOTTED_ID_PATTERN = re.compile(r"\b\w+(?:\.\w+){2,}\b")
 
@@ -1360,7 +1380,7 @@ class _PytestNodeIdMatcher:
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
     _MODULE_INVOCATION_PATTERN = re.compile(
-        r"\bpython3?(?:\s+-\S+)*\s+-m\s+pytest\b", re.IGNORECASE)
+        r"\bpython(?:\d+(?:\.\d+)*)?(?:\s+-\S+)*\s+-m\s+pytest\b", re.IGNORECASE)
     _BARE_INVOCATION_PATTERN = re.compile(
         r"(?<![\w.-])(?:(?P<verb>run|execute)\s+)?py\.?test\b(?![.-]\w)",
         re.IGNORECASE)

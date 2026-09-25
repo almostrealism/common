@@ -620,6 +620,32 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertEquals(2400, PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS);
 	}
 
+	/** A requested timeout above the ceiling is clamped down to it, closing the over-limit
+	 * bypass at the {@code /api/submit} call site that applies this. */
+	@Test(timeout = 10000)
+	public void aboveCeilingTimeoutIsClampedToMax() {
+		assertEquals(2400, PostCompletionCommandValidator.clampTimeoutSeconds(3600));
+	}
+
+	/** A requested timeout exactly at the ceiling is preserved. */
+	@Test(timeout = 10000)
+	public void atCeilingTimeoutIsPreserved() {
+		assertEquals(2400, PostCompletionCommandValidator.clampTimeoutSeconds(2400));
+	}
+
+	/** An in-range timeout is preserved unchanged. */
+	@Test(timeout = 10000)
+	public void inRangeTimeoutIsPreserved() {
+		assertEquals(1800, PostCompletionCommandValidator.clampTimeoutSeconds(1800));
+	}
+
+	/** A non-positive timeout (meaning "use the default") is passed through unchanged, not
+	 * raised to the ceiling. */
+	@Test(timeout = 10000)
+	public void nonPositiveTimeoutIsPreserved() {
+		assertEquals(0, PostCompletionCommandValidator.clampTimeoutSeconds(0));
+	}
+
 	// -- Rejection message ------------------------------------------------------
 
 	/** The rejection message states there is no bypass and lists each violation. */
@@ -650,6 +676,26 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void pythonDashBFlagBeforeModuleUnittestDiscoverRejected() {
 		assertFalse(violationsFor("python3 -B -m unittest discover").isEmpty());
+	}
+
+	/** A versioned interpreter such as "python3.11" must be recognized as a pytest launcher, or a
+	 * whole-directory run slips past the check that keys only off bare "python"/"python3". */
+	@Test(timeout = 10000)
+	public void versionedPythonModulePytestDirectoryRejected() {
+		assertFalse(violationsFor("python3.11 -m pytest tools/mcp/manager").isEmpty());
+	}
+
+	/** The same versioned interpreter with an explicit node id is still accepted. */
+	@Test(timeout = 10000)
+	public void versionedPythonModulePytestNodeIdAccepted() {
+		assertTrue(violationsFor(
+				"python3.11 -m pytest tools/mcp/manager/test_server.py::TestFoo::test_bar").isEmpty());
+	}
+
+	/** A versioned interpreter must also be recognized for the unittest-discover check. */
+	@Test(timeout = 10000)
+	public void versionedPythonModuleUnittestDiscoverRejected() {
+		assertFalse(violationsFor("python3.11 -m unittest discover").isEmpty());
 	}
 
 	/** An unquoted backslash-escaped character must be resolved before the Maven-phase check

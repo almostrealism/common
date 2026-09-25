@@ -56,6 +56,22 @@ public class PostCompletionCommandValidator {
 	/** Maximum wall-clock budget for a post-completion / shell-job command: 2400s (40 minutes). */
 	public static final int MAX_TIMEOUT_SECONDS = 2400;
 
+	/**
+	 * Clamps a requested post-completion / shell-job timeout to {@link #MAX_TIMEOUT_SECONDS}. A
+	 * value at or below the ceiling -- including a non-positive value meaning "use the default" --
+	 * is returned unchanged; an over-limit value is corrected down to the ceiling rather than
+	 * rejected, since a too-generous budget is a mistake to fix, not an attack to refuse. This is
+	 * the ceiling half of the submission-time enforcement (the command-text half is
+	 * {@link #validate()}); {@code FlowTreeApiEndpoint#handleSubmit} applies it
+	 * so a direct {@code /api/submit} cannot request a timeout beyond the ceiling.
+	 *
+	 * @param requestedSeconds  the timeout requested by the submitter, in seconds
+	 * @return the requested value, or {@link #MAX_TIMEOUT_SECONDS} when it exceeds the ceiling
+	 */
+	public static int clampTimeoutSeconds(int requestedSeconds) {
+		return Math.min(requestedSeconds, MAX_TIMEOUT_SECONDS);
+	}
+
 	/** Matches an AR_TEST_GROUP/AR_TEST_GROUPS reference anywhere in the command. No leading
 	 * word-boundary assertion: the real shard invocation shape is {@code -DAR_TEST_GROUP=2},
 	 * where "AR_TEST_GROUP" is glued directly to the "-D" property prefix with no boundary
@@ -937,7 +953,7 @@ public class PostCompletionCommandValidator {
 		}
 		String base = baseName(tokens.get(0));
 		List<String> rest = tokens.subList(1, tokens.size());
-		if ("python".equals(base) || "python3".equals(base)) {
+		if (isPythonInterpreter(base)) {
 			int mIndex = indexOfModuleFlag(rest);
 			if (mIndex < 0 || mIndex + 1 >= rest.size() || !"pytest".equals(rest.get(mIndex + 1))) {
 				return null;
@@ -984,7 +1000,7 @@ public class PostCompletionCommandValidator {
 			return null;
 		}
 		String base = baseName(tokens.get(0));
-		if (!("python".equals(base) || "python3".equals(base))) {
+		if (!isPythonInterpreter(base)) {
 			return null;
 		}
 		List<String> rest = tokens.subList(1, tokens.size());
@@ -1251,6 +1267,19 @@ public class PostCompletionCommandValidator {
 	private static String baseName(String token) {
 		int slash = token.lastIndexOf('/');
 		return slash < 0 ? token : token.substring(slash + 1);
+	}
+
+	/** Matches a Python interpreter executable base name, including versioned forms such as
+	 * {@code python}, {@code python3}, {@code python3.11} or {@code python2.7}. A versioned launcher
+	 * must be recognized wherever the bare {@code python}/{@code python3} names are, or
+	 * {@code python3.11 -m pytest tools/mcp/manager} slips a whole-directory run past the pytest and
+	 * unittest checks. */
+	private static final Pattern PYTHON_INTERPRETER = Pattern.compile(
+			"python(?:\\d+(?:\\.\\d+)*)?", Pattern.CASE_INSENSITIVE);
+
+	/** Whether {@code base} names a Python interpreter executable (see {@link #PYTHON_INTERPRETER}). */
+	private static boolean isPythonInterpreter(String base) {
+		return PYTHON_INTERPRETER.matcher(base).matches();
 	}
 
 	/** Truncates {@code s} to at most {@code max} characters. */

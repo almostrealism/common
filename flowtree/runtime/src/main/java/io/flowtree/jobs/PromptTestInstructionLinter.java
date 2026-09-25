@@ -126,11 +126,15 @@ public class PromptTestInstructionLinter {
 	 * mentions in the same fragment to the LAST one's value, matching real Maven {@code -D}
 	 * semantics. */
 	private static final Pattern SKIP_TESTS_MENTION = Pattern.compile(
-			"-DskipTests(?:=(\\S+))?", Pattern.CASE_INSENSITIVE);
+			"-DskipTests(?:=(\\S+)|\\b)", Pattern.CASE_INSENSITIVE);
 
-	/** Same shape as {@link #SKIP_TESTS_MENTION} for the {@code maven.test.skip} property. */
+	/** Same shape as {@link #SKIP_TESTS_MENTION} for the {@code maven.test.skip} property. The
+	 * no-value form ends at a property boundary ({@code \b}) so the bare {@code -DskipTests}/{@code
+	 * -Dmaven.test.skip} prefix is not read out of a longer, unrelated property such as
+	 * {@code -DskipTestsFoo} -- Maven treats that as a distinct property and still runs tests, so
+	 * {@code mvn verify -DskipTestsFoo} must not be exempted as build-only. */
 	private static final Pattern MAVEN_TEST_SKIP_MENTION = Pattern.compile(
-			"-Dmaven\\.test\\.skip(?:=(\\S+))?", Pattern.CASE_INSENSITIVE);
+			"-Dmaven\\.test\\.skip(?:=(\\S+)|\\b)", Pattern.CASE_INSENSITIVE);
 
 	/** Sentence-ending punctuation stripped from a skip value seen in free prose before it is
 	 * classified, so "-DskipTests=true." at the end of a sentence still reads as the boolean true
@@ -148,7 +152,7 @@ public class PromptTestInstructionLinter {
 	 * that {@code python3 -O -m unittest discover} is still recognized rather than waved through
 	 * because {@code -O} breaks the literal {@code python3 -m} sequence. */
 	private static final Pattern UNITTEST_MENTION = Pattern.compile(
-			"\\bpython3?(?:\\s+-\\S+)*\\s+-m\\s+unittest\\b", Pattern.CASE_INSENSITIVE);
+			"\\bpython(?:\\d+(?:\\.\\d+)*)?(?:\\s+-\\S+)*\\s+-m\\s+unittest\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Matches the word "discover", as in {@code python -m unittest discover}. */
 	private static final Pattern DISCOVER = Pattern.compile("\\bdiscover\\b", Pattern.CASE_INSENSITIVE);
@@ -158,7 +162,7 @@ public class PromptTestInstructionLinter {
 
 	/** Matches a {@code python}/{@code python3 -m pytest} invocation, which is always a command. */
 	private static final Pattern PYTEST_MODULE_INVOCATION = Pattern.compile(
-			"\\bpython3?(?:\\s+-\\S+)*\\s+-m\\s+pytest\\b", Pattern.CASE_INSENSITIVE);
+			"\\bpython(?:\\d+(?:\\.\\d+)*)?(?:\\s+-\\S+)*\\s+-m\\s+pytest\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Matches a bare {@code pytest}/{@code py.test} word, capturing an optional preceding run
 	 * verb so {@link #pytestWithoutSingleNodeId} can tell an instruction to run it from prose that

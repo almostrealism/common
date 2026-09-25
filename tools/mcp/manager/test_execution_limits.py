@@ -429,6 +429,19 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("python3 -B -m unittest discover")
         self.assertTrue(violations, "an interpreter option before -m must not hide unittest discover")
 
+    def test_versioned_python_pytest_directory_rejected(self):
+        violations = validate_post_completion_command("python3.11 -m pytest tools/mcp/manager")
+        self.assertTrue(violations, "a versioned python launcher must not hide a broad pytest run")
+        self.assertIn("node id", " ".join(violations))
+
+    def test_versioned_python_pytest_node_id_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "python3.11 -m pytest tools/mcp/manager/test_server.py::TestFoo::test_bar"))
+
+    def test_versioned_python_unittest_discover_rejected(self):
+        violations = validate_post_completion_command("python3.11 -m unittest discover")
+        self.assertTrue(violations, "a versioned python launcher must not hide unittest discover")
+
     def test_dollar_paren_substitution_in_command_position_rejected(self):
         violations = validate_post_completion_command("$(printf mvn) test -pl engine/utils")
         self.assertTrue(violations)
@@ -828,6 +841,27 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "Please run mvn verify -DskipTests=true.")
         self.assertEqual([], hits)
 
+    def test_mvn_verify_with_skiptests_prefixed_property_still_flagged(self):
+        # "-DskipTestsFoo" is a DIFFERENT Maven property; the bare skip
+        # matcher must not read "-DskipTests" out of it and wrongly exempt
+        # the broad "mvn verify" instruction (Maven still runs tests).
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -DskipTestsFoo to confirm it builds.")
+        self.assertTrue(hits, "a -DskipTests-prefixed but distinct property must not exempt the run")
+
+    def test_mvn_verify_with_maven_test_skip_prefixed_property_still_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -Dmaven.test.skipFoo to confirm it builds.")
+        self.assertTrue(hits, "a -Dmaven.test.skip-prefixed but distinct property must not exempt")
+
+    def test_versioned_python_pytest_prompt_rejected(self):
+        # A versioned interpreter such as python3.11 must be recognized as a
+        # pytest launcher, or a whole-directory run slips past the linter
+        # when no command field is supplied.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3.11 -m pytest tools/mcp/manager to check your change.")
+        self.assertTrue(hits, "a versioned python -m pytest directory run must be flagged")
+
     def test_mvnw_test_without_selector_rejected(self):
         # The bare "mvn" prefix does not match "mvnw" (no whitespace
         # between "mvn" and "w"), so the Maven Wrapper launcher needs its
@@ -887,6 +921,11 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         self.assertTrue(
             hits,
             "an interpreter option before -m must not hide unittest discover in a prompt")
+
+    def test_versioned_python_unittest_discover_prompt_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3.11 -m unittest discover to check your change.")
+        self.assertTrue(hits, "a versioned python -m unittest discover run must be flagged")
 
     def test_later_skip_tests_false_overrides_earlier_true_mention_rejected(self):
         # The mere PRESENCE of "-DskipTests=true" is not sufficient to

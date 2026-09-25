@@ -814,11 +814,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (testLimitsRejection != null) {
             return testLimitsRejection;
         }
-        if (postCompletionTimeoutSeconds > PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS) {
+        int clampedTimeoutSeconds =
+                PostCompletionCommandValidator.clampTimeoutSeconds(postCompletionTimeoutSeconds);
+        if (clampedTimeoutSeconds != postCompletionTimeoutSeconds) {
             log("Clamping postCompletionTimeoutSeconds from " + postCompletionTimeoutSeconds
-                    + " to " + PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS
-                    + " for workstream " + workstreamId);
-            postCompletionTimeoutSeconds = PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS;
+                    + " to " + clampedTimeoutSeconds + " for workstream " + workstreamId);
+            postCompletionTimeoutSeconds = clampedTimeoutSeconds;
         }
 
         if (shellJob) {

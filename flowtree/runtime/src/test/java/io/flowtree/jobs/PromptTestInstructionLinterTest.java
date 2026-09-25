@@ -134,6 +134,22 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 				"Run mvn verify -DskipTests=true -DskipTests=false to confirm.").isEmpty());
 	}
 
+	/** "-DskipTestsFoo" is a DIFFERENT Maven property; the bare skip matcher must not read
+	 * "-DskipTests" out of it and wrongly exempt the broad "mvn verify" instruction. */
+	@Test(timeout = 10000)
+	public void skipTestsPrefixedPropertyStillRejected() {
+		assertFalse(violationsFor(
+				"Run mvn verify -DskipTestsFoo to confirm it builds.").isEmpty());
+	}
+
+	/** The same property-boundary rule applies to "-Dmaven.test.skip": a longer, distinct
+	 * property must not be read as the bare skip flag. */
+	@Test(timeout = 10000)
+	public void mavenTestSkipPrefixedPropertyStillRejected() {
+		assertFalse(violationsFor(
+				"Run mvn verify -Dmaven.test.skipFoo to confirm it builds.").isEmpty());
+	}
+
 	/** A later, broader "-Dtest=" occurrence overriding an earlier narrow one must still be
 	 * flagged, since Maven uses the later property value. */
 	@Test(timeout = 10000)
@@ -179,6 +195,21 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 	public void unittestDiscoverWithInterpreterOptionPhraseRejected() {
 		assertFalse(violationsFor(
 				"Run python3 -O -m unittest discover in that directory.").isEmpty());
+	}
+
+	/** A versioned interpreter such as {@code python3.11} must be recognized as a pytest launcher,
+	 * or a whole-directory run slips past the linter when no command field is supplied. */
+	@Test(timeout = 10000)
+	public void versionedPythonModulePytestPhraseRejected() {
+		assertFalse(violationsFor(
+				"Run python3.11 -m pytest tools/mcp/manager to check your change.").isEmpty());
+	}
+
+	/** A versioned interpreter must also be recognized for the unittest-discover phrase. */
+	@Test(timeout = 10000)
+	public void versionedPythonModuleUnittestDiscoverPhraseRejected() {
+		assertFalse(violationsFor(
+				"Run python3.11 -m unittest discover in that directory.").isEmpty());
 	}
 
 	/** A pytest instruction naming a directory, a whole file, no target, or two node ids is broad. */
