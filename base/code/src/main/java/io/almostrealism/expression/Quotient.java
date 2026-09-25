@@ -471,9 +471,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * is required so that a negative numerator folds to the same value it would
 	 * compute; {@code -3 / 2} is {@code -1}, whereas {@code floor(-3 / 2)} is
 	 * {@code -2}. Truncating division by a fixed divisor is monotonic over the
-	 * integers, so matching bounds still guarantee a constant quotient. A zero
-	 * divisor is left unfolded so the division-by-zero surfaces at evaluation
-	 * rather than while the expression is being simplified.</p>
+	 * integers, so matching bounds still guarantee a constant quotient. Any known
+	 * integer zero divisor is left unfolded on every path — including the
+	 * zero-numerator shortcut, so that even {@code 0 / 0} stays a {@link Quotient}
+	 * — so the division-by-zero surfaces at evaluation rather than while the
+	 * expression is being simplified.</p>
 	 *
 	 * <p>A product numerator with a constant factor {@code c} folds exactly against an
 	 * integer divisor {@code d} in either direction, for either sign: when {@code d}
@@ -517,10 +519,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
+		OptionalLong d = denominator.longValue();
+
+		// Leave any known integer zero divisor unfolded, before the zero-numerator
+		// shortcut, so even 0 / 0 surfaces its division-by-zero at evaluation
+		if (!fp && d.isPresent() && d.getAsLong() == 0)
+			return new Quotient(operands);
+
 		if (numerator.longValue().orElse(-1) == 0)
 			return fp ? new DoubleConstant(0.0) : new IntegerConstant(0);
-
-		OptionalLong d = denominator.longValue();
 
 		OptionalLong lower = numerator.lowerBound();
 		OptionalLong upper = numerator.upperBound();
@@ -528,7 +535,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (!fp && !numerator.isPossiblyNegative() && d.isPresent() &&
 				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
-		} else if (!fp && d.isPresent() && d.getAsLong() != 0 && lower.isPresent() && upper.isPresent()) {
+		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
 			// Truncating division, not floor, to match the runtime quotient for negative bounds
 			long low = upper.getAsLong() / d.getAsLong();
 			long high = lower.getAsLong() / d.getAsLong();
@@ -667,13 +674,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		// An integer zero divisor is left unfolded here just as it is in the
-		// bounded-numerator branch above, so the division-by-zero surfaces at
-		// evaluation rather than folding to a casted infinity during simplification.
-		boolean integerZeroDivisor = !fp && d.isPresent() && d.getAsLong() == 0;
-
-		if (!integerZeroDivisor &&
-				numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
+		if (numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
 			double r = numerator.doubleValue().getAsDouble() / denominator.doubleValue().getAsDouble();
 			return fp ? new DoubleConstant(r) : ExpressionFeatures.getInstance().e((long) r);
 		}

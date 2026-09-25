@@ -152,4 +152,61 @@ public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 			// division by zero surfaces here, as intended
 		}
 	}
+
+	/**
+	 * A zero divisor must not be folded even when the numerator is also zero. The
+	 * zero-numerator shortcut in {@code Quotient.create} would otherwise collapse
+	 * {@code 0 / 0} to {@code 0}, contradicting the zero-divisor contract: {@code 0 / 0}
+	 * is undefined and integer division by zero throws at evaluation, so it must be
+	 * left as a {@link Quotient} rather than folded to a constant during simplification.
+	 */
+	@Test(timeout = 5000)
+	public void zeroNumeratorZeroDivisorIsNotFoldedAtConstruction() {
+		Expression<?> q = Quotient.of(new IntegerConstant(0), new IntegerConstant(0));
+		Assert.assertTrue("0 / 0 must remain a Quotient, not fold to 0",
+				q instanceof Quotient);
+	}
+
+	/**
+	 * The {@link Long}-typed {@code 0 / 0} must likewise be left unfolded at
+	 * construction, for the same reason as the {@link Integer} case.
+	 */
+	@Test(timeout = 5000)
+	public void longZeroNumeratorZeroDivisorIsNotFoldedAtConstruction() {
+		Expression<?> q = Quotient.of(new LongConstant(0L), new LongConstant(0L));
+		Assert.assertTrue("long 0 / 0 must remain a Quotient, not fold to 0",
+				q instanceof Quotient);
+	}
+
+	/**
+	 * The unfolded {@code 0 / 0} quotient must surface the division-by-zero when it is
+	 * finally evaluated, exactly as a non-zero numerator over a zero divisor does.
+	 */
+	@Test(timeout = 5000)
+	public void zeroNumeratorZeroDivisorThrowsAtEvaluation() {
+		Expression<?> q = Quotient.of(new IntegerConstant(0), new IntegerConstant(0));
+		Assert.assertTrue("0 / 0 must remain a Quotient, not fold to 0",
+				q instanceof Quotient);
+
+		try {
+			q.evaluate(0, 0);
+			Assert.fail("integer 0 / 0 must throw at evaluation");
+		} catch (ArithmeticException expected) {
+			// division by zero surfaces here, as intended
+		}
+	}
+
+	/**
+	 * A zero numerator over a non-zero divisor must still fold to {@code 0}. The
+	 * zero-divisor guard added ahead of the zero-numerator shortcut must not disturb
+	 * this legitimate simplification: {@code 0 / 5} is exactly {@code 0}.
+	 */
+	@Test(timeout = 5000)
+	public void zeroNumeratorNonZeroDivisorFoldsToZero() {
+		Expression<?> q = Quotient.of(new IntegerConstant(0), new IntegerConstant(5));
+		Assert.assertFalse("0 / 5 must fold rather than remain a Quotient",
+				q instanceof Quotient);
+		Assert.assertEquals("0 / 5 folds to 0",
+				0L, q.longValue().orElse(Long.MIN_VALUE));
+	}
 }
