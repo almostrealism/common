@@ -224,8 +224,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	protected void requireLiveContext() {
 		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
-			throw new IllegalStateException("The compute context " + getName() +
-					" was created under has been destroyed");
+			throw new IllegalStateException("The compute context for " + getName() +
+					" has been destroyed");
 		}
 	}
 

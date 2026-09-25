@@ -529,6 +529,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public void destroy() {
+		// TODO(review): destroy() from inside computeContext() on the same thread self-deadlocks (read->write upgrade)
 		lifecycleLock.writeLock().lock();
 
 		try {

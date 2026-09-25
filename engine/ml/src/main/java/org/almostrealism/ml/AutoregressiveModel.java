@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
@@ -392,7 +393,9 @@ public class AutoregressiveModel<T> {
 	 * attribute values. The embedding is compiled once, with the values as a kernel
 	 * argument, and reused for every token: an embedding built from a token's values as
 	 * literals would be a different program per distinct token, which is the cost every
-	 * autoregressive model would otherwise pay each step.
+	 * autoregressive model would otherwise pay each step. The compiled operation assigns
+	 * the embedding directly into {@code input}, so no intermediate result is copied
+	 * through the host.
 	 *
 	 * @param <T>       the token type
 	 * @param input     the model input the embedding is written into
@@ -406,13 +409,13 @@ public class AutoregressiveModel<T> {
 											  Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
 		Ops ops = Ops.o();
 		PackedCollection tokenValues = new PackedCollection(values);
-		Evaluable<? extends PackedCollection> embed =
-				Process.optimized(embedding.apply(ops.cp(tokenValues))).get();
-		int size = input.getShape().getTotalSize();
+		TraversalPolicy shape = ops.shape(input.getShape().getTotalSize());
+		Runnable load = Process.optimized(ops.a(ops.cp(input.reshape(shape)),
+				ops.c(embedding.apply(ops.cp(tokenValues))).reshape(shape))).get();
 
 		return token -> {
 			pack.accept(token, tokenValues);
-			input.setFrom(0, embed.evaluate(), 0, size);
+			load.run();
 		};
 	}
 
