@@ -17,7 +17,6 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.ResamplingConfig;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.TransformerResamplingShapeTest;
 import org.junit.Test;
@@ -33,11 +32,14 @@ import java.util.Map;
 public class SAMEAutoEncoderShapeTest extends TransformerResamplingShapeTest {
 
 	/** Audio channels. */
-	private static final int CHANNELS = 2;
+	private static final int CHANNELS = SAMEAutoEncoderFixture.CHANNELS;
 	/** Samples folded per frame. */
-	private static final int PATCH = 2;
+	private static final int PATCH = SAMEAutoEncoderFixture.PATCH;
 	/** Latent channels. */
-	private static final int LATENT = 3;
+	private static final int LATENT = SAMEAutoEncoderFixture.LATENT;
+
+	/** Builder of the small autoencoder and its synthetic weights. */
+	private final SAMEAutoEncoderFixture fixture = new SAMEAutoEncoderFixture();
 
 	/**
 	 * The alignment and length arithmetic follows from the patch size, stride and chunk size.
@@ -123,9 +125,7 @@ public class SAMEAutoEncoderShapeTest extends TransformerResamplingShapeTest {
 	 * @return the autoencoder
 	 */
 	private SAMEAutoEncoder autoencoder(StateDictionary weights) {
-		return new SAMEAutoEncoder(weights, new PatchedPretransform(CHANNELS, PATCH),
-				smallConfig(true), smallConfig(false), LATENT,
-				SAMEAutoEncoder.softNormBottleneck(weights, LATENT));
+		return fixture.autoencoder(weights);
 	}
 
 	/**
@@ -134,20 +134,6 @@ public class SAMEAutoEncoderShapeTest extends TransformerResamplingShapeTest {
 	 * @return the weights
 	 */
 	private StateDictionary syntheticWeights() {
-		Map<String, PackedCollection> w = new HashMap<>();
-		blockWeightShapes(smallConfig(true), "encoder.layers.0").forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
-		blockWeightShapes(smallConfig(false), "decoder.layers.3").forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
-
-		int dim = smallConfig(true).getOutChannels();
-		w.put("encoder.layers.2.weight", new PackedCollection(shape(LATENT, dim)).randnFill());
-		w.put("encoder.layers.2.bias", new PackedCollection(shape(LATENT)).randnFill());
-		w.put("decoder.layers.1.weight", new PackedCollection(shape(dim, LATENT)).randnFill());
-		w.put("decoder.layers.1.bias", new PackedCollection(shape(dim)).randnFill());
-		w.put("bottleneck.scaling_factor", new PackedCollection(shape(1, LATENT, 1)).randnFill());
-		w.put("bottleneck.bias", new PackedCollection(shape(1, LATENT, 1)).randnFill());
-		w.put("bottleneck.running_std", new PackedCollection(shape(1)).fill(1.5));
-		return new StateDictionary(w);
+		return fixture.weights();
 	}
 }

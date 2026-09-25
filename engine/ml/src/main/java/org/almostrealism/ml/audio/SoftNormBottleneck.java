@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 
 /**
@@ -73,6 +74,19 @@ public class SoftNormBottleneck implements Bottleneck, LayerFeatures {
 	 */
 	public SoftNormBottleneck(int dim, PackedCollection scalingFactor, PackedCollection bias) {
 		this(dim, scalingFactor, bias, null);
+	}
+
+	/**
+	 * Creates a SoftNorm bottleneck from the {@code bottleneck.*} weights of a state dictionary,
+	 * rescaling by the running standard deviation when the checkpoint carries one.
+	 *
+	 * @param weights loaded weights under the reference key layout
+	 * @param dim     the latent channel dimensionality (input and output)
+	 */
+	public SoftNormBottleneck(StateDictionary weights, int dim) {
+		this(dim, weights.get("bottleneck.scaling_factor"), weights.get("bottleneck.bias"),
+				weights.containsKey("bottleneck.running_std") ?
+						weights.get("bottleneck.running_std") : null);
 	}
 
 	/**

@@ -343,8 +343,10 @@ def _synthetic_sa3_state():
         "pretransform.model.encoder.layers.0.weight": z(8, 4),
         "pretransform.model.decoder.layers.3.mapping.weight_g": z(8, 1, 1),
         "pretransform.model.decoder.layers.3.mapping.weight_v": z(8, 8, 3),
-        # conditioner (dropped by both targets)
+        # conditioner (dropped by the dit and ae targets)
         "conditioner.conditioners.prompt.padding_embedding": z(8),
+        "conditioner.conditioners.seconds_total.embedder.embedding.1.weight": z(8, 4),
+        "conditioner.conditioners.seconds_total.embedder.embedding.1.bias": z(8),
     }
 
 
@@ -402,12 +404,22 @@ def test_sa3_end_to_end_extract_dit(tmp_path):
     assert all(k.startswith("model.model.") for k in reloaded)
 
 
+def test_sa3_conditioner_rules_select_and_passthrough():
+    state = _synthetic_sa3_state()
+    out = core.remap(state, sa3.rules_for("conditioner"))
+    # Exactly the conditioner namespace survives, under the released names.
+    assert set(out) == sa3.SA3_CONDITIONER_EXPECTED_KEYS
+    assert out["conditioner.conditioners.seconds_total.embedder.embedding.1.weight"].shape == (8, 4)
+
+
 def test_sa3_expected_key_sets_are_consistent_with_rules():
     """The declared expected-key sets must be captured by the rules themselves."""
     # Every DiT expected key is in the model.model.* namespace the rule selects.
     assert all(k.startswith(sa3.DIT_PREFIX) for k in sa3.SA3_DIT_EXPECTED_KEYS)
     # Every AE expected key is in the pretransform.model.* namespace.
     assert all(k.startswith(sa3.AE_EMBEDDED_PREFIX) for k in sa3.SA3_AE_EXPECTED_KEYS)
+    # Every conditioner expected key is in the conditioner.conditioners.* namespace.
+    assert all(k.startswith(sa3.CONDITIONER_PREFIX) for k in sa3.SA3_CONDITIONER_EXPECTED_KEYS)
 
 
 if __name__ == "__main__":
