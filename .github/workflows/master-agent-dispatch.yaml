@@ -584,16 +584,24 @@ jobs:
       # Provision a known-good Python 3.10 on this self-hosted macOS runner.
       # fetch-latest-coverage.sh (via select-python-env.sh) and select-target.py
       # both need an interpreter >= 3.10 on PATH; the runner's launchd-inherited
-      # PATH exposes only Apple's OS-bundled python3 (< 3.10), and PR #539's
-      # Homebrew-path widening could not help when Homebrew Python is not
-      # installed on the host at all. setup-python installs into the runner tool
-      # cache and prepends it to PATH for every step below, guaranteeing the
-      # interpreter regardless of what the host has — the same mechanism the
-      # ubuntu-hosted python-tests job in analysis.yaml already relies on.
-      # TODO(review): on a self-hosted macOS runner this relies on 3.10 being
-      # in RUNNER_TOOL_CACHE or downloadable; watch the first real run.
+      # PATH exposes only Apple's OS-bundled python3 (< 3.10). setup-python
+      # installs into the runner tool cache (RUNNER_TOOL_CACHE, which the runner
+      # agent exports for every job) and prepends it to PATH for the steps below
+      # — the same mechanism the ubuntu-hosted python-tests job in analysis.yaml
+      # relies on.
+      #
+      # This is the primary path but not a hard requirement: on a self-hosted
+      # macOS runner setup-python still has to resolve 3.10 from the tool cache
+      # or download a matching build, and a download can be unavailable (no
+      # arm64 build for the pinned version, or no network). continue-on-error
+      # keeps such a failure from aborting the job before the "Fetch latest
+      # coverage report" step, whose fetch-latest-coverage.sh retains PR #539's
+      # Homebrew-path widening as a fallback for hosts that carry their own
+      # Homebrew Python. select-python-env.sh still reports clearly if neither
+      # path yields a >= 3.10 interpreter.
       - name: Set up Python
         if: steps.decide.outputs.run == 'true'
+        continue-on-error: true
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
