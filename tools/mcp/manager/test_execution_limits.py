@@ -750,6 +750,27 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "When you finish, run the relevant flowtree module tests.")
         self.assertTrue(hits, "the incident's module-tests phrasing must be rejected")
 
+    def test_module_by_path_tests_phrase_rejected(self):
+        # A whole-module run that names the module by its PATH rather than the
+        # literal word "module", in both word orders.
+        for prompt in ("Run engine/utils tests after your change.",
+                       "Execute the flowtree/runtime tests.",
+                       "Run the tests in engine/utils to confirm.",
+                       "Then run the relevant tests for flowtree/runtime."):
+            with self.subTest(prompt=prompt):
+                self.assertTrue(
+                    lint_prompt_for_broad_test_instructions(prompt),
+                    "a module-path test run must be flagged even without the word 'module'")
+
+    def test_module_by_path_narrow_forms_accepted(self):
+        # A module-path phrase with no run verb, or a single test named with a
+        # path node id, is not a module suite run.
+        for prompt in ("The engine/utils tests are flaky; investigate.",
+                       "Run the test tools/mcp/manager/test_x.py::test_y once.",
+                       "Run the single test in engine/utils named FooTest#bar."):
+            with self.subTest(prompt=prompt):
+                self.assertEqual([], lint_prompt_for_broad_test_instructions(prompt))
+
     def test_shard_phrase_rejected(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Reproduce the failure by running the engine/utils CI shard.")

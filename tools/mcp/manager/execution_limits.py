@@ -1196,6 +1196,23 @@ _TEST_LINT_PATTERNS = [
         r"(?:the\s+)?[\w./-]*\s*module\b",
         re.IGNORECASE),
      '"run the tests for/in the ... module" phrase (a whole module\'s test run)'),
+    # The same request naming the module by its PATH instead of the literal
+    # word "module": "run engine/utils tests" (forward) and "run the tests in
+    # engine/utils" (reversed). The distinguishing mark of a whole-module run
+    # is a module path -- a token containing a "/" -- between a run verb and the
+    # plural word "tests". A single test is named as Class#method or
+    # file.py::test and never takes this shape, so requiring the slash keeps
+    # narrow instructions accepted. Plural "tests" only on the reversed form:
+    # "run the test in engine/utils" names a single test, not a suite.
+    (re.compile(
+        r"\b(?:run|execute|test)\s+(?:the\s+)?(?:relevant\s+)?[\w.-]+/[\w./-]*\s+tests?\b",
+        re.IGNORECASE),
+     '"run <module path> tests" phrase (a whole module\'s test run)'),
+    (re.compile(
+        r"\b(?:run|execute)\s+(?:the\s+)?(?:relevant\s+)?tests\s+(?:for|in|of|from)\s+"
+        r"(?:the\s+)?[\w.-]+/[\w./-]*",
+        re.IGNORECASE),
+     '"run the tests for/in <module path>" phrase (a whole module\'s test run)'),
     (re.compile(r"\brun(?:ning)?\s+(?:the\s+)?[\w./-]*\s*(?:CI\s+)?shard\b", re.IGNORECASE),
      '"run(ning) ... shard" phrase'),
     (re.compile(r"AR_TEST_GROUPS?\b"),

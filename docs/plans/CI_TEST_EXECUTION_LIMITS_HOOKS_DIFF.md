@@ -293,17 +293,40 @@ BLOCK_REASON = (
 )
 
 
+# Interpreter executable base names, including versioned forms such as
+# "python", "python3", "python3.11" or "python2.7" -- a versioned launcher
+# must be recognized wherever the bare names are, or "python3.11 -m pytest
+# tests/" slips a whole-directory run past this check. Mirrors
+# execution_limits._PYTHON_INTERPRETER_PATTERN.
+PYTHON_INTERPRETER = re.compile(r"python(?:\d+(?:\.\d+)*)?$")
+
+# Interpreter option flags that take no operand, so they can precede -m
+# without hiding it -- e.g. "python3 -O -m pytest tests/". Mirrors
+# execution_limits._PYTHON_NOARG_FLAGS.
+PYTHON_NOARG_FLAGS = {
+    "-O", "-OO", "-B", "-b", "-bb", "-d", "-E", "-h", "-i", "-I",
+    "-q", "-s", "-S", "-t", "-tt", "-u", "-v", "-x", "-3", "-R",
+}
+
+
 def _is_pytest_invocation(tokens):
     """Return the args after the pytest entry point, or None if tokens is
-    not a pytest/python -m pytest/python3 -m pytest invocation."""
+    not a pytest/python -m pytest invocation. Handles versioned interpreters
+    ("python3.11 -m pytest") and interpreter option flags before -m
+    ("python3 -O -m pytest"), matching the manager/controller validators --
+    otherwise those broad forms would be allowed here while the validators
+    reject them."""
     if not tokens:
         return None
     base = tokens[0].rsplit("/", 1)[-1]
     if base in ("pytest", "py.test"):
         return tokens[1:]
-    if base in ("python", "python3") and len(tokens) >= 3 \
-            and tokens[1] == "-m" and tokens[2] == "pytest":
-        return tokens[3:]
+    if PYTHON_INTERPRETER.match(base):
+        k = 1
+        while k < len(tokens) and tokens[k] in PYTHON_NOARG_FLAGS:
+            k += 1
+        if k + 1 < len(tokens) and tokens[k] == "-m" and tokens[k + 1] == "pytest":
+            return tokens[k + 2:]
     return None
 
 

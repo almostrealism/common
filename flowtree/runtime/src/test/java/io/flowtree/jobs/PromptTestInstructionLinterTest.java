@@ -316,6 +316,25 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertTrue(violationsFor("Add tests for the new module.").isEmpty());
 	}
 
+	/** A whole-module run that names the module by its PATH instead of the literal word "module"
+	 * is still a module suite run, in both word orders. */
+	@Test(timeout = 10000)
+	public void moduleByPathTestsPhraseRejected() {
+		assertFalse(violationsFor("Run engine/utils tests after your change.").isEmpty());
+		assertFalse(violationsFor("Execute the flowtree/runtime tests.").isEmpty());
+		assertFalse(violationsFor("Run the tests in engine/utils to confirm.").isEmpty());
+		assertFalse(violationsFor("Then run the relevant tests for flowtree/runtime.").isEmpty());
+	}
+
+	/** A module-path phrase without a run verb, or a single test named with a path node id, is not
+	 * a module suite run and is accepted. */
+	@Test(timeout = 10000)
+	public void moduleByPathNarrowFormsAccepted() {
+		assertTrue(violationsFor("The engine/utils tests are flaky; investigate.").isEmpty());
+		assertTrue(violationsFor("Run the test tools/mcp/manager/test_x.py::test_y once.").isEmpty());
+		assertTrue(violationsFor("Run the single test in engine/utils named FooTest#bar.").isEmpty());
+	}
+
 	/** A Maven command split across two lines is linted as one command, reported at the line
 	 * the command starts on. */
 	@Test(timeout = 10000)

@@ -60,6 +60,26 @@ public class PromptTestInstructionLinter {
 					+ "(?:the\\s+)?[\\w./-]*\\s*module\\b",
 			Pattern.CASE_INSENSITIVE);
 
+	/** Matches a module-suite instruction that names the module by its PATH rather than the
+	 * literal word "module": "run engine/utils tests", "execute the flowtree/runtime tests". The
+	 * distinguishing mark of a whole-module run is a module path -- a token containing a {@code /}
+	 * ({@code [\w.-]+/[\w./-]*}) sitting between a run verb and the plural word "tests". A single
+	 * test is named as {@code Class#method} or {@code file.py::test} and never takes this shape, so
+	 * requiring the slash keeps narrow instructions ("run FooTest#bar") accepted. Complements
+	 * {@link #MODULE_TESTS}, which requires the word "module". */
+	private static final Pattern MODULE_PATH_TESTS = Pattern.compile(
+			"\\b(?:run|execute|test)\\s+(?:the\\s+)?(?:relevant\\s+)?[\\w.-]+/[\\w./-]*\\s+tests?\\b",
+			Pattern.CASE_INSENSITIVE);
+
+	/** The reversed-word-order form of {@link #MODULE_PATH_TESTS}: "run the tests in engine/utils",
+	 * "execute tests for flowtree/runtime". Plural "tests" only -- "run the test in engine/utils"
+	 * names a single test, not a suite -- and the target must be a module path (contains a
+	 * {@code /}), mirroring {@link #TESTS_FOR_MODULE} for the word-free form. */
+	private static final Pattern TESTS_IN_MODULE_PATH = Pattern.compile(
+			"\\b(?:run|execute)\\s+(?:the\\s+)?(?:relevant\\s+)?tests\\s+(?:for|in|of|from)\\s+"
+					+ "(?:the\\s+)?[\\w.-]+/[\\w./-]*",
+			Pattern.CASE_INSENSITIVE);
+
 	/** Matches a "run(ning) ... shard" phrase. */
 	private static final Pattern SHARD = Pattern.compile(
 			"\\brun(?:ning)?\\s+(?:the\\s+)?[\\w./-]*\\s*(?:CI\\s+)?shard\\b", Pattern.CASE_INSENSITIVE);
@@ -198,6 +218,10 @@ public class PromptTestInstructionLinter {
 				"\"run the ... module tests\" phrase (a whole module's test run)"));
 		rules.add(new LineRule(line -> TESTS_FOR_MODULE.matcher(line).find(),
 				"\"run the tests for/in the ... module\" phrase (a whole module's test run)"));
+		rules.add(new LineRule(line -> MODULE_PATH_TESTS.matcher(line).find(),
+				"\"run <module path> tests\" phrase (a whole module's test run)"));
+		rules.add(new LineRule(line -> TESTS_IN_MODULE_PATH.matcher(line).find(),
+				"\"run the tests for/in <module path>\" phrase (a whole module's test run)"));
 		rules.add(new LineRule(line -> SHARD.matcher(line).find(),
 				"\"run(ning) ... shard\" phrase"));
 		rules.add(new LineRule(line -> AR_TEST_GROUP.matcher(line).find(),
