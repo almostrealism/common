@@ -179,6 +179,26 @@ public class MappedMemoryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A precision the mapping cannot serve is refused when the memory is created, rather than read
+	 * with the wrong byte width later. Only FP32 and FP64 are read directly from the file; FP16 would
+	 * advance two bytes per value while the reader consumes four, corrupting the values and running
+	 * past the mapping.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	@Test(timeout = 60000)
+	public void unservedPrecisionIsRefused() throws IOException {
+		File file = written(Precision.FP32);
+
+		try {
+			MappedMemoryProvider.getInstance().allocate(file, Precision.FP16, HEADER, SIZE);
+			throw new AssertionError("a precision the mapping cannot serve must be refused");
+		} catch (IllegalArgumentException e) {
+			// expected
+		}
+	}
+
+	/**
 	 * Many readers of one file share one mapping, so a directory of references costs one mapping per
 	 * file rather than one per tensor read out of it.
 	 *

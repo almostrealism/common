@@ -97,9 +97,15 @@ public class MappedMemoryProvider implements MemoryProvider<Memory> {
 	 * @param valueOffset the byte position of the first value, past any header
 	 * @param count       the number of values
 	 * @return read-only memory over those values
-	 * @throws IllegalArgumentException if the file does not hold {@code count} values at that offset
+	 * @throws IllegalArgumentException if the precision is not one the mapping can serve, or if the
+	 *         file does not hold {@code count} values at that offset
 	 */
 	public Memory allocate(File file, Precision precision, long valueOffset, int count) {
+		if (precision != Precision.FP32 && precision != Precision.FP64) {
+			throw new IllegalArgumentException(precision + " values are not mapped; only FP32 and " +
+					"FP64 are served directly from the file");
+		}
+
 		long required = valueOffset + (long) count * precision.bytes();
 
 		if (count < 0 || valueOffset < 0 || file.length() < required) {

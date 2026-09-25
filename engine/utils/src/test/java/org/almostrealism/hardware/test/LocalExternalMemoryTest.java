@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.Memory;
+import org.almostrealism.hardware.external.LocalExternalMemory;
 import org.almostrealism.hardware.external.LocalExternalMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -165,9 +166,13 @@ public class LocalExternalMemoryTest extends TestSuiteBase {
 		provider.getMem(mem, 0, out, 0, SIZE);
 		Assert.assertEquals(valueAt(9), out[9], 0.0);
 
+		((LocalExternalMemory) mem).restore();
+
 		double[] again = new double[SIZE];
 		provider.getMem(mem, 0, again, 0, SIZE);
-		Assert.assertEquals(valueAt(9), again[9], 0.0);
+		for (int i = 0; i < SIZE; i++) {
+			Assert.assertEquals("element " + i, valueAt(i), again[i], 0.0);
+		}
 	}
 
 	/**
