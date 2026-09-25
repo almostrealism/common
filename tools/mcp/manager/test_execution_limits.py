@@ -564,6 +564,48 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "$JAVA_HOME/bin/java -jar build/foo.jar"))
 
+    def test_dynamic_property_name_rejected(self):
+        # A -D property whose NAME is a parameter expansion can expand to
+        # AR_TEST_GROUP, which the literal shard scan cannot see, so it is
+        # rejected even alongside a narrow -Dtest selector.
+        violations = validate_post_completion_command(
+            "mvn test -D${AR_PROP}=2 -Dtest=FooTest#testBar")
+        self.assertEqual(1, len(violations))
+        self.assertIn("property name", violations[0])
+        self.assertTrue(validate_post_completion_command(
+            "mvn test -D$AR_PROP=2 -Dtest=FooTest#testBar"))
+        self.assertTrue(validate_post_completion_command(
+            "mvn test -D$(printf AR_TEST_GROUP)=2 -Dtest=FooTest#testBar"))
+
+    def test_dynamic_property_name_not_hidden_by_skip_tests(self):
+        # A dynamic property name can expand to skipTests=false and override
+        # an earlier -DskipTests, so the skip flag must not exempt it.
+        self.assertTrue(validate_post_completion_command(
+            "mvn test -DskipTests -D${P}=false -pl engine/utils"))
+
+    def test_dynamic_value_of_literal_property_name_accepted(self):
+        # A literal property name with a dynamic value is unaffected.
+        self.assertEqual([], validate_post_completion_command(
+            "mvn test -Dtest=FooTest#testBar -Dfoo.dir=$HOME/x"))
+
+    def test_braced_expansion_is_not_split_into_segments(self):
+        # Braces glued to a word ("${VAR}") are part of that word, so a
+        # trailing dynamic shard property and a braced positional phase are
+        # both seen, while a braced value of a literal property is accepted.
+        self.assertTrue(validate_post_completion_command(
+            "mvn test -Dtest=FooTest#testBar -D${AR_PROP}=2"))
+        self.assertTrue(validate_post_completion_command(
+            "mvn ${GOAL} -pl engine/utils"))
+        self.assertEqual([], validate_post_completion_command(
+            "mvn test -Dtest=FooTest#testBar -Dout=${HOME}/x"))
+
+    def test_standalone_brace_group_still_split(self):
+        # A standalone brace group's inner command is still validated.
+        self.assertTrue(validate_post_completion_command(
+            "{ mvn test -pl engine/utils; }"))
+        self.assertEqual([], validate_post_completion_command(
+            "{ mvn test -Dtest=FooTest#testBar; }"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 

@@ -866,6 +866,31 @@ def _effective_skip_value(args: list, pattern) -> bool:
     return value
 
 
+def _dynamic_property_name_violation(tokens: list, args: list) -> str:
+    """Return a violation reason when any ``-D`` system property in ``args``
+    has a name containing an unresolved parameter expansion or command
+    substitution, or ``""`` when every property name is literal.
+
+    The shell resolves such a name at run time, so ``-D${AR_PROP}=2`` can
+    become an ``AR_TEST_GROUP`` shard property and ``-D${P}=false`` can
+    override an earlier ``-DskipTests``; neither is visible to the literal
+    shard scan or the skip-value check. A dynamic *value* of a literal
+    property name is not affected here. ``_maven_segment_violation`` runs
+    this before the skip check so a skip flag cannot hide it.
+    """
+    for arg in args:
+        if not arg.startswith("-D"):
+            continue
+        name = arg[2:].split("=", 1)[0]
+        if _contains_parameter_expansion(name) or _is_substitution_executable(name):
+            return (
+                'Maven property "{}" in "{}" has a property name the shell '
+                "resolves at run time, so it could name AR_TEST_GROUP or "
+                "override -DskipTests without this validator seeing it. Use "
+                "literal -D property names.".format(arg, " ".join(tokens)))
+    return ""
+
+
 def _maven_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``mvn ...`` command segment,
     or ``""`` when the segment is not Maven, skips tests, or already
@@ -876,6 +901,9 @@ def _maven_segment_violation(tokens: list) -> str:
     if base not in _MVN_LAUNCHER_NAMES:
         return ""
     args = tokens[1:]
+    property_name_reason = _dynamic_property_name_violation(tokens, args)
+    if property_name_reason:
+        return property_name_reason
     if _effective_skip_value(args, _SKIP_TESTS_PROP_PATTERN) is True \
             or _effective_skip_value(args, _MAVEN_TEST_SKIP_PROP_PATTERN) is True:
         return ""

@@ -862,4 +862,45 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	public void variableRootedPathCommandAccepted() {
 		assertTrue(violationsFor("$JAVA_HOME/bin/java -jar build/foo.jar").isEmpty());
 	}
+
+	/** A -D property whose NAME is a parameter expansion can expand to AR_TEST_GROUP, which the
+	 * literal shard scan cannot see, so it is rejected even alongside a narrow -Dtest selector. */
+	@Test(timeout = 10000)
+	public void dynamicPropertyNameRejected() {
+		List<String> violations = violationsFor("mvn test -D${AR_PROP}=2 -Dtest=FooTest#testBar");
+		assertEquals(1, violations.size());
+		assertTrue(violations.get(0).contains("property name"));
+		assertFalse(violationsFor("mvn test -D$AR_PROP=2 -Dtest=FooTest#testBar").isEmpty());
+		assertFalse(violationsFor("mvn test -D$(printf AR_TEST_GROUP)=2 -Dtest=FooTest#testBar").isEmpty());
+	}
+
+	/** A dynamic property name can expand to skipTests=false and override an earlier -DskipTests,
+	 * so the skip flag must not exempt the command from the property-name check. */
+	@Test(timeout = 10000)
+	public void dynamicPropertyNameNotHiddenBySkipTests() {
+		assertFalse(violationsFor("mvn test -DskipTests -D${P}=false -pl engine/utils").isEmpty());
+	}
+
+	/** A literal property name with a dynamic value is unaffected by the property-name check. */
+	@Test(timeout = 10000)
+	public void dynamicValueOfLiteralPropertyNameAccepted() {
+		assertTrue(violationsFor("mvn test -Dtest=FooTest#testBar -Dfoo.dir=$HOME/x").isEmpty());
+	}
+
+	/** Braces glued to a word ("${VAR}") are part of that word, not brace-group operators. Splitting
+	 * them would end the segment at "-D$" and leave a narrow-looking "mvn test -Dtest=..." whose
+	 * trailing shard property is never seen; the same split hid a braced positional phase. */
+	@Test(timeout = 10000)
+	public void bracedExpansionIsNotSplitIntoSegments() {
+		assertFalse(violationsFor("mvn test -Dtest=FooTest#testBar -D${AR_PROP}=2").isEmpty());
+		assertFalse(violationsFor("mvn ${GOAL} -pl engine/utils").isEmpty());
+		assertTrue(violationsFor("mvn test -Dtest=FooTest#testBar -Dout=${HOME}/x").isEmpty());
+	}
+
+	/** A standalone brace group is still split into its inner command, which is validated. */
+	@Test(timeout = 10000)
+	public void standaloneBraceGroupStillSplit() {
+		assertFalse(violationsFor("{ mvn test -pl engine/utils; }").isEmpty());
+		assertTrue(violationsFor("{ mvn test -Dtest=FooTest#testBar; }").isEmpty());
+	}
 }

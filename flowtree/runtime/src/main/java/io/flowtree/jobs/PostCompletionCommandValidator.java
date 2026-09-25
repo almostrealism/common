@@ -107,6 +107,12 @@ public class PostCompletionCommandValidator {
 	private static final List<String> SHELL_OPERATORS = Arrays.asList(
 			"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}");
 
+	/** The brace-group entries of {@link #SHELL_OPERATORS}. Unlike the other operators, the shell
+	 * recognizes these only as standalone words, so {@link #tokenize} keeps a brace glued to a word
+	 * as part of that word -- splitting {@code ${AR_PROP}} at its braces would leave
+	 * {@code -D$} in one segment and hide the parameter expansion from every argument check. */
+	private static final List<String> BRACE_WORDS = Arrays.asList("{", "}");
+
 	/** Matches a leading {@code VAR=value} assignment token, as accepted by {@code env}. */
 	private static final Pattern ENV_ASSIGNMENT = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*=.*$");
 
@@ -756,12 +762,42 @@ public class PostCompletionCommandValidator {
 		return false;
 	}
 
+	/**
+	 * Returns a violation reason when any {@code -D} system property in {@code args} has a
+	 * name containing an unresolved parameter expansion or command substitution, or null when
+	 * every property name is literal. The shell resolves such a name at run time, so
+	 * {@code -D${AR_PROP}=2} can become an {@code AR_TEST_GROUP} shard property and
+	 * {@code -D${P}=false} can override an earlier {@code -DskipTests}; neither is visible to the
+	 * literal shard scan or the skip-value check. A dynamic <em>value</em> of a literal property
+	 * name is not affected here. Runs before the skip check so a skip flag cannot hide it.
+	 */
+	private static String dynamicPropertyNameViolation(List<String> tokens, List<String> args) {
+		for (String arg : args) {
+			if (!arg.startsWith("-D")) {
+				continue;
+			}
+			int eq = arg.indexOf('=');
+			String name = eq < 0 ? arg.substring(2) : arg.substring(2, eq);
+			if (containsParameterExpansion(name) || containsSubstitutionMarker(name)) {
+				return "Maven property \"" + arg + "\" in \"" + String.join(" ", tokens)
+						+ "\" has a property name the shell resolves at run time, so it could "
+						+ "name AR_TEST_GROUP or override -DskipTests without this validator "
+						+ "seeing it. Use literal -D property names.";
+			}
+		}
+		return null;
+	}
+
 	/** Returns a violation reason for a Maven segment, or null when it is acceptable. */
 	private String mavenSegmentViolation(List<String> tokens) {
 		if (tokens.isEmpty() || !MVN_LAUNCHER_NAMES.contains(baseName(tokens.get(0)))) {
 			return null;
 		}
 		List<String> args = tokens.subList(1, tokens.size());
+		String propertyNameReason = dynamicPropertyNameViolation(tokens, args);
+		if (propertyNameReason != null) {
+			return propertyNameReason;
+		}
 		if (Boolean.TRUE.equals(effectiveSkipValue(args, SKIP_TESTS_PROP))
 				|| Boolean.TRUE.equals(effectiveSkipValue(args, MAVEN_TEST_SKIP_PROP))) {
 			return null;
@@ -1163,7 +1199,7 @@ public class PostCompletionCommandValidator {
 				continue;
 			}
 			String oneChar = String.valueOf(c);
-			if (SHELL_OPERATORS.contains(oneChar)) {
+			if (SHELL_OPERATORS.contains(oneChar) && !BRACE_WORDS.contains(oneChar)) {
 				if (haveToken) {
 					tokens.add(current.toString());
 					current.setLength(0);
