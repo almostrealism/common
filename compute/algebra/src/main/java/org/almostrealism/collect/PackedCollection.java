@@ -1227,7 +1227,7 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	// TODO  load(TraversalPolicy, File, Precision, long) belongs here, mapping the file through
-	// TODO  MappedMemoryProvider (the class javadoc above already advertises load(File)); it is
+	// TODO  MappedMemoryProvider so file-backed values are never staged on the host; it is
 	// TODO  blocked by block-interface-bypass.py flagging any new member returning this class.
 
 	/**
