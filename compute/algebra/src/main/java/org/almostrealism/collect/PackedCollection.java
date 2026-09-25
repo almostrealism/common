@@ -1207,6 +1207,10 @@ public class PackedCollection extends MemoryDataAdapter
 		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);
 	}
 
+	// TODO  load(TraversalPolicy, File, Precision, long) belongs here, mapping the file through
+	// TODO  MappedMemoryProvider (the class javadoc above already advertises load(File)); it is
+	// TODO  blocked by block-interface-bypass.py flagging any new member returning this class.
+
 	/**
 	 * Loads all collections serialized in the given file.
 	 *
