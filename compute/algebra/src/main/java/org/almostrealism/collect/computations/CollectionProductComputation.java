@@ -205,6 +205,20 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * the candidate column (via the normal expression evaluation path) rather than assuming
 	 * that value is non-zero.</p>
 	 *
+	 * <p>Propagation is based on an operand's declared property, not on how that operand is
+	 * aligned into this product. A shape-changing wrapper can therefore leave the flag
+	 * {@code true} even when the aligned row no longer has at most one non-zero entry: a
+	 * {@code reshape} that merges rows delegates the flag through unchanged, and a broadcast
+	 * that repeats a lower-rank {@code (rows, 1)} operand across the {@code (rows, columns)}
+	 * output copies its single non-zero into every column of each row. Both are false positives
+	 * of the row-monomial property, but neither corrupts a result, for the same reason the
+	 * annihilating case above does not:
+	 * {@link io.almostrealism.compute.RowMonomialOptimization} only uses the flag to keep the
+	 * operand inline, and the gather collapse it enables is an independent value-based analysis
+	 * that reads the true value at each row and declines to collapse any row whose non-zero
+	 * entry is not unique, falling back to the dense reduction. The flag gates only whether the
+	 * collapse is attempted, never what value it reads.</p>
+	 *
 	 * @return true if any operand is recognized as row-monomial
 	 * @see Algebraic#isRowMonomial(Object)
 	 */

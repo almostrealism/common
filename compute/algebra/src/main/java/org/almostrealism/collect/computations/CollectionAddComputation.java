@@ -204,6 +204,19 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * that does not depend on the differentiation target: the other product-rule term has a
 	 * zero derivative and contributes a zero addend here.</p>
 	 *
+	 * <p>Recognition is based on the sole non-zero operand's declared property, not on how it is
+	 * aligned into this sum. A shape-changing wrapper can therefore leave the flag {@code true}
+	 * even when the aligned row no longer has at most one non-zero entry: a {@code reshape} that
+	 * merges rows delegates the flag through unchanged, and a broadcast that repeats a lower-rank
+	 * {@code (rows, 1)} operand across the {@code (rows, columns)} output copies its single
+	 * non-zero into every column of each row. Both are false positives of the row-monomial
+	 * property, but neither corrupts a result:
+	 * {@link io.almostrealism.compute.RowMonomialOptimization} only uses the flag to keep the
+	 * operand inline, and the gather collapse it enables is an independent value-based analysis
+	 * that reads the true value at each row and declines to collapse any row whose non-zero entry
+	 * is not unique, falling back to the dense reduction. The flag gates only whether the collapse
+	 * is attempted, never what value it reads.</p>
+	 *
 	 * @return true if exactly one operand is non-zero and that operand is row-monomial
 	 * @see Algebraic#isRowMonomial(Object)
 	 * @see Algebraic#isZero(Object)
