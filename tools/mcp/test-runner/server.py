@@ -45,11 +45,12 @@ import reports  # noqa: E402
 import run_store  # noqa: E402
 import timing  # noqa: E402
 import fork_discovery  # noqa: E402
+from run_validation import validate_start_test_run_arguments, ValidationError  # noqa: E402
 
 # The target Maven project. Re-exported here because the MCP dispatch below
 # resolves the caller's `project` argument, and because tests and other
 # collaborators address these through the server module.
-from project import resolve_ci_test_groups, resolve_project_root  # noqa: E402
+from project import resolve_project_root  # noqa: E402
 
 RUNS_DIR = Path(__file__).parent / "runs"
 
@@ -67,6 +68,11 @@ DEFAULT_MODULE = "engine/utils"
 # inactivity kill (which is a confusing failure mode for the agent). Callers
 # may pass a higher value, but values >20 are unsafe under the harness.
 DEFAULT_TIMEOUT = 15
+# Hard ceiling on timeout_minutes: agents and job submitters may never run a
+# test or build invocation with a timeout over 2400s (40 minutes) -- see
+# tools/mcp/manager/execution_limits.py for the ar-manager-side half of
+# this same rule. There is no bypass.
+MAX_TIMEOUT_MINUTES = 40
 # Output and stacktrace limits are owned by the collaborators that apply them;
 # named here because the tool descriptions below quote them to callers.
 DEFAULT_OUTPUT_LINES = run_store.DEFAULT_OUTPUT_LINES
@@ -121,6 +127,36 @@ class RunConfig:
                        test_classes=list(self.test_classes),
                        test_methods=list(self.test_methods),
                        jvm_args=list(self.jvm_args))
+
+
+def _remaining_timeout_seconds(timeout_minutes: Optional[int],
+                                elapsed_seconds: float) -> Optional[float]:
+    """Return the timeout budget left for the test process after preflight.
+
+    ``timeout_minutes`` documents the run's total wall-clock ceiling, but the
+    synchronous preflight seed step (see ``start_run``) runs BEFORE the test
+    process's own timer is armed. Arming that timer with the full
+    ``timeout_minutes * 60`` again would let a run occupy the server for up
+    to 2x its documented budget (the preflight time plus a fresh full
+    timeout for the test process). This subtracts what preflight already
+    spent, so the two together never exceed ``timeout_minutes``.
+
+    Args:
+        timeout_minutes: The run's configured timeout, or falsy when no
+            timeout applies (``None`` is returned in that case, matching the
+            "no timer armed" behavior for an unbounded run).
+        elapsed_seconds: Wall-clock time already spent on preflight before
+            the test process's timer is armed.
+
+    Returns:
+        The remaining seconds available for the test process, clamped to
+        ``0.0`` at minimum (preflight consuming the entire budget still
+        arms a timer, just one that fires immediately rather than never).
+        ``None`` when ``timeout_minutes`` is falsy.
+    """
+    if not timeout_minutes:
+        return None
+    return max(0.0, timeout_minutes * 60 - elapsed_seconds)
 
 
 @dataclass
@@ -298,8 +334,20 @@ class TestRunner:
         # it must finish before the test process launches against the same
         # module. Skipped path is a few-millisecond pom scan; only the
         # genuinely-uninstalled case blocks for the duration of mvn install.
+        preflight_started = time.monotonic()
         preflight_result = preflight_runner.run(
-            run_dir, config.module, config.project_root())
+            run_dir, config.module, config.project_root(),
+            timeout_seconds=(config.timeout_minutes or MAX_TIMEOUT_MINUTES) * 60)
+        preflight_elapsed = time.monotonic() - preflight_started
+        # The test process's own timeout timer is armed below, AFTER this
+        # preflight step already spent part of the run's timeout_minutes
+        # budget. Without subtracting that elapsed time, a run capped at
+        # timeout_minutes could occupy the runner for close to 2x that
+        # budget (up to timeout_minutes for preflight, then a fresh
+        # timeout_minutes for the test process). remaining_timeout_seconds
+        # is what's left of the budget for the test process alone.
+        remaining_timeout_seconds = _remaining_timeout_seconds(
+            config.timeout_minutes, preflight_elapsed)
         if preflight_result.action == "failed":
             # Short-circuit: mark the run failed and return early. The
             # preflight banner already explains the failure in output.txt.
@@ -334,10 +382,13 @@ class TestRunner:
             )
             self._save_metadata(run_id, metadata)
 
-            # Start timeout timer (applies to entire run)
-            if config.timeout_minutes:
+            # Start timeout timer (applies to entire run). Uses
+            # remaining_timeout_seconds, not config.timeout_minutes * 60, so
+            # the preflight time already spent above counts against this
+            # run's timeout budget instead of extending it.
+            if remaining_timeout_seconds is not None:
                 timer = threading.Timer(
-                    config.timeout_minutes * 60,
+                    remaining_timeout_seconds,
                     self._timeout_run,
                     [run_id]
                 )
@@ -411,10 +462,14 @@ class TestRunner:
             )
             pid_discovery.start()
 
-        # Start timeout timer
-        if config.timeout_minutes:
+        # Start timeout timer. Uses remaining_timeout_seconds, not
+        # config.timeout_minutes * 60, so the preflight time already spent
+        # above counts against this run's timeout budget instead of
+        # extending it -- see the comment where remaining_timeout_seconds
+        # is computed, above.
+        if remaining_timeout_seconds is not None:
             timer = threading.Timer(
-                config.timeout_minutes * 60,
+                remaining_timeout_seconds,
                 self._timeout_run,
                 [run_id]
             )
@@ -1057,10 +1112,13 @@ async def list_tools():
                     "timeout_minutes": {
                         "type": "integer",
                         "minimum": 1,
+                        "maximum": MAX_TIMEOUT_MINUTES,
                         "description": (
                             f"Max run time in minutes (default: {DEFAULT_TIMEOUT}). "
                             "Values >20 are unsafe under the harness's "
-                            "20-minute inactivity timeout."
+                            f"20-minute inactivity timeout. Rejected above "
+                            f"{MAX_TIMEOUT_MINUTES} minutes (2400s) -- broad "
+                            "verification belongs to CI."
                         )
                     },
                     "jvm_args": {
@@ -1090,12 +1148,12 @@ async def list_tools():
                     "test_group": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). When test_groups is omitted, the group count is read from the CI workflow (AR_TEST_GROUPS in .github/workflows/analysis.yaml), so the partition always matches what CI actually runs. To fully mirror a CI job, also copy that job's hardware flags (AR_HARDWARE_DRIVER etc.) from the workflow into jvm_args."
+                        "description": "REJECTED. Reproducing a CI test-matrix group (running the WHOLE module in one JVM with AR_TEST_GROUP set) is a CI shard, which agents and job submitters may never run -- there is no bypass. Pass test_classes or test_methods to select the specific test(s) you need."
                     },
                     "test_groups": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Defaults to the value the CI workflow currently uses, read from .github/workflows/analysis.yaml at request time. Pass explicitly only to explore a partitioning different from CI's. Only used when test_group is set."
+                        "description": "REJECTED alongside test_group; see its description. Present only for wire-format compatibility."
                     }
                 }
             }
@@ -1240,20 +1298,32 @@ async def call_tool(name: str, arguments: dict):
     """Handle tool calls."""
     try:
         if name == "start_test_run":
+            # Enforces the "no broad test runs" rule -- see run_validation.py
+            # for the checks and tools/mcp/manager/execution_limits.py
+            # for the sibling rule enforced at job submission. No bypass.
+            try:
+                normalized = validate_start_test_run_arguments(
+                    arguments, DEFAULT_TIMEOUT, MAX_TIMEOUT_MINUTES)
+            except ValidationError as exc:
+                return [TextContent(type="text", text=json.dumps({"error": exc.error}, indent=2))]
+            timeout_minutes = normalized["timeout_minutes"]
+            test_classes = normalized["test_classes"]
+            test_methods = normalized["test_methods"]
+            jvm_args = normalized["jvm_args"]
             config = RunConfig(
                 depth=arguments.get("depth"),
                 project=arguments.get("project", ""),
                 module=arguments.get("module", DEFAULT_MODULE),
-                test_classes=arguments.get("test_classes", []),
-                test_methods=arguments.get("test_methods", []),
-                timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT),
-                jvm_args=arguments.get("jvm_args", []),
+                test_classes=test_classes,
+                test_methods=test_methods,
+                timeout_minutes=timeout_minutes,
+                jvm_args=jvm_args,
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
                 jfr_settings=arguments.get("jfr_settings", "default"),
                 repetitions=arguments.get("repetitions", 1),
-                test_group=arguments.get("test_group"),
-                test_groups=arguments.get("test_groups")
+                test_group=None,
+                test_groups=None
             )
             # Resolve eagerly so a bad path is reported as a tool error rather
             # than surfacing later as an opaque Maven failure inside a run.
@@ -1270,8 +1340,10 @@ async def call_tool(name: str, arguments: dict):
                     ],
                 }, indent=2))]
 
-            if config.test_group is not None and config.test_groups is None:
-                config.test_groups = resolve_ci_test_groups(config.module, project_root)
+            # config.test_group/test_groups are always None here -- both are
+            # rejected above before RunConfig is built. resolve_ci_test_groups
+            # is still used by RunConfig callers outside this MCP surface (see
+            # test_runner_server.py).
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,

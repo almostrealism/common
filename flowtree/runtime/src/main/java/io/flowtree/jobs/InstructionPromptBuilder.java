@@ -982,18 +982,36 @@ public class InstructionPromptBuilder {
         sb.append("and run THOSE before declaring done.\n\n");
         sb.append("Concrete heuristic:\n");
         sb.append("1. For each modified Java file `Foo.java`, look for `FooTest.java`, ");
-        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java` ");
-        sb.append("and run them.\n");
+        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java`, ");
+        sb.append("then run the specific method(s) that exercise your change -- one at a ");
+        sb.append("time, never the whole class.\n");
         sb.append("2. Look for any tests in the same package that import the file you ");
-        sb.append("changed and run those too.\n");
-        sb.append("3. For Python changes in `tools/`, run the corresponding pytest module ");
-        sb.append("(e.g., `python -m pytest tools/mcp/manager/test_server.py`).\n");
-        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
-        sb.append("a specific class quickly; full module runs only when you've touched many ");
-        sb.append("files in one module.\n\n");
+        sb.append("changed and run their relevant methods too, one at a time.\n");
+        sb.append("3. For Python changes in `tools/`, run the specific test node id(s) that ");
+        sb.append("exercise your change (e.g., `python -m pytest ");
+        sb.append("tools/mcp/manager/test_server.py::test_name`), never the whole module.\n");
+        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_methods` to run ");
+        sb.append("one `Class#method` per invocation; never a bare class or a full module ");
+        sb.append("run -- see \"Test Execution Limits\" below.\n\n");
         sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. If a ");
         sb.append("test fails, fix the underlying cause. Do NOT add `@Disabled`, comment ");
         sb.append("out assertions, or weaken tests to make them green.\n\n");
+
+        // Test execution limits -- always included for coding tasks
+        sb.append("## Test Execution Limits\n");
+        sb.append("Run at most ONE test per invocation: a single pytest node id ");
+        sb.append("(`path/test_x.py::test_name`), or `-Dtest=Class#method` for Java via ");
+        sb.append("`mcp__ar-test-runner__start_test_run`. Never a bare `-Dtest=Class` (that ");
+        sb.append("still runs the whole class), never a module's whole suite, and never ");
+        sb.append("`AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning, reserved ");
+        sb.append("for the CI workflow matrix. Broad verification belongs to CI, not to this ");
+        sb.append("session.\n\n");
+        sb.append("Every test or build invocation needs an explicit timeout of at most 40 ");
+        sb.append("minutes (2400s). Never leave a background build or test run active when ");
+        sb.append("you end your turn: this session is killed for inactivity — stdout ");
+        sb.append("silence, not total runtime — so an unattended background process either ");
+        sb.append("gets killed mid-run or, worse, outlives the session as orphaned state the ");
+        sb.append("next session has to diagnose before it can trust the build tree.\n\n");
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {

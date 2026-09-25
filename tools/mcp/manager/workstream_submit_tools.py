@@ -79,17 +79,31 @@ def workstream_submit_task(
     - Providing workstream_id explicitly
     - Providing target_branch (matched against registered workstreams)
 
+    RULE, NO BYPASS -- test execution limits: neither ``prompt`` nor
+    ``command`` nor ``post_completion_command`` may instruct or run a
+    full/whole/entire test suite, a module's whole suite, or a CI shard
+    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select an
+    explicit ``Class#method`` test; a pytest command must select an
+    explicit node id. This is checked mechanically on every submission --
+    see ``tools/mcp/manager/execution_limits.py`` for the full rule
+    and the incident that made it a hard requirement. There is no operator
+    escape hatch, unlike ``allow_commit_language`` below.
+
     Args:
         prompt: The task description for the coding agent. Required for the
             default coding-agent job; ignored for a shell-command job. Be
             specific about what files to change, what behavior to implement,
-            and any constraints.
+            and any constraints. May not instruct the agent to run a broad
+            test set (see RULE above) -- ask for one narrowly-selected test
+            per invocation instead, or leave verification to CI.
         job_type: The job type to submit. Empty (default) or "coding" submits
             a coding-agent job; "shell" submits a shell-command job that runs
             ``command``. Providing ``command`` implies "shell".
         command: The shell command to run for a shell-command job. Required
             when job_type="shell" (or when used to imply a shell job); ignored
-            for a coding-agent job.
+            for a coding-agent job. Subject to the same test-execution-limits
+            RULE as ``post_completion_command`` above -- no full/whole test
+            suite, module suite, or CI shard.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
             workstream_id). Must be paired with ``repo_url`` when more than
@@ -233,19 +247,33 @@ def workstream_submit_task(
             failure. The loop continues until the command exits zero or max
             retries is exhausted. Examples:
 
-            - Run a single test class:
-              ``"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest"``
-            - Run a pytest file:
-              ``"cd tools/mcp/manager && pytest tests/test_secrets.py"``
+            - Run a single test method:
+              ``"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"``
+            - Run a pytest node id:
+              ``"cd tools/mcp/manager && pytest tests/test_secrets.py::test_render"``
             - Run a custom script: ``"bash scripts/verify-foo.sh"``
 
             The command runs on the agent's host with the agent's privileges.
             It is NOT sandboxed — treat it like any other trusted instruction.
             Empty string (default) disables the feature.
+
+            RULE, NO BYPASS: this command may never run a full/whole test
+            suite, a module's whole suite, or a CI shard. Concretely, it is
+            rejected when it runs a Maven test-executing phase
+            (test/integration-test/verify/install/package/deploy) without an
+            explicit ``-Dtest=Class#method`` selector (a bare
+            ``-Dtest=Class`` also counts as too broad), when it references
+            ``AR_TEST_GROUP``/``AR_TEST_GROUPS`` in any form, or when it runs
+            pytest against a directory or whole file instead of an explicit
+            node id (``file.py::test_name``). ``mvn install -DskipTests`` is
+            a build, not a test run, and remains allowed. This mirrors the
+            same-named rule on ``command`` for a shell-command job. See
+            ``tools/mcp/manager/execution_limits.py``.
         post_completion_timeout_seconds: Maximum seconds to wait for the
             post-completion command before killing it and treating the run as a
             failure. 0 (default) uses the server-side default of 1800 seconds
-            (30 minutes).
+            (30 minutes). Rejected if greater than 2400 (40 minutes) -- broad
+            verification belongs to CI, not a post-completion gate.
         max_post_completion_passes: Maximum number of post-completion correction
             sessions per job. 0 (default) uses the server-side default of 3.
             Each pass runs a full agent session; without a cap a single flaky
@@ -357,6 +385,55 @@ def workstream_submit_task(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
         return err
+    # Test-execution-limits validation -- no bypass flag exists for any of
+    # these checks (tools/mcp/manager/execution_limits.py). A shell job's
+    # `command` and a coding-agent job's `post_completion_command` are both
+    # shell commands a job submitter can use to run tests directly, so both
+    # are checked the same way: reject a command that would run a
+    # full/whole test suite, a module's whole suite, a CI shard
+    # (AR_TEST_GROUP/AR_TEST_GROUPS), or an over-broad pytest invocation.
+    for field_name, field_value in (("command", command),
+                                     ("post_completion_command", post_completion_command)):
+        cmd_violations = server.validate_post_completion_command(field_value)
+        if cmd_violations:
+            return {
+                "ok": False,
+                "error": (
+                    "{} would run a broad test set, which agents and job "
+                    "submitters may never do -- broad verification belongs to "
+                    "CI. There is no bypass for this check.\n\n"
+                    "Violations found:\n  - {}\n\n"
+                    "Rewrite the command to select explicit Class#method tests "
+                    "(Maven) or explicit node ids (pytest), one test per "
+                    "invocation.".format(field_name, "\n  - ".join(cmd_violations))
+                ),
+            }
+    if post_completion_timeout_seconds:
+        timeout_err = server.validate_post_completion_timeout(post_completion_timeout_seconds)
+        if timeout_err:
+            return {"ok": False, "error": timeout_err}
+    # Broad-test-instruction linter -- rejects prompts that instruct the
+    # agent, in English, to run a full/whole/entire suite, a module's
+    # tests, a shard, mvn test without a single-method selector, or
+    # AR_TEST_GROUP. No bypass flag; unlike allow_commit_language, this
+    # rule has no legitimate exception -- see execution_limits.py.
+    prompt_test_hits = server.lint_prompt_for_broad_test_instructions(prompt)
+    if prompt_test_hits:
+        lines = []
+        for lineno, snippet, reason in prompt_test_hits:
+            lines.append("  Line {}: {}\n    > {}".format(lineno, reason, snippet))
+        return {
+            "ok": False,
+            "error": (
+                "Prompt instructs the agent to run a broad test set. Agents may "
+                "run at most one narrowly-selected test per invocation; broad "
+                "verification (full suites, module suites, CI shards) belongs "
+                "to CI only. There is no bypass for this check.\n\n"
+                "Forbidden phrases found:\n" + "\n".join(lines) +
+                "\n\nRewrite the prompt to name the specific failing test(s) to "
+                "run, one at a time."
+            ),
+        }
     if max_wall_clock_hours is not None and max_wall_clock_hours < 0:
         return {
             "ok": False,
