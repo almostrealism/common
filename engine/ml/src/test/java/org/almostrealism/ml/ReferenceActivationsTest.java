@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.FileMapping;
 import org.junit.Test;
 
 import static org.junit.Assert.assertNotSame;
@@ -24,6 +25,7 @@ import static org.junit.Assert.assertSame;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -216,6 +218,30 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 		assertNotSame(opened, reopened);
 		assertEquals(-2.25, references.load("enc_resamp_output")[5], 1e-6);
 		references.destroy();
+	}
+
+	/**
+	 * Reading a dump directory through {@link StateDictionary} holds no file mapping once the
+	 * dictionary is destroyed. A real dump carries a {@code .json} shapes sidecar beside its shards;
+	 * that file is not protobuf and fails to parse, and neither the skipped sidecar nor the shards
+	 * may leave a native mapping behind after the dictionary is released.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aReleasedDirectoryHoldsNoMappings() throws IOException {
+		File dir = standardDump();
+		Files.write(dir.toPath().resolve("shapes.json"),
+				"{\"enc_after_mapping\": [3, 4]}".getBytes(StandardCharsets.UTF_8));
+
+		int before = FileMapping.getMappedFileCount();
+
+		StateDictionary references = new StateDictionary(dir.getPath());
+		assertTrue(references.containsKey("enc_after_mapping"));
+		assertFalse(references.containsKey("shapes.json"));
+		references.destroy();
+
+		assertEquals(before, FileMapping.getMappedFileCount());
 	}
 
 	/**

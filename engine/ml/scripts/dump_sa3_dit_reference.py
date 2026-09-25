@@ -245,7 +245,8 @@ def main():
     with open(os.path.join(args.out, "dit_shapes.json"), "w") as f:
         json.dump(shapes, f, indent=2, sort_keys=True)
 
-    print("Wrote %d reference activations to %s" % (len(written), args.out))
+    print("Wrote %d reference activations (%d shard(s)) to %s"
+          % (len(combined), len(written), args.out))
     for name in sorted(stages):
         print("  %-20s %s" % (name, list(stages[name].shape)))
     for name in sorted(conditioner_tensors):
