@@ -464,10 +464,13 @@ immediately — which is the wrong answer if the consuming device is not yet kno
 
 **Reference.** Implement `Memory` over the source and let the framework migrate
 it when a kernel first requires it. Nothing is materialized on the host and
-nothing reaches a device until something actually reads it. `CollectionDataMemory`
-and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example, serving
-values straight out of a `FileMapping`, with `CollectionDataMemoryProvider` as the
-template for a read-only source provider. Migration is generic rather than
+nothing reaches a device until something actually reads it. `MappedMemory` and
+its `MappedMemoryProvider` (in `org.almostrealism.hardware.mem`) are the base-layer
+read-only source provider for values still in the file they were written to,
+serving them straight out of a `FileMapping`; `PackedCollection.load` directs
+callers here whenever the values live in a file. `CollectionDataMemory` and
+`MappedCollectionDataMemory` (in `engine/ml`) are a higher-level worked example
+over the same mechanism. Migration is generic rather than
 special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
 provider, so any read-only provider participates.
 
