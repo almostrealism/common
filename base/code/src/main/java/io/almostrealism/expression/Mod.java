@@ -317,6 +317,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * range that straddles a multiple of {@code modulus} — even one narrower than
 	 * {@code modulus} itself — reaches {@code modulus - 1} at an interior point
 	 * that is neither endpoint.</p>
+	 *
+	 * <p>Outside that tight case the bound falls back to {@code |modulus| - 1},
+	 * which is sound for any dividend range and either sign of modulus, since a
+	 * residue's magnitude is always strictly less than the modulus magnitude.</p>
 	 */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
@@ -342,7 +346,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 				}
 			}
 
-			return OptionalLong.of(m.getAsLong() - 1);
+			// |modulus| - 1 stays sound for a negative modulus, where the raw
+			// value would report a negative (unsound) bound.
+			return OptionalLong.of(Math.abs(m.getAsLong()) - 1);
 		}
 
 		return getChildren().get(1).upperBound(context);

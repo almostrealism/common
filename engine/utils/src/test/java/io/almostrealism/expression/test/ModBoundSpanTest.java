@@ -133,4 +133,24 @@ public class ModBoundSpanTest extends TestSuiteBase {
 		Assert.assertEquals("lower bound of a non-wrapping range is the bottom residue",
 				trueMin(6, 9, 5), lower);
 	}
+
+	/**
+	 * A negative modulus is representable ({@code imod} only warns for a zero
+	 * divisor), and in Java the residue takes the sign of the dividend, so a
+	 * non-negative dividend modulo {@code -5} still yields residues in
+	 * {@code [0, 4]}. The upper-bound fallback must report the modulus
+	 * <em>magnitude</em> minus one; reporting the raw {@code modulus - 1} would
+	 * give {@code -6}, an unsound bound below every value the expression takes.
+	 */
+	@Test(timeout = 30000)
+	public void upperBoundNegativeModulusIsSound() {
+		Expression<?> mod = boundedMod(8, 0, -5);
+
+		long bound = mod.upperBound().orElse(Long.MIN_VALUE);
+		long actualMax = trueMax(0, 7, -5);
+
+		Assert.assertTrue("upper bound " + bound
+						+ " must be a sound bound (>= the actual maximum residue " + actualMax + ")",
+				bound >= actualMax);
+	}
 }
