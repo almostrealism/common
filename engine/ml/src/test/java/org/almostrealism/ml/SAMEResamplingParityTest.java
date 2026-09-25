@@ -89,7 +89,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 600000)
 	public void encoderParity() throws IOException {
-		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight.bin");
+		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight");
 		File refDir = firstExisting(REFERENCE_DIRS, "enc_resamp_input");
 		if (weightDir == null || refDir == null) {
 			log("skipping encoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
@@ -164,7 +164,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 600000)
 	public void decoderParity() throws IOException {
-		File weightDir = firstExisting(WEIGHT_DIRS, "decoder.layers.3.mapping.weight.bin");
+		File weightDir = firstExisting(WEIGHT_DIRS, "decoder.layers.3.mapping.weight");
 		// Gate on dec_poststack.bin: it is one of the per-stage references the updated dump script added
 		// (alongside dec_seg_input.bin and dec_premap.bin) that the original ref set lacked. Marking on it
 		// means a stale ref directory from an older dump skips cleanly here rather than failing partway

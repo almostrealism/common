@@ -181,6 +181,36 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	}
 
 	/**
+	 * A directory holding only a legacy per-tensor {@code .bin} file — no protobuf shards — can no
+	 * longer be read, so a marker that names the shard key passes it over and resolves to the
+	 * readable protobuf dump, while a marker carrying the legacy suffix matches the raw file by name
+	 * and selects the unreadable directory.
+	 *
+	 * <p>This is why the migrated weight callers gate on the shard key
+	 * ({@code encoder.layers.0.mapping.weight}) rather than the legacy file
+	 * ({@code encoder.layers.0.mapping.weight.bin}): now that weights load only through
+	 * {@link StateDictionary}, a legacy-suffixed marker would select a stale raw dump whose every
+	 * weight lookup then fails, instead of skipping it for a protobuf dump.</p>
+	 *
+	 * @throws IOException if the dump cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void aKeyMarkerPassesOverALegacyRawDump() throws IOException {
+		Path legacy = Files.createTempDirectory("legacy-raw");
+		legacy.toFile().deleteOnExit();
+		Files.write(legacy.resolve("encoder.layers.0.mapping.weight.bin"), new byte[]{1, 2, 3, 4});
+
+		File dump = standardDump();
+		String[] candidates = {legacy.toString(), dump.getPath()};
+
+		assertEquals(legacy.toFile(), ReferenceActivations.firstExisting(candidates,
+				"encoder.layers.0.mapping.weight.bin"));
+		assertEquals(dump, ReferenceActivations.firstExisting(candidates, "enc_after_mapping"));
+		assertTrue(ReferenceActivations.firstExisting(new String[]{legacy.toString()},
+				"enc_after_mapping") == null);
+	}
+
+	/**
 	 * Presence is answered by key, the legacy per-tensor marker names the same key, and a tensor
 	 * the dump never captured is absent rather than an error.
 	 *
