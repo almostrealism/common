@@ -924,9 +924,24 @@ class TestPytestPromptLint(unittest.TestCase):
         self.assertTrue(lint_prompt_for_broad_test_instructions(
             "pytest -q a.py::test_one b.py::test_two"))
 
+    def test_directory_alongside_node_id_flagged(self):
+        # A bare directory positional next to a node id still runs the whole
+        # directory; counting only "::" tokens would have let this pass.
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Run pytest tests/ test_foo.py::test_bar"))
+
+    def test_whole_file_alongside_node_id_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "run python3 -m pytest test_foo.py test_bar.py::test_qux"))
+
     def test_single_node_id_accepted(self):
         self.assertEqual([], lint_prompt_for_broad_test_instructions(
             "Then run python -m pytest tools/mcp/manager/test_server.py::TestFoo::test_bar"))
+
+    def test_node_id_followed_by_prose_accepted(self):
+        # Prose after a valid node id must not be misread as extra targets.
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Run pytest test_foo.py::test_bar to verify the fix before finishing."))
 
     def test_backquoted_single_node_id_accepted(self):
         self.assertEqual([], lint_prompt_for_broad_test_instructions(

@@ -1321,27 +1321,43 @@ class _PytestNodeIdMatcher:
     _MODULE_INVOCATION_PATTERN = re.compile(
         r"\bpython3?(?:\s+-\S+)*\s+-m\s+pytest\b", re.IGNORECASE)
     _BARE_INVOCATION_PATTERN = re.compile(
-        r"(?<![\w.-])(?P<verb>(?:run|execute)\s+)?py\.?test\b(?![.-]\w)"
-        r"(?:\s+(?P<arg>\S+))?",
+        r"(?<![\w.-])(?:(?P<verb>run|execute)\s+)?py\.?test\b(?![.-]\w)",
         re.IGNORECASE)
     _ARGUMENT_SHAPE_PATTERN = re.compile(r"^-|/|\.py\b|::")
 
-    def _is_invocation(self, fragment: str) -> bool:
-        if self._MODULE_INVOCATION_PATTERN.search(fragment):
-            return True
-        for match in self._BARE_INVOCATION_PATTERN.finditer(fragment):
-            arg = match.group("arg")
-            if match.group("verb") or (arg and self._ARGUMENT_SHAPE_PATTERN.search(arg)):
-                return True
-        return False
+    def _arguments_after(self, remainder: str) -> list:
+        """The contiguous run of argument-shaped tokens (flags, paths, ``.py``
+        files or node ids) that immediately follows the invocation word --
+        pytest's own positional/option arguments. Scanning stops at the first
+        prose token so surrounding sentence text is not mistaken for an
+        argument (e.g. "... test_foo.py::test_bar to verify the fix")."""
+        args = []
+        for tok in remainder.split():
+            if tok.startswith("-") or self._ARGUMENT_SHAPE_PATTERN.search(tok):
+                args.append(tok)
+            else:
+                break
+        return args
+
+    def _is_broad(self, args: list) -> bool:
+        """Mirror ``_pytest_segment_violation``: broad unless the arguments
+        name exactly one positional and that positional is a ``::`` node id.
+        A bare positional (a whole file or directory) or more than one
+        positional runs more than a single test."""
+        positionals = [a for a in args if not a.startswith("-")]
+        return not (len(positionals) == 1 and "::" in positionals[0])
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line.replace("`", " ")):
-            if not self._is_invocation(fragment):
-                continue
-            node_ids = [tok for tok in fragment.split() if "::" in tok]
-            if len(node_ids) != 1:
-                return True
+            for match in self._MODULE_INVOCATION_PATTERN.finditer(fragment):
+                if self._is_broad(self._arguments_after(fragment[match.end():])):
+                    return True
+            for match in self._BARE_INVOCATION_PATTERN.finditer(fragment):
+                args = self._arguments_after(fragment[match.end():])
+                if not match.group("verb") and not args:
+                    continue
+                if self._is_broad(args):
+                    return True
         return None
 
 

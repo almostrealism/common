@@ -192,6 +192,22 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 				"Add a pytest regression test and use explicit pytest node ids.").isEmpty());
 	}
 
+	/** A bare positional (a directory or whole file) next to a node id still runs more than one
+	 * test, so it must be flagged even though exactly one token contains "::". */
+	@Test(timeout = 10000)
+	public void pytestBarePositionalAlongsideNodeIdRejected() {
+		assertFalse(violationsFor("Run pytest tests/ test_foo.py::test_bar").isEmpty());
+		assertFalse(violationsFor(
+				"run python3 -m pytest test_foo.py test_bar.py::test_qux").isEmpty());
+	}
+
+	/** Prose following a single node id must not be mistaken for extra pytest arguments. */
+	@Test(timeout = 10000)
+	public void pytestNodeIdFollowedByProseAccepted() {
+		assertTrue(violationsFor(
+				"Run pytest test_foo.py::test_bar to verify the fix before finishing.").isEmpty());
+	}
+
 	/** A prompt whose last -DskipTests value is a command substitution the shell expands to
 	 * false must not be exempted by an earlier literal -DskipTests=true mention. */
 	@Test(timeout = 10000)

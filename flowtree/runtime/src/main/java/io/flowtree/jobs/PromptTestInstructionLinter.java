@@ -124,10 +124,10 @@ public class PromptTestInstructionLinter {
 			"\\bpython3?(?:\\s+-\\S+)*\\s+-m\\s+pytest\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Matches a bare {@code pytest}/{@code py.test} word, capturing an optional preceding run
-	 * verb and the following token so {@link #pytestWithoutSingleNodeId} can tell an instruction
-	 * to run it from prose that merely names the tool. */
+	 * verb so {@link #pytestWithoutSingleNodeId} can tell an instruction to run it from prose that
+	 * merely names the tool. The end of the match is the start of the invocation's arguments. */
 	private static final Pattern PYTEST_BARE_INVOCATION = Pattern.compile(
-			"(?<![\\w.-])((?:run|execute)\\s+)?py\\.?test\\b(?![.-]\\w)(?:\\s+(\\S+))?",
+			"(?<![\\w.-])(?:(run|execute)\\s+)?py\\.?test\\b(?![.-]\\w)",
 			Pattern.CASE_INSENSITIVE);
 
 	/** Matches an argument-shaped token: a flag, a path, a {@code .py} file or a node id. */
@@ -278,41 +278,77 @@ public class PromptTestInstructionLinter {
 	 *
 	 * <p>{@code python -m pytest} is always an invocation. A bare {@code pytest} word is only
 	 * treated as one when a run verb precedes it or an argument-shaped token follows it, so prose
-	 * that merely names the tool -- "add a pytest regression test" -- is not flagged.</p>
+	 * that merely names the tool -- "add a pytest regression test" -- is not flagged. Counting only
+	 * {@code ::} tokens across the whole fragment would miss a bare positional next to a node id
+	 * (e.g. {@code pytest tests/ test_foo.py::test_bar}, which still runs the whole {@code tests/}
+	 * directory), so the arguments are read as the command validator reads them.</p>
 	 */
 	private static boolean pytestWithoutSingleNodeId(String line) {
 		for (String fragment : CHAIN_SPLIT.split(line.replace('`', ' '))) {
-			if (!isPytestInvocation(fragment)) {
-				continue;
-			}
-			int nodeIds = 0;
-			for (String token : fragment.trim().split("\\s+")) {
-				if (token.contains("::")) {
-					nodeIds++;
+			Matcher module = PYTEST_MODULE_INVOCATION.matcher(fragment);
+			while (module.find()) {
+				if (pytestArgumentsAreBroad(argumentsAfter(fragment, module.end()))) {
+					return true;
 				}
 			}
-			if (nodeIds != 1) {
-				return true;
+			Matcher bare = PYTEST_BARE_INVOCATION.matcher(fragment);
+			while (bare.find()) {
+				List<String> args = argumentsAfter(fragment, bare.end());
+				if (bare.group(1) == null && args.isEmpty()) {
+					continue;
+				}
+				if (pytestArgumentsAreBroad(args)) {
+					return true;
+				}
 			}
 		}
 		return false;
 	}
 
-	/** Returns whether {@code fragment} instructs a pytest run; see
-	 * {@link #pytestWithoutSingleNodeId}. */
-	private static boolean isPytestInvocation(String fragment) {
-		if (PYTEST_MODULE_INVOCATION.matcher(fragment).find()) {
-			return true;
+	/**
+	 * The contiguous run of argument-shaped tokens (flags, paths, {@code .py} files or node ids)
+	 * that immediately follows the invocation word -- pytest's own positional/option arguments.
+	 * Scanning stops at the first prose token so surrounding sentence text is not mistaken for an
+	 * argument (e.g. "... test_foo.py::test_bar to verify the fix").
+	 *
+	 * @param fragment the chained-command fragment being scanned
+	 * @param start    the index just past the matched {@code pytest} invocation word
+	 * @return the argument tokens, in order; empty when none follow
+	 */
+	private static List<String> argumentsAfter(String fragment, int start) {
+		List<String> args = new ArrayList<>();
+		String remainder = fragment.substring(start).trim();
+		if (remainder.isEmpty()) {
+			return args;
 		}
-		Matcher matcher = PYTEST_BARE_INVOCATION.matcher(fragment);
-		while (matcher.find()) {
-			String arg = matcher.group(2);
-			if (matcher.group(1) != null
-					|| (arg != null && PYTEST_ARGUMENT_SHAPE.matcher(arg).find())) {
-				return true;
+		for (String token : remainder.split("\\s+")) {
+			if (token.startsWith("-") || PYTEST_ARGUMENT_SHAPE.matcher(token).find()) {
+				args.add(token);
+			} else {
+				break;
 			}
 		}
-		return false;
+		return args;
+	}
+
+	/**
+	 * Mirrors {@link PostCompletionCommandValidator}'s pytest rule: the invocation is broad unless
+	 * its arguments name exactly one positional and that positional is a {@code ::} node id. A bare
+	 * positional (a whole file or directory) or more than one positional runs more than one test.
+	 *
+	 * @param args the invocation's argument tokens, from {@link #argumentsAfter}
+	 * @return true when the arguments describe a broad run
+	 */
+	private static boolean pytestArgumentsAreBroad(List<String> args) {
+		int positionals = 0;
+		String onlyPositional = null;
+		for (String arg : args) {
+			if (!arg.startsWith("-")) {
+				positionals++;
+				onlyPositional = arg;
+			}
+		}
+		return positionals != 1 || !onlyPositional.contains("::");
 	}
 
 	/** The prompt being linted. */
