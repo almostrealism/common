@@ -378,6 +378,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * </ul>
 	 */
 	protected void confirmLoad() {
+		requireLiveContext();
+
 		if (getArgumentVariables() == null &&
 				(enableRedundantCompilation || getInstructionSetManager() == null)) {
 			if (getInstructionSetManager() == null) {

@@ -159,11 +159,4 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	 */
 	@Override
 	public boolean isCPU() { return true; }
-
-	/**
-	 * Releases resources held by this compute context.
-	 * Currently a no-op as executables are not cached.
-	 */
-	@Override
-	public void destroy() { }
 }
