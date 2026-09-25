@@ -403,6 +403,25 @@ def write_group(entries, output_dir, prefix):
     return written
 
 
+def _validate_shard_prefix(shard_prefix):
+    """Reject a ``shard_prefix`` that ends in a reserved suffix.
+
+    :func:`read_state_dictionary` skips files ending in ``SIDECAR_SUFFIX``
+    (``.json``) or ``LEGACY_REFERENCE_SUFFIX`` (``.bin``), so the first shard —
+    named by the bare prefix — would be dropped on read while the Java
+    ``StateDictionary`` still loaded it. Rejecting such a prefix keeps the dump
+    readable by both readers. Callers that perform destructive cleanup must call
+    this before removing anything so an invalid prefix never destroys a usable
+    dump it then cannot replace.
+    """
+    if shard_prefix.endswith(SIDECAR_SUFFIX) or shard_prefix.endswith(LEGACY_REFERENCE_SUFFIX):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} ends in a reserved suffix "
+            f"({SIDECAR_SUFFIX} / {LEGACY_REFERENCE_SUFFIX}); read_state_dictionary "
+            "skips files with those suffixes, so the first shard would be dropped "
+            "on read. Choose a shard_prefix without that suffix.")
+
+
 def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     """Write a remapped ``dict[str, ndarray]`` to StateDictionary protobuf shards.
 
@@ -424,12 +443,7 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     dropped on read while the Java ``StateDictionary`` still loaded it. Such a
     prefix is rejected rather than written into an unreadable dump.
     """
-    if shard_prefix.endswith(SIDECAR_SUFFIX) or shard_prefix.endswith(LEGACY_REFERENCE_SUFFIX):
-        raise ValueError(
-            f"shard_prefix {shard_prefix!r} ends in a reserved suffix "
-            f"({SIDECAR_SUFFIX} / {LEGACY_REFERENCE_SUFFIX}); read_state_dictionary "
-            "skips files with those suffixes, so the first shard would be dropped "
-            "on read. Choose a shard_prefix without that suffix.")
+    _validate_shard_prefix(shard_prefix)
 
     # Fail before the destructive same-prefix cleanup below if the generated
     # protobuf bindings are missing, so a prerequisite failure never deletes
@@ -549,9 +563,12 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     The activations themselves must come from a real reference forward pass (see
     :func:`run_reference_stages`); this function only serializes them.
     """
-    # Validate the protobuf bindings before removing anything: on a checkout
-    # without the generated collections_pb2, this must fail without first
-    # deleting the legacy <stage>.bin dump it would otherwise replace.
+    # Validate everything that write_state_dictionary would reject before removing
+    # anything: a reserved shard_prefix (rejected there after this function has
+    # already run its cleanup) and, on a checkout without the generated
+    # collections_pb2, the missing protobuf bindings. Either failure must happen
+    # without first deleting the legacy <stage>.bin dump it would otherwise replace.
+    _validate_shard_prefix(shard_prefix)
     _require_collections()
 
     for name in stages:

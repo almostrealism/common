@@ -419,6 +419,25 @@ def test_dump_reference_activations_keeps_legacy_bin_when_bindings_missing(tmp_p
     assert legacy.exists(), "legacy dump must survive a prerequisite failure"
 
 
+def test_dump_reference_activations_keeps_legacy_bin_on_reserved_prefix(tmp_path):
+    """A reserved shard_prefix is validated before the destructive legacy cleanup:
+    dumping over a pre-migration directory with a `.bin`/`.json` prefix must raise
+    ValueError WITHOUT first deleting the `<stage>.bin` dump it would have replaced.
+    Without hoisting the check, write_state_dictionary raises only after the cleanup
+    loop has already removed the legacy file."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    for prefix in ("references.bin", "references.json"):
+        with pytest.raises(ValueError):
+            core.dump_reference_activations(
+                {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+                shard_prefix=prefix)
+        assert legacy.exists(), "legacy dump must survive a reserved-prefix rejection"
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently
