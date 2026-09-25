@@ -477,6 +477,45 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
     def test_unresolved_variable_reference_does_not_raise(self):
         self.assertEqual([], validate_post_completion_command("$undefined"))
 
+    def test_surefire_plus_method_separator_dtest_selector_rejected(self):
+        # Surefire treats "+" as a method-list separator, so
+        # FooTest#first+second runs two methods in one invocation despite
+        # naming one comma-free entry with a single "#".
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=FooTest#first+second")
+        self.assertTrue(violations, "a '+' method-list separator must be rejected")
+
+    def test_shell_comment_hiding_broad_maven_command_rejected(self):
+        # The commented-out -Dtest must not make the broad "mvn test" look
+        # narrow: the shell runs only "mvn test".
+        violations = validate_post_completion_command(
+            "mvn test # -Dtest=FooTest#testBar")
+        self.assertTrue(violations, "a commented-out selector must not exempt a broad mvn test")
+
+    def test_quoted_hash_is_not_treated_as_a_comment(self):
+        # A "#" inside a Class#method selector (mid-word, unquoted) is a real
+        # selector, not a comment, so this narrow command is still accepted.
+        self.assertEqual([], validate_post_completion_command(
+            "mvn test -Dtest=FooTest#testBar"))
+
+    def test_maven_phase_from_parameter_expansion_rejected(self):
+        # $MAVEN_GOAL has no literal "test" token for the phase check, but the
+        # shell expands it at run time and may run the whole module suite.
+        violations = validate_post_completion_command(
+            "mvn $MAVEN_GOAL -pl engine/utils")
+        self.assertTrue(violations, "a Maven phase built from a variable expansion must be rejected")
+
+    def test_dtest_selector_from_parameter_expansion_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn test -pl engine/utils -Dtest=$CLASS#$METHOD")
+        self.assertTrue(violations, "a -Dtest selector built from a variable expansion must be rejected")
+
+    def test_parameter_expansion_in_non_test_property_value_accepted(self):
+        # A variable expansion in an ordinary -D property value (not a phase
+        # or a -Dtest selector) is benign and must not be rejected.
+        self.assertEqual([], validate_post_completion_command(
+            "mvn install -DskipTests -DAR_HARDWARE_LIBS=$TEMP/ar_libs"))
+
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
 
@@ -580,6 +619,13 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar,BazTest#qux to confirm the fix.")
         self.assertTrue(hits, "a -Dtest value naming multiple methods must still be flagged")
+
+    def test_surefire_plus_method_separator_dtest_mention_flagged(self):
+        # "Class#m1+m2" runs both methods in one invocation via Surefire's
+        # "+" separator, exactly as broad as the comma form above.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=FooTest#bar+qux to confirm the fix.")
+        self.assertTrue(hits, "a -Dtest value using the '+' method separator must be flagged")
 
     def test_violation_includes_line_number(self):
         hits = lint_prompt_for_broad_test_instructions(

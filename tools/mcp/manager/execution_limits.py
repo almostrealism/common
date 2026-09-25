@@ -274,6 +274,21 @@ def _is_substitution_executable(token: str) -> bool:
     return "$(" in token or "`" in token
 
 
+_PARAMETER_EXPANSION_PATTERN = re.compile(r"\$\{?[A-Za-z_]")
+
+
+def _contains_parameter_expansion(token: str) -> bool:
+    """True when ``token`` contains an unresolved shell parameter expansion
+    (``$VAR`` or ``${VAR}``), which the shell replaces at run time with a value
+    this validator cannot see. Used by ``_maven_segment_violation`` (positional
+    phase position) and ``_dtest_is_narrow`` (``-Dtest`` selector) to reject a
+    test-command argument whose real value is only known after expansion, e.g.
+    ``mvn $MAVEN_GOAL`` or ``-Dtest=$CLASS#$METHOD``. The ``$(`` command
+    substitution form is intentionally not matched here (``(`` is not a name
+    character); ``_is_substitution_executable`` handles that separately."""
+    return bool(_PARAMETER_EXPANSION_PATTERN.search(token))
+
+
 def _substitution_argument_violation(tokens: list, args: list) -> str:
     """Returns a violation reason when any of ``args`` contains a command
     substitution marker (``$(...)`` or a backtick), or ``""`` when none
@@ -318,6 +333,69 @@ def _shell_segments(command: str) -> list:
     return segments
 
 
+_COMMENT_WORD_BOUNDARY_CHARS = frozenset(";|&<>()")
+
+
+def _strip_shell_comment(line: str) -> str:
+    """Removes an unquoted ``#`` shell comment from ``line``, matching the
+    shell's rule that ``#`` starts a comment only when it begins a word -- at
+    the start of the line, or right after unquoted whitespace or a shell
+    operator. A ``#`` in the middle of a word (``-Dtest=FooTest#testBar``, a
+    Java Class#method selector) is left untouched, so the selector survives.
+
+    Without this, ``mvn test # -Dtest=FooTest#testBar`` tokenizes (comment
+    parsing is disabled in ``_tokenize`` precisely to keep Class#method
+    selectors intact) with both the ``test`` phase and the commented-out
+    ``-Dtest=`` argument, so ``_maven_segment_violation`` treats the broad
+    ``mvn test`` as narrow even though the shell runs only ``mvn test``.
+    """
+    in_single = False
+    in_double = False
+    at_word_boundary = True
+    i = 0
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if in_single:
+            if c == "'":
+                in_single = False
+            i += 1
+            at_word_boundary = False
+            continue
+        if in_double:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                at_word_boundary = False
+                continue
+            if c == '"':
+                in_double = False
+            i += 1
+            at_word_boundary = False
+            continue
+        if c == "\\":
+            i += 2
+            at_word_boundary = False
+            continue
+        if c == "'":
+            in_single = True
+            at_word_boundary = False
+            i += 1
+            continue
+        if c == '"':
+            in_double = True
+            at_word_boundary = False
+            i += 1
+            continue
+        if c == "#" and at_word_boundary:
+            return line[:i]
+        if c.isspace() or c in _COMMENT_WORD_BOUNDARY_CHARS:
+            at_word_boundary = True
+        else:
+            at_word_boundary = False
+        i += 1
+    return line
+
+
 def _line_segments(line: str) -> list:
     """Splits a single (newline-free) line into simple-command token lists.
 
@@ -330,6 +408,7 @@ def _line_segments(line: str) -> list:
     intent. The sentinel makes an unparseable command a violation in its own
     right instead.
     """
+    line = _strip_shell_comment(line)
     masked, spans = _mask_command_substitutions(line)
     try:
         tokens = [_unmask_token(t, spans) for t in _tokenize(masked)]
@@ -702,15 +781,22 @@ def _dtest_is_narrow(value: str) -> bool:
     too broad". Surefire treats ``*`` and ``?`` in either half as
     wildcards, so e.g. ``FooTest#test*`` or ``Foo*#bar`` can still select
     and run several methods/classes in one invocation despite naming
-    exactly one comma-separated entry with a ``#`` in it.
+    exactly one comma-separated entry with a ``#`` in it. Surefire's ``+``
+    method-list separator (``Class#method1+method2``, the form the
+    repository's own CI uses) is rejected for the same reason -- it selects
+    several methods in one invocation. A ``$VAR``/``${VAR}`` parameter
+    expansion in either half is rejected too, since the shell resolves it to
+    an arbitrary (possibly broad) selector this validator cannot see.
     """
     entries = [e for e in value.split(",") if e]
     if len(entries) != 1 or entries[0].count("#") != 1:
         return False
+    if _contains_parameter_expansion(entries[0]):
+        return False
     class_name, _, method_name = entries[0].partition("#")
     if not class_name or not method_name:
         return False
-    return not any(c in "*?" for c in class_name + method_name)
+    return not any(c in "*?+" for c in class_name + method_name)
 
 
 def _effective_skip_value(args: list, pattern) -> bool:
@@ -750,6 +836,17 @@ def _maven_segment_violation(tokens: list) -> str:
     substitution_reason = _substitution_argument_violation(tokens, args)
     if substitution_reason:
         return substitution_reason
+    for arg in args:
+        if not arg.startswith("-") and _contains_parameter_expansion(arg):
+            return (
+                'Positional argument "{}" in "{}" contains an unresolved shell '
+                "parameter expansion ($VAR or ${{VAR}}), which the shell expands "
+                "at run time into a value this validator cannot see -- it could "
+                "name a test-running phase such as test/verify/install. Use "
+                "literal Maven phases and -Dtest=Class#method selectors, or add "
+                "-DskipTests if this command is only meant to build.".format(
+                    arg, " ".join(tokens))
+            )
     phases_present = sorted(a for a in args if a in _MVN_TEST_RUNNING_PHASES)
     dtest_values = _dtest_values(args)
     if not phases_present and not dtest_values:
@@ -1074,12 +1171,8 @@ class _DTestBroadValueMatcher:
         if not matches:
             return None
         for match in matches:
-            entries = [e for e in match.group(1).split(",") if e]
-            if len(entries) == 1 and entries[0].count("#") == 1:
-                class_name, _, method_name = entries[0].partition("#")
-                if class_name and method_name and not any(
-                        c in "*?" for c in class_name + method_name):
-                    continue
+            if _dtest_is_narrow(match.group(1)):
+                continue
             return match
         return None
 

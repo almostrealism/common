@@ -133,6 +133,14 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 				"Run mvn test -Dtest=Foo#bar -Dtest=WholeClass to confirm.").isEmpty());
 	}
 
+	/** A "-Dtest=Class#method1+method2" mention using Surefire's "+" method-list separator runs
+	 * both methods in one invocation, so it must be flagged like the comma form. */
+	@Test(timeout = 10000)
+	public void surefirePlusMethodSeparatorDtestMentionRejected() {
+		assertFalse(violationsFor(
+				"Run mvn test -Dtest=FooTest#bar+qux to confirm.").isEmpty());
+	}
+
 	/** "python3 -m unittest discover" is forbidden. */
 	@Test(timeout = 10000)
 	public void unittestDiscoverPhraseRejected() {

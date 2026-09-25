@@ -51,7 +51,8 @@ def _reject_wildcard(value: str, field_description: str) -> None:
 
 
 def _reject_selector_delimiter(value: str, field_description: str) -> None:
-    """Raises ValidationError when ``value`` contains a comma.
+    """Raises ValidationError when ``value`` contains a Surefire selector-list
+    separator (a comma or a ``+``).
 
     ``build_maven_command`` joins a single ``test_classes``/``test_methods``
     entry's class/method text directly into Maven's ``-Dtest`` value with no
@@ -59,18 +60,23 @@ def _reject_selector_delimiter(value: str, field_description: str) -> None:
     entry of ``"FooTest#first,BarTest#second"``, or a ``test_methods`` entry
     whose ``method`` field is ``"first,BarTest#second"``) survives into the
     rendered ``-Dtest`` value unchanged and is read by Maven as multiple
-    test patterns in one invocation -- passing the earlier "at most one
+    test patterns in one invocation. Surefire also treats ``+`` as a
+    method-list separator (``Class#method1+method2`` -- the form the
+    repository's own CI uses in ``.github/workflows/analysis.yaml``), so a
+    ``method`` field of ``"first+second"`` runs both methods in one
+    invocation just the same. Either passes the earlier "at most one
     selector" length check while still running more than one test, exactly
     the bypass the one-test-per-invocation rule exists to prevent.
     """
-    if "," in value:
-        raise ValidationError(
-            "{} \"{}\" contains a comma, which Maven reads as a list of "
-            "multiple test patterns in a single -Dtest invocation -- "
-            "exactly the multi-test bypass the one-test-per-invocation "
-            "rule exists to prevent. Call start_test_run once per "
-            "test instead.".format(field_description, value)
-        )
+    for separator, description in ((",", "a comma"), ("+", "a '+'")):
+        if separator in value:
+            raise ValidationError(
+                "{} \"{}\" contains {}, which Maven/Surefire reads as a list "
+                "of multiple test patterns in a single -Dtest invocation -- "
+                "exactly the multi-test bypass the one-test-per-invocation "
+                "rule exists to prevent. Call start_test_run once per "
+                "test instead.".format(field_description, value, description)
+            )
 
 
 def validate_start_test_run_arguments(

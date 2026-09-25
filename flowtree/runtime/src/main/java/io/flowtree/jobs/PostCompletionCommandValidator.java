@@ -183,6 +183,16 @@ public class PostCompletionCommandValidator {
 	 * {@link #recordAssignmentOnlySegment} earlier in the same command text. */
 	private static final Pattern VARIABLE_REFERENCE = Pattern.compile("^\\$\\{?([A-Za-z_][A-Za-z0-9_]*)\\}?$");
 
+	/** Matches an unresolved shell parameter expansion ({@code $VAR} or {@code ${VAR}}) anywhere
+	 * within a token, as opposed to {@link #VARIABLE_REFERENCE} which anchors on a token that is
+	 * <em>entirely</em> one reference. Used by {@link #mavenSegmentViolation} and
+	 * {@link #dtestIsNarrow} to reject a Maven phase or {@code -Dtest} selector constructed from a
+	 * variable the shell expands at run time -- e.g. {@code mvn $MAVEN_GOAL -pl engine/utils} or
+	 * {@code -Dtest=$CLASS#$METHOD} -- which this validator cannot resolve statically. The
+	 * {@code $(} command-substitution form is deliberately not matched here (the {@code (} is not
+	 * a name character); it is handled separately by {@link #containsSubstitutionMarker}. */
+	private static final Pattern PARAMETER_EXPANSION = Pattern.compile("\\$\\{?[A-Za-z_]");
+
 	/** {@code python}/{@code python3} interpreter option flags that take no operand of their
 	 * own, so they can precede {@code -m} without hiding it -- e.g. {@code python3 -O -m pytest
 	 * tests/} must still be recognized as {@code -m pytest} by {@link #indexOfModuleFlag}. Not
@@ -352,6 +362,15 @@ public class PostCompletionCommandValidator {
 	 * subprocess's output, which this validator cannot resolve statically. */
 	private static boolean containsSubstitutionMarker(String token) {
 		return token.contains("$(") || token.contains("`");
+	}
+
+	/** True when {@code token} contains an unresolved shell parameter expansion ({@code $VAR} or
+	 * {@code ${VAR}}), which the shell replaces at run time with a value this validator cannot see.
+	 * Used by {@link #mavenSegmentViolation} (positional phase position) and {@link #dtestIsNarrow}
+	 * ({@code -Dtest} selector) to reject a test-command argument whose real value is only known
+	 * after expansion, e.g. {@code mvn $MAVEN_GOAL} or {@code -Dtest=$CLASS#$METHOD}. */
+	private static boolean containsParameterExpansion(String token) {
+		return PARAMETER_EXPANSION.matcher(token).find();
 	}
 
 	/** True when {@code token} contains a command substitution marker. Used by
@@ -706,6 +725,16 @@ public class PostCompletionCommandValidator {
 		if (substitutionReason != null) {
 			return substitutionReason;
 		}
+		for (String arg : args) {
+			if (!arg.startsWith("-") && containsParameterExpansion(arg)) {
+				return "Positional argument \"" + arg + "\" in \"" + String.join(" ", tokens)
+						+ "\" contains an unresolved shell parameter expansion ($VAR or ${VAR}), "
+						+ "which the shell expands at run time into a value this validator cannot "
+						+ "see -- it could name a test-running phase such as test/verify/install. "
+						+ "Use literal Maven phases and -Dtest=Class#method selectors, or add "
+						+ "-DskipTests if this command is only meant to build.";
+			}
+		}
 		List<String> phasesPresent = new ArrayList<>();
 		List<String> dtestValues = new ArrayList<>();
 		for (String arg : args) {
@@ -765,6 +794,9 @@ public class PostCompletionCommandValidator {
 			return false;
 		}
 		String entry = entries.get(0);
+		if (containsParameterExpansion(entry)) {
+			return false;
+		}
 		int hash = entry.indexOf('#');
 		if (hash < 0 || entry.indexOf('#', hash + 1) >= 0) {
 			return false;
@@ -772,8 +804,16 @@ public class PostCompletionCommandValidator {
 		String className = entry.substring(0, hash);
 		String methodName = entry.substring(hash + 1);
 		return !className.isEmpty() && !methodName.isEmpty()
-				&& className.indexOf('*') < 0 && className.indexOf('?') < 0
-				&& methodName.indexOf('*') < 0 && methodName.indexOf('?') < 0;
+				&& !containsSelectorSeparator(className) && !containsSelectorSeparator(methodName);
+	}
+
+	/** True when a {@code -Dtest} class or method half contains a Surefire construct that can
+	 * select more than one test in a single invocation: a {@code *}/{@code ?} wildcard, or the
+	 * {@code +} method-list separator ({@code Class#method1+method2}, the form the repository's
+	 * own CI uses at {@code .github/workflows/analysis.yaml}). Rejecting {@code +} alongside the
+	 * wildcards keeps {@code FooTest#first+second} from passing as one narrow selector. */
+	private static boolean containsSelectorSeparator(String half) {
+		return half.indexOf('*') >= 0 || half.indexOf('?') >= 0 || half.indexOf('+') >= 0;
 	}
 
 	/**
@@ -977,6 +1017,13 @@ public class PostCompletionCommandValidator {
 	 * which would otherwise scatter a substitution's own parens and interior words across
 	 * unrelated segments and hide a substitution occupying command position from
 	 * {@link #isSubstitutionExecutable}.
+	 *
+	 * <p>An unquoted {@code #} that begins a word (i.e. at the start or right after whitespace or
+	 * a shell operator) starts a comment and ends the line, matching the shell: without this,
+	 * {@code mvn test # -Dtest=Foo#bar} would tokenize the commented-out selector as a live
+	 * {@code -Dtest} argument and {@link #mavenSegmentViolation} would wrongly treat the broad
+	 * {@code mvn test} as narrow. A {@code #} in the middle of a word ({@code FooTest#testBar}) is
+	 * preserved as an ordinary character, since the shell does not start a comment there.</p>
 	 */
 	private List<String> tokenize(String text) {
 		List<String> tokens = new ArrayList<>();
@@ -1046,6 +1093,9 @@ public class PostCompletionCommandValidator {
 				haveToken = true;
 				i = end;
 				continue;
+			}
+			if (c == '#' && !haveToken) {
+				break;
 			}
 			if (Character.isWhitespace(c)) {
 				if (haveToken) {

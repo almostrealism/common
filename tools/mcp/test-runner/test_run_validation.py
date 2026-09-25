@@ -81,6 +81,19 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
         with self.assertRaises(ValidationError):
             _validate({"test_classes": ["FooTest#first,BarTest#second"]})
 
+    def test_plus_method_separator_in_test_classes_rejected(self):
+        # Surefire treats "+" as a method-list separator, so
+        # "FooTest#first+second" runs both methods in one invocation despite
+        # passing the "at most one selector" length check.
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_classes": ["FooTest#first+second"]})
+        self.assertIn("+", ctx.exception.error)
+
+    def test_plus_method_separator_in_test_methods_method_field_rejected(self):
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_methods": [{"class": "FooTest", "method": "first+second"}]})
+        self.assertIn("+", ctx.exception.error)
+
     def test_neither_test_classes_nor_test_methods_rejected(self):
         with self.assertRaises(ValidationError):
             _validate({})

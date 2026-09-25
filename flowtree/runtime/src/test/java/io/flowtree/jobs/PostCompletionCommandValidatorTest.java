@@ -757,4 +757,48 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("timeout 2400 mvn clean install -DskipTests").isEmpty());
 		assertTrue(violationsFor("timeout 60 pytest test_secrets.py::test_render").isEmpty());
 	}
+
+	/** Surefire's "+" method-list separator ({@code Class#method1+method2}, the form the
+	 * repository's own CI uses) selects two methods in one invocation, so a selector using it
+	 * must be rejected despite naming one comma-free entry with a single "#". */
+	@Test(timeout = 10000)
+	public void surefirePlusMethodSeparatorDtestSelectorRejected() {
+		assertFalse(violationsFor("mvn -pl engine/utils test -Dtest=FooTest#first+second").isEmpty());
+	}
+
+	/** An unquoted "#" that begins a word starts a shell comment, so the commented-out -Dtest
+	 * must not make the broad "mvn test" look narrow -- the shell runs only "mvn test". */
+	@Test(timeout = 10000)
+	public void shellCommentHidingBroadMavenCommandRejected() {
+		assertFalse(violationsFor("mvn test # -Dtest=FooTest#testBar").isEmpty());
+	}
+
+	/** A "#" in the middle of a word is a Class#method selector, not a comment, so this narrow
+	 * command is still accepted -- the comment handling must not eat mid-word "#". */
+	@Test(timeout = 10000)
+	public void midWordHashSelectorNotTreatedAsComment() {
+		assertTrue(violationsFor("mvn test -Dtest=FooTest#testBar").isEmpty());
+	}
+
+	/** A Maven phase built from a "$VAR" parameter expansion has no literal "test" token for the
+	 * phase check, but the shell expands it at run time and may run the whole module suite. */
+	@Test(timeout = 10000)
+	public void mavenPhaseFromParameterExpansionRejected() {
+		List<String> violations = violationsFor("mvn $MAVEN_GOAL -pl engine/utils");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("parameter expansion"));
+	}
+
+	/** A -Dtest selector built from a "$VAR" parameter expansion is rejected the same way. */
+	@Test(timeout = 10000)
+	public void dtestSelectorFromParameterExpansionRejected() {
+		assertFalse(violationsFor("mvn test -pl engine/utils -Dtest=$CLASS#$METHOD").isEmpty());
+	}
+
+	/** A parameter expansion in an ordinary -D property value (not a phase or a -Dtest selector)
+	 * is benign, so the parameter-expansion check must not turn it into a blanket rejection. */
+	@Test(timeout = 10000)
+	public void parameterExpansionInNonTestPropertyValueAccepted() {
+		assertTrue(violationsFor("mvn install -DskipTests -DAR_HARDWARE_LIBS=$TEMP/ar_libs").isEmpty());
+	}
 }
