@@ -214,23 +214,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
 	/**
-	 * Gives this operation the chance to abandon a compute context that has been
-	 * destroyed before anything is dispatched through it. Called at the start of
-	 * every application, ahead of the argument bindings, which are derived from the
-	 * context and must be rebuilt along with it, and by an evaluable before it reads
-	 * instruction metadata for its output. The default does nothing.
-	 */
-	protected void refreshContext() { }
-
-	/**
-	 * Re-targets this operation at another compute context. Only meaningful once
-	 * the context it was created under has been destroyed and everything derived
-	 * from that context has been reset, so that the next load compiles anew.
+	 * Fails when the compute context this operation was created under has been
+	 * destroyed. The operation was placed under that context on purpose, by the
+	 * caller's requirements and the computer's choice for the computation, and
+	 * nothing here may move it elsewhere; work that cannot run where it was put
+	 * is an error for the caller to see.
 	 *
-	 * @param context the live context to compile and dispatch under from now on
+	 * @throws IllegalStateException if the context, or its data context, is destroyed
 	 */
-	protected void setComputeContext(ComputeContext<MemoryData> context) {
-		this.context = context;
+	protected void requireLiveContext() {
+		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+			throw new IllegalStateException("The compute context " + getName() +
+					" was created under has been destroyed");
+		}
 	}
 
 	/**
@@ -647,7 +643,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
-		refreshContext();
+		requireLiveContext();
 
 		if (getArguments() == null) {
 			if (getInstructionSetManager() == null) {

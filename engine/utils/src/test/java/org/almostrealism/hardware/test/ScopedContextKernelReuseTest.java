@@ -25,53 +25,36 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * An evaluable compiles its kernel under whatever data context is current the first
- * time it runs. When that was a scoped context, the kernel is bound to a compute
- * context and memory provider that are gone once the scope ends, so a later
- * evaluation must compile again rather than dispatch through the dead context.
+ * An evaluable or operation compiles its kernel under whatever compute context is
+ * current the first time it runs. That placement is deliberate, made from the caller's
+ * requirements and the computer's choice for the computation, so once the context is
+ * destroyed the kernel is unusable and using it is an error. Nothing may quietly
+ * compile it again somewhere else.
  *
- * <p>Before this was enforced, the stale kernel reallocated its arguments into the
- * destroyed provider, which failed on the dispatch thread and left the evaluating
- * thread waiting on a readiness latch that never fired.</p>
+ * <p>Before this was enforced, a stale kernel reallocated its arguments into the
+ * destroyed provider, which failed on a dispatch thread and left the evaluating thread
+ * waiting on a readiness latch that never fired.</p>
  */
 public class ScopedContextKernelReuseTest extends TestSuiteBase {
-	/**
-	 * Evaluates one evaluable in three successive scoped contexts. Each pass allocates
-	 * its own input inside the scope, so only the kernel is shared between passes.
-	 */
+	/** An evaluable first run inside a scoped context fails when used after the scope ends. */
 	@Test(timeout = 120_000)
-	public void kernelIsRecompiledAfterScopedContextDestroyed() {
+	public void evaluableFailsAfterScopedContextDestroyed() {
 		int length = 1024;
 		CollectionProducer doubled = c(new PassThroughProducer<>(shape(length), 0)).multiply(2.0);
 		Evaluable<PackedCollection> ev = doubled.get();
 
-		for (int pass = 0; pass < 3; pass++) {
-			double difference = dc(() -> {
-				PackedCollection input = new PackedCollection(shape(length)).randFill();
-				PackedCollection out = ev.evaluate(input);
-				double total = sum(cp(out)).evaluate().toDouble(0);
-				double diff = sum(cp(out).subtract(cp(input).multiply(2.0)).abs()).evaluate().toDouble(0);
-				log("total=" + total + " difference=" + diff);
+		dc(() -> ev.evaluate(new PackedCollection(shape(length)).randFill()));
 
-				if (total == 0.0) {
-					throw new AssertionError("Output is entirely zero");
-				}
-
-				return diff;
-			});
-
-			assertEquals("Difference on pass " + pass, 0.0, difference, 1e-6);
-		}
+		assertDeadContext(() -> ev.evaluate(new PackedCollection(shape(length)).randFill()));
 	}
 
 	/**
-	 * The compiled evaluable itself, not the context-specific holder around it, is
-	 * taken inside a scope and evaluated after the scope has ended. Its output
-	 * metadata is read from the instruction manager before anything is dispatched,
-	 * so the dead context must be noticed before that read.
+	 * The compiled evaluable itself, not the holder around it, fails after the scope:
+	 * its output metadata is read before anything is dispatched, and the dead context
+	 * must be noticed before that read.
 	 */
 	@Test(timeout = 120_000)
-	public void compiledEvaluableIsRecompiledAfterScopedContextDestroyed() {
+	public void compiledEvaluableFailsAfterScopedContextDestroyed() {
 		int length = 512;
 		CollectionProducer doubled = c(new PassThroughProducer<>(shape(length), 0)).multiply(2.0);
 		HardwareEvaluable<PackedCollection> ev = (HardwareEvaluable<PackedCollection>) doubled.get();
@@ -82,28 +65,18 @@ public class ScopedContextKernelReuseTest extends TestSuiteBase {
 			return inner;
 		});
 
-		PackedCollection input = new PackedCollection(shape(length)).randFill();
-		PackedCollection out = compiled.evaluate(input);
-		double diff = sum(cp(out).subtract(cp(input).multiply(2.0)).abs()).evaluate().toDouble(0);
-		double total = sum(cp(out)).evaluate().toDouble(0);
-		log("total=" + total + " difference=" + diff);
-
-		assertTrue("Output is not entirely zero", total != 0.0);
-		assertEquals("Difference after the scope", 0.0, diff, 1e-6);
+		assertDeadContext(() -> compiled.evaluate(new PackedCollection(shape(length)).randFill()));
 	}
 
 	/**
-	 * An operation obtained and first run inside a scoped context, then run again
-	 * after the scope has ended. Unlike an evaluable, the operation holds its
-	 * compiled instructions directly, so it must notice that its context is gone
-	 * and compile again under a live one.
+	 * An operation that holds its compiled instructions directly fails after the scope,
+	 * before its stale argument bindings can be consulted.
 	 */
 	@Test(timeout = 120_000)
-	public void operationIsRecompiledAfterScopedContextDestroyed() {
+	public void operationFailsAfterScopedContextDestroyed() {
 		int length = 512;
 		PackedCollection input = new PackedCollection(shape(length)).randFill();
 		PackedCollection output = new PackedCollection(shape(length));
-		double expected = 2.0 * sum(cp(input)).evaluate().toDouble(0);
 
 		Runnable op = dc(() -> {
 			Runnable inner = a(cp(output), cp(input).multiply(2.0)).get();
@@ -111,11 +84,18 @@ public class ScopedContextKernelReuseTest extends TestSuiteBase {
 			return inner;
 		});
 
-		output.clear();
-		op.run();
+		assertDeadContext(op);
+	}
 
-		double total = sum(cp(output)).evaluate().toDouble(0);
-		log("expected=" + expected + " total=" + total);
-		assertEquals("Sum after the scope", expected, total, 1e-6);
+	/** Runs the action and requires the dead-context failure, naming the actual outcome otherwise. */
+	private void assertDeadContext(Runnable action) {
+		try {
+			action.run();
+		} catch (IllegalStateException e) {
+			log("Rejected as expected: " + e.getMessage());
+			return;
+		}
+
+		throw new AssertionError("Use after the scope should fail with IllegalStateException");
 	}
 }

@@ -140,6 +140,4 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 	 * Releases resources held by this context. Currently a no-op as resources
 	 * are managed by the native compiler and data context.
 	 */
-	@Override
-	public void destroy() { super.destroy(); }
 }

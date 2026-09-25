@@ -528,25 +528,17 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * <p>Access listener ensures that using any {@link io.almostrealism.code.InstructionSet}
 	 * from the manager updates the cache frequency or restores an evicted entry.</p>
 	 *
-	 * <p>If the cached manager's context has since been destroyed, the entry is evicted and
-	 * rebuilt: since {@code context} is itself the dead context recorded on that entry,
-	 * recreating under it would just repeat the failure, so a live context is selected via
-	 * {@link #getContext(Computation)} and the manager is cached under that context's key.
-	 * Selecting a live context this way needs a real {@link Computation} to apply
-	 * {@link #getContext(Computation)}'s count/requirement heuristics, so when {@code computation}
-	 * is {@code null} there is no way to recover: this fails fast with
-	 * {@link IllegalStateException} instead of recreating a manager bound to the same dead
-	 * context that just failed the check above.</p>
+	 * <p>A manager is only ever handed out for the context it was compiled under. If that
+	 * context has since been destroyed the entry is evicted and the request fails: the
+	 * operation asking for it was placed under that context deliberately, and nothing
+	 * here may move its work to another.</p>
 	 *
 	 * @param signature Unique signature identifying the operation structure
-	 * @param computation The computation to manage (used for Process tree substitution if applicable,
-	 *                     and required to recover a live context if the cached manager's context has
-	 *                     been destroyed)
+	 * @param computation The computation to manage (used for Process tree substitution if applicable)
 	 * @param context The compute context for compilation
 	 * @param scope Supplier of the scope to compile
 	 * @return The instruction manager for this signature
-	 * @throws IllegalStateException if the cached manager's context is destroyed and
-	 *         {@code computation} is {@code null}, so no live context can be selected
+	 * @throws IllegalStateException if {@code context} has been destroyed
 	 */
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
 																							Computation<?> computation,
@@ -575,40 +567,13 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					return mgr;
 				};
 
-		ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
-				instructionsCache.computeIfAbsent(cacheKey, create);
-
-		// Entries of a context that has ended are left behind until evicted here
-		if (mgr.getComputeContext().isDestroyed() ||
-				mgr.getComputeContext().getDataContext().isDestroyed()) {
+		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
 			instructionsCache.evict(cacheKey);
-
-			if (computation == null) {
-				throw new IllegalStateException("Cannot recreate the instructions manager for signature \"" +
-						signature + "\" because its compute context is destroyed and no computation was " +
-						"supplied to select a live one");
-			}
-
-			ComputeContext<?> liveContext = getContext(computation);
-			String liveCacheKey = Objects.requireNonNull(signature) + ":" + contextId(liveContext);
-			Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>> liveAccessListener =
-					m -> instructionsCache.computeIfAbsent(liveCacheKey, () -> m);
-
-			Supplier<ScopeInstructionsManager<ScopeSignatureExecutionKey>> recreate = () -> {
-				ScopeInstructionsManager<ScopeSignatureExecutionKey> m =
-						new ScopeInstructionsManager<>(liveContext, scope, liveAccessListener);
-
-				if (computation instanceof Process<?, ?>) {
-					m.setProcess((Process<?, ?>) computation);
-				}
-
-				return m;
-			};
-
-			mgr = instructionsCache.computeIfAbsent(liveCacheKey, recreate);
+			throw new IllegalStateException("Cannot compile signature \"" + signature +
+					"\" because the compute context it was placed under has been destroyed");
 		}
 
-		return mgr;
+		return instructionsCache.computeIfAbsent(cacheKey, create);
 	}
 
 	/** Returns the number identifying a compute context in cache keys, assigning one on first use. */

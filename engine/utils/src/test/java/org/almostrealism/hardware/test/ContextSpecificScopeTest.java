@@ -31,25 +31,27 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
- * A {@link ContextSpecific} value belongs to the data context it was created under.
- * One created inside a scoped context must not be handed out after that context is
- * destroyed, even when the holder was never registered as a context listener.
+ * A {@link ContextSpecific} value belongs to the compute context it was created under.
+ * One created inside a scoped context cannot be used after that context is destroyed,
+ * and asking for it is an error rather than an occasion to build another; a holder
+ * registered as a context listener is given a fresh value per context instead.
  */
 public class ContextSpecificScopeTest extends TestSuiteBase {
-	/** A value first created inside a scoped context is replaced once that context ends. */
+	/** An unregistered holder's value from a destroyed scope is refused, not replaced. */
 	@Test(timeout = 60_000)
-	public void valueFromDestroyedScopeIsReplaced() {
-		List<Object> disposed = new ArrayList<>();
-		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new, disposed::add);
-
+	public void valueFromDestroyedScopeIsRefused() {
+		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new);
 		Object inside = dc(specific::getValue);
-		Object again = dc(specific::getValue);
-		Object outside = specific.getValue();
+		assertTrue("Value was created inside the scope", inside != null);
 
-		assertNotSame("Second scope reuses the first scope's value", inside, again);
-		assertNotSame("Value from a destroyed scope survives it", again, outside);
-		assertEquals("Disposals", 2, disposed.size());
-		assertTrue("First scope's value was disposed", disposed.contains(inside));
+		try {
+			specific.getValue();
+		} catch (IllegalStateException e) {
+			log("Refused as expected: " + e.getMessage());
+			return;
+		}
+
+		throw new AssertionError("A value from a destroyed context must not be handed out");
 	}
 
 	/**
@@ -97,25 +99,10 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 	}
 
 	/**
-	 * An orphaned value is disposed of even when it is not on top: a value created
-	 * in a scope, then buried under the outer value by a switch back to the outer
-	 * context inside that scope, is still disposed of once the scope ends.
+	 * An unregistered holder keeps the value it made under the outer context through a
+	 * nested scope and after it: that context stays alive throughout, so the value is
+	 * still usable. Only a registered holder is given a value per context.
 	 */
-	@Test(timeout = 60_000)
-	public void buriedOrphanIsDisposed() {
-		List<Object> disposed = new ArrayList<>();
-		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new, disposed::add);
-
-		Object outer = specific.getValue();
-		Object inner = dc(specific::getValue);
-		Object after = specific.getValue();
-
-		assertNotSame("Scoped value distinct from the outer value", outer, inner);
-		assertSame("Outer value after the scope", outer, after);
-		assertTrue("Scoped value was disposed", disposed.contains(inner));
-	}
-
-	/** A nested scope gets its own value, and the outer value is back once the scope ends. */
 	@Test(timeout = 60_000)
 	public void outerValueSurvivesScope() {
 		ContextSpecific<Object> specific = new DefaultContextSpecific<>(Object::new);
@@ -124,7 +111,7 @@ public class ContextSpecificScopeTest extends TestSuiteBase {
 		Object inside = dc(specific::getValue);
 		Object after = specific.getValue();
 
-		assertNotSame("Scoped value distinct from the outer value", before, inside);
+		assertSame("Outer value inside the scope", before, inside);
 		assertSame("Outer value after the scope", before, after);
 	}
 }

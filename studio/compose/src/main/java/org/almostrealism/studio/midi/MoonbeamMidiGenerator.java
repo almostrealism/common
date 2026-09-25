@@ -18,8 +18,6 @@ package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -28,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Consumer;
 import javax.sound.midi.InvalidMidiDataException;
 
 import org.almostrealism.music.midi.MidiFileReader;
@@ -139,30 +138,26 @@ public class MoonbeamMidiGenerator {
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
 		PackedCollection temperature = new PackedCollection(1);
 
-		// One embedding kernel for every ordinary token: the token's attribute values are
-		// written into this collection each step and the compiled evaluable is reused,
-		// rather than compiling an embedding whose values are literals per distinct token
-		PackedCollection tokenValues = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
-		Evaluable<? extends PackedCollection> tokenEmbedding =
-				Process.optimized(embedding.embedValues(Ops.o().p(tokenValues))).get();
+		Consumer<MidiCompoundToken> loadOrdinary = AutoregressiveModel.tokenLoader(
+				input, MoonbeamConfig.NUM_ATTRIBUTES,
+				(token, values) -> {
+					try (PackedCollection packed = token.pack()) {
+						values.setFrom(0, packed);
+					}
+				},
+				embedding::embedValues);
 
 		this.inner = new AutoregressiveModel<>(
 				model.getPosition(),
 				token -> {
 					model.setAttributePositions(token);
-					PackedCollection emb;
 
 					if (token.isSpecial()) {
-						emb = Process.optimized(embedding.embed(token)).get().evaluate();
+						input.setFrom(0, Process.optimized(embedding.embed(token)).get().evaluate(),
+								0, hiddenSize);
 					} else {
-						try (PackedCollection packed = token.pack()) {
-							tokenValues.setFrom(0, packed);
-						}
-
-						emb = tokenEmbedding.evaluate();
+						loadOrdinary.accept(token);
 					}
-
-					input.setFrom(0, emb, 0, hiddenSize);
 				},
 				() -> model.forward(input),
 				hidden -> {

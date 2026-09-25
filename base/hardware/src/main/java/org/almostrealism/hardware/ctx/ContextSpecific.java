@@ -169,41 +169,32 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 	 *
 	 * <p>A value belongs to the {@link ComputeContext} that was current when it was
 	 * created: a compiled kernel dispatches through that context's command runner and
-	 * memory provider, and a scoped data context, a temporary compute context, and a
-	 * switch between live contexts all change which one that is. A value whose context
-	 * has since been destroyed is disposed of first and never returned. When the value
-	 * on top belongs to a different context that is still alive, the value already held
-	 * for the current context is used, or a new one is created. Registration via
-	 * {@link #init()} adds lifecycle callbacks on top of this; it is not required for
-	 * correctness.</p>
+	 * memory provider. The value on top is the one in use; it is handed out as long as
+	 * its context is alive. Once that context has been destroyed the value can no
+	 * longer be used, and asking for it is an error rather than an occasion to build
+	 * a replacement under some other context: whoever placed the work under the dead
+	 * context must decide what happens next. A holder registered via {@link #init()}
+	 * receives a fresh value when a context starts and has it disposed of when that
+	 * context ends, so that its top value tracks the current context.</p>
 	 *
 	 * <p><b>Warning:</b> If more than 3 values are held, logs a warning indicating
 	 * potential context leaks.</p>
 	 *
 	 * @return The value for the current context
+	 * @throws IllegalStateException if the context the value belongs to has been destroyed
 	 */
 	public synchronized T getValue() {
-		discardOrphans();
-
-		ComputeContext<?> current = currentContext();
-
-		if (val.isEmpty()) {
-			push();
-		} else if (!val.peek().belongsTo(current)) {
-			ContextValue<T> existing = valueFor(current);
-
-			if (existing == null) {
-				push();
-			} else {
-				val.remove(existing);
-				val.push(existing);
-			}
-		}
+		if (val.isEmpty()) push();
 
 		ContextValue<T> top = val.peek();
+		if (top.isOrphaned()) {
+			throw new IllegalStateException("The compute context this value was created under, " +
+					top.getContextName() + ", has been destroyed");
+		}
+
 		boolean firstMaterialization = !top.isAvailable();
 		T v = top.getValue();
-		if (firstMaterialization) top.bindTo(current);
+		if (firstMaterialization) top.bindTo(currentContext());
 
 		if (val.size() > 3) {
 			warn(val.size() + " context layers for " + v.getClass().getSimpleName());
@@ -233,29 +224,6 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 
 		List<ComputeContext<MemoryData>> contexts = hardware.getComputeContexts(false, false, active);
 		return contexts.isEmpty() ? null : contexts.get(0);
-	}
-
-	/** Returns the value held for the given context, or {@code null}. */
-	private ContextValue<T> valueFor(ComputeContext<?> context) {
-		for (ContextValue<T> v : val) {
-			if (v.belongsTo(context)) return v;
-		}
-
-		return null;
-	}
-
-	/**
-	 * Disposes of every value whose context has been destroyed, wherever it sits:
-	 * switching between live contexts moves values around, so an orphan is not
-	 * necessarily on top.
-	 */
-	private void discardOrphans() {
-		for (ContextValue<T> v : List.copyOf(val)) {
-			if (v.isOrphaned()) {
-				val.remove(v);
-				dispose(v);
-			}
-		}
 	}
 
 	/**
@@ -374,8 +342,8 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		 * (see {@link ContextSpecific#currentContext()}). Called right after the value is
 		 * first materialized, so a value created lazily while no compute context was
 		 * active is tagged with the context that was actually current when its content
-		 * came into existence, instead of remaining a permanent wildcard that {@link #belongsTo}
-		 * would keep matching against every context that comes along afterwards.
+		 * came into existence, instead of remaining a permanent wildcard that could never
+		 * be recognised as orphaned.
 		 */
 		private void bindTo(ComputeContext<?> current) {
 			if (context == null && current != null) context = current;
@@ -384,14 +352,6 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		/** Returns whether the context this value was created under has been destroyed. */
 		private boolean isOrphaned() {
 			return context != null && (context.isDestroyed() || context.getDataContext().isDestroyed());
-		}
-
-		/**
-		 * Returns whether this value may serve the given context: the same one it was
-		 * created under, or either unknown.
-		 */
-		private boolean belongsTo(ComputeContext<?> current) {
-			return context == null || current == null || context == current;
 		}
 
 		// TODO(review): an unclaimed context==null entry never matches this, so contextDestroyed() can't dispose it; see review-followup memory.

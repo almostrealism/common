@@ -366,20 +366,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * @param <K> The execution key type
 	 * @return The instruction set manager
 	 */
-	/**
-	 * Abandons the compute context this operation was created under once that context
-	 * has been destroyed: the instruction manager, argument bindings and compiler
-	 * derived from it are discarded, and a live context is chosen for the computation
-	 * so that the next load compiles again under it.
-	 */
-	@Override
-	protected void refreshContext() {
-		if (getComputeContext().isDestroyed() || getComputeContext().getDataContext().isDestroyed()) {
-			resetInstructions();
-			setComputeContext(Hardware.getLocalHardware().getComputer().getContext(getComputation()));
-		}
-	}
-
 	@Override
 	public <K extends ExecutionKey> ComputableInstructionSetManager<K> getInstructionSetManager() {
 		if (instructions == null) {
