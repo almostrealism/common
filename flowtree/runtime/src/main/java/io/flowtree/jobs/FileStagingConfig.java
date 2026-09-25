@@ -61,6 +61,9 @@ public final class FileStagingConfig {
     /** Whether test file protection is active. */
     private final boolean protectTestFiles;
 
+    /** Whether CI/workflow file protection is active. */
+    private final boolean protectCiFiles;
+
     /** Base branch used for test file existence checks. */
     private final String baseBranch;
 
@@ -74,6 +77,7 @@ public final class FileStagingConfig {
         this.excludedPatterns = Collections.unmodifiableSet(new HashSet<>(builder.excludedPatterns));
         this.protectedPathPatterns = Collections.unmodifiableSet(new HashSet<>(builder.protectedPathPatterns));
         this.protectTestFiles = builder.protectTestFiles;
+        this.protectCiFiles = builder.protectCiFiles;
         this.baseBranch = builder.baseBranch;
     }
 
@@ -126,6 +130,20 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Returns whether CI/workflow file protection is active. When enabled,
+     * a CI/workflow file ({@code .github/workflows/**}, {@code .github/actions/**},
+     * {@code tools/ci/**}) that exists at the merge-base is blocked from
+     * staging. This is the harness side of the repository's CI file lock and
+     * is independent of {@link #isProtectTestFiles()}: a job's test lock says
+     * nothing about whether it may change the pipeline.
+     *
+     * @return true if CI/workflow file protection is active
+     */
+    public boolean isProtectCiFiles() {
+        return protectCiFiles;
+    }
+
+    /**
      * Returns the base branch used for test file existence checks.
      *
      * @return the base branch name
@@ -147,6 +165,7 @@ public final class FileStagingConfig {
             ", excludedPatterns=" + excludedPatterns.size() +
             ", protectedPathPatterns=" + protectedPathPatterns.size() +
             ", protectTestFiles=" + protectTestFiles +
+            ", protectCiFiles=" + protectCiFiles +
             ", baseBranch='" + baseBranch + '\'' +
             '}';
     }
@@ -170,6 +189,9 @@ public final class FileStagingConfig {
 
         /** @see FileStagingConfig#protectTestFiles */
         private boolean protectTestFiles = false;
+
+        /** @see FileStagingConfig#protectCiFiles */
+        private boolean protectCiFiles = false;
 
         /** @see FileStagingConfig#baseBranch */
         private String baseBranch = "master";
@@ -220,6 +242,18 @@ public final class FileStagingConfig {
          */
         public Builder protectTestFiles(boolean protectTestFiles) {
             this.protectTestFiles = protectTestFiles;
+            return this;
+        }
+
+        /**
+         * Sets whether CI/workflow file protection is active.
+         *
+         * @param protectCiFiles true to block staging of CI/workflow files
+         *                       that exist at the merge-base
+         * @return this builder
+         */
+        public Builder protectCiFiles(boolean protectCiFiles) {
+            this.protectCiFiles = protectCiFiles;
             return this;
         }
 

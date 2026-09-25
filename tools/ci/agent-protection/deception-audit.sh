@@ -15,8 +15,8 @@
 #   Agent commits that modify ONLY test files or CI files with no
 #   production code changes. These cannot fix bugs — they can only
 #   hide failures. On a ci/... branch a commit confined to CI files is
-#   the declared work rather than a finding, matching RULE 3 of
-#   validate-agent-commit.sh; a commit that also reaches base-branch
+#   the declared work rather than a finding, matching the CI file lock
+#   (check-ci-file-lock.sh); a commit that also reaches base-branch
 #   tests is reported there as everywhere else.
 #
 # PATTERN 3: Repeated Failure Dispatch
@@ -86,9 +86,9 @@ fi
 #
 # Every "does this file exist at the merge-base" question below is
 # answered from this one-time listing rather than a per-file
-# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
-# for why that probe cannot distinguish "path absent" from "the lookup
-# itself failed" by exit code alone. A listing failure is an audit
+# `git cat-file -e <rev>:<path>` probe: for that object-name form git
+# reports the same exit code and message whether the path is absent from
+# the tree or the lookup itself failed, so the probe cannot tell them apart. A listing failure is an audit
 # error, not evidence that a file is branch-new.
 if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
     echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be audited:" >&2

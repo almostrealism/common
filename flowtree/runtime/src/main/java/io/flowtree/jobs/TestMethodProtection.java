@@ -38,20 +38,21 @@ import java.util.regex.Pattern;
  * added new tests to an existing base-branch file, fixed the one that was
  * broken, and the whole file — fix included — was silently dropped from
  * staging. This class replaces that whole-file check for {@code .java} test
- * sources with the same test-method-level rule the CI gate already
- * enforces.</p>
+ * sources with a test-method-level rule: every {@code @Test} method that
+ * exists at the merge-base must survive exactly. It applies only to a job
+ * submitted with {@code protectTestFiles} — one sent to make failing tests
+ * pass, whose agent must not loosen them instead; every branch is otherwise
+ * held to {@code test-integrity-check}, which allows an existing test to be
+ * edited but not weakened.</p>
  *
  * <h2>Shared implementation</h2>
  * <p>Method extraction is delegated to
- * {@code tools/ci/agent-protection/test-method-lines.awk} — the exact awk
- * script {@code validate-agent-commit.sh} uses — invoked as a subprocess
+ * {@code tools/ci/agent-protection/test-method-lines.awk} — invoked as a subprocess
  * against the script's content <em>at the merge-base</em>, not the working
  * tree's own copy. Reading it from the mutable working tree would let a
  * branch that edits {@code test-method-lines.awk} alongside a modified test
  * method run the comparison against its own altered extractor and defeat
- * the guardrail; the merge-base copy is outside the branch's control. The
- * harness-side guardrail and the CI-side gate still always agree, because
- * both ultimately run the base branch's own version of the identical logic.
+ * the guardrail; the merge-base copy is outside the branch's control.
  * Only {@code @Test}-annotated methods are compared; fixtures, helpers,
  * fields, constructors and nested classes are never locked — see the awk
  * script's header for why.</p>
@@ -301,9 +302,8 @@ class TestMethodProtection implements ConsoleFeatures {
 
     /**
      * Runs the shared awk script over {@code content} in "methods" mode and
-     * returns the resulting records as an unordered set, mirroring
-     * {@code validate-agent-commit.sh}'s {@code test_methods()} /
-     * {@code LC_ALL=C sort -u} pipeline: each record is one {@code @Test}
+     * returns the resulting records as an unordered set, as a
+     * {@code LC_ALL=C sort -u} over its output would: each record is one {@code @Test}
      * method's name and full body (annotations through the closing brace),
      * so any textual change to an existing method — including a pure
      * addition like an inserted early return — makes its record disappear

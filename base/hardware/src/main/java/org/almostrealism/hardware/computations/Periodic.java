@@ -124,14 +124,16 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 	/**
 	 * Creates a new {@link Periodic} with a specified counter.
 	 *
-	 * <p>This constructor is used internally when reconstructing during
-	 * process optimization to preserve the existing counter state.</p>
+	 * <p>Used internally when reconstructing during process optimization to
+	 * preserve the existing counter state, and available to callers that
+	 * need to own the counter directly so they can reset it in place (e.g.
+	 * {@link org.almostrealism.hardware.HardwareFeatures#periodic(Computation, int, Bytes)}).</p>
 	 *
 	 * @param atom    the computation to execute periodically
 	 * @param period  the number of invocations between executions
 	 * @param counter the persistent counter memory (size 1)
 	 */
-	private Periodic(Computation<Void> atom, int period, Bytes counter) {
+	public Periodic(Computation<Void> atom, int period, Bytes counter) {
 		super(() -> new Provider(counter));
 		this.atom = atom;
 		this.period = period;

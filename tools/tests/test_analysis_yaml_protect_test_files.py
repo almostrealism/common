@@ -1,21 +1,23 @@
-"""Guard: every auto-resolve submission in analysis.yaml protects test files.
+"""Guard: every remediation request decides the harness's test lock on purpose.
 
-PR #492 was stuck for most of a day because the "general review" auto-resolve
-path — the one that fires when the whole pipeline is green — submitted its
-job without ``PROTECT_TEST_FILES``. The agent added new test methods to an
-existing base-branch file, one of them was broken, and the harness's
-guardrail (at the time, whole-file) silently discarded the entire file,
-including the fix.
+``PROTECT_TEST_FILES`` turns on the harness's per-job test lock: every test
+method that exists on the base branch stays exactly as it is for that job
+(see ``flowtree/runtime/docs/file-staging.md``). It is for jobs whose premise
+is that the existing tests are the reference — the ones sent to make failing
+tests pass. An agent sent to fix a failing test has repeatedly loosened it
+instead, which fails test-integrity-check, which dispatches another agent to
+restore it, which fails the test again; the lock is what breaks that loop.
 
-Test-file protection is now method-level (see
-``flowtree/runtime/docs/file-staging.md``): an agent may still add new test
-methods or edit ones it introduced on the branch, so there is no longer any
-tradeoff between enabling protection and letting an agent write tests. Every
-"Stage submit request" step in analysis.yaml should therefore set
-``PROTECT_TEST_FILES: "true"`` — this test pins that so a future step copied
-from an older one before this fix cannot silently reintroduce the gap.
+Every other remediation job (build failure, code policy, quality gates,
+docs-only verify, general review, incomplete test execution) is held to
+test-integrity-check alone, the rule every branch meets. The lock used to be
+on for all of them, which contradicted that rule — a review could not even
+improve an existing test.
+
+Every "Stage submit request" step must therefore set the flag explicitly, to
+the value its route calls for, so a step copied from another cannot silently
+inherit the wrong one.
 """
-
 import os
 import re
 import unittest
@@ -80,6 +82,14 @@ def _stage_submit_steps():
     return steps
 
 
+# The routes sent to make failing tests pass: the only ones that lock tests.
+_TEST_FIXING_ROUTES = {
+    "Stage submit request (test failures)",
+    "Stage submit request (test job crash)",
+    "Stage submit request (python test failures)",
+}
+
+
 class AnalysisYamlProtectTestFilesTest(unittest.TestCase):
     def test_every_stage_submit_request_step_exists(self):
         steps = _stage_submit_steps()
@@ -89,11 +99,16 @@ class AnalysisYamlProtectTestFilesTest(unittest.TestCase):
             % len(steps))
 
     def test_every_stage_submit_request_step_protects_test_files(self):
+        """Test files are protected exactly where a job is sent to fix tests."""
         steps = _stage_submit_steps()
-        missing = [name for name, env in steps if env.get("PROTECT_TEST_FILES") != "true"]
-        self.assertEqual([], missing,
-            "These 'Stage submit request' steps do not set "
-            "PROTECT_TEST_FILES: \"true\": %s" % missing)
+        wrong = [name for name, env in steps
+                 if env.get("PROTECT_TEST_FILES") != ("true" if name in _TEST_FIXING_ROUTES else "false")]
+        self.assertEqual([], wrong,
+            "These 'Stage submit request' steps do not set PROTECT_TEST_FILES "
+            "explicitly to \"true\" (test-fixing routes) or \"false\" (all "
+            "others): %s" % wrong)
+        self.assertEqual(_TEST_FIXING_ROUTES,
+                         {name for name, env in steps if env.get("PROTECT_TEST_FILES") == "true"})
 
 
 if __name__ == "__main__":

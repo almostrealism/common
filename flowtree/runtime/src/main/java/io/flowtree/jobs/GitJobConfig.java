@@ -94,12 +94,23 @@ public final class GitJobConfig {
         ".flowtree.lock", ".flowtree-locks/**"
     )));
 
-    /** Path patterns for test/CI files protected by {@link #protectTestFiles}. */
+    /**
+     * Path patterns for test sources protected by {@link #protectTestFiles}.
+     *
+     * <p>These are test paths only. CI/workflow configuration
+     * ({@code .github/workflows/**}, {@code .github/actions/**},
+     * {@code tools/ci/**}) is <em>not</em> listed here: it is governed by its
+     * own lock ({@link FileStagingConfig#isProtectCiFiles()} /
+     * {@code check-ci-file-lock.sh}), whose exemptions differ from the test
+     * lock's — a {@code ci/...} branch is exempt from the CI lock but still
+     * subject to the test lock. Keeping CI paths out of this set is what lets
+     * a {@code ci/...} branch (where {@code protectCiFiles} is off) stage a
+     * workflow edit even when the per-job test lock is on, matching the
+     * pipeline's own {@code ci/...} exemption.</p>
+     */
     public static final Set<String> PROTECTED_PATH_PATTERNS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
         "**/src/test/**",
-        "**/src/it/**",
-        ".github/workflows/**",
-        ".github/actions/**"
+        "**/src/it/**"
     )));
 
     /** Branch that the agent writes changes to. */
