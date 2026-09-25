@@ -55,6 +55,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 
 		StateDictionary written = new StateDictionary(tensors);
 		written.save(dir.resolve("references"));
+		written.destroy();
 		return dir.toFile();
 	}
 
