@@ -303,6 +303,32 @@ public class GruDecoderAssetTest extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * A deeper GRU layer is fed the previous layer's hidden state, so a decoder is rejected when
+	 * that layer's input-hidden weights take a different width, both when the declared input size
+	 * agrees with the mis-shaped weights and when it agrees with the hidden size the layer is fed.
+	 */
+	@Test(timeout = 60000)
+	public void constructionRejectsDeeperLayerWeightsThatDoNotTakeTheHiddenState() {
+		Weights w = new Weights(false);
+		int narrow = HIDDEN_SIZE - 2;
+		PackedCollection[] weightIh = w.weightIh.clone();
+		weightIh[1] = new PackedCollection(shape(3 * HIDDEN_SIZE, narrow));
+
+		for (int[] inputSizes : new int[][] { { HIDDEN_SIZE, narrow }, { HIDDEN_SIZE, HIDDEN_SIZE } }) {
+			try {
+				new GRUDecoder(w.config, inputSizes, weightIh, w.weightHh, w.biasIh, w.biasHh,
+						w.summaryWeight, w.summaryBias, w.lmHeadWeight, w.lmHeadBias, w.embedding);
+				Assert.fail("Layer 1 declared to take " + inputSizes[1] + " with [24, " + narrow
+						+ "] input weights should be rejected");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage(),
+						expected.getMessage().contains("GRU layer 1")
+								&& expected.getMessage().contains("previous layer's hidden state"));
+			}
+		}
+	}
+
+	/**
 	 * The real Moonbeam 309M checkpoint loads, and decodes a transformer hidden state of all 0.1
 	 * to the tokens the Java assembly produced on master for the same checkpoint tensors given to
 	 * the constructor directly (every layer taking inputs of the decoder hidden size, with the
