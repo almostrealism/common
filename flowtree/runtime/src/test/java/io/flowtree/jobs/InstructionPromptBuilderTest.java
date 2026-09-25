@@ -76,6 +76,24 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Test Integrity Policy"));
 	}
 
+	/** InstructionPromptBuilder always includes the Test Execution Limits section. */
+	@Test(timeout = 30000)
+	public void includesTestExecutionLimitsAlways() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertTrue("Expected Test Execution Limits section",
+			result.contains("## Test Execution Limits"));
+		assertTrue("Expected one-test-per-invocation guidance",
+			result.contains("Run at most ONE test per invocation"));
+		assertTrue("Expected AR_TEST_GROUP shard warning",
+			result.contains("AR_TEST_GROUP"));
+		assertTrue("Expected 40-minute timeout ceiling",
+			result.contains("40"));
+		assertTrue("Expected inactivity-kill warning",
+			result.contains("killed for inactivity"));
+	}
+
 	/** InstructionPromptBuilder includes Merge Conflicts section when hasMergeConflicts is true. */
 	@Test(timeout = 30000)
 	public void includesMergeConflictSection() {
