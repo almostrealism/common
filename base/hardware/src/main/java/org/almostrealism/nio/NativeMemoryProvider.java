@@ -37,6 +37,7 @@ import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Memory provider for CPU-side native memory, backed by either NIO direct buffers or JNI malloc.
@@ -235,6 +236,17 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 		return resolvedCompiler;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>{@code memoryUsed} is incremented before the backend allocation call, so that a
+	 * rejection after the backend has already produced a block (provider destroyed) is
+	 * unwound by the matching subtraction in {@link #deallocate(NativeRef)}. If the backend
+	 * call itself throws before producing a block — including the lazy {@link Malloc}/compiler
+	 * initialization the calloc path performs on first use — there is no {@link NativeRef} for
+	 * that path to unwind through, so {@link #allocateBackend(long, Supplier)} rolls back the
+	 * increment directly in that case.</p>
+	 */
 	@Override
 	public synchronized RAM allocate(int size) {
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
@@ -245,21 +257,47 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			log("Allocating " + (getNumberSize() * (long) size) / 1024 / 1024 + "mb");
 		}
 
+		// Accounted for before registration, so allocated()'s rejection path can unwind it.
+		long added = (long) getNumberSize() * size;
+		memoryUsed += added;
+
 		RAM mem;
 		if (direct) {
-			mem = allocated(NativeBuffer.create(this, size,
+			NativeBuffer buffer = allocateBackend(added, () -> NativeBuffer.create(this, size,
 					shared && getMemoryName() != null ? getMemoryName().apply(size) : null));
+			mem = allocated(buffer);
 		} else {
-			if (malloc == null) malloc = new Malloc(compiler());
-
 			long bytes = getNumberSize() * (long) size;
-			long pointer = malloc.apply(getNumberSize() * size);
+			long pointer = allocateBackend(added, () -> {
+				if (malloc == null) malloc = new Malloc(compiler());
+				return malloc.apply(getNumberSize() * size);
+			});
+
 			mem = allocated(new NativeMemory(this, pointer, bytes));
 		}
 
-		memoryUsed += (long) getNumberSize() * size;
 		allocationSizes.addEntry(getNumberSize() * (long) size);
 		return mem;
+	}
+
+	/**
+	 * Runs a backend allocation call that produces a block for a reservation already
+	 * added to {@link #memoryUsed}. {@link #allocated(RAM)}'s own rejection path unwinds
+	 * that reservation once a block exists, via the matching subtraction in
+	 * {@link #deallocate(NativeRef)}; this method covers the earlier failure where the
+	 * backend call itself throws and never produces a block for that path to unwind.
+	 *
+	 * @param reserved the amount already added to {@link #memoryUsed} for this allocation
+	 * @param backendCall the backend allocation call to run
+	 * @return the value produced by {@code backendCall}
+	 */
+	private <T> T allocateBackend(long reserved, Supplier<T> backendCall) {
+		try {
+			return backendCall.get();
+		} catch (RuntimeException | Error e) {
+			memoryUsed -= reserved;
+			throw e;
+		}
 	}
 
 	/**
@@ -514,9 +552,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	@Override
 	public synchronized void destroy() {
-		getAllocated().forEach(this::deallocate);
-		memoryUsed = 0;
-
 		super.destroy();
 	}
 

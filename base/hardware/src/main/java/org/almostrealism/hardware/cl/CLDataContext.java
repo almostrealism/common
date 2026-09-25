@@ -26,6 +26,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -39,8 +40,12 @@ import org.jocl.cl_platform_id;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -288,11 +293,31 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The OpenCL context handle. */
 	private cl_context ctx;
 
-	/** The main OpenCL memory provider for RAM allocations. */
-	private MemoryProvider<CLMemory> mainRam;
+	/**
+	 * The main OpenCL memory provider for RAM allocations. Typed as {@link HardwareMemoryProvider}
+	 * (always a {@link CLMemoryProvider}), not the plain {@link MemoryProvider} interface, so
+	 * {@link #destroy()} can register a completion callback via
+	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} to defer releasing the OpenCL
+	 * context this provider's retained blocks point into.
+	 */
+	private HardwareMemoryProvider<CLMemory> mainRam;
 
 	/** The alternate JVM heap-based memory provider for small allocations. */
 	private MemoryProvider<Memory> altRam;
+
+	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
+	/**
+	 * Serializes context creation and use against {@link #destroy()}, so a compute-context
+	 * scope in progress on any thread cannot have its context destroyed underneath it.
+	 * {@link #createContext(ComputeRequirement...)} and {@link #computeContext(Callable, ComputeRequirement...)}
+	 * hold the read lock for as long as a context they created may still be dispatched
+	 * through (shared, so unrelated calls on other threads still run concurrently);
+	 * {@link #destroy()} takes the write lock, which cannot be granted until every such
+	 * call has finished, so teardown never runs while a scope is still starting or running.
+	 */
+	private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
 
 	/** Optional delegate memory provider retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer honored. */
 	private MemoryProvider<? extends RAM> delegateMemory;
@@ -300,11 +325,31 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** Thread-local list of compute contexts for concurrent access. */
 	private ThreadLocal<List<ComputeContext<MemoryData>>> computeContexts;
 
+	/** Every compute context created for this data context, on any thread, so all are released with it. */
+	private final Set<ComputeContext<MemoryData>> allComputeContexts =
+			Collections.newSetFromMap(new ConcurrentHashMap<>());
+
 	/** Thread-local memory provider function for size-based allocation. */
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
-	/** Lazy initialization callback for OpenCL resources. */
-	private Runnable start;
+	/**
+	 * Lazy initialization callback for OpenCL resources. Volatile so that a thread
+	 * observing it become {@code null} (in {@link #ensureStarted()}, after acquiring
+	 * {@link #startLock}) also observes every field this callback wrote before
+	 * clearing it.
+	 */
+	private volatile Runnable start;
+
+	/**
+	 * Serializes the lazy {@link #start} callback itself, independent of
+	 * {@link #lifecycleLock}. {@link #lifecycleLock}'s read side is shared, so without
+	 * this, two threads racing in {@link #ensureStarted()} could both pass the
+	 * {@code destroyed} check and both invoke {@link #start} concurrently,
+	 * double-initializing OpenCL. Always acquired only after {@link #lifecycleLock}'s
+	 * read lock (never the other way around), so it introduces no new lock-ordering
+	 * cycle with {@link #destroy()}'s write lock.
+	 */
+	private final Object startLock = new Object();
 
 	/**
 	 * Constructs a new CLDataContext with the specified configuration.
@@ -466,6 +511,24 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return a new {@link ComputeContext} configured for the specified requirements
 	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
+		lifecycleLock.readLock().lock();
+
+		try {
+			if (destroyed) {
+				throw new IllegalStateException("Cannot create a compute context for " +
+						name + " because the data context has been destroyed");
+			}
+
+			ComputeContext<MemoryData> context = newContext(expectations);
+			allComputeContexts.add(context);
+			return context;
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
+	}
+
+	/** Builds a compute context for the given requirements without recording it. */
+	private ComputeContext<MemoryData> newContext(ComputeRequirement... expectations) {
 		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
 		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();
 
@@ -474,7 +537,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		if (cReq.isPresent()) {
 			cc = new CLNativeComputeContext(this, NativeCompiler.factory(getPrecision(), true).construct());
 		} else {
-			if (start != null) start.run();
+			ensureStarted();
 			cc = new CLComputeContext(this, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
@@ -487,6 +550,40 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public String getName() { return name; }
 
 	/**
+	 * Triggers lazy OpenCL initialization if it has not yet run. Held under the read side of
+	 * {@link #lifecycleLock} so {@link #destroy()} cannot be granted (and cannot have already
+	 * completed) while this runs, and fails fast once this context has been destroyed instead
+	 * of silently reinitializing OpenCL resources — including {@link #mainRam} — for a context
+	 * {@link #destroy()} has already torn down.
+	 *
+	 * <p>{@link #lifecycleLock}'s read side is shared, so it does not by itself stop two
+	 * threads from both observing {@link #start} as non-null and both running it. The nested
+	 * {@link #startLock} monitor serializes the callback itself with a standard double-checked
+	 * check: a thread that loses the race to {@link #startLock} re-checks {@link #start} once
+	 * inside and finds it already cleared by the winner, so OpenCL is only initialized once.</p>
+	 *
+	 * @throws IllegalStateException if this data context has already been destroyed
+	 */
+	private void ensureStarted() {
+		lifecycleLock.readLock().lock();
+
+		try {
+			if (destroyed) {
+				throw new IllegalStateException("Cannot use " + name +
+						" because the data context has been destroyed");
+			}
+
+			if (start != null) {
+				synchronized (startLock) {
+					if (start != null) start.run();
+				}
+			}
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
+	}
+
+	/**
 	 * Returns the floating-point precision used by this context.
 	 * Triggers lazy initialization if not already started.
 	 * The device capability yields {@link Precision#FP32} when using a GPU kernel device
@@ -497,7 +594,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public Precision getPrecision() {
-		if (start != null) start.run();
+		ensureStarted();
 		return precision;
 	}
 
@@ -508,7 +605,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return the OpenCL {@link cl_context} for this data context
 	 */
 	public cl_context getClContext() {
-		if (start != null) start.run();
+		ensureStarted();
 		return ctx;
 	}
 
@@ -550,7 +647,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @return the main {@link CLMemoryProvider} for this context
 	 */
 	public MemoryProvider<CLMemory> getMemoryProvider() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainRam;
 	}
 
@@ -615,20 +712,41 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * exist for this thread, creates a default OpenCL context and optionally
 	 * a native C compilation context if {@code enableClNative} is true.
 	 *
+	 * <p>Held under the read side of {@link #lifecycleLock} for the entire lookup, discard-if-stale,
+	 * and creation sequence &mdash; not just around {@link #createContext(ComputeRequirement...)}'s
+	 * own body &mdash; so {@link #destroy()} (which takes the write lock) cannot retire a context
+	 * between its creation here and this method actually handing it back to the caller. A thread's
+	 * cached list can also outlive the contexts it holds if this data context was destroyed on
+	 * another thread; that stale list is discarded here so it is rebuilt (or destruction is
+	 * surfaced immediately) rather than handed back.</p>
+	 *
 	 * @return the thread-local list of compute contexts
 	 */
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
-		if (computeContexts.get().isEmpty()) {
-			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContexts.get().add(createContext());
+		lifecycleLock.readLock().lock();
 
-			if (enableClNative) {
-				computeContexts.get().add(createContext(ComputeRequirement.C));
+		try {
+			List<ComputeContext<MemoryData>> current = computeContexts.get();
+
+			if (!current.isEmpty() && current.stream().anyMatch(ComputeContext::isDestroyed)) {
+				current = new ArrayList<>();
+				computeContexts.set(current);
 			}
-		}
 
-		return computeContexts.get();
+			if (current.isEmpty()) {
+				if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
+				current.add(createContext());
+
+				if (enableClNative) {
+					current.add(createContext(ComputeRequirement.C));
+				}
+			}
+
+			return current;
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
 	}
 
 	/**
@@ -644,27 +762,37 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		List<ComputeContext<MemoryData>> current = computeContexts.get();
-		List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
-
-		String ccName = next.toString();
-		if (ccName.contains(".")) {
-			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
-		}
+		// Held for the whole scope, not just creation, so destroy() (which takes the
+		// write lock) cannot retire the context this scope is about to dispatch through
+		// between its creation here and its use inside exec.call().
+		lifecycleLock.readLock().lock();
 
 		try {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
-			computeContexts.set(next);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			List<ComputeContext<MemoryData>> current = computeContexts.get();
+			List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
+
+			String ccName = next.toString();
+			if (ccName.contains(".")) {
+				ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
+			}
+
+			try {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
+				computeContexts.set(next);
+				return exec.call();
+			} catch (RuntimeException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			} finally {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
+				allComputeContexts.remove(next.get(0));
+				next.get(0).destroy();
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
+				computeContexts.set(current);
+			}
 		} finally {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
-			next.get(0).destroy();
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContexts.set(current);
+			lifecycleLock.readLock().unlock();
 		}
 	}
 
@@ -698,20 +826,61 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/**
 	 * Releases all resources held by this data context including compute contexts,
 	 * memory providers, and the underlying OpenCL context.
+	 *
+	 * <p>{@link HardwareMemoryProvider#destroy()} retains blocks that are still referenced
+	 * rather than freeing them, so that a caller still holding one keeps seeing valid memory.
+	 * Releasing the OpenCL context immediately would break that promise, since a retained
+	 * {@link CLMemory} points into it — so the context is released only once
+	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} reports every retained block
+	 * actually gone (immediately, if none were retained).</p>
+	 *
+	 * <p>A {@link ReentrantReadWriteLock} cannot upgrade a held read lock to the write lock, so a
+	 * thread that calls this while inside {@link #getComputeContexts()} or
+	 * {@link #computeContext(Callable, ComputeRequirement...)} (which hold the read lock across
+	 * their whole scope) would block on the write lock forever. Such a call is rejected with
+	 * {@link IllegalStateException} rather than deadlocking silently, since tearing a context
+	 * down from within its own live scope is a caller mistake the caller must see.</p>
 	 */
 	@Override
 	public void destroy() {
-		// TODO  Destroy any other compute contexts
-		if (computeContexts.get() != null) {
-			computeContexts.get().forEach(cc -> cc.destroy());
-			computeContexts.remove();
+		if (lifecycleLock.getReadHoldCount() > 0) {
+			throw new IllegalStateException("Cannot destroy " + getName() +
+					" from within a compute-context scope on the same thread");
 		}
 
-		if (mainRam != null) mainRam.destroy();
+		lifecycleLock.writeLock().lock();
+
+		try {
+			destroyed = true;
+			start = null;
+
+			computeContexts.remove();
+			allComputeContexts.forEach(ComputeContext::destroy);
+			allComputeContexts.clear();
+		} finally {
+			lifecycleLock.writeLock().unlock();
+		}
+
 		if (altRam != null) altRam.destroy();
-		if (ctx != null) CL.clReleaseContext(ctx);
-		ctx = null;
+
+		if (mainRam != null) {
+			mainRam.destroy();
+			mainRam.onFullyReleased(this::releaseClContext);
+		} else {
+			releaseClContext();
+		}
 	}
+
+	/** Releases the underlying OpenCL context, once, if it has not already been released. */
+	private synchronized void releaseClContext() {
+		if (ctx != null) {
+			CL.clReleaseContext(ctx);
+			ctx = null;
+		}
+	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
 
 	/** Returns the console for logging output. */
 	@Override

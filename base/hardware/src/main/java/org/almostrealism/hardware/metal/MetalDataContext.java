@@ -25,11 +25,13 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -79,10 +81,26 @@ public class MetalDataContext extends HardwareDataContext {
 	/** The primary Metal device used for all GPU buffer allocations and kernel execution. */
 	private MTLDevice mainDevice;
 
-	/** Memory provider for Metal-backed GPU buffers (main allocation path). */
-	private MemoryProvider<MetalMemory> mainRam;
+	/**
+	 * Memory provider for Metal-backed GPU buffers (main allocation path). Typed as
+	 * {@link HardwareMemoryProvider} (always a {@link MetalMemoryProvider}), not the plain
+	 * {@link MemoryProvider} interface, so {@link #destroy()} can register a completion
+	 * callback via {@link HardwareMemoryProvider#onFullyReleased(Runnable)} to defer
+	 * releasing the Metal device this provider's retained blocks point into.
+	 */
+	private HardwareMemoryProvider<MetalMemory> mainRam;
 	/** Fallback JVM-backed memory provider for small allocations below {@link #offHeapSize}. */
 	private MemoryProvider<Memory> altRam;
+
+	/**
+	 * Serializes context creation and use against {@link #destroy()}, so a compute-context
+	 * scope in progress on any thread — whether the shared context or a temporary one from
+	 * {@link #computeContext(Callable, ComputeRequirement...)} — cannot have its context (or
+	 * the underlying Metal device) torn down underneath it. Readers (context creation and use)
+	 * run concurrently with each other; {@link #destroy()} takes the write lock, which is not
+	 * granted until every such call has finished.
+	 */
+	private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
 
 	/**
 	 * The single {@link MetalComputeContext} shared by every thread of this data context.
@@ -109,8 +127,24 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	private final ThreadLocal<ComputeContext<MemoryData>> scopedContext = new ThreadLocal<>();
 
-	/** Deferred initialization runnable; invoked on first device access, then set to null. */
-	private Runnable start;
+	/**
+	 * Deferred initialization runnable; invoked on first device access, then set to null.
+	 * Volatile so that a thread observing it become {@code null} (in {@link #ensureStarted()},
+	 * after acquiring {@link #startLock}) also observes every field {@link #start()} wrote
+	 * before clearing it.
+	 */
+	private volatile Runnable start;
+
+	/**
+	 * Serializes the lazy {@link #start} callback itself, independent of
+	 * {@link #lifecycleLock}. {@link #lifecycleLock}'s read side is shared, so without
+	 * this, two threads racing in {@link #ensureStarted()} could both pass the
+	 * {@code destroyed} check and both invoke {@link #start} concurrently,
+	 * double-initializing the Metal device. Always acquired only after
+	 * {@link #lifecycleLock}'s read lock (never the other way around), so it introduces
+	 * no new lock-ordering cycle with {@link #destroy()}'s write lock.
+	 */
+	private final Object startLock = new Object();
 
 	/**
 	 * Creates a Metal data context with specified memory limits.
@@ -165,16 +199,59 @@ public class MetalDataContext extends HardwareDataContext {
 	}
 
 	/**
+	 * Triggers deferred Metal initialization if it has not yet run. Held under the read side of
+	 * {@link #lifecycleLock} so {@link #destroy()} cannot be granted (and cannot have already
+	 * completed) while this runs, and fails fast once this context has been destroyed instead of
+	 * silently reinitializing the Metal device and {@link #mainRam} for a context {@link #destroy()}
+	 * has already torn down.
+	 *
+	 * <p>{@link #lifecycleLock}'s read side is shared, so it does not by itself stop two
+	 * threads from both observing {@link #start} as non-null and both running it. The nested
+	 * {@link #startLock} monitor serializes the callback itself with a standard double-checked
+	 * check: a thread that loses the race to {@link #startLock} re-checks {@link #start} once
+	 * inside and finds it already cleared by the winner, so the Metal device is only
+	 * initialized once.</p>
+	 *
+	 * @throws IllegalStateException if this data context has already been destroyed
+	 */
+	private void ensureStarted() {
+		lifecycleLock.readLock().lock();
+
+		try {
+			if (isDestroyed()) {
+				throw new IllegalStateException("Cannot use " + getName() +
+						" because the data context has been destroyed");
+			}
+
+			if (start != null) {
+				synchronized (startLock) {
+					if (start != null) start.run();
+				}
+			}
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
+	}
+
+	/**
 	 * Creates a new {@link MetalComputeContext} for the given compute requirements.
 	 *
-	 * <p>Triggers deferred device initialization if not yet complete, then constructs
-	 * a {@link MetalComputeContext} backed by the main device.</p>
+	 * <p>Triggers deferred device initialization if not yet complete, via
+	 * {@link #ensureStarted()} rather than invoking {@link #start} directly, so this call
+	 * shares that method's fail-fast destroyed check and {@link #startLock} serialization
+	 * instead of racing a concurrent {@link #ensureStarted()} call to double-initialize the
+	 * Metal device. Then constructs a {@link MetalComputeContext} backed by the main device.</p>
 	 *
 	 * @param expectations Compute requirements (e.g., profiling); C and PROFILING are not supported
 	 * @return A new {@link MetalComputeContext} initialized with the main Metal device
 	 * @throws UnsupportedOperationException if a C or profiling compute context is requested
 	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
+		if (isDestroyed()) {
+			throw new IllegalStateException("Cannot create a compute context for " +
+					getName() + " because the data context has been destroyed");
+		}
+
 		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
 		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();
 
@@ -183,7 +260,7 @@ public class MetalDataContext extends HardwareDataContext {
 		if (cReq.isPresent() || pReq.isPresent()) {
 			throw new UnsupportedOperationException();
 		} else {
-			if (start != null) start.run();
+			ensureStarted();
 			cc = new MetalComputeContext(this);
 			((MetalComputeContext) cc).init(mainDevice);
 		}
@@ -207,7 +284,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @return The {@link MTLDevice} instance for the system default GPU
 	 */
 	public MTLDevice getDevice() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainDevice;
 	}
 
@@ -244,7 +321,7 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @return {@link MetalMemoryProvider} for Metal GPU buffers
 	 */
 	public MemoryProvider<MetalMemory> getMemoryProvider() {
-		if (start != null) start.run();
+		ensureStarted();
 		return mainRam;
 	}
 
@@ -309,25 +386,41 @@ public class MetalDataContext extends HardwareDataContext {
 	/**
 	 * Returns the shared {@link MetalComputeContext}, creating it on first use.
 	 *
-	 * <p>Uses double-checked locking on {@code this} so concurrent threads (e.g. several
+	 * <p>Held under the read side of {@link #lifecycleLock} so {@link #destroy()} cannot
+	 * release {@link #mainDevice} while this is creating (or handing out) the shared
+	 * context; without it, a call arriving just after teardown could see a stale
+	 * {@code null} field and recreate a context against an already-released device. Uses
+	 * double-checked locking on {@code this} so concurrent threads (e.g. several
 	 * {@code Evaluable.async} dispatch threads) observe a single instance.</p>
 	 *
 	 * @return the shared compute context
+	 * @throws IllegalStateException if this data context has been destroyed
 	 */
 	private ComputeContext<MemoryData> sharedContext() {
-		ComputeContext<MemoryData> cc = sharedContext;
+		lifecycleLock.readLock().lock();
 
-		if (cc == null) {
-			synchronized (this) {
-				cc = sharedContext;
-				if (cc == null) {
-					cc = createContext();
-					sharedContext = cc;
+		try {
+			if (isDestroyed()) {
+				throw new IllegalStateException("Cannot create a compute context for " +
+						getName() + " because the data context has been destroyed");
+			}
+
+			ComputeContext<MemoryData> cc = sharedContext;
+
+			if (cc == null) {
+				synchronized (this) {
+					cc = sharedContext;
+					if (cc == null) {
+						cc = createContext();
+						sharedContext = cc;
+					}
 				}
 			}
-		}
 
-		return cc;
+			return cc;
+		} finally {
+			lifecycleLock.readLock().unlock();
+		}
 	}
 
 	/**
@@ -336,6 +429,11 @@ public class MetalDataContext extends HardwareDataContext {
 	 * <p>Creates a temporary {@link MetalComputeContext} with the specified requirements,
 	 * executes the callable, then destroys the context. The original context is restored
 	 * after execution.</p>
+	 *
+	 * <p>Runs under the read side of {@link #lifecycleLock} for the whole scope, not just
+	 * context creation, so {@link #destroy()} (which takes the write lock) cannot release
+	 * {@code mainDevice} out from under a context this call created and is about to, or is
+	 * still, dispatching through.</p>
 	 *
 	 * @param <T> Return type of the callable
 	 * @param exec The callable to execute
@@ -346,32 +444,38 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		ComputeContext<MemoryData> current = scopedContext.get();
-		ComputeContext next = createContext(expectations);
-
-		String ccName = next.toString();
-		if (ccName.contains(".")) {
-			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
-		}
+		lifecycleLock.readLock().lock();
 
 		try {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
-			scopedContext.set(next);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
-			next.destroy();
-			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
+			ComputeContext<MemoryData> current = scopedContext.get();
+			ComputeContext next = createContext(expectations);
 
-			if (current == null) {
-				scopedContext.remove();
-			} else {
-				scopedContext.set(current);
+			String ccName = next.toString();
+			if (ccName.contains(".")) {
+				ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
 			}
+
+			try {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
+				scopedContext.set(next);
+				return exec.call();
+			} catch (RuntimeException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			} finally {
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
+				next.destroy();
+				if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
+
+				if (current == null) {
+					scopedContext.remove();
+				} else {
+					scopedContext.set(current);
+				}
+			}
+		} finally {
+			lifecycleLock.readLock().unlock();
 		}
 	}
 
@@ -409,21 +513,66 @@ public class MetalDataContext extends HardwareDataContext {
 	 *
 	 * <p>Destroys all compute contexts, releases memory providers, and frees
 	 * the Metal device. After calling destroy, this context cannot be used.</p>
+	 *
+	 * <p>Takes the write side of {@link #lifecycleLock}, which is not granted until every
+	 * in-progress {@link #sharedContext()} or {@link #computeContext(Callable, ComputeRequirement...)}
+	 * call on any thread has finished — so no scope created against this context is still
+	 * starting or running when {@code mainDevice} is released, and {@link #getComputeContexts()}
+	 * cannot observe a partially torn-down context.</p>
+	 *
+	 * <p>{@link HardwareMemoryProvider#destroy()} retains blocks that are still referenced
+	 * rather than freeing them, so that a caller still holding one keeps seeing valid memory.
+	 * Releasing {@code mainDevice} immediately would break that promise, since a retained
+	 * {@link MetalMemory} points into it — so the device is released only once
+	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} reports every retained block
+	 * actually gone (immediately, if none were retained).</p>
+	 *
+	 * <p>A {@link ReentrantReadWriteLock} cannot upgrade a held read lock to the write lock, so a
+	 * thread that calls this while inside {@link #sharedContext()} or
+	 * {@link #computeContext(Callable, ComputeRequirement...)} (which hold the read lock across
+	 * their whole scope) would block on the write lock forever. Such a call is rejected with
+	 * {@link IllegalStateException} rather than deadlocking silently, since tearing a context
+	 * down from within its own live scope is a caller mistake the caller must see.</p>
 	 */
 	@Override
 	public void destroy() {
-		if (sharedContext != null) {
-			sharedContext.destroy();
-			sharedContext = null;
+		if (lifecycleLock.getReadHoldCount() > 0) {
+			throw new IllegalStateException("Cannot destroy " + getName() +
+					" from within a compute-context scope on the same thread");
 		}
 
-		// Any scoped context is created and destroyed within computeContext(...) and so does not
-		// outlive that call; clear the current thread's slot defensively.
-		scopedContext.remove();
+		lifecycleLock.writeLock().lock();
 
-		if (mainRam != null) mainRam.destroy();
+		try {
+			super.destroy();
+			start = null;
+
+			if (sharedContext != null) {
+				sharedContext.destroy();
+				sharedContext = null;
+			}
+
+			// Defensive: no live scope can be holding the calling thread's slot here.
+			scopedContext.remove();
+		} finally {
+			lifecycleLock.writeLock().unlock();
+		}
+
 		if (altRam != null) altRam.destroy();
-		if (mainDevice != null) mainDevice.release();
-		mainDevice = null;
+
+		if (mainRam != null) {
+			mainRam.destroy();
+			mainRam.onFullyReleased(this::releaseDevice);
+		} else {
+			releaseDevice();
+		}
+	}
+
+	/** Releases the underlying Metal device, once, if it has not already been released. */
+	private synchronized void releaseDevice() {
+		if (mainDevice != null) {
+			mainDevice.release();
+			mainDevice = null;
+		}
 	}
 }
