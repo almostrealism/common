@@ -21,6 +21,7 @@ import org.junit.Test;
 
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -240,5 +241,47 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		String message = linter.formatRejection();
 		assertTrue(message.contains("no bypass"));
 		assertTrue(message.contains("full test suite"));
+	}
+
+	/** A whole-module run phrased with "tests" before "module" is still a module suite run. */
+	@Test(timeout = 10000)
+	public void testsForModulePhraseRejected() {
+		assertFalse(violationsFor("Run the tests for the engine/utils module.").isEmpty());
+		assertFalse(violationsFor("Then run tests in the module to confirm.").isEmpty());
+		assertFalse(violationsFor("Execute the relevant tests of the flowtree module.").isEmpty());
+	}
+
+	/** Naming a single test inside a module is not a module suite run. */
+	@Test(timeout = 10000)
+	public void singleTestInModuleAccepted() {
+		assertTrue(violationsFor("Run the test in the engine/utils module named FooTest#bar.").isEmpty());
+		assertTrue(violationsFor("Add tests for the new module.").isEmpty());
+	}
+
+	/** A Maven command split across two lines is linted as one command, reported at the line
+	 * the command starts on. */
+	@Test(timeout = 10000)
+	public void mavenCommandSplitAcrossLinesRejected() {
+		List<String> violations = violationsFor("Fix the bug.\nRun mvn\nclean install -pl engine/utils");
+		assertEquals(1, violations.size());
+		assertTrue(violations.get(0).endsWith("> Run mvn"));
+		assertFalse(violationsFor("Run mvn -pl engine/utils\nclean\ninstall").isEmpty());
+	}
+
+	/** A shell backslash continuation joins the next line onto the command. */
+	@Test(timeout = 10000)
+	public void backslashContinuationRejected() {
+		assertFalse(violationsFor("mvn -pl engine/utils \\\n  test").isEmpty());
+		assertFalse(violationsFor("pytest \\\n  tools/mcp/manager").isEmpty());
+	}
+
+	/** Continuation does not cross a blank line, and a split command that is still narrow or
+	 * build-only is accepted. */
+	@Test(timeout = 10000)
+	public void narrowOrSeparatedMultilineCommandsAccepted() {
+		assertTrue(violationsFor("Build with mvn\ninstall -DskipTests").isEmpty());
+		assertTrue(violationsFor("Run mvn\n-Dtest=FooTest#bar test -pl engine/utils").isEmpty());
+		assertTrue(violationsFor("We build with mvn.\n\nThen verify the fix by reading the output.")
+				.isEmpty());
 	}
 }

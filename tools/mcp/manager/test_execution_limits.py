@@ -952,5 +952,80 @@ class TestPytestPromptLint(unittest.TestCase):
             "Add a pytest regression test and use explicit pytest node ids."))
 
 
+class TestModuleTestsWordOrderLint(unittest.TestCase):
+    """A module suite run is flagged whichever word comes first."""
+
+    def test_tests_for_module_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Run the tests for the engine/utils module."))
+
+    def test_tests_in_the_module_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Then run tests in the module to confirm."))
+
+    def test_relevant_tests_of_module_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Execute the relevant tests of the flowtree module."))
+
+    def test_single_test_in_module_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Run the test in the engine/utils module named FooTest#bar."))
+
+    def test_adding_tests_for_module_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Add tests for the new module."))
+
+
+class TestMultilinePromptLint(unittest.TestCase):
+    """A command split across lines is linted as one command."""
+
+    def test_maven_launcher_and_phase_on_separate_lines_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Fix the bug.\nRun mvn\nclean install -pl engine/utils")
+        self.assertEqual(1, len(hits))
+        self.assertEqual(2, hits[0][0])
+        self.assertEqual("Run mvn", hits[0][1])
+
+    def test_maven_command_across_three_lines_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Run mvn -pl engine/utils\nclean\ninstall"))
+
+    def test_backslash_continued_maven_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "mvn -pl engine/utils \\\n  test"))
+
+    def test_backslash_continued_pytest_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "pytest \\\n  tools/mcp/manager"))
+
+    def test_split_build_only_command_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Build with mvn\ninstall -DskipTests"))
+
+    def test_split_narrow_command_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Run mvn\n-Dtest=FooTest#bar test -pl engine/utils"))
+
+    def test_continuation_stops_at_blank_line(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "We build with mvn.\n\nThen verify the fix by reading the output."))
+
+
+class TestCiPromptTemplatesLintClean(unittest.TestCase):
+    """CI submits the prompts built from tools/ci/prompts as job prompts, and
+    both the manager and controller linters reject a job whose prompt they
+    flag -- so a template that trips the linter (even in a prohibition such as
+    "do NOT reference ...") stops every job built from it."""
+
+    def test_every_template_lints_clean(self):
+        prompts_dir = os.path.join(_MANAGER_DIR, "..", "..", "ci", "prompts")
+        names = sorted(os.listdir(prompts_dir))
+        self.assertIn("build-resolve-prompt.sh", names)
+        for name in names:
+            with open(os.path.join(prompts_dir, name), encoding="utf-8") as f:
+                with self.subTest(template=name):
+                    self.assertEqual([], lint_prompt_for_broad_test_instructions(f.read()))
+
+
 if __name__ == "__main__":
     unittest.main()

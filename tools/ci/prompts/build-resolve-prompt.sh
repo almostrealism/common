@@ -237,7 +237,7 @@ class selector (which would run every method in that class):
 ${CI_COMMANDS}
 
 Run only the specific failing test(s), one at a time. Do NOT run the module's whole
-suite and do NOT reference \`AR_TEST_GROUP\`/\`AR_TEST_GROUPS\` to reproduce CI's shard
+suite and do NOT set CI's test-group sharding properties to reproduce CI's shard
 ordering -- if a failure genuinely only manifests alongside other tests (shared state,
 ordering), say so explicitly in your summary instead of running the whole suite
 yourself; broad verification is CI's job.

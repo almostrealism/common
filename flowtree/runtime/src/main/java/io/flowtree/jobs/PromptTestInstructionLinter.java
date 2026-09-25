@@ -49,6 +49,14 @@ public class PromptTestInstructionLinter {
 			"\\b(?:run|execute|test)\\s+(?:the\\s+)?(?:relevant\\s+)?[\\w./-]*\\s*module(?:'s)?\\s+tests?\\b",
 			Pattern.CASE_INSENSITIVE);
 
+	/** Matches the reversed-word-order form of {@link #MODULE_TESTS}: "run the tests for the
+	 * engine/utils module", "run tests in the module". Plural "tests" only -- "run the test in
+	 * module X" names a single test, not a suite. */
+	private static final Pattern TESTS_FOR_MODULE = Pattern.compile(
+			"\\b(?:run|execute)\\s+(?:the\\s+)?(?:relevant\\s+)?tests\\s+(?:for|in|of|from)\\s+"
+					+ "(?:the\\s+)?[\\w./-]*\\s*module\\b",
+			Pattern.CASE_INSENSITIVE);
+
 	/** Matches a "run(ning) ... shard" phrase. */
 	private static final Pattern SHARD = Pattern.compile(
 			"\\brun(?:ning)?\\s+(?:the\\s+)?[\\w./-]*\\s*(?:CI\\s+)?shard\\b", Pattern.CASE_INSENSITIVE);
@@ -150,6 +158,8 @@ public class PromptTestInstructionLinter {
 				"\"run all/every test(s)\" phrase"));
 		rules.add(new LineRule(line -> MODULE_TESTS.matcher(line).find(),
 				"\"run the ... module tests\" phrase (a whole module's test run)"));
+		rules.add(new LineRule(line -> TESTS_FOR_MODULE.matcher(line).find(),
+				"\"run the tests for/in the ... module\" phrase (a whole module's test run)"));
 		rules.add(new LineRule(line -> SHARD.matcher(line).find(),
 				"\"run(ning) ... shard\" phrase"));
 		rules.add(new LineRule(line -> AR_TEST_GROUP.matcher(line).find(),
@@ -366,9 +376,11 @@ public class PromptTestInstructionLinter {
 		this.prompt = prompt;
 	}
 
-	/** Runs the checks, populating {@link #getViolations()}, and returns this instance. There
-	 * is no bypass flag for this linter; a prompt legitimately quoting a forbidden phrase must
-	 * be rewritten instead. */
+	/** Runs the checks, populating {@link #getViolations()}, and returns this instance. A line
+	 * whose command continues onto the next (see {@link #continuesOntoNextLine}) is also linted
+	 * joined with its continuation lines, and the hit is reported at the line the command starts
+	 * on. There is no bypass flag for this linter; a prompt legitimately quoting a forbidden
+	 * phrase must be rewritten instead. */
 	public PromptTestInstructionLinter lint() {
 		if (prompt == null || prompt.trim().isEmpty()) {
 			return this;
@@ -376,15 +388,68 @@ public class PromptTestInstructionLinter {
 		String[] lines = prompt.split("\n", -1);
 		for (int i = 0; i < lines.length; i++) {
 			String line = lines[i];
-			for (LineRule rule : RULES) {
-				if (rule.matcher.matches(line)) {
-					violations.add("Line " + (i + 1) + ": " + rule.reason
-							+ "\n    > " + truncate(line.trim(), 120));
-					break;
+			String reason = firstHit(line);
+			if (reason == null) {
+				String joined = joinedContinuation(lines, i);
+				if (joined != null) {
+					reason = firstHit(joined);
 				}
+			}
+			if (reason != null) {
+				violations.add("Line " + (i + 1) + ": " + reason
+						+ "\n    > " + truncate(line.trim(), 120));
 			}
 		}
 		return this;
+	}
+
+	/** Returns the reason of the first rule in {@link #RULES} that matches {@code text}, or
+	 * null when none does. */
+	private static String firstHit(String text) {
+		for (LineRule rule : RULES) {
+			if (rule.matcher.matches(text)) {
+				return rule.reason;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Whether a command in {@code text} may continue on the following line: the text ends with a
+	 * shell {@code \} continuation, or its last chained fragment names a Maven launcher but no
+	 * lifecycle phase yet ("Run mvn" followed by "clean install -pl engine/utils" on the next
+	 * line). pytest and unittest need no joining -- an invocation left with no target on its own
+	 * line is already flagged as broad.
+	 */
+	private static boolean continuesOntoNextLine(String text) {
+		if (text.trim().endsWith("\\")) {
+			return true;
+		}
+		// TODO(review): prose naming mvn with no phase ("We build with mvn.\nThen verify ...") joins onto the next prose line and is falsely flagged
+		String[] fragments = CHAIN_SPLIT.split(text, -1);
+		String last = fragments[fragments.length - 1];
+		return MVN_LAUNCHER_PATTERN.matcher(last).find() && !MVN_TEST_PHASE_PATTERN.matcher(last).find();
+	}
+
+	/**
+	 * Joins {@code lines[index]} with the lines its command continues onto (see
+	 * {@link #continuesOntoNextLine}), stopping at a blank line or the end of the prompt, so a
+	 * command split across lines is linted as one.
+	 *
+	 * @return the joined text, or null when the line does not continue
+	 */
+	private static String joinedContinuation(String[] lines, int index) {
+		String text = lines[index];
+		int next = index + 1;
+		while (next < lines.length && !lines[next].trim().isEmpty() && continuesOntoNextLine(text)) {
+			String trimmed = text.trim();
+			if (trimmed.endsWith("\\")) {
+				trimmed = trimmed.substring(0, trimmed.length() - 1);
+			}
+			text = trimmed + " " + lines[next].trim();
+			next++;
+		}
+		return next > index + 1 ? text : null;
 	}
 
 	/** Returns the violations found by {@link #lint()}; empty until called. */

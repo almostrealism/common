@@ -1116,6 +1116,14 @@ _TEST_LINT_PATTERNS = [
         r"\b(?:run|execute|test)\s+(?:the\s+)?(?:relevant\s+)?[\w./-]*\s*module(?:'s)?\s+tests?\b",
         re.IGNORECASE),
      '"run the ... module tests" phrase (a whole module\'s test run)'),
+    # The same request with the word order reversed ("run the tests for the
+    # engine/utils module", "run tests in the module"). Plural "tests" only:
+    # "run the test in module X" names a single test, not a suite.
+    (re.compile(
+        r"\b(?:run|execute)\s+(?:the\s+)?(?:relevant\s+)?tests\s+(?:for|in|of|from)\s+"
+        r"(?:the\s+)?[\w./-]*\s*module\b",
+        re.IGNORECASE),
+     '"run the tests for/in the ... module" phrase (a whole module\'s test run)'),
     (re.compile(r"\brun(?:ning)?\s+(?:the\s+)?[\w./-]*\s*(?:CI\s+)?shard\b", re.IGNORECASE),
      '"run(ning) ... shard" phrase'),
     (re.compile(r"AR_TEST_GROUPS?\b"),
@@ -1371,7 +1379,10 @@ def lint_prompt_for_broad_test_instructions(prompt: str) -> list:
     broad test set.
 
     Returns a list of ``(line_number, snippet, reason)`` tuples -- one per
-    matched line (first matching pattern wins per line). There is no
+    matched line (first matching pattern wins per line). A line whose
+    command continues onto the next (see ``_continues_onto_next_line``) is
+    also linted joined with its continuation lines, and a hit is reported at
+    the line the command starts on. There is no
     bypass flag for this linter; a prompt legitimately quoting the phrase
     must be rewritten instead. Only an empty (or whitespace-only) prompt is
     exempt -- a short-but-unambiguous instruction such as ``"run all
@@ -1381,10 +1392,50 @@ def lint_prompt_for_broad_test_instructions(prompt: str) -> list:
     if not prompt or not prompt.strip():
         return []
     violations = []
-    for lineno, line in enumerate(prompt.splitlines(), 1):
-        for pattern, reason in _TEST_LINT_PATTERNS:
-            if pattern.search(line):
-                snippet = line.strip()[:120]
-                violations.append((lineno, snippet, reason))
-                break
+    lines = prompt.splitlines()
+    for index, line in enumerate(lines):
+        hit = _first_lint_hit(line)
+        if hit is None:
+            joined = _joined_continuation(lines, index)
+            if joined is not None:
+                hit = _first_lint_hit(joined)
+        if hit is not None:
+            violations.append((index + 1, line.strip()[:120], hit))
     return violations
+
+
+def _first_lint_hit(text: str):
+    """Returns the reason of the first ``_TEST_LINT_PATTERNS`` entry that
+    matches ``text``, or ``None`` when none does."""
+    for pattern, reason in _TEST_LINT_PATTERNS:
+        if pattern.search(text):
+            return reason
+    return None
+
+
+def _continues_onto_next_line(text: str) -> bool:
+    """Whether a command in ``text`` may continue on the following line: the
+    text ends with a shell ``\\`` continuation, or its last chained fragment
+    names a Maven launcher but no lifecycle phase yet (``Run mvn`` followed
+    by ``clean install -pl engine/utils`` on the next line). pytest and
+    unittest need no joining -- an invocation left with no target on its own
+    line is already flagged as broad."""
+    if text.rstrip().endswith("\\"):
+        return True
+    # TODO(review): prose naming mvn with no phase ("We build with mvn.\nThen verify ...") joins onto the next prose line and is falsely flagged
+    fragment = _MvnTestSegmentMatcher._CHAIN_SPLIT_PATTERN.split(text)[-1]
+    return bool(_MvnTestSegmentMatcher._MVN_LAUNCHER_PATTERN.search(fragment)) \
+        and not _MvnTestSegmentMatcher._MVN_TEST_PHASE_PATTERN.search(fragment)
+
+
+def _joined_continuation(lines: list, index: int):
+    """Joins ``lines[index]`` with the lines its command continues onto (see
+    ``_continues_onto_next_line``), stopping at a blank line or the end of
+    the prompt, so a command split across lines is linted as one. Returns
+    ``None`` when the line does not continue."""
+    text = lines[index]
+    nxt = index + 1
+    while nxt < len(lines) and lines[nxt].strip() and _continues_onto_next_line(text):
+        text = text.rstrip().rstrip("\\") + " " + lines[nxt].strip()
+        nxt += 1
+    return text if nxt > index + 1 else None
