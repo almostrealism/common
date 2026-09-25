@@ -75,7 +75,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void referenceKeepsItsValuesAndShape() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 		PackedCollection mapping = references.collection("enc_after_mapping");
 
 		assertEquals(2, mapping.getShape().getDimensions());
@@ -92,7 +92,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void aShapeDisagreementFails() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 		assertEquals(12, references.collection("enc_after_mapping", shape(3, 4))
 				.getShape().getTotalSize());
 
@@ -119,7 +119,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void aFlatReferenceIsShaped() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 		PackedCollection shaped = references.collection("enc_resamp_output", shape(2, 3));
 
 		assertEquals(2, shaped.getShape().getDimensions());
@@ -136,7 +136,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void anAbsentReferenceIsNamed() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 
 		try {
 			references.collection("never_captured");
@@ -153,7 +153,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void aReferenceReadsBackFlat() throws IOException {
-		float[] values = new ReferenceActivations(standardDump()).load("enc_resamp_output");
+		float[] values = references(standardDump()).load("enc_resamp_output");
 
 		assertEquals(6, values.length);
 		assertEquals(-2.25, values[3], 1e-6);
@@ -186,13 +186,12 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void presenceIsAnsweredByKey() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 
 		assertTrue(references.contains("enc_after_mapping"));
 		assertTrue(references.contains("enc_after_mapping.bin"));
 		assertFalse(references.contains("never_captured"));
 		assertFalse(references.contains(""));
-		references.destroy();
 	}
 
 	/**
@@ -203,7 +202,7 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void shardsAreOpenedOnceAndReleased() throws IOException {
-		ReferenceActivations references = new ReferenceActivations(standardDump());
+		ReferenceActivations references = references(standardDump());
 		references.destroy();
 
 		StateDictionary opened = references.getReferences();

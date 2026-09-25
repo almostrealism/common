@@ -299,6 +299,32 @@ def test_dump_reference_activations_writes_no_bespoke_files(tmp_path):
     assert not [n for n in os.listdir(out_dir) if n.endswith(".bin")]
 
 
+def test_dump_over_a_legacy_dump_removes_its_stage_files(tmp_path):
+    """Dumping into a directory the bespoke format wrote removes the `<stage>.bin` files
+    for the stages being written, so the directory reads back as protobuf; a `.bin` file
+    that names no stage in this dump is not the writer's to remove and is left alone."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    for name in ("dit_output", "cond_bias", "unrelated"):
+        core.save_reference_output(np.arange(3, dtype=np.float32), str(out_dir / (name + ".bin")))
+
+    stages = {
+        "dit_output": np.arange(6, dtype=np.float32).reshape(2, 3),
+        "cond_bias": np.full((4,), 0.5, dtype=np.float32),
+    }
+    core.dump_reference_activations(stages, str(out_dir))
+
+    assert not (out_dir / "dit_output.bin").exists()
+    assert not (out_dir / "cond_bias.bin").exists()
+    assert (out_dir / "unrelated.bin").exists()
+
+    os.remove(str(out_dir / "unrelated.bin"))
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == set(stages)
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+    np.testing.assert_array_equal(reloaded["cond_bias"], stages["cond_bias"])
+
+
 def test_second_dump_with_same_prefix_replaces_the_first(tmp_path):
     """Two dumps into the same directory with the same shard prefix do not accumulate:
     the writer clears stale same-prefix shards first, so the second dump replaces the

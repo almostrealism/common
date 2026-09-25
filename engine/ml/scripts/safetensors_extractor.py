@@ -78,6 +78,10 @@ PROTOBUF_SIZE_LIMIT = 1024 * 1024 * 1024
 # dump scripts write beside their shards; read_state_dictionary skips them.
 SIDECAR_SUFFIX = ".json"
 
+# Suffix of the per-stage files reference dumps were written as before they
+# became protobuf shards; dump_reference_activations removes them on rewrite.
+LEGACY_REFERENCE_SUFFIX = ".bin"
+
 
 # ---------------------------------------------------------------------------
 # safetensors loading
@@ -510,9 +514,19 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     (``generate_protobuf_python.sh``), and a second serialization format is not
     worth avoiding it.
 
+    A ``<name>.bin`` file the bespoke format left for any stage being written is
+    removed first: both readers load every non-sidecar file in the directory, so
+    a leftover from a dump made before the migration would fail to parse as
+    protobuf when the same directory is dumped into again.
+
     The activations themselves must come from a real reference forward pass (see
     :func:`run_reference_stages`); this function only serializes them.
     """
+    for name in stages:
+        legacy = os.path.join(out_dir, name + LEGACY_REFERENCE_SUFFIX)
+        if os.path.isfile(legacy):
+            os.remove(legacy)
+
     state = {name: np.asarray(array).astype(np.float32)
              for name, array in stages.items()}
     return write_state_dictionary(state, out_dir, shard_prefix=shard_prefix)
