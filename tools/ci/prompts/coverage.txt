@@ -60,15 +60,18 @@ because you routed around the violation.
 1. Read `${TARGET}` end to end before writing anything. For Java, read the package's classes and
    their existing tests (if any); for Python, read the tool directory's modules and its
    `test_*.py` files.
-2. Run the existing tests for `${TARGET}` first, using the MCP test runner (Java) or
-   `python3 -m unittest discover` (Python), and confirm they pass before you add anything —
-   a coverage round on top of a red baseline is not a coverage round.
+2. Run the existing tests for `${TARGET}` first -- one at a time, by name -- using the MCP
+   test runner with `test_methods` (one `{class, method}` entry per invocation for Java; a
+   bare class selector is rejected) or explicit pytest node ids (Python), and confirm
+   they pass before you add anything. A coverage round on top of a red baseline is not a
+   coverage round; a whole-module or whole-directory run is not how you check that.
 3. Write tests that exercise the behavior described above. Follow the repository's test
    conventions: extend `TestSuiteBase` for Java tests, give every `@Test` a `timeout`, no `var`,
    no `@SuppressWarnings`, Javadoc where the project's checkstyle config requires it. For Python,
    `test_*.py` naming, `unittest` (matching the existing `python-tests` CI job).
-4. Run the tests you wrote and confirm they pass. Run the module's/directory's full test suite
-   afterward and confirm nothing else broke.
+4. Run the tests you wrote and confirm they pass, one at a time by name. Broad verification
+   (the module's or directory's full suite) is CI's job, not this session's -- do not run it
+   yourself to "confirm nothing else broke."
 5. Re-measure coverage locally for `${TARGET}` (JaCoCo for Java, coverage.py for Python — the
    same commands `tools/ci/coverage/fetch-latest-coverage.sh` uses) and iterate until you are at
    or above ${COVERAGE_THRESHOLD}%, or until further honest gains are impractical.

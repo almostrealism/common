@@ -115,8 +115,10 @@ Two failure modes to avoid:
 
 **6. Verify.**
 
-The tests you ran in step 4 must still pass, unmodified. Run the relevant modules' suites
-through the MCP test runner, run `mvn clean install -DskipTests`, and run the build validator
+The tests you ran in step 4 must still pass, unmodified. Run only those specific failing tests,
+one at a time, through the MCP test runner -- never a module's whole suite. Also run
+`timeout 2400 mvn clean install -DskipTests` (a build, not a test run, but every build
+invocation still needs an explicit timeout of at most 2400 seconds) and the build validator
 (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`) before you finish.
 
 ## Existing tests are locked

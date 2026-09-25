@@ -269,6 +269,12 @@ from prompt_linting import (  # noqa: E402
     _COMMIT_SEQUENCING_PATTERNS,
     _lint_prompt_for_commit_sequencing,
 )
+from execution_limits import (  # noqa: E402
+    POST_COMPLETION_MAX_TIMEOUT_SECONDS,
+    lint_prompt_for_broad_test_instructions,
+    validate_post_completion_command,
+    validate_post_completion_timeout,
+)
 import repo_config  # noqa: E402
 
 # Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.

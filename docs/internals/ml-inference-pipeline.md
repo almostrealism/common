@@ -253,7 +253,7 @@ distribution.
 ### Components
 
 ```java
-// AutoregressiveModel.java:104-156
+// AutoregressiveModel
 public class AutoregressiveModel<T> {
     private final PackedCollection position;       // Shared device-resident step counter
     private final Runnable resetPosition;         // Compiled once: position = 0
@@ -284,7 +284,7 @@ The `of()` factory wraps a compiled text model and constructs the sampling funct
 inline:
 
 ```java
-// AutoregressiveModel.java:405-434
+// AutoregressiveModel.of()
 public static AutoregressiveModel<Integer> of(CompiledModel model,
                                              PackedCollection position,
                                              IntFunction<PackedCollection> tokenEmbed) {
@@ -327,20 +327,20 @@ move one device buffer into another.
 In Qwen3, this is wired as:
 
 ```java
-// Qwen3.java:411-414
+// Qwen3
 return AutoregressiveModel.of(
         compiledModel,
         position,                                                       // shared device-resident step
         t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 ```
 
-`position` is created earlier in the same method (`Qwen3.java:338`) as a single-element
+`position` is created earlier in the same method of `Qwen3` as a single-element
 `PackedCollection` and passed to attention as `p(position)` so the model reads the
 current step from the device.
 
 ### Two-Phase Operation
 
-The `next()` method (`AutoregressiveModel.java:295-308`) implements two distinct phases:
+The `next()` method of `AutoregressiveModel` implements two distinct phases:
 
 ```
 Phase 1: PROMPT (currentStep < promptLength)
@@ -369,7 +369,7 @@ step's cached output before the current forward pass. This is because the model'
 output at step `t` predicts the token at position `t+1`:
 
 ```java
-// AutoregressiveModel.java:295-308
+// AutoregressiveModel.next()
 public T next() {
     if (currentStep < promptLength) {
         token.accept(prompt[currentStep]);
@@ -386,9 +386,9 @@ public T next() {
 }
 ```
 
-`advance()` (`AutoregressiveModel.java:217-220`) runs the compiled `advancePosition`
+`advance()` runs the compiled `advancePosition`
 operation and increments the host-side `currentStep`, keeping the two in lock-step.
-`reset()` (`AutoregressiveModel.java:203-207`) zeros the device position, the host
+`reset()` zeros the device position, the host
 step index, and discards the cached output before a new sequence.
 
 ### Position Tracking
@@ -410,18 +410,28 @@ buffer. For Qwen3 the representation is a `(1, dim)` slice of the embedding matr
 extracted at the token ID:
 
 ```java
-// Qwen3.java:414
+// Qwen3
 t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim)
 ```
 
 The factory's consumer wraps this in a `setFrom` so the slice is copied into the
 fixed input buffer that the compiled model reads.
 
+For a model whose tokens carry several attribute values rather than a single ID —
+such as the compound MIDI tokens produced by the Moonbeam model implemented in this
+repository (`org.almostrealism.ml.midi`) — `AutoregressiveModel.tokenLoader`
+builds the loader instead. It compiles the
+embedding once, with the token's values as a kernel argument, and assigns the result
+directly into the input on the device; each step only writes the packed values and
+runs that one operation, so no intermediate embedding is copied back through the host.
+Building the embedding from a token's values as literals would instead compile a
+different program for every distinct token — the cost every step would otherwise pay.
+
 ### Temperature Sampling
 
-The `sample` function constructed inside `of()` (`AutoregressiveModel.java:418-426`)
+The `sample` function constructed inside `of()`
 handles both greedy and sampling modes. `temperature` is a host-writable single-element
-collection updated by `setTemperature` (`AutoregressiveModel.java:258-260`):
+collection updated by `setTemperature`:
 
 ```java
 // Reading (greedy path)
@@ -435,7 +445,7 @@ softmax.into(logits).evaluate(logits);   // softmax(scaled_logits)
 return sampleToken(logits, vocabSize, 1.0, 1.0, random);
 ```
 
-`sampleToken` (`AutoregressiveModel.java:323-386`) is the static, host-side sampling
+`sampleToken` is the static, host-side sampling
 helper. It reads the logits once with `toArray(0, vocabSize)` — a single
 sanctioned device-to-host transfer at the step boundary — and operates on the
 resulting host array. The recent `setmem-policy-phases` work changed sampling from
@@ -660,7 +670,7 @@ reshape([1, heads * head_size])
 
 ### Complete Transformer Layer
 
-The `transformer()` method (`AttentionFeatures.java:1460-1480`) wraps attention and
+The `transformer()` method of `AttentionFeatures` wraps attention and
 feed-forward with residual connections using `accum()`:
 
 ```java
@@ -721,7 +731,7 @@ In self-attention, Q, K, and V all come from the same input. In cross-attention:
 - **Keys (K) and Values (V)** come from the external context (e.g., text embeddings)
 
 ```java
-// AttentionFeatures.java:1312-1373 — sequenceCrossAttention
+// AttentionFeatures.sequenceCrossAttention
 // 1. Project main input to queries
 crossAttention.add(projectionFactory.create(queryShape, toQWeight, ...));
 
@@ -738,7 +748,7 @@ List<Block> kv = contextBranch.split(shape(batch, contextSeqLen, 1, dim), 0);
 Key differences from self-attention:
 - **No RoPE on context:** Cross-attention keys/values do not receive rotary
   position embeddings because the context positions are independent of the
-  audio sequence positions (`AttentionFeatures.java:1349-1350`)
+  audio sequence positions (in `AttentionFeatures.sequenceCrossAttention`)
 - **Separate sequence lengths:** The query sequence length may differ from the
   context sequence length
 - **No causal mask:** Cross-attention allows attending to all context positions
@@ -748,7 +758,7 @@ Key differences from self-attention:
 In `DiffusionTransformer`, cross-attention uses fused KV projection for the context:
 
 ```java
-// DiffusionTransformer.java:803
+// DiffusionTransformer
 crossKv = createWeight("...cross_attn.to_kv.weight", 2 * dim, dim);
 ```
 
@@ -756,7 +766,7 @@ The fused KV weight projects the context to `2 * dim`, which is then split into
 separate K and V tensors:
 
 ```java
-// AttentionFeatures.java:1339-1343
+// AttentionFeatures.sequenceCrossAttention
 contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
 List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
 SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
@@ -767,7 +777,7 @@ K and V are stored in intermediate `PackedCollection` tensors for the attention
 computation:
 
 ```java
-// AttentionFeatures.java:1353-1357
+// AttentionFeatures.sequenceCrossAttention
 PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 k.andThen(into(kTensor));
@@ -781,7 +791,7 @@ Instead of adaptive layer normalization (AdaLayerNorm), `DiffusionTransformer` u
 prepended as extra tokens to the audio sequence:
 
 ```java
-// DiffusionTransformer.java:620-632
+// DiffusionTransformer.prependConditioning
 protected Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
     // ...
     return layer("prependConditioning",
@@ -797,7 +807,7 @@ global conditioning), increasing the sequence length from `audioSeqLen` to
 `audioSeqLen + 1`. After the transformer blocks, the prepended token is removed:
 
 ```java
-// DiffusionTransformer.java:558-562
+// DiffusionTransformer
 if (seqLen > audioSeqLen) {
     int prependedLength = seqLen - audioSeqLen;
     main.reshape(batchSize, seqLen, ioChannels)
@@ -809,10 +819,8 @@ if (seqLen > audioSeqLen) {
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
 `DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(`AttentionFeatures.java:962-1106`, with further overloads adding a customizable
-`ProjectionFactory` and a selectable query/key `NormalizationType`; the parenthetical
-description at lines 1204-1234 is the Javadoc for the separate `sequenceCrossAttention`
-method that follows):
+(in `AttentionFeatures`, with further overloads adding a customizable
+`ProjectionFactory` and a selectable query/key `NormalizationType`):
 
 - Processes all positions simultaneously with fused QKV projection
 - Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
