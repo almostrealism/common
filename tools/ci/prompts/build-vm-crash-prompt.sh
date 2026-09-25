@@ -71,42 +71,49 @@ for class in $CRASHED_CLASSES; do
 done
 
 # ── Build MCP test runner commands ─────────────────────────────────
+# One start_test_run invocation per crashed class -- never several classes
+# grouped into one test_classes list, the same one-test-per-invocation rule
+# applied everywhere else this rule covers (see build-resolve-prompt.sh).
+# jmx_monitoring does NOT exempt the Class#method requirement: it is a
+# caller-controlled flag with no trust boundary of its own, so a bare class
+# name is rejected even with jmx_monitoring:true. The crashed test class is
+# still identified, but the agent must supply a specific candidate method.
 CI_COMMANDS=""
 if [ -n "$CRASHED_CLASSES" ]; then
     for module in $CRASHED_MODULES; do
-        # Collect classes for this module
-        classes_for_module=""
-        for class in $CRASHED_CLASSES; do
-            case "$class" in
-                *ml.*|*model.*|*network.*)
-                    [ "$module" = "ml" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *audio.*)
-                    [ "$module" = "audio" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *music.*)
-                    [ "$module" = "music" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *compose.*)
-                    [ "$module" = "compose" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-                *)
-                    [ "$module" = "utils" ] && classes_for_module="${classes_for_module:+$classes_for_module, }\"$class\"" ;;
-            esac
-        done
-
         profile_arg=""
         if [ "$module" = "ml" ]; then
             profile_arg=" profile:\"pipeline\""
         fi
 
-        CI_COMMANDS="${CI_COMMANDS}
-  mcp__ar-test-runner__start_test_run module:\"${module}\"${profile_arg} jmx_monitoring:true test_classes:[${classes_for_module}]"
+        for class in $CRASHED_CLASSES; do
+            class_module=""
+            case "$class" in
+                *ml.*|*model.*|*network.*) class_module="ml" ;;
+                *audio.*) class_module="audio" ;;
+                *music.*) class_module="music" ;;
+                *compose.*) class_module="compose" ;;
+                *) class_module="utils" ;;
+            esac
+            if [ "$class_module" = "$module" ]; then
+                CI_COMMANDS="${CI_COMMANDS}
+  mcp__ar-test-runner__start_test_run module:\"${module}\"${profile_arg} jmx_monitoring:true test_classes:[\"${class}#<method>\"]
+  (replace <method> with the specific test method you suspect crashed -- a bare
+  class name is rejected even with jmx_monitoring:true)"
+            fi
+        done
     done
 fi
 
 if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
   Could not auto-detect crashed test classes. Examine the crash report below,
-  identify which module the crashed test belongs to, and run:
-    mcp__ar-test-runner__start_test_run module:\"<module>\" jmx_monitoring:true
-  For ML module tests, add profile:\"pipeline\"."
+  identify which module the crashed test belongs to, and run ONLY one method
+  of that class:
+    mcp__ar-test-runner__start_test_run module:\"<module>\" jmx_monitoring:true test_classes:[\"<CrashedClass>#<method>\"]
+  For ML module tests, add profile:\"pipeline\". Never omit test_classes, and
+  never pass a bare class name -- both run the whole class or module's suite,
+  which is not permitted even with jmx_monitoring:true."
 fi
 
 # ── Write the prompt ───────────────────────────────────────────────
@@ -168,7 +175,11 @@ beyond the configured limit (AR_HARDWARE_MEMORY_SCALE=7 → ~32GB with FP32).
 
 ## How to reproduce and diagnose (REQUIRED)
 
-Use the MCP test runner with **JMX monitoring enabled** to get memory diagnostics:
+Use the MCP test runner with **JMX monitoring enabled** to get memory diagnostics. A
+bare class name is never accepted, even with jmx_monitoring:true -- identify one
+specific candidate method to target (the crashed class's largest/most
+memory-intensive test is a reasonable first guess if the crash summary does not
+name one) and run that, one test at a time:
 ${CI_COMMANDS}
 
 JMX monitoring gives you access to:

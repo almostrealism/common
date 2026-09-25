@@ -70,6 +70,39 @@ class DefaultTimeoutTest(unittest.TestCase):
         self.assertEqual(15, server.DEFAULT_TIMEOUT)
 
 
+class RemainingTimeoutBudgetTest(unittest.TestCase):
+    """``_remaining_timeout_seconds`` subtracts preflight's elapsed time from
+    the run's configured timeout, so the test process's own timer does not
+    re-grant the full budget on top of what preflight already spent.
+    Regression coverage for the fix: ``start_run`` used to pass
+    ``config.timeout_minutes * 60`` to preflight AND then arm the test
+    process's timer with the same full value again, letting a run capped
+    at 40 minutes occupy the runner for close to 80.
+    """
+
+    def test_no_timeout_minutes_returns_none(self):
+        self.assertIsNone(server._remaining_timeout_seconds(None, 5.0))
+
+    def test_zero_timeout_minutes_returns_none(self):
+        self.assertIsNone(server._remaining_timeout_seconds(0, 5.0))
+
+    def test_no_preflight_time_returns_full_budget(self):
+        self.assertEqual(2400.0, server._remaining_timeout_seconds(40, 0.0))
+
+    def test_preflight_time_subtracted_from_budget(self):
+        # 40 minutes total, 5 minutes (300s) spent on preflight -> 35 minutes left.
+        self.assertEqual(2100.0, server._remaining_timeout_seconds(40, 300.0))
+
+    def test_preflight_time_exceeding_budget_clamped_to_zero(self):
+        # Preflight itself is capped at the same budget by start_run, but a
+        # run this close to the ceiling must still arm a (near-instant)
+        # timer rather than a negative one or none at all.
+        self.assertEqual(0.0, server._remaining_timeout_seconds(40, 5000.0))
+
+    def test_preflight_time_exactly_equal_to_budget_clamped_to_zero(self):
+        self.assertEqual(0.0, server._remaining_timeout_seconds(40, 2400.0))
+
+
 class JmxMonitoringJvmArgsTest(unittest.TestCase):
     """jmx_monitoring must not inject startup JVM flags.
 
@@ -488,6 +521,277 @@ class GetRunStatusBlockingTest(unittest.TestCase):
         with patch.object(server.runner, "get_run_status", return_value=None):
             status = self._dispatch({"run_id": "missing", "block": True})
         self.assertIn("error", status)
+
+
+class StartTestRunLimitsTest(unittest.TestCase):
+    """start_test_run rejects a CI-shard run (test_group) and a timeout over
+    the 2400s (40-minute) ceiling before touching Maven or the run store --
+    both checks return before ``runner.start_run`` is ever reached, so no
+    real process is spawned by these tests. See
+    tools/mcp/manager/execution_limits.py for the sibling rule enforced
+    at ar-manager job submission; there is no bypass for either.
+    """
+
+    def _dispatch(self, arguments):
+        result = asyncio.run(server.call_tool("start_test_run", arguments))
+        return json.loads(result[0].text)
+
+    def test_test_group_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_group": 2, "test_groups": 8})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("CI shard", response["error"])
+
+    def test_test_group_alone_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_group": 0})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+
+    def test_test_groups_alone_is_rejected(self):
+        # test_groups (plural) is the shard-count field that always
+        # accompanies test_group in a real CI-shard invocation, but a caller
+        # could pass it alone -- only checking "test_group" let this through
+        # and silently discarded the field instead of rejecting the request.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_groups": 8})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("CI shard", response["error"])
+
+    def test_timeout_minutes_over_max_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "timeout_minutes": 60,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn(str(server.MAX_TIMEOUT_MINUTES), response["error"])
+
+    def test_timeout_minutes_at_max_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "timeout_minutes": server.MAX_TIMEOUT_MINUTES,
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_default_timeout_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({"module": "engine/utils", "test_classes": ["FooTest#bar"]})
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_timeout_minutes_zero_is_rejected(self):
+        # timeout_minutes=0 is falsy in Python, so a check written as
+        # "if timeout_minutes and timeout_minutes > MAX" silently skips the
+        # ceiling for it -- and downstream "if config.timeout_minutes:" then
+        # arms no timer at all, running the test with no timeout whatsoever.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "timeout_minutes": 0,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("must be positive", response["error"])
+
+    def test_timeout_minutes_negative_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "timeout_minutes": -5,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("must be positive", response["error"])
+
+    def test_no_selector_is_rejected(self):
+        # With neither test_classes nor test_methods set, RunConfig would
+        # receive empty filters and build_maven_command would fall through to
+        # "mvn test -pl <module>" -- an entire module's suite, exactly the
+        # broad run this MCP surface exists to prevent.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils"})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("test_classes or test_methods is required", response["error"])
+
+    def test_empty_selector_lists_are_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": [],
+                "test_methods": [],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("test_classes or test_methods is required", response["error"])
+
+    def test_test_methods_alone_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest", "method": "bar"}],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_multiple_test_classes_is_rejected(self):
+        # test_classes with more than one entry joins into a single
+        # "-Dtest=A,B" that runs several classes together in one JVM --
+        # exactly the broad, multi-test invocation this MCP surface exists
+        # to prevent.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#a", "BarTest#b"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_multiple_test_methods_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest", "method": "a"}, {"class": "FooTest", "method": "b"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_one_class_and_one_method_together_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#a"],
+                "test_methods": [{"class": "BarTest", "method": "baz"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("At most ONE test per invocation", response["error"])
+
+    def test_bare_test_classes_entry_is_rejected(self):
+        # A bare class name with no "#method" still runs every test in that
+        # class via "-Dtest=FooTest" -- the same bare-class breadth the
+        # manager and controller validators reject.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("#method selector", response["error"])
+
+    def test_bare_test_classes_entry_with_jmx_monitoring_is_still_rejected(self):
+        # jmx_monitoring is caller-controlled and cannot authenticate a
+        # JVM-crash reproduction request, so it must never exempt the
+        # bare-class check -- otherwise any caller could widen a
+        # single-test invocation into a whole-class run just by setting
+        # jmx_monitoring:true.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "jmx_monitoring": True,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("#method selector", response["error"])
+
+    def test_test_methods_entry_missing_method_field_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("class", response["error"])
+
+    def test_test_methods_entry_as_bare_string_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": ["FooTest#bar"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+
+    def test_test_classes_entry_with_comma_separated_selectors_is_rejected(self):
+        # A single test_classes entry passes the "at most ONE" length check
+        # even when its own text names multiple Class#method patterns joined
+        # by a comma -- build_maven_command emits that text verbatim as
+        # -Dtest, so Maven still runs both in one invocation.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#first,BarTest#second"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
+    def test_test_methods_entry_with_comma_in_method_field_is_rejected(self):
+        # A comma embedded in the method field alone is enough to inject a
+        # second Surefire pattern into the comma-joined -Dtest value, even
+        # though the entry is schema-valid (an object with non-empty class
+        # and method fields) and the selector count is exactly one.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest", "method": "first,BarTest#second"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
+    def test_test_methods_entry_with_comma_in_class_field_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest,BarTest", "method": "bar"}],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("comma", response["error"])
+
+    def test_jvm_args_with_ar_test_group_is_rejected(self):
+        # jvm_args flows straight into Maven's argLine, so a caller could set
+        # the same TestDepthRule shard properties test_group/test_groups are
+        # rejected for, just through a different argument.
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "jvm_args": ["-DAR_TEST_GROUP=2", "-DAR_TEST_GROUPS=8"],
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("AR_TEST_GROUP", response["error"])
+
+    def test_jvm_args_without_ar_test_group_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest#bar"],
+                "jvm_args": ["-Xmx4g"],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
 
 
 class InvocationReportCopyTest(unittest.TestCase):

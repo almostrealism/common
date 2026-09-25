@@ -101,11 +101,18 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
     def test_submit_shell_job_type(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-s1", "jobType": "shell"}
+        # "mvn -q test" (no -pl, no -Dtest selector) is exactly the broad run
+        # execution_limits.py's validation now rejects for a shell job's
+        # command; use a narrow, policy-compliant command so this test still
+        # exercises "a shell job's command is forwarded to the payload"
+        # rather than the command-validation rejection path (covered by its
+        # own tests elsewhere in this file).
         result = server.workstream_submit_task(
-            job_type="shell", command="mvn -q test", workstream_id="ws-test")
+            job_type="shell", command="mvn -pl engine/utils test -Dtest=FooTest#testFoo",
+            workstream_id="ws-test")
         payload = mock_post.call_args[0][1]
         self.assertEqual(payload["jobType"], "shell")
-        self.assertEqual(payload["command"], "mvn -q test")
+        self.assertEqual(payload["command"], "mvn -pl engine/utils test -Dtest=FooTest#testFoo")
         self.assertNotIn("prompt", payload)
         self.assertTrue(result["ok"])
 
@@ -539,12 +546,12 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "job-pcc"}
         server.workstream_submit_task(
             prompt="Task",
-            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest#testFoo",
         )
         payload = mock_post.call_args[0][1]
         self.assertEqual(
             payload["postCompletionCommand"],
-            "mvn -pl flowtree/runtime test -Dtest=FooTest",
+            "mvn -pl flowtree/runtime test -Dtest=FooTest#testFoo",
         )
 
     @patch.object(server, "_controller_post")
@@ -1211,6 +1218,131 @@ class TestCommitLanguageReadContext(unittest.TestCase):
             "Your commit message should mention the ticket",
         ):
             self.assertTrue(self._flagged(text), text)
+
+
+class TestSubmitTestExecutionLimits(unittest.TestCase):
+    """Integration coverage proving workstream_submit_task actually wires in
+    the checks from tools/mcp/manager/execution_limits.py. The
+    fine-grained parsing behaviour (Maven/pytest/AR_TEST_GROUP detection) is
+    covered directly against that module in test_execution_limits.py;
+    these tests confirm the MCP tool rejects/accepts the same way and that
+    there is no bypass flag, unlike allow_commit_language.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+
+    def test_rejects_incident_post_completion_command(self):
+        # The exact command from the 2026-09-16 incident.
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command=(
+                "mvn install -q -DskipTests -pl engine/utils -am && "
+                "mvn test -pl engine/utils -DAR_TEST_GROUP=2 -DAR_TEST_GROUPS=8"
+            ),
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("AR_TEST_GROUP", result["error"])
+
+    def test_rejects_post_completion_command_bare_class_selector(self):
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Class#method", result["error"])
+
+    def test_rejects_post_completion_command_pytest_directory(self):
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="pytest tools/mcp/manager",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("node id", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_accepts_post_completion_command_narrow_selector(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "job-narrow"}
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo",
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+
+    def test_rejects_post_completion_timeout_over_2400(self):
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest#bar",
+            post_completion_timeout_seconds=3600,
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("2400", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_accepts_post_completion_timeout_at_max(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "job-timeout-ok"}
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest#bar",
+            post_completion_timeout_seconds=2400,
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
+
+    def test_rejects_shell_job_command_running_broad_maven_tests(self):
+        result = server.workstream_submit_task(
+            job_type="shell",
+            workstream_id="ws-test",
+            command="mvn test -pl engine/utils",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("no -Dtest selector", result["error"])
+
+    def test_rejects_prompt_instructing_broad_test_run(self):
+        result = server.workstream_submit_task(
+            prompt="Fix the bug, then run the full test suite to confirm nothing broke.",
+            workstream_id="ws-test",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("broad test set", result["error"])
+
+    def test_rejects_prompt_with_incident_module_tests_phrasing(self):
+        result = server.workstream_submit_task(
+            prompt="Fix the bug. When you finish, run the relevant flowtree module tests.",
+            workstream_id="ws-test",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("broad test set", result["error"])
+
+    def test_no_bypass_parameter_exists_for_test_execution_limits(self):
+        # Unlike allow_commit_language, there is deliberately no escape hatch.
+        import inspect
+        params = inspect.signature(server.workstream_submit_task).parameters
+        for name in params:
+            self.assertNotIn("bypass", name.lower(),
+                              "no bypass-style parameter should exist for test limits")
+        self.assertNotIn("allow_broad_tests", params)
+        self.assertNotIn("allow_test_group", params)
+
+    @patch.object(server, "_controller_post")
+    def test_narrow_prompt_with_no_command_mentions_is_accepted(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "job-plain"}
+        result = server.workstream_submit_task(
+            prompt="Fix the null-pointer bug in FooService and add a regression test.",
+            workstream_id="ws-test",
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
 
 
 class TestCollaborativeSubmission(unittest.TestCase):

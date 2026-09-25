@@ -22,6 +22,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Absolute;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -523,6 +524,34 @@ public interface CollectionFeatures extends GradientFeatures {
 		}
 
 		return exp;
+	}
+
+	/**
+	 * Retrieves whole rows of a collection at the row positions given by another collection: the
+	 * output's last axis is the row, and every row of the output is the row of the collection
+	 * selected by the corresponding entry of {@code rowIndex} (an embedding lookup, for example).
+	 *
+	 * <p>Unlike gathering by a flat element index, the address of each element is computed on
+	 * integer expressions inside the kernel, from the row index and the position within the row,
+	 * so it stays exact for collections with more elements than single precision can count
+	 * (above {@code 2^24}); a flat index carried as a floating-point value would be rounded.</p>
+	 *
+	 * @param shape the output shape, whose last axis is the row length
+	 * @param collection the collection to read rows from, laid out as consecutive rows
+	 * @param rowIndex the producer of one row position per output row
+	 * @return a computation that gathers the rows at the specified positions
+	 */
+	default CollectionProducerComputation rows(TraversalPolicy shape,
+											   Producer<PackedCollection> collection,
+											   Producer<PackedCollection> rowIndex) {
+		long rowLength = shape.length(shape.getDimensions() - 1);
+		return new DefaultTraversableExpressionComputation("rowAtIndex", shape,
+				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				args -> CollectionExpression.create(shape, idx -> {
+					Expression<Integer> row = args[2].getValueAt(idx.divide(rowLength)).toInt();
+					return args[1].getValueAt(row.multiply(rowLength).add(idx.imod(rowLength)));
+				}),
+				collection, rowIndex);
 	}
 
 	/**
