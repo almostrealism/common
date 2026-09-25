@@ -833,10 +833,21 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * {@link CLMemory} points into it — so the context is released only once
 	 * {@link HardwareMemoryProvider#onFullyReleased(Runnable)} reports every retained block
 	 * actually gone (immediately, if none were retained).</p>
+	 *
+	 * <p>A {@link ReentrantReadWriteLock} cannot upgrade a held read lock to the write lock, so a
+	 * thread that calls this while inside {@link #getComputeContexts()} or
+	 * {@link #computeContext(Callable, ComputeRequirement...)} (which hold the read lock across
+	 * their whole scope) would block on the write lock forever. Such a call is rejected with
+	 * {@link IllegalStateException} rather than deadlocking silently, since tearing a context
+	 * down from within its own live scope is a caller mistake the caller must see.</p>
 	 */
 	@Override
 	public void destroy() {
-		// TODO(review): destroy() from inside computeContext() on the same thread self-deadlocks (read->write upgrade)
+		if (lifecycleLock.getReadHoldCount() > 0) {
+			throw new IllegalStateException("Cannot destroy " + getName() +
+					" from within a compute-context scope on the same thread");
+		}
+
 		lifecycleLock.writeLock().lock();
 
 		try {

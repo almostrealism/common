@@ -22,6 +22,9 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 /**
  * {@link CLDataContext}'s lazily-initialized accessors must fail fast once the data
  * context has been destroyed, rather than resurrecting OpenCL resources (an OpenCL
@@ -100,6 +103,34 @@ public class CLDataContextLifecycleTest {
 		} catch (IllegalStateException expected) {
 			Assert.assertTrue("The message should name the reason",
 					expected.getMessage().contains("destroyed"));
+		}
+	}
+
+	/**
+	 * A {@link CLDataContext#destroy()} issued while the calling thread still holds the read
+	 * side of the lifecycle lock (as it does throughout {@code getComputeContexts()} and
+	 * {@code computeContext(...)}) must fail fast rather than block forever on the write lock,
+	 * which a {@link ReentrantReadWriteLock} can never grant to a read-lock holder. The read
+	 * lock is taken directly here so the guard can be exercised without an OpenCL device.
+	 */
+	@Test(timeout = 30000)
+	public void destroyFromWithinScopeFailsFast() throws Exception {
+		CLDataContext context = newContext();
+
+		Field lockField = CLDataContext.class.getDeclaredField("lifecycleLock");
+		lockField.setAccessible(true);
+		ReentrantReadWriteLock lock = (ReentrantReadWriteLock) lockField.get(context);
+
+		lock.readLock().lock();
+
+		try {
+			context.destroy();
+			Assert.fail("destroy() should fail fast when called from within a compute-context scope");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("The message should name the scope reason",
+					expected.getMessage().contains("compute-context scope"));
+		} finally {
+			lock.readLock().unlock();
 		}
 	}
 }
