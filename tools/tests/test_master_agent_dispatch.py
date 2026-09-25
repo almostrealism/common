@@ -112,23 +112,28 @@ class MasterAgentDispatchTests(unittest.TestCase):
     def test_setup_python_provisioning_is_best_effort(self):
         """A setup-python failure must not abort before the fallback fetch step.
 
-        The coverage job provisions Python with actions/setup-python as its
+        The coverage-qa job provisions Python with actions/setup-python as its
         primary path, but fetch-latest-coverage.sh keeps a Homebrew-path
         fallback for hosts that carry their own interpreter. That fallback is
         only reachable if a failed setup-python step does not fail the job, so
-        every setup-python step must carry continue-on-error: true.
+        coverage-qa's setup-python step must carry continue-on-error: true.
+
+        The contract is specific to this job: it exists because coverage-qa has
+        a downstream fallback that a hard failure would skip. Other dispatch
+        jobs are free to require setup-python, so the check is scoped to
+        coverage-qa rather than every job in the workflow.
         """
+        job = self.jobs["coverage-qa"]
         found = 0
-        for name, job in self.jobs.items():
-            for step in job["steps"]:
-                if "setup-python" in step.get("uses", ""):
-                    found += 1
-                    with self.subTest(job=name, step=step["name"]):
-                        self.assertIs(
-                            step.get("continue-on-error"), True,
-                            "setup-python must be best-effort so the fallback "
-                            "in fetch-latest-coverage.sh remains reachable")
-        self.assertGreaterEqual(found, 1, "no setup-python step found")
+        for step in job["steps"]:
+            if "setup-python" in step.get("uses", ""):
+                found += 1
+                with self.subTest(step=step["name"]):
+                    self.assertIs(
+                        step.get("continue-on-error"), True,
+                        "setup-python must be best-effort so the fallback "
+                        "in fetch-latest-coverage.sh remains reachable")
+        self.assertGreaterEqual(found, 1, "no setup-python step found in coverage-qa")
 
     def test_every_job_serializes_under_its_own_concurrency_group(self):
         """Two rounds of one job racing is what the cadence gate cannot see."""
