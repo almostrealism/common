@@ -91,6 +91,25 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * {@link StableAudio3#validFrames(double)} covers the frames of the combined duration and
+	 * headroom sample count, not the sum of each truncated to samples separately: at 33Hz the
+	 * headroom spans 3.3 samples and the requested duration spans 17.8, so truncating each before
+	 * adding gives 20 covered samples (5 of the 6 compiled frames) while truncating their 21.1-sample
+	 * sum gives 21 (6 frames) — the frame that the combined span actually reaches.
+	 */
+	@Test(timeout = 240000)
+	public void validFramesCombinesDurationAndHeadroomBeforeTruncating() {
+		double duration = 17.8 / 33.0;
+		StableAudio3 model = smallModel(duration, 33.0).setVerbose(false);
+		try {
+			assertEquals(6, model.getLatentLength());
+			assertEquals(6, model.validFrames(duration));
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * Guided generation over a negative prompt runs the conditioner and transformer for both
 	 * prompts and produces finite audio within {@code [-1, 1]}.
 	 */

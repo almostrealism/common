@@ -16,9 +16,16 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Tests for PackedCollection and its operations like transpose and clear.
@@ -66,6 +73,59 @@ public class PackedCollectionTests extends TestSuiteBase {
 			PackedCollection.load(shape(4));
 			throw new AssertionError("load with no sources must be rejected");
 		} catch (IllegalArgumentException e) {
+			// expected
+		}
+	}
+
+	/**
+	 * Tests that consecutive calls to load with the same source buffer each consume their own
+	 * region of it, rather than every call after the first re-reading the values the first one
+	 * read. This is the pattern {@code Llama2Weights} uses to read several tensors in sequence out
+	 * of one checkpoint buffer, and it works because the transfer reads the source relatively,
+	 * leaving it positioned past the values it consumed. Skipped on a provider addressing
+	 * {@link Precision#FP16}, which load refuses outright.
+	 */
+	@Test(timeout = 10000)
+	public void loadAdvancesTheSourcePosition() {
+		MemoryProvider<? extends RAM> provider = Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		if (provider.getNumberSize() == Precision.FP16.bytes()) return;
+
+		int size = 4;
+		ByteBuffer source = ByteBuffer.allocateDirect(Precision.FP32.bytes() * size * 2)
+				.order(ByteOrder.nativeOrder());
+		for (int i = 0; i < size * 2; i++) {
+			source.putFloat(i * Precision.FP32.bytes(), i + 0.5f);
+		}
+
+		PackedCollection first = PackedCollection.load(shape(size), source);
+		PackedCollection second = PackedCollection.load(shape(size), source);
+
+		for (int i = 0; i < size; i++) {
+			assertEquals(i + 0.5, first.toDouble(i));
+			assertEquals(size + i + 0.5, second.toDouble(i));
+		}
+	}
+
+	/**
+	 * Tests that load rejects a provider that addresses values at {@link Precision#FP16}
+	 * (bfloat16) before allocating a staging region, rather than allocating one and then failing
+	 * inside {@link org.almostrealism.hardware.mem.ByteBufferTransfer}, which does not support that
+	 * precision. This is skipped unless the local hardware's native buffer provider is actually
+	 * configured for that precision.
+	 */
+	@Test(timeout = 10000)
+	public void loadRejectsAnFp16Destination() {
+		MemoryProvider<? extends RAM> provider = Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		if (provider.getNumberSize() != Precision.FP16.bytes()) return;
+
+		int size = 4;
+		ByteBuffer source = ByteBuffer.allocateDirect(Precision.FP32.bytes() * size)
+				.order(ByteOrder.nativeOrder());
+
+		try {
+			PackedCollection.load(shape(size), source);
+			throw new AssertionError("load into an FP16 provider must be rejected");
+		} catch (UnsupportedOperationException e) {
 			// expected
 		}
 	}

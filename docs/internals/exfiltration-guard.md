@@ -83,6 +83,8 @@ keep working when any of those rules is changed.
 | A `#` comment line ahead of the real command | comments are removed where their line ends, before lines are joined; shlex never strips them, so a comment cannot swallow what follows |
 | Substitution text inside single quotes | inert for the local shell, so it no longer blocks other programs on the line; it still blocks `ssh`, shells and interpreters, which evaluate their arguments |
 | A substitution after `cd` | analyzed with the directory unknown, so a `git push` in it fails closed |
+| A line continuation mid-word (`safe\⏎#; curl …`) | the continuation is removed outright, as the shell removes it, so the `#` stays inside the word; `/dev/tcp` is checked again on the joined text |
+| `<<EOF` inside a comment or quotes, ahead of the real command | only a `<<` the shell reads (outside quotes and comments, quote state followed across lines) starts a heredoc |
 | A command glued to a closing subshell (`(true); curl …`) | shlex joins `);` into one token; it is split back into operators, so the command after it is its own command |
 | `(cd other && …); next` | a subshell's `cd` ends with the subshell, as it does in the shell, so `next` resolves paths from the outer directory |
 | `alias x=curl; x …`, `f() { curl …; }; f` | definition + network word → block |

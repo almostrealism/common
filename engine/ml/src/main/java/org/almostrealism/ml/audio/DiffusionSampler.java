@@ -375,10 +375,12 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 
 		PackedCollection conditional = output.clone();
-		PackedCollection unconditional = model.forward(x, tTensor, negativeCrossAttnCond, negativeGlobalCond);
-		PackedCollection guided = guidance.guide(x, t, conditional, unconditional).evaluate();
-		conditional.destroy();
-		return guided;
+		try {
+			PackedCollection unconditional = model.forward(x, tTensor, negativeCrossAttnCond, negativeGlobalCond);
+			return guidance.guide(x, t, conditional, unconditional).evaluate();
+		} finally {
+			conditional.destroy();
+		}
 	}
 
 	/**

@@ -1160,16 +1160,22 @@ public class PackedCollection extends MemoryDataAdapter
 	 * one value is drawn from each source in turn, as for a tensor stored as separate planes and
 	 * consumed interleaved.
 	 *
-	 * <p>This is the from-buffer ingest factory: the one place values that entered the process from
-	 * outside it — a checkpoint, a serialized message, a reference dump — are staged into device
-	 * memory. It is not a route for values computed by Java code, which belong in a
-	 * {@link io.almostrealism.relation.Producer}.</p>
+	 * <p>This is for values that entered the process from outside it and arrived as bytes — a
+	 * serialized message, a capture callback — with no file behind them. It is not a route for
+	 * values computed by Java code, which belong in a
+	 * {@link io.almostrealism.relation.Producer}; and when the values are in a file, map the file
+	 * through {@link org.almostrealism.hardware.mem.MappedMemoryProvider} instead of reading it
+	 * into a buffer to stage here, which pays for every value twice.</p>
 	 *
 	 * @param shape   the shape of the resulting collection
 	 * @param sources one or more buffers holding the values, positioned at the first value
 	 * @return a collection rooted over the staging allocation
 	 * @throws IllegalArgumentException if no sources are given, or the shape's size is not
 	 *                                   divisible by the source count
+	 * @throws UnsupportedOperationException if the local hardware's native buffer provider
+	 *                                        addresses values at {@link Precision#FP16}
+	 *                                        (bfloat16), which {@link ByteBufferTransfer} cannot
+	 *                                        convert into
 	 */
 	public static PackedCollection load(TraversalPolicy shape, ByteBuffer... sources) {
 		if (sources.length == 0) {
@@ -1184,24 +1190,35 @@ public class PackedCollection extends MemoryDataAdapter
 
 		MemoryProvider<? extends RAM> provider =
 				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(total);
 
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
 		Precision destination = Precision.ofBytes(provider.getNumberSize());
-
-		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
-		for (int i = 0; i < sources.length; i++) {
-			transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
+		if (destination == Precision.FP16) {
+			throw new UnsupportedOperationException("Cannot stage values into a provider " +
+					"that addresses " + destination + " (bfloat16) precision");
 		}
 
-		if (transfers.length == 1) {
-			transfers[0].copy(total);
-		} else {
-			for (int i = 0; i < total; i += transfers.length) {
-				for (ByteBufferTransfer transfer : transfers) {
-					transfer.copyNext();
+		RAM mem = provider.allocate(total);
+
+		try {
+			ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+
+			ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
+			for (int i = 0; i < sources.length; i++) {
+				transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
+			}
+
+			if (transfers.length == 1) {
+				transfers[0].copy(total);
+			} else {
+				for (int i = 0; i < total; i += transfers.length) {
+					for (ByteBufferTransfer transfer : transfers) {
+						transfer.copyNext();
+					}
 				}
 			}
+		} catch (RuntimeException e) {
+			mem.getProvider().deallocate(total, mem);
+			throw e;
 		}
 
 		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);
