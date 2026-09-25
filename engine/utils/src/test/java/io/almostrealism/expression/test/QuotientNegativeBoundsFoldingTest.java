@@ -18,7 +18,9 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.StaticReference;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -66,5 +68,55 @@ public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 			Assert.assertEquals("folding must not change the value of " + numerator + " / 2",
 					expected, folded.longValue().orElse(Long.MIN_VALUE));
 		}
+	}
+
+	/**
+	 * A {@link Long}-typed quotient must fold to the truncating integer quotient,
+	 * exactly as an {@link Integer}-typed one does. {@code isFP()} is false for a
+	 * long quotient, so the bounds fold applies; {@code -3 / 2} must collapse to
+	 * {@code -1}, never {@code -2}.
+	 */
+	@Test(timeout = 5000)
+	public void longTypedFoldsToTruncatingQuotient() {
+		Expression<?> q = Quotient.of(new LongConstant(-3L), new LongConstant(2L));
+		Assert.assertEquals("long -3 / 2 truncates toward zero to -1",
+				-1L, q.longValue().orElse(Long.MIN_VALUE));
+	}
+
+	/**
+	 * {@link Quotient#evaluate} must truncate toward zero for every non-floating-point
+	 * type, not only {@link Integer}. A {@link Long}-typed quotient of an unbounded
+	 * numerator (which cannot fold) must still evaluate {@code -3 / 2} to {@code -1.0},
+	 * matching the constant fold and {@code computeValue}; the pre-fix code took the
+	 * floating-point branch for long quotients and produced {@code -1.5}.
+	 */
+	@Test(timeout = 5000)
+	public void longTypedEvaluateTruncatesTowardZero() {
+		Expression<?> q = Quotient.of(
+				new StaticReference<>(Long.class, "n"), new LongConstant(2L));
+		Assert.assertTrue("an unbounded long numerator must not fold to a constant",
+				q instanceof Quotient);
+
+		Number result = q.evaluate(-3L, 2L);
+		Assert.assertEquals("long -3 / 2 must evaluate to -1 (truncating), not -1.5",
+				-1.0, result.doubleValue(), 0.0);
+
+		Number positive = q.evaluate(7L, 2L);
+		Assert.assertEquals("long 7 / 2 must evaluate to 3 (truncating)",
+				3.0, positive.doubleValue(), 0.0);
+	}
+
+	/**
+	 * A quotient with a constant zero divisor must not fold at construction. The
+	 * bounded-numerator fold divides by the divisor, so a zero divisor would throw
+	 * an {@link ArithmeticException} while the expression is being simplified. The
+	 * degenerate division-by-zero must instead be left intact so it surfaces at
+	 * evaluation, where integer division by zero throws in the normal way.
+	 */
+	@Test(timeout = 5000)
+	public void zeroDivisorIsNotFoldedAtConstruction() {
+		Expression<?> q = Quotient.of(new IntegerConstant(5), new IntegerConstant(0));
+		Assert.assertTrue("a zero-divisor quotient must remain a Quotient, not fold",
+				q instanceof Quotient);
 	}
 }

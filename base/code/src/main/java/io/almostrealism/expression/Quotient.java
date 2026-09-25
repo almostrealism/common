@@ -215,20 +215,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Number evaluate(Number... children) {
-		if (getType() == Integer.class) {
-			int value = children[0].intValue();
-			for (int i = 1; i < children.length; i++) {
-				value = value / children[i].intValue();
-			}
-
-			return value;
-		} else {
+		if (isFP()) {
 			double value = children[0].doubleValue();
 			for (int i = 1; i < children.length; i++) {
 				value = value / children[i].doubleValue();
 			}
 
 			return value;
+		} else {
+			// Truncating integer division for every non-floating-point type, including
+			// Long, so that evaluate agrees with computeValue and the bounded-numerator
+			// constant fold in create (all truncate toward zero).
+			long value = children[0].longValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].longValue();
+			}
+
+			return adjustType(getType(), value);
 		}
 	}
 
@@ -468,7 +471,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * is required so that a negative numerator folds to the same value it would
 	 * compute; {@code -3 / 2} is {@code -1}, whereas {@code floor(-3 / 2)} is
 	 * {@code -2}. Truncating division by a fixed divisor is monotonic over the
-	 * integers, so matching bounds still guarantee a constant quotient.</p>
+	 * integers, so matching bounds still guarantee a constant quotient. A zero
+	 * divisor is left unfolded so the division-by-zero surfaces at evaluation
+	 * rather than while the expression is being simplified.</p>
 	 *
 	 * <p>A product numerator with a constant factor {@code c} folds exactly against an
 	 * integer divisor {@code d} in either direction, for either sign: when {@code d}
@@ -523,7 +528,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (!fp && !numerator.isPossiblyNegative() && d.isPresent() &&
 				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
-		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
+		} else if (!fp && d.isPresent() && d.getAsLong() != 0 && lower.isPresent() && upper.isPresent()) {
 			// Truncating division, not floor, to match the runtime quotient for negative bounds
 			long low = upper.getAsLong() / d.getAsLong();
 			long high = lower.getAsLong() / d.getAsLong();
