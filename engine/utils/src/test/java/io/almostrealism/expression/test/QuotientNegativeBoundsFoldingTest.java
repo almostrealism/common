@@ -17,6 +17,7 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.expression.ArithmeticGenerator;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
@@ -35,11 +36,13 @@ import org.junit.Test;
  *
  * <p>Integer division in this framework truncates toward zero (the
  * javadoc of {@code withoutBoundedRemainder} states {@code -4 / 4 is -1}),
- * but the bounds-folding branch of {@code Quotient.create} collapses a
- * bounded numerator to {@code floor(bound / divisor)}. For a negative
- * numerator {@code floor} and truncation disagree, so a folded quotient
- * can produce a value that the same expression would never compute when
- * evaluated directly.</p>
+ * so the bounds-folding branch of {@code Quotient.create} must collapse a
+ * bounded numerator with truncating division rather than
+ * {@code floor(bound / divisor)}. For a negative numerator {@code floor}
+ * and truncation disagree, and a floor-based fold would produce a value
+ * that the same expression never computes when evaluated directly. The
+ * tests also pin the zero-divisor contract: a known integer zero divisor
+ * is never folded, so the division-by-zero surfaces at evaluation.</p>
  */
 public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 
@@ -106,6 +109,42 @@ public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 		Number positive = q.evaluate(7L, 2L);
 		Assert.assertEquals("long 7 / 2 must evaluate to 3 (truncating)",
 				3.0, positive.doubleValue(), 0.0);
+	}
+
+	/**
+	 * An {@link Integer}-typed quotient must evaluate with truncating division and
+	 * report its result as an {@link Integer}, so the value keeps the expression's
+	 * declared type after the evaluate path was widened to cover every
+	 * non-floating-point type.
+	 */
+	@Test(timeout = 5000)
+	public void integerTypedEvaluateTruncatesAndKeepsType() {
+		Expression<?> q = Quotient.of(
+				new StaticReference<>(Integer.class, "n"), new IntegerConstant(2));
+		Assert.assertTrue("an unbounded integer numerator must not fold to a constant",
+				q instanceof Quotient);
+
+		Number result = q.evaluate(-7, 2);
+		Assert.assertTrue("an integer quotient must evaluate to an Integer",
+				result instanceof Integer);
+		Assert.assertEquals("integer -7 / 2 truncates toward zero to -3",
+				-3, result.intValue());
+	}
+
+	/**
+	 * A floating-point quotient must not truncate: the {@code isFP()} branch of
+	 * {@link Quotient#evaluate} keeps full double division.
+	 */
+	@Test(timeout = 5000)
+	public void floatingPointEvaluateDoesNotTruncate() {
+		Expression<?> q = Quotient.of(
+				new StaticReference<>(Double.class, "x"), new DoubleConstant(2.0));
+		Assert.assertTrue("an unbounded double numerator must not fold to a constant",
+				q instanceof Quotient);
+
+		Number result = q.evaluate(-3.0, 2.0);
+		Assert.assertEquals("double -3 / 2 must evaluate to -1.5",
+				-1.5, result.doubleValue(), 0.0);
 	}
 
 	/**
