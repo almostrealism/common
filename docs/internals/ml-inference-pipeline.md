@@ -418,7 +418,8 @@ The factory's consumer wraps this in a `setFrom` so the slice is copied into the
 fixed input buffer that the compiled model reads.
 
 For a model whose tokens carry several attribute values rather than a single ID —
-such as the compound MIDI tokens Moonbeam generates — `AutoregressiveModel.tokenLoader`
+such as the compound MIDI tokens produced by the Moonbeam model implemented in this
+repository (`org.almostrealism.ml.midi`) — `AutoregressiveModel.tokenLoader`
 (`AutoregressiveModel.java:407-420`) builds the loader instead. It compiles the
 embedding once, with the token's values as a kernel argument, and assigns the result
 directly into the input on the device; each step only writes the packed values and
