@@ -730,6 +730,36 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a layer whose output is one row of a caller-owned 2-D cache; the layer does not
+	 * read its input.
+	 *
+	 * <p>This is the read that pairs with {@link #cacheWrite}: a row recorded by one forward
+	 * pass is read back by a later pass, which is how a recurrent layer carries its hidden
+	 * state from one step to the next. The row selected by {@code position} is gathered into
+	 * the layer's output at this layer's place in the compiled operation order, so a write to
+	 * the same row by a later stage of the same pass does not change what this layer read.</p>
+	 *
+	 * @param inputShape the shape of the input, which is not read
+	 * @param cache      the {@code [rows, rowSize]} cache to read
+	 * @param position   producer of the row index, shape {@code [1]}
+	 * @return a layer producing the {@code [rowSize]} row
+	 * @throws IllegalArgumentException if the cache is not 2-D
+	 */
+	default CellularLayer cacheRead(TraversalPolicy inputShape, CollectionProducer cache,
+									Producer<PackedCollection> position) {
+		TraversalPolicy cacheShape = shape(cache);
+		if (cacheShape.getDimensions() != 2) {
+			throw new IllegalArgumentException("cacheRead expects a [rows, rowSize] cache, got " + cacheShape);
+		}
+
+		int rows = cacheShape.length(0);
+		int rowSize = cacheShape.length(1);
+		CollectionProducer index = integers(0, rowSize).add(c(position).multiply(c((double) rowSize)));
+		return layer("cacheRead-" + rows + "x" + rowSize, inputShape, shape(rowSize),
+				input -> c(shape(rowSize), cache.reshape(shape(rows * rowSize)), index));
+	}
+
+	/**
 	 * Creates a function that produces a Block for subset extraction operations using position from TraversalPolicy.
 	 * This method provides a functional interface for creating subset blocks where the position coordinates
 	 * are derived from a TraversalPolicy's extent.

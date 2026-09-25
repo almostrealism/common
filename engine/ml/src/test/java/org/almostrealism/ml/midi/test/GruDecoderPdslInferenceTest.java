@@ -42,21 +42,17 @@ import java.util.Random;
  * and real (Moonbeam checkpoint) weights.</p>
  *
  * <h2>Architecture enforcement</h2>
- * <p>All GRU gate computations are compiled into exactly ONE
- * {@link org.almostrealism.model.CompiledModel} inside {@link GRUDecoder}.
- * The test creates one {@link GRUDecoder} and calls {@code decode()};
- * it does not create any {@link org.almostrealism.model.Model} instances
- * itself, verifying that the entire pipeline is expressed as a single
- * compiled computation graph.</p>
+ * <p>All GRU gate computations are compiled into the step model
+ * {@link GRUDecoder} builds from its PDSL asset. The test creates one
+ * {@link GRUDecoder} and calls {@code decode()}; it does not create any
+ * {@link org.almostrealism.model.Model} instances itself.</p>
  *
- * <h2>PDSL coverage</h2>
+ * <h2>PDSL coverage ({@code midi/gru_decoder.pdsl})</h2>
  * <ul>
- *   <li>{@code summary_proj} — projects transformer hidden → decoder hidden (init)</li>
- *   <li>{@code gru_r_gate} — reset gate</li>
- *   <li>{@code gru_z_gate} — update gate</li>
- *   <li>{@code gru_n_gate} — candidate gate</li>
- *   <li>{@code gru_h_new}  — hidden update (lerp)</li>
- *   <li>{@code lm_head}    — projects decoder hidden → vocab logits</li>
+ *   <li>{@code gru_decoder_start} — projects transformer hidden → decoder hidden, every layer's initial state</li>
+ *   <li>{@code gru_decoder_layer} — reads a layer's hidden state, runs the GRU cell, writes it back</li>
+ *   <li>{@code gru_cell} — reset gate, update gate, candidate state and hidden update (lerp)</li>
+ *   <li>{@code gru_decoder_logits} — projects decoder hidden → vocab logits</li>
  * </ul>
  */
 public class GruDecoderPdslInferenceTest extends TestSuiteBase implements ConsoleFeatures {

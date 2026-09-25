@@ -44,7 +44,7 @@ import java.util.function.Supplier;
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
  * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
- * scale, repeat, repeat_each, sum_channels, capture, cache_write, rope_rotation,
+ * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
  * causal_mask, weighted_values, sqrt, attention, transformer,
  * shape, range). {@link PdslInterpreter} evaluates a call's
@@ -91,7 +91,8 @@ final class PdslBuiltins {
 			case "repeat_each": return callRepeatEach(args);
 			case "sum_channels": return callSumChannels(args);
 			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
-			case "cache_write": return callCacheWrite(args);
+			case "cache_write": return callCacheRow("cache_write", args, FEATURES::cacheWrite);
+			case "cache_read": return callCacheRow("cache_read", args, FEATURES::cacheRead);
 			case "rope_rotation": return callRopeRotation(args);
 			case "mra_rope_rotation": return callMraRopeRotation(args);
 			case "split_half_rope": return callSplitHalfRope(args);
@@ -399,25 +400,51 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds a block factory that writes the stage input into row {@code position} of a
-	 * caller-owned {@code [rows, size]} cache and passes the input through unchanged. The
-	 * cache is state declared in a {@code state} block; the row persists across forward
-	 * passes, so this is how a key/value cache is filled one token at a time.
+	 * Builds a block factory for one of the two row operations on a caller-owned
+	 * {@code [rows, size]} cache, from their shared arguments: the cache, which is state declared
+	 * in a {@code state} block and persists across forward passes, and the row position
+	 * (shape {@code [1]}).
+	 * <ul>
+	 *   <li>{@code cache_write(cache, position)} writes the stage input into row
+	 *       {@code position} and passes the input through unchanged, which is how a key/value
+	 *       cache is filled one token at a time.</li>
+	 *   <li>{@code cache_read(cache, position)} outputs row {@code position} as a
+	 *       {@code [size]} vector without reading the stage input, which is how a recurrent
+	 *       layer reads back the hidden state an earlier forward pass wrote.</li>
+	 * </ul>
 	 *
-	 * @param args two arguments: the cache collection and the row position (shape {@code [1]})
-	 * @return a factory that creates the cache write for the input shape of one row
+	 * @param name      the built-in name, for error messages
+	 * @param args      two arguments: the cache collection and the row position
+	 * @param operation the row operation to build for the stage's input shape
+	 * @return a factory that creates the row operation for the stage's input shape
 	 * @see org.almostrealism.layers.LayerFeatures#cacheWrite
+	 * @see org.almostrealism.layers.LayerFeatures#cacheRead
 	 */
-	private static Function<TraversalPolicy, Block> callCacheWrite(List<Object> args) {
+	private static Function<TraversalPolicy, Block> callCacheRow(String name, List<Object> args,
+																 CacheRowOperation operation) {
 		if (args.size() != 2) {
 			throw new PdslParseException(
-					"cache_write() expects 2 arguments (cache, position), got " + args.size());
+					name + "() expects 2 arguments (cache, position), got " + args.size());
 		}
 		CollectionProducer cache = PdslInterpreter.normalizeToProducer(args.get(0), null,
-				"cache_write() cache");
+				name + "() cache");
 		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(1),
-				FEATURES.shape(1), "cache_write() position");
-		return inputShape -> FEATURES.cacheWrite(inputShape, cache, position);
+				FEATURES.shape(1), name + "() position");
+		return inputShape -> operation.create(inputShape, cache, position);
+	}
+
+	/** A block over one row of a caller-owned cache: a cache write or a cache read. */
+	@FunctionalInterface
+	private interface CacheRowOperation {
+		/**
+		 * Builds the block.
+		 *
+		 * @param inputShape the stage's input shape
+		 * @param cache      the {@code [rows, size]} cache
+		 * @param position   the row position, shape {@code [1]}
+		 * @return the block operating on row {@code position} of {@code cache}
+		 */
+		Block create(TraversalPolicy inputShape, CollectionProducer cache, CollectionProducer position);
 	}
 
 	/**

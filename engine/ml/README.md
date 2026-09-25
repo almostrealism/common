@@ -782,7 +782,7 @@ The 12 attention heads are partitioned into 6 groups of 2. Each group applies Ro
 
 ### GRU Decoder
 
-A 4-layer GRU that autoregressively decodes 7 tokens per note from the transformer's hidden states. Implemented in `GRUDecoder.java` as a single `CompiledModel` using the Producer pattern — no separate GRU cell class, no imperative Java loops in the decode path.
+A stacked GRU (4 layers in the paper configuration, 2 in the 309M checkpoint) that autoregressively decodes 7 tokens per note from the transformer's hidden state. Its structure is the PDSL asset `pdsl/midi/gru_decoder.pdsl`: a start model (the summary projection, written into every layer's row of the hidden state) run once per note, and a step model (per layer: read the layer's hidden-state row, GRU cell, write the row back; then the logits head) run once per token. The GRU hidden state is a `[layers, decoderHiddenSize]` state collection the two models share, like the attention KV cache. `GRUDecoder.java` binds the checkpoint weights (`GRUDecoder.load(stateDict, config)`), compiles the two models, and runs the decode loop — token selection and the embedding lookup of the chosen token happen between forward passes.
 
 ### MoonbeamMidi
 
@@ -796,7 +796,7 @@ Top-level entry point that wires together:
 | Class | Package | Role |
 |-------|---------|------|
 | `MoonbeamMidi` | `org.almostrealism.ml.midi` | Top-level model |
-| `GRUDecoder` | `org.almostrealism.ml.midi` | 4-layer GRU, single CompiledModel |
+| `GRUDecoder` | `org.almostrealism.ml.midi` | GRU decoder built from `gru_decoder.pdsl` |
 | `CompoundMidiEmbedding` | `org.almostrealism.ml.midi` | 6-attribute compound embedding |
 | `FundamentalMusicEmbedding` | `org.almostrealism.ml.midi` | Sinusoidal embedding, single attribute |
 | `MidiTokenizer` | `org.almostrealism.music.midi` | MIDI → compound token conversion |

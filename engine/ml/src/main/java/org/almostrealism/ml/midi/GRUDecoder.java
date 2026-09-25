@@ -16,11 +16,11 @@
 
 package org.almostrealism.ml.midi;
 
-import org.almostrealism.collect.CollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.CompiledModel;
@@ -33,16 +33,18 @@ import java.util.Random;
 /**
  * GRU decoder for compound MIDI token generation.
  *
- * <p>All GRU neural-network math is expressed as a single {@link CompiledModel}
- * decode-step model built in {@link #ensureCompiled()}. One forward pass of that
- * model covers all GRU layers, the optional {@code fc_out} projection, and the
- * {@code lm_head}, taking input {@code [x | h0 | ... | hL]} and producing
- * {@code [h0' | ... | hL' | logits]}.</p>
+ * <p>The decoder's structure is the {@link #GRU_DECODER_ASSET} asset: a start model, run once per
+ * note, that projects the transformer hidden state to the decoder hidden size and makes it every
+ * GRU layer's initial hidden state; and a step model, run once per decode step, that advances every
+ * GRU layer from the embedding of the previous token and projects the last layer's hidden state
+ * (through {@code fc_out} when the checkpoint has it) to logits over the flat decode vocabulary.
+ * The hidden state is a {@code [layers, decoderHiddenSize]} collection that both models read and
+ * write, so it persists from one step of a note to the next.</p>
  *
- * <p>The {@code summary_proj} (transformer hidden to initial decoder hidden) is
- * expressed as a {@link CollectionProducer} computation at the start of each
- * decode call and is evaluated once per note to initialise the hidden states.
- * All per-token work runs through the single compiled model.</p>
+ * <p>This class binds the weights, allocates the hidden state, builds and compiles the two models,
+ * and runs the decode loop: choosing each token from the logits and looking up its embedding for
+ * the next step happen between forward passes. Because the hidden state belongs to the decoder, a
+ * decoder decodes one note at a time.</p>
  *
  * <h2>Decode Vocabulary Layout</h2>
  * <table>
@@ -62,11 +64,22 @@ public class GRUDecoder implements LayerFeatures {
 	/** Number of output tokens generated per position by the GRU decoder. */
 	public static final int TOKENS_PER_NOTE = 7;
 
+	/**
+	 * Classpath location of the asset describing the decoder's structure. Its
+	 * {@code gru_decoder_start} layer is the start model; its {@code gru_decoder_layer} layers, one
+	 * per GRU layer, followed by {@code gru_decoder_logits} or {@code gru_decoder_logits_fc_out},
+	 * are the step model.
+	 */
+	public static final String GRU_DECODER_ASSET = "/pdsl/midi/gru_decoder.pdsl";
+
 	/** Model hyperparameters (hidden size, decoder hidden size, vocab sizes, etc.). */
 	private final MoonbeamConfig config;
 	/** Number of stacked GRU layers in the decoder. */
 	private final int numLayers;
-	/** Input size for each GRU layer (layer 0 takes transformer hidden; others take decoder hidden). */
+	/**
+	 * Input size of each GRU layer: the decoder embedding's width for layer 0, the decoder hidden
+	 * size for every later layer.
+	 */
 	private final int[] inputSizes;
 	/** Input-hidden weight matrices ({@code [3*dh, inputSize]}) for each layer. */
 	private final PackedCollection[] weightIh;
@@ -96,27 +109,34 @@ public class GRUDecoder implements LayerFeatures {
 	private final int[] vocabSizesPerStep;
 
 	/**
-	 * The single compiled decode-step model.
-	 *
-	 * <p>Input shape: {@code (1 + numLayers) * decoderHiddenSize}
-	 * ({@code [x | h0 | ... | hL]}).
-	 * Output shape: {@code numLayers * decoderHiddenSize + decodeVocabSize}
-	 * ({@code [h0' | ... | hL' | logits]}).</p>
-	 *
-	 * <p>Lazily initialised by {@link #ensureCompiled()} on first use.</p>
+	 * The GRU hidden state, {@code [layers, decoderHiddenSize]}: row {@code l} holds layer
+	 * {@code l}'s hidden state. The start model writes every row; each step reads and rewrites them.
 	 */
-	private volatile CompiledModel decodeStepModel;
+	private final PackedCollection hiddenState;
+
+	/**
+	 * The compiled start model: transformer hidden state in, every row of {@link #hiddenState}
+	 * written. Lazily initialised by {@link #ensureCompiled()} together with {@link #stepModel}.
+	 */
+	private volatile CompiledModel startModel;
+
+	/**
+	 * The compiled step model: embedding of the previous token in, logits over the flat decode
+	 * vocabulary out, {@link #hiddenState} advanced. Lazily initialised by {@link #ensureCompiled()},
+	 * after {@link #startModel}.
+	 */
+	private volatile CompiledModel stepModel;
 
 	/**
 	 * Create a GRU decoder with explicit weights.
 	 *
-	 * <p>Weight tensors are provided in the stacked layout used by the model checkpoint.
-	 * The {@code gru_block.pdsl} data block is used at compile time to derive the
-	 * per-gate sub-views from these stacked tensors, eliminating the need for a
-	 * separate Java weight-holder class.</p>
+	 * <p>Weight tensors are provided in the stacked layout used by the model checkpoint (each
+	 * layer's reset, update and candidate gates stacked in that order), which is the layout the
+	 * asset's GRU cell consumes directly.</p>
 	 *
 	 * @param config           model configuration
-	 * @param inputSizes       input size for each layer (differs between layer 0 and deeper layers)
+	 * @param inputSizes       input size for each layer: the decoder embedding's width for layer 0,
+	 *                         the decoder hidden size for deeper layers
 	 * @param weightIh         stacked input-hidden weights per layer, shape (3*hiddenSize, inputSize)
 	 * @param weightHh         stacked hidden-hidden weights per layer, shape (3*hiddenSize, hiddenSize)
 	 * @param biasIh           stacked input-hidden biases per layer, shape (3*hiddenSize)
@@ -152,6 +172,8 @@ public class GRUDecoder implements LayerFeatures {
 		this.decoderEmbedding = decoderEmbedding;
 		this.vocabOffsets = computeVocabOffsets(config);
 		this.vocabSizesPerStep = computeVocabSizesPerStep(config);
+		validateLayers();
+		this.hiddenState = new PackedCollection(shape(numLayers, config.decoderHiddenSize));
 	}
 
 	/**
@@ -180,26 +202,67 @@ public class GRUDecoder implements LayerFeatures {
 	}
 
 	/**
+	 * Loads a GRU decoder from the weights of a Moonbeam checkpoint: the stacked
+	 * {@code decoder.weight_ih_l*}, {@code decoder.weight_hh_l*}, {@code decoder.bias_ih_l*} and
+	 * {@code decoder.bias_hh_l*} tensors of every GRU layer, {@code summary_projection.*},
+	 * {@code lm_head.*}, {@code decoder_embedding.weight}, and {@code decoder.fc_out.*} when the
+	 * checkpoint has that projection.
+	 *
+	 * <p>Each layer's input size is the one its input-hidden weights take. That is the decoder
+	 * hidden size for every layer, the first included: the first layer's input is the decoder
+	 * embedding of the previous token, not the transformer hidden state, which reaches the
+	 * decoder only through the summary projection.</p>
+	 *
+	 * @param stateDict checkpoint weights
+	 * @param config    model configuration
+	 * @return the decoder
+	 * @throws IllegalArgumentException if the checkpoint's decoder weights do not fit together
+	 */
+	public static GRUDecoder load(StateDictionary stateDict, MoonbeamConfig config) {
+		int n = config.decoderLayers;
+		int[] inputSizes = new int[n];
+		PackedCollection[] weightIh = new PackedCollection[n];
+		PackedCollection[] weightHh = new PackedCollection[n];
+		PackedCollection[] biasIh = new PackedCollection[n];
+		PackedCollection[] biasHh = new PackedCollection[n];
+		for (int l = 0; l < n; l++) {
+			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
+			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
+			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
+			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
+			inputSizes[l] = weightIh[l].getShape().length(1);
+		}
+
+		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
+				stateDict.get("summary_projection.weight"),
+				stateDict.get("summary_projection.bias"),
+				stateDict.get("decoder.fc_out.weight"),
+				stateDict.get("decoder.fc_out.bias"),
+				stateDict.get("lm_head.weight"),
+				stateDict.get("lm_head.bias"),
+				stateDict.get("decoder_embedding.weight"));
+	}
+
+	/**
 	 * Decode GRU output tokens from a transformer hidden state using greedy argmax.
 	 *
-	 * <p>All GRU neural-network math is performed by the single compiled decode-step
-	 * model. The only Java code here is the argmax token selection and data routing
-	 * between steps.</p>
+	 * <p>All GRU neural-network math is performed by the start and step models built from
+	 * {@link #GRU_DECODER_ASSET}. The only Java code here is the argmax token selection and the
+	 * embedding lookup of the chosen token between steps.</p>
 	 *
 	 * @param transformerHidden transformer output hidden state, shape (hiddenSize)
 	 * @return array of {@link #TOKENS_PER_NOTE} token indices in the flat decode vocabulary
 	 */
 	public int[] decode(PackedCollection transformerHidden) {
-		ensureCompiled();
 		return runGruDecode(transformerHidden, 0.0, 1.0, null);
 	}
 
 	/**
 	 * Decode GRU output tokens with temperature and top-p sampling.
 	 *
-	 * <p>All GRU neural-network math is performed by the single compiled decode-step
-	 * model. The only Java code here is the token selection and data routing
-	 * between steps.</p>
+	 * <p>All GRU neural-network math is performed by the start and step models built from
+	 * {@link #GRU_DECODER_ASSET}. The only Java code here is the token selection and the
+	 * embedding lookup of the chosen token between steps.</p>
 	 *
 	 * @param transformerHidden transformer output hidden state, shape (hiddenSize)
 	 * @param temperature       sampling temperature (0 = greedy argmax)
@@ -209,8 +272,33 @@ public class GRUDecoder implements LayerFeatures {
 	 */
 	public int[] decode(PackedCollection transformerHidden, double temperature,
 						double topP, Random random) {
-		ensureCompiled();
 		return runGruDecode(transformerHidden, temperature, topP, random);
+	}
+
+	/**
+	 * Starts the decode of one note: runs the start model, which projects
+	 * {@code transformerHidden} to the decoder hidden size and makes the projection every GRU
+	 * layer's hidden state.
+	 *
+	 * @param transformerHidden transformer output hidden state, shape (hiddenSize)
+	 */
+	public void start(PackedCollection transformerHidden) {
+		ensureCompiled();
+		startModel.forward(transformerHidden);
+	}
+
+	/**
+	 * Runs one decode step: advances every GRU layer's hidden state from {@code input} and
+	 * returns the logits over the flat decode vocabulary. The first step of a note follows
+	 * {@link #start}.
+	 *
+	 * @param input the decoder embedding of the previous token, shape (decoderHiddenSize)
+	 * @return the logits, shape (decodeVocabSize); the collection is the step model's output and
+	 *         is overwritten by the next step
+	 */
+	public PackedCollection step(PackedCollection input) {
+		ensureCompiled();
+		return stepModel.forward(input);
 	}
 
 	/**
@@ -279,130 +367,81 @@ public class GRUDecoder implements LayerFeatures {
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Build and compile the decode-step {@link Model}.
+	 * Checks that every GRU layer is declared to take, and has input-hidden weights that take,
+	 * the input the decode feeds it: the decoder embedding of the previous token for the first
+	 * layer, and the previous layer's hidden state for every later one.
 	 *
-	 * <p>The model uses one {@link CellularLayer} per GRU layer plus a final
-	 * {@code lm_head} layer, all added to a single {@link Model} in sequence.
-	 * State is threaded through as a flat vector of shape
-	 * {@code (1 + numLayers) * decoderHiddenSize}: slot 0 holds the current
-	 * input {@code x} (updated to {@code hNew} after each GRU layer) and
-	 * slots {@code 1..numLayers} hold the per-layer hidden states
-	 * {@code h0..hL} from the previous time step.  Each GRU block is compiled
-	 * independently, preventing the symbolic expression-tree explosion that
-	 * occurs when all layers are chained inside a single lambda.</p>
+	 * @throws IllegalArgumentException if a layer's declared input size or its input-hidden
+	 *                                  weights do not match the input it is fed
+	 */
+	private void validateLayers() {
+		for (int l = 0; l < numLayers; l++) {
+			int fed = l == 0 ? decoderEmbedding.getShape().length(1) : config.decoderHiddenSize;
+			int weightInput = weightIh[l].getShape().length(1);
+			if (inputSizes[l] != fed || weightInput != fed) {
+				throw new IllegalArgumentException("GRU layer " + l + " is fed "
+						+ (l == 0 ? "the decoder embedding of the previous token" : "the previous layer's hidden state")
+						+ ", of size " + fed + ", but is declared to take inputs of size " + inputSizes[l]
+						+ " and its input-hidden weights " + weightIh[l].getShape()
+						+ " take inputs of size " + weightInput);
+			}
+		}
+	}
+
+	/**
+	 * Builds the start and step models from {@link #GRU_DECODER_ASSET} and compiles them.
 	 *
-	 * <p>Thread-safe via double-checked locking on {@link #decodeStepModel}.</p>
+	 * <p>The start model is the asset's {@code gru_decoder_start} layer. The step model is one
+	 * {@code gru_decoder_layer} per GRU layer, bound to that layer's weights and row of the hidden
+	 * state, followed by the logits head: {@code gru_decoder_logits_fc_out} when the checkpoint
+	 * has an fc_out projection, {@code gru_decoder_logits} otherwise.</p>
+	 *
+	 * <p>Thread-safe via double-checked locking on {@link #stepModel}, which is assigned last.</p>
 	 */
 	private void ensureCompiled() {
-		if (decodeStepModel != null) return;
+		if (stepModel != null) return;
 		synchronized (this) {
-			if (decodeStepModel != null) return;
+			if (stepModel != null) return;
 
-			// Load gru_block.pdsl to derive per-gate weight sub-views
 			PdslLoader loader = new PdslLoader();
-			PdslNode.Program gruBlockProgram = loader.parseResource("/pdsl/gru_block.pdsl");
+			PdslNode.Program program = loader.parseResource(GRU_DECODER_ASSET);
 
-			final int dh = config.decoderHiddenSize;
-			// State layout: [x | h0 | h1 | ... | hL]  (slot 0 = x, slot l+1 = h_l)
-			final int stateSize = (1 + numLayers) * dh;
-			// Output layout: [h0' | h1' | ... | hL' | logits]
-			final int outputSize = numLayers * dh + config.decodeVocabSize;
+			Map<String, Object> startArgs = new HashMap<>();
+			startArgs.put("hidden", hiddenState);
+			startArgs.put("num_layers", numLayers);
+			startArgs.put("summary_weight", summaryWeight);
+			startArgs.put("summary_bias", summaryBias);
+			TraversalPolicy transformerShape = shape(summaryWeight.getShape().length(1));
+			Model start = new Model(transformerShape);
+			start.add(loader.buildLayer(program, "gru_decoder_start", transformerShape, startArgs));
 
-			Model model = new Model(shape(stateSize));
-
-			// One CellularLayer per GRU layer — each compiled independently to
-			// prevent symbolic substitution across layers for large hidden sizes.
+			Model step = new Model(shape(inputSizes[0]));
 			for (int l = 0; l < numLayers; l++) {
-				final int layerIdx = l;
-
-				// Evaluate gru_weights data block from PDSL to get per-gate sub-views
 				Map<String, Object> args = new HashMap<>();
+				args.put("hidden", hiddenState);
+				args.put("layer_index", l);
+				args.put("input_size", inputSizes[l]);
+				args.put("hidden_size", config.decoderHiddenSize);
 				args.put("weight_ih", weightIh[l]);
 				args.put("weight_hh", weightHh[l]);
 				args.put("bias_ih", biasIh[l]);
 				args.put("bias_hh", biasHh[l]);
-				args.put("input_size", inputSizes[l]);
-				args.put("hidden_size", dh);
-				Map<String, Object> w = loader.evaluateDataDef(gruBlockProgram, "gru_weights", args);
-
-				final PackedCollection wIr = (PackedCollection) w.get("w_ir");
-				final PackedCollection bIr = (PackedCollection) w.get("b_ir");
-				final PackedCollection wHr = (PackedCollection) w.get("w_hr");
-				final PackedCollection bHr = (PackedCollection) w.get("b_hr");
-				final PackedCollection wIz = (PackedCollection) w.get("w_iz");
-				final PackedCollection bIz = (PackedCollection) w.get("b_iz");
-				final PackedCollection wHz = (PackedCollection) w.get("w_hz");
-				final PackedCollection bHz = (PackedCollection) w.get("b_hz");
-				final PackedCollection wIn = (PackedCollection) w.get("w_in");
-				final PackedCollection bIn = (PackedCollection) w.get("b_in");
-				final PackedCollection wHn = (PackedCollection) w.get("w_hn");
-				final PackedCollection bHn = (PackedCollection) w.get("b_hn");
-
-				CellularLayer gruLayer = layer("gru_layer_" + l,
-						shape(stateSize), shape(stateSize), input -> {
-					// x = current layer input (slot 0); hl = hidden from last step (slot layerIdx+1)
-					CollectionProducer x = c(input).subset(shape(dh), 0).reshape(shape(dh));
-					CollectionProducer hl = c(input).subset(shape(dh), (layerIdx + 1) * dh)
-							.reshape(shape(dh));
-
-					// Reset gate: r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
-					CollectionProducer r = sigmoid(
-							add(add(matmul(cp(wIr), x), cp(bIr)),
-								add(matmul(cp(wHr), hl), cp(bHr))));
-
-					// Update gate: z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
-					CollectionProducer z = sigmoid(
-							add(add(matmul(cp(wIz), x), cp(bIz)),
-								add(matmul(cp(wHz), hl), cp(bHz))));
-
-					// Candidate gate: n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
-					CollectionProducer n = tanh(
-							add(add(matmul(cp(wIn), x), cp(bIn)),
-								r.multiply(add(matmul(cp(wHn), hl), cp(bHn)))));
-
-					// Hidden state update: hNew = (1 - z) * n + z * h
-					CollectionProducer hNew = add(
-							c(1.0).subtract(z).multiply(n),
-							z.multiply(hl)).reshape(shape(dh));
-
-					// Propagate state: update slot 0 (x for next layer) and slot layerIdx+1 (h_l')
-					CollectionProducer[] stateParts = new CollectionProducer[1 + numLayers];
-					stateParts[0] = hNew;
-					for (int s = 1; s <= numLayers; s++) {
-						stateParts[s] = (s == layerIdx + 1)
-								? hNew
-								: c(input).subset(shape(dh), s * dh).reshape(shape(dh));
-					}
-					return concat(stateParts).reshape(shape(stateSize));
-				});
-				model.add(gruLayer);
+				step.add(loader.buildLayer(program, "gru_decoder_layer", shape(inputSizes[l]), args));
 			}
 
-			// lm_head block: reads last GRU output from slot 0, emits [h0'|...|hL'|logits]
-			CellularLayer lmHeadLayer = layer("lm_head",
-					shape(stateSize), shape(outputSize), input -> {
-				CollectionProducer lmIn = c(input).subset(shape(dh), 0).reshape(shape(dh));
+			Map<String, Object> headArgs = new HashMap<>();
+			headArgs.put("lm_head_weight", lmHeadWeight);
+			headArgs.put("lm_head_bias", lmHeadBias);
+			String head = "gru_decoder_logits";
+			if (fcOutWeight != null) {
+				headArgs.put("fc_out_weight", fcOutWeight);
+				headArgs.put("fc_out_bias", fcOutBias);
+				head = "gru_decoder_logits_fc_out";
+			}
+			step.add(loader.buildLayer(program, head, shape(config.decoderHiddenSize), headArgs));
 
-				// Optional fc_out projection
-				if (fcOutWeight != null) {
-					lmIn = add(matmul(cp(fcOutWeight), lmIn), cp(fcOutBias)).reshape(shape(dh));
-				}
-
-				// lm_head: project to decode vocabulary logits
-				CollectionProducer logits = add(matmul(cp(lmHeadWeight), lmIn), cp(lmHeadBias))
-						.reshape(shape(config.decodeVocabSize));
-
-				// Output [h0'|h1'|...|hL'|logits]: hidden slots are at state positions 1..numLayers
-				CollectionProducer[] parts = new CollectionProducer[numLayers + 1];
-				for (int l = 0; l < numLayers; l++) {
-					parts[l] = c(input).subset(shape(dh), (l + 1) * dh).reshape(shape(dh));
-				}
-				parts[numLayers] = logits;
-				return concat(parts).reshape(shape(outputSize));
-			});
-			model.add(lmHeadLayer);
-
-			this.decodeStepModel = model.compile(false);
+			this.startModel = start.compile(false);
+			this.stepModel = step.compile(false);
 		}
 	}
 
@@ -411,14 +450,12 @@ public class GRUDecoder implements LayerFeatures {
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Run the autoregressive GRU decode loop.
+	 * Run the autoregressive GRU decode loop for one note.
 	 *
-	 * <p>Before the loop: evaluates {@code summary_proj} once per note as a
-	 * {@link CollectionProducer} computation to produce the initial decoder hidden state.
-	 * Inside the loop: assembles the state vector from current producers, executes the
-	 * single compiled decode-step model, extracts new hidden states and logits using
-	 * producer subset operations, and delegates token selection to
-	 * {@link AutoregressiveModel#sampleToken}.</p>
+	 * <p>{@link #start} sets every layer's hidden state from the transformer hidden state. Each of
+	 * the {@link #TOKENS_PER_NOTE} steps then runs {@link #step} on the decoder embedding of the
+	 * previous token (token 0, the start token, for the first step) and delegates choosing the next
+	 * token from the logits to {@link AutoregressiveModel#sampleToken}.</p>
 	 *
 	 * @param transformerHidden transformer hidden state, shape (hiddenSize)
 	 * @param temperature       sampling temperature (0 = greedy)
@@ -428,54 +465,17 @@ public class GRUDecoder implements LayerFeatures {
 	 */
 	private int[] runGruDecode(PackedCollection transformerHidden,
 								double temperature, double topP, Random random) {
-		final int dh = config.decoderHiddenSize;
-		final int numLayers = this.numLayers;
-		final int inputSize = (1 + numLayers) * dh;
-
-		// One-time initialisation: summary projection before the decode loop.
-		// summary_proj = W_s @ transformerHidden + b_s
-		PackedCollection initialHidden =
-				add(matmul(cp(summaryWeight), cp(transformerHidden)), cp(summaryBias)).evaluate();
-
-		// Initialise all per-layer hidden states from the summary projection
-		CollectionProducer[] h = new CollectionProducer[numLayers];
-		for (int l = 0; l < numLayers; l++) {
-			h[l] = cp(initialHidden);
-		}
-
-		// Initial decoder input: SOS embedding (token index 0)
-		PackedCollection x = cp(decoderEmbedding).subset(shape(1, dh), 0, 0).reshape(shape(dh)).evaluate();
+		int embeddingSize = inputSizes[0];
+		start(transformerHidden);
 
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
-
-		for (int step = 0; step < TOKENS_PER_NOTE; step++) {
-			// Assemble state vector [x | h0 | ... | hL] using producer concat
-			CollectionProducer[] stateParts = new CollectionProducer[1 + numLayers];
-			stateParts[0] = cp(x).reshape(shape(dh));
-			for (int l = 0; l < numLayers; l++) {
-				stateParts[l + 1] = h[l].reshape(shape(dh));
-			}
-			PackedCollection state = concat(stateParts).reshape(shape(inputSize)).evaluate();
-
-			// Single compiled model forward pass
-			PackedCollection output = decodeStepModel.forward(state);
-
-			// Extract new hidden states from output [h0' | ... | hL' | logits]
-			for (int l = 0; l < numLayers; l++) {
-				h[l] = cp(output).subset(shape(dh), l * dh);
-			}
-
-			// Extract logits from tail of output
-			PackedCollection logits = cp(output)
-					.subset(shape(config.decodeVocabSize), numLayers * dh).evaluate();
-
-			// Token selection delegated to AutoregressiveModel
-			int token = AutoregressiveModel.sampleToken(logits, config.decodeVocabSize,
+		int token = 0;
+		for (int i = 0; i < TOKENS_PER_NOTE; i++) {
+			PackedCollection input = cp(decoderEmbedding).subset(shape(1, embeddingSize), token, 0)
+					.reshape(shape(embeddingSize)).evaluate();
+			token = AutoregressiveModel.sampleToken(step(input), config.decodeVocabSize,
 					temperature, topP, random);
-			outputTokens[step] = token;
-
-			// Embedding lookup for next step input
-			x = cp(decoderEmbedding).subset(shape(1, dh), token, 0).reshape(shape(dh)).evaluate();
+			outputTokens[i] = token;
 		}
 
 		return outputTokens;
