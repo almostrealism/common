@@ -31,27 +31,30 @@ good outcome; a failure you conceal is the worst one available to you.
 That expectation is enforced mechanically rather than left to judgment, and it
 is narrower and more specific than "test files are off limits":
 
-- **Base-branch test *methods* are locked — not whole test files.**
-  `validate-agent-commit.sh` compares this branch against
-  origin/${BASE_BRANCH}. In Java, every test method that exists there must
-  survive byte for byte: annotation block, signature, and body. In Python the
-  check is deliberately weaker, because an indentation-delimited body cannot be
-  bounded as reliably — every `def test_*` present on the base branch must still
-  be present, and a test file's assertion count must not fall. Editing inside a
-  Python test body is therefore permitted; do not read that leniency as an
-  invitation, because everything above still applies to it.
+- **Existing tests may be improved, never weakened.** `test-integrity-check`
+  compares this branch against origin/${BASE_BRANCH}. Editing a test that
+  exists there — tightening it, correcting an expectation for an intended
+  change in behaviour — is allowed. Weakening it is not: in Java,
+  `detect-test-hiding.sh` looks for the patterns listed above (disabled or
+  skipped tests, lost assertions, loosened tolerances, raised `@TestDepth`,
+  shrunken dimensions, inflated timeouts); in Python,
+  `detect-python-test-hiding.sh` requires every `def test_*` on the base
+  branch to survive and a test file's assertion count not to fall.
 - **Adding tests is always allowed, and section 3 below requires it of you.**
-  A new test method in an existing test class is permitted. So is editing the
-  fixtures, helpers, constants, and imports that class uses — those are ordinary
-  code. Test files this branch introduced are yours to change freely.
+  A new test method in an existing test class is permitted, as is editing the
+  fixtures, helpers, constants, and imports that class uses. Test files this
+  branch introduced are yours to change freely.
+- **A change set that only edits existing tests is rejected.**
+  `agent-commit-validation` fails a branch whose every change is an edit to a
+  test file from the base branch, with no new test in it: such a change can
+  only change what the suite reports.
 - **CI files are locked unless the branch is named `ci/...`.** Files under
   `.github/workflows/` and `tools/ci/` may only be changed on such a branch,
   where the pipeline is the declared subject of the work. The policy detectors
   under `engine/utils` stay locked on every branch, since weakening a detector
   is never what a pipeline change is about.
-- **`detect-test-hiding.sh` and `deception-audit.sh` run alongside the
-  validator**, looking for the weakening patterns listed above and for the same
-  file being modified, reverted by a human, and modified again across sessions.
+- **`deception-audit.sh` looks across sessions** for the same file being
+  modified, reverted by a human, and modified again.
 
 These checks exist because agents have repeatedly hidden failures instead of
 fixing them: raising `@TestDepth` past CI's depth, cutting dimensions eight-fold,

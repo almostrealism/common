@@ -114,7 +114,12 @@ def workstream_submit_task(
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
-        protect_test_files: If true, prevent the agent from modifying test files.
+        protect_test_files: If true, the harness keeps every test method that
+            exists on the base branch exactly as it is (new tests and
+            helpers are still allowed). Use it for a job sent to make failing
+            tests pass; every branch is otherwise held to
+            test-integrity-check, which allows editing a test but not
+            weakening it.
         enforce_changes: If true, require the agent to produce code changes.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the

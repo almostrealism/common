@@ -138,7 +138,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
           DESCRIPTION: "Verify completion"
-          PROTECT_TEST_FILES: "true"
+          PROTECT_TEST_FILES: "false"
         run: |
           chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
