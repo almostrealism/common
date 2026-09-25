@@ -385,6 +385,40 @@ def test_read_skips_legacy_bin_files(tmp_path):
     np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
 
 
+def test_write_state_dictionary_rejects_reserved_shard_prefix(tmp_path):
+    """A shard_prefix ending in a reserved suffix (`.json` sidecar / `.bin` legacy)
+    is rejected: read_state_dictionary skips those files, so the first shard — named
+    by the bare prefix — would be dropped on read while Java StateDictionary loaded
+    it. The dump directory must stay empty rather than hold an unreadable shard."""
+    out_dir = tmp_path / "reserved"
+    for prefix in ("weights.bin", "weights.json"):
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_dump_reference_activations_keeps_legacy_bin_when_bindings_missing(tmp_path, monkeypatch):
+    """The protobuf binding is validated before the destructive legacy cleanup: on a
+    checkout without collections_pb2, dumping over a pre-migration directory must raise
+    ImportError WITHOUT first deleting the `<stage>.bin` dump it would have replaced."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    def _raise():
+        raise ImportError("collections_pb2 unavailable")
+
+    monkeypatch.setattr(core, "_require_collections", _raise)
+
+    with pytest.raises(ImportError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir))
+
+    assert legacy.exists(), "legacy dump must survive a prerequisite failure"
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently

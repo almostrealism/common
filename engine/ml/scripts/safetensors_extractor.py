@@ -417,7 +417,25 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     directory, a leftover same-prefix shard would silently pollute a later load.
     Returns exactly the list of file paths written by this call (sorted), tracked
     from :func:`write_group` rather than re-scanned from disk.
+
+    ``shard_prefix`` may not end in a reserved suffix (``.json`` sidecar or
+    ``.bin`` legacy reference): :func:`read_state_dictionary` skips files with
+    those suffixes, so the first shard — named by the bare prefix — would be
+    dropped on read while the Java ``StateDictionary`` still loaded it. Such a
+    prefix is rejected rather than written into an unreadable dump.
     """
+    if shard_prefix.endswith(SIDECAR_SUFFIX) or shard_prefix.endswith(LEGACY_REFERENCE_SUFFIX):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} ends in a reserved suffix "
+            f"({SIDECAR_SUFFIX} / {LEGACY_REFERENCE_SUFFIX}); read_state_dictionary "
+            "skips files with those suffixes, so the first shard would be dropped "
+            "on read. Choose a shard_prefix without that suffix.")
+
+    # Fail before the destructive same-prefix cleanup below if the generated
+    # protobuf bindings are missing, so a prerequisite failure never deletes
+    # shards it then cannot replace.
+    _require_collections()
+
     os.makedirs(out_dir, exist_ok=True)
 
     # Clear stale same-prefix shards from a previous run so they cannot pollute a
@@ -531,6 +549,11 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     The activations themselves must come from a real reference forward pass (see
     :func:`run_reference_stages`); this function only serializes them.
     """
+    # Validate the protobuf bindings before removing anything: on a checkout
+    # without the generated collections_pb2, this must fail without first
+    # deleting the legacy <stage>.bin dump it would otherwise replace.
+    _require_collections()
+
     for name in stages:
         legacy = os.path.join(out_dir, name + LEGACY_REFERENCE_SUFFIX)
         if os.path.isfile(legacy):
