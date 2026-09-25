@@ -1195,10 +1195,17 @@ class _UnittestDiscoveryMatcher:
     anywhere in the fragment would also accept a prompt naming two dotted
     ids (e.g. "run python -m unittest foo.Bar.test_a bar.Baz.test_b"),
     which still runs both tests in one invocation.
+
+    Like ``_PytestNodeIdMatcher`` and the command-side
+    ``_index_of_module_flag``, interpreter option flags are allowed
+    between the interpreter and ``-m`` so that "python3 -O -m unittest
+    discover" is still recognized rather than waved through because ``-O``
+    breaks the literal ``python3 -m`` sequence.
     """
 
     _CHAIN_SPLIT_PATTERN = re.compile(r"&&|\|\||;|\|")
-    _UNITTEST_PATTERN = re.compile(r"\bpython3?\s+-m\s+unittest\b", re.IGNORECASE)
+    _UNITTEST_PATTERN = re.compile(
+        r"\bpython3?(?:\s+-\S+)*\s+-m\s+unittest\b", re.IGNORECASE)
     _DISCOVER_PATTERN = re.compile(r"\bdiscover\b", re.IGNORECASE)
     _DOTTED_ID_PATTERN = re.compile(r"\b\w+(?:\.\w+){2,}\b")
 

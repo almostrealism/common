@@ -100,9 +100,13 @@ public class PromptTestInstructionLinter {
 	/** Matches a {@code -Dtest=<value>} mention, capturing its value. */
 	private static final Pattern DTEST_VALUE = Pattern.compile("-Dtest=(\\S+)", Pattern.CASE_INSENSITIVE);
 
-	/** Matches a {@code python}/{@code python3 -m unittest} mention in a prompt fragment. */
+	/** Matches a {@code python}/{@code python3 -m unittest} mention in a prompt fragment.
+	 * Interpreter option flags are allowed between the interpreter and {@code -m} -- mirroring
+	 * {@link #PYTEST_MODULE_INVOCATION} and the command-side {@code _index_of_module_flag} -- so
+	 * that {@code python3 -O -m unittest discover} is still recognized rather than waved through
+	 * because {@code -O} breaks the literal {@code python3 -m} sequence. */
 	private static final Pattern UNITTEST_MENTION = Pattern.compile(
-			"\\bpython3?\\s+-m\\s+unittest\\b", Pattern.CASE_INSENSITIVE);
+			"\\bpython3?(?:\\s+-\\S+)*\\s+-m\\s+unittest\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Matches the word "discover", as in {@code python -m unittest discover}. */
 	private static final Pattern DISCOVER = Pattern.compile("\\bdiscover\\b", Pattern.CASE_INSENSITIVE);

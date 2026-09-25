@@ -163,6 +163,15 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 						+ "tests.test_baz.BazTest.test_qux.").isEmpty());
 	}
 
+	/** An interpreter option before {@code -m} (here {@code -O}) breaks the literal
+	 * {@code python3 -m} sequence; the matcher must still recognize the unittest discover run,
+	 * matching the pytest matcher and the command-side {@code _index_of_module_flag}. */
+	@Test(timeout = 10000)
+	public void unittestDiscoverWithInterpreterOptionPhraseRejected() {
+		assertFalse(violationsFor(
+				"Run python3 -O -m unittest discover in that directory.").isEmpty());
+	}
+
 	/** A pytest instruction naming a directory, a whole file, no target, or two node ids is broad. */
 	@Test(timeout = 10000)
 	public void pytestWithoutSingleNodeIdRejected() {

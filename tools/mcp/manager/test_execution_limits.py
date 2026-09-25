@@ -746,6 +746,17 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "tests.test_baz.BazTest.test_qux to verify the fix.")
         self.assertTrue(hits, "naming two dotted unittest ids must still be flagged")
 
+    def test_unittest_discover_with_interpreter_option_prompt_rejected(self):
+        # An interpreter option before -m (here -O) breaks the literal
+        # "python3 -m" sequence; the matcher must still recognize the
+        # unittest discover run, matching the pytest matcher and the
+        # command-side _index_of_module_flag.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run python3 -O -m unittest discover to check your change.")
+        self.assertTrue(
+            hits,
+            "an interpreter option before -m must not hide unittest discover in a prompt")
+
     def test_later_skip_tests_false_overrides_earlier_true_mention_rejected(self):
         # The mere PRESENCE of "-DskipTests=true" is not sufficient to
         # exempt the fragment: Maven's last-value-wins -D semantics mean a
