@@ -109,6 +109,88 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         or condition == "always()",
                         "ungated: " + step["name"])
 
+    def test_setup_python_provisioning_is_best_effort(self):
+        """A setup-python failure must not abort before the fallback fetch step.
+
+        The coverage-qa job provisions Python with actions/setup-python as its
+        primary path, but fetch-latest-coverage.sh keeps a Homebrew-path
+        fallback for hosts that carry their own interpreter. That fallback is
+        only reachable if a failed setup-python step does not fail the job, so
+        coverage-qa's setup-python step must carry continue-on-error: true.
+
+        The contract is specific to this job: it exists because coverage-qa has
+        a downstream fallback that a hard failure would skip. Other dispatch
+        jobs are free to require setup-python, so the check is scoped to
+        coverage-qa rather than every job in the workflow.
+        """
+        job = self.jobs["coverage-qa"]
+        found = 0
+        for step in job["steps"]:
+            if "setup-python" in step.get("uses", ""):
+                found += 1
+                with self.subTest(step=step["name"]):
+                    self.assertIs(
+                        step.get("continue-on-error"), True,
+                        "setup-python must be best-effort so the fallback "
+                        "in fetch-latest-coverage.sh remains reachable")
+        self.assertGreaterEqual(found, 1, "no setup-python step found in coverage-qa")
+
+    def test_coverage_qa_never_recomputes_java_coverage_on_a_hosted_runner(self):
+        """coverage-qa must not fall back to the full Maven suite.
+
+        fetch-latest-coverage.sh recomputes Java coverage with a full
+        ``mvn test`` when no master artifact is found. On a GitHub-hosted
+        runner that is hours of work producing a report that does not match
+        the self-hosted coverage lanes, so the fetch step must switch the
+        recompute path off and fail fast instead.
+        """
+        job = self.jobs["coverage-qa"]
+        fetch_steps = [step for step in job["steps"]
+                       if "fetch-latest-coverage.sh" in step.get("run", "")]
+        self.assertEqual(1, len(fetch_steps))
+        self.assertEqual("false", fetch_steps[0].get("env", {}).get("ALLOW_RECOMPUTE"))
+        self.assertNotIn("FORCE", fetch_steps[0].get("env", {}))
+
+    def test_coverage_qa_can_read_actions_artifacts(self):
+        """coverage-qa must grant actions: read so it can reuse coverage.
+
+        fetch-latest-coverage.sh reuses master's merged-coverage-report by
+        listing and downloading it through the Actions artifacts REST route
+        (``/actions/artifacts``), which the default GITHUB_TOKEN cannot reach
+        without actions: read — the coverage lanes in analysis.yaml grant it
+        for the same reason. Without it the fetch 403s, and because this job
+        runs with ALLOW_RECOMPUTE=false the fallback is disabled, so the whole
+        coverage round fails instead of reusing the report.
+        """
+        job = self.jobs["coverage-qa"]
+        self.assertEqual("read", job.get("permissions", {}).get("actions"))
+
+    def test_every_job_reaches_the_controller_through_the_tunnel(self):
+        """No dispatch job needs a host inside the private network.
+
+        The jobs only talk to git, the GitHub API and the FlowTree
+        controller, and the controller is reachable from anywhere through
+        its Cloudflare Access tunnel. A step that falls back to a LAN
+        hostname (CONTROLLER_HOST) would silently tie the workflow back to a
+        self-hosted runner, so every controller-script step must carry the
+        tunnel URL and both halves of the service token, and every job must
+        run on a GitHub-hosted runner.
+        """
+        controller_scripts = _QA_SCRIPTS[1:]
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertNotIn("self-hosted", str(job["runs-on"]))
+            for step in job["steps"]:
+                if not any(s in step.get("run", "") for s in controller_scripts):
+                    continue
+                with self.subTest(job=name, step=step["name"]):
+                    env = step.get("env", {})
+                    self.assertNotIn("CONTROLLER_HOST", env)
+                    self.assertIn("FLOWTREE_CONTROLLER_URL", env.get("CONTROLLER_URL", ""))
+                    self.assertIn("CF_ACCESS_CLIENT_ID", env)
+                    self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
+                                  env.get("CF_ACCESS_CLIENT_SECRET", ""))
+
     def test_every_job_serializes_under_its_own_concurrency_group(self):
         """Two rounds of one job racing is what the cadence gate cannot see."""
         groups = []

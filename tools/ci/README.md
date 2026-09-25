@@ -33,7 +33,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 
 | Script | Purpose |
 |---|---|
-| `fetch-latest-coverage.sh` | Reuse (or, with `FORCE=true`, recompute) the merged JaCoCo report and a fresh coverage.py report |
+| `fetch-latest-coverage.sh` | Reuse (or, with `FORCE=true`, recompute) the merged JaCoCo report (paging the repo-wide artifact listing, up to `ARTIFACT_PAGE_LIMIT` pages, for the branch's newest one) and a fresh coverage.py report; `ALLOW_RECOMPUTE=false` makes a needed recompute fail fast instead |
 | `select-target.py` | Rank Java packages / Python directories by coverage and emit one coverage-qa target |
 | `test_select_target.py` | Unit tests for `select-target.py`, driven by the `testdata/` fixtures |
 | `assertion-density-report.sh` | Report-only: assertions-per-new-test-method for a coverage-qa PR |

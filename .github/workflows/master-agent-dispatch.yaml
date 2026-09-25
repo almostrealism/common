@@ -17,6 +17,22 @@ name: "Master Agent Dispatch"
 # A manual run selects one job with the `agent` input, or `all` to run the same
 # set a merge would. Deploy deliberately remains its own workflow: it is
 # triggered by hand often enough that it earns a dedicated entry.
+#
+# Every job here runs on a GitHub-hosted runner. None of them builds the Java
+# reactor, runs its tests or needs a GPU: each one reads git and the GitHub
+# API, pushes a branch, and makes HTTP calls to the FlowTree controller. The
+# one exception to "no tests" is coverage-qa, which runs the Python suites
+# under coverage.py (seconds); it reuses master's merged Java coverage report
+# and has its Maven recompute path switched off (ALLOW_RECOMPUTE=false). The controller is reached through its
+# Cloudflare Access tunnel (vars.FLOWTREE_CONTROLLER_URL with the
+# FLOWTREE_CF_ACCESS_CLIENT_ID / _SECRET service token), exactly as
+# auto-resolve-submit.yaml and the early submit jobs in analysis.yaml do, so no
+# job needs a host inside the private network. These jobs once ran on the
+# self-hosted macOS `ar-ci` fleet and addressed the controller by its LAN
+# hostname; that only tied them to machines the test lanes need, and brought
+# host-specific problems (an OS-bundled Python too old for the coverage
+# scripts) that a hosted runner does not have. Where the *agent* runs is a
+# separate question, answered per job by REQUIRED_LABELS (see performance-qa).
 
 on:
   push:
@@ -60,7 +76,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'project-manager'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -115,8 +131,8 @@ jobs:
       # plan_title is free text from a dispatch input, so it is read through the
       # environment rather than interpolated into the script — a title
       # containing shell metacharacters must not be able to run as code. The
-      # substitutions are POSIX: this job runs on macOS, whose sed does not
-      # understand GNU's \+.
+      # substitutions are POSIX (no GNU \+) so the step behaves the same under
+      # BSD and GNU sed, whichever runner picks it up.
       - name: Create planning branch
         if: steps.branches.outputs.needs_new_branch == 'true'
         id: new_branch
@@ -172,8 +188,9 @@ jobs:
       - name: Register workstream
         if: steps.branches.outputs.needs_new_branch == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -193,8 +210,9 @@ jobs:
       - name: Submit planning agent job
         if: steps.branches.outputs.needs_new_branch == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Plan new work branch"
@@ -245,7 +263,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'quality-assurance'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -288,8 +306,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -315,8 +334,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.qa_branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -336,8 +356,9 @@ jobs:
       - name: Submit documentation QA agent job
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.qa_branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Review documentation for staleness"
@@ -390,7 +411,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'defect-hunt'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -430,8 +451,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -452,8 +474,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -487,8 +510,9 @@ jobs:
       - name: Submit defect-hunt agent job
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Hunt for a defect and prove it with a failing test"
@@ -538,10 +562,17 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'coverage'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+      # fetch-latest-coverage.sh reuses master's merged-coverage-report by
+      # listing and downloading it through the Actions artifacts REST route,
+      # which the default GITHUB_TOKEN cannot reach without actions: read. The
+      # coverage lanes in analysis.yaml grant it for the same reason. Without
+      # it the artifact fetch 403s, and with ALLOW_RECOMPUTE=false that turns
+      # every coverage round into a hard failure instead of a reuse.
+      actions: read
 
     # Serialize so two merges landing together cannot both pass the gate.
     concurrency:
@@ -581,16 +612,44 @@ jobs:
           chmod +x ./tools/ci/qa-cadence.sh
           ./tools/ci/qa-cadence.sh
 
+      # Pin the interpreter fetch-latest-coverage.sh (via select-python-env.sh)
+      # and select-target.py run under: both need Python >= 3.10 on PATH.
+      # setup-python installs into the runner tool cache and prepends it to
+      # PATH for the steps below — the same mechanism the python-tests job in
+      # analysis.yaml relies on. This job originally ran on a self-hosted macOS
+      # runner whose launchd PATH exposed only Apple's python3 (< 3.10), which
+      # is what made this step necessary; on a GitHub-hosted runner it is a
+      # version pin rather than a rescue.
+      #
+      # It stays best-effort: continue-on-error keeps a failed provision from
+      # aborting the job before the "Fetch latest coverage report" step, where
+      # select-python-env.sh falls back to any >= 3.10 interpreter already on
+      # PATH (and fetch-latest-coverage.sh's Homebrew-path widening on a macOS
+      # host), and reports clearly if neither path yields one.
+      - name: Set up Python
+        if: steps.decide.outputs.run == 'true'
+        continue-on-error: true
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       # Reuses the latest master "Build and Test" run's merged JaCoCo
       # report by default (seconds) rather than re-running the hours-long
       # suite; recomputes Python fresh either way (it runs in seconds).
       # See tools/ci/coverage/fetch-latest-coverage.sh for the FORCE=true
-      # recompute path.
+      # recompute path. That path — also taken when no master artifact can
+      # be found — runs the full Maven suite, which a GitHub-hosted runner
+      # is neither sized for nor equipped to run the way the real coverage
+      # lanes do (they use the self-hosted hardware setup). ALLOW_RECOMPUTE
+      # is therefore off here: a missing artifact fails this step with an
+      # error naming the fix — a fresh master "Build and Test" run — rather
+      # than spending hours producing a report that does not match CI.
       - name: Fetch latest coverage report
         if: steps.decide.outputs.run == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          ALLOW_RECOMPUTE: "false"
         run: |
           chmod +x ./tools/ci/coverage/fetch-latest-coverage.sh
           ./tools/ci/coverage/fetch-latest-coverage.sh
@@ -655,8 +714,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -701,8 +761,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -734,8 +795,9 @@ jobs:
       - name: Submit coverage agent job
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Raise test coverage of ${{ steps.select.outputs.target }}"
@@ -797,7 +859,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'consolidation'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -837,8 +899,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -859,8 +922,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -891,8 +955,9 @@ jobs:
       - name: Submit consolidation agent job
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Consolidate duplicated logic behind one implementation"
@@ -935,7 +1000,7 @@ jobs:
   # a regression on Metal. So the job carries REQUIRED_LABELS pinning it
   # to a macOS Node, and the prompt has the agent confirm Metal is live
   # before trusting a single measurement. The runner label below is
-  # about where this *workflow* executes (any macOS runner can submit);
+  # about where this *workflow* executes (any runner can submit);
   # REQUIRED_LABELS is about where the *agent* executes, and that is the
   # one that decides whether the measurements mean anything.
   #
@@ -962,7 +1027,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'performance'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -1002,8 +1067,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -1024,8 +1090,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -1050,8 +1117,9 @@ jobs:
       - name: Submit performance agent job
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Make a slow test meaningfully faster, measured on Metal"
@@ -1129,7 +1197,7 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.agent == 'all' ||
       github.event.inputs.agent == 'pdsl'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -1169,8 +1237,9 @@ jobs:
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
@@ -1191,8 +1260,9 @@ jobs:
       - name: Register workstream
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
@@ -1214,8 +1284,9 @@ jobs:
       - name: Submit PDSL migration agent job
         if: steps.decide.outputs.run == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Move one piece of pipeline structure from Java into a PDSL asset"

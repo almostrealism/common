@@ -746,6 +746,22 @@ built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
+Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
+its tests. The one job that runs any tests is `coverage-qa`: it runs the Python
+suites under coverage.py (seconds) and reuses master's `merged-coverage-report`
+artifact for Java. Its Maven recompute path (`fetch-latest-coverage.sh`) is
+switched off with `ALLOW_RECOMPUTE=false`, so a missing artifact fails the step
+and names the fix (a fresh master "Build and Test" run) instead of running the
+full suite on a hosted runner. Otherwise the jobs
+read git and the GitHub API, push a branch, and call the controller through its
+Cloudflare Access tunnel (`vars.FLOWTREE_CONTROLLER_URL` plus the
+`FLOWTREE_CF_ACCESS_CLIENT_ID` / `FLOWTREE_CF_ACCESS_CLIENT_SECRET` service
+token), the same way `auto-resolve-submit.yaml` does. They formerly ran on the
+self-hosted macOS `ar-ci` fleet and addressed the controller by LAN hostname,
+which bought nothing and competed with the test lanes for runners. Do not add a
+`CONTROLLER_HOST` fallback or a self-hosted label back;
+`tools/tests/test_master_agent_dispatch.py` pins both.
+
 `performance-qa` is the one round whose result depends on the machine the
 *agent* runs on, not just the runner that submits it. Its measurements are only
 meaningful with Metal available, so its submission carries
