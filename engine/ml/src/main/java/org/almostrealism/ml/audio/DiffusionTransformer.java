@@ -196,6 +196,19 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	private final PackedCollection paddingMask;
 
 	/**
+	 * The number of valid latent positions, held on the device as a single value so that the
+	 * padding mask is produced by a kernel reading it rather than by host code; {@code null}
+	 * when the model takes no padding mask.
+	 */
+	private final PackedCollection validLength;
+
+	/**
+	 * The compiled assignment that writes {@link #paddingMask} from {@link #validLength},
+	 * built on first use and reused by every subsequent {@link #setValidLength(int)}.
+	 */
+	private Runnable paddingMaskUpdate;
+
+	/**
 	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
 	 * captured as a leaf of the compiled graph; {@code null} when the path is absent. Explicitly
 	 * zeroed at construction, since allocation does not guarantee zero-filled memory on every
@@ -458,6 +471,8 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		}
 		this.paddingMask = config.isPaddingMasked() ?
 				new PackedCollection(shape(batchSize, audioSeqLen)).fill(1.0) : null;
+		this.validLength = config.isPaddingMasked() ?
+				new PackedCollection(shape(1)).fill(audioSeqLen) : null;
 		this.stateDictionary = stateDictionary;
 		this.unusedWeights = new HashSet<>();
 
@@ -930,8 +945,9 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	public PackedCollection getPreTransformerState() { return preTransformerState; }
 
 	/**
-	 * Returns the captured post-transformer (pre output-projection) state tensor.
-	 * Only populated when state capture is enabled.
+	 * Returns the captured post-transformer state tensor: the output of the transformer's output
+	 * projection, before the prepended tokens are stripped. Only populated when state capture is
+	 * enabled.
 	 *
 	 * @return Post-transformer state, or {@code null} if capture is disabled
 	 */
@@ -951,13 +967,41 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	/**
 	 * The per-position padding mask over the latent sequence, shape {@code [batch, audioSeqLen]},
 	 * or {@code null} when the model was configured without one. It starts filled with ones (every
-	 * position valid); a caller generating less than the full sequence writes zeros over the
-	 * padded tail before {@link #forward}, and self-attention then ignores those positions'
-	 * values. Any prepended conditioning or memory tokens are always treated as valid.
+	 * position valid); a caller generating less than the full sequence marks the padded tail with
+	 * {@link #setValidLength(int)} before {@link #forward}, and self-attention then ignores those
+	 * positions' values. Any prepended conditioning or memory tokens are always treated as valid.
 	 *
 	 * @return the padding mask buffer, or {@code null}
 	 */
 	public PackedCollection getPaddingMask() { return paddingMask; }
+
+	/**
+	 * Marks the first {@code frames} positions of every batch element's latent sequence as valid
+	 * and the rest as padding in the padding mask. A model configured without a padding mask
+	 * ignores the call.
+	 *
+	 * @param frames the number of valid positions, between zero and the latent sequence length
+	 */
+	public void setValidLength(int frames) {
+		if (frames < 0 || frames > audioSeqLen) {
+			throw new IllegalArgumentException("Valid length " + frames + " is outside [0, " + audioSeqLen + "]");
+		}
+
+		if (paddingMask == null) {
+			return;
+		}
+
+		validLength.fill(frames);
+
+		if (paddingMaskUpdate == null) {
+			TraversalPolicy maskShape = shape(batchSize, audioSeqLen);
+			CollectionProducer position = integers(0, audioSeqLen).repeat(batchSize).reshape(maskShape);
+			CollectionProducer limit = cp(validLength).repeat(batchSize * audioSeqLen).reshape(maskShape);
+			paddingMaskUpdate = a("paddingMask", p(paddingMask), lessThan(position, limit)).get();
+		}
+
+		paddingMaskUpdate.run();
+	}
 
 	/**
 	 * Sets the pre-transformer state tensor (for use by subclasses or debugging hooks).
@@ -1037,6 +1081,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		if (paddingMask != null) {
 			paddingMask.destroy();
+		}
+
+		if (validLength != null) {
+			validLength.destroy();
 		}
 	}
 

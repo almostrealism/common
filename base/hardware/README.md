@@ -11,6 +11,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
   - [Backend Packages](#backend-packages)
 - [Core Concepts](#core-concepts)
 - [Memory Management Patterns](#memory-management-patterns)
+  - [Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process)
 - [Environment Configuration](#environment-configuration)
 - [Common Usage Patterns](#common-usage-patterns)
 - [Performance Optimization](#performance-optimization)
@@ -214,6 +215,10 @@ call site tells them apart:
   `PackedCollection.set(int, double...)`. Serialized system-boundary ingest
   should use `read(ByteBuffer)`, which stages the values before the framework
   migrates that staging area to the compute device.
+
+Staging is not the only way values from outside the process reach a device, and
+it is not always the right one — see
+[Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process).
 
 ```java
 PackedCollection source = new PackedCollection(1000);
@@ -430,6 +435,51 @@ See [docs/INSTRUCTION_CACHING.md](docs/INSTRUCTION_CACHING.md) for the caching a
 ## Memory Management Patterns
 
 The hardware module implements sophisticated memory management strategies to minimize allocation overhead, enable zero-copy operations, and automatically handle cross-provider transfers.
+
+### Ingesting Data From Outside the Process
+
+Values that enter the process from outside it — a checkpoint, a serialized
+message, a reference dump, a capture callback — reach a device by one of two
+routes. They are not interchangeable, and the choice belongs to the call site.
+
+**Staging.** Allocate from a host provider, write through the allocation's own
+buffer, and wrap the result:
+
+```java
+MemoryProvider<? extends RAM> provider =
+        Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+RAM mem = provider.allocate(count);
+ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+// ... fill staging, converting precision with ByteBufferTransfer if needed ...
+new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, count), 0);
+```
+
+`ByteBufferTransfer` converts between FP32 and FP64 on the way in, so this route
+is the one to use when the source's element width differs from the provider's.
+`NativeBufferIngestTest` is the worked example. Note that
+`getNativeBufferMemoryProvider()` does **not** always return a host-side
+provider: when `AR_HARDWARE_NATIVE_DIRECT_BUFFERS` is off it returns the data
+context's own provider, and the staged values are then device-resident
+immediately — which is the wrong answer if the consuming device is not yet known.
+
+**Reference.** Implement `Memory` over the source and let the framework migrate
+it when a kernel first requires it. Nothing is materialized on the host and
+nothing reaches a device until something actually reads it. `CollectionDataMemory`
+and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example, serving
+values straight out of a `FileMapping`, with `CollectionDataMemoryProvider` as the
+template for a read-only source provider. Migration is generic rather than
+special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
+provider, so any read-only provider participates.
+
+The host-accessible RAM implementations themselves live in
+[`org.almostrealism.nio`](src/main/java/org/almostrealism/nio/package-info.java) —
+`NativeBuffer` (a direct `ByteBuffer`, in either private or shared-memory mode)
+and `NativeMemory` (a JNI `malloc` pointer). `NativeMemoryProvider.registerAdapter`
+adapts a foreign `Memory` into a `NativeBuffer` for cross-provider access.
+
+Prefer reference over staging when the values are already in memory the process
+owns and a copy would be pure overhead; prefer staging when a precision
+conversion is required or when the source buffer cannot outlive the collection.
 
 ### Zero-Copy Delegation
 

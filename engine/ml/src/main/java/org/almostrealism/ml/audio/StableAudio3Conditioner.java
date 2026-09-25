@@ -25,7 +25,6 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
@@ -51,8 +50,8 @@ public class StableAudio3Conditioner implements AudioAttentionConditioner, CodeF
 	/** The duration embedder. */
 	private final NumberConditioner duration;
 
-	/** Normalized duration, shape {@code [1, 1]}; a leaf of the graph. */
-	private final PackedCollection normalizedDuration;
+	/** The duration in seconds, shape {@code [1, 1]}; a leaf of the graph, normalized within it. */
+	private final PackedCollection durationInput;
 
 	/** Validity of every context token: all ones, since the padding is substituted rather than masked. */
 	private final PackedCollection contextMask;
@@ -83,8 +82,8 @@ public class StableAudio3Conditioner implements AudioAttentionConditioner, CodeF
 
 		this.encoder = encoder;
 		this.duration = duration;
-		this.normalizedDuration = new PackedCollection(shape(BATCH, 1));
-		this.normalizedDuration.clear();
+		this.durationInput = new PackedCollection(shape(BATCH, 1));
+		this.durationInput.clear();
 		this.contextMask = new PackedCollection(shape(BATCH, length + 1)).fill(1.0);
 
 		Model model = new Model(shape(BATCH, length));
@@ -123,7 +122,8 @@ public class StableAudio3Conditioner implements AudioAttentionConditioner, CodeF
 		int length = shape.length(1);
 		int hidden = shape.length(2);
 		TraversalPolicy extended = shape(BATCH, length + 1, hidden);
-		CollectionProducer token = duration.embed(cp(normalizedDuration)).reshape(BATCH, 1, hidden);
+		CollectionProducer token = duration.embed(duration.normalizeRange(cp(durationInput)))
+				.reshape(BATCH, 1, hidden);
 		return layer("appendDuration", shape, extended, context -> concat(1, c(context), token));
 	}
 
@@ -131,9 +131,7 @@ public class StableAudio3Conditioner implements AudioAttentionConditioner, CodeF
 	public ConditionerOutput runConditioners(long[] tokenIds, double durationSeconds) {
 		PackedCollection ids = encoder.loadPrompt(tokenIds);
 
-		ByteBuffer value = ByteBuffer.allocate(Double.BYTES);
-		value.putDouble(duration.normalize(durationSeconds));
-		normalizedDuration.read(value.flip());
+		durationInput.fill(durationSeconds);
 
 		PackedCollection context = compiled.forward(ids);
 		int hidden = encoder.getConfig().getHiddenSize();
@@ -145,7 +143,7 @@ public class StableAudio3Conditioner implements AudioAttentionConditioner, CodeF
 	@Override
 	public void destroy() {
 		compiled.destroy();
-		normalizedDuration.destroy();
+		durationInput.destroy();
 		contextMask.destroy();
 		encoder.destroy();
 	}

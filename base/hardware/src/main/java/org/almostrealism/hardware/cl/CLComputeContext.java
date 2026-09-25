@@ -471,6 +471,7 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 	 */
 	@Override
 	public void destroy() {
+		super.destroy();
 		if (profiling) logProfiles();
 		this.instructionSets.forEach(InstructionSet::destroy);
 		if (queue != null) CL.clReleaseCommandQueue(queue);
@@ -479,7 +480,5 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 		queue = null;
 		fastQueue = null;
 		kernelQueue = null;
-
-		destroyExecutor();
 	}
 }

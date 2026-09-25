@@ -215,6 +215,22 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
 	/**
+	 * Fails when the compute context this operation was created under has been
+	 * destroyed. The operation was placed under that context on purpose, by the
+	 * caller's requirements and the computer's choice for the computation, and
+	 * nothing here may move it elsewhere; work that cannot run where it was put
+	 * is an error for the caller to see.
+	 *
+	 * @throws IllegalStateException if the context, or its data context, is destroyed
+	 */
+	protected void requireLiveContext() {
+		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+			throw new IllegalStateException("The compute context for " + getName() +
+					" has been destroyed");
+		}
+	}
+
+	/**
 	 * Returns the {@link InstructionSetManager} responsible for compiling and caching this operation.
 	 *
 	 * <p>The instruction set manager coordinates kernel compilation, caching, and retrieval of
@@ -629,6 +645,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		requireLiveContext();
+
 		if (getArguments() == null) {
 			if (getInstructionSetManager() == null) {
 				throw new UnsupportedOperationException("Operation was not compiled");

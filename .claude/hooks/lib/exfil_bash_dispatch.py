@@ -211,16 +211,18 @@ def analyze_command(command, ctx, depth=0):
             return f"/dev/tcp redirection to {m.group(1)!r}, which is not an allowlisted lab host"
     stripped, heredocs = _split_heredocs(command)
     bodies = [body for body, _ in heredocs]
-    # A backslash-newline continuation is joined first so a command split
-    # across lines stays one command.
-    stripped = re.sub(r"\\\n", " ", stripped)
-    # Comments come out, and every substitution the shell performs is
-    # replaced by a placeholder and kept aside: what runs inside one is a
-    # command like any other and is analyzed as one below.
+    # Comments and line continuations come out, and every substitution the
+    # shell performs is replaced by a placeholder and kept aside: what runs
+    # inside one is a command like any other and is analyzed as one below.
     try:
         masked, substitutions = split_substitutions(stripped)
     except GuardError as exc:
         return str(exc)
+    # Continuations are joined only now, so a /dev/tcp path split across
+    # lines is checked again as the shell will see it.
+    for m in _DEV_TCP.finditer(masked):
+        if not ctx.allowlist.is_lab_host(m.group(1)):
+            return f"/dev/tcp redirection to {m.group(1)!r}, which is not an allowlisted lab host"
     for body, expands in heredocs:
         if expands:
             try:

@@ -14,10 +14,12 @@
 #     be set from the triggering event, and submit.env's values for them are
 #     ignored. REPO_URL and CREATE_WORKSTREAM are not accepted at all;
 #     submit-agent-job.sh derives them from the trusted environment.
-#   - PROTECT_TEST_FILES is accepted only as "true" (its default), so a
-#     request cannot switch test-file protection off.
-#   - DESCRIPTION, STARTED_AFTER and ENFORCE_CHANGES are exported as literal
-#     values.
+#   - PROTECT_TEST_FILES, ENFORCE_CHANGES and STARTED_AFTER set by the
+#     caller win. Otherwise the request may only turn PROTECT_TEST_FILES and
+#     ENFORCE_CHANGES on ("true"; "false" is their default anyway), never
+#     off, and STARTED_AFTER must be all digits (epoch millis) — a malformed
+#     value would otherwise break the submission's JSON.
+#   - DESCRIPTION is exported as a literal value.
 #
 # Anything else (PATH, BASH_ENV, LD_PRELOAD, credentials, ...) is ignored with
 # a warning, so a crafted request cannot change how this script or
@@ -30,6 +32,9 @@
 #
 # Required environment:
 #   BRANCH, BASE_BRANCH - the branch the request is for, from the event
+#
+# Optional environment (from the caller, never overridden by the request):
+#   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller
@@ -57,19 +62,44 @@ if [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
     exit 0
 fi
 
+CALLER_PROTECT_TEST_FILES="${PROTECT_TEST_FILES:-}"
+CALLER_ENFORCE_CHANGES="${ENFORCE_CHANGES:-}"
+CALLER_STARTED_AFTER="${STARTED_AFTER:-}"
+
+# A boolean the caller's value decides, and the request may only turn on.
+# $1 names the variable, $2 is the caller's value, $3 the request's.
+request_may_enable() {
+    if [ -n "$2" ]; then
+        return
+    elif [ "$3" = "true" ]; then
+        export "$1=true"
+    elif [ "$3" != "false" ]; then
+        echo "::warning::Ignoring $1=$3 from the staged request; it is not a boolean"
+    fi
+}
+
 while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-        DESCRIPTION|STARTED_AFTER|ENFORCE_CHANGES)
+        DESCRIPTION)
             export "$key=$value"
             ;;
+        ENFORCE_CHANGES)
+            request_may_enable ENFORCE_CHANGES "$CALLER_ENFORCE_CHANGES" "$value"
+            ;;
         PROTECT_TEST_FILES)
-            if [ "$value" != "true" ]; then
-                echo "::warning::Ignoring PROTECT_TEST_FILES=${value} from the staged request; test files stay protected"
+            request_may_enable PROTECT_TEST_FILES "$CALLER_PROTECT_TEST_FILES" "$value"
+            ;;
+        STARTED_AFTER)
+            if [ -n "$CALLER_STARTED_AFTER" ]; then
+                :
+            elif [[ "$value" =~ ^[0-9]+$ ]]; then
+                export STARTED_AFTER="$value"
+            else
+                echo "::warning::Ignoring STARTED_AFTER=${value} from the staged request; it is not epoch milliseconds"
             fi
-            export PROTECT_TEST_FILES=true
             ;;
         BRANCH|BASE_BRANCH)
             if [ "$value" != "${!key}" ]; then

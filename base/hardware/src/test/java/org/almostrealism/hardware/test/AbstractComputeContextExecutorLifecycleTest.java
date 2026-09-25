@@ -49,7 +49,7 @@ public class AbstractComputeContextExecutorLifecycleTest {
 	/**
 	 * Minimal {@link AbstractComputeContext} subclass used only to exercise the shared
 	 * executor lifecycle logic; none of the abstract members it must supply are exercised
-	 * by this test beyond {@link #destroy()}.
+	 * by this test beyond the inherited {@link AbstractComputeContext#destroy()}.
 	 */
 	private static class TestComputeContext extends AbstractComputeContext<DataContext<MemoryData>> {
 		/** Creates a context with no backing {@link DataContext}, which this test never reads. */
@@ -65,11 +65,6 @@ public class AbstractComputeContextExecutorLifecycleTest {
 
 		@Override
 		public boolean isCPU() { return true; }
-
-		@Override
-		public void destroy() {
-			destroyExecutor();
-		}
 	}
 
 	/**

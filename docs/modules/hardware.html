@@ -155,14 +155,35 @@
                         <h4><a href="../apidocs/org/almostrealism/hardware/mem/ByteBufferTransfer.html">ByteBufferTransfer</a></h4>
                         <p>Precision-aware movement between serialized buffers, including FP32 and FP64 conversion.</p>
                     </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/DirectMemory.html">DirectMemory</a></h4>
+                        <p>RAM that exposes a host-addressable ByteBuffer view of its contents, declared as a type so a backend can discover the capability rather than test for it.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/nio/NativeBuffer.html">NativeBuffer</a></h4>
+                        <p>The direct-buffer RAM implementation, in private mode (an allocated direct ByteBuffer) or shared mode (a named mapped region). This is the type that lets a ByteBuffer <em>be</em> a collection's backing memory rather than the source of a copy into one. Its typed view follows the provider's precision with no conversion, and only direct buffers qualify.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/nio/NativeMemoryProvider.html">NativeMemoryProvider</a></h4>
+                        <p>Provider for host-accessible native memory in either direct-buffer or JNI-malloc mode, and owner of the runtime-compiled shared-memory operations. <code>registerAdapter</code> adapts a foreign Memory into a NativeBuffer for cross-provider access.</p>
+                    </div>
                 </div>
 
 <h3>Memory Copy Between MemoryData Regions</h3>
                 <p><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> exposes two distinct write surfaces, deliberately named so the call site tells them apart:</p>
                 <ul>
                     <li><code>setFrom(...)</code> copies another <code>MemoryData</code> into this one — the sanctioned way to move data region-to-region.</li>
-                    <li><code>setMem(int, double)</code> / <code>setMem(int, float)</code> on concrete <code>MemoryDataAdapter</code> implementations are single-value indexed writes. The canonical whole-content literal write on a <code>PackedCollection</code> reference is <code>set(int, double...)</code>. System-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
+                    <li><code>setMem(int, double)</code> / <code>setMem(int, float)</code> on concrete <code>MemoryDataAdapter</code> implementations are single-value indexed writes. The canonical whole-content literal write on a <code>PackedCollection</code> reference is <code>set(int, double...)</code>. Serialized system-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
                 </ul>
+
+<h3>Ingesting Data From Outside the Process</h3>
+                <p>Values that enter the process from outside it — a checkpoint, a serialized message, a reference dump, a capture callback — reach a device by one of two routes. They are not interchangeable, and the choice belongs to the call site.</p>
+                <ul>
+                    <li><strong>Staging</strong> allocates from a provider, writes through the allocation's own buffer (<code>((DirectMemory) mem).asByteBuffer()</code>), and wraps the result with <code>Bytes.of(mem, count)</code>. <a href="../apidocs/org/almostrealism/hardware/mem/ByteBufferTransfer.html">ByteBufferTransfer</a> converts FP32 to FP64 and back on the way in, so this is the route to use when the source's element width differs from the provider's. <code>NativeBufferIngestTest</code> is the worked example.</li>
+                    <li><strong>Reference</strong> implements <code>Memory</code> over the source and lets the framework migrate it when a kernel first requires it — nothing is materialized on the host, and nothing reaches a device until something reads it. <code>CollectionDataMemory</code> and <code>MappedCollectionDataMemory</code> serve values straight out of a <a href="../apidocs/org/almostrealism/hardware/mem/FileMapping.html">FileMapping</a>, with <code>CollectionDataMemoryProvider</code> as the template for a read-only source provider. Migration is generic rather than special-cased: it keys off <code>MemoryData.isReadOnly()</code>, which reads through to the provider.</li>
+                </ul>
+                <p>Prefer reference over staging when the values already sit in memory the process owns and a copy would be pure overhead; prefer staging when a precision conversion is required or when the source buffer cannot outlive the collection.</p>
+                <p><strong>Note:</strong> <code>Hardware.getNativeBufferMemoryProvider()</code> does not always return a host-side provider. When <code>AR_HARDWARE_NATIVE_DIRECT_BUFFERS</code> is off it returns the data context's own provider, and staged values are device-resident immediately — which is the wrong answer when the consuming device is not yet known.</p>
 
                 <div class="code-example">
                     <h4>Using setFrom() for Direct Copy</h4>

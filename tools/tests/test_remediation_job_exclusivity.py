@@ -174,6 +174,16 @@ class CredentialIsolationTests(unittest.TestCase):
         self.assertIn("steps.quality.outputs.unattributed", review["env"]["QUALITY_UNATTRIBUTED"])
         self.assertIn("QUALITY_UNATTRIBUTED", review["run"])
 
+    def test_the_submit_jobs_decide_the_test_lock_themselves(self):
+        """auto-resolve-python fixes failing tests, so the harness keeps master's
+        tests as they are; no auto-review prompt does, so the lock stays off."""
+        jobs = _jobs()
+        expected = {"auto-resolve-python-submit": "true", "auto-review-submit": "false"}
+        for submitter, value in expected.items():
+            with self.subTest(job=submitter):
+                env = [s.get("env", {}) for s in jobs[submitter]["steps"] if "run" in s][0]
+                self.assertEqual(value, env["PROTECT_TEST_FILES"])
+
     def test_auto_review_waits_for_the_copilot_review(self):
         """auto-review can finish before Copilot's review of the push has posted.
 
@@ -183,6 +193,18 @@ class CredentialIsolationTests(unittest.TestCase):
         job = _jobs()["auto-review-submit"]
         env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
         self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
+
+    def test_submit_jobs_survive_a_skipped_or_failed_upstream_job(self):
+        """Without a status function the implicit success() covers every job
+        upstream, not only `needs`. The producers run exactly when python-tests
+        was skipped (auto-review) or failed (auto-resolve-python), so a bare
+        `if:` skipped the submission every time (run 35998737943)."""
+        jobs = _jobs()
+        for producer, (submitter, _) in _EARLY_PRODUCERS.items():
+            with self.subTest(job=submitter):
+                condition = _condition(jobs[submitter])
+                self.assertTrue(condition.startswith("!cancelled()"), condition)
+                self.assertIn("needs.%s.result == 'success'" % producer, condition)
 
     def test_no_analysis_job_declares_an_environment(self):
         for name, job in _jobs().items():
@@ -340,9 +362,46 @@ class SubmitStagedRequestTests(unittest.TestCase):
 
     def test_a_request_cannot_switch_test_protection_off(self):
         self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=false\n")
-        result = self._run()
+        result = self._run(PROTECT_TEST_FILES="true")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertNotEqual("false", self._captured_env().get("PROTECT_TEST_FILES"))
+        self.assertEqual("true", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_a_request_may_turn_test_protection_on(self):
+        """auto-resolve-submit cannot tell which route was staged; the request can."""
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=true\n")
+        self.assertEqual(0, self._run(PROTECT_TEST_FILES=None).returncode)
+        self.assertEqual("true", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_the_callers_test_protection_wins_either_way(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nPROTECT_TEST_FILES=true\n")
+        self.assertEqual(0, self._run(PROTECT_TEST_FILES="false").returncode)
+        self.assertEqual("false", self._captured_env().get("PROTECT_TEST_FILES"))
+
+    def test_a_request_cannot_switch_enforce_changes_off_the_caller_set(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nENFORCE_CHANGES=false\n")
+        result = self._run(ENFORCE_CHANGES="true")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("true", self._captured_env()["ENFORCE_CHANGES"])
+
+    def test_a_request_may_only_turn_enforce_changes_on(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nENFORCE_CHANGES=true\n")
+        self.assertEqual(0, self._run(ENFORCE_CHANGES=None).returncode)
+        self.assertEqual("true", self._captured_env()["ENFORCE_CHANGES"])
+
+    def test_malformed_request_values_are_ignored(self):
+        """A value that would break the submission's JSON never reaches it."""
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nENFORCE_CHANGES={\"x\"\n"
+                    "STARTED_AFTER=1; rm -rf /\n")
+        result = self._run(ENFORCE_CHANGES=None, STARTED_AFTER=None)
+        self.assertEqual(0, result.returncode, result.stderr)
+        env = self._captured_env()
+        self.assertNotIn("ENFORCE_CHANGES", env)
+        self.assertNotIn("STARTED_AFTER", env)
+
+    def test_the_callers_started_after_wins(self):
+        self._stage("BRANCH=feature/x\nBASE_BRANCH=master\nSTARTED_AFTER=99999999999999\n")
+        self.assertEqual(0, self._run(STARTED_AFTER="1700000000000").returncode)
+        self.assertEqual("1700000000000", self._captured_env()["STARTED_AFTER"])
 
     def test_the_caller_must_name_the_target(self):
         self._stage("BRANCH=feature/x\nBASE_BRANCH=master\n")

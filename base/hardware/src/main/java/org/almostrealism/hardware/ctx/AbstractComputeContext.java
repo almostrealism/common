@@ -137,6 +137,9 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	/** Thread group containing all executor threads for identification. */
 	private final ThreadGroup executorGroup;
 
+	/** Set as soon as {@link #destroy()} begins; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
 	/**
 	 * Constructs a compute context wrapping the given data context.
 	 *
@@ -165,6 +168,35 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	public void runLater(Runnable runnable) {
 		executor.execute(runnable);
 	}
+
+	/**
+	 * Marks this context destroyed, stops accepting new asynchronous work, and shuts down
+	 * this context's executor thread pool, removing its {@link ThreadGroup} from the
+	 * {@link #isAnyExecutorThread()} registry.
+	 *
+	 * <p>Subclasses that hold backend resources override this to call {@code super.destroy()}
+	 * first &mdash; so that nothing observes the context as alive, and no further work is
+	 * accepted, while those resources are going away &mdash; and then release their own
+	 * resources.</p>
+	 *
+	 * <p>Shutting down the executor and deregistering its group is an unconditional part of
+	 * destruction, not an independently invokable operation: a context created for the lifetime
+	 * of a single {@code computeContext(...)} scope (see {@code
+	 * HardwareDataContext#computeContext(Callable, ComputeRequirement...)}) is destroyed when
+	 * that scope ends, and without this its executor and {@link #executorGroup} would remain
+	 * permanently reachable from {@link #executorGroups} even though nothing can use them again
+	 * &mdash; a leak that accumulates with every scoped context created over the process
+	 * lifetime.</p>
+	 */
+	@Override
+	public void destroy() {
+		destroyed = true;
+		executorGroups.remove(executorGroup);
+		executor.shutdown();
+	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
 
 	/**
 	 * Copies all of {@code source} into {@code destination} with a direct host-mediated
@@ -236,24 +268,6 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	@Override
 	public T getDataContext() { return dc; }
-
-	/**
-	 * Shuts down this context's executor thread pool and removes its {@link ThreadGroup}
-	 * from the {@link #isAnyExecutorThread()} registry.
-	 *
-	 * <p>A context created for the lifetime of a single {@code computeContext(...)} scope
-	 * (see {@code HardwareDataContext#computeContext(Callable, ComputeRequirement...)}) is
-	 * destroyed when that scope ends, so without this call its executor and {@link
-	 * #executorGroup} would remain permanently reachable from {@link #executorGroups} even
-	 * though nothing can use them again &mdash; a leak that accumulates with every scoped
-	 * context created over the process lifetime. Subclasses must call this from their own
-	 * {@link #destroy()} implementation, since {@link AbstractComputeContext} does not
-	 * implement {@code destroy()} itself.</p>
-	 */
-	protected void destroyExecutor() {
-		executorGroups.remove(executorGroup);
-		executor.shutdown();
-	}
 
 	/**
 	 * Records a compilation event if a timing listener is registered.

@@ -97,6 +97,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/`                  | `test-media`                     |
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
+| `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
 
@@ -200,18 +201,25 @@ jobs is part of `all-checks`.
 Every prompt carries the same pull-request review-comment policy, patched in
 from `tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`).
 
-**Every "Stage submit request" step sets `PROTECT_TEST_FILES: "true"`,
-including the green-pipeline "general review" step.** Test-file protection
-is method-level, not whole-file (see
-`flowtree/runtime/docs/file-staging.md`), so an agent may still add new test
-methods or edit ones it introduced on the branch — there is no tradeoff left
-between enabling the flag and letting an agent write tests. Before this, the
-general-review path ran unprotected; a job on that path once added test
-methods to an existing base-branch file, one of them was broken, and the
-guardrail of the day (whole-file blocking) silently discarded the entire
-file including the fix. Keep every new "Stage submit request" step — in this
-remediation jobs and in `master-agent-dispatch.yaml`'s QA rounds — setting the flag unless
-you can document a specific reason not to.
+**`PROTECT_TEST_FILES` is on only for the jobs sent to make failing tests
+pass.** It turns on the harness's per-job test lock (`TestMethodProtection`;
+see `flowtree/runtime/docs/file-staging.md`): every test method that exists
+on master stays exactly as it is for that job. An agent sent to fix a failing
+test has repeatedly loosened it instead, which fails `test-integrity-check`,
+which dispatches an agent to restore it, which fails the test again — the lock
+breaks that loop. So the "test failures", "test job crash" and "python test
+failures" requests set it to `"true"`, and every other request (build failure,
+code policy, quality gates, docs-only verify, general review, incomplete test
+execution) sets it to `"false"` and is held to `test-integrity-check` alone,
+the rule every branch meets. `tools/tests/test_analysis_yaml_protect_test_files.py`
+pins that mapping. The early submit jobs set the flag themselves;
+`submit-staged-request.sh` lets a staged request turn it on but never off, and
+`submit-agent-job.sh` defaults it to off. The lock's protected paths are
+`src/test/`, `src/it/` and the CI directories, so for the Python-failure job it
+adds nothing over `test-integrity-check`'s Python step; the Python suites under
+`tools/` are not in them. In `master-agent-dispatch.yaml` the
+performance, consolidation and PDSL-migration rounds keep it on, because their
+premise is that existing tests stay the reference.
 
 **A required test job's `failure` result must never go unresolved on
 `auto-resolve`'s attempt.** The `Check for incomplete test execution` step
@@ -244,11 +252,11 @@ allowlist fails that test.
 **A gate is reported to an agent only when its cause is known.** The message
 `auto-review` builds becomes an instruction, and an agent handed "this branch
 weakened its tests" will act on it. `test-integrity-check` therefore publishes
-`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`
-(a detector ran and found something), `infrastructure` (a detector could not
-run), or empty — written by the step that reached the verdict, since only that
-step knows whether a non-zero exit was a finding or a crash.
-`check-quality-gates.sh` lists the three findings and reports nothing for
+`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`,
+`python-test-hiding` (a detector ran and found something), `infrastructure`
+(a detector could not run), or empty — written by the step that reached the
+verdict, since only that step knows whether a non-zero exit was a finding or a
+crash. `check-quality-gates.sh` lists the four findings and reports nothing for
 anything else, so a missing script, a skipped job, or a detector that died
 blocks the pipeline for a human instead of being reported to an agent as a
 finding against an innocent branch. `auto-review` still submits the general
@@ -288,12 +296,65 @@ the branch — so a `ci/` branch may rewrite the guard, and may not remove or
 unregister it. The policy detectors under `engine/utils` stay locked on every
 branch.
 
+### Branch checks: test integrity, the CI file lock, and agent-commit-validation
+
+Three separate checks hold a branch's change set, each in the job where it
+belongs:
+
+- **`test-integrity-check` is the test rule.** An existing test may be edited
+  but not weakened: `detect-test-hiding.sh` (Java patterns) and
+  `detect-python-test-hiding.sh` (every base-branch `def test_*` survives, and
+  a test file's assertion count does not fall), plus the
+  enforcement-tampering check and the exfiltration guard. Instructions to
+  agents cite this rule, not a stricter one.
+- **The CI file lock runs in `changes`.** `check-ci-file-lock.sh` fails the
+  first job when a branch not named `ci/...` changes `.github/workflows/` or
+  `tools/ci/` (a controller-signed `Sensitive-File-Bypass` trailer lifts it).
+  It needs only git, so a violating branch never gets as far as `build`.
+  Nothing is dispatched for it: every other job needs `changes`. The harness
+  applies the same lock before a commit exists (`protectCiFiles` in
+  `FileStager`, on for every job but a signed-bypass or `ci/...` one), so an
+  agent's workflow edit is dropped at staging rather than failing a pipeline.
+  A signed bypass covers only the commits that carry it: every commit that
+  changes a CI file must carry its own valid trailer.
+- **`agent-commit-validation` rejects a change set that only edits master's
+  tests** — every changed file a test file that exists at the merge-base, none
+  of them gaining a new test. Those tests pass on master, so such a change set
+  can only change what the suite reports. The job fails when it blocks, and
+  the `override_integrity_checks` dispatch input lets a run through for a known
+  false positive, as it does for the integrity checks. A head from before these
+  checks were split carries the old validator; its retired exits (2, 4) are
+  passed with a notice, and `check-quality-gates.sh` does not report their
+  reasons to an agent.
+
+All three scripts are on `test-integrity-check`'s protected list, and
+`tools/ci/agent-protection/test-branch-checks.sh` covers them (run by
+`python-tests` when `agent_protection_changed`).
+
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
 blocker: every downstream job depends on it, so it MUST stay as short as
 possible. It does one thing: `mvn install -DskipTests`. It does not run tests
 and does not upload coverage.
+
+### Re-run jobs and artifacts
+
+A retry ("Auto-Resolve Submit" re-running failed jobs) runs jobs again inside
+the same workflow run, so two rules hold for every artifact:
+
+- **Every upload sets `overwrite: true`.** `upload-artifact@v4` refuses a name
+  already used in the run otherwise, so a re-run job's `if: always()` upload
+  would fail even when its tests passed, and `auto-resolve` on attempt 3 would
+  read the earlier attempt's report.
+- **A download that can span attempts uses the REST route** (`github-token`,
+  `repository`, `run-id`, with `actions: read`): the default lookup 404s on an
+  artifact uploaded in an earlier attempt.
+
+`tools/tests/test_build_artifact_sharing.py` pins both. One gap remains: a
+re-run job that uploads nothing (it crashed before writing any report) leaves
+the earlier attempt's report in place. The job still fails, so a remediation is
+still warranted, but its prompt can name the earlier failures.
 
 ### Sharing the build
 
@@ -403,10 +464,17 @@ never a module.
 
 ### A `needs` chain requires `!cancelled()` to tolerate a skipped stage
 
-GitHub applies an implicit `success()` to every job in `needs` when a job-level
-`if:` contains no status check function (`always()`, `!cancelled()`, `failure()`,
-`success()`). A `needs.<job>.result == 'skipped'` clause is therefore **dead
-code** on its own — the dependent job is skipped before the `if` is evaluated.
+GitHub applies an implicit `success()` when a job-level `if:` contains no status
+check function (`always()`, `!cancelled()`, `failure()`, `success()`), and that
+`success()` covers **every job upstream**, not only the ones in `needs`. A
+`needs.<job>.result == 'skipped'` clause is therefore **dead code** on its own —
+the dependent job is skipped before the `if` is evaluated — and a job whose
+direct `needs` all succeeded is still skipped when any job further up was
+skipped or failed. That is how run 35998737943 skipped `auto-review-submit`:
+`auto-review` succeeded and staged a request, but `python-tests`, upstream of
+it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
+`python-tests` was skipped or failed, so both submit jobs start their `if:` with
+`!cancelled()` and check the producer's `result` explicitly.
 
 Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
 `test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their

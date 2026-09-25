@@ -97,6 +97,9 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 	/** Shared memory provider used for cross-backend data transfer, lazily initialized. */
 	private MemoryProvider<? extends RAM> sharedRam;
 
+	/** Set once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
 	/**
 	 * Thread-local memory provider supplier for customizing allocation behavior per-thread.
 	 *
@@ -129,6 +132,19 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 	public String getName() {
 		return name;
 	}
+
+	/**
+	 * Marks this context destroyed. Subclasses call this first and release their
+	 * resources afterwards, so that nothing observes the context as alive while
+	 * those resources are going away.
+	 */
+	@Override
+	public void destroy() {
+		destroyed = true;
+	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
 
 	/**
 	 * Returns the maximum memory reservation size for this context.

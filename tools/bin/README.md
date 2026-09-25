@@ -1,7 +1,30 @@
 # Code Navigation Tools for Agents
 
 Shell scripts in this directory help agents understand code structure without reading entire files.
-All scripts are Python 3 and can be run directly from the repo root.
+The navigation scripts are Python 3 and can be run directly from the repo root.
+
+---
+
+## share-checkouts.sh
+
+Machine setup, not code navigation: put every git checkout under a directory into a
+shared group so that a developer account and an agent account can both edit it. A
+checkout edited by two accounts otherwise ends up with files only one of them can
+write. Group ownership, setgid directories, a default ACL for files created later,
+and git's `core.sharedRepository` are all set. Run as root, once per machine.
+
+```bash
+sudo tools/bin/share-checkouts.sh --owner michael --agent agent0 /home/agent0
+sudo tools/bin/share-checkouts.sh --owner michael --agent agent0 --group ar-dev --depth 3 --dry-run /srv
+```
+
+Options:
+- `--owner USER`, `--agent USER` — the two accounts (required)
+- `--group NAME` — the shared group, created if missing (default: `ar-dev`)
+- `--depth N` — how far below the root to look for repositories (default: 2)
+- `--dry-run` — print the commands without running them
+
+Group membership takes effect at each account's next login.
 
 ---
 

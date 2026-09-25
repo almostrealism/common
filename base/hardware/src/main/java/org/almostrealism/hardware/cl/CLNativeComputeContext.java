@@ -135,13 +135,4 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 	 */
 	@Override
 	public boolean isCPU() { return true; }
-
-	/**
-	 * Releases resources held by this context. Resources beyond the executor
-	 * thread pool are managed by the native compiler and data context.
-	 */
-	@Override
-	public void destroy() {
-		destroyExecutor();
-	}
 }

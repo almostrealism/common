@@ -114,7 +114,12 @@ def workstream_submit_task(
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
-        protect_test_files: If true, prevent the agent from modifying test files.
+        protect_test_files: If true, the harness keeps every test method that
+            exists on the base branch exactly as it is (new tests and
+            helpers are still allowed). Use it for a job sent to make failing
+            tests pass; every branch is otherwise held to
+            test-integrity-check, which allows editing a test but not
+            weakening it.
         enforce_changes: If true, require the agent to produce code changes.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the
@@ -153,10 +158,10 @@ def workstream_submit_task(
             primary phase transcript for tool-use and context-efficiency
             improvement opportunities, emitting findings as memories. The
             phase produces no code changes. Disabled by default. The
-            recommended default model for this phase is ``claude-sonnet-4-7``
-            or stronger, since analyzing a transcript benefits from strong
+            recommended default model for this phase is ``sonnet`` or
+            stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
-            ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"retrospective":{"model":"sonnet"}}'``.
         falsification_enabled: When ``True``, activates the falsification phase
             after the primary session and before the enforcement rules. A
             separate agent session extracts the primary attempt's load-bearing
@@ -168,7 +173,7 @@ def workstream_submit_task(
             only be settled by running something on an unavailable configuration
             is reported UNSETTLED rather than confirmed. Disabled by default.
             Configure the analysis model via
-            ``phase_configs='{"falsification":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"falsification":{"model":"sonnet"}}'``.
         use_tmux: Per-job override for tmux-backed launch, using presence
             semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
@@ -274,7 +279,7 @@ def workstream_submit_task(
             Each named phase overrides ``default_phase_config``
             field-by-field. Example::
 
-                '{"review": {"model": "claude-opus-4-7", "effort": "high"},
+                '{"review": {"model": "claude-opus-5-5", "effort": "high"},
                   "commit-message": {"runner": "opencode"}}'
 
             Empty (default) inherits the workstream-level configuration.
