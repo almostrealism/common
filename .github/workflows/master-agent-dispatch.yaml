@@ -566,6 +566,13 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # fetch-latest-coverage.sh reuses master's merged-coverage-report by
+      # listing and downloading it through the Actions artifacts REST route,
+      # which the default GITHUB_TOKEN cannot reach without actions: read. The
+      # coverage lanes in analysis.yaml grant it for the same reason. Without
+      # it the artifact fetch 403s, and with ALLOW_RECOMPUTE=false that turns
+      # every coverage round into a hard failure instead of a reuse.
+      actions: read
 
     # Serialize so two merges landing together cannot both pass the gate.
     concurrency:

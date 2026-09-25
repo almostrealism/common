@@ -151,6 +151,20 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("false", fetch_steps[0].get("env", {}).get("ALLOW_RECOMPUTE"))
         self.assertNotIn("FORCE", fetch_steps[0].get("env", {}))
 
+    def test_coverage_qa_can_read_actions_artifacts(self):
+        """coverage-qa must grant actions: read so it can reuse coverage.
+
+        fetch-latest-coverage.sh reuses master's merged-coverage-report by
+        listing and downloading it through the Actions artifacts REST route
+        (``/actions/artifacts``), which the default GITHUB_TOKEN cannot reach
+        without actions: read — the coverage lanes in analysis.yaml grant it
+        for the same reason. Without it the fetch 403s, and because this job
+        runs with ALLOW_RECOMPUTE=false the fallback is disabled, so the whole
+        coverage round fails instead of reusing the report.
+        """
+        job = self.jobs["coverage-qa"]
+        self.assertEqual("read", job.get("permissions", {}).get("actions"))
+
     def test_every_job_reaches_the_controller_through_the_tunnel(self):
         """No dispatch job needs a host inside the private network.
 
