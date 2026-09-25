@@ -40,11 +40,12 @@ import numpy as np
 # generate_protobuf_python.sh from this repo's .proto source files in
 # engine/ml/src/main/proto/) are imported lazily. Only the StateDictionary
 # writer/reader path (numpy_to_collection_data, write_protobuf_file,
-# read_state_dictionary) needs them; the remap/fold helpers and the
-# reference-activation dumps (save_reference_output / dump_reference_activations)
-# are pure struct/numpy. Deferring the import lets a consumer that only dumps
-# reference activations (e.g. dump_same_references.py) run on a fresh checkout
-# without first generating collections_pb2 (which requires grpcio-tools).
+# write_state_dictionary, read_state_dictionary) needs them — and that includes
+# the reference-activation dumps (dump_reference_activations), which write the
+# same protobuf shards, so every dump_*.py entry point needs collections_pb2
+# generated first (generate_protobuf_python.sh). Only the remap/fold helpers
+# are pure numpy; deferring the import keeps them, and their unit tests,
+# runnable on a fresh checkout without the generated bindings.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 collections = None
 
@@ -63,15 +64,19 @@ def _require_collections():
             raise ImportError(
                 "collections_pb2.py not found in the scripts directory. "
                 "Generate it with ./engine/ml/scripts/generate_protobuf_python.sh "
-                "(requires: pip install grpcio-tools). Note: only the "
-                "StateDictionary writer/reader needs it; reference-activation "
-                "dumps do not.") from exc
+                "(requires: pip install grpcio-tools). The StateDictionary "
+                "writer/reader needs it, and so do reference-activation dumps, "
+                "which are written as the same protobuf shards.") from exc
         collections = generated
     return collections
 
 # A single protobuf message must stay comfortably under the 2GB hard limit;
 # this matches the sharding threshold used by the other extractors.
 PROTOBUF_SIZE_LIMIT = 1024 * 1024 * 1024
+
+# Suffix of the human-readable metadata files (shapes.json, meta.json, ...) the
+# dump scripts write beside their shards; read_state_dictionary skips them.
+SIDECAR_SUFFIX = ".json"
 
 
 # ---------------------------------------------------------------------------
@@ -431,12 +436,17 @@ def read_state_dictionary(path):
     the Java ``StateDictionary`` directory read and exists so Python tests can
     round-trip ``write_state_dictionary`` output without a JVM. Arrays are
     reshaped to their stored ``traversal_policy.dims``.
+
+    In a directory, hidden files and ``.json`` metadata sidecars are skipped: the
+    dump scripts write ``shapes.json`` / ``meta.json`` / ``weight_shapes.json``
+    beside the shards they produce, and those are not protobuf.
     """
     if os.path.isdir(path):
         files = sorted(
             os.path.join(path, name)
             for name in os.listdir(path)
-            if not name.startswith(".") and os.path.isfile(os.path.join(path, name))
+            if not name.startswith(".") and not name.endswith(SIDECAR_SUFFIX)
+            and os.path.isfile(os.path.join(path, name))
         )
     else:
         files = [path]

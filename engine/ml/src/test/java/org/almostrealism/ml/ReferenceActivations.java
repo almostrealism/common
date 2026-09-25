@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 
 import java.io.File;
@@ -34,8 +35,12 @@ import java.io.IOException;
  *
  * <p>A reference is named by a key rather than by a file. Some weight dumps do still write a file
  * per tensor, so {@link #firstExisting} accepts a marker that names either.</p>
+ *
+ * <p>The shards are opened once, on first use, and every reference read afterwards is a view into
+ * them; {@link #destroy()} releases them, after which the collections already returned must no
+ * longer be used and a later read opens the shards again.</p>
  */
-public class ReferenceActivations {
+public class ReferenceActivations implements Destroyable {
 
 	/** Suffix a per-tensor weight dump names its files with. */
 	private static final String FILE_SUFFIX = ".bin";
@@ -85,6 +90,29 @@ public class ReferenceActivations {
 		}
 
 		return references;
+	}
+
+	/**
+	 * Whether this directory's shards hold the named reference.
+	 *
+	 * @param name the reference key, or the file name a per-tensor dump would write it to
+	 * @return whether the reference is present
+	 * @throws IOException if the shards cannot be read
+	 */
+	public boolean contains(String name) throws IOException {
+		return getReferences().containsKey(key(name));
+	}
+
+	/**
+	 * Releases the shards, if they have been opened. Collections read before this call are views
+	 * into the released shards and must not be used afterwards.
+	 */
+	@Override
+	public void destroy() {
+		if (references != null) {
+			references.destroy();
+			references = null;
+		}
 	}
 
 	/**
@@ -196,8 +224,8 @@ public class ReferenceActivations {
 	 * @return whether the tensor is there
 	 */
 	private static boolean holds(File dir, String key) {
-		try {
-			return new StateDictionary(dir.getPath()).containsKey(key);
+		try (StateDictionary shards = new StateDictionary(dir.getPath())) {
+			return shards.containsKey(key);
 		} catch (IOException | RuntimeException e) {
 			return false;
 		}

@@ -109,7 +109,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 		PackedCollection afterAttention = cp(refEmbeddings).add(cp(attentionOut)).evaluate();
 		check(failures, "afterAttention", afterAttention, refDir, "t5_l0_after_attn");
 
-		PackedCollection ffInput = new ReferenceActivations(refDir).getReferences().containsKey("t5_l0_after_attn") ?
+		PackedCollection ffInput = references(refDir).contains("t5_l0_after_attn") ?
 				loadShaped(refDir, "t5_l0_after_attn", 1, length, hidden) : afterAttention;
 		Block feedForward = encoder.feedForwardBranch(blockShape, prefix);
 		PackedCollection feedForwardOut = evalBlock(feedForward, ffInput);
@@ -157,8 +157,8 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 	 */
 	private void check(List<String> failures, String stage, PackedCollection actual,
 					   File refDir, String name) throws IOException {
-		ReferenceActivations references = new ReferenceActivations(refDir);
-		if (!references.getReferences().containsKey(name)) {
+		ReferenceActivations references = references(refDir);
+		if (!references.contains(name)) {
 			log(stage + ": reference " + name + " absent");
 			return;
 		}

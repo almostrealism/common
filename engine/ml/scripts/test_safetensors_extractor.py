@@ -327,6 +327,33 @@ def test_merged_dump_keeps_every_group(tmp_path):
     assert set(reloaded) == {"dit_output", "cond_bias"}
 
 
+def test_read_skips_json_sidecars(tmp_path):
+    """The dump scripts write shapes.json / meta.json / weight_shapes.json beside their
+    shards; reading the directory back returns only the tensors, not a parse error."""
+    stages = {"dit_output": np.arange(6, dtype=np.float32).reshape(2, 3)}
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(stages, out_dir)
+    for sidecar in ("shapes.json", "meta.json", "weight_shapes.json"):
+        with open(os.path.join(out_dir, sidecar), "w") as f:
+            json.dump({"dit_output": [2, 3]}, f)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output"}
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+
+
+def test_read_still_rejects_a_corrupt_shard(tmp_path):
+    """Only the .json sidecars are skipped: any other non-hidden file is read as a shard,
+    so a corrupt one is an error rather than being silently dropped."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"only": np.arange(4, dtype=np.float32)}, out_dir)
+    with open(os.path.join(out_dir, "references_9"), "wb") as f:
+        f.write(b"\xff\xff\xff\xff not a protobuf")
+
+    with pytest.raises(Exception):
+        core.read_state_dictionary(out_dir)
+
+
 def test_run_reference_stages_with_stub_model(tmp_path):
     """A synthetic staged 'model' exercises the hook the real SAME forward fills."""
     def stub_model(x):

@@ -17,8 +17,10 @@
 package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,8 +36,11 @@ import java.util.Map;
  * <p>The parity tests that consume real dumps are gated on assets no runner carries, so they skip
  * and prove nothing about this path. These do not need a model — a dump is a protobuf shard, and
  * one written here is the same artifact one written by the scripts is.</p>
+ *
+ * <p>It extends {@link SAMEResamplingTestBase} so the per-directory reference cache the parity
+ * tests read through is exercised here as well.</p>
  */
-public class ReferenceActivationsTest extends TestSuiteBase {
+public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 
 	/**
 	 * Writes a reference dump of the given tensors, as the scripts do.
@@ -170,5 +175,72 @@ public class ReferenceActivationsTest extends TestSuiteBase {
 		assertEquals(dir, ReferenceActivations.firstExisting(candidates, "enc_after_mapping"));
 		assertEquals(dir, ReferenceActivations.firstExisting(candidates, "enc_after_mapping.bin"));
 		assertTrue(ReferenceActivations.firstExisting(candidates, "not_in_any_dump") == null);
+	}
+
+	/**
+	 * Presence is answered by key, the legacy per-tensor marker names the same key, and a tensor
+	 * the dump never captured is absent rather than an error.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void presenceIsAnsweredByKey() throws IOException {
+		ReferenceActivations references = new ReferenceActivations(standardDump());
+
+		assertTrue(references.contains("enc_after_mapping"));
+		assertTrue(references.contains("enc_after_mapping.bin"));
+		assertFalse(references.contains("never_captured"));
+		assertFalse(references.contains(""));
+		references.destroy();
+	}
+
+	/**
+	 * The shards are opened once and shared by every read; releasing them is idempotent, and a
+	 * read after the release opens them afresh with the same contents.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void shardsAreOpenedOnceAndReleased() throws IOException {
+		ReferenceActivations references = new ReferenceActivations(standardDump());
+		references.destroy();
+
+		StateDictionary opened = references.getReferences();
+		assertSame(opened, references.getReferences());
+		assertEquals(1.5, references.collection("enc_after_mapping").toDouble(0));
+
+		references.destroy();
+		references.destroy();
+
+		StateDictionary reopened = references.getReferences();
+		assertNotSame(opened, reopened);
+		assertEquals(-2.25, references.load("enc_resamp_output")[5], 1e-6);
+		references.destroy();
+	}
+
+	/**
+	 * Every read a parity test makes from one directory shares a single set of opened shards, and
+	 * the set is released and forgotten when the test ends, so the next test opens its own.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aTestSharesOneSetOfShardsPerDirectory() throws IOException {
+		File dir = standardDump();
+		File other = standardDump();
+
+		ReferenceActivations shared = references(dir);
+		assertSame(shared, references(dir));
+		assertNotSame(shared, references(other));
+
+		StateDictionary opened = shared.getReferences();
+		assertEquals(12, loadShaped(dir, "enc_after_mapping", 3, 4).getShape().getTotalSize());
+		assertEquals(-2.25, loadFlat(dir, "enc_resamp_output")[0], 1e-6);
+		assertSame(opened, shared.getReferences());
+
+		releaseReferences();
+
+		assertNotSame(shared, references(dir));
+		assertEquals(1.5, loadFlat(dir, "enc_after_mapping")[11], 1e-6);
 	}
 }

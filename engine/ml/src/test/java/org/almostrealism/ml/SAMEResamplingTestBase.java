@@ -25,6 +25,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 
 import java.io.File;
 import java.io.IOException;
@@ -38,6 +39,9 @@ import java.util.Map;
  * real released SAME weights (the gated numerical-parity test).
  */
 public abstract class SAMEResamplingTestBase extends TestSuiteBase implements TransformerResamplingFeatures {
+
+	/** The reference directories the running test has read, each opened once. */
+	private final Map<File, ReferenceActivations> references = new HashMap<>();
 
 	/**
 	 * Evaluates a producer at the test boundary (top of the call stack), applying the optimization pass
@@ -174,6 +178,28 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	}
 
 	/**
+	 * The references in a dump directory, opened once per test and shared by every read from that
+	 * directory, so repeated lookups do not reparse the shards and retain another set of mappings.
+	 * They are released by {@link #releaseReferences()} when the test ends.
+	 *
+	 * @param dir the directory holding the reference shards
+	 * @return the references
+	 */
+	protected ReferenceActivations references(File dir) {
+		return references.computeIfAbsent(dir, ReferenceActivations::new);
+	}
+
+	/**
+	 * Releases the reference shards every read of the finished test opened. The collections those
+	 * reads returned are views into the shards, so they are released only once the test is over.
+	 */
+	@After
+	public void releaseReferences() {
+		references.values().forEach(ReferenceActivations::destroy);
+		references.clear();
+	}
+
+	/**
 	 * Reads one reference from a dump directory as a collection of the given shape.
 	 *
 	 * @param dir   the directory holding the reference shards
@@ -183,7 +209,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @throws IOException if the shards cannot be read
 	 */
 	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
-		return new ReferenceActivations(dir).collection(name, shape(shape));
+		return references(dir).collection(name, shape(shape));
 	}
 
 	/**
@@ -195,7 +221,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @throws IOException if the shards cannot be read
 	 */
 	protected float[] loadFlat(File dir, String name) throws IOException {
-		return new ReferenceActivations(dir).load(name);
+		return references(dir).load(name);
 	}
 
 	/**

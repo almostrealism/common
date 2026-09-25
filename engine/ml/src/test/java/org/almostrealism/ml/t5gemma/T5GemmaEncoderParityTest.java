@@ -111,6 +111,7 @@ public class T5GemmaEncoderParityTest extends TestSuiteBase {
 		log("t5gemma parity: validTokens=" + valid + " maxRef=" + maxRef
 				+ " maxErrorPrompt=" + maxErrorPrompt + " maxErrorPadding=" + maxErrorPadding);
 		encoder.destroy();
+		references.destroy();
 
 		double tolerance = RELATIVE_TOLERANCE * maxRef;
 		assertTrue("prompt positions differ from the reference by " + maxErrorPrompt, maxErrorPrompt <= tolerance);
