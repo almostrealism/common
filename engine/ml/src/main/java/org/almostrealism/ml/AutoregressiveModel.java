@@ -16,7 +16,9 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
@@ -25,6 +27,7 @@ import org.almostrealism.stats.DistributionFeatures;
 
 import java.util.Arrays;
 import java.util.Random;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -383,6 +386,37 @@ public class AutoregressiveModel<T> {
 			if (r < cumulative) return i;
 		}
 		return vocabSize - 1;
+	}
+
+	/**
+	 * Builds the per-step input loader for a model whose tokens carry a fixed number of
+	 * attribute values. The embedding is compiled once, with the values as a kernel
+	 * argument, and reused for every token: an embedding built from a token's values as
+	 * literals would be a different program per distinct token, which is the cost every
+	 * autoregressive model would otherwise pay each step. The compiled operation assigns
+	 * the embedding directly into {@code input}, so no intermediate result is copied
+	 * through the host.
+	 *
+	 * @param <T>       the token type
+	 * @param input     the model input the embedding is written into
+	 * @param values    how many values a token packs
+	 * @param pack      writes a token's values into a collection of {@code values} elements
+	 * @param embedding builds the embedding of the values behind the given producer
+	 * @return a consumer that loads a token into {@code input} before a forward pass
+	 */
+	public static <T> Consumer<T> tokenLoader(PackedCollection input, int values,
+											  BiConsumer<T, PackedCollection> pack,
+											  Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
+		Ops ops = Ops.o();
+		PackedCollection tokenValues = new PackedCollection(values);
+		TraversalPolicy shape = ops.shape(input.getShape().getTotalSize());
+		Runnable load = Process.optimized(ops.a(ops.cp(input.reshape(shape)),
+				ops.c(embedding.apply(ops.cp(tokenValues))).reshape(shape))).get();
+
+		return token -> {
+			pack.accept(token, tokenValues);
+			load.run();
+		};
 	}
 
 	/**

@@ -102,7 +102,7 @@ import java.util.stream.Stream;
  * // tracked.remove(memory.getContainerPointer())
  * }</pre>
  *
- * <p>On {@link #destroy()}, any remaining allocations are reported with stack traces to identify
+ * <p>On {@link #destroy()}, any remaining allocations are retained and reported with stack traces to identify
  * memory leaks.</p>
  *
  * <h2>Deallocation Modes</h2>
@@ -185,7 +185,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/** Tracks all currently allocated memory blocks by their native pointer. */
-	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	private volatile ConcurrentHashMap<Long, NativeRef<T>> allocated;
 	/**
 	 * How long a release may be held back waiting for the kernels using that
 	 * memory to finish. Past this the memory is released anyway: a reference
@@ -206,6 +206,24 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private ReferenceQueue<T> referenceQueue;
 	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
 	private volatile boolean destroying;
+
+	/** True once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
+	/**
+	 * Registered by {@link #onFullyReleased(Runnable)}; run once every block retained
+	 * through {@link #destroy()} has actually been released.
+	 */
+	private Runnable onFullyReleased;
+
+	/**
+	 * Count of allocations that have reserved a lease via {@link #beginAllocation()} but
+	 * have not yet reached {@link #endAllocation()}. While positive, {@link #destroy()} may
+	 * still run to completion, but the {@link #onFullyReleased(Runnable)} callback is held
+	 * back so a backend resource that an in-flight allocation is about to use (or register)
+	 * is not released out from under it.
+	 */
+	private int pendingAllocations;
 
 	/**
 	 * Initializes allocation tracking and starts the background deallocation threads.
@@ -290,11 +308,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @param mem The memory block to deallocate
 	 */
 	private void deallocateNow(T mem) {
-		if (allocated == null) {
-			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
-			return;
-		}
-
 		NativeRef<T> ref = getNativeRef(mem);
 		if (ref == null) {
 			if (mem.isActive()) {
@@ -355,13 +368,83 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				if (!destroying) {
-					allocated.remove(ref.getAddress());
-				}
+				allocated.remove(ref.getAddress());
+				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
 			}
 		}
+	}
+
+	/**
+	 * Registers a callback to run once every block that {@link #destroy()} retained
+	 * has actually been released (including one retained after destruction and freed
+	 * as a leaked block, but never one still blocked awaiting a kernel via
+	 * {@link #deferIfInUse}, since that resolves through this same release path). If
+	 * nothing is currently tracked, the callback runs immediately.
+	 *
+	 * <p>This lets a backend whose device/context resource the retained blocks point
+	 * into keep that resource alive until the blocks are truly gone, instead of
+	 * releasing it out from under blocks this provider promised would remain valid.
+	 * Only one callback may be registered at a time.</p>
+	 *
+	 * @param action the action to run once every retained block is released
+	 */
+	public synchronized void onFullyReleased(Runnable action) {
+		if (allocated.isEmpty() && pendingAllocations == 0) {
+			action.run();
+		} else {
+			this.onFullyReleased = action;
+		}
+	}
+
+	/**
+	 * Runs and clears the {@link #onFullyReleased} callback once the tracked
+	 * allocation map has been drained and no allocation is still in flight
+	 * (see {@link #beginAllocation()}), so the callback fires exactly once.
+	 */
+	private void notifyIfFullyReleased() {
+		Runnable action;
+
+		synchronized (this) {
+			if (pendingAllocations > 0 || !allocated.isEmpty() || onFullyReleased == null) return;
+			action = onFullyReleased;
+			onFullyReleased = null;
+		}
+
+		action.run();
+	}
+
+	/**
+	 * Reserves a lease for an allocation that is about to create its backend resource
+	 * (e.g. an OpenCL buffer or Metal buffer) outside of any lock this provider holds.
+	 * While the lease is held, {@link #onFullyReleased(Runnable)}'s callback cannot fire,
+	 * so a backend resource (an OpenCL context, a Metal device) that this allocation's
+	 * backend call or subsequent {@link #allocated(RAM)} registration depends on
+	 * cannot be released underneath it — even if {@link #destroy()} runs concurrently.
+	 *
+	 * <p>Must be paired with {@link #endAllocation()} once the backend call and any
+	 * registration attempt have both finished, whether they succeeded or failed.</p>
+	 *
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
+	 */
+	protected synchronized void beginAllocation() {
+		if (destroying || destroyed) {
+			throw new IllegalStateException("Cannot allocate as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
+		}
+
+		pendingAllocations++;
+	}
+
+	/**
+	 * Releases the lease reserved by {@link #beginAllocation()}. If this was the last
+	 * outstanding lease, re-evaluates whether the {@link #onFullyReleased(Runnable)}
+	 * callback should now fire.
+	 */
+	protected synchronized void endAllocation() {
+		pendingAllocations--;
+		notifyIfFullyReleased();
 	}
 
 	/**
@@ -493,11 +576,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 *
 	 * @param mem the memory to test
 	 * @return {@code true} if the memory has been released, or belongs to
-	 *         another provider, or this provider has been destroyed
+	 *         another provider
 	 */
 	@Override
 	public boolean isReleased(Memory mem) {
-		if (allocated == null) return true;
 		if (!(mem instanceof RAM ram)) return false;
 		if (ram.getProvider() != this) return true;
 
@@ -558,14 +640,18 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
-	 * @throws IllegalStateException if this provider is being destroyed
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
 	 */
-	protected T allocated(T ram) {
-		if (destroying) {
-			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
+	protected synchronized T allocated(T ram) {
+		NativeRef<T> ref = nativeRef(ram);
+
+		if (destroying || destroyed) {
+			// The backend has already produced the block; release it, since nothing will track it
+			release(ref);
+			throw new IllegalStateException("Cannot allocate " + ram + " as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
@@ -577,6 +663,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 
 		return ram;
+	}
+
+	/**
+	 * Frees a block that was never registered, because it was produced after this
+	 * provider stopped accepting allocations. Best effort: the refusal that follows
+	 * is the failure the caller sees.
+	 */
+	private void release(NativeRef<T> ref) {
+		try {
+			if (ref.tryClaimFreed()) deallocate(ref);
+		} catch (RuntimeException e) {
+			warn("Unable to release " + ref + " allocated after destroy", e);
+		}
 	}
 
 	/**
@@ -639,46 +738,60 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Retires this provider: no further blocks may be allocated, but every block still
+	 * tracked stays valid and is released the way it always would have been, when its
+	 * holder is collected or destroys it.
+	 *
+	 * <p>Freeing the remaining blocks here would be wrong, because they are still
+	 * referenced: a block that is unreferenced has already been released through the
+	 * reference queue. Whatever still holds one (a cache, a value shared between a
+	 * scoped context and its enclosing one) would go on reading and writing freed
+	 * memory, which is how the heap gets corrupted and the process aborted long
+	 * after the fact. The remaining blocks are reported so that a leak can be found,
+	 * but ownership of them is kept.</p>
+	 */
 	@Override
 	public synchronized void destroy() {
 		try {
 			destroying = true;
 
-			if (allocated != null) {
-				List<NativeRef<T>> stillAllocated = new ArrayList<>();
+			List<NativeRef<T>> stillAllocated = new ArrayList<>();
 
-				w: while (true) {
-					try {
-						stillAllocated.clear();
-						allocated.values().forEach(stillAllocated::add);
-						break w;
-					} catch (Exception e) {
-						// start over and try again if the allocated map was
-						// modified while attempting to capture its contents
-						warn(e.getClass().getSimpleName() + " - " + e.getMessage());
-					}
+			w: while (true) {
+				try {
+					stillAllocated.clear();
+					allocated.values().forEach(stillAllocated::add);
+					break w;
+				} catch (Exception e) {
+					// start over and try again if the allocated map was
+					// modified while attempting to capture its contents
+					warn(e.getClass().getSimpleName() + " - " + e.getMessage());
 				}
-
-				stillAllocated.stream()
-						.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
-						.limit(10)
-						.forEach(ref -> {
-							warn(ref + " was not deallocated");
-							if (ref.getAllocationStackTrace() != null) {
-								Stream.of(ref.getAllocationStackTrace())
-										.forEach(stack -> warn("\tat " + stack));
-							}
-						});
-
-				// TODO  Deallocating all of these at once appears to produce SIGSEGV
-				// List<MetalMemory> available = new ArrayList<>(allocated);
-				// available.forEach(mem -> deallocate(0, mem));
-				allocated = null;
 			}
+
+			stillAllocated.stream()
+					.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
+					.limit(10)
+					.forEach(ref -> {
+						warn(ref + " was not deallocated and is retained until released");
+						if (ref.getAllocationStackTrace() != null) {
+							Stream.of(ref.getAllocationStackTrace())
+									.forEach(stack -> warn("\tat " + stack));
+						}
+					});
+
+			destroyed = true;
 		} finally {
 			destroying = false;
 		}
 	}
+
+	/**
+	 * Returns whether {@link #destroy()} has run. A destroyed provider allocates
+	 * nothing further, but still releases the blocks it retained.
+	 */
+	public boolean isDestroyed() { return destroyed; }
 
 
 	@Override

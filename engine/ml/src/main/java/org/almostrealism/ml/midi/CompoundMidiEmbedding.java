@@ -179,17 +179,37 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 			return zeros(shape(hidden));
 		}
 
-		int[] values = t.toArray();
+		return embedValues(cp(t.pack()));
+	}
+
+	/**
+	 * Embeds a token whose six attribute values are supplied at evaluation time.
+	 *
+	 * <p>The values are an argument of the resulting kernel rather than literals in
+	 * its source, so one compiled kernel serves every token: a consumer embedding
+	 * tokens one after another holds a single evaluable and writes each token's
+	 * values into the collection behind {@code values} before evaluating, instead
+	 * of compiling an embedding per distinct token. Special tokens (start, end,
+	 * fill, pad) take a different path and are handled by {@link #embed(Producer)}
+	 * with a token producer.</p>
+	 *
+	 * @param values producer of the attribute values in the order of
+	 *               {@link MidiCompoundToken#toArray()}, shape (NUM_ATTRIBUTES)
+	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
+	 */
+	public CollectionProducer embedValues(Producer<PackedCollection> values) {
 		int dim = config.embeddingDim;
+		CollectionProducer attributes = c(values);
 		CollectionProducer[] attrEmbs = new CollectionProducer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
+			CollectionProducer value = attributes.subset(shape(1), attr);
 			if (attr == INSTRUMENT_INDEX) {
-				attrEmbs[attr] = embedInstrument(values[attr]).reshape(shape(dim));
+				attrEmbs[attr] = embedInstrument(value).reshape(shape(dim));
 			} else {
-				attrEmbs[attr] = fmeEmbeddings[attr].embed(values[attr]).reshape(shape(dim));
+				attrEmbs[attr] = fmeEmbeddings[attr].embed(value).reshape(shape(dim));
 			}
 		}
-		return concat(attrEmbs).reshape(shape(hidden));
+		return concat(attrEmbs).reshape(shape(config.hiddenSize));
 	}
 
 	/**
@@ -233,14 +253,18 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	}
 
 	/**
-	 * Embed an instrument value using standard lookup embedding, returning a
-	 * {@link CollectionProducer} of shape (embeddingDim,).
+	 * Looks up the instrument embedding row for an instrument id supplied at
+	 * evaluation time, gathering the row from the flattened table so the id is
+	 * a kernel argument rather than a literal offset.
 	 *
-	 * @param instrumentId the integer instrument index into the embedding table
+	 * @param instrumentId producer of the instrument id, shape (1)
+	 * @return CollectionProducer of shape (dim,) producing the instrument embedding
 	 */
-	private CollectionProducer embedInstrument(int instrumentId) {
+	private CollectionProducer embedInstrument(Producer<PackedCollection> instrumentId) {
 		int dim = config.embeddingDim;
-		return cp(instrumentEmbedding).subset(shape(1, dim), instrumentId, 0).reshape(shape(dim));
+		int vocab = config.vocabSizes[INSTRUMENT_INDEX];
+		CollectionProducer positions = integers(0, dim).add(c(instrumentId).multiply(dim));
+		return cp(instrumentEmbedding).reshape(shape(vocab * dim)).valueAt(positions);
 	}
 
 	/**

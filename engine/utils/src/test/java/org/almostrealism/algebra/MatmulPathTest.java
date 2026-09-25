@@ -130,6 +130,32 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * A column vector of shape (n, 1) is one vector of n elements, not a batch of
+	 * n one-element vectors, and the wide-output path must read it the same way
+	 * the narrow path does. The shape arises naturally when the output of one
+	 * matrix-vector product feeds another: the narrow path returns (m, 1).
+	 */
+	@Test(timeout = 60000)
+	public void columnVectorLargeOutput() {
+		int inputSize = 64;
+		int outputSize = 1500;
+
+		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
+		PackedCollection input = new PackedCollection(shape(inputSize));
+		initializeWeights(weights, outputSize, inputSize);
+		initializeInput(input, inputSize);
+
+		PackedCollection expected = matmul(p(weights), traverseEach(p(input))).evaluate();
+		PackedCollection column = input.reshape(shape(inputSize, 1));
+		PackedCollection output = matmul(p(weights), p(column)).evaluate();
+
+		assertEquals("Output size", outputSize, output.getShape().getTotalSize());
+		for (int i = 0; i < outputSize; i++) {
+			assertEquals("Output[" + i + "]", expected.toDouble(i), output.toDouble(i));
+		}
+	}
+
+	/**
 	 * Benchmark compile times at different output sizes.
 	 */
 	@Test(timeout = 60000)

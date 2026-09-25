@@ -186,6 +186,11 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 * elements (each {@code numberSize} bytes). Tracks allocation in metrics and
 	 * logs large allocations if enabled.</p>
 	 *
+	 * <p>Reserves a {@link #beginAllocation()} lease before {@link #buffer(int)} creates
+	 * the backend Metal buffer, so a concurrent {@link #destroy()} cannot release the
+	 * Metal device this call depends on until the buffer has been created and either
+	 * registered via {@link #allocated(RAM)} or released again.</p>
+	 *
 	 * @param size Number of elements to allocate
 	 * @return New {@link MetalMemory} backed by an {@link MTLBuffer}
 	 * @throws HardwareException if allocation would exceed memory limit
@@ -196,9 +201,15 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
-		MetalMemory mem = allocated(new MetalMemory(this, buffer(size), numberSize * (long) size));
-		allocationSizes.addEntry(numberSize * (long) size);
-		return mem;
+		beginAllocation();
+
+		try {
+			MetalMemory mem = allocated(new MetalMemory(this, buffer(size), numberSize * (long) size));
+			allocationSizes.addEntry(numberSize * (long) size);
+			return mem;
+		} finally {
+			endAllocation();
+		}
 	}
 
 	/**
