@@ -147,7 +147,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		
 		p.addReflection();
 		
-		Iterable<Curve<PackedCollection>> allSurfaces = (Iterable<Curve<PackedCollection>>) p.getAllSurfaces();
+		List<Curve<PackedCollection>> allSurfaces = p.getAllSurfaces();
 		List<Light> allLights = p.getAllLights();
 
 		Producer<PackedCollection> r = getReflectiveColor();

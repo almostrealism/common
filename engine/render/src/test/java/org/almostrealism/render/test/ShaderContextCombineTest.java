@@ -156,4 +156,31 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 		Assert.assertEquals(1, all.size());
 		Assert.assertSame(other0, all.get(0));
 	}
+
+	/**
+	 * Verifies that {@link ShaderContext#getAllSurfaces()} returns a new list on
+	 * each call, so a caller that mutates the returned list (as a shader may when
+	 * it hands the list to a lighting aggregator) never alters the context's own
+	 * surfaces or a list returned to another caller.
+	 */
+	@Test(timeout = 5000)
+	public void getAllSurfacesReturnsIndependentList() {
+		NamedCurve primary = new NamedCurve("primary");
+		NamedCurve other0 = new NamedCurve("other0");
+
+		ShaderContext context = new ShaderContext(primary, new PointLight());
+		context.setOtherSurfaces(other0);
+
+		List<Curve<PackedCollection>> first = context.getAllSurfaces();
+		first.clear();
+		first.add(new NamedCurve("extra"));
+
+		List<Curve<PackedCollection>> second = context.getAllSurfaces();
+		Assert.assertNotSame(first, second);
+		Assert.assertEquals(2, second.size());
+		Assert.assertSame(primary, second.get(0));
+		Assert.assertSame(other0, second.get(1));
+		Assert.assertEquals(1, context.getOtherSurfaces().length);
+		Assert.assertSame(other0, context.getOtherSurfaces()[0]);
+	}
 }
