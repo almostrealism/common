@@ -312,6 +312,36 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "bash -ec 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'"))
 
+    def test_bash_long_option_before_dash_c_wrapped_maven_test_rejected(self):
+        # A long option before -c ("bash --noprofile -c '...'") must not end the
+        # option scan -- the embedded broad Maven run has to be inspected
+        # exactly as for a bare -c.
+        violations = validate_post_completion_command(
+            "bash --noprofile -c 'mvn test -pl engine/utils'")
+        self.assertTrue(violations,
+                        "bash --noprofile -c 'mvn test' must be rejected like a direct mvn test")
+
+    def test_bash_multiple_long_options_before_dash_c_wrapped_maven_test_rejected(self):
+        self.assertTrue(validate_post_completion_command(
+            "bash --noprofile --norc -c 'mvn verify'"))
+
+    def test_bash_rcfile_operand_before_dash_c_wrapped_maven_test_rejected(self):
+        # "--rcfile FILE" consumes its separate-token operand, so that operand
+        # must not be mistaken for the script-file positional and the following
+        # -c script is still inspected.
+        self.assertTrue(validate_post_completion_command(
+            "bash --rcfile /tmp/rc -c 'mvn test -pl engine/utils'"))
+
+    def test_bash_glued_rcfile_before_dash_c_wrapped_pytest_rejected(self):
+        # The glued "--rcfile=FILE" form consumes no following token.
+        self.assertTrue(validate_post_completion_command(
+            "bash --rcfile=/tmp/rc -c 'pytest tools/mcp/manager'"))
+
+    def test_bash_long_option_before_dash_c_with_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "bash --noprofile -c 'mvn -pl flowtree/runtime test "
+            "-Dtest=NotifierRegistryTest#testFoo'"))
+
     def test_later_skip_tests_false_overrides_earlier_skip_tests_flag(self):
         # Maven system properties set via repeated -D take the LAST
         # occurrence's value: -DskipTests followed by -DskipTests=false

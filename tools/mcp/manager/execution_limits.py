@@ -135,6 +135,13 @@ _ENV_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 
 _SHELL_INTERPRETERS = {"sh", "bash", "zsh", "dash", "ksh"}
 
+# Shell-interpreter long options that consume the following token as an operand
+# (unless given glued as `--opt=value`), so that operand is not mistaken for a
+# `-c` option or a script-file positional while `_shell_dash_c_script` scans for
+# `-c`. Only bash's `--rcfile FILE` / `--init-file FILE` (synonyms) take a
+# separate-token operand; every other long option here is a bare switch.
+_SHELL_LONG_OPTIONS_WITH_OPERAND = {"--rcfile", "--init-file"}
+
 # `env` options that consume the following token as their own operand (unless
 # given in glued `--opt=value` form) rather than being a bare flag -- e.g.
 # `env -u FOO mvn test` unsets FOO before running `mvn`, so "FOO" must not be
@@ -646,28 +653,39 @@ def _unwrap_command_prefixes(tokens: list) -> list:
 def _shell_dash_c_script(tokens: list):
     """Returns the inline script text when ``tokens`` is a shell interpreter
     invoked with a ``-c`` option -- whether as its own token (``sh -c
-    "<script>"``) or combined with other short options in the same token
-    (``bash -ec "<script>"``, ``bash -e -c "<script>"``) -- or ``None`` when
-    it is not that shape.
+    "<script>"``), combined with other short options in the same token
+    (``bash -ec "<script>"``, ``bash -e -c "<script>"``), or preceded by long
+    options (``bash --noprofile -c "<script>"``) -- or ``None`` when it is not
+    that shape.
 
-    Walks the leading run of single-dash short-option tokens (stopping at
-    the first token that is not one, a ``--`` form, or the end of the list)
-    looking for one containing ``c``. Mirrors ``getopt``: any characters in
-    that token after the ``c`` are its glued-on argument (``-cSCRIPT``);
-    when none remain, the following whole token is the argument instead
-    (``-ec "<script>"``). Without this, ``bash -ec 'mvn test -pl
-    engine/utils'`` would see option token ``-ec``, not literally ``-c``,
-    and be waved through as an unrecognized interpreter invocation instead
-    of having its embedded script inspected.
+    Walks the interpreter's leading option run looking for a short-option
+    token containing ``c``. Mirrors ``getopt``: any characters in that token
+    after the ``c`` are its glued-on argument (``-cSCRIPT``); when none remain,
+    the following whole token is the argument instead (``-ec "<script>"``). A
+    long option (``--noprofile``) is skipped rather than treated as the end of
+    the option run -- consuming its separate-token operand when it is one of
+    ``_SHELL_LONG_OPTIONS_WITH_OPERAND`` -- and a bare ``--`` ends the option
+    run. Without this, ``bash --noprofile -c 'mvn test -pl engine/utils'`` would
+    stop at ``--noprofile`` and be waved through as an unrecognized interpreter
+    invocation instead of having its embedded script inspected.
     """
     if len(tokens) < 2 or tokens[0].rsplit("/", 1)[-1] not in _SHELL_INTERPRETERS:
         return None
-    for i in range(1, len(tokens)):
+    i = 1
+    while i < len(tokens):
         tok = tokens[i]
-        if not tok.startswith("-") or tok.startswith("--"):
+        if tok == "--":
+            return None
+        if tok.startswith("--"):
+            if "=" not in tok and tok in _SHELL_LONG_OPTIONS_WITH_OPERAND:
+                i += 1
+            i += 1
+            continue
+        if not tok.startswith("-"):
             return None
         c_index = tok.find("c", 1)
         if c_index < 0:
+            i += 1
             continue
         remainder = tok[c_index + 1:]
         if remainder:

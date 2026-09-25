@@ -322,6 +322,47 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 				"bash -ec 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'").isEmpty());
 	}
 
+	/** A long option before "-c" ("bash --noprofile -c '...'") must not end the option scan --
+	 * the embedded broad Maven run has to be inspected exactly as for a bare "-c". */
+	@Test(timeout = 10000)
+	public void bashLongOptionBeforeDashCWrappedMavenTestRejected() {
+		List<String> violations = violationsFor("bash --noprofile -c 'mvn test -pl engine/utils'");
+		assertFalse("bash --noprofile -c 'mvn test' must be rejected like a direct mvn test",
+				violations.isEmpty());
+	}
+
+	/** Several long options before "-c" ("bash --noprofile --norc -c '...'") must all be skipped
+	 * so the embedded broad Maven run is still inspected. */
+	@Test(timeout = 10000)
+	public void bashMultipleLongOptionsBeforeDashCWrappedMavenTestRejected() {
+		assertFalse(violationsFor("bash --noprofile --norc -c 'mvn verify'").isEmpty());
+	}
+
+	/** A long option that takes a separate-token operand ("--rcfile FILE") must have its operand
+	 * skipped so the following "-c" script is still inspected rather than the operand being
+	 * mistaken for the script-file positional. */
+	@Test(timeout = 10000)
+	public void bashRcfileOperandBeforeDashCWrappedMavenTestRejected() {
+		assertFalse(violationsFor(
+				"bash --rcfile /tmp/rc -c 'mvn test -pl engine/utils'").isEmpty());
+	}
+
+	/** The glued "--rcfile=FILE" form consumes no following token, so the "-c" script after it is
+	 * still inspected. */
+	@Test(timeout = 10000)
+	public void bashGluedRcfileBeforeDashCWrappedPytestRejected() {
+		assertFalse(violationsFor("bash --rcfile=/tmp/rc -c 'pytest tools/mcp/manager'").isEmpty());
+	}
+
+	/** A long option before "-c" must not cause a false positive when the embedded script carries
+	 * an explicit selector -- it stays accepted. */
+	@Test(timeout = 10000)
+	public void bashLongOptionBeforeDashCWithSelectorAccepted() {
+		assertTrue(violationsFor(
+				"bash --noprofile -c 'mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo'")
+				.isEmpty());
+	}
+
 	/** A broad pytest run wrapped in "sh -c" must also be rejected. */
 	@Test(timeout = 10000)
 	public void shDashCWrappedPytestOnDirectoryRejected() {

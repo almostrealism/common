@@ -140,6 +140,14 @@ public class PostCompletionCommandValidator {
 	private static final List<String> SHELL_INTERPRETERS = Arrays.asList(
 			"sh", "bash", "zsh", "dash", "ksh");
 
+	/** Shell-interpreter long options that consume the following token as an operand (unless given
+	 * glued as {@code --opt=value}), so that operand is not mistaken for a {@code -c} option or a
+	 * script-file positional while {@link #shellDashCScript} scans for {@code -c}. Only bash's
+	 * {@code --rcfile FILE} / {@code --init-file FILE} (synonyms) take a separate-token operand;
+	 * every other long option before {@code -c} is a bare switch. */
+	private static final List<String> SHELL_LONG_OPTIONS_WITH_OPERAND = Arrays.asList(
+			"--rcfile", "--init-file");
+
 	/** Command-prefix wrappers that pass their remaining arguments through to the real
 	 * command unchanged: a wrapper such as {@code command mvn test} or {@code sudo mvn test}
 	 * must not be waved through just because its first token is not literally {@code mvn}/
@@ -675,27 +683,40 @@ public class PostCompletionCommandValidator {
 	 * same token ({@code bash -ec "<script>"}, {@code bash -e -c "<script>"}) --
 	 * or {@code null} when it is not that shape.
 	 *
-	 * <p>Walks the leading run of single-dash short-option tokens (stopping at
-	 * the first token that is not one, a {@code --} form, or the end of the
-	 * list) looking for one containing {@code c}. Mirrors {@code getopt}: any
-	 * characters in that token after the {@code c} are its glued-on argument
-	 * ({@code -cSCRIPT}); when none remain, the following whole token is the
-	 * argument instead ({@code -ec "<script>"}). Without this, {@code bash -ec
-	 * 'mvn test -pl engine/utils'} would see option token {@code -ec}, not
-	 * literally {@code -c}, and be waved through as an unrecognized interpreter
+	 * <p>Walks the interpreter's leading option run looking for a short-option token
+	 * containing {@code c}. Mirrors {@code getopt}: any characters in that token after
+	 * the {@code c} are its glued-on argument ({@code -cSCRIPT}); when none remain, the
+	 * following whole token is the argument instead ({@code -ec "<script>"}). A long
+	 * option ({@code --noprofile}) is skipped rather than treated as the end of the
+	 * option run -- consuming its separate-token operand when it is one of
+	 * {@link #SHELL_LONG_OPTIONS_WITH_OPERAND} -- and a bare {@code --} ends the option
+	 * run. Without this, {@code bash --noprofile -c 'mvn test -pl engine/utils'} would
+	 * stop at {@code --noprofile} and be waved through as an unrecognized interpreter
 	 * invocation instead of having its embedded script inspected.</p>
 	 */
 	private String shellDashCScript(List<String> tokens) {
 		if (tokens.size() < 2 || !SHELL_INTERPRETERS.contains(baseName(tokens.get(0)))) {
 			return null;
 		}
-		for (int i = 1; i < tokens.size(); i++) {
+		int i = 1;
+		while (i < tokens.size()) {
 			String tok = tokens.get(i);
-			if (!tok.startsWith("-") || tok.startsWith("--")) {
+			if ("--".equals(tok)) {
+				return null;
+			}
+			if (tok.startsWith("--")) {
+				if (!tok.contains("=") && SHELL_LONG_OPTIONS_WITH_OPERAND.contains(tok)) {
+					i++;
+				}
+				i++;
+				continue;
+			}
+			if (!tok.startsWith("-")) {
 				return null;
 			}
 			int cIndex = tok.indexOf('c', 1);
 			if (cIndex < 0) {
+				i++;
 				continue;
 			}
 			String remainder = tok.substring(cIndex + 1);
