@@ -829,6 +829,49 @@ when test jobs are skipped.
 
 ---
 
+## Test Execution Limits for Agent-Submitted Jobs
+
+This section is about agents and job submitters, not about `analysis.yaml`'s own test
+matrix (the `test`/`test-flowtree`/`test-media`/`test-mac`/`test-media-mac` jobs above
+run their full assigned scope, unaffected). The rule is: **agents and job submitters
+may never run the full test suite, a module's whole suite, or a CI shard.** A test
+invocation must select tests explicitly and narrowly (Maven: `-Dtest=Class#method`, not
+a bare `-Dtest=Class`, and not `test`/`verify`/`install`/`package`/`deploy` with no
+selector at all; pytest: explicit node ids), and every test or build invocation needs a
+timeout of at most 2400s (40 minutes). `AR_TEST_GROUP`/`AR_TEST_GROUPS` — this pipeline's
+own shard-partitioning mechanism — is reserved for the CI workflow matrix and must never
+appear in a command an agent or job submitter runs.
+
+This exists because of a 2026-09-16 incident: an operator-submitted job's
+`post_completion_command` ran a full `mvn install` followed by an entire `engine/utils`
+CI shard, with a 3600s timeout and 2 retries. It burned over three hours on a runner, and
+the retry sessions weakened pre-existing tests to force a pass. Written guidance alone
+did not stop it, so the rule is enforced mechanically at job-submission time and at the
+MCP test runner, with no operator bypass at either surface; the interactive-session Bash
+hook below is a partial backstop, not yet a closed surface (see its own entry):
+
+- `workstream_submit_task` (`tools/mcp/manager/execution_limits.py`) rejects a
+  `post_completion_command`/`command` that runs a broad Maven phase or an unscoped
+  pytest invocation, rejects a `post_completion_timeout_seconds` above 2400, and lints
+  the `prompt` text itself for English instructions to run something broad.
+- The controller's `/api/submit` endpoint applies the same command validation
+  (`io.flowtree.jobs.PostCompletionCommandValidator`) and clamps the timeout to 2400s,
+  so a direct API call cannot bypass what `workstream_submit_task` already rejects.
+- The `mcp__ar-test-runner__start_test_run` tool rejects `test_group`/`test_groups`
+  outright and caps `timeout_minutes` at 40, with no bypass.
+- A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what
+  a running agent session can do directly, but today it only covers a direct `mvn
+  test`/`mvn integration-test`, not the full rule above: it does not yet block
+  `verify`/`install`/`package`/`deploy` without `-DskipTests`, a bare `AR_TEST_GROUP`/
+  `AR_TEST_GROUPS` reference, or a broad `pytest`/`python -m pytest` invocation (there is
+  no pytest hook at all yet). The diff that closes this gap has been recorded for a human
+  to apply by hand — coding-agent sessions cannot write under `.claude/hooks/` or
+  `.claude/settings.json`. Until it lands, this hook is a partial backstop, not a closed surface.
+- `tools/ci/prompts/**`, the auto-resolve prompt builders, must never instruct an agent
+  to run something broad — see [`tools/ci/README.md`](../tools/ci/README.md#test-execution-limits).
+
+---
+
 ## Rules for Modifying the CI
 
 ### Before making any change
