@@ -87,7 +87,7 @@ public class ReferenceActivationsTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void aShapeDisagreementFails() throws IOException {
 		ReferenceActivations references = new ReferenceActivations(standardDump());
-		assertEquals(12, references.collection("enc_after_mapping", shape(4, 3))
+		assertEquals(12, references.collection("enc_after_mapping", shape(3, 4))
 				.getShape().getTotalSize());
 
 		try {
@@ -96,6 +96,30 @@ public class ReferenceActivationsTest extends TestSuiteBase {
 		} catch (IllegalStateException e) {
 			// expected
 		}
+
+		try {
+			references.collection("enc_after_mapping", shape(4, 3));
+			throw new AssertionError("a transposed reference of the same size must be rejected");
+		} catch (IllegalStateException e) {
+			// expected
+		}
+	}
+
+	/**
+	 * A rank change with the same element count is still shaped, so a flat reference may be read
+	 * into the caller's layout even though a same-rank axis disagreement would fail.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aFlatReferenceIsShaped() throws IOException {
+		ReferenceActivations references = new ReferenceActivations(standardDump());
+		PackedCollection shaped = references.collection("enc_resamp_output", shape(2, 3));
+
+		assertEquals(2, shaped.getShape().getDimensions());
+		assertEquals(2, shaped.getShape().length(0));
+		assertEquals(3, shaped.getShape().length(1));
+		assertEquals(-2.25, shaped.toDouble(5));
 	}
 
 	/**

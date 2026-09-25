@@ -68,7 +68,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 	@Test(timeout = 900000)
 	public void layerZeroStagesMatchReference() throws IOException {
 		File weightDir = firstExisting(WEIGHT_DIRS, "weights");
-		File refDir = firstExisting(REFERENCE_DIRS, "t5_embeddings.bin");
+		File refDir = firstExisting(REFERENCE_DIRS, "t5_embeddings");
 		if (weightDir == null || refDir == null) {
 			log("skipping T5Gemma stage parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
 			return;
@@ -109,7 +109,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 		PackedCollection afterAttention = cp(refEmbeddings).add(cp(attentionOut)).evaluate();
 		check(failures, "afterAttention", afterAttention, refDir, "t5_l0_after_attn");
 
-		PackedCollection ffInput = new File(refDir, "t5_l0_after_attn.bin").exists() ?
+		PackedCollection ffInput = new ReferenceActivations(refDir).getReferences().containsKey("t5_l0_after_attn") ?
 				loadShaped(refDir, "t5_l0_after_attn", 1, length, hidden) : afterAttention;
 		Block feedForward = encoder.feedForwardBranch(blockShape, prefix);
 		PackedCollection feedForwardOut = evalBlock(feedForward, ffInput);

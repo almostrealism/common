@@ -111,7 +111,11 @@ public class ReferenceActivations {
 	 * Reads one reference as a collection, checking it against the shape the caller expects.
 	 *
 	 * <p>A mismatch fails here rather than being reinterpreted: the dump records the shape it
-	 * wrote, so a disagreement means the capture and the test no longer describe the same tensor.</p>
+	 * wrote, so a disagreement means the capture and the test no longer describe the same tensor.
+	 * Two shapes of the same rank must name the same axes — a transposed capture (a recorded
+	 * {@code (3, 4)} read as {@code (4, 3)}) is rejected rather than silently reshaped. A rank
+	 * change with the same element count is still permitted, so a scalar or flat reference may be
+	 * shaped to the caller's layout.</p>
 	 *
 	 * @param name  the reference key
 	 * @param shape the expected shape
@@ -121,10 +125,14 @@ public class ReferenceActivations {
 	 */
 	public PackedCollection collection(String name, TraversalPolicy shape) throws IOException {
 		PackedCollection result = collection(name);
+		TraversalPolicy actual = result.getShape();
 
-		if (result.getShape().getTotalSize() != shape.getTotalSize()) {
+		boolean sameCount = actual.getTotalSize() == shape.getTotalSize();
+		boolean axesAgree = actual.getDimensions() != shape.getDimensions()
+				|| actual.equalsIgnoreAxis(shape);
+		if (!sameCount || !axesAgree) {
 			throw new IllegalStateException(key(name) + ": reference holds "
-					+ result.getShape() + " while the test expects " + shape);
+					+ actual + " while the test expects " + shape);
 		}
 
 		return result.reshape(shape);

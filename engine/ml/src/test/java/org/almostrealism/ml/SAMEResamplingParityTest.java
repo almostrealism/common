@@ -258,14 +258,14 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	}
 
 	/**
-	 * Loads every weight a resampling block reads from a directory of flat {@code .bin} tensors,
+	 * Loads every weight a resampling block reads from a directory of protobuf collection shards,
 	 * shaping each according to the shared {@link #blockWeightShapes} map.
 	 *
 	 * @param dir    the weight directory
 	 * @param config the block configuration
 	 * @param prefix the weight key prefix
 	 * @return a {@link StateDictionary} of the loaded weights
-	 * @throws IOException if a weight file cannot be read
+	 * @throws IOException if the weight shards cannot be read
 	 */
 	protected StateDictionary loadBlockWeights(File dir, ResamplingConfig config, String prefix) throws IOException {
 		Map<String, PackedCollection> w = new HashMap<>();

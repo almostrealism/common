@@ -299,6 +299,34 @@ def test_dump_reference_activations_writes_no_bespoke_files(tmp_path):
     assert not [n for n in os.listdir(out_dir) if n.endswith(".bin")]
 
 
+def test_second_dump_with_same_prefix_replaces_the_first(tmp_path):
+    """Two dumps into the same directory with the same shard prefix do not accumulate:
+    the writer clears stale same-prefix shards first, so the second dump replaces the
+    first. A caller with two tensor groups must therefore merge them into one dump."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"first": np.arange(3, dtype=np.float32)}, out_dir)
+    core.dump_reference_activations({"second": np.arange(4, dtype=np.float32)}, out_dir)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"second"}, "the second dump replaced the first"
+
+
+def test_merged_dump_keeps_every_group(tmp_path):
+    """Merging two disjoint tensor groups into a single dump keeps every key — the
+    pattern a caller with separate stage and conditioner maps must use so neither group
+    deletes the other's shards."""
+    stages = {"dit_output": np.arange(3, dtype=np.float32)}
+    conditioner = {"cond_bias": np.arange(4, dtype=np.float32)}
+    combined = dict(stages)
+    combined.update(conditioner)
+
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(combined, out_dir)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output", "cond_bias"}
+
+
 def test_run_reference_stages_with_stub_model(tmp_path):
     """A synthetic staged 'model' exercises the hook the real SAME forward fills."""
     def stub_model(x):
