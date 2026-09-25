@@ -135,6 +135,32 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         "in fetch-latest-coverage.sh remains reachable")
         self.assertGreaterEqual(found, 1, "no setup-python step found in coverage-qa")
 
+    def test_every_job_reaches_the_controller_through_the_tunnel(self):
+        """No dispatch job needs a host inside the private network.
+
+        The jobs only talk to git, the GitHub API and the FlowTree
+        controller, and the controller is reachable from anywhere through
+        its Cloudflare Access tunnel. A step that falls back to a LAN
+        hostname (CONTROLLER_HOST) would silently tie the workflow back to a
+        self-hosted runner, so every controller-script step must carry the
+        tunnel URL and both halves of the service token, and every job must
+        run on a GitHub-hosted runner.
+        """
+        controller_scripts = _QA_SCRIPTS[1:]
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertNotIn("self-hosted", str(job["runs-on"]))
+            for step in job["steps"]:
+                if not any(s in step.get("run", "") for s in controller_scripts):
+                    continue
+                with self.subTest(job=name, step=step["name"]):
+                    env = step.get("env", {})
+                    self.assertNotIn("CONTROLLER_HOST", env)
+                    self.assertIn("FLOWTREE_CONTROLLER_URL", env.get("CONTROLLER_URL", ""))
+                    self.assertIn("CF_ACCESS_CLIENT_ID", env)
+                    self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
+                                  env.get("CF_ACCESS_CLIENT_SECRET", ""))
+
     def test_every_job_serializes_under_its_own_concurrency_group(self):
         """Two rounds of one job racing is what the cadence gate cannot see."""
         groups = []
