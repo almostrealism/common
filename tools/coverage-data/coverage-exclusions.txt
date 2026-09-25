@@ -29,6 +29,21 @@
 org.almostrealism.generated
 org.almostrealism.generated.*
 
+# Emitted by protoc from studio/compose/src/main/proto/audio.proto
+# (java_package org.almostrealism.audio.api). The whole package is
+# generated message/builder code with no hand-written source under any
+# src/ tree, so no CPU-only unit test can raise its coverage — a test
+# aimed at it would only exercise protobuf's own generated accessors.
+# NOTE for a human maintainer: other protobuf java_package targets
+# (e.g. org.almostrealism.protobuf, org.almostrealism.persist.test) are
+# likewise pure protoc output and will each burn a coverage-qa round
+# before their cooldown expires. Audit every `option java_package` in the
+# repo's *.proto files and add the generated packages here — but confirm
+# each one shares no package name with hand-written code first (see the
+# engine/ml note below for why a blanket package exclusion can misfire).
+org.almostrealism.audio.api
+org.almostrealism.audio.api.*
+
 # ── base/hardware GPU / native packages ─────────────────────────────
 # Require a real Metal/OpenCL/CUDA device or a JNI bridge to a native
 # library. The CI Linux lane that runs the coverage-qa pipeline has no
