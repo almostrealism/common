@@ -29,6 +29,35 @@ class ValidationError(Exception):
 
 _WILDCARD_CHARS = frozenset("*?")
 
+# The halves of a single exact -Dtest selector: an (optionally
+# package-qualified, optionally nested with ``$``) Java class name and a Java
+# method name. Mirrors _DTEST_CLASS_NAME/_DTEST_METHOD_NAME in the manager's
+# execution_limits.py and DTEST_CLASS_NAME/DTEST_METHOD_NAME in the
+# controller's PostCompletionCommandValidator.java.
+_CLASS_NAME = re.compile(
+    r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*")
+_METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
+def _reject_inexact_name(value: str, pattern, field_description: str) -> None:
+    """Raises ValidationError unless ``value`` is an exact Java name matching
+    ``pattern``.
+
+    The wildcard and separator checks name specific Surefire constructs, but
+    Surefire's selector syntax is wider than those: ``!FooTest#bar`` negates
+    a pattern (running every other test) and ``%regex[Foo|Bar]#bar`` selects
+    by regular expression. Requiring an exact identifier closes every such
+    construct at once, including any the other checks do not enumerate.
+    """
+    if not pattern.fullmatch(value):
+        raise ValidationError(
+            "{} \"{}\" is not an exact Java name. Surefire reads other "
+            "characters as selector syntax (e.g. '!' negation or a "
+            "%regex[...] pattern) that can run more than one test in a "
+            "single -Dtest invocation. Name exactly one test class and "
+            "method.".format(field_description, value)
+        )
+
 
 def _reject_wildcard(value: str, field_description: str) -> None:
     """Raises ValidationError when ``value`` contains a Surefire wildcard.
@@ -192,6 +221,8 @@ def validate_start_test_run_arguments(
                     "must be non-empty exact names, e.g. "
                     "\"FooTest#testBar\"."
                 )
+            _reject_inexact_name(class_part, _CLASS_NAME, "test_classes class part")
+            _reject_inexact_name(method_part, _METHOD_NAME, "test_classes method part")
     for entry in test_methods:
         if not isinstance(entry, dict) or not entry.get("class") or not entry.get("method"):
             raise ValidationError(
@@ -203,6 +234,8 @@ def validate_start_test_run_arguments(
         _reject_selector_delimiter(entry["method"], "test_methods method field")
         _reject_wildcard(entry["class"], "test_methods class field")
         _reject_wildcard(entry["method"], "test_methods method field")
+        _reject_inexact_name(entry["class"], _CLASS_NAME, "test_methods class field")
+        _reject_inexact_name(entry["method"], _METHOD_NAME, "test_methods method field")
     return {
         "timeout_minutes": timeout_minutes,
         "test_classes": test_classes,

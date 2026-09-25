@@ -423,6 +423,33 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
             "mvn -pl engine/utils test -Dtest=FooTest#test?")
         self.assertTrue(violations)
 
+    def test_negated_dtest_selector_rejected(self):
+        # Surefire's "!" negation runs every test EXCEPT the named one.
+        self.assertTrue(validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=!FooTest#bar"))
+        self.assertTrue(validate_post_completion_command(
+            "mvn -pl engine/utils test '-Dtest=!FooTest#bar'"))
+
+    def test_regex_dtest_selector_rejected(self):
+        # A "%regex[...]" selector matches any number of classes; the "|"
+        # is quoted so the shell keeps it inside one argument.
+        self.assertTrue(validate_post_completion_command(
+            "mvn -pl engine/utils test '-Dtest=%regex[Foo|Bar]#bar'"))
+        self.assertTrue(validate_post_completion_command(
+            "mvn -pl engine/utils test '-Dtest=%regex[.*Test]'"))
+
+    def test_package_qualified_dtest_selector_accepted(self):
+        self.assertEqual([], validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=org.example.FooTest#testBar"))
+
+    def test_non_identifier_dtest_halves_rejected(self):
+        for selector in ("FooTest#!bar", "FooTest#%regex[b.*]",
+                         "org/example/FooTest#bar", "FooTest#bar[1]",
+                         "1FooTest#bar", "org..FooTest#bar", ".FooTest#bar"):
+            with self.subTest(selector=selector):
+                self.assertTrue(validate_post_completion_command(
+                    "mvn -pl engine/utils test '-Dtest={}'".format(selector)))
+
     def test_unittest_discover_rejected(self):
         violations = validate_post_completion_command("python3 -m unittest discover")
         self.assertTrue(violations, "unittest discover must be rejected")
@@ -770,6 +797,23 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar+qux to confirm the fix.")
         self.assertTrue(hits, "a -Dtest value using the '+' method separator must be flagged")
+
+    def test_surefire_negation_and_regex_dtest_mentions_flagged(self):
+        for prompt in ("Run mvn test -Dtest=!FooTest#bar to confirm.",
+                       "Run mvn test -Dtest=%regex[Foo|Bar]#bar to confirm.",
+                       "Run mvn test -Dtest=FooTest#test? to confirm."):
+            with self.subTest(prompt=prompt):
+                self.assertTrue(lint_prompt_for_broad_test_instructions(prompt))
+
+    def test_narrow_dtest_mention_followed_by_prose_punctuation_accepted(self):
+        # Quotes, closing brackets and sentence punctuation after an exact
+        # selector are prose, not part of the selector.
+        for prompt in ("Run `mvn test -pl engine/utils -Dtest=FooTest#bar`.",
+                       "Run mvn test -pl engine/utils -Dtest=FooTest#bar.",
+                       "(run mvn test -pl engine/utils -Dtest=FooTest#bar)",
+                       "Run \"mvn test -pl engine/utils -Dtest=FooTest#bar\";"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual([], lint_prompt_for_broad_test_instructions(prompt))
 
     def test_violation_includes_line_number(self):
         hits = lint_prompt_for_broad_test_instructions(

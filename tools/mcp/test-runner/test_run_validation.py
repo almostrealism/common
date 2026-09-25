@@ -89,6 +89,34 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
             _validate({"test_classes": ["FooTest#first+second"]})
         self.assertIn("+", ctx.exception.error)
 
+    def test_surefire_negation_and_regex_in_test_classes_rejected(self):
+        # "!" negates a selector (running every other test) and "%regex[...]"
+        # selects by pattern; neither is an exact Java name.
+        for selector in ("!FooTest#bar", "FooTest#!bar",
+                         "%regex[Foo|Bar]#bar", "FooTest#%regex[b.r]",
+                         "FooTest#bar[1]", "org/example/FooTest#bar"):
+            with self.subTest(selector=selector):
+                with self.assertRaises(ValidationError) as ctx:
+                    _validate({"test_classes": [selector]})
+                self.assertIn("not an exact Java name", ctx.exception.error)
+
+    def test_surefire_negation_and_regex_in_test_methods_rejected(self):
+        for entry in ({"class": "!FooTest", "method": "bar"},
+                      {"class": "FooTest", "method": "!bar"},
+                      {"class": "%regex[Foo|Bar]", "method": "bar"},
+                      {"class": "FooTest", "method": "%regex[b.r]"}):
+            with self.subTest(entry=entry):
+                with self.assertRaises(ValidationError) as ctx:
+                    _validate({"test_methods": [entry]})
+                self.assertIn("not an exact Java name", ctx.exception.error)
+
+    def test_package_qualified_selector_accepted(self):
+        result = _validate({"test_classes": ["org.example.FooTest#testBar"]})
+        self.assertEqual(["org.example.FooTest#testBar"], result["test_classes"])
+        result = _validate({"test_methods": [
+            {"class": "org.example.FooTest", "method": "testBar"}]})
+        self.assertEqual("testBar", result["test_methods"][0]["method"])
+
     def test_plus_method_separator_in_test_methods_method_field_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
             _validate({"test_methods": [{"class": "FooTest", "method": "first+second"}]})

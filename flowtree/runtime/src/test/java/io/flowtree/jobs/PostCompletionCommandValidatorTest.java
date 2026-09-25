@@ -612,6 +612,52 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violations.isEmpty());
 	}
 
+	/** Surefire's "!" negation runs every test EXCEPT the named one, so "!FooTest#bar" is the
+	 * broadest selector there is despite naming one entry with a "#" in it. */
+	@Test(timeout = 10000)
+	public void negatedDtestSelectorRejected() {
+		assertFalse(violationsFor("mvn -pl engine/utils test -Dtest=!FooTest#bar").isEmpty());
+		assertFalse(violationsFor("mvn -pl engine/utils test '-Dtest=!FooTest#bar'").isEmpty());
+	}
+
+	/** A Surefire "%regex[...]" selector matches any number of classes; the "|" inside it is
+	 * quoted so the shell passes it through as part of one argument. */
+	@Test(timeout = 10000)
+	public void regexDtestSelectorRejected() {
+		assertFalse(violationsFor(
+				"mvn -pl engine/utils test '-Dtest=%regex[Foo|Bar]#bar'").isEmpty());
+		assertFalse(violationsFor(
+				"mvn -pl engine/utils test '-Dtest=%regex[.*Test]'").isEmpty());
+	}
+
+	/** A package-qualified class name is still one exact test and must stay accepted. */
+	@Test(timeout = 10000)
+	public void packageQualifiedDtestSelectorAccepted() {
+		assertTrue(violationsFor(
+				"mvn -pl engine/utils test -Dtest=org.example.FooTest#testBar").isEmpty());
+	}
+
+	/** {@link PostCompletionCommandValidator#dtestIsNarrow} accepts only exact Java names in
+	 * each half, rejecting every other Surefire construct rather than an enumerated few. */
+	@Test(timeout = 10000)
+	public void dtestIsNarrowRequiresExactJavaNames() {
+		assertTrue(PostCompletionCommandValidator.dtestIsNarrow("FooTest#bar"));
+		assertTrue(PostCompletionCommandValidator.dtestIsNarrow("org.example.FooTest#bar_2"));
+		assertTrue(PostCompletionCommandValidator.dtestIsNarrow("FooTest#bar,"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("!FooTest#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("FooTest#!bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("%regex[Foo|Bar]#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("FooTest#%regex[b.*]"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("org/example/FooTest#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("FooTest#bar[1]"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("1FooTest#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("org..FooTest#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow(".FooTest#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("FooTest#bar()"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("#bar"));
+		assertFalse(PostCompletionCommandValidator.dtestIsNarrow("FooTest#"));
+	}
+
 	/** "python3 -m unittest discover" runs the whole test tree and must be rejected --
 	 * this is the CI documentation's own example of a forbidden broad run. */
 	@Test(timeout = 10000)

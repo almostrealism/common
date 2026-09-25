@@ -143,8 +143,13 @@ public class PromptTestInstructionLinter {
 	 * {@link PostCompletionCommandValidator#classifySkipValue(String)}. */
 	private static final Pattern TRAILING_PROSE_PUNCTUATION = Pattern.compile("[.,;:!?]+$");
 
-	/** Matches a {@code -Dtest=<value>} mention, capturing its value. */
-	private static final Pattern DTEST_VALUE = Pattern.compile("-Dtest=(\\S+)", Pattern.CASE_INSENSITIVE);
+	/** Matches a {@code -Dtest=<value>} mention, capturing its value without the quotation marks,
+	 * closing brackets, or sentence punctuation that prose puts after it -- so a mention written
+	 * as {@code `-Dtest=FooTest#bar`.} is still judged on {@code FooTest#bar}, now that
+	 * {@link PostCompletionCommandValidator#dtestIsNarrow} requires exact Java names. A trailing
+	 * {@code ?} or {@code !} is deliberately kept: both are Surefire selector syntax. */
+	private static final Pattern DTEST_VALUE = Pattern.compile(
+			"-Dtest=(\\S+?)[`'\".,;:)\\]]*(?=\\s|$)", Pattern.CASE_INSENSITIVE);
 
 	/** Matches a {@code python}/{@code python3 -m unittest} mention in a prompt fragment.
 	 * Interpreter option flags are allowed between the interpreter and {@code -m} -- mirroring

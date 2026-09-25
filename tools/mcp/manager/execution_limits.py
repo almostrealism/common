@@ -873,6 +873,14 @@ def _dtest_values(args: list) -> list:
     return [a[len("-Dtest="):] for a in args if a.startswith("-Dtest=")]
 
 
+# The halves of a narrow -Dtest selector: an (optionally package-qualified,
+# optionally nested with ``$``) Java class name and a Java method name. Mirrors
+# DTEST_CLASS_NAME/DTEST_METHOD_NAME in PostCompletionCommandValidator.java.
+_DTEST_CLASS_NAME = re.compile(
+    r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*")
+_DTEST_METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
 def _dtest_is_narrow(value: str) -> bool:
     """True if ``value`` is exactly one Class#method entry with non-empty,
     wildcard-free class and method names.
@@ -892,7 +900,10 @@ def _dtest_is_narrow(value: str) -> bool:
     repository's own CI uses) is rejected for the same reason -- it selects
     several methods in one invocation. A ``$VAR``/``${VAR}`` parameter
     expansion in either half is rejected too, since the shell resolves it to
-    an arbitrary (possibly broad) selector this validator cannot see.
+    an arbitrary (possibly broad) selector this validator cannot see. Rather
+    than enumerating every widening construct (``!`` negation and
+    ``%regex[...]`` patterns among them), each half must be an exact Java
+    name -- see ``_DTEST_CLASS_NAME``/``_DTEST_METHOD_NAME``.
     """
     entries = [e for e in value.split(",") if e]
     if len(entries) != 1 or entries[0].count("#") != 1:
@@ -900,9 +911,8 @@ def _dtest_is_narrow(value: str) -> bool:
     if _contains_parameter_expansion(entries[0]):
         return False
     class_name, _, method_name = entries[0].partition("#")
-    if not class_name or not method_name:
-        return False
-    return not any(c in "*?+" for c in class_name + method_name)
+    return bool(_DTEST_CLASS_NAME.fullmatch(class_name)
+                and _DTEST_METHOD_NAME.fullmatch(method_name))
 
 
 def _effective_skip_value(args: list, pattern) -> bool:
@@ -1319,7 +1329,11 @@ class _DTestBroadValueMatcher:
     a compiled pattern so it drops into ``_TEST_LINT_PATTERNS`` unchanged.
     """
 
-    _VALUE_PATTERN = re.compile(r"-Dtest=(\S+)", re.IGNORECASE)
+    # Quotation marks, closing brackets and sentence punctuation after the
+    # value are prose, not selector; a trailing ``?``/``!`` is kept because
+    # both are Surefire selector syntax.
+    _VALUE_PATTERN = re.compile(r"-Dtest=(\S+?)[`'\".,;:)\]]*(?=\s|$)",
+                                re.IGNORECASE)
 
     def search(self, line: str):
         matches = list(self._VALUE_PATTERN.finditer(line))

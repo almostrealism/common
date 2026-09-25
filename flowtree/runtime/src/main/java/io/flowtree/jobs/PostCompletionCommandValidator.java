@@ -112,6 +112,16 @@ public class PostCompletionCommandValidator {
 	/** Matches a Maven {@code -Dtest=...} argument, capturing its value. */
 	private static final Pattern DTEST_ARG = Pattern.compile("^-Dtest=(.+)$");
 
+	/** The class half of a narrow {@code -Dtest} selector: a Java class name, optionally
+	 * package-qualified or naming a nested class with {@code $}. Anything else -- a wildcard, the
+	 * {@code +} method-list separator, {@code !} negation, a {@code %regex[...]} pattern -- is a
+	 * Surefire construct that can select more than one test in one invocation. */
+	private static final Pattern DTEST_CLASS_NAME = Pattern.compile(
+			"[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
+
+	/** The method half of a narrow {@code -Dtest} selector: a single Java method name. */
+	private static final Pattern DTEST_METHOD_NAME = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
+
 	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
 	 * {@code mvn} plus the Maven Wrapper scripts ({@code ./mvnw}, {@code ./mvnw.cmd}) and the
 	 * standalone Windows batch launcher. Without these, {@code ./mvnw.cmd test -pl engine/utils}
@@ -901,6 +911,11 @@ public class PostCompletionCommandValidator {
 	 * {@code Foo*#bar} can still select and run several methods/classes in one invocation despite
 	 * naming exactly one comma-separated entry with a {@code #} in it.</p>
 	 *
+	 * <p>Rather than enumerating the Surefire constructs that widen a selector -- wildcards, the
+	 * {@code +} method-list separator, {@code !} negation, {@code %regex[...]} patterns, and any
+	 * later addition -- each half must be an exact Java name: {@link #DTEST_CLASS_NAME} for the
+	 * (optionally package-qualified) class and {@link #DTEST_METHOD_NAME} for the method.</p>
+	 *
 	 * <p>Package-private (not private) and static -- it reads no instance state -- so
 	 * {@link PromptTestInstructionLinter} can reuse the identical rule instead of duplicating
 	 * it for {@code -Dtest=} values found in prompt text.</p>
@@ -925,17 +940,8 @@ public class PostCompletionCommandValidator {
 		}
 		String className = entry.substring(0, hash);
 		String methodName = entry.substring(hash + 1);
-		return !className.isEmpty() && !methodName.isEmpty()
-				&& !containsSelectorSeparator(className) && !containsSelectorSeparator(methodName);
-	}
-
-	/** True when a {@code -Dtest} class or method half contains a Surefire construct that can
-	 * select more than one test in a single invocation: a {@code *}/{@code ?} wildcard, or the
-	 * {@code +} method-list separator ({@code Class#method1+method2}, the form the repository's
-	 * own CI uses at {@code .github/workflows/analysis.yaml}). Rejecting {@code +} alongside the
-	 * wildcards keeps {@code FooTest#first+second} from passing as one narrow selector. */
-	private static boolean containsSelectorSeparator(String half) {
-		return half.indexOf('*') >= 0 || half.indexOf('?') >= 0 || half.indexOf('+') >= 0;
+		return DTEST_CLASS_NAME.matcher(className).matches()
+				&& DTEST_METHOD_NAME.matcher(methodName).matches();
 	}
 
 	/**

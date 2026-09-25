@@ -166,6 +166,25 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 				"Run mvn test -Dtest=FooTest#bar+qux to confirm.").isEmpty());
 	}
 
+	/** Surefire's "!" negation and "%regex[...]" selectors can run many tests despite naming one
+	 * "#"-bearing entry, so a prompt mentioning either must be flagged. */
+	@Test(timeout = 10000)
+	public void surefireNegationAndRegexDtestMentionsRejected() {
+		assertFalse(violationsFor("Run mvn test -Dtest=!FooTest#bar to confirm.").isEmpty());
+		assertFalse(violationsFor("Run mvn test -Dtest=%regex[Foo|Bar]#bar to confirm.").isEmpty());
+		assertFalse(violationsFor("Run mvn test -Dtest=FooTest#test? to confirm.").isEmpty());
+	}
+
+	/** Quotation marks and sentence punctuation after an exact selector are prose, not part of
+	 * the selector, and must not make a narrow mention read as broad. */
+	@Test(timeout = 10000)
+	public void narrowDtestMentionFollowedByProsePunctuationAccepted() {
+		assertTrue(violationsFor("Run `mvn test -pl engine/utils -Dtest=FooTest#bar`.").isEmpty());
+		assertTrue(violationsFor("Run mvn test -pl engine/utils -Dtest=FooTest#bar.").isEmpty());
+		assertTrue(violationsFor("(run mvn test -pl engine/utils -Dtest=FooTest#bar)").isEmpty());
+		assertTrue(violationsFor("Run \"mvn test -pl engine/utils -Dtest=FooTest#bar\";").isEmpty());
+	}
+
 	/** "python3 -m unittest discover" is forbidden. */
 	@Test(timeout = 10000)
 	public void unittestDiscoverPhraseRejected() {
