@@ -38,5 +38,19 @@
  *       even after their original arguments have been destroyed</li>
  *   <li>{@link org.almostrealism.hardware.mem.ByteBufferTransfer} - precision-aware buffer-to-buffer transfer used by system-boundary ingest</li>
  * </ul>
+ *
+ * <p>The host-accessible {@link org.almostrealism.hardware.mem.RAM} implementations are not here:
+ * they live in {@link org.almostrealism.nio}, which holds {@code NativeBuffer} (a direct
+ * {@link java.nio.ByteBuffer}, private or shared-memory backed), {@code NativeMemory} (a JNI
+ * {@code malloc} pointer) and the provider that manages both. Look there before concluding that
+ * a buffer cannot back a collection.</p>
+ *
+ * <p>Two routes bring values from outside the process into device memory, and they are not
+ * interchangeable. <b>Staging</b> allocates from a provider and copies in, converting precision
+ * through {@link org.almostrealism.hardware.mem.ByteBufferTransfer}. <b>Reference</b> implements
+ * {@link io.almostrealism.code.Memory} over the source so nothing is materialized on the host and
+ * nothing reaches a device until a kernel first requires it; migration keys off
+ * {@link org.almostrealism.hardware.MemoryData#isReadOnly()} and is not specific to any one
+ * provider. See the hardware module README for which to choose.</p>
  */
 package org.almostrealism.hardware.mem;

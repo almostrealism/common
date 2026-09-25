@@ -22,30 +22,41 @@ import org.almostrealism.hardware.HardwareException;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 
 /**
  * {@link Memory} implementation backed by a disk file for external process data exchange.
  *
- * <p>Represents a double array stored in a binary file. Data is lazily loaded into RAM
- * when first accessed and written back to disk when modified. Used by {@link ExternalInstructionSet}
- * to transfer data to/from external processes.</p>
+ * <p>The file <em>is</em> the memory: values are read and written through a shared mapping of it,
+ * so nothing is copied onto the Java heap, and a process at the other end of the exchange sees a
+ * write without anything being flushed on its behalf. Used by {@link ExternalInstructionSet} to
+ * transfer data to and from external processes.</p>
+ *
+ * <p>Values are stored as big-endian FP64, the format
+ * {@link io.almostrealism.code.Memory#getBytes} and
+ * {@link org.almostrealism.hardware.MemoryData#read(java.io.InputStream)} write, so a file this
+ * class maps and a file written by those are the same file.</p>
  *
  * <h2>Lifecycle</h2>
  *
  * <ol>
- *   <li><strong>Allocation:</strong> File location assigned, no data in memory</li>
- *   <li><strong>Read:</strong> File loaded into memory array on first access</li>
- *   <li><strong>Write:</strong> Memory array written to file when modified</li>
- *   <li><strong>Restore:</strong> Memory array discarded, file remains</li>
- *   <li><strong>Destroy:</strong> File deleted, memory released</li>
+ *   <li><strong>Allocation:</strong> File location assigned, nothing mapped yet</li>
+ *   <li><strong>Read:</strong> File mapped on first access, and stays mapped</li>
+ *   <li><strong>Write:</strong> Values go into the mapping, so a write is already in the file</li>
+ *   <li><strong>Restore:</strong> Mapping released, file remains with its values</li>
+ *   <li><strong>Destroy:</strong> Mapping released, file deleted</li>
  * </ol>
  *
  * <h2>Memory States</h2>
  *
  * <ul>
- *   <li><strong>Unloaded:</strong> {@code data == null}, file exists on disk</li>
- *   <li><strong>Loaded:</strong> {@code data != null}, in-memory array populated</li>
- *   <li><strong>Destroyed:</strong> {@code data == null && location == null}, file deleted</li>
+ *   <li><strong>Unloaded:</strong> nothing mapped, file exists on disk</li>
+ *   <li><strong>Loaded:</strong> mapped, values served straight from the file</li>
+ *   <li><strong>Destroyed:</strong> {@code location == null}, file deleted</li>
  * </ul>
  *
  * <h2>Usage Pattern</h2>
@@ -53,14 +64,14 @@ import java.io.IOException;
  * <pre>{@code
  * LocalExternalMemory mem = provider.allocate(file, 1000);
  *
- * // Lazy load from file
- * mem.read();  // File to memory array
+ * // Map the file (also done on first access)
+ * mem.read();
  *
- * // Modify data
- * mem.data[0] = 42.0;
+ * // Modify data; the write lands in the file
+ * provider.setMem(mem, 0, new double[] { 42.0 }, 0, 1);
  *
- * // Write back to file
- * mem.write();  // Memory array to file
+ * // Flush the mapping, for durability rather than visibility
+ * mem.write();
  *
  * // Free memory but keep file
  * mem.restore();
@@ -74,8 +85,11 @@ public class LocalExternalMemory implements Memory {
 	private LocalExternalMemoryProvider provider;
 	/** File on disk backing this memory. */
 	protected File location;
-	/** In-memory double array; null until lazily loaded from the backing file. */
-	protected double data[];
+	/** The mapping the values live in; null until first access, and again once released. */
+	private MappedByteBuffer mapping;
+
+	/** Double view of {@link #mapping}; null whenever the mapping is. */
+	private DoubleBuffer values;
 	/** Number of elements in this memory block. */
 	private int len;
 
@@ -102,16 +116,53 @@ public class LocalExternalMemory implements Memory {
 	 * @throws HardwareException if file read fails
 	 */
 	public void read() {
-		if (data != null) return;
+		values();
+	}
 
-		data = new double[len];
+	/**
+	 * Returns the values, mapping the file on first use.
+	 *
+	 * <p>The mapping is shared, so a value written through it is in the file and a value the process
+	 * at the other end of the exchange wrote is readable here, neither direction needing a copy. The
+	 * file is created, and extended to hold this memory's values, if it does not already.</p>
+	 *
+	 * @return the values in the file
+	 * @throws HardwareException if the file cannot be mapped
+	 */
+	private DoubleBuffer values() {
+		if (values != null) return values;
 
-		try {
-			LocalExternalMemoryProvider.readBinary(location, data);
-			location.delete();
+		try (FileChannel channel = FileChannel.open(location.toPath(),
+				StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+			mapping = channel.map(FileChannel.MapMode.READ_WRITE, 0,
+					(long) len * provider.getNumberSize());
+			mapping.order(ByteOrder.BIG_ENDIAN);
+			values = mapping.asDoubleBuffer();
 		} catch (IOException e) {
-			throw new HardwareException("Unable to retrieve external memory", e);
+			throw new HardwareException("Unable to map external memory " + location, e);
 		}
+
+		return values;
+	}
+
+	/**
+	 * Reads the value at the given position from the file.
+	 *
+	 * @param index the value position
+	 * @return the value at that position
+	 */
+	protected double valueAt(int index) {
+		return values().get(index);
+	}
+
+	/**
+	 * Writes the value at the given position into the file.
+	 *
+	 * @param index the value position
+	 * @param value the value to store
+	 */
+	protected void setValueAt(int index, double value) {
+		values().put(index, value);
 	}
 
 	/**
@@ -123,13 +174,8 @@ public class LocalExternalMemory implements Memory {
 	 * @throws HardwareException if file write fails
 	 */
 	public void write() {
-		if (data == null) return;
-
-		try {
-			LocalExternalMemoryProvider.writeBinary(location, this, len);
-		} catch (IOException e) {
-			throw new HardwareException("Unable to store external memory", e);
-		}
+		MappedByteBuffer current = mapping;
+		if (current != null) current.force();
 	}
 
 	/**
@@ -139,7 +185,8 @@ public class LocalExternalMemory implements Memory {
 	 * The file remains on disk and can be re-read later with {@link #read()}.</p>
 	 */
 	public void restore() {
-		this.data = null;
+		this.values = null;
+		this.mapping = null;
 	}
 
 	/**
@@ -157,7 +204,8 @@ public class LocalExternalMemory implements Memory {
 	 * After calling this method, the memory cannot be used again.</p>
 	 */
 	public void destroy() {
-		this.data = null;
+		this.values = null;
+		this.mapping = null;
 		this.location.delete();
 		this.location = null;
 	}
