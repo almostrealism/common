@@ -438,6 +438,23 @@ def test_dump_reference_activations_keeps_legacy_bin_on_reserved_prefix(tmp_path
         assert legacy.exists(), "legacy dump must survive a reserved-prefix rejection"
 
 
+def test_dump_reference_activations_ignores_a_traversing_stage_key(tmp_path):
+    """A stage name is caller-supplied, so the legacy `<stage>.bin` cleanup must not let
+    a name containing `..` (or an absolute path) delete a file outside out_dir. Such a
+    name resolves outside the dump directory and is skipped rather than removed."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    # A `.bin` file OUTSIDE the dump directory that a traversing stage key would map to:
+    # os.path.join(out_dir, "../sentinel.bin") resolves to tmp_path/sentinel.bin.
+    outside = tmp_path / "sentinel.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(outside))
+
+    core.dump_reference_activations(
+        {"../sentinel": np.arange(4, dtype=np.float32)}, str(out_dir))
+
+    assert outside.exists(), "cleanup must not delete a file outside the dump directory"
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently

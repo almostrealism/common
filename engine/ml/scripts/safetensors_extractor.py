@@ -571,8 +571,15 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     _validate_shard_prefix(shard_prefix)
     _require_collections()
 
+    # A stage name is caller-supplied, so joining it into a filesystem path can
+    # escape out_dir (``../other.bin``, an absolute path). Only remove a legacy
+    # file that resolves to a plain file sitting directly inside out_dir, so this
+    # cleanup can never delete a file outside the dump directory it owns.
+    out_dir_real = os.path.realpath(out_dir)
     for name in stages:
         legacy = os.path.join(out_dir, name + LEGACY_REFERENCE_SUFFIX)
+        if os.path.dirname(os.path.realpath(legacy)) != out_dir_real:
+            continue
         if os.path.isfile(legacy):
             os.remove(legacy)
 
