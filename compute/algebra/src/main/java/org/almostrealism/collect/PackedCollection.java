@@ -1231,11 +1231,13 @@ public class PackedCollection extends MemoryDataAdapter
 	// TODO  blocked by block-interface-bypass.py flagging any new member returning this class.
 
 	/**
-	 * Loads all collections serialized in the given file.
+	 * Loads all collections serialized in the given file. Collections are read
+	 * lazily as the returned {@link Iterable} is traversed; any I/O error
+	 * encountered while opening or reading the file is wrapped in a
+	 * {@link RuntimeException}.
 	 *
 	 * @param src the file to load collections from
 	 * @return an iterable of the deserialized collections
-	 * @throws IOException if an I/O error occurs while reading the file
 	 */
 	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {
