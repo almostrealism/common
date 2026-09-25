@@ -136,8 +136,8 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Load Moonbeam protobuf weights, build a {@link GRUDecoder}, and run a
-	 * full 7-step decode.
+	 * Load a {@link GRUDecoder} from Moonbeam protobuf weights with
+	 * {@link GRUDecoder#load}, and run a full 7-step decode.
 	 *
 	 * <p>Skipped when {@value WEIGHTS_DIR} is not present.</p>
 	 */
@@ -150,30 +150,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
-		int numLayers = config.decoderLayers;
-		int dh = config.decoderHiddenSize;
-
-		int[] inputSizes = new int[numLayers];
-		PackedCollection[] weightIh = new PackedCollection[numLayers];
-		PackedCollection[] weightHh = new PackedCollection[numLayers];
-		PackedCollection[] biasIh = new PackedCollection[numLayers];
-		PackedCollection[] biasHh = new PackedCollection[numLayers];
-		for (int l = 0; l < numLayers; l++) {
-			inputSizes[l] = dh;
-			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
-			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
-			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
-			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
-		}
-
-		PackedCollection summaryW = stateDict.get("summary_projection.weight");
-		PackedCollection summaryB = stateDict.get("summary_projection.bias");
-		PackedCollection lmW = stateDict.get("lm_head.weight");
-		PackedCollection lmB = stateDict.get("lm_head.bias");
-		PackedCollection embedTable = stateDict.get("decoder_embedding.weight");
-
-		GRUDecoder decoder = new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
-				summaryW, summaryB, lmW, lmB, embedTable);
+		GRUDecoder decoder = GRUDecoder.load(stateDict, config);
 
 		// Synthetic transformer hidden state (all 0.1)
 		PackedCollection transformerHidden = new PackedCollection(
