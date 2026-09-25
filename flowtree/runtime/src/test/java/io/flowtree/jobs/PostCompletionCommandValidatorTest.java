@@ -703,11 +703,14 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("cmd='mvn test -pl engine/utils -Dtest=FooTest#testBar'; $cmd").isEmpty());
 	}
 
-	/** A bare "$VAR" reference to a variable never assigned in the same command text is left
-	 * unresolved rather than crashing or being misread as a command name. */
+	/** A bare "$VAR" in command position, never assigned in the same command text, cannot be
+	 * resolved statically -- the job environment could set it to a broad command -- so it fails
+	 * closed (and must not crash while doing so). */
 	@Test(timeout = 10000)
-	public void unresolvedVariableReferenceDoesNotThrow() {
-		assertTrue(violationsFor("$undefined").isEmpty());
+	public void unresolvedCommandPositionVariableFailsClosed() {
+		List<String> violations = violationsFor("$undefined");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("variable reference"));
 	}
 
 	/** A command substitution constructing the Maven phase itself (not the executable) has no
@@ -800,5 +803,63 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void parameterExpansionInNonTestPropertyValueAccepted() {
 		assertTrue(violationsFor("mvn install -DskipTests -DAR_HARDWARE_LIBS=$TEMP/ar_libs").isEmpty());
+	}
+
+	/** A later -DskipTests whose value is a command substitution is a dynamic override the shell
+	 * expands (here to false), so an earlier literal -DskipTests=true must not exempt the run. */
+	@Test(timeout = 10000)
+	public void dynamicSkipValueDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor("mvn test -DskipTests=true -DskipTests=$(printf false) -pl engine/utils").isEmpty());
+	}
+
+	/** A -DskipTests value built from a parameter expansion is unknown to the validator, so it
+	 * must fail closed rather than accept the earlier literal true as the effective skip value. */
+	@Test(timeout = 10000)
+	public void parameterExpansionSkipValueDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor("mvn test -DskipTests=true -DskipTests=$SKIP -pl engine/utils").isEmpty());
+	}
+
+	/** A single dynamic -DskipTests value cannot be confirmed to skip, so a bare test phase with
+	 * such a value is still rejected -- the shell may expand it to false and run every test. */
+	@Test(timeout = 10000)
+	public void loneDynamicSkipValueDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor("mvn test -DskipTests=$SKIP -pl engine/utils").isEmpty());
+	}
+
+	/** A literal -DskipTests=true build is still accepted -- the dynamic-value fail-closed rule
+	 * must not regress the ordinary build-only case. */
+	@Test(timeout = 10000)
+	public void literalSkipTrueBuildStillAccepted() {
+		assertTrue(violationsFor("mvn clean install -DskipTests=true").isEmpty());
+		assertTrue(violationsFor("mvn clean install -DskipTests").isEmpty());
+	}
+
+	/** A command whose executable is a bare "$VAR" reference is unresolvable: the job environment
+	 * could set it to a broad command, so it must be rejected rather than waved through. */
+	@Test(timeout = 10000)
+	public void unresolvedCommandPositionVariableRejected() {
+		List<String> violations = violationsFor("$MAVEN test -pl engine/utils");
+		assertFalse(violations.isEmpty());
+		assertTrue(violations.get(0).contains("variable reference"));
+	}
+
+	/** An "${VAR}"-braced command position under an "env" wrapper is rejected the same way. */
+	@Test(timeout = 10000)
+	public void unresolvedBracedCommandPositionVariableRejected() {
+		assertFalse(violationsFor("env ${MAVEN} test -pl engine/utils").isEmpty());
+	}
+
+	/** A "bash -c" whose script is a bare "$CMD" variable cannot be inspected: the environment
+	 * could set it to a broad command, so the dynamic script must be rejected. */
+	@Test(timeout = 10000)
+	public void dynamicShellScriptVariableRejected() {
+		assertFalse(violationsFor("bash -c \"$CMD\"").isEmpty());
+	}
+
+	/** A command position that merely STARTS with a variable but is a concrete path (e.g.
+	 * "$JAVA_HOME/bin/java") is not a bare reference and must remain accepted. */
+	@Test(timeout = 10000)
+	public void variableRootedPathCommandAccepted() {
+		assertTrue(violationsFor("$JAVA_HOME/bin/java -jar build/foo.jar").isEmpty());
 	}
 }

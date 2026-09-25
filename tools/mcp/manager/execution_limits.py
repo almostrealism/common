@@ -40,11 +40,45 @@ _SHELL_OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}"}
 # value when present (a bare flag with no "=value" means true). Used with
 # re.match against a single token, not a substring search, so a plain
 # occurrence never wrongly reads "-DskipTests=false" as bare-true.
-_SKIP_TESTS_PROP_PATTERN = re.compile(r"^-DskipTests(?:=(true|false))?$", re.IGNORECASE)
+# The value group captures the WHOLE assigned value (not just a literal
+# true/false), so a dynamic value such as "-DskipTests=$(printf false)" or
+# "-DskipTests=$SKIP" is recognized as an occurrence of the property rather
+# than leaving the "-DskipTests" prefix to read as a bare (true) flag while
+# the shell-supplied value is ignored. _classify_skip_value then treats any
+# non-literal value as non-skipping (fail closed), since the validator cannot
+# see what the shell expands it to. The value may contain spaces (a command
+# substitution like "$(printf false)" is a single masked token), so ".*" is
+# used rather than "\\S*".
+_SKIP_TESTS_PROP_PATTERN = re.compile(r"^-DskipTests(?:=(.*))?$", re.IGNORECASE)
 
 # Same shape as _SKIP_TESTS_PROP_PATTERN for the maven.test.skip property.
 _MAVEN_TEST_SKIP_PROP_PATTERN = re.compile(
-    r"^-Dmaven\.test\.skip(?:=(true|false))?$", re.IGNORECASE)
+    r"^-Dmaven\.test\.skip(?:=(.*))?$", re.IGNORECASE)
+
+# Leading literal true/false of a skip value, tolerating trailing prose
+# punctuation (e.g. "true." at the end of a sentence) via the word boundary.
+_SKIP_LITERAL_PATTERN = re.compile(r"(true|false)\b", re.IGNORECASE)
+
+
+def _classify_skip_value(explicit) -> bool:
+    """Classify the captured value of a Maven skip property into whether it
+    actually skips tests.
+
+    ``None`` (a bare flag with no ``=value``) means true. A literal
+    ``true``/``false`` maps to its boolean. Any other value -- an empty
+    string (Maven parses ``-DskipTests=`` as false), a command substitution
+    (``$(...)``), or a parameter expansion (``$VAR``) -- is treated as NOT
+    skipping: the validator cannot resolve what the shell expands it to, and
+    accepting it as a skip would let ``-DskipTests=$(printf false)`` (which
+    the shell turns into ``-DskipTests=false``, running every test) pass as
+    build-only. Fail closed.
+    """
+    if explicit is None:
+        return True
+    match = _SKIP_LITERAL_PATTERN.match(explicit.strip())
+    if match:
+        return match.group(1).lower() == "true"
+    return False
 
 # Maven lifecycle phases that execute tests unless skipped. "install" and
 # "verify" are the two the incident used; "package" and "deploy" sit at or
@@ -675,6 +709,16 @@ def _segment_violations(tokens: list) -> list:
             "resolve statically. Do not construct the executed command "
             "name via a substitution.".format(" ".join(tokens))
         ]
+    if unwrapped and _VARIABLE_REFERENCE_PATTERN.match(unwrapped[0]):
+        return [
+            "Command position in \"{}\" is a bare shell variable reference "
+            "($VAR or ${{VAR}}) that this validator cannot resolve "
+            "statically -- the job environment could set it to a broad "
+            "command such as \"mvn test -pl engine/utils\" or a whole-suite "
+            "runner. Name the executable literally, or assign the command "
+            "text in the same command so it can be inspected.".format(
+                " ".join(tokens))
+        ]
     script = _shell_dash_c_script(unwrapped)
     if script is None:
         script = _eval_script(unwrapped)
@@ -809,14 +853,16 @@ def _effective_skip_value(args: list, pattern) -> bool:
     -DskipTests=false`` does NOT skip tests even though an earlier flag says
     otherwise -- returning as soon as any matching flag is seen, regardless
     of order, would wrongly accept that command as build-only. A bare flag
-    with no ``=value`` means true.
+    with no ``=value`` means true. A dynamic last value (command
+    substitution or parameter expansion) is classified as non-skipping by
+    ``_classify_skip_value``, so ``-DskipTests=true -DskipTests=$(printf
+    false)`` is not accepted as build-only.
     """
     value = None
     for arg in args:
         match = pattern.match(arg)
         if match:
-            explicit = match.group(1)
-            value = explicit is None or explicit.lower() == "true"
+            value = _classify_skip_value(match.group(1))
     return value
 
 
@@ -1059,8 +1105,7 @@ def _effective_skip_value_in_text(fragment: str, pattern) -> bool:
     """
     value = None
     for match in pattern.finditer(fragment):
-        explicit = match.group(1)
-        value = explicit is None or explicit.lower() == "true"
+        value = _classify_skip_value(match.group(1))
     return value
 
 
@@ -1113,17 +1158,20 @@ class _MvnTestSegmentMatcher:
         r"\b(?:" + "|".join(re.escape(p) for p in sorted(_MVN_TEST_RUNNING_PHASES)) + r")\b",
         re.IGNORECASE)
     _SELECTOR_PATTERN = re.compile(r"-Dtest=\S+#\S+", re.IGNORECASE)
-    # Captures an explicit true/false value when present (a bare mention
-    # with no "=value" means true) so `_effective_skip_value_in_text` can
-    # resolve repeated mentions in the same fragment to the LAST one's
-    # value, matching real Maven -D semantics -- a single regex that only
-    # checks whether "=true" (or a bare mention) appears ANYWHERE in the
-    # fragment would wrongly exempt "mvn verify -DskipTests=true
-    # -DskipTests=false", even though Maven's last-value-wins semantics
-    # mean tests still run.
-    _SKIP_TESTS_TEXT_PATTERN = re.compile(r"-DskipTests(?:=(true|false)\b)?", re.IGNORECASE)
+    # Captures the assigned value token when present (a bare mention with no
+    # "=value" means true) so `_effective_skip_value_in_text` can resolve
+    # repeated mentions in the same fragment to the LAST one's value,
+    # matching real Maven -D semantics -- a single regex that only checks
+    # whether "=true" (or a bare mention) appears ANYWHERE in the fragment
+    # would wrongly exempt "mvn verify -DskipTests=true -DskipTests=false",
+    # even though Maven's last-value-wins semantics mean tests still run. The
+    # value is captured as a non-space run (not just true|false) so a dynamic
+    # value like "-DskipTests=$(printf false)" or "-DskipTests=$SKIP" is seen
+    # as an occurrence and classified as non-skipping by _classify_skip_value
+    # rather than leaving the bare "-DskipTests" prefix to read as true.
+    _SKIP_TESTS_TEXT_PATTERN = re.compile(r"-DskipTests(?:=(\S+))?", re.IGNORECASE)
     _MAVEN_TEST_SKIP_TEXT_PATTERN = re.compile(
-        r"-Dmaven\.test\.skip(?:=(true|false)\b)?", re.IGNORECASE)
+        r"-Dmaven\.test\.skip(?:=(\S+))?", re.IGNORECASE)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):

@@ -84,18 +84,23 @@ public class PromptTestInstructionLinter {
 	private static final Pattern SELECTOR_PATTERN = Pattern.compile(
 			"-Dtest=\\S+#\\S+", Pattern.CASE_INSENSITIVE);
 
-	/** Matches a whole {@code -DskipTests}/{@code -Dmaven.test.skip} mention, capturing an
-	 * explicit {@code true}/{@code false} value when present -- a bare flag with no
-	 * {@code =value} means {@code true}. Scanned with {@link Matcher#find()} across free prose
-	 * rather than {@link Matcher#matches()} against a single token, since a prompt line is not
-	 * pre-tokenized; {@link #effectiveSkipValue} still resolves multiple mentions in the same
-	 * fragment to the LAST one's value, matching real Maven {@code -D} semantics. */
+	/** Matches a whole {@code -DskipTests}/{@code -Dmaven.test.skip} mention, capturing the
+	 * assigned value token when present -- a bare flag with no {@code =value} means {@code true}.
+	 * The value is captured as a non-space run (not just {@code true}/{@code false}) so a dynamic
+	 * value like {@code -DskipTests=$(printf false)} or {@code -DskipTests=$SKIP} is seen as an
+	 * occurrence and classified as non-skipping by
+	 * {@link PostCompletionCommandValidator#classifySkipValue(String)} rather than leaving
+	 * the bare {@code -DskipTests} prefix to read as true. Scanned with {@link Matcher#find()}
+	 * across free prose rather than {@link Matcher#matches()} against a single token, since a
+	 * prompt line is not pre-tokenized; {@link #effectiveSkipValue} still resolves multiple
+	 * mentions in the same fragment to the LAST one's value, matching real Maven {@code -D}
+	 * semantics. */
 	private static final Pattern SKIP_TESTS_MENTION = Pattern.compile(
-			"-DskipTests(?:=(true|false)\\b)?", Pattern.CASE_INSENSITIVE);
+			"-DskipTests(?:=(\\S+))?", Pattern.CASE_INSENSITIVE);
 
 	/** Same shape as {@link #SKIP_TESTS_MENTION} for the {@code maven.test.skip} property. */
 	private static final Pattern MAVEN_TEST_SKIP_MENTION = Pattern.compile(
-			"-Dmaven\\.test\\.skip(?:=(true|false)\\b)?", Pattern.CASE_INSENSITIVE);
+			"-Dmaven\\.test\\.skip(?:=(\\S+))?", Pattern.CASE_INSENSITIVE);
 
 	/** Matches a {@code -Dtest=<value>} mention, capturing its value. */
 	private static final Pattern DTEST_VALUE = Pattern.compile("-Dtest=(\\S+)", Pattern.CASE_INSENSITIVE);
@@ -208,13 +213,17 @@ public class PromptTestInstructionLinter {
 	 * taking the LAST occurrence of {@code pattern} in {@code fragment} -- mirroring
 	 * {@code PostCompletionCommandValidator}'s last-{@code -D}-wins Maven semantics for an
 	 * already-tokenized args list, but scanned across prose text instead. Returns {@code null}
-	 * when the property is never mentioned. */
+	 * when the property is never mentioned. A dynamic last value (command substitution or
+	 * parameter expansion) is classified as non-skipping, so a prompt such as
+	 * {@code mvn verify -DskipTests=true -DskipTests=$(printf false)} is not treated as
+	 * build-only. Delegates value classification to
+	 * {@link PostCompletionCommandValidator#classifySkipValue(String)} so the prompt linter and
+	 * the command validator apply an identical rule. */
 	private static Boolean effectiveSkipValue(String fragment, Pattern pattern) {
 		Boolean value = null;
 		Matcher matcher = pattern.matcher(fragment);
 		while (matcher.find()) {
-			String explicit = matcher.group(1);
-			value = explicit == null || "true".equalsIgnoreCase(explicit);
+			value = PostCompletionCommandValidator.classifySkipValue(matcher.group(1));
 		}
 		return value;
 	}

@@ -192,6 +192,30 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 				"Add a pytest regression test and use explicit pytest node ids.").isEmpty());
 	}
 
+	/** A prompt whose last -DskipTests value is a command substitution the shell expands to
+	 * false must not be exempted by an earlier literal -DskipTests=true mention. */
+	@Test(timeout = 10000)
+	public void dynamicSkipValueInPromptDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor(
+				"Run mvn verify -DskipTests=true -DskipTests=$(printf false) to finish.").isEmpty());
+	}
+
+	/** A -DskipTests value built from a parameter expansion is unknown, so the prompt must fail
+	 * closed rather than read the earlier literal true as the effective skip value. */
+	@Test(timeout = 10000)
+	public void parameterExpansionSkipValueInPromptDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor(
+				"Run mvn verify -DskipTests=true -DskipTests=$SKIP to finish.").isEmpty());
+	}
+
+	/** A plain literal -DskipTests build instruction (even with trailing sentence punctuation)
+	 * is still accepted -- the dynamic-value rule must not regress the ordinary build case. */
+	@Test(timeout = 10000)
+	public void literalSkipTrueBuildInstructionStillAccepted() {
+		assertTrue(violationsFor("Run mvn verify -DskipTests=true.").isEmpty());
+		assertTrue(violationsFor("Run mvn install -DskipTests before finishing.").isEmpty());
+	}
+
 	/** The rejection message states there is no bypass and includes the line's snippet. */
 	@Test(timeout = 10000)
 	public void formatRejectionListsEachViolation() {

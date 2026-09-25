@@ -474,8 +474,13 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command(
             "cmd='mvn test -pl engine/utils -Dtest=FooTest#testBar'; $cmd"))
 
-    def test_unresolved_variable_reference_does_not_raise(self):
-        self.assertEqual([], validate_post_completion_command("$undefined"))
+    def test_unresolved_command_position_variable_rejected(self):
+        # A bare "$VAR" in command position cannot be resolved statically; the
+        # job environment could set it to a broad command, so it fails closed
+        # (and must not raise while doing so).
+        violations = validate_post_completion_command("$undefined")
+        self.assertTrue(violations, "a bare command-position variable must be rejected")
+        self.assertIn("variable reference", violations[0])
 
     def test_surefire_plus_method_separator_dtest_selector_rejected(self):
         # Surefire treats "+" as a method-list separator, so
@@ -515,6 +520,49 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         # or a -Dtest selector) is benign and must not be rejected.
         self.assertEqual([], validate_post_completion_command(
             "mvn install -DskipTests -DAR_HARDWARE_LIBS=$TEMP/ar_libs"))
+
+    def test_dynamic_skip_value_does_not_exempt_broad_maven(self):
+        # A later -DskipTests whose value is a command substitution is a
+        # dynamic override the shell expands (here to false), so an earlier
+        # literal -DskipTests=true must not exempt the broad run.
+        violations = validate_post_completion_command(
+            "mvn test -DskipTests=true -DskipTests=$(printf false) -pl engine/utils")
+        self.assertTrue(violations, "a dynamic skip override must not be read as build-only")
+
+    def test_parameter_expansion_skip_value_does_not_exempt_broad_maven(self):
+        # A -DskipTests value built from a parameter expansion is unknown to
+        # the validator, so it fails closed rather than accepting the earlier
+        # literal true as the effective skip value.
+        violations = validate_post_completion_command(
+            "mvn test -DskipTests=true -DskipTests=$SKIP -pl engine/utils")
+        self.assertTrue(violations, "a parameter-expansion skip override must not be read as build-only")
+
+    def test_lone_dynamic_skip_value_does_not_exempt_broad_maven(self):
+        # A single dynamic -DskipTests value cannot be confirmed to skip, so a
+        # bare test phase carrying only such a value is still rejected.
+        violations = validate_post_completion_command(
+            "mvn test -DskipTests=$SKIP -pl engine/utils")
+        self.assertTrue(violations, "a lone dynamic skip value must not exempt a broad mvn test")
+
+    def test_literal_skip_true_build_still_accepted(self):
+        # The dynamic-value fail-closed rule must not regress ordinary
+        # literal build-only commands.
+        self.assertEqual([], validate_post_completion_command("mvn clean install -DskipTests=true"))
+        self.assertEqual([], validate_post_completion_command("mvn clean install -DskipTests"))
+
+    def test_dynamic_shell_script_variable_rejected(self):
+        # A "bash -c" whose script is a bare "$CMD" variable cannot be
+        # inspected; the environment could set it to a broad command, so the
+        # dynamic script must be rejected.
+        violations = validate_post_completion_command('bash -c "$CMD"')
+        self.assertTrue(violations, "a dynamic bash -c script must be rejected")
+
+    def test_variable_rooted_path_command_accepted(self):
+        # A command position that merely STARTS with a variable but is a
+        # concrete path ("$JAVA_HOME/bin/java") is not a bare reference and
+        # must remain accepted.
+        self.assertEqual([], validate_post_completion_command(
+            "$JAVA_HOME/bin/java -jar build/foo.jar"))
 
 
 class TestValidatePostCompletionTimeout(unittest.TestCase):
@@ -696,6 +744,28 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run mvn verify -Dmaven.test.skip=false to confirm it builds.")
         self.assertTrue(hits, "-Dmaven.test.skip=false must not suppress the broad-run warning")
+
+    def test_mvn_verify_with_dynamic_skip_value_still_flagged(self):
+        # A later -DskipTests whose value is a command substitution the shell
+        # expands (here to false) must not let an earlier literal
+        # -DskipTests=true exempt the broad "mvn verify" instruction.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -DskipTests=true -DskipTests=$(printf false) to finish.")
+        self.assertTrue(hits, "a dynamic skip override must not suppress the broad-run warning")
+
+    def test_mvn_verify_with_parameter_expansion_skip_value_still_flagged(self):
+        # A -DskipTests value built from a parameter expansion is unknown, so
+        # the linter fails closed rather than reading the earlier literal true.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -DskipTests=true -DskipTests=$SKIP to finish.")
+        self.assertTrue(hits, "a parameter-expansion skip override must not suppress the warning")
+
+    def test_mvn_verify_with_trailing_punctuation_skip_true_not_flagged(self):
+        # A literal -DskipTests=true ending a sentence (with a trailing ".")
+        # is still a skip -- the word boundary tolerates prose punctuation.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Please run mvn verify -DskipTests=true.")
+        self.assertEqual([], hits)
 
     def test_mvnw_test_without_selector_rejected(self):
         # The bare "mvn" prefix does not match "mvnw" (no whitespace

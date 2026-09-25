@@ -63,16 +63,24 @@ public class PostCompletionCommandValidator {
 	 * match that form and would leave the actual incident shape undetected. */
 	private static final Pattern AR_TEST_GROUP = Pattern.compile("AR_TEST_GROUPS?\\b");
 
-	/** Matches a whole {@code -DskipTests} argument token, capturing an explicit {@code true}/
-	 * {@code false} value when present (a bare flag with no {@code =value} means {@code true}).
-	 * Matched per-argument via {@link Matcher#matches()}, not as a substring search, so a
-	 * plain occurrence never wrongly reads {@code -DskipTests=false} as bare-true. */
+	/** Matches a whole {@code -DskipTests} argument token, capturing the assigned value when
+	 * present (a bare flag with no {@code =value} means {@code true}). The value group captures
+	 * the WHOLE value, not just a literal {@code true}/{@code false}, so a dynamic value such as
+	 * {@code -DskipTests=$(printf false)} or {@code -DskipTests=$SKIP} is recognized as an
+	 * occurrence of the property and classified as non-skipping by {@link #classifySkipValue}
+	 * rather than leaving the {@code -DskipTests} prefix to read as a bare (true) flag while the
+	 * shell-supplied value is ignored. Matched per-argument via {@link Matcher#matches()}, not as
+	 * a substring search. */
 	private static final Pattern SKIP_TESTS_PROP = Pattern.compile(
-			"-DskipTests(?:=(true|false))?", Pattern.CASE_INSENSITIVE);
+			"-DskipTests(?:=(.*))?", Pattern.CASE_INSENSITIVE);
 
 	/** Same shape as {@link #SKIP_TESTS_PROP} for the {@code maven.test.skip} property. */
 	private static final Pattern MAVEN_TEST_SKIP_PROP = Pattern.compile(
-			"-Dmaven\\.test\\.skip(?:=(true|false))?", Pattern.CASE_INSENSITIVE);
+			"-Dmaven\\.test\\.skip(?:=(.*))?", Pattern.CASE_INSENSITIVE);
+
+	/** Leading literal {@code true}/{@code false} of a skip value, tolerating trailing text via
+	 * the word boundary. Used by {@link #classifySkipValue} with {@link Matcher#lookingAt()}. */
+	private static final Pattern SKIP_LITERAL = Pattern.compile("(true|false)\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Default-lifecycle phases that run tests unless the effective {@link #SKIP_TESTS_PROP}/
 	 * {@link #MAVEN_TEST_SKIP_PROP} value is true. Package-private (not private) so
@@ -259,6 +267,15 @@ public class PostCompletionCommandValidator {
 					+ "by a command substitution ($(...) or `...`), which this validator cannot "
 					+ "resolve statically. Do not construct the executed command name via a "
 					+ "substitution.");
+			return;
+		}
+		if (!unwrapped.isEmpty() && VARIABLE_REFERENCE.matcher(unwrapped.get(0)).matches()) {
+			violations.add("Command position in \"" + String.join(" ", tokens) + "\" is a bare shell "
+					+ "variable reference ($VAR or ${VAR}) that this validator cannot resolve "
+					+ "statically -- the job environment could set it to a broad command such as "
+					+ "\"mvn test -pl engine/utils\" or a whole-suite runner. Name the executable "
+					+ "literally, or assign the command text in the same command so it can be "
+					+ "inspected.");
 			return;
 		}
 		String script = shellDashCScript(unwrapped);
@@ -697,18 +714,46 @@ public class PostCompletionCommandValidator {
 	 * tests even though an earlier flag says otherwise -- returning as soon
 	 * as any matching flag is seen, regardless of order, would wrongly
 	 * accept that command as build-only. A bare flag with no {@code =value}
-	 * means {@code true}.
+	 * means {@code true}. A dynamic last value (command substitution or
+	 * parameter expansion) is classified as non-skipping by
+	 * {@link #classifySkipValue}, so {@code -DskipTests=true
+	 * -DskipTests=$(printf false)} is not accepted as build-only.
 	 */
 	private static Boolean effectiveSkipValue(List<String> args, Pattern pattern) {
 		Boolean value = null;
 		for (String arg : args) {
 			Matcher m = pattern.matcher(arg);
 			if (m.matches()) {
-				String explicit = m.group(1);
-				value = explicit == null || "true".equalsIgnoreCase(explicit);
+				value = classifySkipValue(m.group(1));
 			}
 		}
 		return value;
+	}
+
+	/**
+	 * Classifies the captured value of a Maven skip property into whether it
+	 * actually skips tests. {@code null} (a bare flag with no {@code =value})
+	 * means true; a literal {@code true}/{@code false} maps to its boolean;
+	 * any other value -- an empty string (Maven parses {@code -DskipTests=} as
+	 * false), a command substitution ({@code $(...)}), or a parameter
+	 * expansion ({@code $VAR}) -- is treated as NOT skipping, since the
+	 * validator cannot resolve what the shell expands it to and accepting it
+	 * would let {@code -DskipTests=$(printf false)} pass as build-only. Fail
+	 * closed.
+	 *
+	 * <p>Package-private (not private) and static -- it reads no instance state -- so
+	 * {@link PromptTestInstructionLinter} can reuse the identical rule for skip-property
+	 * mentions found in prompt text instead of duplicating it.</p>
+	 */
+	static boolean classifySkipValue(String explicit) {
+		if (explicit == null) {
+			return true;
+		}
+		Matcher m = SKIP_LITERAL.matcher(explicit.trim());
+		if (m.lookingAt()) {
+			return "true".equalsIgnoreCase(m.group(1));
+		}
+		return false;
 	}
 
 	/** Returns a violation reason for a Maven segment, or null when it is acceptable. */
