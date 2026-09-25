@@ -368,14 +368,20 @@ def _default_runner(
         env=env,
         start_new_session=True,
     )
+    # start_new_session=True makes the child the leader of a new process group
+    # whose id equals its pid. Capture it now: once the leader exits and is
+    # reaped, os.getpgid(process.pid) raises ProcessLookupError even while a
+    # child still holds the stdout pipe open and blocks the reader below, which
+    # would let the timeout kill silently skip the group and orphan that child.
+    process_group_id = process.pid
     timed_out = threading.Event()
 
     def _kill_on_timeout() -> None:
         timed_out.set()
         try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            os.killpg(process_group_id, signal.SIGKILL)
         except ProcessLookupError:
-            # Process already exited between the timer firing and the kill.
+            # The whole process group already exited before the kill fired.
             pass
 
     timer = threading.Timer(timeout_seconds, _kill_on_timeout)

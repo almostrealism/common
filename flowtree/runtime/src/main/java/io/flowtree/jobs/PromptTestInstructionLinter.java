@@ -17,7 +17,10 @@
 package io.flowtree.jobs;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -88,6 +91,25 @@ public class PromptTestInstructionLinter {
 			"\\b(?:" + alternation(PostCompletionCommandValidator.TEST_RUNNING_PHASES) + ")\\b",
 			Pattern.CASE_INSENSITIVE);
 
+	/** The Maven default-lifecycle phases (plus the {@code clean} and {@code site} lifecycles) a
+	 * real command split across lines can begin its continuation with -- e.g. "Run mvn" followed
+	 * by "clean install -pl engine/utils" continues onto a line starting with "clean". Used by
+	 * {@link #opensWithMavenArgument(String)} to tell a command continuation apart from an ordinary
+	 * prose sentence that merely follows a line mentioning "mvn"; a prose line continues with a word
+	 * like "to"/"and"/"then", never with a lifecycle phase or a flag. Broader than
+	 * {@link PostCompletionCommandValidator#TEST_RUNNING_PHASES} on purpose: the FIRST token of the
+	 * continuation may be a non-test phase ("clean") with the test-running phase ("install") later
+	 * on the same line. Mirrors {@code _MVN_LIFECYCLE_PHASES} in {@code execution_limits.py}. */
+	private static final Set<String> MVN_LIFECYCLE_PHASES = new HashSet<>(Arrays.asList(
+			"pre-clean", "clean", "post-clean",
+			"validate", "initialize", "generate-sources", "process-sources",
+			"generate-resources", "process-resources", "compile", "process-classes",
+			"generate-test-sources", "process-test-sources", "generate-test-resources",
+			"process-test-resources", "test-compile", "process-test-classes", "test",
+			"prepare-package", "package", "pre-integration-test", "integration-test",
+			"post-integration-test", "verify", "install", "deploy",
+			"pre-site", "site", "post-site", "site-deploy"));
+
 	/** Matches an explicit {@code -Dtest=Class#method}-shaped mention in a prompt fragment. */
 	private static final Pattern SELECTOR_PATTERN = Pattern.compile(
 			"-Dtest=\\S+#\\S+", Pattern.CASE_INSENSITIVE);
@@ -109,6 +131,13 @@ public class PromptTestInstructionLinter {
 	/** Same shape as {@link #SKIP_TESTS_MENTION} for the {@code maven.test.skip} property. */
 	private static final Pattern MAVEN_TEST_SKIP_MENTION = Pattern.compile(
 			"-Dmaven\\.test\\.skip(?:=(\\S+))?", Pattern.CASE_INSENSITIVE);
+
+	/** Sentence-ending punctuation stripped from a skip value seen in free prose before it is
+	 * classified, so "-DskipTests=true." at the end of a sentence still reads as the boolean true
+	 * in the prompt path. This tolerance is deliberately confined to the prompt linter: a real
+	 * command token is classified exactly by
+	 * {@link PostCompletionCommandValidator#classifySkipValue(String)}. */
+	private static final Pattern TRAILING_PROSE_PUNCTUATION = Pattern.compile("[.,;:!?]+$");
 
 	/** Matches a {@code -Dtest=<value>} mention, capturing its value. */
 	private static final Pattern DTEST_VALUE = Pattern.compile("-Dtest=(\\S+)", Pattern.CASE_INSENSITIVE);
@@ -233,7 +262,11 @@ public class PromptTestInstructionLinter {
 		Boolean value = null;
 		Matcher matcher = pattern.matcher(fragment);
 		while (matcher.find()) {
-			value = PostCompletionCommandValidator.classifySkipValue(matcher.group(1));
+			String captured = matcher.group(1);
+			if (captured != null) {
+				captured = TRAILING_PROSE_PUNCTUATION.matcher(captured).replaceAll("");
+			}
+			value = PostCompletionCommandValidator.classifySkipValue(captured);
 		}
 		return value;
 	}
@@ -415,20 +448,41 @@ public class PromptTestInstructionLinter {
 	}
 
 	/**
-	 * Whether a command in {@code text} may continue on the following line: the text ends with a
+	 * Whether {@code nextLine} opens with an argument-shaped token -- a flag ({@code -pl},
+	 * {@code -DskipTests}) or a Maven lifecycle phase as its first word ({@code clean},
+	 * {@code install}). A command split across lines continues with one of these; an ordinary
+	 * prose sentence following a line that merely mentions {@code mvn} continues with a word like
+	 * "to"/"and"/"then" and must NOT be joined.
+	 */
+	private static boolean opensWithMavenArgument(String nextLine) {
+		String stripped = nextLine.trim();
+		if (stripped.isEmpty()) {
+			return false;
+		}
+		String first = stripped.split("\\s+", 2)[0];
+		return first.startsWith("-") || MVN_LIFECYCLE_PHASES.contains(first.toLowerCase());
+	}
+
+	/**
+	 * Whether a command in {@code text} continues onto {@code nextLine}: the text ends with a
 	 * shell {@code \} continuation, or its last chained fragment names a Maven launcher but no
-	 * lifecycle phase yet ("Run mvn" followed by "clean install -pl engine/utils" on the next
-	 * line). pytest and unittest need no joining -- an invocation left with no target on its own
+	 * lifecycle phase yet AND {@code nextLine} opens with an argument-shaped token ("Run mvn"
+	 * followed by "clean install -pl engine/utils"). The {@code nextLine} guard keeps prose that
+	 * merely mentions a launcher without a phase -- "We build with mvn." followed by "Then verify
+	 * the fix." -- from being joined into a fabricated "mvn ... verify" command and falsely
+	 * flagged. pytest and unittest need no joining -- an invocation left with no target on its own
 	 * line is already flagged as broad.
 	 */
-	private static boolean continuesOntoNextLine(String text) {
+	private static boolean continuesOntoNextLine(String text, String nextLine) {
 		if (text.trim().endsWith("\\")) {
 			return true;
 		}
-		// TODO(review): prose naming mvn with no phase ("We build with mvn.\nThen verify ...") joins onto the next prose line and is falsely flagged
 		String[] fragments = CHAIN_SPLIT.split(text, -1);
 		String last = fragments[fragments.length - 1];
-		return MVN_LAUNCHER_PATTERN.matcher(last).find() && !MVN_TEST_PHASE_PATTERN.matcher(last).find();
+		if (!MVN_LAUNCHER_PATTERN.matcher(last).find() || MVN_TEST_PHASE_PATTERN.matcher(last).find()) {
+			return false;
+		}
+		return opensWithMavenArgument(nextLine);
 	}
 
 	/**
@@ -441,7 +495,8 @@ public class PromptTestInstructionLinter {
 	private static String joinedContinuation(String[] lines, int index) {
 		String text = lines[index];
 		int next = index + 1;
-		while (next < lines.length && !lines[next].trim().isEmpty() && continuesOntoNextLine(text)) {
+		while (next < lines.length && !lines[next].trim().isEmpty()
+				&& continuesOntoNextLine(text, lines[next])) {
 			String trimmed = text.trim();
 			if (trimmed.endsWith("\\")) {
 				trimmed = trimmed.substring(0, trimmed.length() - 1);

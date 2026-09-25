@@ -78,9 +78,13 @@ public class PostCompletionCommandValidator {
 	private static final Pattern MAVEN_TEST_SKIP_PROP = Pattern.compile(
 			"-Dmaven\\.test\\.skip(?:=(.*))?", Pattern.CASE_INSENSITIVE);
 
-	/** Leading literal {@code true}/{@code false} of a skip value, tolerating trailing text via
-	 * the word boundary. Used by {@link #classifySkipValue} with {@link Matcher#lookingAt()}. */
-	private static final Pattern SKIP_LITERAL = Pattern.compile("(true|false)\\b", Pattern.CASE_INSENSITIVE);
+	/** The whole skip value, which must be exactly {@code true}/{@code false}. Matched via
+	 * {@link Matcher#matches()} in {@link #classifySkipValue}, not {@link Matcher#lookingAt()}: a
+	 * partial match would be wrong for a real command token, since Maven receives
+	 * {@code -DskipTests=true.} verbatim and {@code true.} is not the boolean {@code true}, so tests
+	 * still run. Prose tolerance for a trailing {@code .} at the end of a sentence belongs to the
+	 * prompt path only (see {@link PromptTestInstructionLinter}), never to this shared classifier. */
+	private static final Pattern SKIP_LITERAL = Pattern.compile("(true|false)", Pattern.CASE_INSENSITIVE);
 
 	/** Default-lifecycle phases that run tests unless the effective {@link #SKIP_TESTS_PROP}/
 	 * {@link #MAVEN_TEST_SKIP_PROP} value is true. Package-private (not private) so
@@ -756,7 +760,7 @@ public class PostCompletionCommandValidator {
 			return true;
 		}
 		Matcher m = SKIP_LITERAL.matcher(explicit.trim());
-		if (m.lookingAt()) {
+		if (m.matches()) {
 			return "true".equalsIgnoreCase(m.group(1));
 		}
 		return false;

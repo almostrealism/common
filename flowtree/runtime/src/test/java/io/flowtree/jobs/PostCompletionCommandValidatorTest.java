@@ -834,6 +834,15 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertTrue(violationsFor("mvn clean install -DskipTests").isEmpty());
 	}
 
+	/** Maven receives "-DskipTests=true." verbatim; "true." is not the boolean true, so tests
+	 * still run. The command validator must classify the value exactly and NOT accept the broad
+	 * run as build-only. */
+	@Test(timeout = 10000)
+	public void punctuatedSkipValueDoesNotExemptBroadMaven() {
+		assertFalse(violationsFor("mvn test -DskipTests=true. -pl engine/utils").isEmpty());
+		assertFalse(violationsFor("mvn test -DskipTests=true/foo -pl engine/utils").isEmpty());
+	}
+
 	/** A command whose executable is a bare "$VAR" reference is unresolvable: the job environment
 	 * could set it to a broad command, so it must be rejected rather than waved through. */
 	@Test(timeout = 10000)

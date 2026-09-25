@@ -59,7 +59,9 @@ whole module suite yourself -- that investigation belongs to CI.
 
 **Blame the CI environment or call it "transient."** These failures are reproducible.
 They pass on master, they fail on this branch. Every time. If you claim otherwise
-without actually running the CI command locally and showing it succeeds, you are wrong.
+without actually reproducing the specific failing test(s) listed below -- one at a time,
+with the test_methods commands given -- and showing they now pass, you are wrong. Do not
+run the whole module or a CI shard to prove this; that broad verification belongs to CI.
 
 **Browse GitHub Actions or other CI pages with WebFetch.** You do not have permission
 to access GitHub web pages and you do not need to. Everything you need is in this

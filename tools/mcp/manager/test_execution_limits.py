@@ -550,6 +550,17 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         self.assertEqual([], validate_post_completion_command("mvn clean install -DskipTests=true"))
         self.assertEqual([], validate_post_completion_command("mvn clean install -DskipTests"))
 
+    def test_punctuated_skip_value_does_not_exempt_broad_maven(self):
+        # Maven receives "-DskipTests=true." verbatim; "true." is not the
+        # boolean true, so tests still run. The command validator must classify
+        # it exactly and NOT accept the broad run as build-only.
+        self.assertTrue(
+            validate_post_completion_command("mvn test -DskipTests=true. -pl engine/utils"),
+            "a punctuated skip value must not exempt a broad mvn test")
+        self.assertTrue(
+            validate_post_completion_command("mvn test -DskipTests=true/foo -pl engine/utils"),
+            "a skip value with trailing characters must not exempt a broad mvn test")
+
     def test_dynamic_shell_script_variable_rejected(self):
         # A "bash -c" whose script is a bare "$CMD" variable cannot be
         # inspected; the environment could set it to a broad command, so the
@@ -772,6 +783,14 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
         hits = lint_prompt_for_broad_test_instructions(
             "Please run mvn verify -Dmaven.test.skip=true to confirm it builds.")
         self.assertEqual([], hits)
+
+    def test_mvn_verify_with_skip_tests_true_ending_a_sentence_not_flagged(self):
+        # In prose, a trailing sentence period after the skip value is
+        # punctuation, not part of the value: "-DskipTests=true." at the end of
+        # a sentence still reads as a skip in the prompt path (unlike a real
+        # command token, where "true." is Maven's literal value).
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Build only: run mvn verify -DskipTests=true."))
 
     def test_mvn_verify_with_skip_tests_equals_false_still_flagged(self):
         # -DskipTests=false explicitly RE-ENABLES tests -- the skip matcher
@@ -1009,6 +1028,22 @@ class TestMultilinePromptLint(unittest.TestCase):
     def test_continuation_stops_at_blank_line(self):
         self.assertEqual([], lint_prompt_for_broad_test_instructions(
             "We build with mvn.\n\nThen verify the fix by reading the output."))
+
+    def test_prose_mentioning_mvn_then_new_sentence_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "We build with mvn.\nThen verify the fix by reading the output."))
+
+    def test_prose_ending_in_mvn_followed_by_prose_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "This project uses mvn\nto package the release notes."))
+
+    def test_prose_with_mvn_mid_sentence_followed_by_prose_accepted(self):
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Check the mvn output\nand install nothing new."))
+
+    def test_launcher_continuing_onto_a_flag_line_flagged(self):
+        self.assertTrue(lint_prompt_for_broad_test_instructions(
+            "Run mvn\n-pl engine/utils verify"))
 
 
 class TestCiPromptTemplatesLintClean(unittest.TestCase):

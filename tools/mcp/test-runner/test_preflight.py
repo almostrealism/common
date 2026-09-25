@@ -456,6 +456,26 @@ class DefaultRunnerTimeoutTests(unittest.TestCase):
                 Path(tmp), None, timeout_seconds=10)
             self.assertEqual(0, exit_code)
 
+    def test_kills_child_holding_pipe_after_leader_exits(self):
+        # The seed's leader can exit while a child it spawned keeps the stdout
+        # pipe open, blocking the reader. The timeout kill targets the process
+        # group id captured at launch (not one resolved from the possibly-gone
+        # leader), so the whole group -- child included -- is still killed near
+        # the deadline instead of the reader hanging until the child exits.
+        seed = (
+            "import subprocess, sys; "
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+            "sys.exit(0)")
+        with TemporaryDirectory() as tmp:
+            start = time.monotonic()
+            preflight._default_runner(
+                [sys.executable, "-c", seed], Path(tmp), None, timeout_seconds=0.5)
+            elapsed = time.monotonic() - start
+            self.assertLess(
+                elapsed, 5.0,
+                "a lingering child holding the stdout pipe must be killed with its group "
+                "at the deadline, not waited on until it exits on its own")
+
     def test_uses_start_new_session_not_preexec_fn(self):
         """``preexec_fn`` runs arbitrary Python in the forked child between
         fork() and exec(), which can deadlock in a multi-threaded process

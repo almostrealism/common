@@ -118,6 +118,14 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertTrue(violationsFor("Run mvn test -DskipTests -pl engine/utils to confirm it builds.").isEmpty());
 	}
 
+	/** In prose, a trailing sentence period after the skip value is punctuation, not part of the
+	 * value: "-DskipTests=true." at the end of a sentence still reads as a skip in the prompt
+	 * path (unlike a real command token, where "true." is Maven's literal value). */
+	@Test(timeout = 10000)
+	public void skipTestsTrueEndingASentenceAccepted() {
+		assertTrue(violationsFor("Build only: run mvn verify -DskipTests=true.").isEmpty());
+	}
+
 	/** A later "-DskipTests=false" overriding an earlier "-DskipTests=true" mention in the same
 	 * fragment must not be exempted: Maven's last-value-wins semantics mean tests still run. */
 	@Test(timeout = 10000)
@@ -283,5 +291,22 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertTrue(violationsFor("Run mvn\n-Dtest=FooTest#bar test -pl engine/utils").isEmpty());
 		assertTrue(violationsFor("We build with mvn.\n\nThen verify the fix by reading the output.")
 				.isEmpty());
+	}
+
+	/** Prose that mentions a launcher without a phase and is followed by an ordinary sentence
+	 * (which does not open with a flag or a lifecycle phase) is not joined into a fabricated
+	 * command and is accepted. */
+	@Test(timeout = 10000)
+	public void proseMentioningMvnFollowedByProseAccepted() {
+		assertTrue(violationsFor("We build with mvn.\nThen verify the fix by reading the output.")
+				.isEmpty());
+		assertTrue(violationsFor("This project uses mvn\nto package the release notes.").isEmpty());
+		assertTrue(violationsFor("Check the mvn output\nand install nothing new.").isEmpty());
+	}
+
+	/** A launcher-only line continuing onto a line that opens with a flag is joined and flagged. */
+	@Test(timeout = 10000)
+	public void launcherContinuingOntoFlagLineRejected() {
+		assertFalse(violationsFor("Run mvn\n-pl engine/utils verify").isEmpty());
 	}
 }

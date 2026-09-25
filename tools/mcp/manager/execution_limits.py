@@ -55,27 +55,37 @@ _SKIP_TESTS_PROP_PATTERN = re.compile(r"^-DskipTests(?:=(.*))?$", re.IGNORECASE)
 _MAVEN_TEST_SKIP_PROP_PATTERN = re.compile(
     r"^-Dmaven\.test\.skip(?:=(.*))?$", re.IGNORECASE)
 
-# Leading literal true/false of a skip value, tolerating trailing prose
-# punctuation (e.g. "true." at the end of a sentence) via the word boundary.
-_SKIP_LITERAL_PATTERN = re.compile(r"(true|false)\b", re.IGNORECASE)
+# The whole skip value must be exactly true/false. A partial match would be
+# wrong for a real command token: Maven receives "-DskipTests=true." verbatim,
+# and "true." is not the boolean true, so tests still run -- classifying it as
+# skipping would let "mvn test -DskipTests=true." pass as build-only. Prose
+# tolerance for a trailing "." at the end of a sentence belongs to the prompt
+# path only (see _effective_skip_value_in_text), never to this shared classifier.
+_SKIP_LITERAL_PATTERN = re.compile(r"(true|false)", re.IGNORECASE)
+
+# Sentence-ending punctuation stripped from a skip value seen in free prose (not
+# in a tokenized command) before it is classified, so "-DskipTests=true." at the
+# end of a sentence still reads as the boolean true in the prompt path.
+_TRAILING_PROSE_PUNCTUATION = re.compile(r"[.,;:!?]+$")
 
 
 def _classify_skip_value(explicit) -> bool:
     """Classify the captured value of a Maven skip property into whether it
     actually skips tests.
 
-    ``None`` (a bare flag with no ``=value``) means true. A literal
-    ``true``/``false`` maps to its boolean. Any other value -- an empty
+    ``None`` (a bare flag with no ``=value``) means true. A value that is
+    exactly ``true``/``false`` maps to its boolean. Any other value -- an empty
     string (Maven parses ``-DskipTests=`` as false), a command substitution
-    (``$(...)``), or a parameter expansion (``$VAR``) -- is treated as NOT
-    skipping: the validator cannot resolve what the shell expands it to, and
-    accepting it as a skip would let ``-DskipTests=$(printf false)`` (which
-    the shell turns into ``-DskipTests=false``, running every test) pass as
-    build-only. Fail closed.
+    (``$(...)``), a parameter expansion (``$VAR``), or a boolean with trailing
+    characters (``true.``, which Maven does not treat as the boolean true) --
+    is treated as NOT skipping: the validator cannot resolve what the shell
+    expands it to, and accepting it as a skip would let
+    ``-DskipTests=$(printf false)`` (which the shell turns into
+    ``-DskipTests=false``, running every test) pass as build-only. Fail closed.
     """
     if explicit is None:
         return True
-    match = _SKIP_LITERAL_PATTERN.match(explicit.strip())
+    match = _SKIP_LITERAL_PATTERN.fullmatch(explicit.strip())
     if match:
         return match.group(1).lower() == "true"
     return False
@@ -84,6 +94,26 @@ def _classify_skip_value(explicit) -> bool:
 # "verify" are the two the incident used; "package" and "deploy" sit at or
 # past "test" in the default lifecycle and carry the same risk.
 _MVN_TEST_RUNNING_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
+
+# The Maven default lifecycle phases (plus the "clean" and "site" lifecycles)
+# that a real command split across lines can begin its continuation with -- e.g.
+# "Run mvn\nclean install -pl engine/utils" continues onto a line starting with
+# "clean". Used by _opens_with_maven_argument to tell a command continuation
+# apart from an ordinary prose sentence that merely follows a line mentioning
+# "mvn"; a prose line continues with a word like "to"/"and"/"then", never with a
+# lifecycle phase or a flag. Broader than _MVN_TEST_RUNNING_PHASES on purpose:
+# the FIRST token of the continuation may be a non-test phase ("clean") with the
+# test-running phase ("install") later on the same line.
+_MVN_LIFECYCLE_PHASES = {
+    "pre-clean", "clean", "post-clean",
+    "validate", "initialize", "generate-sources", "process-sources",
+    "generate-resources", "process-resources", "compile", "process-classes",
+    "generate-test-sources", "process-test-sources", "generate-test-resources",
+    "process-test-resources", "test-compile", "process-test-classes", "test",
+    "prepare-package", "package", "pre-integration-test", "integration-test",
+    "post-integration-test", "verify", "install", "deploy",
+    "pre-site", "site", "post-site", "site-deploy",
+}
 
 # Maven launcher executable names recognized by _maven_segment_violation: the
 # plain "mvn" plus the Maven Wrapper scripts ("./mvnw", "./mvnw.cmd") and the
@@ -1141,7 +1171,10 @@ def _effective_skip_value_in_text(fragment: str, pattern) -> bool:
     """
     value = None
     for match in pattern.finditer(fragment):
-        value = _classify_skip_value(match.group(1))
+        captured = match.group(1)
+        if captured is not None:
+            captured = _TRAILING_PROSE_PUNCTUATION.sub("", captured)
+        value = _classify_skip_value(captured)
     return value
 
 
@@ -1413,19 +1446,36 @@ def _first_lint_hit(text: str):
     return None
 
 
-def _continues_onto_next_line(text: str) -> bool:
-    """Whether a command in ``text`` may continue on the following line: the
-    text ends with a shell ``\\`` continuation, or its last chained fragment
-    names a Maven launcher but no lifecycle phase yet (``Run mvn`` followed
-    by ``clean install -pl engine/utils`` on the next line). pytest and
-    unittest need no joining -- an invocation left with no target on its own
-    line is already flagged as broad."""
+def _opens_with_maven_argument(line: str) -> bool:
+    """Whether ``line`` opens with an argument-shaped token -- a flag (``-pl``,
+    ``-DskipTests``) or a Maven lifecycle phase as its first word (``clean``,
+    ``install``). A command split across lines continues with one of these; an
+    ordinary prose sentence following a line that merely mentions ``mvn``
+    continues with a word like ``to``/``and``/``then`` and must NOT be joined."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    first = stripped.split()[0]
+    return first.startswith("-") or first.lower() in _MVN_LIFECYCLE_PHASES
+
+
+def _continues_onto_next_line(text: str, next_line: str) -> bool:
+    """Whether a command in ``text`` continues onto ``next_line``: the text
+    ends with a shell ``\\`` continuation, or its last chained fragment names a
+    Maven launcher but no lifecycle phase yet AND ``next_line`` opens with an
+    argument-shaped token (``Run mvn`` followed by ``clean install -pl
+    engine/utils``). The ``next_line`` guard keeps prose that merely mentions a
+    launcher without a phase -- ``We build with mvn.`` followed by ``Then verify
+    the fix.`` -- from being joined into a fabricated ``mvn ... verify`` command
+    and falsely flagged. pytest and unittest need no joining -- an invocation
+    left with no target on its own line is already flagged as broad."""
     if text.rstrip().endswith("\\"):
         return True
-    # TODO(review): prose naming mvn with no phase ("We build with mvn.\nThen verify ...") joins onto the next prose line and is falsely flagged
     fragment = _MvnTestSegmentMatcher._CHAIN_SPLIT_PATTERN.split(text)[-1]
-    return bool(_MvnTestSegmentMatcher._MVN_LAUNCHER_PATTERN.search(fragment)) \
-        and not _MvnTestSegmentMatcher._MVN_TEST_PHASE_PATTERN.search(fragment)
+    if not _MvnTestSegmentMatcher._MVN_LAUNCHER_PATTERN.search(fragment) \
+            or _MvnTestSegmentMatcher._MVN_TEST_PHASE_PATTERN.search(fragment):
+        return False
+    return _opens_with_maven_argument(next_line)
 
 
 def _joined_continuation(lines: list, index: int):
@@ -1435,7 +1485,8 @@ def _joined_continuation(lines: list, index: int):
     ``None`` when the line does not continue."""
     text = lines[index]
     nxt = index + 1
-    while nxt < len(lines) and lines[nxt].strip() and _continues_onto_next_line(text):
+    while nxt < len(lines) and lines[nxt].strip() \
+            and _continues_onto_next_line(text, lines[nxt]):
         text = text.rstrip().rstrip("\\") + " " + lines[nxt].strip()
         nxt += 1
     return text if nxt > index + 1 else None
