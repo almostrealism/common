@@ -472,10 +472,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * compute; {@code -3 / 2} is {@code -1}, whereas {@code floor(-3 / 2)} is
 	 * {@code -2}. Truncating division by a fixed divisor is monotonic over the
 	 * integers, so matching bounds still guarantee a constant quotient. Any known
-	 * integer zero divisor is left unfolded on every path — including the
-	 * zero-numerator shortcut, so that even {@code 0 / 0} stays a {@link Quotient}
-	 * — so the division-by-zero surfaces at evaluation rather than while the
-	 * expression is being simplified.</p>
+	 * integer zero divisor is left unfolded on every path — the guard runs before
+	 * the {@link ArithmeticGenerator} optimization and the zero-numerator shortcut,
+	 * so even {@code 0 / 0} stays a {@link Quotient} — so the division-by-zero
+	 * surfaces at evaluation rather than while the expression is being simplified.
+	 * (The {@link ArithmeticGenerator#divide} path would itself throw on a zero
+	 * divisor while coarsening its scale, which is why the guard must precede it.)</p>
 	 *
 	 * <p>A product numerator with a constant factor {@code c} folds exactly against an
 	 * integer divisor {@code d} in either direction, for either sign: when {@code d}
@@ -512,19 +514,20 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return create(operands.get(0), denominator);
 		}
 
-		if (values[0] instanceof ArithmeticGenerator) {
-			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
-		}
-
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
 		OptionalLong d = denominator.longValue();
 
-		// Leave any known integer zero divisor unfolded, before the zero-numerator
-		// shortcut, so even 0 / 0 surfaces its division-by-zero at evaluation
+		// Leave any known integer zero divisor unfolded, ahead of every fold path
+		// (ArithmeticGenerator.divide, the zero-numerator shortcut), so even 0 / 0
+		// surfaces at evaluation instead of throwing during simplification
 		if (!fp && d.isPresent() && d.getAsLong() == 0)
 			return new Quotient(operands);
+
+		if (values[0] instanceof ArithmeticGenerator) {
+			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
+		}
 
 		if (numerator.longValue().orElse(-1) == 0)
 			return fp ? new DoubleConstant(0.0) : new IntegerConstant(0);

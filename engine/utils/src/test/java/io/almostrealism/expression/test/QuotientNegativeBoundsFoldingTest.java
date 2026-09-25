@@ -16,11 +16,13 @@
 
 package io.almostrealism.expression.test;
 
+import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.sequence.DefaultIndex;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -208,5 +210,26 @@ public class QuotientNegativeBoundsFoldingTest extends TestSuiteBase {
 				q instanceof Quotient);
 		Assert.assertEquals("0 / 5 folds to 0",
 				0L, q.longValue().orElse(Long.MIN_VALUE));
+	}
+
+	/**
+	 * An {@link ArithmeticGenerator} numerator over a zero divisor must be left
+	 * unfolded, not routed through {@link ArithmeticGenerator#divide}. That path
+	 * coarsens the generator by evaluating {@code getScale() % divisor}, which throws
+	 * {@link ArithmeticException} at construction for a zero divisor. The zero-divisor
+	 * guard must run before the {@code ArithmeticGenerator} optimization so the
+	 * degenerate division-by-zero surfaces at evaluation, matching the contract for
+	 * every other integer zero divisor.
+	 */
+	@Test(timeout = 5000)
+	public void arithmeticGeneratorZeroDivisorIsNotFoldedAtConstruction() {
+		Expression<? extends Number> generator =
+				ArithmeticGenerator.create(new DefaultIndex("i", 16), 2, 4, 16);
+		Assert.assertTrue("scale-2 generator must be an ArithmeticGenerator",
+				generator instanceof ArithmeticGenerator);
+
+		Expression<?> q = Quotient.of(generator, new IntegerConstant(0));
+		Assert.assertTrue("an ArithmeticGenerator over a zero divisor must remain a Quotient, not throw or fold",
+				q instanceof Quotient);
 	}
 }
