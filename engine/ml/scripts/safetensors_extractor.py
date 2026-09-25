@@ -481,23 +481,31 @@ def read_reference_output(filepath):
     return np.frombuffer(data, dtype="<f4").astype(np.float32)
 
 
-def dump_reference_activations(stages, out_dir):
-    """Write a name -> activation mapping as per-stage reference ``.bin`` files.
+def dump_reference_activations(stages, out_dir, shard_prefix="references"):
+    """Write a name -> activation mapping as protobuf collection data.
 
     ``stages`` maps a stage name (e.g. ``"test_input"``, ``"resampling_stage_0"``,
-    ``"encoder_output"``, ``"decoder_output"``) to a numpy array. Each is written
-    to ``out_dir/<name>.bin`` via :func:`save_reference_output`. Returns the list
-    of written paths. Block C2's parity tests load these files one stage at a
-    time. The activations themselves must come from a real reference forward pass
-    (see :func:`run_reference_stages`); this function only serializes them.
+    ``"encoder_output"``, ``"decoder_output"``) to a numpy array. They are written
+    through :func:`write_state_dictionary`, so a reference dump is the same
+    protobuf a weight export is and is read by the same Java ``StateDictionary``
+    — which maps it rather than materializing it, and carries each tensor's shape
+    with its values. Returns the list of shard paths written.
+
+    Protobuf is the format tensors cross the language boundary in; this used to
+    write a bespoke ``[uint32 count][float32 ...]`` file per stage instead, which
+    the writer above had no part in, threw the shapes away, and needed a Java
+    reader of its own. That the reference path avoided protobuf was once treated
+    as a feature worth keeping — it meant a dump host did not have to generate
+    ``collections_pb2`` — and it is not: generating the bindings is one script
+    (``generate_protobuf_python.sh``), and a second serialization format is not
+    worth avoiding it.
+
+    The activations themselves must come from a real reference forward pass (see
+    :func:`run_reference_stages`); this function only serializes them.
     """
-    os.makedirs(out_dir, exist_ok=True)
-    written = []
-    for name, array in stages.items():
-        path = os.path.join(out_dir, f"{name}.bin")
-        save_reference_output(array, path)
-        written.append(path)
-    return written
+    state = {name: np.asarray(array).astype(np.float32)
+             for name, array in stages.items()}
+    return write_state_dictionary(state, out_dir, shard_prefix=shard_prefix)
 
 
 def run_reference_stages(model, test_input, stage_names=None):

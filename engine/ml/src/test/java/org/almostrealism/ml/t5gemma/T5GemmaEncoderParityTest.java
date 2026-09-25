@@ -69,16 +69,16 @@ public class T5GemmaEncoderParityTest extends TestSuiteBase {
 	@Test(timeout = 900000)
 	public void lastHiddenStateMatchesReference() throws IOException {
 		File weightDir = ReferenceActivations.firstExisting(WEIGHT_DIRS, "weights");
-		ReferenceActivations references = ReferenceActivations.locate(REFERENCE_DIRS, "t5_last_hidden_state.bin");
+		ReferenceActivations references = ReferenceActivations.locate(REFERENCE_DIRS, "t5_last_hidden_state");
 		if (weightDir == null || references == null) {
 			log("skipping T5Gemma parity; gated inputs absent (weights=" + weightDir + ", refs=" + references + ")");
 			return;
 		}
 
 		T5GemmaConfig config = T5GemmaConfig.baseUl2();
-		float[] ids = references.load("t5_input_ids.bin");
-		float[] mask = references.load("t5_attention_mask.bin");
-		float[] expected = references.load("t5_last_hidden_state.bin");
+		float[] ids = references.load("t5_input_ids");
+		float[] mask = references.load("t5_attention_mask");
+		float[] expected = references.load("t5_last_hidden_state");
 		assertEquals(config.getMaxLength(), ids.length);
 		assertEquals(config.getMaxLength() * config.getHiddenSize(), expected.length);
 

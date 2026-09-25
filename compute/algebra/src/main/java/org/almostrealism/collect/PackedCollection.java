@@ -1160,12 +1160,12 @@ public class PackedCollection extends MemoryDataAdapter
 	 * one value is drawn from each source in turn, as for a tensor stored as separate planes and
 	 * consumed interleaved.
 	 *
-	 * <p>This is for values that entered the process from outside it and arrived as bytes — a
-	 * serialized message, a capture callback — with no file behind them. It is not a route for
-	 * values computed by Java code, which belong in a
-	 * {@link io.almostrealism.relation.Producer}; and when the values are in a file, map the file
-	 * through {@link org.almostrealism.hardware.mem.MappedMemoryProvider} instead of reading it
-	 * into a buffer to stage here, which pays for every value twice.</p>
+	 * <p>This is for values that entered the process from outside it in a format of their own — a
+	 * foreign checkpoint, a capture callback — and arrived as bytes. It is not a route for values
+	 * computed by Java code, which belong in a {@link io.almostrealism.relation.Producer}; nor for
+	 * values this project itself serialized, which are protobuf collection data, read by
+	 * {@code CollectionEncoder} through a mapping of the file rather than staged into an allocation
+	 * of their own.</p>
 	 *
 	 * @param shape   the shape of the resulting collection
 	 * @param sources one or more buffers holding the values, positioned at the first value
@@ -1223,10 +1223,6 @@ public class PackedCollection extends MemoryDataAdapter
 
 		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);
 	}
-
-	// TODO  load(TraversalPolicy, File, Precision, long) belongs here, mapping the file through
-	// TODO  MappedMemoryProvider (the class javadoc above already advertises load(File)); it is
-	// TODO  blocked by block-interface-bypass.py flagging any new member returning this class.
 
 	/**
 	 * Loads all collections serialized in the given file.

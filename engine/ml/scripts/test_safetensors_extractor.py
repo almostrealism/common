@@ -274,17 +274,29 @@ def test_fold_weight_norm_leaves_unpaired_keys():
 # ---------------------------------------------------------------------------
 
 def test_dump_reference_activations(tmp_path):
+    """A reference dump is protobuf collection data, read back by the same reader
+    a weight export is, with each stage's shape preserved."""
     stages = {
         "test_input": np.arange(8, dtype=np.float32),
-        "resampling_stage_0": np.array([1.0, 2.0], dtype=np.float32),
+        "resampling_stage_0": np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
         "encoder_output": np.zeros((3,), np.float32),
     }
     out_dir = str(tmp_path / "reference")
     paths = core.dump_reference_activations(stages, out_dir)
-    assert len(paths) == 3
+    assert paths, "at least one shard is written"
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == set(stages)
     for name, expected in stages.items():
-        reloaded = core.read_reference_output(os.path.join(out_dir, f"{name}.bin"))
-        np.testing.assert_array_equal(reloaded, expected.flatten())
+        np.testing.assert_array_equal(reloaded[name], expected)
+        assert reloaded[name].shape == expected.shape, name + " keeps its shape"
+
+
+def test_dump_reference_activations_writes_no_bespoke_files(tmp_path):
+    """The per-stage `<name>.bin` files are gone: one format crosses the boundary."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"only": np.arange(4, dtype=np.float32)}, out_dir)
+    assert not [n for n in os.listdir(out_dir) if n.endswith(".bin")]
 
 
 def test_run_reference_stages_with_stub_model(tmp_path):
@@ -312,7 +324,7 @@ def test_run_reference_stages_with_stub_model(tmp_path):
     # End-to-end: run stub -> dump -> reload one stage at a time.
     out_dir = str(tmp_path / "ref")
     core.dump_reference_activations(stages, out_dir)
-    reloaded = core.read_reference_output(os.path.join(out_dir, "decoder_output.bin"))
+    reloaded = core.read_state_dictionary(out_dir)["decoder_output"]
     assert reloaded.shape == (8,)
 
 

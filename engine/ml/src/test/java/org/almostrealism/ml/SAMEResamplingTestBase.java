@@ -28,8 +28,6 @@ import org.almostrealism.util.TestSuiteBase;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -176,47 +174,36 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	}
 
 	/**
-	 * Loads a flat {@code .bin} tensor into a {@link PackedCollection} of the given shape.
+	 * Reads one reference from a dump directory as a collection of the given shape.
 	 *
-	 * @param dir   the directory containing {@code name.bin}
-	 * @param name  the tensor name (without the {@code .bin} suffix)
-	 * @param shape the target shape
+	 * @param dir   the directory holding the reference shards
+	 * @param name  the reference key
+	 * @param shape the expected shape, checked against the shape the dump recorded
 	 * @return the loaded collection
-	 * @throws IOException if the file cannot be read
+	 * @throws IOException if the shards cannot be read
 	 */
 	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
-		return new ReferenceActivations(dir).collection(name + ".bin", shape(shape));
+		return new ReferenceActivations(dir).collection(name, shape(shape));
 	}
 
 	/**
-	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file into a flat array.
+	 * Reads one reference from a dump directory as a flat array of values.
 	 *
-	 * @param path the file path
+	 * @param dir  the directory holding the reference shards
+	 * @param name the reference key
 	 * @return the flat float values
-	 * @throws IOException if the file cannot be read
+	 * @throws IOException if the shards cannot be read
 	 */
-	protected float[] loadFlat(Path path) throws IOException {
-		return ReferenceActivations.load(path);
+	protected float[] loadFlat(File dir, String name) throws IOException {
+		return new ReferenceActivations(dir).load(name);
 	}
 
 	/**
-	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file
-	 * into a buffer positioned over the payload values.
-	 *
-	 * @param path the file path
-	 * @return a little-endian buffer holding the payload values
-	 * @throws IOException if the file cannot be read
-	 */
-	protected ByteBuffer loadBuffer(Path path) throws IOException {
-		return ReferenceActivations.loadBuffer(path);
-	}
-
-	/**
-	 * Returns the first directory among {@code candidates} that exists and contains {@code marker}, or
-	 * {@code null} if none do.
+	 * Returns the first directory among {@code candidates} holding {@code marker}, either as a file
+	 * of its own or as a key among its shards, or {@code null} if none do.
 	 *
 	 * @param candidates candidate directory paths (entries may be {@code null})
-	 * @param marker     a file that must exist within the directory
+	 * @param marker     a tensor that must be present within the directory
 	 * @return the resolved directory, or {@code null}
 	 */
 	protected File firstExisting(String[] candidates, String marker) {
