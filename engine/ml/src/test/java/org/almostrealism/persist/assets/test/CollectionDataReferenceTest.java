@@ -137,6 +137,24 @@ public class CollectionDataReferenceTest {
 	}
 
 	/**
+	 * A collection with a zero-length axis carries no data field on the wire, and it resolves to
+	 * {@code null} rather than to an addressable range: a {@link PackedCollection} cannot have zero
+	 * size, so an empty tensor is a value the reader cannot hold, not a locatable one. This pins the
+	 * deliberate contract — a would-be "fix" that returned a zero-count reference here would make the
+	 * decoder throw while building the collection and drop the whole shard it appears in.
+	 */
+	@Test(timeout = 30000)
+	public void anEmptyCollectionResolvesToNothing() {
+		byte[] encoded = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build()
+				.toByteArray();
+
+		Assert.assertNull(CollectionDataReference.of(message(encoded, 0)));
+	}
+
+	/**
 	 * Collection data nested inside a larger message is addressable.
 	 *
 	 * <p>This is the shape a library of weights is written in — entries within

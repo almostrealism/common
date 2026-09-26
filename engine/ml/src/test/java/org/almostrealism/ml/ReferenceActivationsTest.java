@@ -16,8 +16,11 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.FileMapping;
+import org.almostrealism.persist.assets.CollectionEncoder;
+import org.almostrealism.protobuf.Collections;
 import org.junit.Test;
 
 import static org.junit.Assert.assertNotSame;
@@ -128,6 +131,48 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 		assertEquals(2, shaped.getShape().length(0));
 		assertEquals(3, shaped.getShape().length(1));
 		assertEquals(-2.25, shaped.toDouble(5));
+	}
+
+	/**
+	 * A dump may contain a tensor with a zero-length axis (such as the SA3
+	 * {@code bottleneck.noise_scaling_factor} of shape {@code [1, 0, 1]}): the writer emits it with
+	 * its shape and no data field. A {@link PackedCollection} cannot be zero-size, so the reader
+	 * cannot hold such a tensor; it omits that one key rather than failing, and every full tensor in
+	 * the same shard still loads. This is why a weight directory that includes an empty bottleneck
+	 * buffer is read without disturbing the encoder/decoder weights the parity tests actually use.
+	 * The Python-side round trip is covered by
+	 * {@code test_safetensors_extractor.test_zero_sized_dimension_round_trips}.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aZeroElementTensorDoesNotBreakItsShard() throws IOException {
+		Path dir = Files.createTempDirectory("references");
+		dir.toFile().deleteOnExit();
+
+		PackedCollection full = new PackedCollection(shape(3, 4)).fill(1.5);
+		Collections.CollectionLibraryData library = Collections.CollectionLibraryData.newBuilder()
+				.addCollections(Collections.CollectionLibraryEntry.newBuilder()
+						.setKey("enc_after_mapping")
+						.setCollection(CollectionEncoder.encode(full, Precision.FP32)))
+				.addCollections(Collections.CollectionLibraryEntry.newBuilder()
+						.setKey("bottleneck.noise_scaling_factor")
+						.setCollection(Collections.CollectionData.newBuilder()
+								.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+										.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))))
+				.build();
+		Files.write(dir.resolve("references"), library.toByteArray());
+		full.destroy();
+
+		StateDictionary references = new StateDictionary(dir.toFile().getPath());
+
+		try {
+			assertTrue(references.containsKey("enc_after_mapping"));
+			assertEquals(12, references.get("enc_after_mapping").getShape().getTotalSize());
+			assertFalse(references.containsKey("bottleneck.noise_scaling_factor"));
+		} finally {
+			references.destroy();
+		}
 	}
 
 	/**

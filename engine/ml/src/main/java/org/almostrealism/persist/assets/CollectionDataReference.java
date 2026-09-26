@@ -18,6 +18,7 @@ package org.almostrealism.persist.assets;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.protobuf.Collections;
 
 /**
@@ -116,6 +117,14 @@ public class CollectionDataReference {
 
 	/**
 	 * Locates the values of the given collection data.
+	 *
+	 * <p>A collection whose shape has zero total size (an axis of length zero)
+	 * holds no values and so carries no data field on the wire. It resolves to
+	 * {@code null} rather than to an empty reference because a
+	 * {@link PackedCollection} cannot have zero size — reading it back is not a
+	 * loss of an addressable range, it is a value the reader cannot hold at
+	 * all. The {@code CollectionData} it was written from remains readable by an
+	 * ordinary protobuf parse.</p>
 	 *
 	 * @param data the collection data message
 	 * @return a reference to its values, or {@code null} if it holds none
