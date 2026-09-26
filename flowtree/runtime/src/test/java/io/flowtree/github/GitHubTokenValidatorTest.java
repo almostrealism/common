@@ -377,8 +377,11 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that suffix-less SSH and HTTPS URLs, and unrecognised input, are
-	 * handled the same way as by {@link GitHubProxyHandler#extractOwnerRepo(String)}.
+	 * Verifies that suffix-less GitHub SSH and HTTPS URLs, and unrecognised input,
+	 * yield the same slug as {@link GitHubProxyHandler#extractOwnerRepo(String)}.
+	 * (For a non-GitHub host the two diverge — this validator rejects it, see
+	 * {@link #extractOwnerRepoRejectsNonGitHubHost()} — but the proxy handler,
+	 * which only ever receives GitHub URLs, does not.)
 	 */
 	@Test(timeout = 10000)
 	public void extractOwnerRepoMatchesProxyHandlerForPlainForms() {
@@ -426,5 +429,24 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 	public void extractOwnerRepoFromUrlWithTrailingSlash() {
 		assertEquals("almostrealism/common",
 				GitHubTokenValidator.extractOwnerRepo("https://github.com/almostrealism/common/"));
+	}
+
+	/**
+	 * Verifies that a non-GitHub host is rejected, so that a repository hosted
+	 * elsewhere is never validated against the GitHub API.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoRejectsNonGitHubHost() {
+		assertNull(GitHubTokenValidator.extractOwnerRepo("https://gitlab.com/acme/repo.git"));
+		assertNull(GitHubTokenValidator.extractOwnerRepo("git@gitlab.com:acme/repo.git"));
+	}
+
+	/**
+	 * Verifies that a look-alike host is rejected: the host must match exactly,
+	 * not merely contain the {@code github.com} substring.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoRejectsLookAlikeGitHubHost() {
+		assertNull(GitHubTokenValidator.extractOwnerRepo("https://github.com.evil.example/acme/repo.git"));
 	}
 }

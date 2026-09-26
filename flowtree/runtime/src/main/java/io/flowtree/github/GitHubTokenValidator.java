@@ -308,12 +308,18 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 
 	/**
 	 * Extracts "owner/repo" from a repository URL (HTTPS or SSH format);
-	 * the parsing is {@link GitOperations#repositorySlug(String)}.
+	 * the parsing is {@link GitOperations#repositorySlug(String)}. URLs whose
+	 * host is not exactly {@code github.com} are rejected, since the owner is
+	 * used to validate the repository against the GitHub API — otherwise a
+	 * {@code https://gitlab.com/acme/repo.git} would be checked against the
+	 * wrong service.
 	 *
 	 * @param repoUrl the repository URL
-	 * @return the "owner/repo" string, or null if not parseable
+	 * @return the "owner/repo" string, or null if it is not a GitHub
+	 *         repository URL
 	 */
 	static String extractOwnerRepo(String repoUrl) {
+		if (!"github.com".equalsIgnoreCase(GitOperations.repositoryHost(repoUrl))) return null;
 		return GitOperations.repositorySlug(repoUrl);
 	}
 

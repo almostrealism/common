@@ -27,12 +27,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-// TODO(review): validateOwnerRepo no longer exists; update this javadoc and docs/pull-request-detection.md to describe GitOperations.repositorySlug
 /**
- * Tests for {@link PullRequestDetector} covering the static utility methods
- * {@code extractOwnerRepo} and {@code validateOwnerRepo}, and verifying
- * that {@link PullRequestDetector#detect(String, String, String)} returns
- * empty when preconditions are not met. No real HTTP calls are made.
+ * Tests for {@link PullRequestDetector} covering the static
+ * {@code extractOwnerRepo} utility — which parses a GitHub remote URL into an
+ * {@code owner/repo} slug via {@link io.flowtree.jobs.GitOperations#repositorySlug(String)}
+ * after checking the host is exactly {@code github.com} — and verifying that
+ * {@link PullRequestDetector#detect(String, String, String)} returns empty when
+ * preconditions are not met. No real HTTP calls are made.
  */
 public class PullRequestDetectorTest extends TestSuiteBase {
 
@@ -60,8 +61,6 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 	/** Verifies that a well-formed GitHub URL with a valid owner/repo path is accepted. */
 	@Test(timeout = 30000)
 	public void validateOwnerRepoAcceptsValid() {
-		// validateOwnerRepo is private, so we verify through extractOwnerRepo
-		// which delegates to validateOwnerRepo internally.
 		// A well-formed GitHub URL with exactly owner/repo should return non-null.
 		String result = PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo.git");
 		assertNotNull(result);
@@ -71,8 +70,8 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 	/** Verifies that URLs lacking a valid owner/repo structure or using a non-GitHub host are rejected. */
 	@Test(timeout = 30000)
 	public void validateOwnerRepoRejectsInvalid() {
-		// A URL with no valid owner/repo structure should return null.
-		// extractOwnerRepo returns null when validateOwnerRepo rejects the path.
+		// A URL with no valid owner/repo structure returns null: repositorySlug
+		// requires exactly two path segments.
 		String resultNoSlash = PullRequestDetector.extractOwnerRepo("https://github.com/noslash.git");
 		assertNull("Expected null for path without owner/repo slash", resultNoSlash);
 
@@ -105,6 +104,17 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 		assertNull(PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo/pull/3"));
 		assertNull(PullRequestDetector.extractOwnerRepo("git@github.com:owner"));
 		assertNull(PullRequestDetector.extractOwnerRepo("not-a-url"));
+	}
+
+	/**
+	 * Verifies that a look-alike host is rejected: the extraction must match the
+	 * host exactly, not merely contain the {@code github.com} substring, so that
+	 * {@code detect} never queries GitHub for a remote hosted elsewhere.
+	 */
+	@Test(timeout = 30000)
+	public void rejectsLookAlikeGitHubHost() {
+		assertNull(PullRequestDetector.extractOwnerRepo("https://github.com.evil.example/owner/repo.git"));
+		assertNull(PullRequestDetector.extractOwnerRepo("git@github.com.evil.example:owner/repo.git"));
 	}
 
 	/** Verifies that a trailing slash is not carried into the slug used to build the API path. */
