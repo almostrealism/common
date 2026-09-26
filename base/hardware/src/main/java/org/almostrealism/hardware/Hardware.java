@@ -184,7 +184,7 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
- * <p><strong>Purpose:</strong> CL/Metal threshold in bytes below which allocations use the JVM-heap provider instead of the backend provider; not a buffer size or allocation ceiling. See {@link #getOffHeapSize(ComputeRequirement)}.</p>
+ * <p><strong>Purpose:</strong> CL/Metal threshold, in allocation elements (the element count passed to {@link #getMemoryProvider(int)}, not bytes), below which allocations use the JVM-heap provider instead of the backend provider; not a buffer size or allocation ceiling. See {@link #getOffHeapSize(ComputeRequirement)}.</p>
  * <p><strong>Default:</strong> {@value #DEFAULT_OFF_HEAP_SIZE}</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
@@ -1245,12 +1245,12 @@ public final class Hardware implements ConsoleFeatures {
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
 	/**
-	 * Returns the CL/Metal provider-selection threshold, in bytes, for the specified backend.
+	 * Returns the CL/Metal provider-selection threshold, in allocation elements, for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} (default: {@value #DEFAULT_OFF_HEAP_SIZE}). {@code CLDataContext}/{@code MetalDataContext} serve allocations smaller than this from the alternate JVM-heap provider and larger ones from the main backend provider; it is not a buffer size and not the allocation ceiling (that is {@link #getMemoryScale()}).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} (default: {@value #DEFAULT_OFF_HEAP_SIZE}). {@code CLDataContext}/{@code MetalDataContext} compare it against the element count passed to {@link #getMemoryProvider(int)} (not a byte size), serving allocations smaller than this from the alternate JVM-heap provider and larger ones from the main backend provider; it is not a buffer size and not the allocation ceiling (that is {@link #getMemoryScale()}).</p>
 	 *
 	 * @param type The backend type (currently unused)
-	 * @return The provider-selection threshold in bytes
+	 * @return The provider-selection threshold in allocation elements
 	 */
 	public int getOffHeapSize(ComputeRequirement type) {
 		try {

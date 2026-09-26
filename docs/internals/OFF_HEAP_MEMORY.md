@@ -26,10 +26,12 @@ as "the off-heap budget."
 - **`AR_HARDWARE_OFF_HEAP_SIZE`** (default `Hardware.DEFAULT_OFF_HEAP_SIZE`,
   which is `0`) is a *separate* value read by `Hardware.getOffHeapSize()` and
   passed to the CL and Metal data contexts (`CLDataContext`, `MetalDataContext`)
-  as `offHeapSize`: a *provider-selection threshold*. Allocations smaller than
-  it are served by the alternate JVM-heap provider; larger ones go to the main
-  backend provider. It is **not** a buffer size, **not** the allocation ceiling,
-  and **not** derived from the memory scale.
+  as `offHeapSize`: a *provider-selection threshold*. Both contexts compare it
+  against the **element count** passed to `getMemoryProvider(int)` (`size < offHeapSize`),
+  not a byte size; allocations smaller than it are served by the alternate
+  JVM-heap provider, larger ones by the main backend provider. It is **not** a
+  buffer size, **not** measured in bytes, **not** the allocation ceiling, and
+  **not** derived from the memory scale.
 
 A note on the historical "1024MB off-heap" figure: it is neither of these. The
 actual reservation ceiling is `precision.bytes() * 2^scale * 64MB`, which at the
@@ -62,11 +64,17 @@ Off-heap blocks are freed by two mechanisms, neither of which is
 - **Phantom-reference reclamation.** `HardwareMemoryProvider` registers each
   allocation as a `NativeRef` (a `java.lang.ref.PhantomReference`) with a
   `ReferenceQueue`. When the Java `RAM` holder becomes unreachable and is
-  collected, the reference is enqueued; two background daemon threads (a submit
-  thread that drains the queue and a process thread that frees largest-first)
-  perform the actual native deallocation. This is a **per-object lifetime
-  mechanism**, not budget enforcement — it releases a block because *its holder
-  died*, not because *total usage is high*.
+  collected, the reference is enqueued on that `ReferenceQueue`, which a
+  background *submit* daemon thread drains. Which thread then frees the block
+  depends on `queueDeallocation`: in the default immediate mode
+  (`queueDeallocation == false`) the submit thread frees each block directly; in
+  queued mode (`queueDeallocation == true`) it hands the reference to a
+  size-ordered `deallocationQueue` that a second *process* daemon thread drains
+  largest-first. The process thread additionally runs `sweepDeferred()` on an
+  interval, which is what eventually frees a release `KernelMemoryGuard` held
+  back (see below). This is a **per-object lifetime mechanism**, not budget
+  enforcement — it releases a block because *its holder died*, not because
+  *total usage is high*.
 - **Explicit deallocation.** A caller (or the provider's own destroy path) may
   call `deallocate` directly; direct-buffer-backed allocations additionally
   rely on the JVM's own direct-buffer reclamation.
