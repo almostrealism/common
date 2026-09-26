@@ -192,7 +192,7 @@ public class CollectionEncoder {
 	 * @param data        The protobuf message to decode
 	 * @param destination The collection to write decoded values into, starting at offset 0
 	 * @return A range view of {@code destination} shaped according to the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination) {
@@ -202,17 +202,24 @@ public class CollectionEncoder {
 	/**
 	 * Decodes a {@link Collections.CollectionData} message into an existing destination collection at the given offset.
 	 *
+	 * <p>Returns {@code null} if the encoded collection has zero total size — a shape with no
+	 * dimensions or one carrying a zero-length axis (such as an SA3 {@code [1, 0, 1]} bottleneck
+	 * buffer). A zero-size range cannot be written, so such a collection resolves to {@code null}
+	 * rather than reaching {@link PackedCollection#range} and throwing. This matches the guard on
+	 * {@link #decode(Collections.CollectionData, boolean)} and the deferred reader
+	 * ({@link CollectionDataReference#of}).</p>
+	 *
 	 * @param data              The protobuf message to decode
 	 * @param destination       The collection to write decoded values into
 	 * @param destinationOffset Element offset within {@code destination} at which writing begins
 	 * @return A range view of {@code destination} shaped according to the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination,
 											 int destinationOffset) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
-		if (shape.getDimensions() == 0) return null;
+		if (shape.getTotalSizeLong() == 0) return null;
 
 		PackedCollection decoded = destination.range(shape, destinationOffset);
 

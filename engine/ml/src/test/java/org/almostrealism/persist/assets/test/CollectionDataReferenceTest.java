@@ -183,6 +183,44 @@ public class CollectionDataReferenceTest {
 	}
 
 	/**
+	 * The destination overload of {@link CollectionEncoder#decode} resolves a zero-total-size
+	 * collection to {@code null} rather than reaching {@link PackedCollection#range} with a
+	 * zero-size shape. A {@code [1, 0, 1]} shape has three dimensions but zero elements, so the
+	 * old {@code getDimensions() == 0} guard would have let it through; this pins the shape-based
+	 * guard shared with the other {@code decode} overloads and the deferred reader.
+	 */
+	@Test(timeout = 30000)
+	public void decodingAnEmptyCollectionIntoADestinationResolvesToNothing() {
+		Collections.CollectionData empty = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build();
+
+		PackedCollection destination = new PackedCollection(4);
+		Assert.assertNull(CollectionEncoder.decode(empty, destination, 0));
+		destination.destroy();
+	}
+
+	/**
+	 * A non-empty collection still decodes into the destination buffer at the requested offset,
+	 * confirming the zero-total-size guard does not disturb the ordinary decode path.
+	 */
+	@Test(timeout = 30000)
+	public void decodingANonEmptyCollectionWritesIntoTheDestination() {
+		PackedCollection destination = new PackedCollection(expected().length + 2);
+		PackedCollection decoded = CollectionEncoder.decode(data(Precision.FP64), destination, 2);
+
+		Assert.assertNotNull(decoded);
+		Assert.assertEquals(expected().length, decoded.getMemLength());
+
+		for (int i = 0; i < expected().length; i++) {
+			Assert.assertEquals(expected()[i], destination.toDouble(i + 2), 0.0);
+		}
+
+		destination.destroy();
+	}
+
+	/**
 	 * Collection data nested inside a larger message is addressable.
 	 *
 	 * <p>This is the shape a library of weights is written in — entries within

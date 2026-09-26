@@ -33,6 +33,7 @@ import os
 import re
 import struct
 import sys
+import uuid
 
 import numpy as np
 
@@ -376,10 +377,18 @@ def write_group(entries, output_dir, prefix):
 
     The promotion phase is rollback-safe too: promoting a group of shards is not a
     single atomic step, so each existing final shard is moved aside to a hidden
-    ``.<shard>.backup`` before being overwritten, and if any :func:`os.replace`
+    ``.<token>.<shard>.backup`` before being overwritten, and if any :func:`os.replace`
     fails partway through the backups are restored and the shards already promoted
     are dropped. The directory is therefore never left holding a mix of new and
     previous shards after a caught failure.
+
+    All of the hidden helper files this call touches — the ``.partial`` staging
+    files, the ``.backup`` finals, and the ``.stale`` extras — carry a unique
+    per-call token in their name. A collision with a file left by an interrupted
+    prior run or an unrelated tool is therefore impossible, so this call never
+    overwrites or deletes a hidden file it did not itself create; it only removes
+    the tokened helpers it produced. (Those readers already skip every hidden
+    file, so an orphaned helper from an interrupted run is inert.)
 
     Any stale shard left by a prior, larger run with the same ``prefix`` — a name
     this writer's own scheme produces (see :func:`_is_shard_name`) that this call
@@ -418,7 +427,15 @@ def write_group(entries, output_dir, prefix):
     names = [f"{prefix}_{index}" if index > 0 else prefix for index in range(len(shards))]
     kept = set(names)
     written = [os.path.join(output_dir, name) for name in names]
-    staged = [os.path.join(output_dir, f".{name}.partial") for name in names]
+
+    # A unique per-call token leads every hidden helper name, so the staging,
+    # backup, and stale-backup files this call creates cannot collide with a file
+    # an interrupted prior run or an unrelated tool left behind. This call only ever
+    # removes the tokened helpers it produced, never a pre-existing hidden file it
+    # does not own. The token is a leading segment (not a suffix) so the helpers
+    # still end in ``.partial`` / ``.backup`` / ``.stale`` and begin with ``.``.
+    token = uuid.uuid4().hex
+    staged = [os.path.join(output_dir, f".{token}.{name}.partial") for name in names]
 
     try:
         for shard, path in zip(shards, staged):
@@ -459,14 +476,14 @@ def write_group(entries, output_dir, prefix):
     try:
         for path, final in zip(staged, written):
             if os.path.isfile(final):
-                backup = os.path.join(output_dir, f".{os.path.basename(final)}.backup")
+                backup = os.path.join(output_dir, f".{token}.{os.path.basename(final)}.backup")
                 os.replace(final, backup)
                 restored.append((final, backup))
             else:
                 created.append(final)
             os.replace(path, final)
         for stale_final in stale:
-            backup = os.path.join(output_dir, f".{os.path.basename(stale_final)}.stale")
+            backup = os.path.join(output_dir, f".{token}.{os.path.basename(stale_final)}.stale")
             os.replace(stale_final, backup)
             dropped.append((stale_final, backup))
     except BaseException:
