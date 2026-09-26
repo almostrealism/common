@@ -36,10 +36,13 @@ and in fact *forbids* an initializer, throwing `UnsupportedOperationException`
 if one is supplied alongside a length. That is an omitted initializer on a
 freshly declared local, not an assignment of "null" to an existing location: it
 introduces new scratch storage; it does not null, erase, or reassign a pointer
-the kernel already holds. So the only two shapes the kernel body emits are a
-value-carrying assignment and an uninitialized local-array declaration; there is
-no overload, literal, or primitive that writes "nothing," "null," or "an erased
-pointer" into an existing destination or argument pointer.
+the kernel already holds. So the only two shapes in which the kernel body *binds
+a value to a location* are a value-carrying assignment and an uninitialized
+local-array declaration. (The body emits other statement forms too — loops,
+conditionals, index arithmetic, and the like — but none of those write into a
+destination either.) There is no overload, literal, or primitive that writes
+"nothing," "null," or "an erased pointer" into an existing destination or
+argument pointer.
 
 Consequently:
 
@@ -61,16 +64,18 @@ Consequently:
 
 A Java-level expression that *looks* like it might null a pointer — for example
 assigning a zero into a destination — does not compile to a pointer-clearing
-instruction, because the codegen language has no such instruction. It compiles
-to one of exactly two things:
+instruction, because the codegen language has no such instruction. There are
+only two possible outcomes:
 
 1. A numeric assignment such as `buffer[offset + i] = 0.0;` — a value write to
    a location the pointer already addresses. The pointer is untouched; only the
    number stored there changes.
-2. Nothing at all — there is no value to assign. The `ExpressionAssignment`
-   constructor rejects a null *value* expression (it throws
-   `IllegalArgumentException` when the assigned `Expression` is `null`) while the
-   `Scope` is being built, long before any C is emitted. (The constructor
+2. No kernel at all — and not as a silently emitted no-op. If there is no value
+   to assign, the statement never reaches code generation: the
+   `ExpressionAssignment` constructor rejects a null *value* expression (it
+   throws `IllegalArgumentException` when the assigned `Expression` is `null`)
+   while the `Scope` is being built, long before any C is emitted, so the build
+   fails rather than producing a pointer-clearing statement. (The constructor
    validates only the value expression; it does not itself check that the
    destination is a writable reference.)
 

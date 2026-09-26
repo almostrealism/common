@@ -75,8 +75,11 @@ compile and load; concurrent JVMs need distinct library directories.
   stored kernels. The compiled artifact behind each slot is generated fresh
   per JVM run.
 - `common/docs/internals/KERNEL_CACHE.md` (new) — single-page reference:
-  cache directory, key/identity scheme, the exact lifecycle hook that
-  clears it, what is and is not preserved across runs.
+  cache directory, key/identity scheme, and what is and is not preserved
+  across runs. (Superseded: this originally called for documenting "the exact
+  lifecycle hook that clears it." There is no such hook — files persist on
+  disk. What the page actually documents is the overwrite-before-load
+  mechanism, and that it is process-local; see the Status note above.)
 
 ### What the docs should specifically state
 - ~~The directory is purged (or otherwise invalidated) at JVM startup.~~
@@ -86,7 +89,10 @@ compile and load; concurrent JVMs need distinct library directories.
   recompiled and overwritten before it is loaded — overwrite-before-load. State
   that mechanism, per `KERNEL_CACHE.md`, so a debugger can verify the behavior.)
 - Investigators encountering a native crash inside `GeneratedOperationN.apply`
-  can rule out "stale dylib from prior build."
+  can rule out "stale dylib from prior build" — for a single JVM owning its
+  library directory. (Concurrent JVMs sharing `AR_HARDWARE_LIBS` are the
+  documented exception; they need distinct directories. See the process-local
+  qualification in the Status note and `KERNEL_CACHE.md`.)
 - If/when this changes (e.g., we add cross-run caching for compile-time
   performance), the docs are the place to update so this hypothesis becomes
   valid again.
@@ -110,9 +116,13 @@ zero pointers on exhaustion that propagate into kernels.
   block on its daemon thread(s) once the holder is collected — except for a
   direct-buffer-backed block, whose native storage is owned by the JVM's own
   `DirectByteBuffer` cleaner. See `OFF_HEAP_MEMORY.md`.)
-- "Allocator returns null on exhaustion" is not a documented behavior of
-  this framework's allocators. Exhaustion is reported as allocation failure
-  (exception) or as OS-level OOM, not as a silent zero-valued pointer.
+- "Allocator returns null on *reservation* exhaustion" is not a documented
+  behavior of this framework's allocators. Crossing the framework's reservation
+  ceiling is reported as an allocation failure (`HardwareException`), not as a
+  silent zero-valued pointer. (One exception the reference page carries: an
+  OS-level `calloc` failure in the native provider's JNI path can return address
+  0 unchecked — a distinct case from reservation exhaustion. See
+  `OFF_HEAP_MEMORY.md`.)
 
 ### Where documentation should live
 - `common/base/hardware/src/main/java/org/almostrealism/hardware/Hardware.java`
