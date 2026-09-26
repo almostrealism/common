@@ -1,0 +1,27 @@
+/**
+ * Test fixture for PdslProgramScopeTest: a data block read by a layer that another layer
+ * calls. The views the block derives are program-level names, so the called layer finds them
+ * exactly as it does when the loader builds it directly.
+ */
+
+/** Two [size, size] projections carved out of one stacked [2 * size, size] weight. */
+data scope_data {
+    stacked: weight
+    size: int
+
+    lower = range(stacked, [size, size], 0)
+    upper = range(stacked, [size, size], size * size)
+}
+
+/** lower . x + upper . x, from the views the data block derives. */
+layer project_views(size: int) -> [1, size] {
+    accum_blocks(
+        { dense(lower) },
+        { dense(upper) }
+    )
+}
+
+/** The same projection, reached through a call: the called layer still finds the views. */
+layer project_views_nested(size: int) -> [1, size] {
+    project_views(size)
+}

@@ -746,24 +746,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
-		if ((qkNormQ == null) != (qkNormK == null)) {
-			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
-		}
-
-		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				freqCis.getShape().length(0), position, epsilon);
-		args.put("bq", bq);
-		args.put("bk", bk);
-		args.put("bv", bv);
-		args.put("freq_cis", freqCis);
-
-		if (qkNormQ == null) {
-			return attentionLayer("attention", args, requirements);
-		}
-
-		args.put("qk_norm_q", qkNormQ);
-		args.put("qk_norm_k", qkNormK);
-		return attentionLayer("attention_qk_norm", args, requirements);
+		return attentionLayer(qkNormQ == null ? "attention" : "attention_qk_norm",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+						bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon),
+				requirements);
 	}
 
 	/**
@@ -804,11 +790,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
-		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				headGroups[0].freqCis.getShape().length(0), position, epsilon);
-		args.put("q_head_groups", headGroups);
-		args.put("kv_head_groups", HeadGroupConfig.forKvHeads(headGroups, heads / kvHeads));
-		return attentionLayer("attention_mra", args, requirements);
+		return attentionLayer("attention_mra",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, headGroups, position, epsilon),
+				requirements);
 	}
 
 	/**
@@ -880,6 +864,67 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
+	 * Binds the arguments of the {@code attention} layer of {@link #ATTENTION_ASSET}, or of its
+	 * {@code attention_qk_norm} layer when QK-Norm weights are given, for every layer that contains
+	 * that attention stage: the common bindings and caches of the overload above, completed with
+	 * the projection biases ({@code null} when the model has none), the rotary frequency table
+	 * (one row per cache row) and the {@code (heads, headSize)} and {@code (kvHeads, headSize)}
+	 * QK-Norm weights ({@code null} without QK-Norm). Parameters are as in {@link #attention}.
+	 *
+	 * @return the argument bindings
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given, or the head
+	 *         geometry is invalid
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   PackedCollection bk, PackedCollection bv,
+												   PackedCollection bq,
+												   PackedCollection qkNormQ, PackedCollection qkNormK,
+												   CollectionProducer freqCis,
+												   Producer<PackedCollection> position,
+												   double epsilon) {
+		if ((qkNormQ == null) != (qkNormK == null)) {
+			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
+		}
+
+		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				freqCis.getShape().length(0), position, epsilon);
+		args.put("bq", bq);
+		args.put("bk", bk);
+		args.put("bv", bv);
+		args.put("freq_cis", freqCis);
+		if (qkNormQ != null) {
+			args.put("qk_norm_q", qkNormQ);
+			args.put("qk_norm_k", qkNormK);
+		}
+		return args;
+	}
+
+	/**
+	 * Binds the arguments of the {@code attention_mra} layer of {@link #ATTENTION_ASSET}, for every
+	 * layer that contains that attention stage: the common bindings and caches, completed with the
+	 * query head groups and the KV head groups derived from them. The first group's frequency
+	 * table sets the cache length. Parameters are as in the head-group {@link #attention}.
+	 *
+	 * @return the argument bindings
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   HeadGroupConfig[] headGroups,
+												   Producer<PackedCollection> position,
+												   double epsilon) {
+		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				headGroups[0].freqCis.getShape().length(0), position, epsilon);
+		args.put("q_head_groups", headGroups);
+		args.put("kv_head_groups", HeadGroupConfig.forKvHeads(headGroups, heads / kvHeads));
+		return args;
+	}
+
+	/**
 	 * Builds one layer of {@link #ATTENTION_ASSET} for a {@code (1, dim)} token vector.
 	 *
 	 * @param layer the layer name: {@code attention}, {@code attention_qk_norm} or
@@ -894,6 +939,48 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
 		PdslLoader loader = new PdslLoader();
 		return loader.buildLayer(loader.parseResource(ATTENTION_ASSET), layer, shape(1, dim), args, requirements);
+	}
+
+	/**
+	 * Classpath location of the asset describing the pre-norm transformer layer: a residual
+	 * attention stage followed by a residual SwiGLU feed-forward stage. Its {@code transformer},
+	 * {@code transformer_qk_norm} and {@code transformer_mra} layers are what the
+	 * {@link #transformer} methods build. They call the layers of {@link #ATTENTION_ASSET} and
+	 * {@link #FEED_FORWARD_ASSET}, so the three assets are parsed into one program.
+	 */
+	String TRANSFORMER_ASSET = "/pdsl/transformer.pdsl";
+
+	/**
+	 * Builds one layer of {@link #TRANSFORMER_ASSET} for a {@code (1, dim)} token vector, from the
+	 * program formed by that asset together with {@link #ATTENTION_ASSET} and
+	 * {@link #FEED_FORWARD_ASSET}, whose layers it composes.
+	 *
+	 * @param layer the layer name: {@code transformer}, {@code transformer_qk_norm} or
+	 *              {@code transformer_mra}
+	 * @param attentionArgs the bindings of the layer's attention stage, from
+	 *                      {@link #attentionArguments}
+	 * @param rmsFfnWeight pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection weights, shape {@code [hidden_dim, dim]}
+	 * @param w2 FFN down projection weights, shape {@code [dim, hidden_dim]}
+	 * @param w3 FFN up projection weights, shape {@code [hidden_dim, dim]}
+	 * @param requirements compute requirements, applied to every layer the assets construct for
+	 *                     {@code layer}
+	 * @return the transformer layer block
+	 */
+	default Block transformerLayer(String layer, Map<String, Object> attentionArgs,
+								   PackedCollection rmsFfnWeight,
+								   PackedCollection w1, PackedCollection w2, PackedCollection w3,
+								   ComputeRequirement... requirements) {
+		Map<String, Object> args = new HashMap<>(attentionArgs);
+		args.put("rms_ffn_weight", rmsFfnWeight);
+		args.put("w1", w1);
+		args.put("w2", w2);
+		args.put("w3", w3);
+
+		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResources(ATTENTION_ASSET, FEED_FORWARD_ASSET, TRANSFORMER_ASSET),
+				layer, shape(1, dim), args, requirements);
 	}
 
 	/**
@@ -1396,6 +1483,11 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	/**
 	 * Transformer layer with configurable RMSNorm epsilon.
 	 *
+	 * <p>The structure is the {@code transformer} layer of {@link #TRANSFORMER_ASSET} (or
+	 * {@code transformer_qk_norm} when normalization weights are given): a residual attention
+	 * stage and a residual SwiGLU feed-forward stage. This method only binds the arguments
+	 * (allocating the attention caches) and builds the layer.</p>
+	 *
 	 * @param heads Number of query attention heads
 	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
@@ -1415,8 +1507,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param w3 FFN up projection
 	 * @param position Current position in sequence
 	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
+	 * @param requirements compute requirements, applied to every layer the assets build
 	 * @return Complete transformer layer block
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given
 	 */
 	default Block transformer(int heads, int kvHeads,
 							  PackedCollection rmsAttWeight,
@@ -1431,21 +1524,18 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							  Producer<PackedCollection> position,
 							  double epsilon,
 							  ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-
-		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
-		return transformer;
+		return transformerLayer(qkNormQ == null ? "transformer" : "transformer_qk_norm",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+						bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon),
+				rmsFfnWeight, w1, w2, w3, requirements);
 	}
 
 	/**
 	 * Transformer layer with Multidimensional Relative Attention (MRA).
 	 *
-	 * <p>Combines MRA attention (per-head-group RoPE) with a standard SwiGLU
-	 * feed-forward block. This is the building block for the Moonbeam MIDI
-	 * transformer.</p>
+	 * <p>The structure is the {@code transformer_mra} layer of {@link #TRANSFORMER_ASSET}: MRA
+	 * attention (per-head-group RoPE) and a standard SwiGLU feed-forward stage, each residual.
+	 * This is the building block for the Moonbeam MIDI transformer.</p>
 	 *
 	 * @param heads number of query attention heads
 	 * @param kvHeads number of key/value heads (for GQA)
@@ -1474,13 +1564,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							  Producer<PackedCollection> position,
 							  double epsilon,
 							  ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-
-		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				headGroups, position, epsilon, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
-		return transformer;
+		return transformerLayer("transformer_mra",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, headGroups, position, epsilon),
+				rmsFfnWeight, w1, w2, w3, requirements);
 	}
 
 	/**
