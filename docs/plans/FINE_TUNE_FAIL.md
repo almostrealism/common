@@ -395,6 +395,36 @@ The bottleneck is the **sheer volume** of expression creation during backward pa
 2. Is the cache actually helping (finding duplicates) or just adding overhead?
 3. Could derivative expressions be memoized at a higher level?
 
+### Update (September 2026): The Cache Lookups Are Not O(1)
+
+A JFR recording (60 s, 194 execution samples) of `ProductDeltaIsolationTest#testSingleAttentionBackward`,
+whose single backward pass took about 184 s on both Metal and the native backend, contradicts the
+"DISPROVEN" hypothesis above:
+
+- About 65% of the samples are in `ExpressionCache.get` → `FrequencyCache.get`/`put` →
+  `HashMap$TreeNode.find` → `Expression.equals`/`NAryExpression.compare`. `TreeNode.find` recurses only
+  when many keys in one bin share the *same* `hashCode()`, so the bins have been treeified and every
+  lookup scans them with deep structural comparisons.
+- The shared hash codes come from the structural hash computed in `Expression.init()`: for a node with
+  children it is the product of the children's hashes (`(a % 2713) * (b % 2713)`), and any leaf that is
+  not a constant hashes to 1. The product is commutative, a 1 contributes nothing, and a zero leaf zeroes
+  every ancestor, so families of expressions that differ only in their constants collide.
+- At least 81% of the samples are inside `ExplicitExpressionMatrix.populate`, the `uniqueNonZeroOffset`
+  analysis run by `AggregatedProducerComputation.prepareScope`. It substitutes every (row, column) pair
+  into the target index expression, creating exactly such a family, and every node went through the
+  compilation's `ExpressionCache`. This answers open question 2 for these expressions: pure overhead.
+
+`ExplicitExpressionMatrix.populate` now substitutes the row index once per row and builds its entries
+under `ExpressionCache.bypass(...)`. `testSingleAttentionBackward` went from a mean of 186 s to 25 s on
+Metal and from 198 s to 41 s on the native backend; `ConvolutionModelTests#convBackwardsMediumBatch`
+went from 12.3 s to 6.0 s on Metal and from 15.4 s to 8.7 s on the native backend.
+
+The weak structural hash still degrades every other `ExpressionCache` and `HashMap<Expression, ...>`
+use. Replacing it with a well-mixed, non-annihilating combination is the general fix, but
+`Expression.getSimplified()` uses `hashCode()` equality as its fixed-point test and
+`Scope.processReplacements` iterates a `HashSet` of common sub-expression targets, so that change
+alters simplification termination and sub-expression extraction everywhere and needs its own validation.
+
 ---
 
 ## Isolated Component Testing (February 2026)
