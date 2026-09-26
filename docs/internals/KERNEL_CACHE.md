@@ -21,11 +21,14 @@ Native compilation writes files into a library directory and loads them via
   The directory is created if it does not exist; it is **not** emptied or
   recreated. Files written on a previous run are still present on disk when a
   new JVM starts.
-- **Filenames are derived from the class name, not from content.** For a target
-  class `GeneratedOperationN`, `getInputFile` writes `GeneratedOperationN.c` and
-  `getOutputFile` writes the library named by `AR_HARDWARE_LIB_FORMAT`
-  (`libGeneratedOperationN.dylib` / `.so`). Compiling the same class name again
-  **overwrites** those files in place.
+- **Filenames are derived from the fully qualified class name, not from
+  content.** `compile(Class, ...)` passes `target.getName()` — the fully
+  qualified binary name — to `getInputFile`/`getOutputFile`. For a target class
+  `GeneratedOperationN`, `getInputFile` therefore writes
+  `org.almostrealism.generated.GeneratedOperationN.c` and `getOutputFile` writes
+  the library named by `AR_HARDWARE_LIB_FORMAT` over that same stem (for example
+  `liborg.almostrealism.generated.GeneratedOperationN.dylib` / `.so`). Compiling
+  the same class name again **overwrites** those files in place.
 - **Compilation always precedes load.** `compileAndLoad` calls `compile(...)`
   — which writes the `.c` and invokes the toolchain to produce the library —
   and only then calls `System.load(name)`. There is no path that loads a
@@ -42,9 +45,9 @@ names are handed out. The counter behind `reserveLibraryTarget()`
 (`NativeCompiler`'s static `runnableCount`) **starts at 0 in every JVM** and
 counts up as targets are reserved. Reserving target *N* loads
 `org.almostrealism.generated.GeneratedOperationN`; the very next step compiles
-fresh C into `GeneratedOperationN.c` and rebuilds
-`libGeneratedOperationN.<ext>`, **overwriting** whatever a previous run left at
-that path, and only then loads it.
+fresh C into `org.almostrealism.generated.GeneratedOperationN.c` and rebuilds
+the correspondingly named library, **overwriting** whatever a previous run left
+at that path, and only then loads it.
 
 So the guarantee an investigator needs is:
 

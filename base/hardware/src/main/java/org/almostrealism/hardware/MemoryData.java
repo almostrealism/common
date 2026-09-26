@@ -204,9 +204,14 @@ import java.util.stream.IntStream;
  *
  * <p>A {@link MemoryData} that owns native memory is the Java handle to an off-heap block. That
  * block is released either by an explicit {@link Destroyable#destroy()} or, if the handle simply
- * becomes unreachable, by the provider's phantom-reference reclamation
- * (see {@link org.almostrealism.hardware.mem.HardwareMemoryProvider}): the block is freed because
- * <em>its holder was collected</em>, a per-object lifetime mechanism. There is <strong>no separate
+ * becomes unreachable, by reclamation driven off a phantom reference the provider registers when
+ * the holder is collected (see {@link org.almostrealism.hardware.mem.HardwareMemoryProvider}). Who
+ * frees the native storage depends on the backing type: for a provider-owned block (such as a JNI
+ * {@code calloc} allocation) the provider frees it explicitly once the holder is collected; for a
+ * direct-buffer-backed block the JVM's own {@code DirectByteBuffer} cleaner owns the native storage
+ * and the provider's reference only unwinds bookkeeping and shared mappings, not the buffer itself.
+ * Either way the block is freed because <em>its holder was collected</em>, a per-object lifetime
+ * mechanism, not budget enforcement. There is <strong>no separate
  * "GC by bytes used" budget</strong> — nothing sweeps live off-heap data to stay under a limit; an
  * allocation that would exceed the configured ceiling is rejected with a {@code HardwareException}
  * rather than triggering a reclaim. A consequence for debugging: a raw content pointer captured

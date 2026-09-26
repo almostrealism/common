@@ -233,10 +233,11 @@ import java.util.function.Consumer;
  *
  * <p>Compilation writes files into the library directory (resolved by {@link #factory(Precision, boolean)} from
  * {@code AR_HARDWARE_LIBS}, else from {@code SystemUtils.getExtensionsPath()}; created if absent,
- * never emptied). Filenames are derived from the target <em>class name</em>, not from content:
- * for {@code GeneratedOperationN}, {@link #getInputFile(String)} writes {@code GeneratedOperationN.c}
+ * never emptied). Filenames are derived from the target's <em>fully qualified binary class
+ * name</em> ({@code target.getName()}), not from content: for {@code GeneratedOperationN},
+ * {@link #getInputFile(String)} writes {@code org.almostrealism.generated.GeneratedOperationN.c}
  * and {@link #getOutputFile(String, boolean)} writes the library named by
- * {@code AR_HARDWARE_LIB_FORMAT}. Compiling the same class name again <strong>overwrites</strong>
+ * {@code AR_HARDWARE_LIB_FORMAT} over that same stem. Compiling the same class name again <strong>overwrites</strong>
  * those files in place, and {@link #compileAndLoad(Class, String)} always (re)compiles before it
  * calls {@code System.load} — there is no path that loads a library without first regenerating it
  * in the current run.</p>

@@ -56,9 +56,12 @@ to one of exactly two things:
 1. A numeric assignment such as `buffer[offset + i] = 0.0;` — a value write to
    a location the pointer already addresses. The pointer is untouched; only the
    number stored there changes.
-2. Nothing at all — if the destination is not a writable reference, the
-   assignment is rejected while the `Scope` is being built (the
-   `ExpressionAssignment` constructor throws), long before any C is emitted.
+2. Nothing at all — there is no value to assign. The `ExpressionAssignment`
+   constructor rejects a null *value* expression (it throws
+   `IllegalArgumentException` when the assigned `Expression` is `null`) while the
+   `Scope` is being built, long before any C is emitted. (The constructor
+   validates only the value expression; it does not itself check that the
+   destination is a writable reference.)
 
 There is no third outcome in which the emitted kernel body sets a pointer
 variable to a null/zero pointer.

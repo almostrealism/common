@@ -101,13 +101,23 @@ The framework defends this in two places:
   `releaseFor` decrements it. `HardwareMemoryProvider` consults
   `canDeallocate(address)` and holds back a free while a kernel is still using
   the block. What it protects: a block whose holder went unreachable *mid-kernel*
-  is not freed until the kernel releases it. What it does **not** protect: an
-  argument it cannot resolve to a `RAM` (it warns and proceeds unguarded), or a
-  pointer already captured as a bare `long` outside the guard's view.
-- **Pre-dispatch pointer validation.** `NativeInstructionSet.apply` re-reads and
-  checks every `getContentPointer()` immediately before the native call, turning
-  a would-be `SIGSEGV` into a named `NullPointerException` if a block was
-  already unmapped by dispatch time.
+  is deferred rather than freed immediately while the kernel holds it. This is
+  **best-effort, not a hard hold**: `HardwareMemoryProvider` carries out a
+  deferred release anyway once it has waited `deferredReleaseTimeoutMs` (default
+  30s), emitting a warning, even if the guard still reports the address active —
+  so a kernel that runs past that timeout is not indefinitely protected. What it
+  does **not** protect at all: an argument it cannot resolve to a `RAM` (it warns
+  and proceeds unguarded), or a pointer already captured as a bare `long` outside
+  the guard's view.
+- **Pre-dispatch pointer validation.** `NativeInstructionSet.apply` re-reads
+  every `getContentPointer()` immediately before the native call and rejects a
+  **numeric zero**, turning that specific case into a named
+  `NullPointerException` instead of a `SIGSEGV`. This catches a freed-and-nulled
+  or unresolved argument; it does **not** catch a numerically-valid pointer whose
+  backing page has already been unmapped — the use-after-free case above is
+  exactly such a dangling non-zero pointer, and it still dereferences into a
+  `SIGSEGV`. The zero check is a diagnostic for the null case, not a defense
+  against every stale pointer.
 
 ## What cannot happen
 
