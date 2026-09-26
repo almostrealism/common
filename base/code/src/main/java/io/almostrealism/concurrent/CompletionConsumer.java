@@ -19,6 +19,7 @@ package io.almostrealism.concurrent;
 import io.almostrealism.streams.Semaphore;
 
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * A {@link Consumer} that can additionally receive the {@link Semaphore} for the completion
@@ -55,4 +56,20 @@ public interface CompletionConsumer<T> extends Consumer<T> {
 
 	@Override
 	default void accept(T value) { accept(value, null); }
+
+	/**
+	 * Returns a {@link CompletionConsumer} that applies {@code before} to each value it accepts
+	 * and delivers the result to this consumer, passing the completion along untouched &mdash;
+	 * the analog of {@link java.util.function.Function#compose(Function)} for a consumer that
+	 * carries completions. Because the value arrives while its contents may still be
+	 * outstanding, {@code before} must not depend on them (re-viewing a memory handle is fine;
+	 * reading it is not).
+	 *
+	 * @param before the transformation to apply to each accepted value
+	 * @param <S>    the type of value accepted by the returned consumer
+	 * @return a consumer delivering transformed values, with their completions, to this one
+	 */
+	default <S> CompletionConsumer<S> compose(Function<? super S, ? extends T> before) {
+		return (value, completion) -> accept(before.apply(value), completion);
+	}
 }

@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -301,13 +302,30 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private Executor executor;
 
 	/**
+	 * Reports whether the calling thread is a bounded executor thread of any
+	 * {@link io.almostrealism.code.ComputeContext} &mdash; not only the one that owns this
+	 * factory, since a computation graph can chain arguments across contexts and deliver
+	 * this call on a foreign context's own pool. Used by
+	 * {@link #construct(PreparedArguments, Semaphore)} to decide whether an argument's
+	 * request can be issued directly on the calling thread instead of a freshly spawned
+	 * dedicated one: a request may wait for its dispatch to be issued, and a bounded pool
+	 * thread must never be held for that.
+	 */
+	private BooleanSupplier isExecutorThread;
+
+	/**
 	 * Per-argument destination reuse slots, indexed like {@link #arguments}. Lazily
 	 * created on first use when {@link #enableDestinationReuse} is active.
 	 */
 	private DestinationSlot[] destinationSlots;
 
 	/**
-	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
+	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances, treating
+	 * the calling thread of every request as though it might always be one of {@code executor}'s
+	 * own (see {@link #ProcessDetailsFactory(boolean, int, List, int, Supplier, Executor,
+	 * BooleanSupplier)}). A caller using this overload has no way to report otherwise, so a
+	 * blocking argument request is always issued on a freshly spawned dedicated thread rather
+	 * than the calling thread, preserving this constructor's original behavior.
 	 *
 	 * @param fixedCount True if the kernel size is fixed at construction time
 	 * @param count Declared number of parallel work items (used when fixedCount is true)
@@ -321,6 +339,28 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 								 int outputArgIndex,
 								 Supplier<MemoryReplacementManager> replacements,
 								 Executor executor) {
+		this(fixedCount, count, arguments, outputArgIndex, replacements, executor, () -> true);
+	}
+
+	/**
+	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
+	 *
+	 * @param fixedCount True if the kernel size is fixed at construction time
+	 * @param count Declared number of parallel work items (used when fixedCount is true)
+	 * @param arguments Ordered list of array variables representing kernel arguments
+	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
+	 * @param replacements Supplier of the memory replacement manager
+	 * @param executor Executor for asynchronous kernel dispatch
+	 * @param isExecutorThread Reports whether the calling thread is a bounded executor
+	 *                         thread of any {@link io.almostrealism.code.ComputeContext},
+	 *                         not only the one that owns this factory
+	 */
+	public ProcessDetailsFactory(boolean fixedCount, int count,
+								 List<ArrayVariable<? extends T>> arguments,
+								 int outputArgIndex,
+								 Supplier<MemoryReplacementManager> replacements,
+								 Executor executor,
+								 BooleanSupplier isExecutorThread) {
 		if (arguments == null) {
 			throw new IllegalArgumentException();
 		}
@@ -340,6 +380,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		this.replacements = replacements;
 		this.executor = executor;
+		this.isExecutorThread = isExecutorThread;
 	}
 
 	@Override
@@ -549,17 +590,54 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * Constructs an {@link AcceleratedProcessDetails} from the given argument snapshot,
 	 * ordering dispatch-backed argument evaluations after the given completion.
 	 *
-	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
-	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
-	 * through the provider, so an argument kernel never reads memory written by the work
-	 * {@code dependsOn} represents before that work has completed — without any host wait.
-	 * Plain host evaluables are handle-producers (they return {@link MemoryData} handles;
-	 * the kernel reads the contents on the device, ordered by its own chained dispatch)
-	 * and disregard {@code dependsOn}, evaluating immediately: blocking them on it would
+	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn} when
+	 * {@link StreamingEvaluable#isDispatchBacked()} reports, on the <em>pre-wrap</em> evaluable
+	 * (the value in {@code kernelArgEvaluables}, before {@code async()}/{@code async(Executor)}
+	 * wraps it), that it orders its own work after a supplied dependency — chaining through the
+	 * provider for a device dispatch, or waiting on a worker thread before reading memory
+	 * otherwise. An argument whose pre-wrap evaluable is not itself a {@link StreamingEvaluable}
+	 * (a plain reference-producing {@link Evaluable}, such as the handle-only lambdas a compiled
+	 * {@code Assignment} binds its source/destination to) receives {@code null} instead, even
+	 * though the generic {@code async()} wrapper ({@code EvaluableStreamingAdapter}) it gets
+	 * wrapped in unconditionally reports {@code isDispatchBacked() == true} once constructed.
+	 * That wrapper-level report describes what the adapter's {@code request} is <em>capable</em>
+	 * of (waiting on a non-null dependency before calling {@code evaluate()}), not whether this
+	 * particular argument needs it: a handle-only evaluable never reads memory content during its
+	 * own evaluation, and the compiled kernel's actual read of that memory is already ordered,
+	 * without any host wait, by {@link AcceleratedOperation#apply(MemoryBank, Object[], Semaphore)
+	 * apply}, which merges {@code dependsOn} into the operator's own dispatch semaphore
+	 * independently of this per-argument decision. Forwarding {@code dependsOn} here as well would
+	 * force a redundant, blocking host wait for exactly the kernel chaining this branch exists to
+	 * avoid (see {@code SemaphoreChainBatchingTest#chainedMetalDispatchesShareCommandBuffer} and
+	 * {@code #foreignDependencyBridgesWithoutHostWait}, which assert no such wait occurs), while
+	 * providing no additional correctness guarantee: blocking it on {@code dependsOn} would also
 	 * violate the non-blocking submission contract (a submit with an outstanding foreign
-	 * dependency must return, and a same-provider dependency must remain free), so a
-	 * host function that reads memory <em>contents</em> rather than returning a handle
-	 * is responsible for its own ordering.</p>
+	 * dependency must return, and a same-provider dependency must remain free). An argument that
+	 * instead needs a sized destination (built via {@code Evaluable::into} below) is always
+	 * dispatch-backed, since it only reaches that path by being a genuine kernel evaluation
+	 * rather than a handle-only reference.</p>
+	 *
+	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is never
+	 * submitted to the {@code ComputeContext}'s own bounded executor while dispatch is
+	 * asynchronous. Issuing a request may wait for the argument's own dispatch to be issued
+	 * (its readiness, not its completion), and that readiness is itself produced on that
+	 * executor, so holding one of its threads for the wait is a starvation hazard that
+	 * {@code AcceleratedComputationOperation} refuses outright. The executor is used only
+	 * when dispatch is synchronous, where it runs the request inline.</p>
+	 *
+	 * <p>An argument still does not always need a dedicated thread: {@link #isExecutorThread}
+	 * reports whether the calling thread is itself a bounded executor thread of any {@code
+	 * ComputeContext} &mdash; not only the one that owns this factory, since a chained argument
+	 * can be evaluated from a foreign context's own pool &mdash; the only kind of thread the
+	 * request must be kept off of. When it is not, the request is issued directly on the
+	 * calling thread instead of a freshly spawned one, avoiding a new OS thread (and a
+	 * blocking hand-off to it) at every level of a computation graph with several levels of
+	 * hoisted arguments, such as a chain of reshape- or repeat-wrapped kernel results. Because
+	 * the direct request reuses the argument's existing {@link StreamingEvaluable} rather than
+	 * a fresh wrapper, it is delivered through the three-argument {@link
+	 * StreamingEvaluable#request(Object[], Semaphore, Consumer) request} overload instead of
+	 * {@link StreamingEvaluable#setDownstream}, since the same evaluable instance may be reused
+	 * (and already carry a downstream) across overlapping or repeated constructions.</p>
 	 *
 	 * <p>All working state lives in locals of this method, so overlapping
 	 * constructions (whether from another thread or from an argument evaluation
@@ -594,6 +672,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * we need to create the AcceleratedProcessDetails first.
 		 */
 		boolean[] evaluateAhead = new boolean[arguments.size()];
+		boolean[] dispatchBacked = new boolean[arguments.size()];
+
+		// See this method's javadoc: marks the indices resolved directly on the calling thread.
+		boolean[] direct = new boolean[arguments.size()];
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
@@ -618,13 +700,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead[i]) {
-				if (!Hardware.getLocalHardware().isAsync() ||
-						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
-						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
-					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
-				} else {
-					asyncEvaluables[i] = kernelArgEvaluables[i].async();
-				}
+				asyncEvaluables[i] = selectAsyncEvaluable(kernelArgEvaluables[i], direct, i);
+				dispatchBacked[i] = kernelArgEvaluables[i] instanceof StreamingEvaluable &&
+						((StreamingEvaluable<?>) kernelArgEvaluables[i]).isDispatchBacked();
 			}
 		}
 
@@ -669,7 +747,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				Heap.addCreatedMemory(result);
 			}
 
-			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
+			Evaluable sized = kernelArgEvaluables[i].into(result);
+			asyncEvaluables[i] = selectAsyncEvaluable(sized, direct, i);
+			dispatchBacked[i] = true;
 		}
 
 		/*
@@ -684,25 +764,64 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			leases.forEach(details::addDestinationLease);
 		}
 
-		/* Set downstream on all async evaluables, passing the specific details instance */
+		/*
+		 * Set downstream on every async evaluable that is not resolved directly (see this
+		 * method's javadoc), passing the specific details instance.
+		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
-			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
+			if (asyncEvaluables[i] == null || kernelArgs[i] != null || direct[i]) continue;
 			asyncEvaluables[i].setDownstream(result(i, details));
 		}
 
 		/*
 		 * Now that every StreamingEvaluable is configured to deliver
 		 * results to the new AcceleratedProcessDetails, their work
-		 * can be initiated via StreamingEvaluable#request
+		 * can be initiated via StreamingEvaluable#request. A direct evaluable delivers
+		 * through the three-argument overload instead, since it was not given a downstream above.
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 
-			asyncEvaluables[i].request(prepared.args, dependsOn);
+			Semaphore argDependsOn = dispatchBacked[i] ? dependsOn : null;
+
+			if (direct[i]) {
+				asyncEvaluables[i].request(prepared.args, argDependsOn, result(i, details));
+			} else {
+				asyncEvaluables[i].request(prepared.args, argDependsOn);
+			}
 		}
 
 		/* The details are ready */
 		return details;
+	}
+
+	/**
+	 * Chooses how a kernel argument's evaluation is dispatched, applying the same
+	 * {@link #isExecutorThread} selection (see {@link #construct(PreparedArguments, Semaphore)
+	 * construct}'s javadoc) to both the evaluate-ahead pass and the sized-destination pass,
+	 * so the two can no longer diverge in how they schedule an argument request.
+	 *
+	 * @param evaluable the (possibly {@code into(...)}-wrapped) evaluable to select a
+	 *                  dispatch strategy for
+	 * @param direct    marked {@code true} at {@code index} when the returned evaluable
+	 *                  must be requested directly on the calling thread via the
+	 *                  three-argument {@link StreamingEvaluable#request(Object[], Semaphore,
+	 *                  Consumer) request} overload, rather than given a downstream and
+	 *                  requested via the two-argument overload
+	 * @param index     the argument index this selection is for
+	 * @return the {@link StreamingEvaluable} to request the argument's evaluation through
+	 */
+	private StreamingEvaluable selectAsyncEvaluable(Evaluable evaluable, boolean[] direct, int index) {
+		boolean streaming = evaluable instanceof StreamingEvaluable;
+
+		if (!Hardware.getLocalHardware().isAsync()) {
+			return evaluable.async(this::execute);
+		} else if (streaming && !isExecutorThread.getAsBoolean()) {
+			direct[index] = true;
+			return (StreamingEvaluable) evaluable;
+		} else {
+			return evaluable.async();
+		}
 	}
 
 	/**

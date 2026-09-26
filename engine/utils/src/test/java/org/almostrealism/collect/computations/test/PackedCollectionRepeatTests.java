@@ -279,4 +279,33 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/**
+	 * A repeat wrapped around a kernel-backed (non-{@code Provider}) producer must evaluate to
+	 * the same values as repeating the underlying data directly, exercising the
+	 * {@link org.almostrealism.hardware.computations.HardwareEvaluable#setResultProcessor
+	 * result processor} path that {@link org.almostrealism.collect.computations.PackedCollectionRepeat#get()}
+	 * installs for such an input instead of the {@code Provider} fast path.
+	 */
+	@Test(timeout = 30000)
+	public void repeatOfComputedProducer() {
+		int d = 4;
+		int w = 2;
+		int h = 3;
+
+		PackedCollection v = new PackedCollection(shape(w, h));
+		v.randFill();
+
+		PackedCollection out = cp(v).multiply(1.0).repeat(d).get().evaluate();
+
+		for (int x = 0; x < d; x++) {
+			for (int y = 0; y < w; y++) {
+				for (int z = 0; z < h; z++) {
+					double expected = v.valueAt(y, z);
+					double actual = out.valueAt(x, y, z);
+					assertEquals(expected, actual);
+				}
+			}
+		}
+	}
 }
