@@ -438,6 +438,24 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link PdslLoader#parseResource} parses a classpath resource once and reuses the result, so
+	 * a model that builds one layer per call does not re-parse its assets. Every call for the same
+	 * path returns the same {@link PdslNode.Program}, even from a fresh loader (each per-layer
+	 * {@code attentionLayer}/{@code transformerLayer} call constructs its own {@link PdslLoader}),
+	 * and different paths are cached independently.
+	 */
+	@Test(timeout = 60000)
+	public void testParseResourceIsCached() {
+		PdslNode.Program first = new PdslLoader().parseResource("/pdsl/attention.pdsl");
+		PdslNode.Program again = new PdslLoader().parseResource("/pdsl/attention.pdsl");
+		Assert.assertSame("parseResource() should reuse the parsed program for the same resource",
+				first, again);
+
+		PdslNode.Program other = new PdslLoader().parseResource("/pdsl/feed_forward.pdsl");
+		Assert.assertNotSame("different resources must parse to different programs", first, other);
+	}
+
+	/**
 	 * {@link PdslLoader#parseResources} rejects assets that define the same layer, since only one
 	 * of the two definitions could ever be reached: {@code test_layers.pdsl} carries its own copy
 	 * of {@code swiglu_ffn}.

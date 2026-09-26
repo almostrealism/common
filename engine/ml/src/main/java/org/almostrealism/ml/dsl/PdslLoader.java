@@ -34,6 +34,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -60,6 +61,22 @@ import java.util.function.Consumer;
  * }</pre>
  */
 public class PdslLoader {
+
+	/**
+	 * Parsed programs of classpath .pdsl resources, keyed by absolute resource path. A resource
+	 * on the classpath does not change while the JVM runs, and parsing it is a pure function of
+	 * its text, so the parse is done once and the resulting {@link PdslNode.Program} is reused.
+	 *
+	 * <p>The cached program is safe to share across every build: interpretation reads the AST
+	 * and never writes to it (a {@link PdslInterpreter} copies the definitions into its own maps,
+	 * and each build evaluates {@code data}/{@code state} derivations into a fresh
+	 * {@code Environment}), and the mutable state a layer needs — key and value caches and the
+	 * like — is allocated by the caller and passed in as arguments, never held in a node. The
+	 * cache is what keeps a model build from re-parsing an asset once per layer: every
+	 * per-layer {@code new PdslLoader().parseResource(...)} after the first returns the same
+	 * program.</p>
+	 */
+	private static final Map<String, PdslNode.Program> RESOURCE_CACHE = new ConcurrentHashMap<>();
 
 	/**
 	 * Hook applied to every freshly-constructed {@link PdslInterpreter}. Domain modules
@@ -220,7 +237,7 @@ public class PdslLoader {
 	 * @throws IllegalStateException if the resource is not found or cannot be read
 	 */
 	public PdslNode.Program parseResource(String classpathResource) {
-		return parse(readResource(classpathResource));
+		return RESOURCE_CACHE.computeIfAbsent(classpathResource, resource -> parse(readResource(resource)));
 	}
 
 	/**
