@@ -57,11 +57,28 @@ delete-on-start**. `NativeCompiler` has no code that clears the library director
   library to the deterministic library path, and only then does `compileAndLoad` call
   `System.load(...)`.
 
-So a library file from a previous run persists on disk but can never be *loaded* by a later run: the
-later run regenerates and overwrites it at the same path before loading. **A "stale dylib from an
-older build" cannot be the cause of a kernel-side crash, and clearing the library directory is a
-no-op as a diagnostic.** (The one thing a run consumes from the previous run is nothing at all — the
-`.c`/library pair is rewritten from the current graph.)
+So a library file from a *previous, already-finished* run persists on disk but can never be *loaded*
+by a later run: the later run regenerates and overwrites it at the same path before loading. **A
+"stale dylib from an older build" cannot be the cause of a kernel-side crash, and clearing the
+library directory is a no-op as a diagnostic.** (The one thing a run consumes from the previous run
+is nothing at all — the `.c`/library pair is rewritten from the current graph.)
+
+This overwrite-before-load guarantee is **sequential-run only**. `reserveTargetIndex()` is a
+JVM-local counter (`static synchronized`, restarting at `0` each JVM) and there is no inter-process
+lock — no `FileLock`, no lockfile — on the library directory. Two JVMs that share one library
+directory therefore hand out the *same* `GeneratedOperationN` names in the same order and write to the
+same `.c` and library paths concurrently: one run can truncate or overwrite the source or library
+another run is mid-compile or mid-`System.load` on, and each can load the other's bytes.
+
+Crucially, **the default directory is shared, not per-process.** When `AR_HARDWARE_LIBS` is unset the
+directory is `SystemUtils.getExtensionsPath()` (`getCachesPath()/Extensions`) — a fixed per-user
+cache path, the same for every JVM that user launches on the machine. So concurrent JVMs run by the
+same user race on this directory *by default*; the race is not confined to a hand-set shared
+`AR_HARDWARE_LIBS`. Running more than one JVM that uses the native backend concurrently on one machine
+is unsupported for this reason. When triaging a crash, this cross-run race is the one case where the
+on-disk artifact *can* be wrong for the loading run — but only when another JVM was writing the same
+directory at the same time; a strictly sequential single-JVM history is still immune (the
+overwrite-before-load argument above holds).
 
 ### Metal and OpenCL program lifetime
 
@@ -105,8 +122,7 @@ quantities on the same computation, not a contradiction.
 
 ### Which providers enforce it, and the failure mode
 
-All three memory providers guard the byte ceiling, and none returns a silent zero pointer on
-exhaustion:
+All three memory providers guard the byte ceiling:
 
 | Provider | Method | Exception message |
 |---|---|---|
@@ -120,10 +136,25 @@ Each performs the same **pre-allocation check** —
 request, not a hard serialized ceiling: only `NativeMemoryProvider.allocate` is `synchronized`, so
 its check-and-increment is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run the
 check and the `memoryUsed` increment without synchronization, so two concurrent allocations can each
-pass the check and push the total past `memoryMax`. What is guaranteed on every provider is that a
-request the check rejects throws rather than fabricating a pointer: exhaustion surfaces as a thrown
-`HardwareException` (or, past the ceiling, as an OS-level allocation failure), **never** as a
-zero-valued pointer that propagates into a kernel. When you see `HardwareException: Memory max
+pass the check and push the total past `memoryMax`.
+
+Distinguish two separate failure modes, because they surface differently:
+
+- **The tracked ceiling rejects the request.** When the pre-allocation check trips, every provider
+  throws a `HardwareException` rather than fabricating a pointer — it never returns a zero-valued
+  pointer that would propagate into a kernel. This is the failure the `AR_HARDWARE_MEMORY_SCALE`
+  triage below is about.
+- **A raw backend allocation fails after passing the check.** The tracked ceiling is not the OS
+  limit. `NativeMemoryProvider`'s calloc path allocates through JNI `Malloc.apply`, which is
+  implemented with `calloc` and returns `0` when the OS allocation fails; `allocate` wraps that
+  return in a `NativeMemory` **without checking it against zero**. So a request that passes the
+  `memoryMax` check can still yield a zero content pointer when the OS itself is out of memory. That
+  zero is caught downstream at dispatch — `NativeInstructionSet.apply` validates every content
+  pointer against zero before the JNI call and throws a `NullPointerException` naming the argument
+  (see §5) — but it is a genuine zero pointer produced by the allocator, not something the tracked
+  ceiling would have thrown on.
+
+When you see `HardwareException: Memory max
 reached`, raise `AR_HARDWARE_MEMORY_SCALE` (exponential — increase by one step at a time) or reduce
 the working set; see the [hardware README](../../base/hardware/README.md) Memory Configuration
 section.
@@ -170,6 +201,18 @@ back while the count is non-zero. The reservation records *addresses*, not argum
 because an argument may be destroyed mid-flight and can then name no address at all. As a second,
 independent layer, the same operators call `Reference.reachabilityFence(data)`/`(args)` after
 dispatch to stop the JIT from treating the holders as dead before the native call returns.
+
+The hold-back is **not indefinite.** `HardwareMemoryProvider.sweepDeferred()` runs on the
+deallocation-process thread (every `DEFERRED_SWEEP_INTERVAL_MS`, regardless of the
+`queueDeallocation` switch) and force-frees any deferred block whose wait has exceeded
+`deferredReleaseTimeoutMs` (`30_000` ms by default) **even if its guard count is still non-zero**,
+logging `warnIfActivelyReferenced` with the allocation trace. This is a backstop against a dispatch
+that died without calling `releaseFor` — a never-returned count would otherwise pin the block for the
+life of the process. In normal operation a kernel finishes in milliseconds, so the timeout never
+fires; a run that logs it is reporting a leaked or stuck dispatch, not doing routine work. The triage
+consequence: if a dispatch genuinely hangs or leaks its reservation past 30 s, the guard will free
+its memory out from under it, so a use-after-free is **not** ruled out merely by confirming the
+dispatch was bracketed — check whether the timeout fired.
 
 `KernelMemoryGuard` does **not**:
 
@@ -237,8 +280,10 @@ The consequence for crash triage is decisive. A `0x0` dereference inside a gener
 have been produced by the kernel zeroing one of its own pointers — that operation does not exist.
 It must be one of:
 
-1. **A pointer argument was already `0` at the JNI boundary** — a bug in the Java caller (memory
-   released or unmapped before dispatch). `NativeInstructionSet.apply(long commandQueue, RAM[]...)`
+1. **A pointer argument was already `0` at the JNI boundary** — usually a bug in the Java caller
+   (memory released or unmapped before dispatch), but also possibly a raw OS-level allocation failure
+   that the tracked ceiling did not catch (§2: `Malloc.apply` returns `0` and `NativeMemoryProvider`
+   wraps it unchecked). `NativeInstructionSet.apply(long commandQueue, RAM[]...)`
    guards against exactly this: it checks every extracted content pointer against zero *before*
    dispatch and throws a `NullPointerException` naming the kernel and the argument index, converting
    a silent `SIGSEGV` deep in native code into a diagnosable Java exception.
@@ -284,17 +329,28 @@ form, capture it and inspect it with the profile analyzer:
 For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `NativeExecution`:
 
 1. **Rule out "stale dylib from a prior build" (§1).** Libraries are overwritten before load;
-   clearing `AR_HARDWARE_LIBS` changes nothing. Do not spend an iteration on it.
+   clearing `AR_HARDWARE_LIBS` changes nothing. Do not spend an iteration on it — *unless* a second
+   JVM was using the same library directory concurrently (the default directory is shared per user, so
+   this is not exotic), which is the one way the on-disk artifact can be wrong for the loading run
+   (§1).
 2. **Rule out "the kernel nulled a pointer internally" (§5).** Codegen cannot assign a pointer.
    A `0x0` inside the kernel came from the JNI boundary or from arithmetic — start at the Java
    caller.
-3. **Rule out "allocator returned a silent zero pointer on exhaustion" (§2).** Exhaustion throws
-   `HardwareException: Memory max reached`; it does not fabricate a zero pointer. If you did not see
-   that exception, exhaustion of the tracked ceiling is not your cause.
+3. **Separate the two allocation-failure modes (§2).** The *tracked* ceiling throws
+   `HardwareException: Memory max reached` rather than fabricating a pointer, so if you did not see
+   that exception, exhaustion of the tracked ceiling is not your cause. That is not the same as "no
+   allocator can produce a zero pointer": `NativeMemoryProvider`'s calloc path can pass the tracked
+   check and still get `0` back from `Malloc.apply` when the OS is genuinely out of memory. That zero
+   is caught by the pre-dispatch pointer check in §5 (a named `NullPointerException`, not a
+   `SIGSEGV`), so a crash *inside* the kernel is still not this — but a `NullPointerException` naming
+   an argument at the boundary can be a real OS-level allocation failure, not only a caller that
+   freed too early.
 4. **Suspect use-after-free by GC first (§3).** A pointer that is numerically intact but points at
    an unmapped page is the classic signature. Check whether the dispatch was bracketed by
-   `KernelMemoryGuard` and whether any argument failed to resolve to a `RAM` (an unguarded argument
-   is the exposed surface). The guard's warning (`warnIfActivelyReferenced`) with allocation traces
+   `KernelMemoryGuard`, whether any argument failed to resolve to a `RAM` (an unguarded argument is an
+   exposed surface), and whether the deferred-release timeout fired — a dispatch that held its
+   reservation past `deferredReleaseTimeoutMs` (30 s) is force-freed even while bracketed, so bracketing
+   alone does not clear it. The guard's warning (`warnIfActivelyReferenced`) with allocation traces
    (`AR_HARDWARE_ALLOCATION_TRACE_FRAMES`) points at where the freed block was allocated.
 5. **Then inspect the arguments at the boundary (§5).** `NativeInstructionSet`'s pre-dispatch
    pointer checks will already have named a zero argument if one was present; a crash that got past

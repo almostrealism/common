@@ -80,6 +80,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   {@link #canDeallocate(long)} into a hard barrier.</li>
  *   <li><strong>A dispatch that was never bracketed</strong> with
  *   {@link #acquireFor(MemoryData[])}/{@link #releaseFor(Reservation)}.</li>
+ *   <li><strong>A dispatch that outlives the deferred-release timeout.</strong> A
+ *   non-zero count holds a release back only up to
+ *   {@code HardwareMemoryProvider.deferredReleaseTimeoutMs} (30&nbsp;s by default);
+ *   past that, {@code HardwareMemoryProvider.sweepDeferred()} frees the block anyway
+ *   (with a warning), so a hung or leaked dispatch is not protected indefinitely.</li>
  * </ul>
  *
  * <p>The internals doc on the native runtime lifecycle covers the exact
