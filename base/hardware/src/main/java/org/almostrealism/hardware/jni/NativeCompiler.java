@@ -249,7 +249,15 @@ import java.util.function.Consumer;
  * {@link LinkedLibraryGenerator}, and that interface deliberately permits caching and remote-build
  * strategies; a custom generator that serves a cached artifact instead of recompiling could leave
  * stale bytes at the deterministic path. A deployment that installs such a generator must supply
- * the same overwrite guarantee itself for the triage advice above to hold. See
+ * the same overwrite guarantee itself for the triage advice above to hold.</p>
+ *
+ * <p>The guarantee also assumes a single writer per library directory. There is no inter-process
+ * lock on that directory, and the name counter is JVM-local, so two JVMs sharing one directory
+ * (including the default, which may be shared across processes and users) reserve the same names
+ * and write the same {@code .c} and library paths concurrently. One run can then overwrite a source
+ * or library while another is building or loading it, and the loaded artifact can belong to the
+ * other run. For concurrent JVMs the triage advice above does not hold; running more than one
+ * native-backend JVM against a shared library directory is unsupported. See
  * {@code docs/internals/native-runtime-lifecycle.md}.</p>
  *
  * <h2>Lifecycle</h2>

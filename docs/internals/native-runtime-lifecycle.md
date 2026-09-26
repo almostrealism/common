@@ -326,15 +326,15 @@ It must be one of:
 
 ### Reading the generated source
 
-The shape of a generated assignment is a plain indexed numeric store. The following is the complete
-JNI kernel for a pad operation (`f_packedCollectionPad_1096`, `pad (16, 16)[axis=2|256x1]`), read with
-`ar-profile-analyzer get_source` from the `padSubset_native` profile in `engine/utils/results/`;
-only the index-temporary declarations are elided and line breaks added. The profile was captured by
-an earlier build, so its external parameter list carries a trailing `jint global_id` that the current
-`CJNILanguageOperations.renderArguments` no longer emits (it ends at `jlong global_total`); the body
-shape is unchanged:
-
-<!-- TODO(review): The "earlier build" caveat above is inaccurate: CodePrintWriterAdapter.beginScope calls renderParameters after renderArguments, and CJNILanguageOperations.renderParameters unconditionally appends ", jint global_id", so current code still emits the trailing global_id; the sample signature matches current output. -->
+The shape of a generated assignment is a plain indexed numeric store. The following is a
+representative excerpt of the JNI kernel for a pad operation (`f_packedCollectionPad_1096`,
+`pad (16, 16)[axis=2|256x1]`), read with `ar-profile-analyzer get_source` from the `padSubset_native`
+profile in `engine/utils/results/`. The signature, argument unpacking, loop header, final store and
+cleanup are verbatim (line breaks added); the integer index-temporary declarations are elided and
+marked with placeholder comments, so the excerpt says nothing about how those indices are computed.
+The external parameter list ends with `jint global_id`, which `CJNILanguageOperations.renderParameters`
+appends after the arguments rendered by `renderArguments`; inside the body it is shadowed by the
+`global_id` loop variable:
 
 ```c
 JNIEXPORT void JNICALL Java_org_almostrealism_generated_GeneratedOperation92_apply(JNIEnv *env,
