@@ -15,9 +15,11 @@ native-crash investigation) have been closed by
    ceiling, which providers enforce it, and the `HardwareException` failure mode.
 3. **Codegen value semantics** — covered (§5): numeric-only assignments, no
    pointer-null concept, and the crash-triage consequence.
-4. **Kernel thread-safety / reentrancy** — covered (§4): generated kernel
-   instances are safe to invoke concurrently, and `NativeInstructionSet` now
-   states this positively instead of deferring.
+4. **Kernel thread-safety / reentrancy** — covered (§4), per backend: JNI
+   generated kernel instances are safe to invoke concurrently (and
+   `NativeInstructionSet` now states this positively instead of deferring);
+   OpenCL operators are thread-local with a `synchronized` `accept`, and Metal
+   operators serialize concurrent calls on one instance.
 
 Only the fifth, lower-priority gap remains open; it was explicitly out of scope
 for the lifecycle documentation task and is retained here.

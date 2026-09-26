@@ -326,30 +326,61 @@ It must be one of:
 
 ### Reading the generated source
 
-The shape of a generated assignment is a plain indexed numeric store — illustratively:
+The shape of a generated assignment is a plain indexed numeric store. The following is the complete
+JNI kernel for a pad operation (`f_packedCollectionPad_1096`, `pad (16, 16)[axis=2|256x1]`), read with
+`ar-profile-analyzer get_source` from the `padSubset_native` profile in `engine/utils/results/`;
+only the index-temporary declarations are elided and line breaks added. The profile was captured by
+an earlier build, so its external parameter list carries a trailing `jint global_id` that the current
+`CJNILanguageOperations.renderArguments` no longer emits (it ends at `jlong global_total`); the body
+shape is unchanged:
+
+<!-- TODO(review): The "earlier build" caveat above is inaccurate: CodePrintWriterAdapter.beginScope calls renderParameters after renderArguments, and CJNILanguageOperations.renderParameters unconditionally appends ", jint global_id", so current code still emits the trailing global_id; the sample signature matches current output. -->
 
 ```c
-// illustrative form of a generated GeneratedOperationN apply body
-JNIEXPORT void JNICALL Java_org_almostrealism_generated_GeneratedOperation0_apply
-        (JNIEnv *env, jobject obj, jlong commandQueue,
-         jlongArray arg, jintArray offset, jintArray size,
-         jint count, jint global_id, jlong kernelSize) {
-    // pointers, offsets, sizes are read from the JNI arrays (owned by the caller)
-    double *out = /* arg[0] + offset[0] */;
-    const double *in = /* arg[1] + offset[1] */;
-    out[global_id] = in[global_id] * 2.0;   // numeric store into caller-owned memory
+JNIEXPORT void JNICALL Java_org_almostrealism_generated_GeneratedOperation92_apply(JNIEnv *env,
+        jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size,
+        jint count, jint global_index, jlong global_total, jint global_id) {
+jlong *argArr = (*env)->GetLongArrayElements(env, arg, 0);
+jint *offsetArr = (*env)->GetIntArrayElements(env, offset, 0);
+jint *sizeArr = (*env)->GetIntArrayElements(env, size, 0);
+jint _v790Offset = (int) offsetArr[0];
+jint _v793Offset = (int) offsetArr[1];
+jint _v790Size = (int) sizeArr[0];
+jint _v793Size = (int) sizeArr[1];
+double *_v790 = ((double *) argArr[0]);
+double *_v793 = ((double *) argArr[1]);
+for (long long global_id = global_index ; global_id < global_total; global_id += 10) {
+jint f_packedCollectionPad_1096_0 = /* integer index arithmetic on global_id */;
+/* ... further integer index temporaries ... */
+_v793[global_id + _v793Offset] = (((global_id % 16) - 8) >= 0)
+        ? _v790[(((f_packedCollectionPad_1096_0 % 256) + 256) % 256) + _v790Offset] : 0;
+}
+(*env)->ReleaseLongArrayElements(env, arg, argArr, 0);
+(*env)->ReleaseIntArrayElements(env, offset, offsetArr, 0);
+(*env)->ReleaseIntArrayElements(env, size, sizeArr, 0);
 }
 ```
 
-There is no `= NULL` and no pointer produced inside the body — `out` and `in` are the caller's
-buffers. To read the *actual* generated source for a specific operation rather than this illustrative
-form, capture it and inspect it with the profile analyzer:
+Three things to read off it. The only pointers (`_v790`, `_v793`) are cast directly from the
+caller-supplied `arg` array and never reassigned — there is no `= NULL` and no pointer produced inside
+the body. Per-argument offsets are **element indices** added inside each subscript
+(`_v793[global_id + _v793Offset]`), not pointer arithmetic applied up front, so an offset/size mismatch
+shows up as an out-of-range index, not a bad base pointer. And the kernel body is a strided loop over
+`[global_index, global_total)` with a stride equal to the parallelism (`CJNIPrintWriter`, here 10), so
+each call started at a different `global_index` touches a disjoint, interleaved set of indices — what
+lets `NativeExecution` dispatch one instance from several threads (§4). The `0` in the ternary is a
+numeric value stored into caller-owned memory, not an address.
+
+To read the actual generated source for your own operation, capture it and inspect it with the
+profile analyzer:
 
 1. Set `HardwareOperator.enableInstructionSetMonitoring = true` (or
    `enableLargeInstructionSetMonitoring` for only large kernels) before the run; `NativeCompiler`
-   then writes each kernel to `results/jni_instruction_set_N.c`.
-2. Run the operation under an `OperationProfile` so a profile XML is written to the module's
-   `results/` directory.
+   then writes each kernel to `jni_instruction_set_N.c` under
+   `HardwareOperator.instructionSetOutputDir` — `results/` by default, overridable with the
+   `AR_INSTRUCTION_SET_OUTPUT_DIR` system property.
+2. Run the operation under an `OperationProfile` so a profile XML is written (conventionally to the
+   module's `results/` directory; the test chooses the path).
 3. Use `ar-profile-analyzer` — `search_operations` to find the node, then `get_source` for the
    generated source and its per-argument offset/size bindings. **Do not** read the dumped `.c` or the
    profile XML with `cat`/`grep`; that loses the operation-node → source mapping the analyzer
