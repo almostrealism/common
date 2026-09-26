@@ -154,6 +154,45 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link TraversalPolicy#append(TraversalPolicy)} must carry the operand's own traversal rates
+	 * onto the appended axes rather than neutralizing them, whether or not the receiver is rated.
+	 * A (3) policy repeated 4x has output length 12 but reads an input of length 3; after being
+	 * appended it must still report input length 3 on that axis, not 12.
+	 */
+	@Test(timeout = 10000)
+	public void appendPreservesOperandRates() {
+		TraversalPolicy ratedOperand = new TraversalPolicy(3).traverse(0).repeat(0, 4);
+		assertEquals(12, ratedOperand.length(0));
+		assertEquals(3, ratedOperand.inputLengthLong(0));
+
+		TraversalPolicy plainJoined = new TraversalPolicy(2).append(ratedOperand);
+		assertEquals(2, plainJoined.getDimensions());
+		assertEquals(2, plainJoined.length(0));
+		assertEquals(12, plainJoined.length(1));
+		assertEquals(24, plainJoined.getTotalSizeLong());
+		assertEquals(2, plainJoined.inputLengthLong(0));
+		assertEquals(3, plainJoined.inputLengthLong(1));
+		assertEquals(6, plainJoined.getTotalInputSizeLong());
+
+		TraversalPolicy ratedReceiver = new TraversalPolicy(2, 3).traverse(0).repeat(0, 4);
+		TraversalPolicy bothJoined = ratedReceiver.append(ratedOperand);
+		assertEquals(3, bothJoined.getDimensions());
+		assertEquals(8, bothJoined.length(0));
+		assertEquals(3, bothJoined.length(1));
+		assertEquals(12, bothJoined.length(2));
+		assertEquals(2, bothJoined.inputLengthLong(0));
+		assertEquals(3, bothJoined.inputLengthLong(1));
+		assertEquals(3, bothJoined.inputLengthLong(2));
+		assertEquals(18, bothJoined.getTotalInputSizeLong());
+
+		// Neither side rated: no rate arrays are introduced, so input size equals output size.
+		TraversalPolicy plain = new TraversalPolicy(2).append(new TraversalPolicy(5));
+		assertEquals(10, plain.getTotalSizeLong());
+		assertEquals(10, plain.getTotalInputSizeLong());
+		assertTrue(new TraversalPolicy(2, 5).equalsIgnoreAxis(plain));
+	}
+
+	/**
 	 * The rate resizing must not disturb the common, rate-free case: adding or dropping a
 	 * dimension on a policy with no traversal rates must leave the rate arrays absent (all-ones)
 	 * so that the index/position round trip is unchanged.

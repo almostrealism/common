@@ -833,21 +833,28 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns a new policy that concatenates the dimensions of this policy with those
-	 * of the given shape.
+	 * of the given shape. Each axis keeps the traversal rate it had in the policy it came
+	 * from, so a rated operand still reads its own (smaller) input along its axes.
 	 *
 	 * @param shape the policy whose dimensions are appended
 	 * @return the concatenated policy
 	 */
 	public TraversalPolicy append(TraversalPolicy shape) {
-		long newDims[] = new long[getDimensions() + shape.getDimensions()];
-		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
-		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
+		int n = getDimensions();
+		long newDims[] = new long[n + shape.getDimensions()];
+		long newNum[] = rateNumerator == null && shape.rateNumerator == null ? null : new long[newDims.length];
+		long newDen[] = rateDenominator == null && shape.rateDenominator == null ? null : new long[newDims.length];
 
-		// TODO(review): append drops the appended shape's own rates (tail axes get neutral rate 1) and uses its output lengths; preserve shape rates/input lengths if callers require it
-		int rateMap[] = IntStream.range(0, newDims.length).map(i -> i < getDimensions() ? i : -1).toArray();
+		for (int i = 0; i < newDims.length; i++) {
+			TraversalPolicy source = i < n ? this : shape;
+			int axis = i < n ? i : i - n;
+			newDims[i] = source.lengthLong(axis);
+			if (newNum != null) newNum[i] = source.rateNumeratorLong(axis);
+			if (newDen != null) newDen[i] = source.rateDenominatorLong(axis);
+		}
+
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false, newDims, null,
-				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
+				order, true, false, newDims, null, newNum, newDen, fixed);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
