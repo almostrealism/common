@@ -388,6 +388,25 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.repositoryHost("https://github.com.evil.example/almostrealism/common.git"));
     }
 
+    /**
+     * A bracketed IPv6 authority is a repository URL form {@code repositorySlug}
+     * accepts (its authority is {@code [^/]+}), so {@code repositoryHost} must
+     * report a (non-{@code null}) host for it too rather than disagreeing with
+     * the canonical parser; the whole bracketed literal is the host, and its
+     * colons do not leak a port into the capture.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostCapturesBracketedIpv6Authority() {
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]:443/owner/repo.git"));
+
+        // The host guard and the slug must not disagree about whether a URL is a repository.
+        Assert.assertNotNull(GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertNotNull(GitOperations.repositorySlug("https://[2001:db8::1]/owner/repo.git"));
+    }
+
     /** A URL that is not a repository URL has no host. */
     @Test(timeout = 10000)
     public void repositoryHostRejectsUnrecognisedInput() {
