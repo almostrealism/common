@@ -512,6 +512,66 @@ def test_failed_write_keeps_the_previous_dump(tmp_path, monkeypatch):
     np.testing.assert_array_equal(reloaded["first"], np.arange(3, dtype=np.float32))
 
 
+def test_failure_mid_write_keeps_the_previous_shards(tmp_path, monkeypatch):
+    """A failure after some shards of a group have already been serialized must not
+    truncate or replace the previous dump's same-named shards: shards are staged
+    under hidden names and moved into place only once the whole group is written,
+    and the staged files are removed when the write fails."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    first = core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    assert [os.path.basename(p) for p in first] == ["references", "references_1"]
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    original = core.write_protobuf_file
+    calls = []
+
+    def _fail_on_second(entries, file_path):
+        calls.append(file_path)
+        if len(calls) == 2:
+            with open(file_path, "wb") as f:
+                f.write(b"\x00partial")
+            raise OSError("disk full")
+        original(entries, file_path)
+
+    monkeypatch.setattr(core, "write_protobuf_file", _fail_on_second)
+    replacement = {"a": np.full(7, 9.0, dtype=np.float32), "b": np.full(2, 4.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert len(calls) == 2
+    assert all(os.path.basename(p).startswith(".") for p in calls), \
+        "shards must be serialized under hidden staging names"
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "staged files must be removed after a failed write"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, f"{name} must be untouched"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_successful_write_leaves_no_staged_files(tmp_path, monkeypatch):
+    """After a successful multi-shard write every staged file has been moved onto
+    its final name, replacing the previous content, and no hidden file remains."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    written = core.write_state_dictionary({"a": np.full(2, 6.0, dtype=np.float32),
+                                           "b": np.full(4, 8.0, dtype=np.float32)},
+                                          str(out_dir), shard_prefix="references")
+
+    assert [os.path.basename(p) for p in written] == ["references", "references_1"]
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+    reloaded = core.read_state_dictionary(str(out_dir))
+    np.testing.assert_array_equal(reloaded["a"], np.full(2, 6.0, dtype=np.float32))
+    np.testing.assert_array_equal(reloaded["b"], np.full(4, 8.0, dtype=np.float32))
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently

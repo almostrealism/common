@@ -366,39 +366,53 @@ def write_protobuf_file(entries, file_path):
 def write_group(entries, output_dir, prefix):
     """Write a group of entries, splitting into shards under the size limit.
 
-    Returns the list of file paths actually written (in write order), so callers
-    can report exactly what was produced rather than re-scanning the directory.
+    Every shard is first written under a hidden staging name (``.<shard>.partial``)
+    and only moved onto its final name with :func:`os.replace` once all shards of
+    the group have been written. A failure while serializing or writing any shard
+    therefore removes the staged files and leaves whatever previously occupied the
+    final names untouched, instead of truncating a previous dump in place. The
+    staging names are hidden, so neither :func:`read_state_dictionary` nor the Java
+    ``StateDictionary`` reader picks one up.
+
+    Returns the list of final file paths written (in write order), so callers can
+    report exactly what was produced rather than re-scanning the directory.
     """
     if not entries:
         return []
 
-    written = []
+    shards = []
     current = []
     current_size = 0
-    file_index = 0
-
-    def shard_path(index):
-        # The first shard is named by the bare prefix (the marker file tests and
-        # loaders look for); later shards carry a numeric suffix.
-        suffix = f"_{index}" if index > 0 else ""
-        return os.path.join(output_dir, f"{prefix}{suffix}")
 
     for entry in entries:
         entry_size = estimate_size(entry)
         if current_size + entry_size > PROTOBUF_SIZE_LIMIT and current:
-            path = shard_path(file_index)
-            write_protobuf_file(current, path)
-            written.append(path)
+            shards.append(current)
             current = []
             current_size = 0
-            file_index += 1
         current.append(entry)
         current_size += entry_size
 
     if current:
-        path = shard_path(file_index)
-        write_protobuf_file(current, path)
-        written.append(path)
+        shards.append(current)
+
+    # The first shard is named by the bare prefix (the marker file tests and
+    # loaders look for); later shards carry a numeric suffix.
+    names = [f"{prefix}_{index}" if index > 0 else prefix for index in range(len(shards))]
+    written = [os.path.join(output_dir, name) for name in names]
+    staged = [os.path.join(output_dir, f".{name}.partial") for name in names]
+
+    try:
+        for shard, path in zip(shards, staged):
+            write_protobuf_file(shard, path)
+    except BaseException:
+        for path in staged:
+            if os.path.isfile(path):
+                os.remove(path)
+        raise
+
+    for path, final in zip(staged, written):
+        os.replace(path, final)
 
     return written
 
@@ -464,7 +478,6 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     os.makedirs(out_dir, exist_ok=True)
 
     entries = [make_entry(key, state[key]) for key in sorted(state.keys())]
-    # TODO(review): write_group overwrites same-named shards in place, so a failure mid-write can still truncate the previous dump; write to temp names and os.replace to make it atomic.
     written = write_group(entries, out_dir, shard_prefix)
 
     # Clear stale same-prefix shards from a previous run so they cannot pollute a
