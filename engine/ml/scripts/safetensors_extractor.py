@@ -367,7 +367,7 @@ def write_protobuf_file(entries, file_path):
 def write_group(entries, output_dir, prefix):
     """Write a group of entries, splitting into shards under the size limit.
 
-    Every shard is first written under a hidden staging name (``.<shard>.partial``)
+    Every shard is first written under a hidden staging name (``.<token>.<shard>.partial``)
     and only moved onto its final name with :func:`os.replace` once all shards of
     the group have been written. A failure while serializing or writing any shard
     therefore removes the staged files and leaves whatever previously occupied the
