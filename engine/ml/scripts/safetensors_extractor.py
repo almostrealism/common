@@ -647,12 +647,19 @@ def dump_reference_activations(stages, out_dir, shard_prefix="references"):
     # failure anywhere in the write leaves the previous dump usable.
     #
     # A stage name is caller-supplied, so joining it into a filesystem path can
-    # escape out_dir (``../other.bin``, an absolute path). Only remove a legacy
-    # file that resolves to a plain file sitting directly inside out_dir, so this
-    # cleanup can never delete a file outside the dump directory it owns.
+    # escape out_dir (``../other.bin``, an absolute path) or, while resolving
+    # back inside out_dir, land on a different stage's legacy file
+    # (``sub/../unrelated`` -> ``out_dir/unrelated.bin``). The legacy file this
+    # dump owns is exactly ``<stage>.bin`` for a plain stage name, so only a name
+    # that is a single path component names a file this cleanup may remove: skip
+    # any name that carries a path separator, and re-check that the result still
+    # resolves directly inside out_dir.
     out_dir_real = os.path.realpath(out_dir)
     for name in stages:
-        legacy = os.path.join(out_dir, name + LEGACY_REFERENCE_SUFFIX)
+        legacy_name = name + LEGACY_REFERENCE_SUFFIX
+        if os.path.basename(legacy_name) != legacy_name:
+            continue
+        legacy = os.path.join(out_dir, legacy_name)
         if os.path.dirname(os.path.realpath(legacy)) != out_dir_real:
             continue
         if os.path.isfile(legacy):

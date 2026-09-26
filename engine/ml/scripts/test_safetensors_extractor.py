@@ -483,6 +483,28 @@ def test_dump_reference_activations_ignores_a_traversing_stage_key(tmp_path):
     assert outside.exists(), "cleanup must not delete a file outside the dump directory"
 
 
+def test_dump_reference_activations_keeps_another_stages_legacy_bin(tmp_path):
+    """A traversing stage key can resolve back inside out_dir onto a different stage's
+    legacy `<stage>.bin` (`sub/../unrelated` -> `out_dir/unrelated.bin`). The parent
+    directory then equals out_dir, so a bare realpath-parent guard would delete that
+    unrelated dump. Cleanup only owns plain single-component stage names, so the
+    traversing key must leave the other stage's legacy file untouched."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    # An intermediate directory the traversing key steps through (the traversal is
+    # only real if the component it descends into exists).
+    (out_dir / "sub").mkdir()
+    # A legacy dump for a DIFFERENT stage, sitting directly inside out_dir.
+    unrelated = out_dir / "unrelated.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(unrelated))
+
+    core.dump_reference_activations(
+        {"sub/../unrelated": np.arange(4, dtype=np.float32)}, str(out_dir))
+
+    assert unrelated.exists(), \
+        "cleanup must not delete another stage's legacy dump via a traversing key"
+
+
 def test_write_state_dictionary_rejects_path_bearing_shard_prefix(tmp_path):
     """A shard_prefix names files directly inside out_dir, so a prefix that is empty,
     dot-only, absolute, or contains a path separator is rejected before anything is
