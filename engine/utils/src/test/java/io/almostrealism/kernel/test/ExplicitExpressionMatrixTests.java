@@ -144,6 +144,93 @@ public class ExplicitExpressionMatrixTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Requesting an entry outside the bounds of a matrix that has not been populated is
+	 * rejected the same way as on a populated matrix: an out-of-range row raises
+	 * {@link UnsupportedOperationException} and an out-of-range column raises
+	 * {@link IndexOutOfBoundsException}, whether the index is below zero or past the end.
+	 */
+	@Test(timeout = 30000)
+	public void outOfRangeEntryRequestsAreRejected() {
+		DefaultIndex row = new DefaultIndex("row", ROWS);
+		DefaultIndex col = new DefaultIndex("col", COLUMNS);
+		DefaultIndex free = new DefaultIndex("free");
+
+		Expression<?> target = row.multiply(7).add(col).add(free)
+				.divide(3).imod(5).getSimplified();
+
+		ExpressionMatrix<?> matrix = ExpressionMatrix.create(row, col, target);
+		Assert.assertTrue("The matrix should be explicit",
+				matrix instanceof ExplicitExpressionMatrix);
+
+		assertRejectedRow(matrix, -1, 0);
+		assertRejectedRow(matrix, ROWS, 0);
+		assertRejectedColumn(matrix, 0, -1);
+		assertRejectedColumn(matrix, 0, COLUMNS);
+
+		Assert.assertEquals(target.withIndex(row, ROWS - 1).withIndex(col, COLUMNS - 1),
+				matrix.valueAt(ROWS - 1, COLUMNS - 1));
+	}
+
+	/**
+	 * Asserts that requesting the entry at {@code (i, j)} raises
+	 * {@link UnsupportedOperationException} because the row is out of range.
+	 *
+	 * @param matrix the matrix under test
+	 * @param i      the out-of-range row index
+	 * @param j      an in-range column index
+	 */
+	private static void assertRejectedRow(ExpressionMatrix<?> matrix, int i, int j) {
+		try {
+			matrix.valueAt(i, j);
+			Assert.fail("Row " + i + " should be rejected");
+		} catch (UnsupportedOperationException expected) {
+			// the out-of-range row is rejected
+		}
+	}
+
+	/**
+	 * Asserts that requesting the entry at {@code (i, j)} raises
+	 * {@link IndexOutOfBoundsException} because the column is out of range.
+	 *
+	 * @param matrix the matrix under test
+	 * @param i      an in-range row index
+	 * @param j      the out-of-range column index
+	 */
+	private static void assertRejectedColumn(ExpressionMatrix<?> matrix, int i, int j) {
+		try {
+			matrix.valueAt(i, j);
+			Assert.fail("Column " + j + " should be rejected");
+		} catch (IndexOutOfBoundsException expected) {
+			// the out-of-range column is rejected
+		}
+	}
+
+	/**
+	 * {@link ExpressionMatrix#allMatch()} reads the row-duplicate map, which populates the
+	 * matrix on demand, and returns the shared value when every entry is equal and
+	 * {@code null} when they are not.
+	 */
+	@Test(timeout = 30000)
+	public void allMatchReflectsWhetherEntriesAreEqual() {
+		DefaultIndex row = new DefaultIndex("row", ROWS);
+		DefaultIndex col = new DefaultIndex("col", COLUMNS);
+		DefaultIndex free = new DefaultIndex("free");
+
+		Expression<?> uniform = free.imod(5).getSimplified();
+		ExpressionMatrix<?> uniformMatrix = ExpressionMatrix.create(row, col, uniform);
+		Assert.assertTrue("The uniform matrix should be explicit",
+				uniformMatrix instanceof ExplicitExpressionMatrix);
+		Assert.assertEquals(uniform.withIndex(row, 0).withIndex(col, 0), uniformMatrix.allMatch());
+
+		Expression<?> varying = row.multiply(7).add(col).add(free)
+				.divide(3).imod(5).getSimplified();
+		ExpressionMatrix<?> varyingMatrix = ExpressionMatrix.create(row, col, varying);
+		Assert.assertTrue("The varying matrix should be explicit",
+				varyingMatrix instanceof ExplicitExpressionMatrix);
+		Assert.assertNull("Entries that differ should not match", varyingMatrix.allMatch());
+	}
+
+	/**
 	 * An explicit matrix over the largest index space that {@link ExpressionMatrix#create}
 	 * accepts is created, and answers {@link ExpressionMatrix#allColumnsMatch()}, without
 	 * substituting its sixteen million entries: the columns of the first row differ, so
