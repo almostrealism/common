@@ -251,7 +251,7 @@ Embedded credentials, the optional `.git` suffix, and a trailing slash are all t
 
 ### GitHub-Host Guard
 
-Because `repositorySlug` deliberately drops the host, `extractOwnerRepo()` first checks that the URL's host — obtained from `GitOperations.repositoryHost(String)` — is exactly `github.com` before returning the slug. An exact host match is required rather than a substring check: a substring check would accept a look-alike host such as `github.com.evil.example`, which would then be queried against the GitHub API. URLs whose host is not `github.com` return `null`, and `detect()` returns `Optional.empty()` without attempting any API calls.
+Because `repositorySlug` deliberately drops the host, `extractOwnerRepo()` first checks that the URL's host — obtained from `GitOperations.repositoryHost(String)` — is exactly `github.com` before returning the slug. An exact host match is required rather than a substring check: a substring check would accept a look-alike host such as `github.com.evil.example`, which would then be queried against the GitHub API. The comparison is case-insensitive (hostnames are), so `https://GITHUB.COM/owner/repo.git` is accepted, and an explicit port is not part of the host, so `https://github.com:443/owner/repo.git` is accepted too. URLs whose host is not `github.com` return `null`, and `detect()` — which relies on this same guard rather than any separate substring precheck — returns `Optional.empty()` without attempting any API calls.
 
 ---
 

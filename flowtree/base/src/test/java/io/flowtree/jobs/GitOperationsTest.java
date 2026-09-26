@@ -349,6 +349,55 @@ public class GitOperationsTest extends TestSuiteBase {
         Assert.assertNull(GitOperations.repositorySlug("https://github.com/almostrealism"));
     }
 
+    /**
+     * The host is reported for every repository URL form {@code repositorySlug}
+     * recognises, so that a caller can reject a URL pointing at the wrong
+     * service. Credentials and a trailing slash are tolerated, and the {@code @}
+     * of an SSH remote does not leak into the host.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExtractsHostForRecognisedForms() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("git@github.com:almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("  https://github.com/almostrealism/common/  "));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://x-access-token:secret@github.com/almostrealism/common.git"));
+        Assert.assertEquals("gitlab.com",
+                GitOperations.repositoryHost("https://gitlab.com/acme/repo.git"));
+    }
+
+    /**
+     * An explicit port is excluded from the reported host, so a URL with a port
+     * reduces to the same host as one without — a look-alike host such as
+     * {@code github.com.evil.example} is reported verbatim and stays distinct.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExcludesPort() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com:443/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com:22/almostrealism/common.git"));
+        Assert.assertEquals("github.com.evil.example",
+                GitOperations.repositoryHost("https://github.com.evil.example/almostrealism/common.git"));
+    }
+
+    /** A URL that is not a repository URL has no host. */
+    @Test(timeout = 10000)
+    public void repositoryHostRejectsUnrecognisedInput() {
+        Assert.assertNull(GitOperations.repositoryHost(null));
+        Assert.assertNull(GitOperations.repositoryHost(""));
+        Assert.assertNull(GitOperations.repositoryHost("   "));
+        Assert.assertNull(GitOperations.repositoryHost("not-a-url"));
+        Assert.assertNull(GitOperations.repositoryHost("https://github.com/almostrealism"));
+    }
+
     /** Equivalent forms of one repository are the same repository. */
     @Test(timeout = 10000)
     public void sameRepositoryAcrossUrlForms() {

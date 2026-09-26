@@ -122,4 +122,26 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 	public void extractsOwnerRepoFromUrlWithTrailingSlash() {
 		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo/"));
 	}
+
+	/**
+	 * Verifies that an uppercase GitHub host is accepted: hostnames are
+	 * case-insensitive, and the host guard compares them with
+	 * {@code equalsIgnoreCase}, so a URL whose host is written in a different
+	 * case still yields the slug rather than being silently dropped.
+	 */
+	@Test(timeout = 30000)
+	public void extractsOwnerRepoFromUppercaseHost() {
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("https://GITHUB.COM/owner/repo.git"));
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("git@GitHub.com:owner/repo.git"));
+	}
+
+	/**
+	 * Verifies that an explicit port on the GitHub host is accepted: the port is
+	 * not part of the host, so {@code https://github.com:443/owner/repo.git}
+	 * yields the same slug as the port-less form rather than being rejected.
+	 */
+	@Test(timeout = 30000)
+	public void extractsOwnerRepoFromHostWithPort() {
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("https://github.com:443/owner/repo.git"));
+	}
 }

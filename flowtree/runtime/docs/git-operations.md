@@ -404,7 +404,10 @@ repository — the same SSH, HTTP(S), and `git://` forms `repositorySlug`
 recognises — so an input that is not a repository URL yields `null`. A
 substring check against the raw URL is **not** a host check: it accepts a
 look-alike host such as `github.com.evil.example`. Comparing the returned
-host for exact equality does not.
+host for exact equality does not. An optional `:port` in the authority is
+excluded from the host, so `https://github.com:443/owner/repo.git` reports
+`github.com` — the same host as the port-less form, which `repositorySlug`
+also accepts.
 
 **Example:**
 

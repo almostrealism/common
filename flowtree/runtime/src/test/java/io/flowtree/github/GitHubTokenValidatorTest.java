@@ -449,4 +449,25 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 	public void extractOwnerRepoRejectsLookAlikeGitHubHost() {
 		assertNull(GitHubTokenValidator.extractOwnerRepo("https://github.com.evil.example/acme/repo.git"));
 	}
+
+	/**
+	 * Verifies that an uppercase GitHub host is accepted, since the host guard
+	 * compares case-insensitively and hostnames are case-insensitive.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoAcceptsUppercaseHost() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://GITHUB.COM/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that an explicit port on the GitHub host is accepted: the port is
+	 * not part of the host, so the credentialed org used for token lookup is
+	 * still the real organisation rather than {@code null}.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoAcceptsHostWithPort() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://github.com:443/almostrealism/common.git"));
+	}
 }

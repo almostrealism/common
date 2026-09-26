@@ -1032,11 +1032,13 @@ public class GitOperations implements ConsoleFeatures {
     /**
      * Pattern matching the host of an HTTP(S)-form or {@code git://}
      * repository URL, capturing the host after the scheme and optional
-     * credentials. Requires the full {@code owner/repo} path so the host is
-     * reported only for a recognised repository URL.
+     * credentials while excluding an optional {@code :port} from the capture
+     * (so a URL with an explicit port reports the same host as one without).
+     * Requires the full {@code owner/repo} path so the host is reported only
+     * for a recognised repository URL.
      */
     private static final Pattern HTTP_HOST_PATTERN =
-            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?([^/]+)/[^/]+/[^/]+?(?:\\.git)?/?$");
+            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?([^:/]+)(?::[0-9]+)?/[^/]+/[^/]+?(?:\\.git)?/?$");
 
     /**
      * Reduces a repository URL to its canonical {@code owner/repo} slug so

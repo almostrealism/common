@@ -83,10 +83,6 @@ public class PullRequestDetector implements ConsoleFeatures {
      */
     public Optional<String> detect(String remoteUrl, String targetBranch, String workstreamUrl) {
         try {
-            if (remoteUrl == null || !remoteUrl.contains("github.com")) {
-                return Optional.empty();
-            }
-
             String ownerRepo = extractOwnerRepo(remoteUrl);
             if (ownerRepo == null) {
                 log("Could not extract owner/repo from remote URL: " + remoteUrl);
