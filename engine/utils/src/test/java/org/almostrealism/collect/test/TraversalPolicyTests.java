@@ -136,6 +136,16 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		assertEquals(3, subset.length(0));
 		assertEquals(3, subset.inputLengthLong(0));
 
+		// Dropping axis 0 keeps a rated inner axis, which must still report input length 3, not 12.
+		TraversalPolicy ratedInner = new TraversalPolicy(2, 3, 5).traverse(1).repeat(1, 4);
+		assertEquals(12, ratedInner.length(1));
+		assertEquals(3, ratedInner.inputLengthLong(1));
+		TraversalPolicy innerSubset = ratedInner.subset(1);
+		assertEquals(2, innerSubset.getDimensions());
+		assertEquals(12, innerSubset.length(0));
+		assertEquals(3, innerSubset.inputLengthLong(0));
+		assertEquals(5, innerSubset.inputLengthLong(1));
+
 		TraversalPolicy joined = rated.append(new TraversalPolicy(5));
 		assertEquals(3, joined.getDimensions());
 		assertEquals(2, joined.inputLengthLong(0));
