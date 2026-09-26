@@ -43,7 +43,7 @@ import java.util.function.Supplier;
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
- * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
+ * (dense, conv1d, rmsnorm, softmax, the activations including snake, slice, lerp, reshape, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
  * causal_mask, weighted_values, sqrt, attention, transformer,
@@ -75,6 +75,7 @@ final class PdslBuiltins {
 	static Object call(String name, List<Object> args) {
 		switch (name) {
 			case "dense": return callDense(args);
+			case "conv1d": return callConv1d(args);
 			case "rmsnorm": return callRmsnorm(args);
 			case "softmax": return callSoftmax(args);
 			case "silu": return callActivation("silu");
@@ -82,6 +83,7 @@ final class PdslBuiltins {
 			case "gelu": return callActivation("gelu");
 			case "sigmoid": return callActivation("sigmoid");
 			case "tanh_act": return callActivation("tanh_act");
+			case "snake": return callSnake(args);
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
 			case "reshape": return callReshape(args);
@@ -331,6 +333,71 @@ final class PdslBuiltins {
 		}
 		throw new PdslParseException(
 				"dense() expects 1 or 2 arguments, got " + args.size());
+	}
+
+	/**
+	 * Builds a 1-D convolution block factory from a weight tensor, an optional bias, and the
+	 * stride and zero-padding of the convolution. The output-channel count and kernel size are
+	 * read from the weight's {@code [out_channels, in_channels, kernel]} shape, and the batch,
+	 * input-channel count and sequence length are read from the stage's
+	 * {@code [batch, in_channels, length]} input shape, so the call names only what the shapes
+	 * cannot: how far the kernel steps and how much zero padding the input is given.
+	 *
+	 * <p>The weight is bound already in whatever form the model uses it — a weight-normalized
+	 * codec, for example, resolves its {@code g} and {@code v} parameters into the effective
+	 * weight when it binds the argument, exactly as it resolves any other stored weight, so this
+	 * primitive is the plain convolution and carries no normalization decision.</p>
+	 *
+	 * @param args {@code (weight, bias, stride, padding)} or {@code (weight, stride, padding)}
+	 *             when the convolution has no bias
+	 * @return a factory that creates the convolution for a 3-D {@code [batch, channels, length]}
+	 *         input shape
+	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convolution1d
+	 */
+	private static Function<TraversalPolicy, Block> callConv1d(List<Object> args) {
+		PackedCollection weights;
+		PackedCollection bias;
+		int stride;
+		int padding;
+		if (args.size() == 4) {
+			weights = (PackedCollection) args.get(0);
+			bias = (PackedCollection) args.get(1);
+			stride = toInt(args.get(2));
+			padding = toInt(args.get(3));
+		} else if (args.size() == 3) {
+			weights = (PackedCollection) args.get(0);
+			bias = null;
+			stride = toInt(args.get(1));
+			padding = toInt(args.get(2));
+		} else {
+			throw new PdslParseException("conv1d() expects (weight, bias, stride, padding) or "
+					+ "(weight, stride, padding), got " + args.size());
+		}
+
+		TraversalPolicy weightShape = weights.getShape();
+		if (weightShape.getDimensions() != 3) {
+			throw new PdslParseException("conv1d() weight must be [out_channels, in_channels, "
+					+ "kernel], got " + weightShape);
+		}
+		int outChannels = weightShape.length(0);
+		int weightInChannels = weightShape.length(1);
+		int kernelSize = weightShape.length(2);
+
+		return inputShape -> {
+			if (inputShape.getDimensions() != 3) {
+				throw new PdslParseException("conv1d() expects a [batch, channels, length] input "
+						+ "shape, got " + inputShape);
+			}
+			int batchSize = inputShape.length(0);
+			int inChannels = inputShape.length(1);
+			int seqLength = inputShape.length(2);
+			if (inChannels != weightInChannels) {
+				throw new PdslParseException("conv1d() weight expects " + weightInChannels
+						+ " input channels but the input shape " + inputShape + " has " + inChannels);
+			}
+			return FEATURES.convolution1d(batchSize, inChannels, outChannels, seqLength,
+					kernelSize, stride, padding, weights, bias);
+		};
 	}
 
 	/**
@@ -590,6 +657,28 @@ final class PdslBuiltins {
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}
+	}
+
+	/**
+	 * Builds a learnable Snake activation block factory with per-channel parameters:
+	 * {@code f(x) = x + (1 / beta) * sin^2(alpha * x)}, applied element-wise with each channel's
+	 * own {@code alpha} and {@code beta}. Snake is the periodic activation the neural audio codecs
+	 * (Descript, Stable Audio) use in place of a rectifier, so its harmonics track the signal's
+	 * pitch. {@code alpha} and {@code beta} are {@code [channels]} vectors indexed by axis 1 of the
+	 * {@code [batch, channels, length]} input.
+	 *
+	 * @param args two arguments: the per-channel {@code alpha} and {@code beta} tensors
+	 * @return a factory that creates the Snake activation for any {@code [batch, channels, length]}
+	 *         input shape
+	 * @see org.almostrealism.layers.ActivationFeatures#snake(PackedCollection, PackedCollection,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, CellularLayer> callSnake(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"snake() expects 2 arguments (alpha, beta), got " + args.size());
+		}
+		return FEATURES.snake((PackedCollection) args.get(0), (PackedCollection) args.get(1));
 	}
 
 	/**
