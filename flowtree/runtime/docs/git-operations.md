@@ -1040,11 +1040,14 @@ String branch = git.executeWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim(
 ### Output Stream Handling
 
 All process output (stdout and stderr combined) is read through a
-`BufferedReader` in the private `readProcessOutput()` method. The method
-reads line by line and joins with newline characters.
+`BufferedReader` in the public static `GitOperations.readProcessOutput()`
+method. The method reads line by line and joins with newline characters. It
+uses no instance state, so it is exposed as a static helper that
+`GitCommandExecutor` (in `flowtree/runtime`) reuses instead of duplicating the
+read loop.
 
 ```java
-private String readProcessOutput(Process process) throws IOException {
+public static String readProcessOutput(Process process) throws IOException {
     StringBuilder output = new StringBuilder();
     try (BufferedReader reader = new BufferedReader(
             new InputStreamReader(process.getInputStream()))) {

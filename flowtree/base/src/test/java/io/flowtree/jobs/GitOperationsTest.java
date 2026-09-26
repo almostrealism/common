@@ -269,6 +269,54 @@ public class GitOperationsTest extends TestSuiteBase {
         assertTrue("Unknown ref must yield an empty set", files.isEmpty());
     }
 
+    /**
+     * Pins the contract of {@link GitOperations#readProcessOutput(Process)} that
+     * every internal caller and {@code GitCommandExecutor} depend on: each line
+     * of the process's output is returned in order, each terminated by a
+     * newline, so the reverse-chronological, multi-line output of
+     * {@code git log --format=%s} round-trips as {@code two\none\n}.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputCapturesEveryLineWithTrailingNewline() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("a.txt"), "a");
+        gitRun(repo, "add", "a.txt");
+        gitRun(repo, "commit", "-m", "one");
+        Files.writeString(repo.resolve("b.txt"), "b");
+        gitRun(repo, "add", "b.txt");
+        gitRun(repo, "commit", "-m", "two");
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "log", "--format=%s");
+        pb.directory(repo.toFile());
+        pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+
+        Assert.assertEquals("two\none\n", output);
+    }
+
+    /**
+     * Pins that {@link GitOperations#readProcessOutput(Process)} returns an empty
+     * string, not {@code null}, when the process produces no output. A
+     * {@code git add -- .} on a repository with nothing to stage prints nothing
+     * to stdout; this is the behaviour {@code GitCommandExecutor.executeGit}
+     * relies on when it trims and logs a failing command's output.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputReturnsEmptyStringWhenNoOutput() throws Exception {
+        Path repo = initRepo();
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "add", "--", ".");
+        pb.directory(repo.toFile());
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+        Assert.assertEquals("", output);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
