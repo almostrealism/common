@@ -670,17 +670,26 @@ reshape([1, heads * head_size])
 
 ### Complete Transformer Layer
 
-The `transformer()` method of `AttentionFeatures` wraps attention and
-feed-forward with residual connections using `accum()`:
+The layer is the asset `engine/ml/src/main/resources/pdsl/transformer.pdsl`. Its
+`transformer`, `transformer_qk_norm` and `transformer_mra` layers wrap an attention
+layer of `attention.pdsl` and the `swiglu_ffn` layer of `feed_forward.pdsl` in residual
+connections:
 
-```java
-SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-transformer.accum(attention(...), requirements);  // x = x + attention(x)
-transformer.accum(feedForward(...), requirements); // x = x + ffn(x)
+```
+accum {
+    attention(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+              bq, bk, bv, freq_cis, position, epsilon)      // x = x + attention(x)
+}
+accum {
+    swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)         // x = x + ffn(x)
+}
 ```
 
-The `accum()` method adds the block's output to the residual stream, implementing
-the standard pre-norm transformer pattern: `x = x + sublayer(norm(x))`.
+Each `accum` adds its stage's output to the residual stream, implementing the standard
+pre-norm transformer pattern `x = x + sublayer(norm(x))`. The `transformer()` methods of
+`AttentionFeatures` only bind the arguments (`attentionArguments` allocates the key and
+value caches) and build one of those layers from the three assets parsed into one program
+(`PdslLoader.parseResources`); the model classes loop over their layers in Java.
 
 ---
 

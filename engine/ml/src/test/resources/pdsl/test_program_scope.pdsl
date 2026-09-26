@@ -1,0 +1,44 @@
+/**
+ * Test fixture for PdslProgramScopeTest: how names resolve when one layer calls another.
+ *
+ * The state block below is a program-level declaration: a layer reads its entries by name,
+ * whether the loader builds that layer directly or another layer calls it. A layer the
+ * program defines is the one a call to its name reaches, even when a built-in shares the
+ * name. A called layer sees its own parameters and the program's blocks, not the parameters
+ * of the layer that called it. The data-block counterpart is test_program_data_scope.pdsl.
+ */
+
+/** A [rows, size] table written through cache_write; the caller binds `rows`. */
+state scope_state {
+    rows: weight
+}
+
+/** Writes the [1, size] input into row `position` of the state table and passes it through. */
+layer write_row(position: scalar, size: int) -> [1, size] {
+    cache_write(rows, position)
+}
+
+/** The same write, reached through a call: the called layer still finds `rows`. */
+layer write_row_nested(position: scalar, size: int) -> [1, size] {
+    write_row(position, size)
+}
+
+/** A layer named after the softmax built-in. It doubles its input. */
+layer softmax(size: int) -> [1, size] {
+    scale(2.0)
+}
+
+/** Calls softmax by name: the program's own layer, not the built-in, is what runs. */
+layer calls_own_softmax(size: int) -> [1, size] {
+    softmax(size)
+}
+
+/** Scales by `factor`, which is not one of its parameters. */
+layer scaled_by_factor(size: int) -> [1, size] {
+    scale(factor)
+}
+
+/** Has a `factor` parameter, but the layer it calls cannot see it. */
+layer calls_with_factor_in_scope(factor: float, size: int) -> [1, size] {
+    scaled_by_factor(size)
+}

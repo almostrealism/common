@@ -78,7 +78,7 @@ import java.util.function.Function;
  *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
  *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
- *   <li>{@code attention(...)}, {@code transformer(...)}</li>
+ *   <li>{@code attention(...)}</li>
  * </ul>
  *
  * <p>Domain-specific primitives (audio DSP, multi-channel routing, etc.) are not
@@ -106,8 +106,8 @@ public class PdslInterpreter {
 	/**
 	 * Registry of domain primitives contributed by higher-level modules via
 	 * {@link #registerPrimitive(String, PdslPrimitive)}. The interpreter consults
-	 * this map first when dispatching a function call so domain primitives can
-	 * shadow built-in names if needed. The registry is heterogeneous — each
+	 * this map after the program's own layers and before the built-ins, so domain
+	 * primitives can shadow built-in names if needed. The registry is heterogeneous — each
 	 * primitive declares its own result type via the {@code T} parameter on
 	 * {@link PdslPrimitive} — so the map values are typed as
 	 * {@code PdslPrimitive<?>}.
@@ -298,13 +298,48 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Layer '" + name + "' not found");
 		}
-		Environment env = new Environment(null);
-		populateDataDefs(args, env);
+		SequentialBlock block = buildLayer(def, inputShape, args, programScope(args));
+		if (requirements.length > 0) {
+			block.setComputeRequirements(requirements);
+		}
+		return block;
+	}
+
+	/**
+	 * Creates the program scope of one build: the outermost {@link Environment}, holding the
+	 * entries of every {@code data} and {@code state} block of the program, bound from
+	 * {@code args}. Every layer interpreted during the build, including a layer called from
+	 * another layer's body, reads these entries through its enclosing scopes, so a block
+	 * declared once at program level means the same thing to every layer that names it.
+	 *
+	 * @param args the arguments of the layer or model being built
+	 * @return the program scope
+	 */
+	private Environment programScope(Map<String, Object> args) {
+		Environment scope = new Environment(null);
+		populateDataDefs(args, scope);
+		return scope;
+	}
+
+	/**
+	 * Builds a layer definition in a scope of its own, directly inside the program scope: the
+	 * body sees its parameters and the program's {@code data} and {@code state} entries, and
+	 * nothing of the layer that called it.
+	 *
+	 * @param def          the layer definition
+	 * @param inputShape   the input tensor shape for the block
+	 * @param args         parameter bindings (name to value)
+	 * @param programScope the program scope of the build, from {@link #programScope(Map)}
+	 * @return the constructed block
+	 */
+	private SequentialBlock buildLayer(PdslNode.LayerDef def, TraversalPolicy inputShape,
+									   Map<String, Object> args, Environment programScope) {
+		Environment env = new Environment(programScope);
 		for (PdslNode.Parameter param : def.getParameters()) {
 			Object value = args.get(param.getName());
 			if (value == null && !args.containsKey(param.getName())) {
 				throw new PdslParseException(
-						"Missing argument '" + param.getName() + "' for layer '" + name + "'");
+						"Missing argument '" + param.getName() + "' for layer '" + def.getName() + "'");
 			}
 			if ("producer".equals(param.getTypeName())) {
 				value = bindProducerParameter(param, value, env);
@@ -313,9 +348,6 @@ public class PdslInterpreter {
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
 		interpretBody(def.getBody(), block, env);
-		if (requirements.length > 0) {
-			block.setComputeRequirements(requirements);
-		}
 		return block;
 	}
 
@@ -356,8 +388,7 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Model '" + name + "' not found");
 		}
-		Environment env = new Environment(null);
-		populateDataDefs(args, env);
+		Environment env = new Environment(programScope(args));
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
 				throw new PdslParseException(
@@ -819,8 +850,14 @@ public class PdslInterpreter {
 	}
 
 	/**
-	 * Evaluates a function call expression, dispatching to built-in primitives or
-	 * user-defined layer/model definitions.
+	 * Evaluates a function call expression, dispatching to a layer the program defines, a
+	 * registered domain primitive or a built-in, in that order.
+	 *
+	 * <p>A layer the program defines is the most specific meaning of its name, so it is
+	 * resolved first: a program may name a layer after a library function and still call it
+	 * from another layer ({@code attention.pdsl} defines a layer named {@code attention}, which
+	 * {@code transformer.pdsl} calls). Registered domain primitives (audio DSP, multi-channel
+	 * routing, etc.) are looked up before built-ins so that they may shadow built-in names.</p>
 	 *
 	 * @param call The function call node
 	 * @param env  Current variable environment
@@ -834,23 +871,19 @@ public class PdslInterpreter {
 			args.add(evaluateExpression(argExpr, env));
 		}
 
-		// Domain primitives (audio DSP, multi-channel routing, etc.) are looked up
-		// before built-ins so registered primitives may shadow built-in names.
+		// TODO(review): a layer that shadows a built-in and calls that name in its own body now recurses without bound; detect self-calls and report them
+		if (layerDefs.containsKey(name)) {
+			return callUserLayer(name, args, env);
+		}
+
 		PdslPrimitive<?> registered = registeredPrimitives.get(name);
 		if (registered != null) {
 			return registered.dispatch(args, new EnvContext(env));
 		}
 
-		// Try built-in functions
 		Object builtinResult = tryCallBuiltin(name, args);
 		if (builtinResult != null) return builtinResult;
 
-		// Try user-defined layers
-		if (layerDefs.containsKey(name)) {
-			return callUserLayer(name, args);
-		}
-
-		// Try calling as a method on a value passed as first arg (dot-call syntax)
 		throw new PdslParseException(
 				"Unknown function '" + name + "' at line " + call.getLine());
 	}
@@ -1013,14 +1046,18 @@ public class PdslInterpreter {
 	// ---- User-defined layer calls ----
 
 	/**
-	 * Instantiates a user-defined layer by binding arguments to its parameters
-	 * and interpreting its body.
+	 * Instantiates a user-defined layer called from another layer's (or a model's) body by
+	 * binding arguments to its parameters and interpreting its body. The called layer is
+	 * built inside the program scope of the build that reached the call, so it sees the
+	 * program's {@code data} and {@code state} entries exactly as it would if it were built
+	 * directly, and it does not see the caller's parameters or local names.
 	 *
 	 * @param name          Name of the layer definition to call
 	 * @param evaluatedArgs Already-evaluated argument values
+	 * @param callerEnv     The environment of the call site
 	 * @return The result of the layer body (typically a {@link Block})
 	 */
-	private Object callUserLayer(String name, List<Object> evaluatedArgs) {
+	private Object callUserLayer(String name, List<Object> evaluatedArgs, Environment callerEnv) {
 		PdslNode.LayerDef def = layerDefs.get(name);
 		List<PdslNode.Parameter> params = def.getParameters();
 
@@ -1035,26 +1072,27 @@ public class PdslInterpreter {
 			args.put(params.get(i).getName(), evaluatedArgs.get(i));
 		}
 
-		// Determine input shape from the layer definition or from first weight parameter
-		TraversalPolicy inputShape = inferInputShape(def, args);
-		return buildLayer(name, inputShape, args);
+		Environment programScope = callerEnv.root();
+		TraversalPolicy inputShape = inferInputShape(def, args, programScope);
+		return buildLayer(def, inputShape, args, programScope);
 	}
 
 	/**
 	 * Infers the input shape for a user-defined layer from its return-shape annotation
 	 * or from the shape of the first weight parameter.
 	 *
-	 * @param def  The layer definition
-	 * @param args Bound argument values keyed by parameter name
+	 * @param def          The layer definition
+	 * @param args         Bound argument values keyed by parameter name
+	 * @param programScope The program scope the annotation may also refer to
 	 * @return The inferred input {@link TraversalPolicy}
 	 * @throws PdslParseException If the shape cannot be determined
 	 */
 	private TraversalPolicy inferInputShape(PdslNode.LayerDef def,
-											Map<String, Object> args) {
+											Map<String, Object> args,
+											Environment programScope) {
 		// Try return shape annotation
 		if (def.getReturnShape() != null) {
-			Environment tempEnv = new Environment(null);
-			populateDataDefs(args, tempEnv);
+			Environment tempEnv = new Environment(programScope);
 			for (Map.Entry<String, Object> entry : args.entrySet()) {
 				tempEnv.set(entry.getKey(), entry.getValue());
 			}
@@ -1176,6 +1214,8 @@ public class PdslInterpreter {
 			if (bindings.containsKey(name)) return true;
 			return parent != null && parent.has(name);
 		}
+		/** Returns the outermost enclosing scope: the program scope of the build this scope belongs to. */
+		Environment root() { return parent == null ? this : parent.root(); }
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
 	}

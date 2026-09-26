@@ -413,6 +413,47 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link PdslLoader#parseResources} forms one program from several assets: the transformer
+	 * asset together with the attention and feed-forward assets whose layers it calls holds every
+	 * layer and state block of the three.
+	 */
+	@Test(timeout = 60000)
+	public void testParseResourcesCombinesAssets() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResources(
+				"/pdsl/attention.pdsl", "/pdsl/feed_forward.pdsl", "/pdsl/transformer.pdsl");
+
+		int separately = loader.parseResource("/pdsl/attention.pdsl").getDefinitions().size()
+				+ loader.parseResource("/pdsl/feed_forward.pdsl").getDefinitions().size()
+				+ loader.parseResource("/pdsl/transformer.pdsl").getDefinitions().size();
+		Assert.assertEquals(separately, program.getDefinitions().size());
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		for (String layer : new String[] { "attention", "attention_qk_norm", "attention_mra", "swiglu_ffn",
+				"transformer", "transformer_qk_norm", "transformer_mra" }) {
+			Assert.assertTrue("combined program should define '" + layer + "'",
+					interpreter.getLayerNames().contains(layer));
+		}
+		Assert.assertTrue(interpreter.getStateDefNames().contains("attention_cache"));
+	}
+
+	/**
+	 * {@link PdslLoader#parseResources} rejects assets that define the same layer, since only one
+	 * of the two definitions could ever be reached: {@code test_layers.pdsl} carries its own copy
+	 * of {@code swiglu_ffn}.
+	 */
+	@Test(timeout = 60000)
+	public void testParseResourcesRejectsDuplicateDefinitions() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.parseResources("/pdsl/feed_forward.pdsl", "/pdsl/test_layers.pdsl");
+			Assert.fail("parseResources() should reject a layer defined by two resources");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("'swiglu_ffn'"));
+		}
+	}
+
+	/**
 	 * Load the data-block PDSL test fixture from the classpath resource.
 	 *
 	 * @return the PDSL source text

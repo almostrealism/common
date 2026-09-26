@@ -92,12 +92,17 @@ audio-domain assumption:
 (`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
 activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `repeat_each`, `cache_write`,
 `cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
-`attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`, `transformer`
+`attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
 composes the KV-cached attention block from these; `attention()` loads that asset, and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
-`feedForward()` loads. `cache_read(cache, position)` outputs one row of a caller-owned
-`[rows, size]` state collection without reading its input — the read that pairs with
+`feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
+pre-norm transformer layer from the layers of those two assets — `accum` around an attention
+layer, then `accum` around `swiglu_ffn` — and `transformer()` builds it from the three assets
+parsed into one program with `PdslLoader.parseResources`. A layer called from another layer
+sees the program's `data` and `state` entries, and a program's own layers take precedence over
+registered primitives and built-ins of the same name. `cache_read(cache, position)` outputs one
+row of a caller-owned `[rows, size]` state collection without reading its input — the read that pairs with
 `cache_write`; `engine/ml/src/main/resources/pdsl/midi/gru_decoder.pdsl` uses the pair to
 carry each GRU layer's hidden state from one decode step to the next.)
 

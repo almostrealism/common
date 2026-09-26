@@ -28,9 +28,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -218,6 +221,36 @@ public class PdslLoader {
 	 */
 	public PdslNode.Program parseResource(String classpathResource) {
 		return parse(readResource(classpathResource));
+	}
+
+	/**
+	 * Parse several classpath .pdsl resources into one program, so that a layer of one asset
+	 * can call the layers of another (as {@code transformer.pdsl} calls the attention layers of
+	 * {@code attention.pdsl} and the {@code swiglu_ffn} layer of {@code feed_forward.pdsl}).
+	 * Each resource is parsed on its own, so a parse error reports its line within that
+	 * resource, and the definitions of all resources are gathered in the order given.
+	 *
+	 * @param classpathResources absolute classpath paths of the .pdsl resources
+	 * @return the program holding every definition of every resource
+	 * @throws IllegalStateException if a resource is not found or cannot be read
+	 * @throws PdslParseException    if a name is defined more than once for the same kind of
+	 *                               definition, which would otherwise leave all but one of the
+	 *                               definitions silently unreachable
+	 */
+	public PdslNode.Program parseResources(String... classpathResources) {
+		List<PdslNode.Definition> definitions = new ArrayList<>();
+		Set<String> defined = new HashSet<>();
+		for (String resource : classpathResources) {
+			for (PdslNode.Definition definition : parseResource(resource).getDefinitions()) {
+				String key = definition.getClass().getSimpleName() + " " + definition.getName();
+				if (!defined.add(key)) {
+					throw new PdslParseException("'" + definition.getName() + "' is defined more than once"
+							+ " among " + String.join(", ", classpathResources) + " (again in " + resource + ")");
+				}
+				definitions.add(definition);
+			}
+		}
+		return new PdslNode.Program(definitions);
 	}
 
 	/**
