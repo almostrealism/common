@@ -492,6 +492,21 @@ def _validate_shard_prefix(shard_prefix):
             "on read. Choose a shard_prefix without that suffix.")
 
 
+def _is_shard_name(name, shard_prefix):
+    """Return True only for names :func:`write_group` itself produces.
+
+    A shard group is written as the bare ``shard_prefix`` (the first shard) and
+    ``shard_prefix_<index>`` for later shards, where ``<index>`` is a decimal
+    shard index. Any other name that merely shares the prefix -- an unrelated
+    sidecar or backup such as ``weights_metadata.json`` -- is not a shard, so
+    the stale-shard cleanup must leave it untouched.
+    """
+    if name == shard_prefix:
+        return True
+    marker = shard_prefix + "_"
+    return name.startswith(marker) and name[len(marker):].isdigit()
+
+
 def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     """Write a remapped ``dict[str, ndarray]`` to StateDictionary protobuf shards.
 
@@ -527,12 +542,16 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     written = write_group(entries, out_dir, shard_prefix)
 
     # Clear stale same-prefix shards from a previous run so they cannot pollute a
-    # later StateDictionary load (the loader reads every non-hidden file).
+    # later StateDictionary load (the loader reads every non-hidden file). Only
+    # the names this writer itself produces are removed -- the bare prefix and
+    # ``prefix_<index>`` where the suffix is a decimal shard index -- so an
+    # unrelated sidecar or backup that merely shares the prefix (for example
+    # ``weights_metadata.json``) is never deleted.
     kept = {os.path.basename(path) for path in written}
     for name in os.listdir(out_dir):
         if name in kept:
             continue
-        if name == shard_prefix or name.startswith(shard_prefix + "_"):
+        if _is_shard_name(name, shard_prefix):
             stale = os.path.join(out_dir, name)
             if os.path.isfile(stale):
                 os.remove(stale)

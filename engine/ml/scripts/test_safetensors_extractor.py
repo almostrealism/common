@@ -142,6 +142,41 @@ def test_write_state_dictionary_excludes_stale_same_prefix_shard(tmp_path):
     np.testing.assert_array_equal(reloaded["fresh.weight"], new_state["fresh.weight"])
 
 
+def test_write_state_dictionary_preserves_non_shard_same_prefix_files(tmp_path):
+    """Cleanup must delete only the shard names this writer produces.
+
+    A stale shard is ``shard_prefix`` or ``shard_prefix_<numeric-index>``.
+    An unrelated file that merely shares the prefix -- a sidecar such as
+    ``weights_metadata.json`` or a backup such as ``weights_backup`` -- is not a
+    shard, and rewriting a dump must not delete it.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+
+    # A genuinely stale numeric shard (must be removed) alongside two non-shard
+    # files that share the prefix (must survive).
+    stale_shard = os.path.join(out_dir, "weights_1")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+    sidecar = os.path.join(out_dir, "weights_metadata.json")
+    with open(sidecar, "w", encoding="utf-8") as handle:
+        handle.write("{}")
+    backup = os.path.join(out_dir, "weights_backup")
+    with open(backup, "w", encoding="utf-8") as handle:
+        handle.write("unrelated")
+
+    new_state = {"fresh.weight": np.arange(3, dtype=np.float32)}
+    paths = core.write_state_dictionary(new_state, out_dir)
+
+    assert os.path.basename(paths[0]) == "weights"
+    # The numeric stale shard is gone; the non-shard files are left untouched.
+    assert not os.path.exists(stale_shard)
+    assert os.path.isfile(sidecar)
+    assert os.path.isfile(backup)
+    with open(backup, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated"
+
+
 def test_zero_sized_dimension_round_trips(tmp_path):
     # The SA3 SoftNorm bottleneck has noise_scaling_factor with shape [1, 0, 1].
     src = {"bottleneck.noise_scaling_factor": np.zeros((1, 0, 1), dtype=np.float32)}
