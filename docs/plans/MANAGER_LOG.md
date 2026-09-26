@@ -41,9 +41,12 @@ caused by *missing documentation of a platform invariant* rather than misread
 evidence: a "stale kernel cache" that cannot bite (the generated `.c`/`.so`
 files persist on disk — there is no startup purge — but the per-run target
 counter restarts at 0 and each slot is recompiled and overwritten before it is
-loaded, so no prior-run artifact is ever executed), an off-heap "budget
+loaded, so for a single JVM owning its library directory no prior-run
+artifact is ever executed — JVMs sharing `AR_HARDWARE_LIBS` can overwrite each
+other's targets between compile and load), an off-heap "budget
 exhaustion → null pointer" that cannot happen
-(exhaustion throws; it does not silently zero a pointer), and a kernel "nulling
+(reservation exhaustion throws; it does not silently zero a pointer — an
+unchecked OS-level `calloc` failure is a separate case), and a kernel "nulling
 a pointer mid-invocation" that cannot happen (the codegen language has no null
 and no pointer-erase). I verified the follow-through was never done: none of the
 four proposed internals pages exist (`KERNEL_CACHE.md`, `OFF_HEAP_MEMORY.md`,

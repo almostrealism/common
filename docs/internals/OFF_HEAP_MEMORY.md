@@ -170,5 +170,5 @@ The framework defends this in two places:
 
 If a byte-budget-driven eviction mechanism, or an allocator that returns a
 sentinel pointer on exhaustion, is ever introduced, update this page — the
-"exhaustion is always an exception, never a null pointer" invariant would no
+"reservation exhaustion is always an exception, never a null pointer" invariant would no
 longer hold.

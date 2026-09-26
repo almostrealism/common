@@ -41,11 +41,13 @@ than to misread evidence. The wrong turns were:
 1. "Clear the stale kernel cache" — impossible in effect, because although the
    generated `.c`/`.so`/`.dylib` files persist on disk (there is no
    startup purge), each run recompiles fresh into the same class-named slot and
-   **overwrites the artifact before loading it**. No prior-run dylib is ever
-   executed without being regenerated first (overwrite-before-load).
+   **overwrites the artifact before loading it**. For a single JVM owning its
+   library directory, no prior-run dylib is ever executed without being
+   regenerated first (overwrite-before-load); JVMs sharing a library directory
+   are the exception (see deliverable 2).
 2. "The 1024MB off-heap budget was exhausted and the allocator returned a null
    pointer" — impossible, because that figure is not a framework-enforced
-   budget and exhaustion surfaces as an exception/OS-OOM, never a silent
+   budget and reservation exhaustion surfaces as an exception/OS-OOM, never a silent
    zero-valued pointer.
 3. "A thread nulled a pointer field inside the kernel mid-invocation" —
    impossible, because the codegen language has no null and no

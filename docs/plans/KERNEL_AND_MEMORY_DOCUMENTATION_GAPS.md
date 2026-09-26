@@ -25,6 +25,7 @@ the lowest-priority gap and is deferred to a follow-up.
 
 ## Background
 
+<!-- TODO(review): pre-existing text below names a private downstream product; rephrase in platform terms ("a client application"). -->
 On 2026-05-04, an investigation into a Rings desktop crash
 (NULL deref inside `Java_org_almostrealism_generated_GeneratedOperation9_apply`)
 produced three substantively wrong hypotheses before the maintainer corrected
@@ -54,8 +55,12 @@ These dylibs persist on disk (there is no startup purge, and `destroy()` is a
 no-op), but the per-run target counter restarts at 0 and each `GeneratedOperationN`
 slot is recompiled and **overwritten before it is loaded** — so a prior run's
 artifact is never executed without being regenerated first. There is no
-cross-execution reuse in effect. A "stale cache" cannot be the cause of a
-kernel-side crash. Clearing the cache is a no-op as a diagnostic.
+cross-execution reuse in effect. For a single JVM owning its library directory,
+a "stale cache" cannot be the cause of a kernel-side crash and clearing the
+cache is a no-op as a diagnostic. This guarantee is process-local: the target
+counter is JVM-local and there is no inter-process lock, so two JVMs sharing
+`AR_HARDWARE_LIBS` can overwrite each other's `GeneratedOperationN` between
+compile and load; concurrent JVMs need distinct library directories.
 
 ### Where documentation should live
 - `common/base/hardware/src/main/java/org/almostrealism/hardware/jni/NativeCompiler.java`

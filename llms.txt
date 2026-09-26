@@ -86,8 +86,8 @@
 - [Assignment Optimization](docs/internals/assignment-optimization.md): Element-wise assignment short-circuits
 - [OperationList Optimization Flags](docs/internals/operationlist-optimization-flags.md): Batch operation optimization
 - [Codegen Value Semantics](docs/internals/CODEGEN_VALUE_SEMANTICS.md): Why generated kernels have no null and no pointer-erase; the two ways a 0x0 dereference can arise
-- [On-Disk Kernel Cache](docs/internals/KERNEL_CACHE.md): The generated .c/.so/.dylib artifacts — overwrite-before-load, why "stale dylib from a prior build" is impossible
-- [Off-Heap Memory Model](docs/internals/OFF_HEAP_MEMORY.md): Reservation ceiling vs off-heap size, phantom-reference freeing, why exhaustion is an exception not a null pointer
+- [On-Disk Kernel Cache](docs/internals/KERNEL_CACHE.md): The generated .c/.so/.dylib artifacts — overwrite-before-load, why "stale dylib from a prior build" is impossible for a single JVM owning its library directory (concurrent JVMs need distinct directories)
+- [Off-Heap Memory Model](docs/internals/OFF_HEAP_MEMORY.md): Reservation ceiling vs off-heap size, phantom-reference freeing, why reservation exhaustion is an exception not a null pointer (an unchecked OS-level calloc failure is a separate case)
 - [Generated-Kernel Thread Safety](docs/internals/KERNEL_THREAD_SAFETY.md): Compiled-function reentrancy vs wrapper configuration vs shared-buffer/metrics races
 
 ### Audio and CellList
