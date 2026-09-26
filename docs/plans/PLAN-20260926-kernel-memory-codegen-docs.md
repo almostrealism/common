@@ -102,7 +102,9 @@ in the priority order established by the source plan:
    *pointee* is not — output buffers are intentionally written in place, so
    "read-only" refers to the pointer value, never the bytes it targets; the two
    (and only two) ways a `0x0` dereference can arise inside a generated kernel (a
-   zero pointer at the JNI boundary, or arithmetic producing a zero offset);
+   zero pointer at the JNI boundary, or pointer arithmetic wrapping
+   `base + offset` around to exactly zero — distinct from an ordinary
+   out-of-bounds offset, which faults at a non-zero address);
    and the resulting investigation playbook ("when you see `far: 0x0`, start at
    the Java caller, not the kernel body"). Include a short worked example.
 

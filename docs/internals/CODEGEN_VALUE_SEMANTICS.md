@@ -104,10 +104,19 @@ generated kernel can arise in only two ways:
    `SIGSEGV` into a `NullPointerException`/`IllegalArgumentException` named for
    the kernel. See [OFF_HEAP_MEMORY.md](OFF_HEAP_MEMORY.md) for the
    use-after-free race this guards against.
-2. **Arithmetic produced a zero (or out-of-range) offset** — for example an
-   offset computation that wraps or subtracts a base from itself, yielding an
-   address of `0x0` or an out-of-bounds access. This is an offset/indexing bug
-   in the computation graph, not a pointer-lifetime bug.
+2. **Pointer arithmetic wrapped around to address zero** — the kernel
+   addresses `base + offset`, so with a non-zero `base` the result is `0x0`
+   only when the offset is exactly `-base` modulo the address width (for
+   example an index computation that overflows or goes negative by precisely
+   that amount). A zero *offset* does not do this; it addresses `base` itself.
+   This is an offset/indexing bug in the computation graph, not a
+   pointer-lifetime bug.
+
+An ordinary out-of-bounds offset is a different failure: it produces a
+**non-zero** invalid address (a fault at `base + offset`, or silent reads of
+neighbouring memory), not a `0x0` dereference. It is also an indexing bug in
+the computation graph, but its signature is a fault address near a valid
+argument pointer rather than `0x0`.
 
 ## Debugging consequence
 
@@ -119,7 +128,9 @@ at dispatch time:
 - Was a `MemoryData`/`RAM` argument destroyed or unmapped before `apply`? (See
   the use-after-free race in [OFF_HEAP_MEMORY.md](OFF_HEAP_MEMORY.md) and the
   `KernelMemoryGuard` mitigation.)
-- Or is an offset expression producing `0` / out-of-range for some index?
+- Or is an index expression overflowing or going negative so that
+  `base + offset` wraps to exactly `0`? (A fault at a non-zero address near an
+  argument pointer instead indicates an ordinary out-of-bounds offset.)
 
 Do **not** spend iterations on "the kernel cleared a pointer," "a stale cached
 kernel has the wrong argument layout" (see [KERNEL_CACHE.md](KERNEL_CACHE.md)),

@@ -171,8 +171,10 @@ or zeroed inside the kernel.
 ### Consequences for crash investigation
 - A pointer dereference of `0x0` inside a generated kernel implies one of:
   1. A pointer argument was 0 at the JNI boundary (Java caller bug), or
-  2. An arithmetic operation produced 0 (e.g., out-of-range offset wrapping
-     or subtracting a base from itself).
+  2. Pointer arithmetic wrapped `base + offset` around to exactly 0 (an
+     overflowing or negative index equal to `-base`). *(Corrected: a zero
+     offset addresses `base`, not `0x0`, and an ordinary out-of-bounds offset
+     faults at a non-zero address — a separate indexing-bug signature.)*
 - "The kernel zeroed a pointer internally" is not a possible failure mode
   and should not be entertained.
 - This makes the crash signature actionable: focus first on what was passed
