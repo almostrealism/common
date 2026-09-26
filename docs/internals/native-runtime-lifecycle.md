@@ -82,20 +82,31 @@ same `.c` and library paths concurrently: one run can truncate or overwrite the 
 another run is mid-compile or mid-`System.load` on, and each can load the other's bytes.
 
 Crucially, **the default directory is shared, not per-process.** When `AR_HARDWARE_LIBS` is unset the
-directory is `SystemUtils.getExtensionsPath()` (`getCachesPath()/Extensions`) — a fixed per-user
-cache path, the same for every JVM that user launches on the machine. So concurrent JVMs run by the
-same user race on this directory *by default*; the race is not confined to a hand-set shared
-`AR_HARDWARE_LIBS`. Running more than one JVM that uses the native backend concurrently on one machine
-is unsupported for this reason. When triaging a crash, this cross-run race is the one case where the
+directory is `SystemUtils.getExtensionsPath()` (`getCachesPath()/Extensions`), a fixed path that every
+JVM on the machine resolves to identically. How widely it is shared depends on the platform:
+`getCachesPath()` returns `~/Library/Caches/<app>` only on macOS (when a Mac app name is set) — a
+per-user path — and falls back to `java.io.tmpdir/ar-cache` everywhere else, which under a default
+`java.io.tmpdir` of `/tmp` is shared across *all* users on the host, not just the JVMs of one user. So
+concurrent JVMs race on this directory *by default* — same-user only on macOS, potentially
+cross-user on other platforms — and the race is not confined to a hand-set shared `AR_HARDWARE_LIBS`.
+Running more than one JVM that uses the native backend concurrently on one machine is unsupported for
+this reason. When triaging a crash, this cross-run race is the one case where the
 on-disk artifact *can* be wrong for the loading run — but only when another JVM was writing the same
 directory at the same time; a strictly sequential single-JVM history is still immune (the
 overwrite-before-load argument above holds).
 
 ### Metal and OpenCL program lifetime
 
-The Metal and OpenCL backends do not go through `NativeCompiler`; their programs are built in-memory
-per JVM (compiled `MTLComputePipelineState` / `cl_program` objects), not written to `AR_HARDWARE_LIBS`.
-In-JVM reuse of already-compiled instruction sets — for every backend — is a separate concern handled
+The Metal backend and the *standard* OpenCL backend do not go through `NativeCompiler`; their programs
+are built in-memory per JVM (compiled `MTLComputePipelineState` / `cl_program` objects), not written
+to `AR_HARDWARE_LIBS`. The OpenCL backend has an **exception**: when a `ComputeRequirement.C` is
+requested, `CLDataContext.newContext(...)` builds a `CLNativeComputeContext` instead of the standard
+`CLComputeContext`, and `CLNativeComputeContext.deliver(...)` compiles through `NativeCompiler` —
+writing and loading a generated JNI library on disk exactly like the pure-native backend, subject to
+the same overwrite-before-load lifecycle and shared-directory race described in section 1. So an
+on-disk OpenCL artifact is possible on that C/native path and cannot be ruled out during crash triage;
+only the standard `CLComputeContext` path is purely in-memory. In-JVM reuse of already-compiled
+instruction sets — for every backend — is a separate concern handled
 by the instruction-set caching layer; see
 [base/hardware/docs/INSTRUCTION_CACHING.md](../../base/hardware/docs/INSTRUCTION_CACHING.md). That
 cache lives and dies with the JVM as well.
@@ -344,9 +355,9 @@ For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `Nativ
 
 1. **Rule out "stale dylib from a prior build" (§1).** Libraries are overwritten before load;
    clearing `AR_HARDWARE_LIBS` changes nothing. Do not spend an iteration on it — *unless* a second
-   JVM was using the same library directory concurrently (the default directory is shared per user, so
-   this is not exotic), which is the one way the on-disk artifact can be wrong for the loading run
-   (§1).
+   JVM was using the same library directory concurrently (the default directory is shared — per user on
+   macOS, potentially across users under `/tmp` on other platforms — so this is not exotic), which is
+   the one way the on-disk artifact can be wrong for the loading run (§1).
 2. **Rule out "the kernel nulled a pointer internally" (§5).** Codegen cannot assign a pointer.
    A `0x0` inside the kernel came from the JNI boundary or from arithmetic — start at the Java
    caller.
