@@ -343,6 +343,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return rateDenominator == null || axis == -1 ? 1 : rateDenominator[axis];
 	}
 
+	/** Reindexes a per-axis rate array after a structural change (a dimension added, inserted, or removed): {@code mapping[i]} is the source axis in {@code rates}, or {@code -1} for a newly introduced axis, which takes the neutral rate of {@code 1}. Returns {@code null} when {@code rates} is {@code null}, since that already denotes the all-ones default. */
+	private static long[] reindexRates(long[] rates, int[] mapping) {
+		if (rates == null) return null;
+		long[] result = new long[mapping.length];
+		for (int i = 0; i < mapping.length; i++) result[i] = mapping[i] < 0 ? 1 : rates[mapping[i]];
+		return result;
+	}
+
 	/**
 	 * Returns the total number of elements from the given depth to the end of the output space.
 	 *
@@ -471,10 +479,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		// Calculate index using internal positions
 		int index = 0;
 		for (int i = 0; i < internalPos.length; i++) {
-			// Use the internal dimension index for rate calculations
-			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
-			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
-			index += (internalPos[i] / rateDen) * rateNum * inputSize(i + 1);
+			index += (internalPos[i] / rateDenominatorLong(i)) * rateNumeratorLong(i) * inputSize(i + 1);
 		}
 		return index;
 	}
@@ -499,12 +504,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		for (int i = 0; i < internalPos.length; i++) {
 			Expression p = internalPos[i];
-			// Use the internal dimension index for rate calculations
-			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
-			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
-			
-			p = Quotient.of(p, e(rateDen));
-			p = Product.of(p, e(rateNum));
+			p = Quotient.of(p, e(rateDenominatorLong(i)));
+			p = Product.of(p, e(rateNumeratorLong(i)));
 
 			Expression s = e(inputSizeLong(i + 1));
 			index = Sum.of(index, Product.of(p, s));
@@ -822,28 +823,38 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			newDimsOrder[i + 1] = dimsOrder[i] + 1;
 		}
 
+		int rateMap[] = IntStream.range(0, newDims.length).map(i -> i - 1).toArray();
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, newDimsOrder,
+				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
 		p.traversalAxis = traversalAxis + 1;
 		return p;
 	}
 
 	/**
 	 * Returns a new policy that concatenates the dimensions of this policy with those
-	 * of the given shape.
+	 * of the given shape. Each axis keeps the traversal rate it had in the policy it came
+	 * from, so a rated operand still reads its own (smaller) input along its axes.
 	 *
 	 * @param shape the policy whose dimensions are appended
 	 * @return the concatenated policy
 	 */
 	public TraversalPolicy append(TraversalPolicy shape) {
-		long newDims[] = new long[getDimensions() + shape.getDimensions()];
-		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
-		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
+		int n = getDimensions();
+		long newDims[] = new long[n + shape.getDimensions()];
+		long newNum[] = rateNumerator == null && shape.rateNumerator == null ? null : new long[newDims.length];
+		long newDen[] = rateDenominator == null && shape.rateDenominator == null ? null : new long[newDims.length];
+
+		for (int i = 0; i < newDims.length; i++) {
+			TraversalPolicy source = i < n ? this : shape;
+			int axis = i < n ? i : i - n;
+			newDims[i] = source.lengthLong(axis);
+			if (newNum != null) newNum[i] = source.rateNumeratorLong(axis);
+			if (newDen != null) newDen[i] = source.rateDenominatorLong(axis);
+		}
 
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, null, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, null, newNum, newDen, fixed);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -856,22 +867,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the extended policy
 	 */
 	public TraversalPolicy appendDimension(int size) {
-		long newDims[] = new long[getDimensions() + 1];
-		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
-		newDims[newDims.length - 1] = size;
-
-		// Create new dimsOrder with existing mappings plus new dimension
-		int newDimsOrder[] = new int[newDims.length];
-		for (int i = 0; i < getDimensions(); i++) {
-			newDimsOrder[i] = dimsOrder[i];
-		}
-		newDimsOrder[newDims.length - 1] = newDims.length - 1; // New dimension maps to itself
-
-		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
-		p.traversalAxis = traversalAxis;
-		return p;
+		return insertDimension(getDimensions(), size);
 	}
 
 	/**
@@ -938,9 +934,11 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		for (int i = axis; i < getDimensions(); i++)
 			newDimsOrder[i + 1] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
 
+		int rateMap[] = IntStream.range(0, newDims.length)
+				.map(i -> i == axis ? -1 : (i < axis ? i : i - 1)).toArray();
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, newDimsOrder,
+				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -979,9 +977,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			newDimsOrder[i] = dimsOrder[i + depth] - depth;
 		}
 
+		int rateMap[] = IntStream.range(0, newDims.length).map(i -> i + depth).toArray();
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, newDimsOrder,
+				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
 		p.traversalAxis = traversalAxis > depth ? traversalAxis - depth : 0;
 		return p;
 	}
