@@ -200,6 +200,14 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
+ * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
+ * (JNI/OpenCL/Metal), its lifetime is tied to this Java holder, not to a bytes-used budget:
+ * once the holder becomes unreachable, {@code HardwareMemoryProvider}'s phantom-reference queue
+ * frees the native block at some later garbage-collection cycle. Freeing native memory while a
+ * dispatched kernel still reads it is a use-after-free; {@code KernelMemoryGuard} defers the free
+ * for kernels dispatched through the standard operators. Call {@link #destroy()} deterministically
+ * (via try-with-resources) for memory you own and no longer need, rather than waiting for GC.</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>{@link MemoryData} is <strong>not thread-safe</strong>. Concurrent access must be

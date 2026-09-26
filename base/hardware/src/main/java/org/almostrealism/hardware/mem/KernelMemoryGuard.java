@@ -66,6 +66,25 @@ import java.util.concurrent.atomic.AtomicInteger;
  * nothing later can report it: every check downstream is keyed by the address
  * that resolution would have produced.</p>
  *
+ * <h2>What this does not protect</h2>
+ *
+ * <p>This is a defense-in-depth layer around the standard backend operators, not
+ * a global invariant on all native memory. It does not protect:</p>
+ * <ul>
+ *   <li><strong>An unresolvable argument.</strong> {@link #acquire(MemoryData...)}
+ *   warns and skips an argument whose memory it cannot resolve to a {@link RAM};
+ *   a kernel using that argument runs unguarded.</li>
+ *   <li><strong>A caller that frees anyway.</strong>
+ *   {@link #warnIfActivelyReferenced(long, StackTraceElement[], String)} is
+ *   diagnostic only &mdash; it never throws or blocks, so it does not turn
+ *   {@link #canDeallocate(long)} into a hard barrier.</li>
+ *   <li><strong>A dispatch that was never bracketed</strong> with
+ *   {@link #acquireFor(MemoryData[])}/{@link #releaseFor(Reservation)}.</li>
+ * </ul>
+ *
+ * <p>The internals doc on the native runtime lifecycle covers the exact
+ * use-after-free race this closes and the ones it leaves open.</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>All operations are thread-safe, using {@link ConcurrentHashMap} and

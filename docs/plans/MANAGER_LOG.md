@@ -37,8 +37,8 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 #### Context: the log was restarted
 
 The previous log was deleted on 2026-04-06 together with a batch of completed or obsolete
-plans. Between April and now, planning happened through many focused plan documents (79 files
-in `docs/plans/`) and continuous QA agents (`qa/docs-*`, `qa/defect-*`, `qa/coverage-*`,
+plans. Between April and now, planning happened through many focused plan documents in
+`docs/plans/` and continuous QA agents (`qa/docs-*`, `qa/defect-*`, `qa/coverage-*`,
 `qa/performance-*`, `qa/consolidate-*`) that merge small fixes daily. This entry restarts the
 narrative. What carried over from the old log, condensed:
 

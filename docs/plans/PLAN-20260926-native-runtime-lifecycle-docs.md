@@ -17,9 +17,11 @@ happens to the compiled artifact and the memory it touches once it exists:
 - Where a generated JNI kernel library is written, whether it survives a JVM restart, and what
   a `GeneratedOperationN` class actually is (a reusable reservation slot vs. a stored kernel).
 - What `AR_HARDWARE_MEMORY_SCALE` actually bounds, which providers enforce it, and what the
-  failure looks like when it is exceeded (`HardwareException: Memory Max Reached` from
-  `MetalMemoryProvider`, versus the behavior of the JNI and OpenCL providers).
-  <!-- TODO(review): CLMemoryProvider and NativeMemoryProvider also throw "Memory max reached"; verify memoryMax per provider -->
+  failure looks like when it is exceeded. (Verified during execution: all three providers enforce
+  the same byte ceiling — `MetalMemoryProvider.allocate` and `CLMemoryProvider.buffer` throw
+  `HardwareException: "Memory Max Reached"`, `NativeMemoryProvider.allocate` throws
+  `"Memory max reached"` — and each data context sets that ceiling to
+  `getMaxReservation() * precision.bytes()`.)
 
 - How Java GC releases off-heap memory (`HardwareMemoryProvider`'s `ReferenceQueue` loop), and
   what `KernelMemoryGuard` does and does not protect against while a kernel is in flight.
