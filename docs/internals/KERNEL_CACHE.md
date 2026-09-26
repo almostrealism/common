@@ -89,11 +89,19 @@ Neither survives as an *executable* into a later run's dispatch.
 
 ## What cannot happen
 
-- A native crash in `GeneratedOperationN.apply` **cannot** be caused by "a
-  stale dylib from a prior build with a different argument layout." The library
-  loaded this run was compiled this run from this run's `Scope`.
-- Clearing/deleting the library directory **cannot** fix a kernel-side crash as
-  a diagnostic — the files are regenerated on the next run regardless.
+The statements below hold **when a single JVM owns its library directory** — the
+normal case. They do **not** hold when two JVMs share one `AR_HARDWARE_LIBS`
+directory; that concurrent-writer race (see the process-local qualification
+above) can load a mismatched artifact, and the fix there is to isolate the
+directories, not to reason about a single run.
+
+- For a single owning JVM, a native crash in `GeneratedOperationN.apply`
+  **cannot** be caused by "a stale dylib from a prior build with a different
+  argument layout." The library loaded this run was compiled this run from this
+  run's `Scope`.
+- For a single owning JVM, clearing/deleting the library directory **cannot**
+  fix a kernel-side crash as a diagnostic — the files are regenerated on the
+  next run regardless.
 
 ## Debugging consequence
 

@@ -120,15 +120,18 @@ The framework defends this in two places:
   does **not** protect at all: an argument it cannot resolve to a `RAM` (it warns
   and proceeds unguarded), or a pointer already captured as a bare `long` outside
   the guard's view.
-- **Pre-dispatch pointer validation.** `NativeInstructionSet.apply` re-reads
-  every `getContentPointer()` immediately before the native call and rejects a
-  **numeric zero**, turning that specific case into a named
-  `NullPointerException` instead of a `SIGSEGV`. This catches a freed-and-nulled
-  or unresolved argument; it does **not** catch a numerically-valid pointer whose
-  backing page has already been unmapped — the use-after-free case above is
-  exactly such a dangling non-zero pointer, and it still dereferences into a
-  `SIGSEGV`. The zero check is a diagnostic for the null case, not a defense
-  against every stale pointer.
+- **Pre-dispatch pointer validation.** `NativeInstructionSet.apply` reads each
+  argument's `getContentPointer()` **once**, at argument extraction, into a
+  `long[]` and rejects a **numeric zero** there, turning that specific case into
+  a named `NullPointerException` instead of a `SIGSEGV`. (A second loop re-checks
+  those already-copied `long` values; because it re-reads the cached array rather
+  than calling `getContentPointer()` again, it does not detect a pointer that
+  changes *after* extraction — it is not genuine TOCTOU protection.) This catches
+  a freed-and-nulled or unresolved argument observed at extraction time; it does
+  **not** catch a numerically-valid pointer whose backing page has already been
+  unmapped — the use-after-free case above is exactly such a dangling non-zero
+  pointer, and it still dereferences into a `SIGSEGV`. The zero check is a
+  diagnostic for the null case, not a defense against every stale pointer.
 
 ## What cannot happen
 

@@ -109,7 +109,12 @@ in the priority order established by the source plan:
    mechanism — files persist on disk (no startup purge; `destroy()` is a no-op),
    but the per-run target counter restarts at 0 and each slot is recompiled and
    overwritten before it is loaded (overwrite-before-load), so no prior-run
-   artifact is ever executed. Explicitly contrast this with the in-JVM signature
+   artifact is ever executed. This guarantee is **process-local**: `runnableCount`
+   is JVM-local and there is no inter-process lock around compile-then-load, so
+   two JVMs sharing one `AR_HARDWARE_LIBS` directory can overwrite each other's
+   `GeneratedOperationN` library between another process's compile and load —
+   concurrent JVMs must be given distinct library directories. Explicitly
+   contrast this with the in-JVM signature
    cache documented in `INSTRUCTION_CACHING.md` and cross-link the two so a
    reader understands there are two distinct caches. State the consequence: a
    native crash in `GeneratedOperationN.apply` cannot be caused by a "stale
