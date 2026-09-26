@@ -374,6 +374,13 @@ def write_group(entries, output_dir, prefix):
     staging names are hidden, so neither :func:`read_state_dictionary` nor the Java
     ``StateDictionary`` reader picks one up.
 
+    The promotion phase is rollback-safe too: promoting a group of shards is not a
+    single atomic step, so each existing final shard is moved aside to a hidden
+    ``.<shard>.backup`` before being overwritten, and if any :func:`os.replace`
+    fails partway through the backups are restored and the shards already promoted
+    are dropped. The directory is therefore never left holding a mix of new and
+    previous shards.
+
     Returns the list of final file paths written (in write order), so callers can
     report exactly what was produced rather than re-scanning the directory.
     """
@@ -411,8 +418,39 @@ def write_group(entries, output_dir, prefix):
                 os.remove(path)
         raise
 
-    for path, final in zip(staged, written):
-        os.replace(path, final)
+    # Promote the staged shards onto their final names. os.replace is atomic for
+    # a single file, but promoting a group of shards is not: a failure partway
+    # through would otherwise leave the directory holding some new and some
+    # previous shards, so the previous dump could no longer be read as a whole.
+    # Move each existing final shard aside to a hidden backup before overwriting
+    # it, recording every promotion; on any failure restore the backups, drop the
+    # shards already promoted, and remove the staged files, so the previous dump
+    # is left exactly as it was.
+    restored = []  # (final, backup) for finals moved aside, in promotion order
+    created = []   # finals that did not exist before this call
+    try:
+        for path, final in zip(staged, written):
+            if os.path.isfile(final):
+                backup = os.path.join(output_dir, f".{os.path.basename(final)}.backup")
+                os.replace(final, backup)
+                restored.append((final, backup))
+            else:
+                created.append(final)
+            os.replace(path, final)
+    except BaseException:
+        for final in created:
+            if os.path.isfile(final):
+                os.remove(final)
+        for final, backup in reversed(restored):
+            os.replace(backup, final)
+        for path in staged:
+            if os.path.isfile(path):
+                os.remove(path)
+        raise
+
+    for _, backup in restored:
+        if os.path.isfile(backup):
+            os.remove(backup)
 
     return written
 

@@ -572,6 +572,42 @@ def test_successful_write_leaves_no_staged_files(tmp_path, monkeypatch):
     np.testing.assert_array_equal(reloaded["b"], np.full(4, 8.0, dtype=np.float32))
 
 
+def test_replace_failure_during_promotion_restores_the_previous_dump(tmp_path, monkeypatch):
+    """A failure during the promotion phase — an ``os.replace`` after an earlier shard
+    of the group has already been moved onto its final name — must roll back: the
+    previous dump's shards are restored and no staged or backup file is left behind,
+    so the directory never holds a mix of new and previous shards."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    real_replace = os.replace
+
+    def _fail_second_promotion(src, dst):
+        # Fail only when promoting the second shard's staged file onto its final name,
+        # after the first shard has already been promoted in place.
+        if str(src).endswith(".references_1.partial"):
+            raise OSError("rename failed")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(core.os, "replace", _fail_second_promotion)
+    replacement = {"a": np.full(7, 9.0, dtype=np.float32), "b": np.full(2, 4.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "rollback must leave only the previous shards, with no staged or backup files"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, \
+            f"{name} must be restored to its previous content after a failed promotion"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently
