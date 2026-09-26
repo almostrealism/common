@@ -185,8 +185,30 @@ import java.util.stream.Stream;
  *
  * <h2>Thread Safety</h2>
  *
- * <p>Multiple threads can invoke {@link #apply(long, long, MemoryData...)} concurrently on the
- * same instruction set. The underlying native code must be thread-safe if this is required.</p>
+ * <p>For the generated kernels that are the only implementations shipped
+ * ({@link org.almostrealism.generated.BaseGeneratedOperation} subclasses), the
+ * compiled function carries <strong>no per-instance mutable state</strong> — no
+ * static scratch buffers, captured closures, or persistent globals. Every region
+ * it reads or writes is a caller-supplied argument passed in per invocation.
+ * Once the instruction set has been configured
+ * ({@link #setComputeContext(ComputeContext)}, {@link #setMetadata(OperationMetadata)},
+ * {@link #setParallelism(int)}) and its library loaded, {@link #apply(long, long, MemoryData...)}
+ * is reentrant with respect to the compiled function.</p>
+ *
+ * <p>Three caveats bound that guarantee, and must not be conflated with it:</p>
+ * <ul>
+ *   <li><strong>Configuration is a setup phase, not a concurrent operation.</strong> The wrapper
+ *   fields set by the {@code set*} methods are expected to be configured once before use; they
+ *   must not be mutated from another thread while kernels are running.</li>
+ *   <li><strong>The invocation counter is a benign race.</strong>
+ *   {@link #apply(long, long, MemoryData...)} increments the non-atomic static
+ *   {@code NativeComputeContext.totalInvocations}; concurrent calls may lose an increment. This
+ *   affects only the reported invocation total, never a kernel's output.</li>
+ *   <li><strong>Overlapping output buffers are a real hazard.</strong> Reentrancy does not make it
+ *   safe for two threads to invoke the same instruction set with overlapping output
+ *   {@link MemoryData}; {@link MemoryData} is not safe under concurrent access. Correctness under
+ *   concurrency is a property of disjoint arguments, not of the kernel.</li>
+ * </ul>
  *
  * @see InstructionSet
  * @see NativeCompiler

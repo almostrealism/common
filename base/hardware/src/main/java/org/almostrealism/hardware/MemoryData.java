@@ -200,6 +200,20 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
+ * <h3>Native-Block Lifetime Contract</h3>
+ *
+ * <p>A {@link MemoryData} that owns native memory is the Java handle to an off-heap block. That
+ * block is released either by an explicit {@link Destroyable#destroy()} or, if the handle simply
+ * becomes unreachable, by the provider's phantom-reference reclamation
+ * (see {@link org.almostrealism.hardware.mem.HardwareMemoryProvider}): the block is freed because
+ * <em>its holder was collected</em>, a per-object lifetime mechanism. There is <strong>no separate
+ * "GC by bytes used" budget</strong> — nothing sweeps live off-heap data to stay under a limit; an
+ * allocation that would exceed the configured ceiling is rejected with a {@code HardwareException}
+ * rather than triggering a reclaim. A consequence for debugging: a raw content pointer captured
+ * outside a live Java reference can be freed and unmapped once its holder is GC-eligible, so a
+ * numerically-unchanged pointer may address memory that is no longer mapped
+ * (see {@link org.almostrealism.hardware.mem.KernelMemoryGuard}).</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>{@link MemoryData} is <strong>not thread-safe</strong>. Concurrent access must be

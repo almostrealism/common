@@ -1,5 +1,28 @@
 # Kernel and Memory Documentation Gaps
 
+## Status (2026-09-26)
+
+Misunderstandings **1–4** below are now closed. The documentation lives in four
+durable internals pages plus class-level Javadoc:
+
+- Misunderstanding 3 → `docs/internals/CODEGEN_VALUE_SEMANTICS.md`
+  (+ Javadoc on `NativeInstructionSet`, `ExpressionAssignment`).
+- Misunderstanding 1 → `docs/internals/KERNEL_CACHE.md`
+  (+ Javadoc on `NativeCompiler`, `BaseGeneratedOperation`).
+- Misunderstanding 2 → `docs/internals/OFF_HEAP_MEMORY.md`
+  (+ Javadoc on `Hardware.getMemoryScale`, `MemoryData`).
+- Misunderstanding 4 → `docs/internals/KERNEL_THREAD_SAFETY.md`
+  (+ the positive thread-safety statement now on `NativeInstructionSet`).
+
+One correction the implementation made to the original framing below: the kernel
+cache is **not** purged at JVM startup. The generated files persist on disk;
+what rules out a "stale dylib" is that the per-run target counter restarts at 0
+and each slot is recompiled and **overwritten before it is loaded**
+(overwrite-before-load). See `KERNEL_CACHE.md` for the precise mechanism.
+
+Misunderstanding **5** (ONNX-induced pressure) remains open by design — it was
+the lowest-priority gap and is deferred to a follow-up.
+
 ## Background
 
 On 2026-05-04, an investigation into a Rings desktop crash
@@ -27,9 +50,12 @@ producing a kernel that dereferences garbage. Recommended diagnostic:
 "clear the kernel cache and rerun."
 
 ### What is actually true
-These dylibs are destroyed and rebuilt every JVM start. There is no
-cross-execution reuse. A "stale cache" cannot be the cause of a kernel-side
-crash. Clearing the cache is a no-op as a diagnostic.
+These dylibs persist on disk (there is no startup purge, and `destroy()` is a
+no-op), but the per-run target counter restarts at 0 and each `GeneratedOperationN`
+slot is recompiled and **overwritten before it is loaded** — so a prior run's
+artifact is never executed without being regenerated first. There is no
+cross-execution reuse in effect. A "stale cache" cannot be the cause of a
+kernel-side crash. Clearing the cache is a no-op as a diagnostic.
 
 ### Where documentation should live
 - `common/base/hardware/src/main/java/org/almostrealism/hardware/jni/NativeCompiler.java`

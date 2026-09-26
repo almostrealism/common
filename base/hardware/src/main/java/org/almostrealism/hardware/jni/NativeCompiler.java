@@ -229,10 +229,34 @@ import java.util.function.Consumer;
  * <p>The {@link #reserveLibraryTarget()} method is synchronized to ensure unique class names.
  * Compilation itself is thread-safe, allowing concurrent compilations to different targets.</p>
  *
+ * <h2>On-Disk Cache Lifecycle</h2>
+ *
+ * <p>Compilation writes files into the library directory (resolved by {@link #factory()} from
+ * {@code AR_HARDWARE_LIBS}, else from {@code SystemUtils.getExtensionsPath()}; created if absent,
+ * never emptied). Filenames are derived from the target <em>class name</em>, not from content:
+ * for {@code GeneratedOperationN}, {@link #getInputFile(String)} writes {@code GeneratedOperationN.c}
+ * and {@link #getOutputFile(String, boolean)} writes the library named by
+ * {@code AR_HARDWARE_LIB_FORMAT}. Compiling the same class name again <strong>overwrites</strong>
+ * those files in place, and {@link #compileAndLoad(Class, String)} always (re)compiles before it
+ * calls {@code System.load} — there is no path that loads a library without first regenerating it
+ * in the current run.</p>
+ *
+ * <p>These files therefore <strong>persist on disk</strong> across JVM runs; there is <em>no
+ * startup purge</em> and {@link #destroy()} deletes nothing. Even so, a prior run's compiled
+ * artifact is never executed by a later run without being regenerated first: the target index
+ * behind {@link #reserveLibraryTarget()} (the static {@code runnableCount}) restarts at {@code 0}
+ * in every JVM, so reserving target {@code N} recompiles fresh C into {@code GeneratedOperationN}
+ * and overwrites its library before loading it. The invariant a crash investigator needs is
+ * <strong>overwrite-before-load</strong>: the artifact loaded for {@code GeneratedOperationN} in a
+ * given run is always the one this run just generated, never a leftover from an earlier build. A
+ * native crash in {@code GeneratedOperationN.apply} thus cannot be caused by a "stale dylib from a
+ * prior build," and clearing the directory is a no-op as a diagnostic.</p>
+ *
  * <h2>Lifecycle</h2>
  *
  * <p>Typically created once per {@link NativeDataContext} and reused for all compilations.
- * {@link #destroy()} is currently a no-op but may clean up resources in future versions.</p>
+ * {@link #destroy()} is currently a no-op (loaded libraries remain mapped for the life of the JVM)
+ * but may clean up resources in future versions.</p>
  *
  * @see NativeComputeContext
  * @see NativeInstructionSet

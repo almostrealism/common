@@ -38,8 +38,11 @@ planning sessions have a single narrative thread to read before proposing work.
 `docs/plans/KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` records a real crash
 investigation that produced three substantively wrong hypotheses in a row, each
 caused by *missing documentation of a platform invariant* rather than misread
-evidence: a "stale kernel cache" that cannot exist (dylibs are rebuilt every
-JVM start), an off-heap "budget exhaustion → null pointer" that cannot happen
+evidence: a "stale kernel cache" that cannot bite (the generated `.c`/`.so`
+files persist on disk — there is no startup purge — but the per-run target
+counter restarts at 0 and each slot is recompiled and overwritten before it is
+loaded, so no prior-run artifact is ever executed), an off-heap "budget
+exhaustion → null pointer" that cannot happen
 (exhaustion throws; it does not silently zero a pointer), and a kernel "nulling
 a pointer mid-invocation" that cannot happen (the codegen language has no null
 and no pointer-erase). I verified the follow-through was never done: none of the

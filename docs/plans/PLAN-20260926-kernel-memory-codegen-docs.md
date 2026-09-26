@@ -38,8 +38,11 @@ a real crash investigation produced three substantively wrong hypotheses in a
 row, each traceable to a missing or misleading piece of documentation rather
 than to misread evidence. The wrong turns were:
 
-1. "Clear the stale kernel cache" — impossible, because the generated dylibs
-   are destroyed and rebuilt every JVM start; there is no cross-run reuse.
+1. "Clear the stale kernel cache" — impossible in effect, because although the
+   generated `.c`/`.so`/`.dylib` files persist on disk (there is no
+   startup purge), each run recompiles fresh into the same class-named slot and
+   **overwrites the artifact before loading it**. No prior-run dylib is ever
+   executed without being regenerated first (overwrite-before-load).
 2. "The 1024MB off-heap budget was exhausted and the allocator returned a null
    pointer" — impossible, because that figure is not a framework-enforced
    budget and exhaustion surfaces as an exception/OS-OOM, never a silent
@@ -79,7 +82,8 @@ production code behavior changes.** Javadoc additions are the only edits to
   signature/execution keys). It does not cover the **on-disk dylib** lifetime,
   the off-heap budget, or codegen value semantics.
 - `NativeCompiler.java` has no class-level Javadoc describing the on-disk cache
-  lifecycle (purge-at-JVM-start).
+  lifecycle (overwrite-before-load; files persist, `destroy()` is a no-op, no
+  startup purge).
 - All target source files exist and are correctly named in the gaps doc:
   `NativeCompiler`, `BaseGeneratedOperation`, `Hardware`, `MemoryData`,
   `NativeInstructionSet`, and `mem/KernelMemoryGuard`.
@@ -91,29 +95,38 @@ in the priority order established by the source plan:
 
 1. `docs/internals/CODEGEN_VALUE_SEMANTICS.md` *(highest leverage)* — the
    grammar of allowed assignments in the codegen language; the fact that there
-   is no `null` and no pointer-erase primitive; that pointer arguments are
-   read-only references to memory owned outside the kernel; the two (and only
-   two) ways a `0x0` dereference can arise inside a generated kernel (a
+   is no `null` and no pointer-erase primitive; that a pointer argument's
+   *identity and lifetime* are external and read-only to the kernel, while the
+   *pointee* is not — output buffers are intentionally written in place, so
+   "read-only" refers to the pointer value, never the bytes it targets; the two
+   (and only two) ways a `0x0` dereference can arise inside a generated kernel (a
    zero pointer at the JNI boundary, or arithmetic producing a zero offset);
    and the resulting investigation playbook ("when you see `far: 0x0`, start at
    the Java caller, not the kernel body"). Include a short worked example.
 
 2. `docs/internals/KERNEL_CACHE.md` — the on-disk generated-kernel dylib cache:
-   directory location, key/identity scheme, the precise mechanism by which
-   entries are invalidated at JVM startup, and the guarantee that no entry
-   survives JVM termination. Explicitly contrast this with the in-JVM signature
+   directory location, the class-name-derived filename scheme, and the actual
+   mechanism — files persist on disk (no startup purge; `destroy()` is a no-op),
+   but the per-run target counter restarts at 0 and each slot is recompiled and
+   overwritten before it is loaded (overwrite-before-load), so no prior-run
+   artifact is ever executed. Explicitly contrast this with the in-JVM signature
    cache documented in `INSTRUCTION_CACHING.md` and cross-link the two so a
    reader understands there are two distinct caches. State the consequence: a
    native crash in `GeneratedOperationN.apply` cannot be caused by a "stale
    dylib from a prior build."
 
-3. `docs/internals/OFF_HEAP_MEMORY.md` — must carefully distinguish the four
-   things the gaps doc warns are easy to conflate: (a) the *configured* limit
-   and where it is read (`AR_HARDWARE_MEMORY_SCALE`, `Hardware`); (b) what
-   actually *enforces* it (and that there is no "automatic GC by bytes used"
-   budget); (c) the JVM-GC-driven free path (a `MemoryData` whose holder
-   becomes unreachable has its native block released by `Cleaner`/finalization);
-   (d) the real *exhaustion* failure mode (allocation exception / OS-OOM, never
+3. `docs/internals/OFF_HEAP_MEMORY.md` — must carefully distinguish the
+   things the gaps doc warns are easy to conflate: (a) the *configured* limits —
+   there are two, `AR_HARDWARE_MEMORY_SCALE` (→ `maxReservation`, the allocation
+   ceiling, read in `Hardware`) and the separate `AR_HARDWARE_OFF_HEAP_SIZE`
+   (→ `Hardware.getOffHeapSize()`, a CL/Metal buffer size, *not* the ceiling);
+   (b) what actually *enforces* the ceiling — each backend `MemoryProvider`'s
+   `memoryMax` check at allocation, and that there is no "automatic GC by bytes
+   used" budget; (c) the free path — a `MemoryData` whose holder becomes
+   unreachable has its native block released by `HardwareMemoryProvider`'s
+   `NativeRef` phantom-reference reclamation (not `Cleaner`/finalization), or by
+   explicit `deallocate`;
+   (d) the real *exhaustion* failure mode (`HardwareException` / OS-OOM, never
    a silent null pointer). Describe the actual race an investigator should
    suspect — a still-numerically-valid pointer whose backing page was unmapped
    after its holder became GC-eligible — and the role of
@@ -122,9 +135,15 @@ in the priority order established by the source plan:
 4. `docs/internals/KERNEL_THREAD_SAFETY.md` — promote the deferral currently in
    `NativeInstructionSet`'s Javadoc ("the underlying native code must be
    thread-safe if this is required") into a positive statement about the
-   *generated* kernels that are the only implementations shipped: whether a
-   generated `apply()` carries per-instance mutable state, and whether a single
-   instance is safe to invoke concurrently.
+   *generated* kernels that are the only implementations shipped, keeping three
+   concerns distinct so it does not imply an unconditional guarantee: the
+   compiled `apply()` carries no per-instance mutable state and is reentrant
+   *after configuration*; the `BaseGeneratedOperation` wrapper fields
+   (`context`, `metadata`, `parallelism`) are set-once configuration, not to be
+   mutated during dispatch; and `NativeInstructionSet.apply`'s non-atomic
+   `totalInvocations++` (a benign metrics race) plus `MemoryData`'s
+   not-thread-safe concurrent access (overlapping output buffers race) are
+   separate hazards from the reentrancy of the function itself.
 
 **B. Class-level Javadoc** on the source files, so the invariants live at the
 code and not only in prose:
