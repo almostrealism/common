@@ -147,6 +147,41 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 120000)
 	public void aZeroElementTensorDoesNotBreakItsShard() throws IOException {
+		assertZeroElementTensorDoesNotBreakItsShard();
+	}
+
+	/**
+	 * The same guarantee holds on the materialized loading path
+	 * ({@link StateDictionary#enableMaterializeWeights} set to {@code true}): {@code readWeights}
+	 * decodes each entry eagerly through {@link CollectionEncoder#decode(Collections.CollectionData,
+	 * boolean)}, which returns {@code null} for the zero-size bottleneck buffer rather than throwing,
+	 * so the entry is omitted and every full tensor in the same shard still loads. Without the
+	 * zero-size guard the thrown exception would have propagated out of {@code readWeights} and the
+	 * file-level catch in {@code loadWeights} would have dropped the entire shard — losing
+	 * {@code enc_after_mapping} along with the empty key.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aZeroElementTensorDoesNotBreakItsShardWhenMaterializing() throws IOException {
+		boolean previous = StateDictionary.enableMaterializeWeights;
+		StateDictionary.enableMaterializeWeights = true;
+
+		try {
+			assertZeroElementTensorDoesNotBreakItsShard();
+		} finally {
+			StateDictionary.enableMaterializeWeights = previous;
+		}
+	}
+
+	/**
+	 * Writes a shard holding a full tensor beside a zero-length-axis bottleneck buffer, loads it,
+	 * and asserts the full tensor survives while the empty key is omitted — the behavior both the
+	 * deferred and materialized loading paths must share.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	private void assertZeroElementTensorDoesNotBreakItsShard() throws IOException {
 		Path dir = Files.createTempDirectory("references");
 		dir.toFile().deleteOnExit();
 
