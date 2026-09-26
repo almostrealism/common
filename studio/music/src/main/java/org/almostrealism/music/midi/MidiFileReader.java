@@ -198,7 +198,8 @@ public class MidiFileReader {
 	 * <ul>
 	 *   <li>{@link MidiNoteEvent.EventType#NOTE} — writes NOTE_ON at onset
 	 *       and NOTE_OFF at onset + duration, assigning a unique channel per
-	 *       (track, channel) combination.</li>
+	 *       (track, channel) combination. Percussion events on channel 9
+	 *       are always written to channel 9.</li>
 	 *   <li>{@link MidiNoteEvent.EventType#PATCH_CHANGE} — writes a PROGRAM_CHANGE.</li>
 	 *   <li>{@link MidiNoteEvent.EventType#CONTROL_CHANGE} — writes a CC message.</li>
 	 *   <li>{@link MidiNoteEvent.EventType#SET_TEMPO} — writes a tempo meta-message
@@ -289,10 +290,14 @@ public class MidiFileReader {
 
 	/**
 	 * Resolve the output MIDI channel for an event, assigning a new channel
-	 * if the (track, channel) pair has not been seen before.
+	 * if the (track, channel) pair has not been seen before. Events on the
+	 * percussion channel stay on {@link #DRUM_CHANNEL}, since remapping them
+	 * would turn drums into pitched notes.
 	 */
 	private static int resolveChannel(MidiNoteEvent event,
 			Map<Long, Integer> channelMap, int[] nextMidiChannel) {
+		if (event.getChannel() == DRUM_CHANNEL) return DRUM_CHANNEL;
+
 		long channelKey = ((long) event.getTrack() << 16) | event.getChannel();
 		Integer midiChannel = channelMap.get(channelKey);
 		if (midiChannel == null) {

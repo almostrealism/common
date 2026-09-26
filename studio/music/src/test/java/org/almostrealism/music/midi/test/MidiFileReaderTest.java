@@ -216,4 +216,37 @@ public class MidiFileReaderTest extends TestSuiteBase {
 			assertEquals("Onset at " + i, 0L, readBack.get(i).getOnset());
 		}
 	}
+
+	/**
+	 * Verify that the multi-type writer keeps General MIDI percussion on
+	 * channel 9. Tokenizers decode drum notes as NOTE events on channel 9;
+	 * if the writer remaps that channel onto a melodic one, the drums are
+	 * rendered as pitched notes of whatever program that channel carries.
+	 */
+	@Test(timeout = 60000)
+	public void multiTypeWriterPreservesDrumChannel() throws Exception {
+		int kick = 36;
+		int melodicPitch = 60;
+		int melodicPatch = 24;
+
+		List<MidiNoteEvent> events = new ArrayList<>();
+		events.add(MidiNoteEvent.note(0, 0, 9, kick, 100, 50));
+		events.add(MidiNoteEvent.patchChange(0, 0, 0, melodicPatch));
+		events.add(MidiNoteEvent.note(100, 0, 0, melodicPitch, 80, 50));
+
+		MidiFileReader reader = new MidiFileReader();
+		File tempFile = File.createTempFile("midi-multi-type-drums-", ".mid");
+		tempFile.deleteOnExit();
+
+		reader.write(events, tempFile, MidiNoteEvent.TIME_RESOLUTION);
+		List<MidiNoteEvent> readBack = reader.read(tempFile);
+
+		assertEquals("Event count", events.size() - 1, readBack.size());
+		assertEquals("Drum pitch", kick, readBack.get(0).getPitch());
+		assertEquals("Drum note should remain on the percussion channel",
+				MidiNoteEvent.DRUM_INSTRUMENT, readBack.get(0).getInstrument());
+		assertEquals("Melodic pitch", melodicPitch, readBack.get(1).getPitch());
+		assertEquals("Melodic note should keep its program",
+				melodicPatch, readBack.get(1).getInstrument());
+	}
 }
