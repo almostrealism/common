@@ -462,15 +462,12 @@ provider: when `AR_HARDWARE_NATIVE_DIRECT_BUFFERS` is off it returns the data
 context's own provider, and the staged values are then device-resident
 immediately — which is the wrong answer if the consuming device is not yet known.
 
-<!-- TODO(review): the master merge re-added `MappedMemory`/`MappedMemoryProvider` prose, but this branch deleted those classes; remove the dangling references here (and the apidocs links in docs/modules/hardware.html) — `CollectionDataMemory`/`MappedCollectionDataMemory` now carry this mechanism. -->
 **Reference.** Implement `Memory` over the source and let the framework migrate
 it when a kernel first requires it. Nothing is materialized on the host and
-nothing reaches a device until something actually reads it. `MappedMemory` and
-its `MappedMemoryProvider` (in `org.almostrealism.hardware.mem`) are the base-layer
-read-only source provider for values still in the file they were written to,
-serving them straight out of a `FileMapping`. `CollectionDataMemory` and
-`MappedCollectionDataMemory` (in `engine/ml`) are a higher-level worked example
-over the same mechanism. Migration is generic rather than
+nothing reaches a device until something actually reads it. `CollectionDataMemory`
+and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example: they
+serve read-only values still in the file they were written to straight out of a
+`FileMapping`. Migration is generic rather than
 special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
 provider, so any read-only provider participates.
 
