@@ -203,8 +203,14 @@ import java.util.stream.IntStream;
  * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
  * (JNI/OpenCL/Metal), its lifetime is tied to the provider-owned backing object, not to a bytes-used
  * budget: {@code HardwareMemoryProvider}'s phantom-reference queue tracks that backing {@code RAM}
- * (not every {@link MemoryData} instance) and frees the native block at some later garbage-collection
- * cycle once it becomes unreachable. A delegated or view {@link MemoryData} does not own its
+ * (not every {@link MemoryData} instance) and, once it becomes unreachable, frees the native block
+ * at some later garbage-collection cycle. That phantom-queue free applies where the provider owns
+ * the native bytes &mdash; the JNI-calloc path of {@code NativeMemoryProvider}, {@code CLMemoryProvider}
+ * (OpenCL) and {@code MetalMemoryProvider} (Metal). {@code NativeMemoryProvider}'s NIO direct-buffer
+ * mode ({@code isDirect()}) is the exception: those bytes are a JVM {@code DirectByteBuffer} freed by
+ * the JVM's own cleaner, and the provider's phantom reference ({@code NativeBufferRef}) only unmaps
+ * shared memory and notifies deallocation listeners &mdash; it does not free the direct-buffer bytes.
+ * A delegated or view {@link MemoryData} does not own its
  * {@link Memory}, so collecting the view does not free anything while its delegate &mdash; and thus
  * the backing block &mdash; is still reachable. Freeing native memory while a dispatched kernel still
  * reads it is a use-after-free; {@code KernelMemoryGuard} defers the free for kernels dispatched

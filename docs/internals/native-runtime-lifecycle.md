@@ -28,9 +28,12 @@ writes the C source and the compiled library into a single directory returned by
 errors on shared or sandboxed systems.
 
 The filename is formed by `getOutputFile(name, true)`, which substitutes the class name into the
-`AR_HARDWARE_LIB_FORMAT` template (`NativeCompiler.LIB_NAME_REPLACE`, default `lib%NAME%.dylib` on
-aarch64/macOS, `lib%NAME%.so` elsewhere). The `name` is the fully-qualified class name of the
-reserved target, e.g. `org.almostrealism.generated.GeneratedOperation9`.
+`AR_HARDWARE_LIB_FORMAT` template (`NativeCompiler.LIB_NAME_REPLACE`). When that variable is unset,
+`NativeCompiler.factory(...)` picks the default purely by CPU architecture — `lib%NAME%.dylib` when
+`SystemUtils.isAarch64()` is true, `lib%NAME%.so` otherwise — not by operating system. So aarch64
+Linux uses the `.dylib` suffix and x86_64 macOS uses `.so`; the suffix tracks the architecture, not
+the platform. The `name` is the fully-qualified class name of the reserved target, e.g.
+`org.almostrealism.generated.GeneratedOperation9`.
 
 ### What a `GeneratedOperationN` is
 
@@ -102,18 +105,24 @@ quantities on the same computation, not a contradiction.
 
 ### Which providers enforce it, and the failure mode
 
-All three memory providers enforce the byte ceiling, and none returns a silent zero pointer on
+All three memory providers guard the byte ceiling, and none returns a silent zero pointer on
 exhaustion:
 
 | Provider | Method | Exception message |
 |---|---|---|
-| `MetalMemoryProvider` | `allocate` | `HardwareException: "Memory Max Reached"` |
+| `MetalMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `CLMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `NativeMemoryProvider` | `allocate` | `HardwareException: "Memory max reached"` |
 
-Each performs the same guard — `if (memoryUsed + requested > memoryMax) throw new HardwareException(...)`
-— before the backend allocation call. Exhaustion is therefore reported as a thrown
-`HardwareException` (or, past that ceiling, as an OS-level allocation failure), **never** as a
+Each performs the same **pre-allocation check** —
+`if (memoryUsed + requested > memoryMax) throw new HardwareException(...)`, then increments
+`memoryUsed` — before the backend allocation call. Treat it as a guard against a single over-budget
+request, not a hard serialized ceiling: only `NativeMemoryProvider.allocate` is `synchronized`, so
+its check-and-increment is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run the
+check and the `memoryUsed` increment without synchronization, so two concurrent allocations can each
+pass the check and push the total past `memoryMax`. What is guaranteed on every provider is that a
+request the check rejects throws rather than fabricating a pointer: exhaustion surfaces as a thrown
+`HardwareException` (or, past the ceiling, as an OS-level allocation failure), **never** as a
 zero-valued pointer that propagates into a kernel. When you see `HardwareException: Memory max
 reached`, raise `AR_HARDWARE_MEMORY_SCALE` (exponential — increase by one step at a time) or reduce
 the working set; see the [hardware README](../../base/hardware/README.md) Memory Configuration
@@ -125,11 +134,14 @@ section.
 
 Off-heap memory is released **per object**, driven by the JVM garbage collector — not by a
 bytes-used budget. `HardwareMemoryProvider` registers each allocation's backing `RAM` with a
-`java.lang.ref.PhantomReference` (`NativeRef`) on a `ReferenceQueue`. Two background threads run the
-release: a *submit* thread blocks on `referenceQueue.remove()` until the GC enqueues a collected
-reference, and a *process* thread drains a size-ordered `PriorityBlockingQueue` and performs the
-actual native free (largest allocations first). This means the backing `RAM` of a collection whose
-holder becomes unreachable may have its native block freed at any subsequent GC cycle.
+`java.lang.ref.PhantomReference` (`NativeRef`) on a `ReferenceQueue`. A *submit* thread blocks on
+`referenceQueue.remove()` until the GC enqueues a collected reference. What happens next depends on
+the static `HardwareMemoryProvider.queueDeallocation` switch, which is **`false` by default**: with
+the default, the submit thread calls `deallocateNow(ref)` directly and performs the native free
+itself; only when `queueDeallocation` is enabled does it hand the reference to a size-ordered
+`PriorityBlockingQueue` that a second *process* thread drains, freeing the largest allocations first.
+Either way, the backing `RAM` of a collection whose holder becomes unreachable may have its native
+block freed at any subsequent GC cycle.
 
 The phantom-queue *free* applies where the provider owns the native bytes: the JNI-calloc path of
 `NativeMemoryProvider`, `CLMemoryProvider` (OpenCL), and `MetalMemoryProvider` (Metal). The one
@@ -173,8 +185,10 @@ dispatch to stop the JIT from treating the holders as dead before the native cal
 
 ## 4. Reentrancy of generated kernels
 
-**A compiled kernel instance is safe to invoke concurrently.** This is not merely permitted — the
-framework relies on it.
+This guarantee is **specific to the JNI generated-kernel path** (`NativeInstructionSet` /
+`GeneratedOperationN`): **one compiled JNI kernel instance is safe to invoke concurrently.** This is
+not merely permitted — the framework relies on it. It is not a blanket claim about every backend
+operator; the OpenCL and Metal operators are structured differently (see the note below).
 
 - **The Java side holds no per-call mutable state.** `NativeInstructionSet.apply(long, long,
   MemoryData...)` builds fresh local `pointers`/`offsets`/`sizes` arrays on every call. The only
@@ -187,15 +201,27 @@ framework relies on it.
   static state captured between calls.
 - **The framework already dispatches one instance from many threads.** When `getParallelism() > 1`,
   `NativeExecution.coordinate(...)` submits the *same* instruction-set instance to a thread pool and
-  each worker invokes `apply` concurrently, over disjoint index ranges (`globalId + i`). Metal takes
-  the same care in the encoding path: `MetalOperator` inlines the per-dispatch offset/size arrays
-  into the command "so batched commands do not share mutable argument buffers."
+  each worker invokes `apply` concurrently, over disjoint index ranges (`globalId + i`).
 
 The caveat is the ordinary one for shared memory: concurrency is safe as long as the *argument
 memory* the concurrent invocations touch does not alias in a conflicting way (two writers to the
 same element). That is a property of the arguments, not of the kernel instance. This is why
 `NativeInstructionSet`'s Thread Safety contract can answer the reentrancy question positively for the
 kernels the platform actually generates, rather than deferring it.
+
+**The OpenCL and Metal operators do not share this same-instance concurrency property**, because
+they hold and mutate per-instance state rather than routing everything through call-local arrays:
+
+- `CLOperator` caches the last-set arguments in an `argCache` field and skips redundant
+  `clSetKernelArg` calls, so a call both reads and mutates instance state and mutates the underlying
+  `cl_kernel`. Its `accept(...)` is `synchronized`, and instances are deliberately **thread-local**
+  (`CLInstructionsManager`), so a single instance is never shared across threads in the first place.
+- `MetalOperator.accept(...)` is `synchronized`, serializing concurrent calls on one instance; it
+  inlines the per-dispatch offset/size arrays into the command so that batched commands do not share
+  mutable argument buffers.
+
+So the reusable, lock-free reentrancy guarantee is a property of the JNI generated kernel, not of
+every backend's operator instance.
 
 ---
 
