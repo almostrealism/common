@@ -82,13 +82,18 @@ same `.c` and library paths concurrently: one run can truncate or overwrite the 
 another run is mid-compile or mid-`System.load` on, and each can load the other's bytes.
 
 Crucially, **the default directory is shared, not per-process.** When `AR_HARDWARE_LIBS` is unset the
-directory is `SystemUtils.getExtensionsPath()` (`getCachesPath()/Extensions`), a fixed path that every
-JVM on the machine resolves to identically. How widely it is shared depends on the platform:
-`getCachesPath()` returns `~/Library/Caches/<app>` only on macOS (when a Mac app name is set) — a
-per-user path — and falls back to `java.io.tmpdir/ar-cache` everywhere else, which under a default
-`java.io.tmpdir` of `/tmp` is shared across *all* users on the host, not just the JVMs of one user. So
-concurrent JVMs race on this directory *by default* — same-user only on macOS, potentially
-cross-user on other platforms — and the race is not confined to a hand-set shared `AR_HARDWARE_LIBS`.
+directory is `SystemUtils.getExtensionsPath()` (`getCachesPath()/Extensions`), a fixed path derived
+only from the JVM's path configuration — not from anything per-process. `getCachesPath()` returns
+`<user.home>/Library/Caches/<AR_MAC_APP>` when running on macOS with the `AR_MAC_APP` property set
+(`SystemUtils.getMacApp()` ignores the property on any other OS), and `<java.io.tmpdir>/ar-cache`
+otherwise. Every JVM with the *same* path configuration (the same
+`user.home` and `AR_MAC_APP`, or the same `java.io.tmpdir` when `AR_MAC_APP` is unset) therefore
+resolves the same directory; JVMs that differ in any of those resolve different directories and do
+not share it. With `AR_MAC_APP` set, sharing is limited to JVMs of one user running under one app
+identifier. Without it, how widely the directory is shared follows `java.io.tmpdir`: under a default
+of `/tmp` (typical on Linux) it is shared across *all* users on the host. So concurrent JVMs with
+matching configuration race on this directory *by default*, and the race is not confined to a
+hand-set shared `AR_HARDWARE_LIBS`.
 Running more than one JVM that uses the native backend concurrently on one machine is unsupported for
 this reason. When triaging a crash, this cross-run race is the one case where the
 on-disk artifact *can* be wrong for the loading run — but only when another JVM was writing the same
@@ -207,8 +212,11 @@ collected. There the provider's phantom reference is a `NativeBufferRef` whose p
 to unmap shared memory and notify deallocation listeners — it does not free the direct-buffer bytes,
 because it does not own them.
 
-`MemoryDataAdapter.enableFinalizer` is `false` by default; the finalizer, when enabled, only reports
-leaked allocations — it is not part of the release path. Deterministic release is the caller's job
+`MemoryDataAdapter.enableFinalizer` controls whether finalization performs release. It is `false` by
+default, in which case `MemoryDataAdapter.finalize()` only drops its reference to the backing memory
+and leaves the native free to the phantom-reference path above. When it is `true`, `finalize()` calls
+`destroy()`, which deallocates the adapter's owned backing memory through its provider — but
+finalizer timing is unreliable, so this is not a substitute for explicit release. Deterministic release is the caller's job
 via `Destroyable`/try-with-resources (see the `MemoryData` lifecycle contract and the hardware
 README's [GC-Integrated Native Memory](../../base/hardware/README.md) section — link, not repeated
 here).
@@ -355,8 +363,9 @@ For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `Nativ
 
 1. **Rule out "stale dylib from a prior build" (§1).** Libraries are overwritten before load;
    clearing `AR_HARDWARE_LIBS` changes nothing. Do not spend an iteration on it — *unless* a second
-   JVM was using the same library directory concurrently (the default directory is shared — per user on
-   macOS, potentially across users under `/tmp` on other platforms — so this is not exotic), which is
+   JVM was using the same library directory concurrently (the default directory is shared by every JVM
+   with the same path configuration — one user and app identifier when `AR_MAC_APP` is set,
+   potentially every user under a `/tmp` `java.io.tmpdir` otherwise — so this is not exotic), which is
    the one way the on-disk artifact can be wrong for the loading run (§1).
 2. **Rule out "the kernel nulled a pointer internally" (§5).** Codegen cannot assign a pointer.
    A `0x0` inside the kernel came from the JNI boundary or from arithmetic — start at the Java
