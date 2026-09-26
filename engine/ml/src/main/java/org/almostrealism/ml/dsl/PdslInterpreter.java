@@ -285,6 +285,10 @@ public class PdslInterpreter {
 	/**
 	 * Build a {@link Block} from a named layer definition, applying {@code requirements} to
 	 * every layer the definition constructs, via {@link SequentialBlock#setComputeRequirements}.
+	 * The requirements are applied to each layer called during the build as soon as it is
+	 * built, not only to the outer block, because some compositions ({@code accum_blocks},
+	 * {@code concat_blocks}) capture the blocks they combine and do not forward requirements
+	 * to them.
 	 *
 	 * @param name         the layer name as defined in the PDSL source
 	 * @param inputShape   the input tensor shape for the block
@@ -298,25 +302,23 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Layer '" + name + "' not found");
 		}
-		SequentialBlock block = buildLayer(def, inputShape, args, programScope(args));
-		if (requirements.length > 0) {
-			block.setComputeRequirements(requirements);
-		}
-		return block;
+		return buildLayer(def, inputShape, args, programScope(args, requirements));
 	}
 
 	/**
 	 * Creates the program scope of one build: the outermost {@link Environment}, holding the
 	 * entries of every {@code data} and {@code state} block of the program, bound from
-	 * {@code args}. Every layer interpreted during the build, including a layer called from
-	 * another layer's body, reads these entries through its enclosing scopes, so a block
-	 * declared once at program level means the same thing to every layer that names it.
+	 * {@code args}, and the {@link Build} state shared by every scope of the build. Every
+	 * layer interpreted during the build, including a layer called from another layer's body,
+	 * reads these entries through its enclosing scopes, so a block declared once at program
+	 * level means the same thing to every layer that names it.
 	 *
-	 * @param args the arguments of the layer or model being built
+	 * @param args         the arguments of the layer or model being built
+	 * @param requirements compute requirements applied to every layer the build constructs
 	 * @return the program scope
 	 */
-	private Environment programScope(Map<String, Object> args) {
-		Environment scope = new Environment(null);
+	private Environment programScope(Map<String, Object> args, ComputeRequirement... requirements) {
+		Environment scope = new Environment(new Build(requirements));
 		populateDataDefs(args, scope);
 		return scope;
 	}
@@ -324,12 +326,14 @@ public class PdslInterpreter {
 	/**
 	 * Builds a layer definition in a scope of its own, directly inside the program scope: the
 	 * body sees its parameters and the program's {@code data} and {@code state} entries, and
-	 * nothing of the layer that called it.
+	 * nothing of the layer that called it. The build's compute requirements are applied to the
+	 * block as soon as it is complete, so they reach it wherever the caller places it,
+	 * including inside a composition that does not forward requirements to its parts.
 	 *
 	 * @param def          the layer definition
 	 * @param inputShape   the input tensor shape for the block
 	 * @param args         parameter bindings (name to value)
-	 * @param programScope the program scope of the build, from {@link #programScope(Map)}
+	 * @param programScope the program scope of the build, from {@link #programScope}
 	 * @return the constructed block
 	 */
 	private SequentialBlock buildLayer(PdslNode.LayerDef def, TraversalPolicy inputShape,
@@ -347,7 +351,13 @@ public class PdslInterpreter {
 			env.set(param.getName(), value);
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
-		interpretBody(def.getBody(), block, env);
+		programScope.build.enter(def.getName());
+		try {
+			interpretBody(def.getBody(), block, env);
+		} finally {
+			programScope.build.exit();
+		}
+		programScope.build.applyRequirements(block);
 		return block;
 	}
 
@@ -412,7 +422,7 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Config '" + name + "' not found");
 		}
-		Environment env = new Environment(null);
+		Environment env = new Environment(new Build());
 		Map<String, Object> result = new HashMap<>();
 		for (Map.Entry<String, PdslNode.Expression> entry : def.getEntries().entrySet()) {
 			Object value = evaluateExpression(entry.getValue(), env);
@@ -464,7 +474,7 @@ public class PdslInterpreter {
 	 */
 	private Map<String, Object> evaluateDefEntries(PdslNode.DataDef def,
 													Map<String, Object> args) {
-		Environment env = new Environment(null);
+		Environment env = new Environment(new Build());
 		Map<String, Object> result = new LinkedHashMap<>();
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
@@ -859,6 +869,12 @@ public class PdslInterpreter {
 	 * {@code transformer.pdsl} calls). Registered domain primitives (audio DSP, multi-channel
 	 * routing, etc.) are looked up before built-ins so that they may shadow built-in names.</p>
 	 *
+	 * <p>A layer under construction is not a meaning of its name inside its own construction,
+	 * directly or through the layers it calls: layers are built eagerly, so reaching it again
+	 * could never finish. Such a call resolves to the registered primitive or built-in of that
+	 * name, which lets a layer wrap the library function it shadows
+	 * ({@code layer relu(...) { relu() ... }}), and is rejected when there is none.</p>
+	 *
 	 * @param call The function call node
 	 * @param env  Current variable environment
 	 * @return The result of the function call (a Block, PackedCollection, Number, etc.)
@@ -871,8 +887,8 @@ public class PdslInterpreter {
 			args.add(evaluateExpression(argExpr, env));
 		}
 
-		// TODO(review): a layer that shadows a built-in and calls that name in its own body now recurses without bound; detect self-calls and report them
-		if (layerDefs.containsKey(name)) {
+		boolean constructing = env.build.isConstructing(name);
+		if (layerDefs.containsKey(name) && !constructing) {
 			return callUserLayer(name, args, env);
 		}
 
@@ -883,6 +899,12 @@ public class PdslInterpreter {
 
 		Object builtinResult = tryCallBuiltin(name, args);
 		if (builtinResult != null) return builtinResult;
+
+		if (constructing) {
+			throw new PdslParseException("Layer '" + name + "' calls itself (" + env.build.cycle(name)
+					+ ") at line " + call.getLine() + "; layers are built eagerly, so a layer cannot"
+					+ " be constructed inside its own construction");
+		}
 
 		throw new PdslParseException(
 				"Unknown function '" + name + "' at line " + call.getLine());
@@ -1202,8 +1224,18 @@ public class PdslInterpreter {
 		private final Map<String, Object> bindings = new HashMap<>();
 		/** Enclosing scope, or {@code null} for the top-level scope. */
 		private final Environment parent;
-		/** Creates a new scope with the given enclosing scope. */
-		Environment(Environment parent) { this.parent = parent; }
+		/** State of the build this scope belongs to, shared by every scope of that build. */
+		private final Build build;
+		/** Creates a new scope with the given enclosing scope, belonging to the same build. */
+		Environment(Environment parent) {
+			this.parent = Objects.requireNonNull(parent);
+			this.build = parent.build;
+		}
+		/** Creates the top-level scope of {@code build}. */
+		Environment(Build build) {
+			this.parent = null;
+			this.build = build;
+		}
 		/** Returns the value bound to {@code name}, walking the parent chain. */
 		Object get(String name) {
 			if (bindings.containsKey(name)) return bindings.get(name);
@@ -1218,6 +1250,38 @@ public class PdslInterpreter {
 		Environment root() { return parent == null ? this : parent.root(); }
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
+	}
+
+	/**
+	 * State of one build (one {@link #buildLayer} or {@link #buildModel} call) that every layer
+	 * interpreted during it shares: the compute requirements the caller asked for, and the
+	 * layers currently under construction, outermost first.
+	 */
+	private static class Build {
+		/** Compute requirements applied to every layer the build constructs; empty for none. */
+		private final ComputeRequirement[] requirements;
+		/** Names of the layers whose bodies are being interpreted, outermost first. */
+		private final List<String> constructing = new ArrayList<>();
+		/** Creates a build with the given compute requirements. */
+		Build(ComputeRequirement... requirements) { this.requirements = requirements; }
+		/** Returns whether the layer {@code name} is under construction. */
+		boolean isConstructing(String name) { return constructing.contains(name); }
+		/** Records that the body of layer {@code name} is being interpreted. */
+		void enter(String name) { constructing.add(name); }
+		/** Records that the innermost layer under construction is complete. */
+		void exit() { constructing.remove(constructing.size() - 1); }
+		/** Describes the chain of layers under construction that leads back to {@code name}. */
+		String cycle(String name) {
+			List<String> chain = new ArrayList<>(constructing.subList(constructing.indexOf(name), constructing.size()));
+			chain.add(name);
+			return String.join(" -> ", chain);
+		}
+		/** Applies the build's compute requirements, if any, to {@code block}. */
+		void applyRequirements(Block block) {
+			if (requirements.length > 0) {
+				block.setComputeRequirements(requirements);
+			}
+		}
 	}
 
 	/**

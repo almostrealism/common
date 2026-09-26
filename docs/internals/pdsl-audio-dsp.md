@@ -101,7 +101,9 @@ pre-norm transformer layer from the layers of those two assets — `accum` aroun
 layer, then `accum` around `swiglu_ffn` — and `transformer()` builds it from the three assets
 parsed into one program with `PdslLoader.parseResources`. A layer called from another layer
 sees the program's `data` and `state` entries, and a program's own layers take precedence over
-registered primitives and built-ins of the same name. `cache_read(cache, position)` outputs one
+registered primitives and built-ins of the same name — except inside that layer's own construction,
+where its name reaches the primitive or built-in it shadows (so a layer can wrap it), and a call that
+would re-enter a layer under construction with nothing else of that name is rejected with its cycle. `cache_read(cache, position)` outputs one
 row of a caller-owned `[rows, size]` state collection without reading its input — the read that pairs with
 `cache_write`; `engine/ml/src/main/resources/pdsl/midi/gru_decoder.pdsl` uses the pair to
 carry each GRU layer's hidden state from one decode step to the next.)

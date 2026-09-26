@@ -5,7 +5,10 @@
  * whether the loader builds that layer directly or another layer calls it. A layer the
  * program defines is the one a call to its name reaches, even when a built-in shares the
  * name. A called layer sees its own parameters and the program's blocks, not the parameters
- * of the layer that called it. The data-block counterpart is test_program_data_scope.pdsl.
+ * of the layer that called it. Inside a layer's own construction its name reaches the
+ * built-in of that name, or is rejected when there is none. A layer called during a build
+ * receives the build's compute requirements wherever it is placed. The data-block
+ * counterpart is test_program_data_scope.pdsl.
  */
 
 /** A [rows, size] table written through cache_write; the caller binds `rows`. */
@@ -41,4 +44,53 @@ layer scaled_by_factor(size: int) -> [1, size] {
 /** Has a `factor` parameter, but the layer it calls cannot see it. */
 layer calls_with_factor_in_scope(factor: float, size: int) -> [1, size] {
     scaled_by_factor(size)
+}
+
+/**
+ * A layer named after the relu built-in that wraps it: inside its own construction the name
+ * reaches the built-in, so the layer is relu followed by doubling.
+ */
+layer relu(size: int) -> [1, size] {
+    relu()
+    scale(2.0)
+}
+
+/** Calls the program's relu layer, which wraps the built-in. */
+layer calls_own_relu(size: int) -> [1, size] {
+    relu(size)
+}
+
+/** Calls itself, and no built-in shares its name: rejected rather than recursing forever. */
+layer calls_itself(size: int) -> [1, size] {
+    calls_itself(size)
+}
+
+/** The first of two layers that call each other. */
+layer ping(size: int) -> [1, size] {
+    pong(size)
+}
+
+/** The second of two layers that call each other. */
+layer pong(size: int) -> [1, size] {
+    ping(size)
+}
+
+/** Holds the `probe` primitive the test registers, to observe the requirements it receives. */
+layer probed(size: int) -> [1, size] {
+    probe()
+}
+
+/** Places a called layer inside accum_blocks, which does not forward requirements to its parts. */
+layer probed_in_accum_blocks(size: int) -> [1, size] {
+    accum_blocks(
+        { probed(size) },
+        { identity() }
+    )
+}
+
+/** Places a called layer inside a residual accum. */
+layer probed_in_accum(size: int) -> [1, size] {
+    accum {
+        probed(size)
+    }
 }

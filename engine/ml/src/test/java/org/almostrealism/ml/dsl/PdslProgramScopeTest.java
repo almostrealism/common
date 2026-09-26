@@ -16,15 +16,19 @@
 
 package org.almostrealism.ml.dsl;
 
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Pins how the PDSL interpreter resolves names when one layer calls another, over the layers
@@ -138,6 +142,87 @@ public class PdslProgramScopeTest extends TestSuiteBase {
 		} catch (PdslParseException expected) {
 			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("'factor'"));
 		}
+	}
+
+	/**
+	 * A layer named after a built-in may call that name from its own body to wrap the built-in:
+	 * the {@code relu} layer applies the relu built-in and then doubles, rather than calling
+	 * itself until the stack overflows.
+	 */
+	@Test(timeout = 120000)
+	public void layerWrapsBuiltinItShadows() {
+		double[] output = compile(FIXTURE, "calls_own_relu", arguments()).forward(input()).toArray();
+
+		double[] x = input().toArray();
+		for (int i = 0; i < SIZE; i++) {
+			Assert.assertEquals("element " + i, 2.0 * Math.max(0.0, x[i]), output[i], 1e-6);
+		}
+	}
+
+	/** A layer that calls itself, with no built-in of its name, is rejected with its cycle. */
+	@Test(timeout = 60000)
+	public void selfCallingLayerIsRejected() {
+		assertCycleRejected("calls_itself", "calls_itself -> calls_itself");
+	}
+
+	/** Two layers that call each other are rejected with the cycle, from whichever is built. */
+	@Test(timeout = 60000)
+	public void mutuallyCallingLayersAreRejected() {
+		assertCycleRejected("ping", "ping -> pong -> ping");
+		assertCycleRejected("pong", "pong -> ping -> pong");
+	}
+
+	/**
+	 * A layer called inside {@code accum_blocks}, which captures its parts without forwarding
+	 * requirements to them, still receives the requirements the build was given; a build
+	 * without requirements sets none.
+	 */
+	@Test(timeout = 60000)
+	public void calledLayerInAccumBlocksReceivesRequirements() {
+		Assert.assertEquals(List.of(ComputeRequirement.CPU),
+				probedRequirements("probed_in_accum_blocks", ComputeRequirement.CPU));
+		Assert.assertNull(probedRequirements("probed_in_accum_blocks"));
+	}
+
+	/** A layer called inside a residual {@code accum} receives the requirements the build was given. */
+	@Test(timeout = 60000)
+	public void calledLayerInAccumReceivesRequirements() {
+		Assert.assertEquals(List.of(ComputeRequirement.GPU),
+				probedRequirements("probed_in_accum", ComputeRequirement.GPU));
+	}
+
+	/**
+	 * Builds {@code layer} of the scope fixture and asserts that the build fails with a
+	 * {@link PdslParseException} naming {@code cycle}.
+	 */
+	private void assertCycleRejected(String layer, String cycle) {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.buildLayer(loader.parseResource(FIXTURE), layer, shape(1, SIZE), arguments());
+			Assert.fail("Building '" + layer + "' should reject the cycle " + cycle);
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("(" + cycle + ")"));
+		}
+	}
+
+	/**
+	 * Builds {@code layer} of the scope fixture with {@code requirements}, the {@code probe}
+	 * primitive answering with a block that records the requirements set on it, and returns
+	 * what it recorded ({@code null} when nothing was set).
+	 */
+	private List<ComputeRequirement> probedRequirements(String layer, ComputeRequirement... requirements) {
+		AtomicReference<List<ComputeRequirement>> recorded = new AtomicReference<>();
+		SequentialBlock probe = new SequentialBlock(shape(1, SIZE)) {
+			@Override
+			public void setComputeRequirements(List<ComputeRequirement> set) {
+				recorded.set(set);
+			}
+		};
+
+		PdslInterpreter interpreter = new PdslInterpreter(new PdslLoader().parseResource(FIXTURE));
+		interpreter.registerPrimitive("probe", (args, ctx) -> probe);
+		interpreter.buildLayer(layer, shape(1, SIZE), arguments(), requirements);
+		return recorded.get();
 	}
 
 	/** The arguments every layer of both fixtures takes: the width of its input. */
