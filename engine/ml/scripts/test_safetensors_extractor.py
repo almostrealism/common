@@ -237,6 +237,22 @@ def test_zero_sized_dimension_round_trips(tmp_path):
     assert reloaded["bottleneck.noise_scaling_factor"].shape == (1, 0, 1)
 
 
+@requires_protobuf
+def test_zero_dimensional_array_is_written_with_one_element_shape(tmp_path):
+    # An empty dims list is how the Java CollectionEncoder encodes a null
+    # collection, so a scalar written that way would be dropped by the Java
+    # StateDictionary. It must be stored as shape [1] instead.
+    entry = core.make_entry("scale", np.float32(2.5))
+    assert list(entry.collection.traversal_policy.dims) == [1]
+    assert list(entry.collection.data_32) == [2.5]
+
+    out_dir = str(tmp_path / "refs")
+    core.dump_reference_activations({"scale": np.array(2.5)}, out_dir)
+    reloaded = core.read_state_dictionary(out_dir)
+    assert reloaded["scale"].shape == (1,)
+    np.testing.assert_array_equal(reloaded["scale"], np.array([2.5], np.float32))
+
+
 # ---------------------------------------------------------------------------
 # (ii) Remap rules rename / strip prefixes as specified
 # ---------------------------------------------------------------------------

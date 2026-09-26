@@ -320,17 +320,25 @@ def check_shapes(expected):
 # ---------------------------------------------------------------------------
 
 def numpy_to_collection_data(array):
-    """Convert a numpy array to a ``CollectionData`` protobuf (float32 payload)."""
+    """Convert a numpy array to a ``CollectionData`` protobuf (float32 payload).
+
+    A zero-dimensional (scalar) array is written with shape ``[1]``. An empty
+    ``dims`` list is how the Java ``CollectionEncoder`` represents a null
+    collection, so writing a scalar that way would make the Java
+    ``StateDictionary`` silently omit it; ``[1]`` is how a scalar is expressed
+    as a ``PackedCollection``, and it is what both readers return.
+    """
     pb = _require_collections()
     collection_data = pb.CollectionData()
+    array = np.asarray(array)
 
     traversal_policy = pb.TraversalPolicyData()
-    for dim in array.shape:
+    for dim in array.shape or (1,):
         traversal_policy.dims.append(int(dim))
     traversal_policy.traversal_axis = 0
     collection_data.traversal_policy.CopyFrom(traversal_policy)
 
-    flattened = np.asarray(array).flatten().astype(np.float32)
+    flattened = array.flatten().astype(np.float32)
     collection_data.data_32.extend(flattened.tolist())
 
     return collection_data
