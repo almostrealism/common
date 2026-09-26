@@ -173,8 +173,10 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 	 */
 	public Expression<T> allMatch() {
 		Expression<T> e = valueAt(0, 0);
+		int[] duplicates = getRowDuplicates();
+
 		for (int i = 0; i < rowCount; i++) {
-			if (rowDuplicates[i] < 0) {
+			if (duplicates[i] < 0) {
 				for (int j = 0; j < colCount; j++) {
 					if (!e.equals(valueAt(i, j))) return null;
 				}

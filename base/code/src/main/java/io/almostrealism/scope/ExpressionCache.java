@@ -260,11 +260,29 @@ public class ExpressionCache {
 	 * @param r the task to run without an active cache
 	 */
 	public static void bypass(Runnable r) {
+		bypass(() -> {
+			r.run();
+			return null;
+		});
+	}
+
+	/**
+	 * Runs the given {@link Supplier} with no cache active on the current thread, then
+	 * restores whichever cache (if any) was active before, and returns its result.
+	 *
+	 * <p>This is the value-returning form of {@link #bypass(Runnable)}, for analysis work
+	 * that builds its throwaway expressions one at a time on demand.</p>
+	 *
+	 * @param <T> the return type
+	 * @param r   the task to run without an active cache
+	 * @return the value returned by {@code r}
+	 */
+	public static <T> T bypass(Supplier<T> r) {
 		ExpressionCache active = current.get();
 		current.set(null);
 
 		try {
-			r.run();
+			return r.get();
 		} finally {
 			current.set(active);
 		}
