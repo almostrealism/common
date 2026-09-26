@@ -1,0 +1,48 @@
+/**
+ * Fixtures for cache_read, the row read that pairs with cache_write. Each layer isolates one
+ * behaviour so a test can pin it on small, hand-checkable inputs, independently of the GRU
+ * decoder that reads its hidden state this way.
+ */
+
+/** A caller-owned [rows, size] cache that the layers below read and write. */
+state row_cache_state {
+    row_cache: weight
+}
+
+/** [in_size] -> [size]: the output is row `position` of row_cache; the input is not read. */
+layer read_row(in_size: int, position: scalar) -> [in_size] {
+    cache_read(row_cache, position)
+}
+
+/** [size] -> [2 * size]: the input followed by row `position`, the [x | h] a recurrent cell takes. */
+layer append_row(size: int, position: scalar) -> [size] {
+    concat_blocks(
+        { identity() },
+        { cache_read(row_cache, position) }
+    )
+}
+
+/**
+ * [size] -> [size]: outputs the row an earlier pass stored at `position` and stores the input in
+ * its place. The read comes before the write in the pass, so the output is the previous row.
+ *
+ *   concat_blocks        [previous row | input]
+ *   branch               slice the input, cache_write(row_cache, position)
+ *   slice(0, size)       the previous row
+ */
+layer exchange_row(size: int, position: scalar) -> [size] {
+    concat_blocks(
+        { cache_read(row_cache, position) },
+        { identity() }
+    )
+    branch {
+        slice(size, size)
+        cache_write(row_cache, position)
+    }
+    slice(0, size)
+}
+
+/** cache_read with a missing argument, which the built-in rejects when the layer is built. */
+layer read_without_position(in_size: int) -> [in_size] {
+    cache_read(row_cache)
+}

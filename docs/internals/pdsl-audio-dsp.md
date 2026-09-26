@@ -91,12 +91,15 @@ audio-domain assumption:
 
 (`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
 activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `repeat_each`, `cache_write`,
-`split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
+`cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
 `attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`, `transformer`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
 composes the KV-cached attention block from these; `attention()` loads that asset, and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
-`feedForward()` loads.)
+`feedForward()` loads. `cache_read(cache, position)` outputs one row of a caller-owned
+`[rows, size]` state collection without reading its input — the read that pairs with
+`cache_write`; `engine/ml/src/main/resources/pdsl/midi/gru_decoder.pdsl` uses the pair to
+carry each GRU layer's hidden state from one decode step to the next.)
 
 There is **no `choice()` primitive.** A `Choice` cannot be code-generated inside a compiled
 PDSL model. Gene-driven HP/LP filter selection is performed host-side in the genome→args

@@ -73,6 +73,8 @@ import java.util.function.Function;
  *       {@code n} consecutive times</li>
  *   <li>{@code cache_write(cache, position)} - record the input as row {@code position}
  *       of a caller-owned {@code [rows, size]} cache and pass it through</li>
+ *   <li>{@code cache_read(cache, position)} - output row {@code position} of a caller-owned
+ *       {@code [rows, size]} cache as a {@code [size]} vector, without reading the input</li>
  *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
  *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
