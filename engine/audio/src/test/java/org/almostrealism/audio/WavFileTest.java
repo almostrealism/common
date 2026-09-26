@@ -102,8 +102,10 @@ public class WavFileTest extends TestSuiteBase {
 
 	/**
 	 * Verifies the unsigned 8-bit path: the write offset/scale and the read
-	 * offset/scale invert one another at the range endpoints, so -1.0, 0 and
-	 * +1.0 survive exactly.
+	 * offset/scale invert one another at the range endpoints, so the extreme
+	 * values -1.0 and +1.0 survive the round trip. The midpoint does not survive
+	 * exactly — 8-bit quantization truncates the written 127.5 to 127, so 0.0
+	 * maps back to roughly -0.004 — hence only the two endpoints are asserted.
 	 */
 	@Test(timeout = 60000)
 	public void roundTrip8BitEndpoints() throws IOException {
@@ -459,6 +461,56 @@ public class WavFileTest extends TestSuiteBase {
 			int[] iin = new int[4];
 			Assert.assertEquals(4, wav.readFrames(iin, 4));
 			Assert.assertArrayEquals(iout, iin);
+		}
+	}
+
+	/**
+	 * Exercises the nonzero-offset read and write overloads. Writing starts
+	 * partway into the source buffer and reading fills the destination partway
+	 * in, so the untouched prefix and suffix retain their initialized values.
+	 * This covers the {@code (buffer, offset, count)} forms directly rather than
+	 * only through the offset-0 convenience delegations.
+	 */
+	@Test(timeout = 60000)
+	public void nonzeroOffsetReadAndWrite() throws IOException {
+		// Flat interleaved (mono): write frames from source index 2 onward.
+		File flat = tempWav();
+		double[] src = {9.9, 9.9, 0.1, -0.2, 0.3};
+		try (WavFile wav = WavFile.newWavFile(flat, 1, 3, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(3, wav.writeFrames(src, 2, 3));
+		}
+		try (WavFile wav = WavFile.openWavFile(flat)) {
+			double[] dst = {7.0, 7.0, 0.0, 0.0, 0.0, 7.0};
+			Assert.assertEquals(3, wav.readFrames(dst, 2, 3));
+			Assert.assertEquals(7.0, dst[0], 0.0);
+			Assert.assertEquals(7.0, dst[1], 0.0);
+			Assert.assertEquals(0.1, dst[2], TOL_16);
+			Assert.assertEquals(-0.2, dst[3], TOL_16);
+			Assert.assertEquals(0.3, dst[4], TOL_16);
+			Assert.assertEquals(7.0, dst[5], 0.0);
+		}
+
+		// Channel-indexed (stereo): write starting at frame offset 1 in each channel.
+		File chan = tempWav();
+		double[][] cout = {
+				{5.5, 0.4, -0.4},
+				{5.5, -0.6, 0.6}
+		};
+		try (WavFile wav = WavFile.newWavFile(chan, 2, 2, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(2, wav.writeFrames(cout, 1, 2));
+		}
+		try (WavFile wav = WavFile.openWavFile(chan)) {
+			double[][] cin = {
+					{3.0, 0.0, 0.0},
+					{3.0, 0.0, 0.0}
+			};
+			Assert.assertEquals(2, wav.readFrames(cin, 1, 2));
+			Assert.assertEquals(3.0, cin[0][0], 0.0);
+			Assert.assertEquals(3.0, cin[1][0], 0.0);
+			Assert.assertEquals(0.4, cin[0][1], TOL_16);
+			Assert.assertEquals(-0.4, cin[0][2], TOL_16);
+			Assert.assertEquals(-0.6, cin[1][1], TOL_16);
+			Assert.assertEquals(0.6, cin[1][2], TOL_16);
 		}
 	}
 
