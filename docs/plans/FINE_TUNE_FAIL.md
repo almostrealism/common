@@ -425,6 +425,40 @@ use. Replacing it with a well-mixed, non-annihilating combination is the general
 `Scope.processReplacements` iterates a `HashSet` of common sub-expression targets, so that change
 alters simplification termination and sub-expression extraction everywhere and needs its own validation.
 
+### Update (September 2026): The Explicit Matrix Entries Were Never Read
+
+After the cache bypass, `ProductDeltaIsolationTest#testSingleAttentionBackward` still spent about
+24 s of its 26 s (Metal, M1 Ultra) in `ExplicitExpressionMatrix` population. Six index matrices were
+built for the loop-replacement analysis in `AggregatedProducerComputation.prepareScope`, from
+128 x 2048 to 131072 x 16 entries, each entry a symbolic substitution. Every one of those analyses
+returned no offset.
+
+For an explicit input, the analysis that follows never reads the entries.
+`MatrixFunctionEvaluator` evaluates the function at `Index.child(row, col)` itself rather than at
+the matrix entries, and its full-expansion path (`ExpressionMatrix.enableUnsequencedMatrices`) is off,
+so only `allColumnsMatch()` looks at entries, and it stops at the first column that differs.
+`ExplicitExpressionMatrix` now substitutes entries on demand and populates in full only when
+`getRowDuplicates()` is requested. Analysis results are unchanged: an in-run comparison of every
+loop-replacement decision, eager against on-demand, matched across the softmax, log-softmax, norm,
+convolution and attention-style backward tests checked. Measured over five runs each:
+
+| Test | Metal before | Metal after | Native before | Native after |
+|------|--------------|-------------|---------------|--------------|
+| `ProductDeltaIsolationTest#testSingleAttentionBackward` | 26.0 s | 3.6 s | 40.4 s | 17.8 s |
+| `ConvolutionModelTests#convBackwardsMediumBatch` | 5.9 s | 1.4 s | 8.7 s | 4.4 s |
+
+Letting the analysis read the real entry values is not a safe shortcut. Evaluating the same targets
+into a `SequenceMatrix` instead, which routes them through `SequenceFunctionEvaluator` and the
+column-sequence branch of `TraversableExpression.uniqueNonZeroOffset`, changed one loop-replacement
+decision in `SoftmaxTests#logSoftmaxBackwards1`, and that gradient came out wrong. The leaf results
+became more accurate, and an operand's unique offset was then adopted for a sum whose other operand
+is dense. The evaluation at child positions and the way operand offsets are combined need their own
+investigation before the analysis consumes real entry values.
+
+The largest remaining cost of the analysis is `ExpressionMatrix.uniqueMatchingOffset`, which creates
+a constant expression for every entry of the value matrix (`MaskMatrix.valueAt`,
+`SequenceMatrix.valueAt`) only to test it for zero.
+
 ---
 
 ## Isolated Component Testing (February 2026)
