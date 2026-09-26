@@ -126,7 +126,7 @@ NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and 
 `ClaudeCodeJob` instantiates two collaborating objects as final fields:
 
 - `mcpConfigBuilder` (`McpConfigBuilder`): Constructs the `--mcp-config` JSON and `--allowedTools` string. Configured via `configureMcpBuilder()` before each execution.
-- `toolsDownloader` (`ManagedToolsDownloader`): Downloads pushed tool server files from the controller. Initialized with a reference to `mcpConfigBuilder` for config parsing.
+- `launchConfig` (`AgentLaunchConfig`): Assembles what each agent session launches with. It owns the `ManagedToolsDownloader` that downloads pushed tool server files from the controller, pushes the job's state into `mcpConfigBuilder`, composes the allowed-tools list, and builds the `AgentRunRequest`. The job's `configureMcpBuilder()` and `buildComposedAllowedTools()` delegate to it.
 - `outputMapper` (`ObjectMapper`): A static Jackson mapper shared by all instances for NDJSON parsing and JSON serialization.
 
 Two stateless helpers are invoked per Claude attempt:
@@ -291,7 +291,7 @@ After `doWork()` returns, `GitManagedJob.run()` handles:
 
 2. **File discovery and staging** -- `git status --porcelain` lists all changed files. The output is parsed line by line: lines starting with `?? ` indicate untracked files, and lines starting with ` M `, `M `, `A `, `D `, etc. indicate modified, added, or deleted tracked files. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
 
-3. **Commit** -- The commit message is determined by `getCommitMessage()` (see below). The commit command uses explicit git identity flags (`-c user.name=...` and `-c user.email=...`) to override any global git config on the agent machine. This ensures consistent attribution across all agents. If `git commit` returns a non-zero exit code (e.g., "nothing to commit"), the error is logged but does not throw an exception -- the job continues to event firing with no commit hash.
+3. **Commit** -- The commit message is determined by `getCommitMessage()` (see below). The commit command uses explicit git identity flags (`-c user.name=...` and `-c user.email=...`) to override any global git config on the agent machine. This ensures consistent attribution across all agents. If `git commit` returns a non-zero exit code (e.g., "nothing to commit"), the error is logged but does not throw an exception -- the job continues to event firing with no commit hash. If the session nevertheless left work behind (uncommitted changes to non-excluded files, or an authored `commit.txt`), `JobWorkOutcome.describeUnpublishedWork()` reports it and the completion event is `FAILED` rather than `SUCCESS`.
 
 4. **Push** -- `git push -u origin <branch>:<branch>` with an explicit refspec. The `-u` flag sets up tracking so subsequent pushes can use `git push` without arguments. The explicit `<branch>:<branch>` refspec ensures the remote branch name matches the local one. Push is only attempted when `pushToOrigin` is true (the default) and there were files staged and committed. Push failures are logged but do not prevent event firing.
 
@@ -646,7 +646,7 @@ The `0.0.0.0` placeholder is used throughout the system as a stand-in for the co
 
 ## ManagedToolsDownloader and Pushed Tool Lifecycle
 
-`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated within `ClaudeCodeJob` with a reference to the `McpConfigBuilder` for configuration parsing.
+`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated by the job's `AgentLaunchConfig` with a reference to the `McpConfigBuilder` for configuration parsing.
 
 ### ensurePushedTools(String pushedToolsConfig)
 
