@@ -937,7 +937,7 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 

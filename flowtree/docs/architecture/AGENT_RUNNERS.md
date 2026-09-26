@@ -48,8 +48,9 @@ Carries everything the runner needs to launch one session:
 - `allowedTools` — CSV of permitted tool names (orchestrator-owned; see below)
 - `mcpConfigJson` — MCP server configuration as JSON
 - `requiredMcpServers` — names of servers in `mcpConfigJson` the session cannot
-  do its job without; if any is unavailable at start the runner reports it in
-  `AgentRunResult.unavailableRequiredMcpServers`
+  do its job without; a runner that observes MCP connection status at startup
+  reports any that are unavailable in `AgentRunResult.unavailableRequiredMcpServers`
+  (runner-dependent: `ClaudeCodeRunner` reports it, `OpencodeRunner` does not)
 - `bypassPermissionPrompts` — whether the session may bypass interactive tool
   permission prompts (granted per job from the branch's permission policy)
 - `environment` — additional env vars (includes `AR_AGENT_ACTIVITY`)
@@ -84,8 +85,11 @@ public record AgentRunResult(
 
 `unavailableRequiredMcpServers` lists any MCP servers the session declared it
 required (see `AgentRunRequest.requiredMcpServers`) that were not available when
-the session started; `isMissingRequiredMcpServer()` is true when it is
-non-empty.
+the session started; `hasUnavailableRequiredMcpServer()` is true when it is
+non-empty. Only runners that observe MCP connection status populate it
+(`ClaudeCodeRunner` does; `OpencodeRunner` uses the backward-compatible
+constructor and always leaves it empty), so an empty list means "none reported
+missing", not "all confirmed connected".
 
 A runner that cannot report a value returns the zero/empty for it and
 declares the gap in `capabilities()`. See [Telemetry](PHASES.md#telemetry)
