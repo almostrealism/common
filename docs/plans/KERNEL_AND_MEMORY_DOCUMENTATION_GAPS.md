@@ -25,8 +25,7 @@ the lowest-priority gap and is deferred to a follow-up.
 
 ## Background
 
-<!-- TODO(review): pre-existing text below names a private downstream product; rephrase in platform terms ("a client application"). -->
-On 2026-05-04, an investigation into a Rings desktop crash
+On 2026-05-04, an investigation into a crash in a client application
 (NULL deref inside `Java_org_almostrealism_generated_GeneratedOperation9_apply`)
 produced three substantively wrong hypotheses before the maintainer corrected
 them. Each wrong turn stemmed from missing or misleading documentation about
@@ -65,8 +64,11 @@ compile and load; concurrent JVMs need distinct library directories.
 ### Where documentation should live
 - `common/base/hardware/src/main/java/org/almostrealism/hardware/jni/NativeCompiler.java`
   — class-level Javadoc covering the cache lifecycle: location, when entries
-  are written, when (and by what mechanism) they are removed, and the
-  guarantee that no entry survives JVM termination.
+  are written, and by what mechanism a prior run's artifact is prevented from
+  being executed. (Superseded: the original framing here expected a guarantee
+  that no entry survives JVM termination. That is not how it works — entries
+  persist on disk; see the Status note above and `KERNEL_CACHE.md` for the
+  overwrite-before-load mechanism that actually rules out stale artifacts.)
 - `common/base/hardware/src/main/java/org/almostrealism/generated/BaseGeneratedOperation.java`
   — class-level Javadoc clarifying that the pre-allocated
   `GeneratedOperationN.java` source classes are reservation slots, not
@@ -77,9 +79,12 @@ compile and load; concurrent JVMs need distinct library directories.
   clears it, what is and is not preserved across runs.
 
 ### What the docs should specifically state
-- The directory is purged (or otherwise invalidated) at JVM startup. State
-  the precise mechanism — startup hook, lazy-clear-on-first-reservation,
-  filesystem-level — so a debugger can verify the behavior.
+- ~~The directory is purged (or otherwise invalidated) at JVM startup.~~
+  (Superseded — this requirement was based on a wrong assumption. There is no
+  startup purge: files persist on disk. What actually rules out a stale
+  artifact is that the per-run target counter restarts at 0 and each slot is
+  recompiled and overwritten before it is loaded — overwrite-before-load. State
+  that mechanism, per `KERNEL_CACHE.md`, so a debugger can verify the behavior.)
 - Investigators encountering a native crash inside `GeneratedOperationN.apply`
   can rule out "stale dylib from prior build."
 - If/when this changes (e.g., we add cross-run caching for compile-time
@@ -97,10 +102,14 @@ zero pointers on exhaustion that propagate into kernels.
 ### What is actually true
 - The actual off-heap budget is much larger than 1024MB.
 - The framework does **not** enforce a max via automatic GC of off-heap data.
-- JVM GC can release off-heap memory whose backing Java reference holder
-  becomes unreachable (the holder's finalization or `Cleaner` releases the
-  native block), but this is a per-object lifetime mechanism, not budget
-  enforcement.
+- GC-driven collection of the backing Java reference holder can release
+  off-heap memory, but this is a per-object lifetime mechanism, not budget
+  enforcement. (Superseded detail: the original text attributed the free to the
+  holder's finalization or a `Cleaner`. Per source it is phantom-reference
+  reclamation — `HardwareMemoryProvider` registers a `NativeRef` and frees the
+  block on its daemon thread(s) once the holder is collected — except for a
+  direct-buffer-backed block, whose native storage is owned by the JVM's own
+  `DirectByteBuffer` cleaner. See `OFF_HEAP_MEMORY.md`.)
 - "Allocator returns null on exhaustion" is not a documented behavior of
   this framework's allocators. Exhaustion is reported as allocation failure
   (exception) or as OS-level OOM, not as a silent zero-valued pointer.

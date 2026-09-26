@@ -189,10 +189,11 @@ import java.util.stream.Stream;
  * ({@link org.almostrealism.generated.BaseGeneratedOperation} subclasses), the
  * compiled function carries <strong>no per-instance mutable state</strong> — no
  * static scratch buffers, captured closures, or invocation-specific mutable globals
- * (the generated header's {@code M_PI_F} is a constant initialized once). Every
- * <em>data</em> region it reads or writes is a caller-supplied argument passed in per
- * invocation; the only non-argument value it reads is that read-only {@code M_PI_F}
- * constant, which carries no invocation state.
+ * (the generated header's {@code M_PI_F} is a process-wide global initialized once to
+ * {@code M_PI} — not declared {@code const}, but only ever read, never written by a
+ * kernel). Every <em>data</em> region it reads or writes is a caller-supplied argument
+ * passed in per invocation; the only non-argument value it reads is that initialized-once
+ * {@code M_PI_F} global, which carries no invocation state.
  * Once the instruction set has been configured
  * ({@link #setComputeContext(ComputeContext)}, {@link #setMetadata(OperationMetadata)},
  * {@link #setParallelism(int)}) and its library loaded, {@link #apply(long, long, MemoryData...)}

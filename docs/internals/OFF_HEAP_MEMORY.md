@@ -58,8 +58,13 @@ ceiling is simply rejected.
 
 ### 3. How native memory is actually freed
 
-Off-heap blocks are freed by two mechanisms, neither of which is
-`Cleaner`/finalization:
+Off-heap blocks are freed by two provider-managed mechanisms. Neither is
+driven by Java *finalization*, and neither is the framework's own `Cleaner`
+(the framework registers no `java.lang.ref.Cleaner` for these blocks). One
+backing type is a partial exception, called out below: a direct-buffer-backed
+block's native storage is owned by the JVM's own `DirectByteBuffer` cleaner, so
+for that type the provider's reference only unwinds bookkeeping while the JVM
+cleaner frees the storage.
 
 - **Phantom-reference reclamation.** `HardwareMemoryProvider` registers each
   allocation as a `NativeRef` (a `java.lang.ref.PhantomReference`) with a
@@ -76,8 +81,10 @@ Off-heap blocks are freed by two mechanisms, neither of which is
   enforcement — it releases a block because *its holder died*, not because
   *total usage is high*.
 - **Explicit deallocation.** A caller (or the provider's own destroy path) may
-  call `deallocate` directly; direct-buffer-backed allocations additionally
-  rely on the JVM's own direct-buffer reclamation.
+  call `deallocate` directly. For a direct-buffer-backed allocation this only
+  unwinds the provider's bookkeeping and shared mappings; the native storage
+  itself is owned and freed by the JVM's own `DirectByteBuffer` cleaner, not by
+  the provider.
 
 Both paths decrement the provider's `memoryUsed`, which is what frees headroom
 for future allocations.

@@ -18,11 +18,12 @@ three separate concerns are kept distinct: **compiled-function reentrancy**,
 The generated C function behind a `GeneratedOperationN.apply` carries **no
 per-instance mutable state of its own**: it has no static scratch buffers, no
 captured closures, and no invocation-specific mutable globals. (The generated
-header does define a process-wide `M_PI_F` constant, initialized once to
-`M_PI` and never written by a kernel.) Every *data* region it reads or
-writes is a caller-supplied argument pointer passed in per invocation — the
-only non-argument value it reads is that read-only `M_PI_F` constant, which
-carries no invocation state (see the argument-marshalling contract in
+header does define a process-wide `M_PI_F` global, initialized once to `M_PI`;
+it is not declared `const`, but a kernel only ever reads it, never writes it.)
+Every *data* region it reads or writes is a caller-supplied argument pointer
+passed in per invocation — the only non-argument value it reads is that
+initialized-once `M_PI_F` global, which carries no invocation state (see the
+argument-marshalling contract in
 `NativeInstructionSet` and
 the value semantics in [CODEGEN_VALUE_SEMANTICS.md](CODEGEN_VALUE_SEMANTICS.md)).
 Once the instruction set is configured and loaded, invoking its `apply` is
