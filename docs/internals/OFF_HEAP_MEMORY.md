@@ -71,8 +71,8 @@ Off-heap blocks are freed by two mechanisms, neither of which is
   queued mode (`queueDeallocation == true`) it hands the reference to a
   size-ordered `deallocationQueue` that a second *process* daemon thread drains
   largest-first. The process thread additionally runs `sweepDeferred()` on an
-  interval, which is what eventually frees a release `KernelMemoryGuard` held
-  back (see below). This is a **per-object lifetime mechanism**, not budget
+  interval, which is what eventually frees a release that `KernelMemoryGuard`
+  held back (see below). This is a **per-object lifetime mechanism**, not budget
   enforcement — it releases a block because *its holder died*, not because
   *total usage is high*.
 - **Explicit deallocation.** A caller (or the provider's own destroy path) may
@@ -84,10 +84,13 @@ for future allocations.
 
 ### 4. The real exhaustion failure mode
 
-When the ceiling is hit, the provider throws
-`HardwareException("Memory max reached")`. That is the signal to recognize in a
-crash report — an exception on the allocation path, or an OS-level OOM if the
-process outgrows physical/committed memory. Reservation exhaustion **never** surfaces as a
+When the ceiling is hit, the provider throws a `HardwareException` whose message
+is a case-insensitive match for "memory max reached". The exact wording is
+backend-specific: `CLMemoryProvider` and `MetalMemoryProvider` throw
+`"Memory Max Reached"`, while `NativeMemoryProvider` throws
+`"Memory max reached"` — so match on the phrase, not on an exact string. That
+is the signal to recognize in a crash report — an exception on the allocation
+path, or an OS-level OOM if the process outgrows physical/committed memory. Reservation exhaustion **never** surfaces as a
 silently returned zero/null pointer that later gets dereferenced inside a
 kernel. (A distinct, OS-level failure is not covered by this check: in calloc
 mode `NativeMemoryProvider` returns the `Malloc` result without testing it for

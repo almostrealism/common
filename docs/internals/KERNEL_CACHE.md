@@ -60,6 +60,16 @@ framing claimed the directory is "purged at JVM startup"; that is not what the
 code does — no purge or invalidation hook exists. The correct and sufficient
 invariant is that each run recompiles into the same name before loading it.)
 
+This guarantee is **process-local**. `runnableCount` is static to one JVM and
+`reserveLibraryTarget()` only serializes reservation within that process; there
+is no inter-process lock spanning the compile-then-load step. If two JVMs share
+the same `AR_HARDWARE_LIBS` directory, both count from 0 and target the same
+`GeneratedOperationN` path, so one process can overwrite that library between
+another's compile and `System.load` — and *that* is a genuine stale/mismatched
+artifact hazard. Overwrite-before-load rules out a stale dylib only for a single
+JVM that owns its library directory; concurrent JVMs must be given distinct
+directories.
+
 ## Two distinct caches
 
 There are two separate things called a "cache" at this boundary; conflating

@@ -253,6 +253,14 @@ import java.util.function.Consumer;
  * native crash in {@code GeneratedOperationN.apply} thus cannot be caused by a "stale dylib from a
  * prior build," and clearing the directory is a no-op as a diagnostic.</p>
  *
+ * <p>This guarantee is scoped to a <strong>single JVM owning the library directory</strong>.
+ * {@code runnableCount} is JVM-local and {@link #reserveLibraryTarget()} only serializes reservation
+ * within the process — there is no inter-process lock around compile-then-load. If two JVMs share the
+ * same {@code AR_HARDWARE_LIBS} directory, both count from {@code 0} and target the same
+ * {@code GeneratedOperationN} path, so one process can overwrite that library between another's compile
+ * and {@code System.load}. Overwrite-before-load holds per run only when a single JVM owns the
+ * directory; concurrent JVMs must be given distinct library directories.</p>
+ *
  * <h2>Lifecycle</h2>
  *
  * <p>Typically created once per {@link NativeDataContext} and reused for all compilations.
