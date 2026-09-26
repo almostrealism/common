@@ -91,8 +91,10 @@ public class CollectionEncoder {
 	/**
 	 * Decodes a {@link Collections.CollectionData} message into a new {@link PackedCollection}.
 	 *
-	 * <p>Returns {@code null} if the encoded shape has zero dimensions (i.e., the collection was null
-	 * when encoded).</p>
+	 * <p>Returns {@code null} if the encoded collection has zero total size — a shape with no
+	 * dimensions (the collection was null when encoded) or one carrying a zero-length axis (such as
+	 * an SA3 {@code [1, 0, 1]} bottleneck buffer). A {@link PackedCollection} cannot hold zero
+	 * elements, so such a collection resolves to {@code null} rather than throwing.</p>
 	 *
 	 * @param data The protobuf message to decode
 	 * @return A new {@link PackedCollection} with the encoded shape and values, or {@code null}
@@ -119,14 +121,20 @@ public class CollectionEncoder {
 	 * the normal way and the deferred collection is copied into it with
 	 * {@link PackedCollection#setFrom}, producing ordinary writable storage.</p>
 	 *
+	 * <p>A collection with zero total size — a shape with no dimensions, or one carrying a
+	 * zero-length axis — resolves to {@code null} in either mode. A {@link PackedCollection} cannot
+	 * hold zero elements, so materializing one would throw; returning {@code null} lets a caller
+	 * reading a library of tensors omit the single empty entry rather than losing the whole file.
+	 * This mirrors the deferred reader ({@link CollectionDataReference#of}).</p>
+	 *
 	 * @param data The protobuf message to decode
 	 * @param materialize whether to copy the values into freshly allocated memory
 	 * @return A collection with the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data, boolean materialize) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
-		if (shape.getDimensions() == 0) return null;
+		if (shape.getTotalSizeLong() == 0) return null;
 
 		CollectionDataMemory mem = (CollectionDataMemory)
 				CollectionDataMemoryProvider.getInstance().allocate(data);

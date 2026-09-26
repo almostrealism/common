@@ -79,7 +79,7 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 			weightDir = firstExisting(WEIGHT_DIRS, "dit_0");
 		}
 
-		File refDir = firstExisting(REFERENCE_DIRS, "dit_output.bin");
+		File refDir = firstExisting(REFERENCE_DIRS, "dit_output");
 		if (weightDir == null || refDir == null) {
 			log("skipping SA3 transformer parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
 			return;
@@ -96,9 +96,9 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 
 		PackedCollection output = transformer.forward(x, t, context, global);
 
-		float[] refOutput = loadFlat(new File(refDir, "dit_output.bin").toPath());
-		float[] refPre = loadFlat(new File(refDir, "dit_pre_transformer.bin").toPath());
-		float[] refPost = loadFlat(new File(refDir, "dit_post_transformer.bin").toPath());
+		float[] refOutput = loadFlat(refDir, "dit_output");
+		float[] refPre = loadFlat(refDir, "dit_pre_transformer");
+		float[] refPost = loadFlat(refDir, "dit_post_transformer");
 
 		assertWithinRelative("output", output, refOutput, RELATIVE_TOLERANCE);
 		assertWithinRelative("preTransformer", transformer.getPreTransformerState(), refPre, RELATIVE_TOLERANCE);

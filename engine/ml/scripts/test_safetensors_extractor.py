@@ -142,6 +142,77 @@ def test_write_state_dictionary_excludes_stale_same_prefix_shard(tmp_path):
     np.testing.assert_array_equal(reloaded["fresh.weight"], new_state["fresh.weight"])
 
 
+def test_write_state_dictionary_preserves_non_shard_same_prefix_files(tmp_path):
+    """Cleanup must delete only the shard names this writer produces.
+
+    A stale shard is ``shard_prefix`` or ``shard_prefix_<numeric-index>``.
+    An unrelated file that merely shares the prefix -- a sidecar such as
+    ``weights_metadata.json`` or a backup such as ``weights_backup`` -- is not a
+    shard, and rewriting a dump must not delete it.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+
+    # A genuinely stale numeric shard (must be removed) alongside two non-shard
+    # files that share the prefix (must survive).
+    stale_shard = os.path.join(out_dir, "weights_1")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+    sidecar = os.path.join(out_dir, "weights_metadata.json")
+    with open(sidecar, "w", encoding="utf-8") as handle:
+        handle.write("{}")
+    backup = os.path.join(out_dir, "weights_backup")
+    with open(backup, "w", encoding="utf-8") as handle:
+        handle.write("unrelated")
+
+    new_state = {"fresh.weight": np.arange(3, dtype=np.float32)}
+    paths = core.write_state_dictionary(new_state, out_dir)
+
+    assert os.path.basename(paths[0]) == "weights"
+    # The numeric stale shard is gone; the non-shard files are left untouched.
+    assert not os.path.exists(stale_shard)
+    assert os.path.isfile(sidecar)
+    assert os.path.isfile(backup)
+    with open(backup, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated"
+
+
+def test_write_state_dictionary_preserves_non_canonical_numeric_suffix(tmp_path):
+    """Cleanup deletes only canonical shard indexes, not every numeric-looking suffix.
+
+    ``write_group`` names later shards ``shard_prefix_<index>`` with ``index`` the
+    canonical ``str(index)`` for some ``index > 0`` -- an ASCII decimal with no
+    leading zero. A same-prefix file whose suffix is non-canonical -- ``weights_0``
+    (index 0 is the bare prefix, never ``_0``) or ``weights_01`` (leading zero) --
+    is not a shard this writer produces, so a rewrite must leave it untouched while
+    still removing the canonical stale shard ``weights_1``.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+
+    leading_zero = os.path.join(out_dir, "weights_01")
+    with open(leading_zero, "w", encoding="utf-8") as handle:
+        handle.write("unrelated-01")
+    zero_index = os.path.join(out_dir, "weights_0")
+    with open(zero_index, "w", encoding="utf-8") as handle:
+        handle.write("unrelated-0")
+    stale_shard = os.path.join(out_dir, "weights_1")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+
+    core.write_state_dictionary({"fresh.weight": np.arange(3, dtype=np.float32)}, out_dir)
+
+    # The canonical stale shard is removed; the non-canonical numeric-suffix files
+    # survive with their content intact.
+    assert not os.path.exists(stale_shard)
+    assert os.path.isfile(leading_zero)
+    assert os.path.isfile(zero_index)
+    with open(leading_zero, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated-01"
+    with open(zero_index, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated-0"
+
+
 def test_zero_sized_dimension_round_trips(tmp_path):
     # The SA3 SoftNorm bottleneck has noise_scaling_factor with shape [1, 0, 1].
     src = {"bottleneck.noise_scaling_factor": np.zeros((1, 0, 1), dtype=np.float32)}
@@ -274,17 +345,508 @@ def test_fold_weight_norm_leaves_unpaired_keys():
 # ---------------------------------------------------------------------------
 
 def test_dump_reference_activations(tmp_path):
+    """A reference dump is protobuf collection data, read back by the same reader
+    a weight export is, with each stage's shape preserved."""
     stages = {
         "test_input": np.arange(8, dtype=np.float32),
-        "resampling_stage_0": np.array([1.0, 2.0], dtype=np.float32),
+        "resampling_stage_0": np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
         "encoder_output": np.zeros((3,), np.float32),
     }
     out_dir = str(tmp_path / "reference")
     paths = core.dump_reference_activations(stages, out_dir)
-    assert len(paths) == 3
+    assert paths, "at least one shard is written"
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == set(stages)
     for name, expected in stages.items():
-        reloaded = core.read_reference_output(os.path.join(out_dir, f"{name}.bin"))
-        np.testing.assert_array_equal(reloaded, expected.flatten())
+        np.testing.assert_array_equal(reloaded[name], expected)
+        assert reloaded[name].shape == expected.shape, name + " keeps its shape"
+
+
+def test_dump_reference_activations_writes_no_bespoke_files(tmp_path):
+    """The per-stage `<name>.bin` files are gone: one format crosses the boundary."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"only": np.arange(4, dtype=np.float32)}, out_dir)
+    assert not [n for n in os.listdir(out_dir) if n.endswith(".bin")]
+
+
+def test_dump_over_a_legacy_dump_removes_its_stage_files(tmp_path):
+    """Dumping into a directory the bespoke format wrote removes the `<stage>.bin` files
+    for the stages being written, so the directory reads back as protobuf; a `.bin` file
+    that names no stage in this dump is not the writer's to remove and is left alone."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    for name in ("dit_output", "cond_bias", "unrelated"):
+        core.save_reference_output(np.arange(3, dtype=np.float32), str(out_dir / (name + ".bin")))
+
+    stages = {
+        "dit_output": np.arange(6, dtype=np.float32).reshape(2, 3),
+        "cond_bias": np.full((4,), 0.5, dtype=np.float32),
+    }
+    core.dump_reference_activations(stages, str(out_dir))
+
+    assert not (out_dir / "dit_output.bin").exists()
+    assert not (out_dir / "cond_bias.bin").exists()
+    assert (out_dir / "unrelated.bin").exists()
+
+    # The leftover `.bin` for a stage this dump did not write stays on disk, but
+    # the directory reader skips legacy `.bin` files, so the dump reads back as
+    # protobuf without removing it first.
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == set(stages)
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+    np.testing.assert_array_equal(reloaded["cond_bias"], stages["cond_bias"])
+
+
+def test_second_dump_with_same_prefix_replaces_the_first(tmp_path):
+    """Two dumps into the same directory with the same shard prefix do not accumulate:
+    the writer clears stale same-prefix shards first, so the second dump replaces the
+    first. A caller with two tensor groups must therefore merge them into one dump."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"first": np.arange(3, dtype=np.float32)}, out_dir)
+    core.dump_reference_activations({"second": np.arange(4, dtype=np.float32)}, out_dir)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"second"}, "the second dump replaced the first"
+
+
+def test_merged_dump_keeps_every_group(tmp_path):
+    """Merging two disjoint tensor groups into a single dump keeps every key — the
+    pattern a caller with separate stage and conditioner maps must use so neither group
+    deletes the other's shards."""
+    stages = {"dit_output": np.arange(3, dtype=np.float32)}
+    conditioner = {"cond_bias": np.arange(4, dtype=np.float32)}
+    combined = dict(stages)
+    combined.update(conditioner)
+
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(combined, out_dir)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output", "cond_bias"}
+
+
+def test_read_skips_json_sidecars(tmp_path):
+    """The dump scripts write shapes.json / meta.json / weight_shapes.json beside their
+    shards; reading the directory back returns only the tensors, not a parse error."""
+    stages = {"dit_output": np.arange(6, dtype=np.float32).reshape(2, 3)}
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(stages, out_dir)
+    for sidecar in ("shapes.json", "meta.json", "weight_shapes.json"):
+        with open(os.path.join(out_dir, sidecar), "w") as f:
+            json.dump({"dit_output": [2, 3]}, f)
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output"}
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+
+
+def test_read_skips_legacy_bin_files(tmp_path):
+    """A directory dumped into before the protobuf migration may hold bespoke
+    `<stage>.bin` files for stages not in the current dump; reading the directory
+    back skips them rather than failing to parse them as protobuf."""
+    stages = {"dit_output": np.arange(6, dtype=np.float32).reshape(2, 3)}
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations(stages, out_dir)
+    core.save_reference_output(np.arange(3, dtype=np.float32),
+                               os.path.join(out_dir, "legacy_stage.bin"))
+
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded) == {"dit_output"}
+    np.testing.assert_array_equal(reloaded["dit_output"], stages["dit_output"])
+
+
+def test_write_state_dictionary_rejects_reserved_shard_prefix(tmp_path):
+    """A shard_prefix ending in a reserved suffix (`.json` sidecar / `.bin` legacy)
+    is rejected: read_state_dictionary skips those files, so the first shard — named
+    by the bare prefix — would be dropped on read while Java StateDictionary loaded
+    it. The dump directory must stay empty rather than hold an unreadable shard."""
+    out_dir = tmp_path / "reserved"
+    for prefix in ("weights.bin", "weights.json"):
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_write_state_dictionary_rejects_hidden_shard_prefix(tmp_path):
+    """A shard_prefix beginning with `.` names hidden shard files, which both
+    read_state_dictionary and the Java StateDictionary skip. Such a prefix is
+    rejected before anything is written — otherwise write_state_dictionary would
+    report success while producing a dump neither reader can load."""
+    out_dir = tmp_path / "hidden"
+    for prefix in (".weights", ".references", ".hidden.shard"):
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_dump_reference_activations_keeps_legacy_bin_on_hidden_prefix(tmp_path):
+    """A hidden shard_prefix is rejected before the destructive legacy cleanup, so
+    dumping over a pre-migration directory with a `.`-prefixed name must raise
+    ValueError WITHOUT deleting the `<stage>.bin` dump it would have replaced."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    with pytest.raises(ValueError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+            shard_prefix=".references")
+
+    assert legacy.exists(), "legacy dump must survive a hidden-prefix rejection"
+
+
+def test_dump_reference_activations_keeps_legacy_bin_when_bindings_missing(tmp_path, monkeypatch):
+    """The protobuf binding is validated before the destructive legacy cleanup: on a
+    checkout without collections_pb2, dumping over a pre-migration directory must raise
+    ImportError WITHOUT first deleting the `<stage>.bin` dump it would have replaced."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    def _raise():
+        raise ImportError("collections_pb2 unavailable")
+
+    monkeypatch.setattr(core, "_require_collections", _raise)
+
+    with pytest.raises(ImportError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir))
+
+    assert legacy.exists(), "legacy dump must survive a prerequisite failure"
+
+
+def test_dump_reference_activations_keeps_legacy_bin_on_reserved_prefix(tmp_path):
+    """A reserved shard_prefix is rejected before the destructive legacy cleanup:
+    dumping over a pre-migration directory with a `.bin`/`.json` prefix must raise
+    ValueError WITHOUT first deleting the `<stage>.bin` dump it would have replaced."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    for prefix in ("references.bin", "references.json"):
+        with pytest.raises(ValueError):
+            core.dump_reference_activations(
+                {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+                shard_prefix=prefix)
+        assert legacy.exists(), "legacy dump must survive a reserved-prefix rejection"
+
+
+def test_dump_reference_activations_ignores_a_traversing_stage_key(tmp_path):
+    """A stage name is caller-supplied, so the legacy `<stage>.bin` cleanup must not let
+    a name containing `..` (or an absolute path) delete a file outside out_dir. Such a
+    name resolves outside the dump directory and is skipped rather than removed."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    # A `.bin` file OUTSIDE the dump directory that a traversing stage key would map to:
+    # os.path.join(out_dir, "../sentinel.bin") resolves to tmp_path/sentinel.bin.
+    outside = tmp_path / "sentinel.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(outside))
+
+    core.dump_reference_activations(
+        {"../sentinel": np.arange(4, dtype=np.float32)}, str(out_dir))
+
+    assert outside.exists(), "cleanup must not delete a file outside the dump directory"
+
+
+def test_dump_reference_activations_keeps_another_stages_legacy_bin(tmp_path):
+    """A traversing stage key can resolve back inside out_dir onto a different stage's
+    legacy `<stage>.bin` (`sub/../unrelated` -> `out_dir/unrelated.bin`). The parent
+    directory then equals out_dir, so a bare realpath-parent guard would delete that
+    unrelated dump. Cleanup only owns plain single-component stage names, so the
+    traversing key must leave the other stage's legacy file untouched."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    # An intermediate directory the traversing key steps through (the traversal is
+    # only real if the component it descends into exists).
+    (out_dir / "sub").mkdir()
+    # A legacy dump for a DIFFERENT stage, sitting directly inside out_dir.
+    unrelated = out_dir / "unrelated.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(unrelated))
+
+    core.dump_reference_activations(
+        {"sub/../unrelated": np.arange(4, dtype=np.float32)}, str(out_dir))
+
+    assert unrelated.exists(), \
+        "cleanup must not delete another stage's legacy dump via a traversing key"
+
+
+def test_write_state_dictionary_rejects_path_bearing_shard_prefix(tmp_path):
+    """A shard_prefix names files directly inside out_dir, so a prefix that is empty,
+    dot-only, absolute, or contains a path separator is rejected before anything is
+    written — otherwise `../escape` would place a shard beside out_dir, not in it."""
+    out_dir = tmp_path / "w"
+    outside = tmp_path / "abs_target"
+    prefixes = ("../escape", "sub/weights", str(outside), "", ".", "..")
+    for prefix in prefixes:
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+
+    assert not (tmp_path / "escape").exists()
+    assert not outside.exists()
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_dump_reference_activations_rejects_path_bearing_shard_prefix(tmp_path):
+    """The reference dump entry point applies the same prefix rule and, because it
+    fails before writing, leaves a pre-migration `<stage>.bin` dump in place."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    with pytest.raises(ValueError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+            shard_prefix="../references")
+
+    assert not (tmp_path / "references").exists()
+    assert legacy.exists()
+
+
+def test_failed_write_keeps_the_previous_dump(tmp_path, monkeypatch):
+    """Stale same-prefix shards and legacy `<stage>.bin` files are removed only after
+    the replacement shards are written: a failure while writing must leave both the
+    previous protobuf shard and the legacy file on disk and readable."""
+    out_dir = tmp_path / "reference"
+    core.dump_reference_activations({"first": np.arange(3, dtype=np.float32)}, str(out_dir))
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    def _fail(entries, output_dir, prefix):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(core, "write_group", _fail)
+    with pytest.raises(OSError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir))
+
+    assert legacy.exists(), "legacy dump must survive a failed replacement write"
+    np.testing.assert_array_equal(core.read_reference_output(str(legacy)),
+                                  np.arange(3, dtype=np.float32))
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"first"}, "previous shard must survive a failed write"
+    np.testing.assert_array_equal(reloaded["first"], np.arange(3, dtype=np.float32))
+
+
+def test_failure_mid_write_keeps_the_previous_shards(tmp_path, monkeypatch):
+    """A failure after some shards of a group have already been serialized must not
+    truncate or replace the previous dump's same-named shards: shards are staged
+    under hidden names and moved into place only once the whole group is written,
+    and the staged files are removed when the write fails."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    first = core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    assert [os.path.basename(p) for p in first] == ["references", "references_1"]
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    original = core.write_protobuf_file
+    calls = []
+
+    def _fail_on_second(entries, file_path):
+        calls.append(file_path)
+        if len(calls) == 2:
+            with open(file_path, "wb") as f:
+                f.write(b"\x00partial")
+            raise OSError("disk full")
+        original(entries, file_path)
+
+    monkeypatch.setattr(core, "write_protobuf_file", _fail_on_second)
+    replacement = {"a": np.full(7, 9.0, dtype=np.float32), "b": np.full(2, 4.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert len(calls) == 2
+    assert all(os.path.basename(p).startswith(".") for p in calls), \
+        "shards must be serialized under hidden staging names"
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "staged files must be removed after a failed write"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, f"{name} must be untouched"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_successful_write_leaves_no_staged_files(tmp_path, monkeypatch):
+    """After a successful multi-shard write every staged file has been moved onto
+    its final name, replacing the previous content, and no hidden file remains."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    written = core.write_state_dictionary({"a": np.full(2, 6.0, dtype=np.float32),
+                                           "b": np.full(4, 8.0, dtype=np.float32)},
+                                          str(out_dir), shard_prefix="references")
+
+    assert [os.path.basename(p) for p in written] == ["references", "references_1"]
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+    reloaded = core.read_state_dictionary(str(out_dir))
+    np.testing.assert_array_equal(reloaded["a"], np.full(2, 6.0, dtype=np.float32))
+    np.testing.assert_array_equal(reloaded["b"], np.full(4, 8.0, dtype=np.float32))
+
+
+def test_replace_failure_during_promotion_restores_the_previous_dump(tmp_path, monkeypatch):
+    """A failure during the promotion phase — an ``os.replace`` after an earlier shard
+    of the group has already been moved onto its final name — must roll back: the
+    previous dump's shards are restored and no staged or backup file is left behind,
+    so the directory never holds a mix of new and previous shards."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    real_replace = os.replace
+
+    def _fail_second_promotion(src, dst):
+        # Fail only when promoting the second shard's staged file onto its final name,
+        # after the first shard has already been promoted in place.
+        if str(src).endswith(".references_1.partial"):
+            raise OSError("rename failed")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(core.os, "replace", _fail_second_promotion)
+    replacement = {"a": np.full(7, 9.0, dtype=np.float32), "b": np.full(2, 4.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "rollback must leave only the previous shards, with no staged or backup files"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, \
+            f"{name} must be restored to its previous content after a failed promotion"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_stale_shard_retirement_is_rolled_back_on_failure(tmp_path, monkeypatch):
+    """Retiring a stale extra from a prior, larger run is part of the promotion
+    transaction. If moving the stale shard aside fails, the whole replacement rolls
+    back: the previous dump -- both the new-named shard and the stale extra -- is
+    left intact, so a shorter new shard set is never exposed beside a leftover
+    ``prefix_<index>`` that a later load would silently pick up."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    real_replace = os.replace
+
+    def _fail_stale_retirement(src, dst):
+        # Fail only when moving the stale extra aside to its hidden backup, after the
+        # single new shard has already been promoted onto its final name.
+        if str(dst).endswith(".references_1.stale"):
+            raise OSError("cannot move stale shard aside")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(core.os, "replace", _fail_stale_retirement)
+    # The new state needs only one shard, so references_1 becomes a stale extra.
+    replacement = {"a": np.full(2, 7.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "rollback must restore the previous shards with no staged or backup files"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, \
+            f"{name} must be restored to its previous content after a failed retirement"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_shorter_rewrite_retires_stale_extra_shards(tmp_path, monkeypatch):
+    """A successful rewrite that needs fewer shards than the previous run removes the
+    now-stale extra shard, so a directory load sees only the new state."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+
+    written = core.write_state_dictionary({"a": np.full(2, 6.0, dtype=np.float32)},
+                                          str(out_dir), shard_prefix="references")
+
+    assert [os.path.basename(p) for p in written] == ["references"]
+    assert sorted(os.listdir(out_dir)) == ["references"], \
+        "the stale extra shard from the larger run must be retired"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a"}
+    np.testing.assert_array_equal(reloaded["a"], np.full(2, 6.0, dtype=np.float32))
+
+
+def test_empty_rewrite_retires_all_prior_shards(tmp_path, monkeypatch):
+    """Rewriting an existing dump with an empty state clears the prior shards.
+
+    ``write_group`` runs the retirement path even for an empty ``entries`` set, so
+    an empty rewrite removes every ``prefix``/``prefix_<index>`` shard the previous
+    run left behind instead of leaving them for a later load to silently pick up.
+    """
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+
+    written = core.write_state_dictionary({}, str(out_dir), shard_prefix="references")
+
+    assert written == []
+    assert os.listdir(out_dir) == [], \
+        "an empty rewrite must retire every prior shard, not leave them on disk"
+    assert core.read_state_dictionary(str(out_dir)) == {}
+
+
+def test_empty_rewrite_preserves_non_shard_same_prefix_files(tmp_path):
+    """An empty rewrite retires only writer-produced shards, not unrelated files.
+
+    The retirement path an empty rewrite now runs must still respect
+    :func:`_is_shard_name`: a stale numeric shard is removed, but a sidecar or
+    backup that merely shares the prefix survives untouched.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+    stale_shard = os.path.join(out_dir, "weights")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+    sidecar = os.path.join(out_dir, "weights_metadata.json")
+    with open(sidecar, "w", encoding="utf-8") as handle:
+        handle.write("{}")
+
+    written = core.write_state_dictionary({}, out_dir)
+
+    assert written == []
+    assert not os.path.exists(stale_shard), "the stale shard must be retired"
+    assert os.path.isfile(sidecar), "an unrelated same-prefix sidecar must survive"
+
+
+def test_read_still_rejects_a_corrupt_shard(tmp_path):
+    """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
+    file is read as a shard, so a corrupt one is an error rather than being silently
+    dropped."""
+    out_dir = str(tmp_path / "reference")
+    core.dump_reference_activations({"only": np.arange(4, dtype=np.float32)}, out_dir)
+    with open(os.path.join(out_dir, "references_9"), "wb") as f:
+        f.write(b"\xff\xff\xff\xff not a protobuf")
+
+    with pytest.raises(Exception):
+        core.read_state_dictionary(out_dir)
 
 
 def test_run_reference_stages_with_stub_model(tmp_path):
@@ -312,7 +874,7 @@ def test_run_reference_stages_with_stub_model(tmp_path):
     # End-to-end: run stub -> dump -> reload one stage at a time.
     out_dir = str(tmp_path / "ref")
     core.dump_reference_activations(stages, out_dir)
-    reloaded = core.read_reference_output(os.path.join(out_dir, "decoder_output.bin"))
+    reloaded = core.read_state_dictionary(out_dir)["decoder_output"]
     assert reloaded.shape == (8,)
 
 

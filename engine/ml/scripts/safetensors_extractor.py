@@ -40,11 +40,12 @@ import numpy as np
 # generate_protobuf_python.sh from this repo's .proto source files in
 # engine/ml/src/main/proto/) are imported lazily. Only the StateDictionary
 # writer/reader path (numpy_to_collection_data, write_protobuf_file,
-# read_state_dictionary) needs them; the remap/fold helpers and the
-# reference-activation dumps (save_reference_output / dump_reference_activations)
-# are pure struct/numpy. Deferring the import lets a consumer that only dumps
-# reference activations (e.g. dump_same_references.py) run on a fresh checkout
-# without first generating collections_pb2 (which requires grpcio-tools).
+# write_state_dictionary, read_state_dictionary) needs them — and that includes
+# the reference-activation dumps (dump_reference_activations), which write the
+# same protobuf shards, so every dump_*.py entry point needs collections_pb2
+# generated first (generate_protobuf_python.sh). Only the remap/fold helpers
+# are pure numpy; deferring the import keeps them, and their unit tests,
+# runnable on a fresh checkout without the generated bindings.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 collections = None
 
@@ -63,15 +64,23 @@ def _require_collections():
             raise ImportError(
                 "collections_pb2.py not found in the scripts directory. "
                 "Generate it with ./engine/ml/scripts/generate_protobuf_python.sh "
-                "(requires: pip install grpcio-tools). Note: only the "
-                "StateDictionary writer/reader needs it; reference-activation "
-                "dumps do not.") from exc
+                "(requires: pip install grpcio-tools). The StateDictionary "
+                "writer/reader needs it, and so do reference-activation dumps, "
+                "which are written as the same protobuf shards.") from exc
         collections = generated
     return collections
 
 # A single protobuf message must stay comfortably under the 2GB hard limit;
 # this matches the sharding threshold used by the other extractors.
 PROTOBUF_SIZE_LIMIT = 1024 * 1024 * 1024
+
+# Suffix of the human-readable metadata files (shapes.json, meta.json, ...) the
+# dump scripts write beside their shards; read_state_dictionary skips them.
+SIDECAR_SUFFIX = ".json"
+
+# Suffix of the per-stage files reference dumps were written as before they
+# became protobuf shards; dump_reference_activations removes them on rewrite.
+LEGACY_REFERENCE_SUFFIX = ".bin"
 
 
 # ---------------------------------------------------------------------------
@@ -357,41 +366,190 @@ def write_protobuf_file(entries, file_path):
 def write_group(entries, output_dir, prefix):
     """Write a group of entries, splitting into shards under the size limit.
 
-    Returns the list of file paths actually written (in write order), so callers
-    can report exactly what was produced rather than re-scanning the directory.
-    """
-    if not entries:
-        return []
+    Every shard is first written under a hidden staging name (``.<shard>.partial``)
+    and only moved onto its final name with :func:`os.replace` once all shards of
+    the group have been written. A failure while serializing or writing any shard
+    therefore removes the staged files and leaves whatever previously occupied the
+    final names untouched, instead of truncating a previous dump in place. The
+    staging names are hidden, so neither :func:`read_state_dictionary` nor the Java
+    ``StateDictionary`` reader picks one up.
 
-    written = []
+    The promotion phase is rollback-safe too: promoting a group of shards is not a
+    single atomic step, so each existing final shard is moved aside to a hidden
+    ``.<shard>.backup`` before being overwritten, and if any :func:`os.replace`
+    fails partway through the backups are restored and the shards already promoted
+    are dropped. The directory is therefore never left holding a mix of new and
+    previous shards after a caught failure.
+
+    Any stale shard left by a prior, larger run with the same ``prefix`` — a name
+    this writer's own scheme produces (see :func:`_is_shard_name`) that this call
+    did not write — is retired within the same transaction, after the new shards
+    are in place: it is moved aside to a hidden backup and dropped on success, or
+    restored on failure. Folding it in here (rather than in a separate cleanup
+    pass) means the shorter new shard set is never exposed beside a leftover
+    ``prefix_<index>`` that a later load would silently pick up.
+
+    Returns the list of final file paths written (in write order), so callers can
+    report exactly what was produced rather than re-scanning the directory.
+
+    An empty ``entries`` set writes no shards but still runs the retirement path,
+    so rewriting an existing dump with an empty group clears the prior
+    ``prefix``/``prefix_<index>`` shards instead of leaving them behind for a
+    later load to pick up. It returns an empty list in that case.
+    """
+    shards = []
     current = []
     current_size = 0
-    file_index = 0
-
-    def shard_path(index):
-        # The first shard is named by the bare prefix (the marker file tests and
-        # loaders look for); later shards carry a numeric suffix.
-        suffix = f"_{index}" if index > 0 else ""
-        return os.path.join(output_dir, f"{prefix}{suffix}")
 
     for entry in entries:
         entry_size = estimate_size(entry)
         if current_size + entry_size > PROTOBUF_SIZE_LIMIT and current:
-            path = shard_path(file_index)
-            write_protobuf_file(current, path)
-            written.append(path)
+            shards.append(current)
             current = []
             current_size = 0
-            file_index += 1
         current.append(entry)
         current_size += entry_size
 
     if current:
-        path = shard_path(file_index)
-        write_protobuf_file(current, path)
-        written.append(path)
+        shards.append(current)
+
+    # The first shard is named by the bare prefix (the marker file tests and
+    # loaders look for); later shards carry a numeric suffix.
+    names = [f"{prefix}_{index}" if index > 0 else prefix for index in range(len(shards))]
+    kept = set(names)
+    written = [os.path.join(output_dir, name) for name in names]
+    staged = [os.path.join(output_dir, f".{name}.partial") for name in names]
+
+    try:
+        for shard, path in zip(shards, staged):
+            write_protobuf_file(shard, path)
+    except BaseException:
+        for path in staged:
+            if os.path.isfile(path):
+                os.remove(path)
+        raise
+
+    # Stale shards left by a prior, larger run with the same prefix: names this
+    # writer's own scheme produces that this call did not write. They must be
+    # retired as part of this same transaction. The loader reads every non-hidden
+    # file in the directory, so exposing a shorter new shard set beside a leftover
+    # ``prefix_<index>`` would let a later load silently retain the stale shard's
+    # keys; retiring them here (rather than in a separate cleanup pass) keeps the
+    # replacement within one rollback-safe operation.
+    stale = [os.path.join(output_dir, name)
+             for name in sorted(os.listdir(output_dir))
+             if name not in kept
+             and _is_shard_name(name, prefix)
+             and os.path.isfile(os.path.join(output_dir, name))]
+
+    # Promote the staged shards onto their final names, then retire the stale
+    # extras. os.replace is atomic for a single file, but replacing a group of
+    # shards is not: a failure partway through would otherwise leave the directory
+    # holding some new and some previous shards, so the previous dump could no
+    # longer be read as a whole. Move each existing final shard aside to a hidden
+    # backup before overwriting it, and each stale extra aside to a hidden backup
+    # before dropping it, recording every move; on any failure restore the backups,
+    # drop the shards already promoted onto names that had none before, and remove
+    # the staged files, so the previous dump is left exactly as it was. The stale
+    # extras are retired only after every new shard is in place, so a failure while
+    # promoting the new shards leaves the previous dump — extras included — intact.
+    restored = []  # (final, backup) for finals moved aside, in promotion order
+    created = []   # finals that did not exist before this call
+    dropped = []   # (stale, backup) for stale extras moved aside, in drop order
+    try:
+        for path, final in zip(staged, written):
+            if os.path.isfile(final):
+                backup = os.path.join(output_dir, f".{os.path.basename(final)}.backup")
+                os.replace(final, backup)
+                restored.append((final, backup))
+            else:
+                created.append(final)
+            os.replace(path, final)
+        for stale_final in stale:
+            backup = os.path.join(output_dir, f".{os.path.basename(stale_final)}.stale")
+            os.replace(stale_final, backup)
+            dropped.append((stale_final, backup))
+    except BaseException:
+        for final in created:
+            if os.path.isfile(final):
+                os.remove(final)
+        for final, backup in reversed(restored):
+            os.replace(backup, final)
+        for stale_final, backup in reversed(dropped):
+            os.replace(backup, stale_final)
+        for path in staged:
+            if os.path.isfile(path):
+                os.remove(path)
+        raise
+
+    for _, backup in restored:
+        if os.path.isfile(backup):
+            os.remove(backup)
+    for _, backup in dropped:
+        if os.path.isfile(backup):
+            os.remove(backup)
 
     return written
+
+
+def _validate_shard_prefix(shard_prefix):
+    """Reject a ``shard_prefix`` that is not a plain file name, or that ends in a
+    reserved suffix.
+
+    The prefix names the shard files inside ``out_dir``, so it must be a single
+    path component: an empty or dot-only name, a name containing a path
+    separator, or an absolute path would write shards outside the output
+    directory (or nowhere sensible) rather than into it.
+
+    Both :func:`read_state_dictionary` and the Java ``StateDictionary`` skip
+    hidden files (a name beginning with ``.``) as well as files ending in
+    ``SIDECAR_SUFFIX`` (``.json``) or ``LEGACY_REFERENCE_SUFFIX`` (``.bin``), so a
+    hidden or reserved-suffix prefix would name a first shard that both readers
+    drop while :func:`write_state_dictionary` still reports success. Rejecting
+    such a prefix keeps the dump readable by both readers.
+    """
+    separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
+    if (shard_prefix in ("", ".", "..") or os.path.isabs(shard_prefix)
+            or any(sep in shard_prefix for sep in separators)):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} is not a plain file name; shards are "
+            "written directly inside the output directory, so the prefix may not "
+            "be empty, '.', '..', absolute, or contain a path separator.")
+    if shard_prefix.startswith("."):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} names a hidden file; read_state_dictionary "
+            "and the Java StateDictionary both skip files beginning with '.', so every "
+            "shard would be dropped on read. Choose a shard_prefix that does not begin "
+            "with '.'.")
+    if shard_prefix.endswith(SIDECAR_SUFFIX) or shard_prefix.endswith(LEGACY_REFERENCE_SUFFIX):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} ends in a reserved suffix "
+            f"({SIDECAR_SUFFIX} / {LEGACY_REFERENCE_SUFFIX}); read_state_dictionary "
+            "skips files with those suffixes, so the first shard would be dropped "
+            "on read. Choose a shard_prefix without that suffix.")
+
+
+def _is_shard_name(name, shard_prefix):
+    """Return True only for names :func:`write_group` itself produces.
+
+    A shard group is written as the bare ``shard_prefix`` (the first shard) and
+    ``shard_prefix_<index>`` for later shards, where ``<index>`` is the canonical
+    decimal shard index ``str(index)`` for some ``index > 0`` -- an ASCII decimal
+    with no leading zero. Any other name that merely shares the prefix is not a
+    shard the writer produces, and the stale-shard cleanup must leave it
+    untouched: this deliberately excludes a non-canonical numeric-looking suffix
+    such as ``weights_0`` / ``weights_01`` (never emitted, ``index`` starts at 1
+    and carries no leading zero) or a Unicode-digit suffix (``str.isdigit`` accepts
+    superscripts and other scripts), as well as an unrelated sidecar or backup
+    such as ``weights_metadata.json``.
+    """
+    if name == shard_prefix:
+        return True
+    marker = shard_prefix + "_"
+    if not name.startswith(marker):
+        return False
+    suffix = name[len(marker):]
+    return suffix.isascii() and suffix.isdigit() and suffix[0] != "0"
 
 
 def write_state_dictionary(state, out_dir, shard_prefix="weights"):
@@ -403,24 +561,36 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     shard names are arbitrary. Keys are written in sorted order for a stable,
     diff-friendly layout.
 
-    Any stale shard left from a prior run with the same ``shard_prefix`` is
-    removed before writing: because the loader reads every non-hidden file in the
-    directory, a leftover same-prefix shard would silently pollute a later load.
-    Returns exactly the list of file paths written by this call (sorted), tracked
-    from :func:`write_group` rather than re-scanned from disk.
-    """
-    os.makedirs(out_dir, exist_ok=True)
+    Any stale shard left from a prior, larger run with the same ``shard_prefix``
+    that this call did not overwrite is retired by :func:`write_group` within the
+    same rollback-safe transaction that promotes the new shards: because the loader
+    reads every non-hidden file in the directory, a leftover same-prefix shard
+    would silently pollute a later load, and retiring it inside the transaction
+    means a failure while converting or writing never deletes a usable dump it then
+    cannot replace, nor exposes the shorter new shard set beside a stale extra. Only
+    the names this writer itself produces are retired — the bare prefix and
+    ``shard_prefix_<index>`` for a canonical positive decimal index — so an
+    unrelated sidecar or backup that merely shares the prefix (for example
+    ``weights_metadata.json``) is never deleted. Returns exactly the list of file
+    paths written by this call (sorted), tracked from :func:`write_group` rather
+    than re-scanned from disk.
 
-    # Clear stale same-prefix shards from a previous run so they cannot pollute a
-    # later StateDictionary load (the loader reads every non-hidden file).
-    for name in os.listdir(out_dir):
-        if name == shard_prefix or name.startswith(shard_prefix + "_"):
-            stale = os.path.join(out_dir, name)
-            if os.path.isfile(stale):
-                os.remove(stale)
+    ``shard_prefix`` must be a plain file name (see :func:`_validate_shard_prefix`),
+    may not begin with ``.`` and may not end in a reserved suffix (``.json``
+    sidecar or ``.bin`` legacy reference): both :func:`read_state_dictionary` and
+    the Java ``StateDictionary`` skip hidden and reserved-suffix files, so the
+    first shard — named by the bare prefix — would be dropped on read. Such a
+    prefix is rejected rather than written outside ``out_dir`` or into an
+    unreadable dump.
+    """
+    _validate_shard_prefix(shard_prefix)
+    _require_collections()
+
+    os.makedirs(out_dir, exist_ok=True)
 
     entries = [make_entry(key, state[key]) for key in sorted(state.keys())]
     written = write_group(entries, out_dir, shard_prefix)
+
     return sorted(written)
 
 
@@ -431,12 +601,23 @@ def read_state_dictionary(path):
     the Java ``StateDictionary`` directory read and exists so Python tests can
     round-trip ``write_state_dictionary`` output without a JVM. Arrays are
     reshaped to their stored ``traversal_policy.dims``.
+
+    In a directory, hidden files, ``.json`` metadata sidecars, and legacy
+    ``.bin`` reference files are skipped: the dump scripts write ``shapes.json`` /
+    ``meta.json`` / ``weight_shapes.json`` beside the shards they produce, and a
+    directory dumped into before the protobuf migration may still hold bespoke
+    ``<stage>.bin`` files for stages not in the current dump. Neither is protobuf,
+    and shards carry no extension, so skipping both leaves only real shards. This
+    mirrors the Java ``StateDictionary`` reader, which tolerates such files
+    through its per-file try/catch.
     """
     if os.path.isdir(path):
         files = sorted(
             os.path.join(path, name)
             for name in os.listdir(path)
-            if not name.startswith(".") and os.path.isfile(os.path.join(path, name))
+            if not name.startswith(".") and not name.endswith(SIDECAR_SUFFIX)
+            and not name.endswith(LEGACY_REFERENCE_SUFFIX)
+            and os.path.isfile(os.path.join(path, name))
         )
     else:
         files = [path]
@@ -481,22 +662,63 @@ def read_reference_output(filepath):
     return np.frombuffer(data, dtype="<f4").astype(np.float32)
 
 
-def dump_reference_activations(stages, out_dir):
-    """Write a name -> activation mapping as per-stage reference ``.bin`` files.
+def dump_reference_activations(stages, out_dir, shard_prefix="references"):
+    """Write a name -> activation mapping as protobuf collection data.
 
     ``stages`` maps a stage name (e.g. ``"test_input"``, ``"resampling_stage_0"``,
-    ``"encoder_output"``, ``"decoder_output"``) to a numpy array. Each is written
-    to ``out_dir/<name>.bin`` via :func:`save_reference_output`. Returns the list
-    of written paths. Block C2's parity tests load these files one stage at a
-    time. The activations themselves must come from a real reference forward pass
-    (see :func:`run_reference_stages`); this function only serializes them.
+    ``"encoder_output"``, ``"decoder_output"``) to a numpy array. They are written
+    through :func:`write_state_dictionary`, so a reference dump is the same
+    protobuf a weight export is and is read by the same Java ``StateDictionary``
+    — which maps it rather than materializing it, and carries each tensor's shape
+    with its values. Returns the list of shard paths written.
+
+    Protobuf is the format tensors cross the language boundary in; this used to
+    write a bespoke ``[uint32 count][float32 ...]`` file per stage instead, which
+    the writer above had no part in, threw the shapes away, and needed a Java
+    reader of its own. That the reference path avoided protobuf was once treated
+    as a feature worth keeping — it meant a dump host did not have to generate
+    ``collections_pb2`` — and it is not: generating the bindings is one script
+    (``generate_protobuf_python.sh``), and a second serialization format is not
+    worth avoiding it.
+
+    A ``<name>.bin`` file the bespoke format left for a stage now being written is
+    removed once the protobuf shards have been written, so the directory holds one
+    representation of that stage rather than a stale raw file beside its protobuf
+    shard; a failed write leaves it in place. A ``.bin`` for some other
+    stage is left alone: it does not have to be this writer's to remove for the
+    dump to read back, because :func:`read_state_dictionary` skips legacy ``.bin``
+    files (and the Java ``StateDictionary`` reader tolerates them, logging a
+    warning per unparseable file rather than failing).
+
+    The activations themselves must come from a real reference forward pass (see
+    :func:`run_reference_stages`); this function only serializes them.
     """
-    os.makedirs(out_dir, exist_ok=True)
-    written = []
-    for name, array in stages.items():
-        path = os.path.join(out_dir, f"{name}.bin")
-        save_reference_output(array, path)
-        written.append(path)
+    state = {name: np.asarray(array).astype(np.float32)
+             for name, array in stages.items()}
+    written = write_state_dictionary(state, out_dir, shard_prefix=shard_prefix)
+
+    # The legacy files are removed only after the replacement shards exist, so a
+    # failure anywhere in the write leaves the previous dump usable.
+    #
+    # A stage name is caller-supplied, so joining it into a filesystem path can
+    # escape out_dir (``../other.bin``, an absolute path) or, while resolving
+    # back inside out_dir, land on a different stage's legacy file
+    # (``sub/../unrelated`` -> ``out_dir/unrelated.bin``). The legacy file this
+    # dump owns is exactly ``<stage>.bin`` for a plain stage name, so only a name
+    # that is a single path component names a file this cleanup may remove: skip
+    # any name that carries a path separator, and re-check that the result still
+    # resolves directly inside out_dir.
+    out_dir_real = os.path.realpath(out_dir)
+    for name in stages:
+        legacy_name = name + LEGACY_REFERENCE_SUFFIX
+        if os.path.basename(legacy_name) != legacy_name:
+            continue
+        legacy = os.path.join(out_dir, legacy_name)
+        if os.path.dirname(os.path.realpath(legacy)) != out_dir_real:
+            continue
+        if os.path.isfile(legacy):
+            os.remove(legacy)
+
     return written
 
 

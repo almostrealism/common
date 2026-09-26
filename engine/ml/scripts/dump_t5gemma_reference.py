@@ -8,8 +8,8 @@ runs the **real** ``google/t5gemma-b-b-ul2`` encoder exactly as
 ``stable_audio_3.models.conditioners.T5GemmaConditioner`` does (``config.
 is_encoder_decoder = False``, ``T5GemmaEncoderModel``, tokenizer
 ``padding="max_length"``, ``truncation=True``) on a fixed prompt, then writes
-per-stage activations with the Block E serializer
-(:func:`safetensors_extractor.save_reference_output`) for a Java parity test to
+per-stage activations as protobuf collection data
+(:func:`safetensors_extractor.dump_reference_activations`) for a Java parity test to
 compare against.
 
 The released Stable Audio 3 checkpoints do not embed T5Gemma's weights; the
@@ -195,7 +195,8 @@ def main():
     with open(os.path.join(args.out, "t5_shapes.json"), "w") as f:
         json.dump(shapes, f, indent=2, sort_keys=True)
 
-    print("Wrote %d reference activations to %s" % (len(written), args.out))
+    print("Wrote %d reference activations (%d shard(s)) to %s"
+          % (len(stages), len(written), args.out))
     for name in sorted(stages):
         print("  %-24s %s" % (name, list(stages[name].shape)))
 

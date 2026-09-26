@@ -15,7 +15,10 @@ checkpoints still load but a bf16 checkpoint raises a clear error.
 ## Generated Files
 
 The `collections_pb2.py` file is **not checked into git** because it's generated code.
-Generate it from the proto definition:
+Every script that writes or reads protobuf shards needs it, including the reference
+dumpers (`dump_same_references.py`, `dump_same_resampling_weights.py`,
+`dump_sa3_dit_reference.py`, `dump_t5gemma_reference.py`).
+Generate it from the proto definition (or run `generate_protobuf_python.sh`):
 
 ```bash
 protoc --python_out=. --proto_path=../src/main/proto collections.proto
@@ -42,7 +45,10 @@ weights. It exposes:
   shared protobuf shard writer/reader (the torch-based extractors import the
   writer from here so there is a single implementation)
 - `dump_reference_activations(stages, out_dir)` / `run_reference_stages(model, x)`
-  -- per-stage reference `.bin` dumps for the SAME parity tests
+  -- per-stage reference dumps for the parity tests, written as the same protobuf
+  shards through `write_state_dictionary` (so the `dump_*.py` scripts need the
+  generated `collections_pb2.py` above); `read_state_dictionary` skips the `.json`
+  metadata sidecars those scripts write beside the shards
 
 A concrete extractor is a thin config that declares its remap rules and calls
 `core.extract(...)` (see `extract_sa3_weights.py`).
