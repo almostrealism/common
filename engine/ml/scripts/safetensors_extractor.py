@@ -464,11 +464,12 @@ def _validate_shard_prefix(shard_prefix):
     separator, or an absolute path would write shards outside the output
     directory (or nowhere sensible) rather than into it.
 
-    :func:`read_state_dictionary` skips files ending in ``SIDECAR_SUFFIX``
-    (``.json``) or ``LEGACY_REFERENCE_SUFFIX`` (``.bin``), so the first shard —
-    named by the bare prefix — would be dropped on read while the Java
-    ``StateDictionary`` still loaded it. Rejecting such a prefix keeps the dump
-    readable by both readers.
+    Both :func:`read_state_dictionary` and the Java ``StateDictionary`` skip
+    hidden files (a name beginning with ``.``) as well as files ending in
+    ``SIDECAR_SUFFIX`` (``.json``) or ``LEGACY_REFERENCE_SUFFIX`` (``.bin``), so a
+    hidden or reserved-suffix prefix would name a first shard that both readers
+    drop while :func:`write_state_dictionary` still reports success. Rejecting
+    such a prefix keeps the dump readable by both readers.
     """
     separators = [sep for sep in (os.sep, os.altsep, "/") if sep]
     if (shard_prefix in ("", ".", "..") or os.path.isabs(shard_prefix)
@@ -477,6 +478,12 @@ def _validate_shard_prefix(shard_prefix):
             f"shard_prefix {shard_prefix!r} is not a plain file name; shards are "
             "written directly inside the output directory, so the prefix may not "
             "be empty, '.', '..', absolute, or contain a path separator.")
+    if shard_prefix.startswith("."):
+        raise ValueError(
+            f"shard_prefix {shard_prefix!r} names a hidden file; read_state_dictionary "
+            "and the Java StateDictionary both skip files beginning with '.', so every "
+            "shard would be dropped on read. Choose a shard_prefix that does not begin "
+            "with '.'.")
     if shard_prefix.endswith(SIDECAR_SUFFIX) or shard_prefix.endswith(LEGACY_REFERENCE_SUFFIX):
         raise ValueError(
             f"shard_prefix {shard_prefix!r} ends in a reserved suffix "
@@ -503,12 +510,13 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     written by this call (sorted), tracked from :func:`write_group` rather than
     re-scanned from disk.
 
-    ``shard_prefix`` must be a plain file name (see :func:`_validate_shard_prefix`)
-    and may not end in a reserved suffix (``.json`` sidecar or ``.bin`` legacy
-    reference): :func:`read_state_dictionary` skips files with those suffixes, so
-    the first shard — named by the bare prefix — would be dropped on read while
-    the Java ``StateDictionary`` still loaded it. Such a prefix is rejected rather
-    than written outside ``out_dir`` or into an unreadable dump.
+    ``shard_prefix`` must be a plain file name (see :func:`_validate_shard_prefix`),
+    may not begin with ``.`` and may not end in a reserved suffix (``.json``
+    sidecar or ``.bin`` legacy reference): both :func:`read_state_dictionary` and
+    the Java ``StateDictionary`` skip hidden and reserved-suffix files, so the
+    first shard — named by the bare prefix — would be dropped on read. Such a
+    prefix is rejected rather than written outside ``out_dir`` or into an
+    unreadable dump.
     """
     _validate_shard_prefix(shard_prefix)
     _require_collections()

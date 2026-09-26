@@ -398,6 +398,36 @@ def test_write_state_dictionary_rejects_reserved_shard_prefix(tmp_path):
     assert not out_dir.exists() or not list(out_dir.iterdir())
 
 
+def test_write_state_dictionary_rejects_hidden_shard_prefix(tmp_path):
+    """A shard_prefix beginning with `.` names hidden shard files, which both
+    read_state_dictionary and the Java StateDictionary skip. Such a prefix is
+    rejected before anything is written — otherwise write_state_dictionary would
+    report success while producing a dump neither reader can load."""
+    out_dir = tmp_path / "hidden"
+    for prefix in (".weights", ".references", ".hidden.shard"):
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_dump_reference_activations_keeps_legacy_bin_on_hidden_prefix(tmp_path):
+    """A hidden shard_prefix is rejected before the destructive legacy cleanup, so
+    dumping over a pre-migration directory with a `.`-prefixed name must raise
+    ValueError WITHOUT deleting the `<stage>.bin` dump it would have replaced."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    with pytest.raises(ValueError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+            shard_prefix=".references")
+
+    assert legacy.exists(), "legacy dump must survive a hidden-prefix rejection"
+
+
 def test_dump_reference_activations_keeps_legacy_bin_when_bindings_missing(tmp_path, monkeypatch):
     """The protobuf binding is validated before the destructive legacy cleanup: on a
     checkout without collections_pb2, dumping over a pre-migration directory must raise

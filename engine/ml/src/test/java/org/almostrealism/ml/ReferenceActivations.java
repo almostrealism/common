@@ -79,6 +79,32 @@ public class ReferenceActivations implements Destroyable {
 	}
 
 	/**
+	 * The key under which {@code name} is stored, preferring an exact match so a tensor whose key
+	 * itself ends in {@link #FILE_SUFFIX} stays readable, and falling back to the suffix-stripped
+	 * {@link #key(String)} so a legacy per-tensor {@code .bin} file marker still resolves to the
+	 * tensor it names.
+	 *
+	 * @param references the shards to resolve against
+	 * @param name       a tensor key, or the file name a per-tensor dump would write it to
+	 * @return the resolved key
+	 */
+	private static String resolveKey(StateDictionary references, String name) {
+		return references.containsKey(name) ? name : key(name);
+	}
+
+	/**
+	 * Whether {@code references} holds {@code name} under its exact key or, failing that, under the
+	 * suffix-stripped {@link #key(String)}.
+	 *
+	 * @param references the shards
+	 * @param name       a tensor key, or the file name a per-tensor dump would write it to
+	 * @return whether the tensor is present
+	 */
+	private static boolean containsResolved(StateDictionary references, String name) {
+		return references.containsKey(name) || references.containsKey(key(name));
+	}
+
+	/**
 	 * The shards in this directory, read on first use.
 	 *
 	 * @return the references
@@ -100,7 +126,7 @@ public class ReferenceActivations implements Destroyable {
 	 * @throws IOException if the shards cannot be read
 	 */
 	public boolean contains(String name) throws IOException {
-		return getReferences().containsKey(key(name));
+		return containsResolved(getReferences(), name);
 	}
 
 	/**
@@ -125,11 +151,13 @@ public class ReferenceActivations implements Destroyable {
 	 * @throws IllegalStateException if the directory holds no such reference
 	 */
 	public PackedCollection collection(String name) throws IOException {
-		PackedCollection result = getReferences().get(key(name));
+		StateDictionary references = getReferences();
+		String resolved = resolveKey(references, name);
+		PackedCollection result = references.get(resolved);
 
 		if (result == null) {
-			throw new IllegalStateException(key(name) + " is not among the references in "
-					+ directory + " (" + getReferences().keySet() + ")");
+			throw new IllegalStateException(resolved + " is not among the references in "
+					+ directory + " (" + references.keySet() + ")");
 		}
 
 		return result;
@@ -204,7 +232,7 @@ public class ReferenceActivations implements Destroyable {
 			File dir = new File(candidate);
 			if (!dir.isDirectory()) continue;
 
-			if (new File(dir, marker).exists() || holds(dir, key(marker))) {
+			if (new File(dir, marker).exists() || holds(dir, marker)) {
 				return dir;
 			}
 		}
@@ -219,13 +247,13 @@ public class ReferenceActivations implements Destroyable {
 	 * does not hold it; a caller asking whether a candidate is the right directory does not want
 	 * the read of a wrong candidate to be an error.</p>
 	 *
-	 * @param dir the directory
-	 * @param key the tensor key
+	 * @param dir    the directory
+	 * @param marker a tensor key, or the file name a per-tensor dump would write it to
 	 * @return whether the tensor is there
 	 */
-	private static boolean holds(File dir, String key) {
+	private static boolean holds(File dir, String marker) {
 		try (StateDictionary shards = new StateDictionary(dir.getPath())) {
-			return shards.containsKey(key);
+			return containsResolved(shards, marker);
 		} catch (IOException | RuntimeException e) {
 			return false;
 		}

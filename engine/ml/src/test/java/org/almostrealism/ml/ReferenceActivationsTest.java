@@ -227,6 +227,29 @@ public class ReferenceActivationsTest extends SAMEResamplingTestBase {
 	}
 
 	/**
+	 * A tensor whose key itself ends in the legacy {@code .bin} suffix is read by its exact key
+	 * rather than truncated to the suffix-stripped name and reported absent, while the
+	 * suffix-stripped fallback stays available for a legacy file marker naming a stored key.
+	 *
+	 * @throws IOException if the dump cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void aKeyEndingInTheLegacySuffixIsReadExactly() throws IOException {
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		tensors.put("weights.bin", new PackedCollection(shape(4)).fill(3.5));
+		tensors.put("enc_after_mapping", new PackedCollection(shape(2)).fill(1.0));
+		ReferenceActivations references = references(dump(tensors));
+
+		assertTrue(references.contains("weights.bin"));
+		assertEquals(4, references.collection("weights.bin").getShape().getTotalSize());
+		assertEquals(3.5, references.collection("weights.bin").toDouble(2));
+
+		// The suffix-stripped fallback still resolves a legacy file marker to its stored key.
+		assertTrue(references.contains("enc_after_mapping.bin"));
+		assertEquals(1.0, references.collection("enc_after_mapping.bin").toDouble(1));
+	}
+
+	/**
 	 * The shards are opened once and shared by every read; releasing them is idempotent, and a
 	 * read after the release opens them afresh with the same contents.
 	 *
