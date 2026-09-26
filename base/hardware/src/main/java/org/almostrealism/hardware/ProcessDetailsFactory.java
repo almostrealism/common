@@ -599,7 +599,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * (a plain reference-producing {@link Evaluable}, such as the handle-only lambdas a compiled
 	 * {@code Assignment} binds its source/destination to) receives {@code null} instead, even
 	 * though the generic {@code async()} wrapper ({@code EvaluableStreamingAdapter}) it gets
-	 * wrapped in unconditionally reports {@code isDispatchBacked() == true} once constructed.
+	 * wrapped in reports {@code isDispatchBacked() == true} for such a plain evaluable.
 	 * That wrapper-level report describes what the adapter's {@code request} is <em>capable</em>
 	 * of (waiting on a non-null dependency before calling {@code evaluate()}), not whether this
 	 * particular argument needs it: a handle-only evaluable never reads memory content during its

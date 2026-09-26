@@ -1184,7 +1184,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * <p>Not {@code final} so tests can stub the result without a real git
      * working tree, the same testability pattern
-     * {@code CodingAgentJob.hasUncommittedChanges()} already uses.</p>
+     * {@link #hasUncommittedChanges()} already uses.</p>
      *
      * @return the staging result today's changes would produce: which files
      *         would be staged, and which would be skipped and why

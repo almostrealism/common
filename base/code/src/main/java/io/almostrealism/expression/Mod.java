@@ -70,8 +70,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableRemoveMultiples = true;
 
 	/**
-	 * When {@code true}, the upper bound of a mod expression is reported as
-	 * {@code modulus - 1} when the modulus is a known constant.
+	 * When {@code true}, an integer mod by a known positive constant whose dividend
+	 * is non-negative with known bounds reports the tighter range-based upper bound
+	 * ({@code upper % modulus} when the whole range falls inside one multiple of the
+	 * modulus). Otherwise, and whenever this is {@code false}, the upper bound for a
+	 * known constant modulus is {@code |modulus| - 1}.
 	 */
 	public static boolean enableSpanUpperBound = true;
 
