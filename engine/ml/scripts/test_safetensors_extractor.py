@@ -420,11 +420,9 @@ def test_dump_reference_activations_keeps_legacy_bin_when_bindings_missing(tmp_p
 
 
 def test_dump_reference_activations_keeps_legacy_bin_on_reserved_prefix(tmp_path):
-    """A reserved shard_prefix is validated before the destructive legacy cleanup:
+    """A reserved shard_prefix is rejected before the destructive legacy cleanup:
     dumping over a pre-migration directory with a `.bin`/`.json` prefix must raise
-    ValueError WITHOUT first deleting the `<stage>.bin` dump it would have replaced.
-    Without hoisting the check, write_state_dictionary raises only after the cleanup
-    loop has already removed the legacy file."""
+    ValueError WITHOUT first deleting the `<stage>.bin` dump it would have replaced."""
     out_dir = tmp_path / "reference"
     out_dir.mkdir()
     legacy = out_dir / "dit_output.bin"
@@ -453,6 +451,65 @@ def test_dump_reference_activations_ignores_a_traversing_stage_key(tmp_path):
         {"../sentinel": np.arange(4, dtype=np.float32)}, str(out_dir))
 
     assert outside.exists(), "cleanup must not delete a file outside the dump directory"
+
+
+def test_write_state_dictionary_rejects_path_bearing_shard_prefix(tmp_path):
+    """A shard_prefix names files directly inside out_dir, so a prefix that is empty,
+    dot-only, absolute, or contains a path separator is rejected before anything is
+    written — otherwise `../escape` would place a shard beside out_dir, not in it."""
+    out_dir = tmp_path / "w"
+    outside = tmp_path / "abs_target"
+    prefixes = ("../escape", "sub/weights", str(outside), "", ".", "..")
+    for prefix in prefixes:
+        with pytest.raises(ValueError):
+            core.write_state_dictionary(
+                {"only": np.arange(4, dtype=np.float32)}, str(out_dir), shard_prefix=prefix)
+
+    assert not (tmp_path / "escape").exists()
+    assert not outside.exists()
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_dump_reference_activations_rejects_path_bearing_shard_prefix(tmp_path):
+    """The reference dump entry point applies the same prefix rule and, because it
+    fails before writing, leaves a pre-migration `<stage>.bin` dump in place."""
+    out_dir = tmp_path / "reference"
+    out_dir.mkdir()
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    with pytest.raises(ValueError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir),
+            shard_prefix="../references")
+
+    assert not (tmp_path / "references").exists()
+    assert legacy.exists()
+
+
+def test_failed_write_keeps_the_previous_dump(tmp_path, monkeypatch):
+    """Stale same-prefix shards and legacy `<stage>.bin` files are removed only after
+    the replacement shards are written: a failure while writing must leave both the
+    previous protobuf shard and the legacy file on disk and readable."""
+    out_dir = tmp_path / "reference"
+    core.dump_reference_activations({"first": np.arange(3, dtype=np.float32)}, str(out_dir))
+    legacy = out_dir / "dit_output.bin"
+    core.save_reference_output(np.arange(3, dtype=np.float32), str(legacy))
+
+    def _fail(entries, output_dir, prefix):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(core, "write_group", _fail)
+    with pytest.raises(OSError):
+        core.dump_reference_activations(
+            {"dit_output": np.arange(6, dtype=np.float32)}, str(out_dir))
+
+    assert legacy.exists(), "legacy dump must survive a failed replacement write"
+    np.testing.assert_array_equal(core.read_reference_output(str(legacy)),
+                                  np.arange(3, dtype=np.float32))
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"first"}, "previous shard must survive a failed write"
+    np.testing.assert_array_equal(reloaded["first"], np.arange(3, dtype=np.float32))
 
 
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
