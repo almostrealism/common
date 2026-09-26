@@ -201,12 +201,15 @@ import java.util.stream.IntStream;
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
  * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
- * (JNI/OpenCL/Metal), its lifetime is tied to this Java holder, not to a bytes-used budget:
- * once the holder becomes unreachable, {@code HardwareMemoryProvider}'s phantom-reference queue
- * frees the native block at some later garbage-collection cycle. Freeing native memory while a
- * dispatched kernel still reads it is a use-after-free; {@code KernelMemoryGuard} defers the free
- * for kernels dispatched through the standard operators. Call {@link #destroy()} deterministically
- * (via try-with-resources) for memory you own and no longer need, rather than waiting for GC.</p>
+ * (JNI/OpenCL/Metal), its lifetime is tied to the provider-owned backing object, not to a bytes-used
+ * budget: {@code HardwareMemoryProvider}'s phantom-reference queue tracks that backing {@code RAM}
+ * (not every {@link MemoryData} instance) and frees the native block at some later garbage-collection
+ * cycle once it becomes unreachable. A delegated or view {@link MemoryData} does not own its
+ * {@link Memory}, so collecting the view does not free anything while its delegate &mdash; and thus
+ * the backing block &mdash; is still reachable. Freeing native memory while a dispatched kernel still
+ * reads it is a use-after-free; {@code KernelMemoryGuard} defers the free for kernels dispatched
+ * through the standard operators. Call {@link #destroy()} deterministically (via try-with-resources)
+ * for memory you own and no longer need, rather than waiting for GC.</p>
  *
  * <h2>Thread Safety</h2>
  *

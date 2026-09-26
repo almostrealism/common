@@ -151,8 +151,8 @@ import java.util.stream.Collectors;
  * (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
  * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and
  * {@code NativeMemoryProvider} each reject an over-budget allocation with a {@code HardwareException}
- * ("Memory max reached"); no allocator returns a silent zero pointer. See the native runtime
- * lifecycle internals doc.</p>
+ * (message {@code "Memory Max Reached"} from the two GPU providers, {@code "Memory max reached"} from
+ * {@code NativeMemoryProvider}); no allocator returns a silent zero pointer. See the internals doc.</p>
  * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
  *
  * <h3>AR_HARDWARE_MEMORY_LOCATION</h3>

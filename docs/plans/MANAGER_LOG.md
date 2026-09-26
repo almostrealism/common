@@ -53,7 +53,7 @@ narrative. What carried over from the old log, condensed:
 
 #### What I investigated
 
-- `docs/internals/` now has 35 pages; the compile side of the pipeline is well covered.
+- `docs/internals/` covers the compile side of the pipeline well.
 - The hardware README (~1150 lines) covers memory *usage patterns* thoroughly.
 - `docs/plans/KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` (May 2026) lists five gaps exposed when a
   native-crash investigation in a client application produced three mechanically impossible

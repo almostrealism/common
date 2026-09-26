@@ -128,8 +128,16 @@ bytes-used budget. `HardwareMemoryProvider` registers each allocation's backing 
 `java.lang.ref.PhantomReference` (`NativeRef`) on a `ReferenceQueue`. Two background threads run the
 release: a *submit* thread blocks on `referenceQueue.remove()` until the GC enqueues a collected
 reference, and a *process* thread drains a size-ordered `PriorityBlockingQueue` and performs the
-actual native free (largest allocations first). This means a `MemoryData` whose holder becomes
-unreachable may have its native backing freed at any subsequent GC cycle.
+actual native free (largest allocations first). This means the backing `RAM` of a collection whose
+holder becomes unreachable may have its native block freed at any subsequent GC cycle.
+
+The phantom-queue *free* applies where the provider owns the native bytes: the JNI-calloc path of
+`NativeMemoryProvider`, `CLMemoryProvider` (OpenCL), and `MetalMemoryProvider` (Metal). The one
+exception is `NativeMemoryProvider`'s **NIO direct-buffer** mode (`isDirect()`), where the bytes are
+a JVM `DirectByteBuffer` and are freed by the JVM's own direct-buffer cleaner when that buffer is
+collected. There the provider's phantom reference is a `NativeBufferRef` whose post-GC work is only
+to unmap shared memory and notify deallocation listeners — it does not free the direct-buffer bytes,
+because it does not own them.
 
 `MemoryDataAdapter.enableFinalizer` is `false` by default; the finalizer, when enabled, only reports
 leaked allocations — it is not part of the release path. Deterministic release is the caller's job
@@ -173,9 +181,10 @@ framework relies on it.
   instance fields (`context`, `metadata`, `parallelism` on `BaseGeneratedOperation`) are set once at
   setup and read, not mutated, during dispatch.
 - **The generated C side has no shared mutable state.** Every generated `apply` receives all of its
-  state through arguments (the pointer array, offsets, sizes, count, global id, kernel size). The C
-  source `NativeCompiler` prepends declares no mutable globals — only the `M_PI_F` constant. There
-  is no scratch buffer or static captured between calls.
+  state through arguments (the pointer array, offsets, sizes, count, global id, kernel size). The
+  only file-scope value `NativeCompiler` prepends is `M_PI_F` (a π value; a writable file-scope
+  declaration that the generated code only reads, never assigns), so there is no scratch buffer or
+  static state captured between calls.
 - **The framework already dispatches one instance from many threads.** When `getParallelism() > 1`,
   `NativeExecution.coordinate(...)` submits the *same* instruction-set instance to a thread pool and
   each worker invokes `apply` concurrently, over disjoint index ranges (`globalId + i`). Metal takes
