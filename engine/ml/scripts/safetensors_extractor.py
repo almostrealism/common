@@ -391,10 +391,12 @@ def write_group(entries, output_dir, prefix):
 
     Returns the list of final file paths written (in write order), so callers can
     report exactly what was produced rather than re-scanning the directory.
-    """
-    if not entries:
-        return []
 
+    An empty ``entries`` set writes no shards but still runs the retirement path,
+    so rewriting an existing dump with an empty group clears the prior
+    ``prefix``/``prefix_<index>`` shards instead of leaving them behind for a
+    later load to pick up. It returns an empty list in that case.
+    """
     shards = []
     current = []
     current_size = 0

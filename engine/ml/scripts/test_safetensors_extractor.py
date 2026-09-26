@@ -791,6 +791,51 @@ def test_shorter_rewrite_retires_stale_extra_shards(tmp_path, monkeypatch):
     np.testing.assert_array_equal(reloaded["a"], np.full(2, 6.0, dtype=np.float32))
 
 
+def test_empty_rewrite_retires_all_prior_shards(tmp_path, monkeypatch):
+    """Rewriting an existing dump with an empty state clears the prior shards.
+
+    ``write_group`` runs the retirement path even for an empty ``entries`` set, so
+    an empty rewrite removes every ``prefix``/``prefix_<index>`` shard the previous
+    run left behind instead of leaving them for a later load to silently pick up.
+    """
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+
+    written = core.write_state_dictionary({}, str(out_dir), shard_prefix="references")
+
+    assert written == []
+    assert os.listdir(out_dir) == [], \
+        "an empty rewrite must retire every prior shard, not leave them on disk"
+    assert core.read_state_dictionary(str(out_dir)) == {}
+
+
+def test_empty_rewrite_preserves_non_shard_same_prefix_files(tmp_path):
+    """An empty rewrite retires only writer-produced shards, not unrelated files.
+
+    The retirement path an empty rewrite now runs must still respect
+    :func:`_is_shard_name`: a stale numeric shard is removed, but a sidecar or
+    backup that merely shares the prefix survives untouched.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+    stale_shard = os.path.join(out_dir, "weights")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+    sidecar = os.path.join(out_dir, "weights_metadata.json")
+    with open(sidecar, "w", encoding="utf-8") as handle:
+        handle.write("{}")
+
+    written = core.write_state_dictionary({}, out_dir)
+
+    assert written == []
+    assert not os.path.exists(stale_shard), "the stale shard must be retired"
+    assert os.path.isfile(sidecar), "an unrelated same-prefix sidecar must survive"
+
+
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
     """Only the .json sidecars and legacy .bin files are skipped: any other non-hidden
     file is read as a shard, so a corrupt one is an error rather than being silently
