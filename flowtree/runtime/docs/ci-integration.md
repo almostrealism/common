@@ -583,10 +583,12 @@ test files.
 ### Layer 2: File Staging Protection
 
 During file staging, the `FileStager` (and the equivalent logic in `GitManagedJob.stageFiles()`) checks whether each changed file:
-1. Matches a protected path pattern (`**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, `.github/actions/**`)
+1. Matches a protected test path pattern (`**/src/test/**`, `**/src/it/**`)
 2. Exists on the base branch (checked via `git cat-file -e origin/<baseBranch>:<file>`)
 
 If both conditions are true, the file is blocked from staging with the reason "protected - exists on base branch". Branch-new test files (files that do not exist on the base branch) are allowed through.
+
+CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`) is handled by the separate CI file lock (`protectCiFiles`), not by this test check: under that lock a CI file is blocked whether or not it exists on the base branch.
 
 The base branch existence check fails safe: if the `git cat-file` command errors out for any reason, the file is treated as protected (existing on the base branch), preventing accidental modifications.
 

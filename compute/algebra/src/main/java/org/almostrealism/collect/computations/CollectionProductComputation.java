@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -96,6 +97,18 @@ import java.util.stream.Stream;
 public class CollectionProductComputation extends TraversableExpressionComputation {
 
 	/**
+	 * Cached result of {@link #isRowMonomial()}, computed lazily on first access. This
+	 * computation's operands are fixed at construction ({@link #generate(List)} always
+	 * returns a new instance rather than mutating this one), so the structural property
+	 * can be safely memoized rather than re-derived by walking the operand subgraph on
+	 * every call - which matters because {@link Algebraic#isRowMonomial(Object)} recurses
+	 * into each operand's own {@code isRowMonomial()}, and without memoization a shared
+	 * operand reachable through multiple paths in a DAG (common where a computation feeds
+	 * more than one downstream consumer) would be re-evaluated once per path.
+	 */
+	private Boolean rowMonomial;
+
+	/**
 	 * Constructs a new product computation with default name "multiply".
 	 *
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -168,6 +181,54 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	public long getExpansionWidth() {
 		int operands = getChildren().size() - 1;
 		return Math.max(1L, operands);
+	}
+
+	/**
+	 * Determines if this element-wise product preserves a row-monomial structure from
+	 * one of its operands.
+	 *
+	 * <p>A Hadamard product {@code result[idx] = a[idx] * b[idx] * ...} is zero at every
+	 * index where any operand is zero. When one operand is row-monomial (at most one
+	 * non-zero entry per row), the product is therefore zero everywhere that operand is
+	 * zero, so it has at most as many non-zero entries per row as that operand does - the
+	 * product remains row-monomial regardless of what the other operands contain. This
+	 * mirrors {@link PackedCollectionEnumerate#isRowMonomial()}, which propagates the same
+	 * property through a structural reindexing; here it propagates through element-wise
+	 * multiplication, which is what allows the property to survive the product-rule
+	 * {@link #delta(Producer)} of a computation (such as convolution) that multiplies a
+	 * row-monomial Jacobian by an index-independent factor.</p>
+	 *
+	 * <p>If the other operand happens to be zero at the row-monomial operand's one candidate
+	 * column, the product's row is entirely zero rather than having exactly one non-zero
+	 * entry - still consistent with {@link Algebraic#isRowMonomial()}'s "at most one" contract.
+	 * This is sound because the gather collapse this enables reads the true product value at
+	 * the candidate column (via the normal expression evaluation path) rather than assuming
+	 * that value is non-zero.</p>
+	 *
+	 * <p>Propagation is based on an operand's declared property, not on how that operand is
+	 * aligned into this product. A shape-changing wrapper can therefore leave the flag
+	 * {@code true} even when the aligned row no longer has at most one non-zero entry: a
+	 * {@code reshape} that merges rows delegates the flag through unchanged, and a broadcast
+	 * that repeats a lower-rank {@code (rows, 1)} operand across the {@code (rows, columns)}
+	 * output copies its single non-zero into every column of each row. Both are false positives
+	 * of the row-monomial property, but neither corrupts a result, for the same reason the
+	 * annihilating case above does not:
+	 * {@link io.almostrealism.compute.RowMonomialOptimization} only uses the flag to keep the
+	 * operand inline, and the gather collapse it enables is an independent value-based analysis
+	 * that reads the true value at each row and declines to collapse any row whose non-zero
+	 * entry is not unique, falling back to the dense reduction. The flag gates only whether the
+	 * collapse is attempted, never what value it reads.</p>
+	 *
+	 * @return true if any operand is recognized as row-monomial
+	 * @see Algebraic#isRowMonomial(Object)
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		if (rowMonomial == null) {
+			rowMonomial = getInputs().stream().skip(1).anyMatch(Algebraic::isRowMonomial);
+		}
+
+		return rowMonomial;
 	}
 
 	/**

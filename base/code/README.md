@@ -290,6 +290,18 @@ cache.use(() -> {
 Expression<?> deduped = ExpressionCache.match(expression);
 ```
 
+Work that builds many throwaway expressions which never reach generated code should
+run inside `ExpressionCache.bypass(...)`, which suspends the active cache and restores
+it afterwards. `ExplicitExpressionMatrix` does this for the per-entry substitutions of
+`uniqueNonZeroOffset` analysis: deduplicating those entries saves nothing, while inserting
+them floods the per-depth caches whose frequency data feeds common sub-expression
+extraction, and costs a lookup, an insertion and (once full) an eviction per node.
+
+```java
+// Analysis-only expressions are built without touching the compilation cache
+ExpressionCache.bypass(() -> populateCandidates());
+```
+
 ### Architecture
 
 - **Thread-local**: Each thread has its own cache via `ThreadLocal`

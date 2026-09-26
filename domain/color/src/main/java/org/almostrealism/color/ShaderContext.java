@@ -220,11 +220,12 @@ public class ShaderContext extends LightingContext {
 	public Curve<PackedCollection>[] getOtherSurfaces() { return this.otherSurfaces; }
 
 	/**
-	 * Returns an {@link Iterable} containing the primary surface followed by all other surfaces.
+	 * Returns a new {@link List} containing the primary surface (when present) followed by
+	 * all other surfaces.
 	 *
 	 * @return all surfaces in the scene including the primary surface
 	 */
-	public Iterable<? extends Curve<PackedCollection>> getAllSurfaces() {
+	public List<Curve<PackedCollection>> getAllSurfaces() {
 		List<Curve<PackedCollection>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());
 		l.addAll(Arrays.asList(getOtherSurfaces()));

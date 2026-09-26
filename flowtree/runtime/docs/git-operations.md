@@ -27,6 +27,7 @@ branch state, and clone repositories through a uniform interface.
    - [`cloneRepository`](#clonerepository)
    - [`repositorySlug`](#repositoryslug)
    - [`isSameRepository`](#issamerepository)
+   - [`repositoryHost`](#repositoryhost)
    - [`executeCommand`](#executecommand)
    - [`executeCommandWithOutput`](#executecommandwithoutput)
    - [`formatMessage`](#formatmessage)
@@ -372,6 +373,49 @@ boolean same = GitOperations.isSameRepository(
         "git@github.com:almostrealism/common.git",
         "https://github.com/almostrealism/common");
 // same == true — same repository, different schemes
+```
+
+---
+
+### `repositoryHost`
+
+```java
+public static String repositoryHost(String repoUrl)
+```
+
+Extracts the host of a repository URL, so a caller that will act on a
+particular service can reject URLs pointing elsewhere. Because
+[`repositorySlug`](#repositoryslug) deliberately drops the host, a caller
+that will query a service (for example the GitHub API) with the slug cannot
+tell from the slug alone whether the URL named that service — this method
+supplies the host to check.
+
+**Parameter:**
+
+| Parameter | Type     | Description |
+|-----------|----------|-------------|
+| `repoUrl` | `String` | The repository URL in SSH (`git@host:owner/repo.git`), HTTP(S), or `git://` form. May be `null`. |
+
+**Returns:** the host with its original case, or `null` when `repoUrl` is
+`null`, blank, or not a recognised repository URL.
+
+**Behavior:** The host is reported only for a URL that also parses as a
+repository — the same SSH, HTTP(S), and `git://` forms `repositorySlug`
+recognises — so an input that is not a repository URL yields `null`. A
+substring check against the raw URL is **not** a host check: it accepts a
+look-alike host such as `github.com.evil.example`. Comparing the returned
+host for exact equality does not. An optional `:port` in the authority is
+excluded from the host, so `https://github.com:443/owner/repo.git` reports
+`github.com` — the same host as the port-less form, which `repositorySlug`
+also accepts. A bracketed IPv6 literal host (`https://[2001:db8::1]/owner/repo.git`)
+is returned whole, brackets included.
+
+**Example:**
+
+```java
+String url = "https://github.com.evil.example/owner/repo.git";
+boolean isGitHub = "github.com".equalsIgnoreCase(GitOperations.repositoryHost(url));
+// isGitHub == false — the host is "github.com.evil.example", not "github.com"
 ```
 
 ---
@@ -996,11 +1040,14 @@ String branch = git.executeWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim(
 ### Output Stream Handling
 
 All process output (stdout and stderr combined) is read through a
-`BufferedReader` in the private `readProcessOutput()` method. The method
-reads line by line and joins with newline characters.
+`BufferedReader` in the public static `GitOperations.readProcessOutput()`
+method. The method reads line by line and joins with newline characters. It
+uses no instance state, so it is exposed as a static helper that
+`GitCommandExecutor` (in `flowtree/runtime`) reuses instead of duplicating the
+read loop.
 
 ```java
-private String readProcessOutput(Process process) throws IOException {
+public static String readProcessOutput(Process process) throws IOException {
     StringBuilder output = new StringBuilder();
     try (BufferedReader reader = new BufferedReader(
             new InputStreamReader(process.getInputStream()))) {

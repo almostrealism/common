@@ -83,10 +83,6 @@ public class PullRequestDetector implements ConsoleFeatures {
      */
     public Optional<String> detect(String remoteUrl, String targetBranch, String workstreamUrl) {
         try {
-            if (remoteUrl == null || !remoteUrl.contains("github.com")) {
-                return Optional.empty();
-            }
-
             String ownerRepo = extractOwnerRepo(remoteUrl);
             if (ownerRepo == null) {
                 log("Could not extract owner/repo from remote URL: " + remoteUrl);
@@ -222,49 +218,18 @@ public class PullRequestDetector implements ConsoleFeatures {
      * Extracts the {@code owner/repo} string from a GitHub remote URL.
      *
      * <p>Supports both SSH ({@code git@github.com:owner/repo.git}) and
-     * HTTPS ({@code https://github.com/owner/repo.git}) formats. The
-     * {@code .git} suffix is stripped before validation.</p>
+     * HTTPS ({@code https://github.com/owner/repo.git}) formats; the
+     * parsing is {@link GitOperations#repositorySlug(String)}. URLs whose
+     * host is not exactly {@code github.com} are rejected, since the slug is
+     * used to query the GitHub API — a substring check would let a look-alike
+     * host such as {@code github.com.evil.example} through.</p>
      *
      * @param remoteUrl the git remote URL
      * @return the {@code owner/repo} string, or {@code null} if the
-     *         URL cannot be parsed into a valid owner/repo pair
+     *         URL is not a GitHub repository URL
      */
     static String extractOwnerRepo(String remoteUrl) {
-        // SSH format: git@github.com:owner/repo.git
-        if (remoteUrl.contains("git@github.com:")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("git@github.com:") + 15);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        // HTTPS format: https://github.com/owner/repo.git
-        if (remoteUrl.contains("github.com/")) {
-            String path = remoteUrl.substring(remoteUrl.indexOf("github.com/") + 11);
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            String validated = validateOwnerRepo(path);
-            if (validated != null) return validated;
-        }
-
-        return null;
-    }
-
-    /**
-     * Validates that a path is exactly {@code owner/repo} -- two
-     * non-empty parts separated by a single slash.
-     *
-     * @param path the candidate owner/repo string
-     * @return the path if valid, or {@code null}
-     */
-    private static String validateOwnerRepo(String path) {
-        String[] parts = path.split("/");
-        if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-            return path;
-        }
-        return null;
+        if (!"github.com".equalsIgnoreCase(GitOperations.repositoryHost(remoteUrl))) return null;
+        return GitOperations.repositorySlug(remoteUrl);
     }
 }

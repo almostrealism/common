@@ -43,7 +43,6 @@ import org.almostrealism.color.Transparent;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Camera;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.io.Console;
@@ -1225,7 +1224,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 					Vector vs = new Vector(s.get().evaluate(), 0);
 
 					LightingEngineAggregator l = new LightingEngineAggregator(v(new Ray(vpo, vs)),
-							(Iterable<Curve<PackedCollection>>) p.getAllSurfaces(), p.getAllLights(), p);
+							p.getAllSurfaces(), p.getAllLights(), p);
 					PackedCollection cl = l.evaluate(args);
 					c = cl instanceof RGB ? (RGB) cl : new RGB(cl.toDouble(0), cl.toDouble(1), cl.toDouble(2));
 					if (c != null)

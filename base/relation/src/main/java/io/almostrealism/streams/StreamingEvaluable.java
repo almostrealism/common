@@ -96,8 +96,8 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * with a {@code dependsOn} completion, an argument whose evaluation is itself a dispatch
 	 * that reads memory written by that prior work must not execute until it has finished.
 	 * Delivery remains asynchronous &mdash; results may still arrive with their own completion.
-	 * An implementation that performs no dispatch (a synchronous adapter, a handle-producing
-	 * host evaluable) may disregard {@code dependsOn}.</p>
+	 * An implementation that performs no dispatch (such as a handle-producing host evaluable)
+	 * may disregard {@code dependsOn}, and reports so through {@link #isDispatchBacked()}.</p>
 	 *
 	 * @param args      the arguments required for computation, in the same format as
 	 *                  {@link #request(Object[])}
@@ -108,6 +108,32 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * @see #setDownstream(Consumer)
 	 */
 	void request(Object[] args, Semaphore dependsOn);
+
+	/**
+	 * Initiates an asynchronous computation request, ordered after {@code dependsOn} exactly as
+	 * {@link #request(Object[], Semaphore)} is, whose result is delivered to the given consumer
+	 * instead of the consumer configured via {@link #setDownstream(Consumer)}.
+	 *
+	 * <p>This is the form to use when one evaluable is reached by several independent
+	 * requesters &mdash; a compiled kernel that several wrappers forward to, for example. The
+	 * default implementation installs {@code downstream} with {@link #setDownstream(Consumer)}
+	 * and then requests, which is only appropriate for an evaluable that serves a single
+	 * consumer for its whole life; an implementation that may be shared should override this
+	 * to deliver to {@code downstream} directly, so that no request mutates state another
+	 * requester relies on.</p>
+	 *
+	 * @param args       the arguments required for computation, in the same format as
+	 *                   {@link #request(Object[])}
+	 * @param dependsOn  completion the dispatch must chain on, or {@code null} when there
+	 *                   is no dependency
+	 * @param downstream the consumer to receive the result of this request; must not be null
+	 *
+	 * @see #request(Object[], Semaphore)
+	 */
+	default void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		setDownstream(downstream);
+		request(args, dependsOn);
+	}
 
 	/**
 	 * Sets the downstream consumer that will receive computation results.
@@ -121,4 +147,25 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * @see #request(Object[])
 	 */
 	void setDownstream(Consumer<T> consumer);
+
+	/**
+	 * Reports whether {@link #request(Object[], Semaphore)} honors a non-null
+	 * {@code dependsOn} by ordering this evaluable's own work after it &mdash;
+	 * whether by chaining the dependency into a device dispatch, or by waiting
+	 * for it before reading memory on a worker thread.
+	 *
+	 * <p>Callers that thread a {@code dependsOn} through several independent
+	 * {@link StreamingEvaluable} arguments (such as {@code ProcessDetailsFactory}
+	 * preparing a kernel's arguments) use this to decide which of them may
+	 * actually be given the dependency: forwarding it to an implementation that
+	 * returns {@code false} here would be discarded, while withholding it from
+	 * one that returns {@code true} risks that implementation reading memory a
+	 * prior dispatch has not finished writing.</p>
+	 *
+	 * @return {@code true} if this evaluable orders its work after a supplied
+	 *         {@code dependsOn}; {@code false} if it disregards it
+	 */
+	default boolean isDispatchBacked() {
+		return false;
+	}
 }

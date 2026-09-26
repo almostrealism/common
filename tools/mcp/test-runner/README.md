@@ -26,6 +26,7 @@ the other concerns it used to carry inline is a collaborator:
 |--------|---------|
 | `project.py` | Which Maven project and module a run targets: root resolution, and the per-module CI test-group count read from the project's own workflow |
 | `common/run_store.py` | The on-disk record of runs: metadata, captured output, listing, retiring old runs, marking abandoned ones. Shared with ar-build-validator, so it lives in the `common` package rather than here. |
+| `run_validation.py` | The "no broad test runs" rule: validates `start_test_run` arguments (one `Class#method` test, no CI-shard selection, timeout within the maximum) before a run starts |
 | `reports.py` | Surefire XML: collecting reports out of the project, and reading counts, failures, and per-test times back |
 | `timing.py` | Statistics over a repeated run — duration spread and per-test pass rates |
 | `preflight.py` | What the upstream artifact state *is*: which are missing, how stale, how to seed them |
@@ -114,26 +115,28 @@ Start a new test run asynchronously.
 | `depth` | int (0-10) | No | AR_TEST_DEPTH value |
 | `project` | string | No | Root of the Maven project (default: this repository) |
 | `module` | string | No | Maven module, relative to the project root (default: "engine/utils") |
-| `test_classes` | string[] | No | Specific test class names |
-| `test_methods` | object[] | No | Specific methods: `[{"class": "...", "method": "..."}]` |
-| `timeout_minutes` | int | No | Max run time (default: 30) |
+| `test_classes` | string[] | No* | One `Class#method` selector; a bare class name is rejected |
+| `test_methods` | object[] | No* | One method: `[{"class": "...", "method": "..."}]` |
+| `timeout_minutes` | int | No | Max run time (default: 15, maximum: 40) |
 | `jvm_args` | string[] | No | Additional JVM arguments |
+
+\* Exactly one test must be selected across `test_classes` and `test_methods`
+(see `run_validation.py`). A call with neither, with more than one entry, with a
+bare class name, with a wildcard, or with `test_group`/`test_groups` (or an
+`AR_TEST_GROUP` reference in `jvm_args`) is rejected — broad runs belong to CI.
 
 **Examples:**
 ```python
-# Run all tests with depth 1
-start_test_run(depth=1)
+# Run one test method
+start_test_run(test_classes=["MeshIntersectionTest#triangleIntersectAtKernel"])
 
-# Run specific test class
-start_test_run(test_classes=["MeshIntersectionTest"])
-
-# Run specific methods
+# The same selection in object form
 start_test_run(test_methods=[
   {"class": "MeshIntersectionTest", "method": "triangleIntersectAtKernel"}
 ])
 
 # Run with extra memory
-start_test_run(test_classes=["LargeModelTest"], jvm_args=["-Xmx8g"])
+start_test_run(test_classes=["LargeModelTest#loadsWeights"], jvm_args=["-Xmx8g"])
 ```
 
 #### Testing another Maven project
@@ -146,7 +149,7 @@ it, and `module` is always relative to that root:
 
 ```python
 start_test_run(project="../downstream", module="app",
-               test_classes=["SomeTest"])
+               test_classes=["SomeTest#someMethod"])
 ```
 
 This matters because direct `mvn test` is blocked for agents. Without
@@ -157,11 +160,9 @@ Maven failure.
 
 Everything else is unchanged by the target: `run_id`s, output, and copied
 surefire reports still live under this server's own `runs/` directory, so runs
-against different projects are tracked side by side. Two caveats follow from
-targeting a foreign project — `test_group` needs an explicit `test_groups`
-unless that project has its own `.github/workflows/analysis.yaml`, and the
-upstream-artifact preflight can only seed modules that are part of the target
-project's own reactor.
+against different projects are tracked side by side. One caveat follows from
+targeting a foreign project — the upstream-artifact preflight can only seed
+modules that are part of the target project's own reactor.
 
 ### get_run_status
 

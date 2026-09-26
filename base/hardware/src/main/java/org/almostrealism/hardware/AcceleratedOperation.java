@@ -29,6 +29,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
@@ -487,7 +488,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
-				getComputeContext()::runLater);
+				getComputeContext()::runLater,
+				AbstractComputeContext::isAnyExecutorThread);
 
 		if (evaluator != null) {
 			detailsFactory.setEvaluator(evaluator);

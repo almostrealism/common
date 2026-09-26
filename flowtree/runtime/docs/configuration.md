@@ -47,7 +47,7 @@ The following table documents every field in `GitJobConfig`, its type, default v
 | `pushToOrigin` | `boolean` | `true` | Whether to push commits to the remote after committing. Set to `false` for local-only commits (useful for testing and dry runs). |
 | `createBranchIfMissing` | `boolean` | `true` | Whether to create the target branch from `origin/<baseBranch>` if it does not already exist. When `false`, the job fails if the target branch is not found locally or on the remote. |
 | `dryRun` | `boolean` | `false` | When `true`, git operations are logged but not executed. Useful for validating configuration without making actual changes. |
-| `protectTestFiles` | `boolean` | `false` | When `true`, test and CI files that exist on the base branch cannot be staged. This prevents agents from hiding test failures by modifying existing tests. Branch-new test files (not present on the base branch) are still allowed. |
+| `protectTestFiles` | `boolean` | `false` | When `true`, test files that exist on the base branch cannot be staged (CI files are covered by the separate CI file lock; see below). This prevents agents from hiding test failures by modifying existing tests. Branch-new test files (not present on the base branch) are still allowed. |
 | `gitUserName` | `String` | `null` | The name to use for git commits. Passed via `git -c user.name=...` on the command line, which overrides any global or repository-level git configuration. |
 | `gitUserEmail` | `String` | `null` | The email to use for git commits. Passed via `git -c user.email=...` on the command line. |
 | `workstreamUrl` | `String` | `null` | The controller URL for status reporting and Slack messaging. Follows the pattern `http://controller/api/workstreams/{id}/jobs/{jobId}`. The `0.0.0.0` placeholder is replaced with `FLOWTREE_ROOT_HOST` at runtime. |
@@ -79,14 +79,14 @@ The `DEFAULT_EXCLUDED_PATTERNS` set contains the following categories of pattern
 
 ### Protected Path Patterns
 
-When `protectTestFiles` is enabled, the following patterns identify protected files:
+When `protectTestFiles` is enabled, the following patterns (`GitJobConfig.PROTECTED_PATH_PATTERNS`) identify protected files:
 
 | Pattern | Covers |
 |---------|--------|
 | `**/src/test/**` | All test source files in any Maven module |
 | `**/src/it/**` | Integration test source files |
-| `.github/workflows/**` | CI workflow definitions |
-| `.github/actions/**` | Custom GitHub Actions |
+
+CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`) is not in this set; it is governed by the separate CI file lock (`protectCiFiles`), which `GitCommitHandler` enables for every job except one on a `ci/...` branch or one carrying the controller-signed bypass trailer, and which blocks CI files whole-file whether branch-new or pre-existing. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection).
 
 ---
 

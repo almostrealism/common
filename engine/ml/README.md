@@ -620,8 +620,9 @@ conditioning. The buffer starts zero-filled, which is the value plain generation
 
 `DiffusionTransformerConfig.withNormalization(NormalizationType)` selects LayerNorm (default) or
 RMSNorm for every block norm and query/key norm; `withPaddingMask(true)` adds a per-position latent
-padding mask, exposed for writes via `DiffusionTransformer.getPaddingMask()` and consumed by
-self-attention as value masking.
+padding mask (`DiffusionTransformer.getPaddingMask()`), initially all valid; a caller generating less
+than the full sequence marks the padded tail with `DiffusionTransformer.setValidLength(int)` before
+`forward()`, and self-attention ignores those positions' values.
 
 ### Stable Audio 3 Conditioning and Codec
 
@@ -646,6 +647,24 @@ ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationS
 The prompt itself is encoded by `T5GemmaEncoder` (package `org.almostrealism.ml.t5gemma`), a
 T5Gemma text encoder configured by `T5GemmaConfig` and loaded from a `StateDictionary` the same
 way as the other model weights in this module.
+
+`StableAudio3` (package `org.almostrealism.ml.audio`) is the end-to-end text-to-audio generator
+that wires these pieces together: the conditioner, a `DiffusionSampler` driving the
+`DiffusionTransformer` with the ping-pong schedule of the released models, and a `SAMEAutoEncoder`
+decoder. `StableAudio3.small(...)` builds the released small model from the `dit`, `conditioner`
+and `ae` weight sets extracted by `engine/ml/scripts/extract_sa3_weights.py` plus the T5Gemma
+encoder weights:
+
+```java
+StableAudio3 sa3 = StableAudio3.small(transformerWeights, conditionerWeights,
+        promptEncoderWeights, autoencoderWeights, maxSeconds);
+PackedCollection audio = sa3.generate(seed, tokenIds, seconds).evaluate();  // [channels, samples]
+```
+
+The transformer and decoder are compiled once for the longest clip the instance generates; a
+shorter request is generated at that length with the padding mask covering the requested duration
+plus headroom, then truncated. Classifier-free guidance is off by default and is enabled with
+`setGuidance(scale, negativePrompt)`.
 
 Other Stable Audio 3 building blocks:
 - **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
@@ -782,7 +801,7 @@ The 12 attention heads are partitioned into 6 groups of 2. Each group applies Ro
 
 ### GRU Decoder
 
-A 4-layer GRU that autoregressively decodes 7 tokens per note from the transformer's hidden states. Implemented in `GRUDecoder.java` as a single `CompiledModel` using the Producer pattern — no separate GRU cell class, no imperative Java loops in the decode path.
+A stacked GRU (4 layers in the paper configuration, 2 in the 309M checkpoint) that autoregressively decodes 7 tokens per note from the transformer's hidden state. Its structure is the PDSL asset `pdsl/midi/gru_decoder.pdsl`: a start model (the summary projection, written into every layer's row of the hidden state) run once per note, and a step model (per layer: read the layer's hidden-state row, GRU cell, write the row back; then the logits head) run once per token. The GRU hidden state is a `[layers, decoderHiddenSize]` state collection the two models share, like the attention KV cache. `GRUDecoder.java` binds the checkpoint weights (`GRUDecoder.load(stateDict, config)`), compiles the two models, and runs the decode loop — token selection and the embedding lookup of the chosen token happen between forward passes.
 
 ### MoonbeamMidi
 
@@ -796,7 +815,7 @@ Top-level entry point that wires together:
 | Class | Package | Role |
 |-------|---------|------|
 | `MoonbeamMidi` | `org.almostrealism.ml.midi` | Top-level model |
-| `GRUDecoder` | `org.almostrealism.ml.midi` | 4-layer GRU, single CompiledModel |
+| `GRUDecoder` | `org.almostrealism.ml.midi` | GRU decoder built from `gru_decoder.pdsl` |
 | `CompoundMidiEmbedding` | `org.almostrealism.ml.midi` | 6-attribute compound embedding |
 | `FundamentalMusicEmbedding` | `org.almostrealism.ml.midi` | Sinusoidal embedding, single attribute |
 | `MidiTokenizer` | `org.almostrealism.music.midi` | MIDI → compound token conversion |

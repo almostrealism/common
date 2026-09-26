@@ -145,11 +145,19 @@ Tests URL parsing and precondition checking without making real HTTP calls:
 
 **Non-GitHub returns null**: Verifies that non-GitHub URLs (e.g., GitLab) return `null`.
 
-**Validation accepts valid**: Verifies that well-formed `owner/repo` paths pass validation.
+**Validation accepts valid**: Verifies that a well-formed GitHub URL with exactly `owner/repo` yields a non-null slug.
 
-**Validation rejects invalid**: Verifies that paths without exactly two segments are rejected (e.g., `"noslash"` returns `null`).
+**Validation rejects invalid**: Verifies that a URL without an `owner/repo` path (e.g., `https://github.com/noslash.git`) and a non-GitHub URL both return `null`.
 
 **Detect returns empty for null remote**: Verifies that `detect(null, "branch", null)` returns `Optional.empty()`.
+
+**Other GitHub URL forms**: Verifies that SSH and HTTPS URLs without `.git`, `ssh://` URLs, and HTTPS URLs with embedded credentials all yield `"owner/repo"`.
+
+**Non-repository GitHub URLs**: Verifies that URLs naming something other than a repository (e.g., `https://github.com/owner/repo/pull/3`, `git@github.com:owner`) return `null`.
+
+**Look-alike host rejected**: Verifies that `github.com.evil.example` (SSH and HTTPS) returns `null` — the host must be exactly `github.com`, not merely contain it.
+
+**Trailing slash, uppercase host, explicit port**: Verifies that `https://github.com/owner/repo/`, `https://GITHUB.COM/owner/repo.git`, and `https://github.com:443/owner/repo.git` all yield `"owner/repo"`.
 
 ### FileStagerTest
 

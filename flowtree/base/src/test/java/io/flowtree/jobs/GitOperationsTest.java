@@ -269,6 +269,54 @@ public class GitOperationsTest extends TestSuiteBase {
         assertTrue("Unknown ref must yield an empty set", files.isEmpty());
     }
 
+    /**
+     * Pins the contract of {@link GitOperations#readProcessOutput(Process)} that
+     * every internal caller and {@code GitCommandExecutor} depend on: each line
+     * of the process's output is returned in order, each terminated by a
+     * newline, so the reverse-chronological, multi-line output of
+     * {@code git log --format=%s} round-trips as {@code two\none\n}.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputCapturesEveryLineWithTrailingNewline() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("a.txt"), "a");
+        gitRun(repo, "add", "a.txt");
+        gitRun(repo, "commit", "-m", "one");
+        Files.writeString(repo.resolve("b.txt"), "b");
+        gitRun(repo, "add", "b.txt");
+        gitRun(repo, "commit", "-m", "two");
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "log", "--format=%s");
+        pb.directory(repo.toFile());
+        pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+
+        Assert.assertEquals("two\none\n", output);
+    }
+
+    /**
+     * Pins that {@link GitOperations#readProcessOutput(Process)} returns an empty
+     * string, not {@code null}, when the process produces no output. A
+     * {@code git add -- .} on a repository with nothing to stage prints nothing
+     * to stdout; this is the behaviour {@code GitCommandExecutor.executeGit}
+     * relies on when it trims and logs a failing command's output.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputReturnsEmptyStringWhenNoOutput() throws Exception {
+        Path repo = initRepo();
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "add", "--", ".");
+        pb.directory(repo.toFile());
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+        Assert.assertEquals("", output);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -347,6 +395,74 @@ public class GitOperationsTest extends TestSuiteBase {
         Assert.assertNull(GitOperations.repositorySlug("   "));
         Assert.assertNull(GitOperations.repositorySlug("not-a-url"));
         Assert.assertNull(GitOperations.repositorySlug("https://github.com/almostrealism"));
+    }
+
+    /**
+     * The host is reported for every repository URL form {@code repositorySlug}
+     * recognises, so that a caller can reject a URL pointing at the wrong
+     * service. Credentials and a trailing slash are tolerated, and the {@code @}
+     * of an SSH remote does not leak into the host.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExtractsHostForRecognisedForms() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("git@github.com:almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("  https://github.com/almostrealism/common/  "));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://x-access-token:secret@github.com/almostrealism/common.git"));
+        Assert.assertEquals("gitlab.com",
+                GitOperations.repositoryHost("https://gitlab.com/acme/repo.git"));
+    }
+
+    /**
+     * An explicit port is excluded from the reported host, so a URL with a port
+     * reduces to the same host as one without — a look-alike host such as
+     * {@code github.com.evil.example} is reported verbatim and stays distinct.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExcludesPort() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com:443/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com:22/almostrealism/common.git"));
+        Assert.assertEquals("github.com.evil.example",
+                GitOperations.repositoryHost("https://github.com.evil.example/almostrealism/common.git"));
+    }
+
+    /**
+     * A bracketed IPv6 authority is a repository URL form {@code repositorySlug}
+     * accepts (its authority is {@code [^/]+}), so {@code repositoryHost} must
+     * report a (non-{@code null}) host for it too rather than disagreeing with
+     * the canonical parser; the whole bracketed literal is the host, and its
+     * colons do not leak a port into the capture.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostCapturesBracketedIpv6Authority() {
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]:443/owner/repo.git"));
+
+        // The host guard and the slug must not disagree about whether a URL is a repository.
+        Assert.assertNotNull(GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertNotNull(GitOperations.repositorySlug("https://[2001:db8::1]/owner/repo.git"));
+    }
+
+    /** A URL that is not a repository URL has no host. */
+    @Test(timeout = 10000)
+    public void repositoryHostRejectsUnrecognisedInput() {
+        Assert.assertNull(GitOperations.repositoryHost(null));
+        Assert.assertNull(GitOperations.repositoryHost(""));
+        Assert.assertNull(GitOperations.repositoryHost("   "));
+        Assert.assertNull(GitOperations.repositoryHost("not-a-url"));
+        Assert.assertNull(GitOperations.repositoryHost("https://github.com/almostrealism"));
     }
 
     /** Equivalent forms of one repository are the same repository. */

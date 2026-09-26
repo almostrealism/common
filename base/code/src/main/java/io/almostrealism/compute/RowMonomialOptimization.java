@@ -26,10 +26,11 @@ import java.util.stream.Stream;
  * Optimization strategy that keeps a <em>row-monomial</em> child visible (un-isolated)
  * so a downstream contraction can collapse it into a gather.
  *
- * <p>A row-monomial matrix has exactly one non-zero entry per row (see
- * {@link Algebraic#isRowMonomial()}); the Jacobian of a subset, slice, or gather is such
- * a matrix. When such a matrix is contracted (summed over its column index) the reduction
- * reduces to reading one element per row — a direct gather — and the reduction machinery
+ * <p>A row-monomial matrix has at most one non-zero entry per row (see
+ * {@link Algebraic#isRowMonomial()}; a row may also be entirely zero); the Jacobian of a
+ * subset, slice, or gather is such a matrix. When such a matrix is contracted (summed over
+ * its column index) the reduction reduces to reading at most one element per row — a direct
+ * gather — and the reduction machinery
  * in the aggregation computations already performs that collapse when it can <em>see</em>
  * the row-monomial structure of its input. The general-purpose
  * {@link ParallelismTargetOptimization}, judging only by magnitude, isolates the
@@ -54,12 +55,20 @@ import java.util.stream.Stream;
  * only the row-monomial child inline); for now correctness and the bounded blast radius
  * are preferred over that generality.</p>
  *
- * <h2>Recognition is conservative</h2>
+ * <h2>Recognition is conservative, and a false positive is still sound</h2>
  * <p>{@link Algebraic#isRowMonomial()} defaults to {@code false} and is only overridden by
- * computations that are row-monomial by construction, so a false positive (which would
- * yield a wrong gather, i.e. a silently incorrect gradient) cannot arise from this strategy
- * alone — it acts only on producers that affirmatively declare the property and propagate
- * it through structure-preserving wrappers.</p>
+ * computations that are row-monomial by construction, so this strategy acts only on
+ * producers that affirmatively declare the property. Even so, that declaration is not
+ * trusted to be exact: a wrapper such as a {@code reshape} delegates the flag through
+ * unchanged, so a reshape that merges rows can leave a producer reporting {@code true} whose
+ * merged row now holds more than one non-zero entry. This does not yield a wrong gradient,
+ * because this strategy never substitutes a value for the flag — it only keeps the child
+ * <em>inline</em> so the downstream reduction machinery can attempt the collapse. That
+ * collapse is an independent, value-based analysis (a unique-non-zero-offset scan over the
+ * actual expression) that reads the true value at each row and declines to collapse any row
+ * whose non-zero entry is not unique, falling back to the dense reduction. The flag
+ * therefore only gates <em>whether the collapse is attempted</em>, never <em>what value it
+ * reads</em>, so a false positive costs at most a missed optimization, never correctness.</p>
  *
  * @see Algebraic#isRowMonomial()
  * @see CascadingOptimizationStrategy

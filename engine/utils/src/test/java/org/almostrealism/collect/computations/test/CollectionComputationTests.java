@@ -840,4 +840,34 @@ public class CollectionComputationTests extends TestSuiteBase {
 		a(1, p(result), chained).get().run();
 		assertEquals(-1.0, result.toDouble(0));
 	}
+
+	/**
+	 * A reshape wrapped around a kernel-backed (non-{@code Provider}) producer must evaluate
+	 * to the same values as evaluating the underlying computation directly and re-viewing the
+	 * result with the target shape. This exercises the
+	 * {@link org.almostrealism.hardware.computations.HardwareEvaluable#setResultProcessor
+	 * result processor} path that {@link org.almostrealism.collect.computations.ReshapeProducer#get()}
+	 * installs for such an input, rather than the {@code Provider} fast path.
+	 */
+	@Test(timeout = 30000)
+	public void reshapeOfComputedProducer() {
+		int w = 2;
+		int h = 3;
+
+		PackedCollection a = new PackedCollection(shape(w * h)).randFill();
+		PackedCollection b = new PackedCollection(shape(w * h)).randFill();
+
+		CollectionProducer product = multiply(cp(a), cp(b));
+		PackedCollection direct = product.get().evaluate();
+
+		CollectionProducer reshaped = product.reshape(shape(w, h));
+		PackedCollection out = reshaped.get().evaluate();
+
+		Assert.assertEquals(shape(w, h), out.getShape());
+		for (int x = 0; x < w; x++) {
+			for (int y = 0; y < h; y++) {
+				assertEquals(direct.toDouble(x * h + y), out.valueAt(x, y));
+			}
+		}
+	}
 }

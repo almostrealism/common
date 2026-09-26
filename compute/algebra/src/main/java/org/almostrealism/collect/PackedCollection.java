@@ -19,7 +19,6 @@ package org.almostrealism.collect;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.Collection;
-import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
@@ -175,8 +174,10 @@ import java.util.stream.Stream;
  * // Save to file
  * data.save(new File("tensor.dat"));
  *
- * // Load from file
- * PackedCollection loaded = PackedCollection.load(new File("tensor.dat"));
+ * // Load the saved collections back from the file
+ * for (PackedCollection loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
+ *     // ... use loaded ...
+ * }
  *
  * // Print for debugging
  * data.print();  // Pretty-printed to console
@@ -413,11 +414,7 @@ public class PackedCollection extends MemoryDataAdapter
 
 	@Override
 	public TraversalOrdering getDelegateOrdering() {
-		if (getShape().getOrder() == null) return null;
-		return getShape().getOrder().getLength().stream()
-				.mapToObj(DefaultTraversalOrdering::new)
-				.findFirst()
-				.orElseGet(DefaultTraversalOrdering::new);
+		return getShape().getOrder();
 	}
 
 	@Override
@@ -453,7 +450,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null && getShape().isRegular()) {
+		if (getMemOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
@@ -1225,11 +1222,13 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Loads all collections serialized in the given file.
+	 * Loads all collections serialized in the given file. Collections are read
+	 * lazily as the returned {@link Iterable} is traversed; any I/O error
+	 * encountered while opening or reading the file is wrapped in a
+	 * {@link RuntimeException}.
 	 *
 	 * @param src the file to load collections from
 	 * @return an iterable of the deserialized collections
-	 * @throws IOException if an I/O error occurs while reading the file
 	 */
 	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {
