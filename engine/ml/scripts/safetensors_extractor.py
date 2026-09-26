@@ -379,7 +379,15 @@ def write_group(entries, output_dir, prefix):
     ``.<shard>.backup`` before being overwritten, and if any :func:`os.replace`
     fails partway through the backups are restored and the shards already promoted
     are dropped. The directory is therefore never left holding a mix of new and
-    previous shards.
+    previous shards after a caught failure.
+
+    Any stale shard left by a prior, larger run with the same ``prefix`` — a name
+    this writer's own scheme produces (see :func:`_is_shard_name`) that this call
+    did not write — is retired within the same transaction, after the new shards
+    are in place: it is moved aside to a hidden backup and dropped on success, or
+    restored on failure. Folding it in here (rather than in a separate cleanup
+    pass) means the shorter new shard set is never exposed beside a leftover
+    ``prefix_<index>`` that a later load would silently pick up.
 
     Returns the list of final file paths written (in write order), so callers can
     report exactly what was produced rather than re-scanning the directory.
@@ -406,6 +414,7 @@ def write_group(entries, output_dir, prefix):
     # The first shard is named by the bare prefix (the marker file tests and
     # loaders look for); later shards carry a numeric suffix.
     names = [f"{prefix}_{index}" if index > 0 else prefix for index in range(len(shards))]
+    kept = set(names)
     written = [os.path.join(output_dir, name) for name in names]
     staged = [os.path.join(output_dir, f".{name}.partial") for name in names]
 
@@ -418,16 +427,33 @@ def write_group(entries, output_dir, prefix):
                 os.remove(path)
         raise
 
-    # Promote the staged shards onto their final names. os.replace is atomic for
-    # a single file, but promoting a group of shards is not: a failure partway
-    # through would otherwise leave the directory holding some new and some
-    # previous shards, so the previous dump could no longer be read as a whole.
-    # Move each existing final shard aside to a hidden backup before overwriting
-    # it, recording every promotion; on any failure restore the backups, drop the
-    # shards already promoted, and remove the staged files, so the previous dump
-    # is left exactly as it was.
+    # Stale shards left by a prior, larger run with the same prefix: names this
+    # writer's own scheme produces that this call did not write. They must be
+    # retired as part of this same transaction. The loader reads every non-hidden
+    # file in the directory, so exposing a shorter new shard set beside a leftover
+    # ``prefix_<index>`` would let a later load silently retain the stale shard's
+    # keys; retiring them here (rather than in a separate cleanup pass) keeps the
+    # replacement within one rollback-safe operation.
+    stale = [os.path.join(output_dir, name)
+             for name in sorted(os.listdir(output_dir))
+             if name not in kept
+             and _is_shard_name(name, prefix)
+             and os.path.isfile(os.path.join(output_dir, name))]
+
+    # Promote the staged shards onto their final names, then retire the stale
+    # extras. os.replace is atomic for a single file, but replacing a group of
+    # shards is not: a failure partway through would otherwise leave the directory
+    # holding some new and some previous shards, so the previous dump could no
+    # longer be read as a whole. Move each existing final shard aside to a hidden
+    # backup before overwriting it, and each stale extra aside to a hidden backup
+    # before dropping it, recording every move; on any failure restore the backups,
+    # drop the shards already promoted onto names that had none before, and remove
+    # the staged files, so the previous dump is left exactly as it was. The stale
+    # extras are retired only after every new shard is in place, so a failure while
+    # promoting the new shards leaves the previous dump — extras included — intact.
     restored = []  # (final, backup) for finals moved aside, in promotion order
     created = []   # finals that did not exist before this call
+    dropped = []   # (stale, backup) for stale extras moved aside, in drop order
     try:
         for path, final in zip(staged, written):
             if os.path.isfile(final):
@@ -437,18 +463,27 @@ def write_group(entries, output_dir, prefix):
             else:
                 created.append(final)
             os.replace(path, final)
+        for stale_final in stale:
+            backup = os.path.join(output_dir, f".{os.path.basename(stale_final)}.stale")
+            os.replace(stale_final, backup)
+            dropped.append((stale_final, backup))
     except BaseException:
         for final in created:
             if os.path.isfile(final):
                 os.remove(final)
         for final, backup in reversed(restored):
             os.replace(backup, final)
+        for stale_final, backup in reversed(dropped):
+            os.replace(backup, stale_final)
         for path in staged:
             if os.path.isfile(path):
                 os.remove(path)
         raise
 
     for _, backup in restored:
+        if os.path.isfile(backup):
+            os.remove(backup)
+    for _, backup in dropped:
         if os.path.isfile(backup):
             os.remove(backup)
 
@@ -496,15 +531,23 @@ def _is_shard_name(name, shard_prefix):
     """Return True only for names :func:`write_group` itself produces.
 
     A shard group is written as the bare ``shard_prefix`` (the first shard) and
-    ``shard_prefix_<index>`` for later shards, where ``<index>`` is a decimal
-    shard index. Any other name that merely shares the prefix -- an unrelated
-    sidecar or backup such as ``weights_metadata.json`` -- is not a shard, so
-    the stale-shard cleanup must leave it untouched.
+    ``shard_prefix_<index>`` for later shards, where ``<index>`` is the canonical
+    decimal shard index ``str(index)`` for some ``index > 0`` -- an ASCII decimal
+    with no leading zero. Any other name that merely shares the prefix is not a
+    shard the writer produces, and the stale-shard cleanup must leave it
+    untouched: this deliberately excludes a non-canonical numeric-looking suffix
+    such as ``weights_0`` / ``weights_01`` (never emitted, ``index`` starts at 1
+    and carries no leading zero) or a Unicode-digit suffix (``str.isdigit`` accepts
+    superscripts and other scripts), as well as an unrelated sidecar or backup
+    such as ``weights_metadata.json``.
     """
     if name == shard_prefix:
         return True
     marker = shard_prefix + "_"
-    return name.startswith(marker) and name[len(marker):].isdigit()
+    if not name.startswith(marker):
+        return False
+    suffix = name[len(marker):]
+    return suffix.isascii() and suffix.isdigit() and suffix[0] != "0"
 
 
 def write_state_dictionary(state, out_dir, shard_prefix="weights"):
@@ -516,14 +559,19 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     shard names are arbitrary. Keys are written in sorted order for a stable,
     diff-friendly layout.
 
-    Any stale shard left from a prior run with the same ``shard_prefix`` that
-    this call did not overwrite is removed once the new shards are written:
-    because the loader reads every non-hidden file in the directory, a leftover
-    same-prefix shard would silently pollute a later load. Removing it only after
-    the write succeeds means a failure while converting or writing never deletes
-    a usable dump it then cannot replace. Returns exactly the list of file paths
-    written by this call (sorted), tracked from :func:`write_group` rather than
-    re-scanned from disk.
+    Any stale shard left from a prior, larger run with the same ``shard_prefix``
+    that this call did not overwrite is retired by :func:`write_group` within the
+    same rollback-safe transaction that promotes the new shards: because the loader
+    reads every non-hidden file in the directory, a leftover same-prefix shard
+    would silently pollute a later load, and retiring it inside the transaction
+    means a failure while converting or writing never deletes a usable dump it then
+    cannot replace, nor exposes the shorter new shard set beside a stale extra. Only
+    the names this writer itself produces are retired — the bare prefix and
+    ``shard_prefix_<index>`` for a canonical positive decimal index — so an
+    unrelated sidecar or backup that merely shares the prefix (for example
+    ``weights_metadata.json``) is never deleted. Returns exactly the list of file
+    paths written by this call (sorted), tracked from :func:`write_group` rather
+    than re-scanned from disk.
 
     ``shard_prefix`` must be a plain file name (see :func:`_validate_shard_prefix`),
     may not begin with ``.`` and may not end in a reserved suffix (``.json``
@@ -540,21 +588,6 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
 
     entries = [make_entry(key, state[key]) for key in sorted(state.keys())]
     written = write_group(entries, out_dir, shard_prefix)
-
-    # Clear stale same-prefix shards from a previous run so they cannot pollute a
-    # later StateDictionary load (the loader reads every non-hidden file). Only
-    # the names this writer itself produces are removed -- the bare prefix and
-    # ``prefix_<index>`` where the suffix is a decimal shard index -- so an
-    # unrelated sidecar or backup that merely shares the prefix (for example
-    # ``weights_metadata.json``) is never deleted.
-    kept = {os.path.basename(path) for path in written}
-    for name in os.listdir(out_dir):
-        if name in kept:
-            continue
-        if _is_shard_name(name, shard_prefix):
-            stale = os.path.join(out_dir, name)
-            if os.path.isfile(stale):
-                os.remove(stale)
 
     return sorted(written)
 

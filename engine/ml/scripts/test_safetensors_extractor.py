@@ -177,6 +177,42 @@ def test_write_state_dictionary_preserves_non_shard_same_prefix_files(tmp_path):
         assert handle.read() == "unrelated"
 
 
+def test_write_state_dictionary_preserves_non_canonical_numeric_suffix(tmp_path):
+    """Cleanup deletes only canonical shard indexes, not every numeric-looking suffix.
+
+    ``write_group`` names later shards ``shard_prefix_<index>`` with ``index`` the
+    canonical ``str(index)`` for some ``index > 0`` -- an ASCII decimal with no
+    leading zero. A same-prefix file whose suffix is non-canonical -- ``weights_0``
+    (index 0 is the bare prefix, never ``_0``) or ``weights_01`` (leading zero) --
+    is not a shard this writer produces, so a rewrite must leave it untouched while
+    still removing the canonical stale shard ``weights_1``.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+
+    leading_zero = os.path.join(out_dir, "weights_01")
+    with open(leading_zero, "w", encoding="utf-8") as handle:
+        handle.write("unrelated-01")
+    zero_index = os.path.join(out_dir, "weights_0")
+    with open(zero_index, "w", encoding="utf-8") as handle:
+        handle.write("unrelated-0")
+    stale_shard = os.path.join(out_dir, "weights_1")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale_shard)
+
+    core.write_state_dictionary({"fresh.weight": np.arange(3, dtype=np.float32)}, out_dir)
+
+    # The canonical stale shard is removed; the non-canonical numeric-suffix files
+    # survive with their content intact.
+    assert not os.path.exists(stale_shard)
+    assert os.path.isfile(leading_zero)
+    assert os.path.isfile(zero_index)
+    with open(leading_zero, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated-01"
+    with open(zero_index, encoding="utf-8") as handle:
+        assert handle.read() == "unrelated-0"
+
+
 def test_zero_sized_dimension_round_trips(tmp_path):
     # The SA3 SoftNorm bottleneck has noise_scaling_factor with shape [1, 0, 1].
     src = {"bottleneck.noise_scaling_factor": np.zeros((1, 0, 1), dtype=np.float32)}
@@ -693,6 +729,66 @@ def test_replace_failure_during_promotion_restores_the_previous_dump(tmp_path, m
     assert set(reloaded) == {"a", "b"}
     np.testing.assert_array_equal(reloaded["a"], previous["a"])
     np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_stale_shard_retirement_is_rolled_back_on_failure(tmp_path, monkeypatch):
+    """Retiring a stale extra from a prior, larger run is part of the promotion
+    transaction. If moving the stale shard aside fails, the whole replacement rolls
+    back: the previous dump -- both the new-named shard and the stale extra -- is
+    left intact, so a shorter new shard set is never exposed beside a leftover
+    ``prefix_<index>`` that a later load would silently pick up."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    previous = {"a": np.arange(3, dtype=np.float32), "b": np.arange(5, dtype=np.float32)}
+    core.write_state_dictionary(previous, str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+    before = {name: (out_dir / name).read_bytes() for name in ("references", "references_1")}
+
+    real_replace = os.replace
+
+    def _fail_stale_retirement(src, dst):
+        # Fail only when moving the stale extra aside to its hidden backup, after the
+        # single new shard has already been promoted onto its final name.
+        if str(dst).endswith(".references_1.stale"):
+            raise OSError("cannot move stale shard aside")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(core.os, "replace", _fail_stale_retirement)
+    # The new state needs only one shard, so references_1 becomes a stale extra.
+    replacement = {"a": np.full(2, 7.0, dtype=np.float32)}
+    with pytest.raises(OSError):
+        core.write_state_dictionary(replacement, str(out_dir), shard_prefix="references")
+
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"], \
+        "rollback must restore the previous shards with no staged or backup files"
+    for name, data in before.items():
+        assert (out_dir / name).read_bytes() == data, \
+            f"{name} must be restored to its previous content after a failed retirement"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a", "b"}
+    np.testing.assert_array_equal(reloaded["a"], previous["a"])
+    np.testing.assert_array_equal(reloaded["b"], previous["b"])
+
+
+def test_shorter_rewrite_retires_stale_extra_shards(tmp_path, monkeypatch):
+    """A successful rewrite that needs fewer shards than the previous run removes the
+    now-stale extra shard, so a directory load sees only the new state."""
+    out_dir = tmp_path / "reference"
+    monkeypatch.setattr(core, "PROTOBUF_SIZE_LIMIT", 1)
+    core.write_state_dictionary({"a": np.arange(3, dtype=np.float32),
+                                 "b": np.arange(5, dtype=np.float32)},
+                                str(out_dir), shard_prefix="references")
+    assert sorted(os.listdir(out_dir)) == ["references", "references_1"]
+
+    written = core.write_state_dictionary({"a": np.full(2, 6.0, dtype=np.float32)},
+                                          str(out_dir), shard_prefix="references")
+
+    assert [os.path.basename(p) for p in written] == ["references"]
+    assert sorted(os.listdir(out_dir)) == ["references"], \
+        "the stale extra shard from the larger run must be retired"
+    reloaded = core.read_state_dictionary(str(out_dir))
+    assert set(reloaded) == {"a"}
+    np.testing.assert_array_equal(reloaded["a"], np.full(2, 6.0, dtype=np.float32))
 
 
 def test_read_still_rejects_a_corrupt_shard(tmp_path):
