@@ -63,6 +63,17 @@ by a later run: the later run regenerates and overwrites it at the same path bef
 library directory is a no-op as a diagnostic.** (The one thing a run consumes from the previous run
 is nothing at all — the `.c`/library pair is rewritten from the current graph.)
 
+This overwrite-before-load conclusion assumes the **default** `LinkedLibraryGenerator` —
+`DefaultLinkedLibraryGenerator`, installed by `NativeCompiler.factory(...)` — which always runs the
+toolchain against the freshly written source. `NativeCompiler` accepts an arbitrary
+`LinkedLibraryGenerator`, and that interface deliberately permits caching and remote-build
+strategies (see its Javadoc). `NativeCompiler.compile` always truncates and rewrites the `.c`
+source, but the *library* artifact is produced by the generator: a custom generator that serves a
+cached library instead of recompiling could place stale bytes at the deterministic path. The "a
+stale dylib cannot be the cause" triage therefore holds only for the default generator; a
+deployment that installs a caching or remote generator must provide the same overwrite guarantee
+itself.
+
 This overwrite-before-load guarantee is **sequential-run only**. `reserveTargetIndex()` is a
 JVM-local counter (`static synchronized`, restarting at `0` each JVM) and there is no inter-process
 lock — no `FileLock`, no lockfile — on the library directory. Two JVMs that share one library
@@ -131,12 +142,15 @@ All three memory providers guard the byte ceiling:
 | `NativeMemoryProvider` | `allocate` | `HardwareException: "Memory max reached"` |
 
 Each performs the same **pre-allocation check** —
-`if (memoryUsed + requested > memoryMax) throw new HardwareException(...)`, then increments
-`memoryUsed` — before the backend allocation call. Treat it as a guard against a single over-budget
-request, not a hard serialized ceiling: only `NativeMemoryProvider.allocate` is `synchronized`, so
-its check-and-increment is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run the
-check and the `memoryUsed` increment without synchronization, so two concurrent allocations can each
-pass the check and push the total past `memoryMax`.
+`if (memoryUsed + requested > memoryMax) throw new HardwareException(...)` — before the backend
+allocation call. The accounting order *after* the check differs by provider:
+`NativeMemoryProvider.allocate` increments `memoryUsed` *before* its backend `calloc`, whereas
+`CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` increment `memoryUsed` only *after* the
+backend `clCreateBuffer`/`newBuffer*` call returns successfully. Treat the check as a guard against a
+single over-budget request, not a hard serialized ceiling: only `NativeMemoryProvider.allocate` is
+`synchronized`, so its check-and-increment is atomic. `CLMemoryProvider.buffer` and
+`MetalMemoryProvider.buffer` run the check and the `memoryUsed` increment without synchronization, so
+two concurrent allocations can each pass the check and push the total past `memoryMax`.
 
 Distinguish two separate failure modes, because they surface differently:
 
