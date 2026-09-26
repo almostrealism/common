@@ -19,16 +19,27 @@ initialize `cl_event` locals with the C literal `NULL`. Those are glue-local
 variables, not the kernel's argument pointers, and nothing below is weakened by
 them — the kernel body still cannot reassign or null the pointers it receives.
 
-Within the kernel body, the unit of generated code is a statement, and the only value-producing
-statement is an assignment. Assignments are modeled by
+Within the kernel body, the unit of generated code is a statement. The
+value-carrying statement is an assignment, modeled by
 `io.almostrealism.code.ExpressionAssignment`, whose constructor **rejects a
 null value expression** — it throws `IllegalArgumentException` when the
-assigned `Expression` is `null`. A statement is rendered to C by
+assigned `Expression` is `null`. Such a statement is rendered to C by
 `LanguageOperations.assignment(dest, value)` (plain assignment) or
-`LanguageOperations.declaration(type, dest, value)` (declaration-assignment).
-Both take a destination expression and a **value expression**; there is no
-overload, literal, or primitive that assigns "nothing," "null," or "an erased
-pointer."
+`LanguageOperations.declaration(type, dest, value)` (declaration with an
+initializer); both carry a **value expression** on the right-hand side, so
+neither assigns "null" or "an erased pointer" to its destination.
+
+One declaration form deliberately carries *no* initializer: the array overload
+`LanguageOperations.declaration(type, dest, null, arrayLength)` emits an
+**uninitialized local array** (`float scratch[N];`) with no `= value` clause —
+and in fact *forbids* an initializer, throwing `UnsupportedOperationException`
+if one is supplied alongside a length. That is an omitted initializer on a
+freshly declared local, not an assignment of "null" to an existing location: it
+introduces new scratch storage; it does not null, erase, or reassign a pointer
+the kernel already holds. So the only two shapes the kernel body emits are a
+value-carrying assignment and an uninitialized local-array declaration; there is
+no overload, literal, or primitive that writes "nothing," "null," or "an erased
+pointer" into an existing destination or argument pointer.
 
 Consequently:
 
