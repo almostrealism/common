@@ -83,6 +83,50 @@ public class ExpressionFeaturesGcdTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A greatest common divisor of {@code 2^63} — reachable only from
+	 * {@link Long#MIN_VALUE} operands, whose magnitude has no positive
+	 * {@code long} representation — raises an {@link ArithmeticException} rather
+	 * than silently returning a negative value.
+	 */
+	@Test(timeout = 5000)
+	public void longMinValueGcdIsUnrepresentable() {
+		assertUnrepresentable(Long.MIN_VALUE, 0);
+		assertUnrepresentable(0, Long.MIN_VALUE);
+		assertUnrepresentable(Long.MIN_VALUE, Long.MIN_VALUE);
+	}
+
+	/**
+	 * Asserts that {@link ExpressionFeatures#gcd(long, long)} rejects the given
+	 * operands because their greatest common divisor is the unrepresentable
+	 * {@code 2^63}.
+	 *
+	 * @param a the first operand
+	 * @param b the second operand
+	 */
+	private static void assertUnrepresentable(long a, long b) {
+		try {
+			long result = ExpressionFeatures.gcd(a, b);
+			Assert.fail("Expected ArithmeticException for gcd(" + a + ", " + b
+					+ ") but got " + result);
+		} catch (ArithmeticException expected) {
+			// the greatest common divisor 2^63 has no non-negative long value
+		}
+	}
+
+	/**
+	 * A {@link Long#MIN_VALUE} operand paired with any value whose GCD with it is
+	 * representable still yields the correct non-negative result: the Euclidean
+	 * remainder step reduces the magnitude below {@code 2^63} before it is
+	 * negated.
+	 */
+	@Test(timeout = 5000)
+	public void longMinValueWithRepresentableGcd() {
+		Assert.assertEquals(4, ExpressionFeatures.gcd(Long.MIN_VALUE, 12));
+		Assert.assertEquals(4, ExpressionFeatures.gcd(12, Long.MIN_VALUE));
+		Assert.assertEquals(1L << 62, ExpressionFeatures.gcd(Long.MIN_VALUE, 1L << 62));
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#commonFactor()} is the GCD of the offset
 	 * and the scale; it must agree with the shared helper.
 	 */
