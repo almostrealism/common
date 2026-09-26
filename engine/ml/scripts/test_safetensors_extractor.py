@@ -22,6 +22,10 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Presence probe only: safetensors_extractor imports collections_pb2 lazily, so
+# without this the protobuf writer/reader tests below would each fail with an
+# ImportError on a fresh checkout; skip the module cleanly instead.
+# TODO(review): this also skips the pure-numpy remap/fold tests, which the extractor's lazy import is meant to keep runnable.
 try:
     import collections_pb2  # noqa: F401
 except ImportError:

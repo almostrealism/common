@@ -155,6 +155,34 @@ public class CollectionDataReferenceTest {
 	}
 
 	/**
+	 * A collection with a zero-length axis resolves to nothing even when its data field is present
+	 * on the wire with length zero. A canonical protobuf writer omits an empty packed field, but a
+	 * writer that emits it explicitly produces equally valid protobuf; the reference must be decided
+	 * by the shape, or a zero-count reference escapes into the decoder and drops the whole shard.
+	 */
+	@Test(timeout = 30000)
+	public void anEmptyCollectionWithAnExplicitEmptyFieldResolvesToNothing() {
+		byte[] withoutData = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build()
+				.toByteArray();
+
+		byte[] emptyField = {
+				(byte) ((CollectionDataReference.DATA_32_FIELD << 3) | 2), 0
+		};
+
+		byte[] encoded = new byte[withoutData.length + emptyField.length];
+		System.arraycopy(withoutData, 0, encoded, 0, withoutData.length);
+		System.arraycopy(emptyField, 0, encoded, withoutData.length, emptyField.length);
+
+		EncodedMessage message = message(encoded, 0);
+		Assert.assertTrue(message.has(CollectionDataReference.DATA_32_FIELD));
+		Assert.assertEquals(0, message.lengthOf(CollectionDataReference.DATA_32_FIELD));
+		Assert.assertNull(CollectionDataReference.of(message));
+	}
+
+	/**
 	 * Collection data nested inside a larger message is addressable.
 	 *
 	 * <p>This is the shape a library of weights is written in — entries within

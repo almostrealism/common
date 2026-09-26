@@ -119,12 +119,14 @@ public class CollectionDataReference {
 	 * Locates the values of the given collection data.
 	 *
 	 * <p>A collection whose shape has zero total size (an axis of length zero)
-	 * holds no values and so carries no data field on the wire. It resolves to
-	 * {@code null} rather than to an empty reference because a
-	 * {@link PackedCollection} cannot have zero size — reading it back is not a
-	 * loss of an addressable range, it is a value the reader cannot hold at
-	 * all. The {@code CollectionData} it was written from remains readable by an
-	 * ordinary protobuf parse.</p>
+	 * holds no values. It resolves to {@code null} rather than to an empty
+	 * reference because a {@link PackedCollection} cannot have zero size —
+	 * reading it back is not a loss of an addressable range, it is a value the
+	 * reader cannot hold at all. This is decided by the shape, not by whether a
+	 * data field is present: a canonical writer omits an empty packed field, but
+	 * one that writes it explicitly with length zero is equally valid protobuf
+	 * and must resolve the same way. The {@code CollectionData} it was written
+	 * from remains readable by an ordinary protobuf parse.</p>
 	 *
 	 * @param data the collection data message
 	 * @return a reference to its values, or {@code null} if it holds none
@@ -135,7 +137,7 @@ public class CollectionDataReference {
 
 		TraversalPolicy shape = CollectionEncoder.decode(
 				policy.parse(Collections.TraversalPolicyData.parser()));
-		if (shape == null || shape.getDimensions() == 0) return null;
+		if (shape == null || shape.getTotalSizeLong() == 0) return null;
 
 		Precision precision = data.has(DATA_FIELD) ? Precision.FP64 : Precision.FP32;
 		int field = precision == Precision.FP64 ? DATA_FIELD : DATA_32_FIELD;
