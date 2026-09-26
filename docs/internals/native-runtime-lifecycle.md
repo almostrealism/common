@@ -94,8 +94,9 @@ identifier. Without it, how widely the directory is shared follows `java.io.tmpd
 of `/tmp` (typical on Linux) it is shared across *all* users on the host. So concurrent JVMs with
 matching configuration race on this directory *by default*, and the race is not confined to a
 hand-set shared `AR_HARDWARE_LIBS`.
-Running more than one JVM that uses the native backend concurrently on one machine is unsupported for
-this reason. When triaging a crash, this cross-run race is the one case where the
+Running more than one JVM that uses the native backend concurrently against the *same* library
+directory is unsupported for this reason; JVMs that resolve different directories (distinct
+`AR_HARDWARE_LIBS`, or distinct path configuration as above) do not contend. When triaging a crash, this cross-run race is the one case where the
 on-disk artifact *can* be wrong for the loading run — but only when another JVM was writing the same
 directory at the same time; a strictly sequential single-JVM history is still immune (the
 overwrite-before-load argument above holds).
@@ -149,13 +150,19 @@ quantities on the same computation, not a contradiction.
 
 ### Which providers enforce it, and the failure mode
 
-All three memory providers guard the byte ceiling:
+All three hardware-backed memory providers guard the byte ceiling:
 
 | Provider | Method | Exception message |
 |---|---|---|
 | `MetalMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `CLMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `NativeMemoryProvider` | `allocate` | `HardwareException: "Memory max reached"` |
+
+The ceiling does **not** cover the Java-heap fallback. Unless a custom provider supply is installed,
+`MetalDataContext.getMemoryProvider(int)` and `CLDataContext.getMemoryProvider(int)` route any
+allocation smaller than the context's `offHeapSize` to a `JVMMemoryProvider`, which has no
+`memoryMax` check. Those small allocations are bounded only by the JVM heap (`-Xmx`), not by
+`AR_HARDWARE_MEMORY_SCALE`, and they do not count toward the hardware provider's `memoryUsed`.
 
 Each performs the same **pre-allocation check** —
 `if (memoryUsed + requested > memoryMax) throw new HardwareException(...)` — before the backend
