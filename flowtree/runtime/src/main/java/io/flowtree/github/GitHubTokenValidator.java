@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import io.flowtree.controller.FlowTreeController;
+import io.flowtree.jobs.GitOperations;
 import io.flowtree.workstream.WorkstreamConfig;
 
 /**
@@ -306,35 +307,14 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	}
 
 	/**
-	 * Extracts "owner/repo" from a repository URL (HTTPS or SSH format).
+	 * Extracts "owner/repo" from a repository URL (HTTPS or SSH format);
+	 * the parsing is {@link GitOperations#repositorySlug(String)}.
 	 *
 	 * @param repoUrl the repository URL
 	 * @return the "owner/repo" string, or null if not parseable
 	 */
 	static String extractOwnerRepo(String repoUrl) {
-		if (repoUrl == null || repoUrl.isEmpty()) return null;
-
-		// SSH: git@github.com:owner/repo.git
-		if (repoUrl.contains("@") && repoUrl.contains(":")) {
-			int colon = repoUrl.lastIndexOf(':');
-			String path = repoUrl.substring(colon + 1);
-			if (path.endsWith(".git")) {
-				path = path.substring(0, path.length() - 4);
-			}
-			return path;
-		}
-
-		// HTTPS: https://github.com/owner/repo.git
-		if (repoUrl.contains("github.com/")) {
-			int idx = repoUrl.indexOf("github.com/") + "github.com/".length();
-			String path = repoUrl.substring(idx);
-			if (path.endsWith(".git")) {
-				path = path.substring(0, path.length() - 4);
-			}
-			return path;
-		}
-
-		return null;
+		return GitOperations.repositorySlug(repoUrl);
 	}
 
 	/**

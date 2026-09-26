@@ -375,4 +375,56 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		// No tokens configured — should return empty results without throwing
 		assertTrue("No GitHub tokens should produce empty results", results.isEmpty());
 	}
+
+	/**
+	 * Verifies that suffix-less SSH and HTTPS URLs, and unrecognised input, are
+	 * handled the same way as by {@link GitHubProxyHandler#extractOwnerRepo(String)}.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoMatchesProxyHandlerForPlainForms() {
+		String[] urls = {
+				"git@github.com:almostrealism/common",
+				"https://github.com/almostrealism/common",
+				"not-a-url"
+		};
+
+		for (String url : urls) {
+			assertEquals(GitHubProxyHandler.extractOwnerRepo(url),
+					GitHubTokenValidator.extractOwnerRepo(url));
+		}
+
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("git@github.com:almostrealism/common"));
+		assertNull(GitHubTokenValidator.extractOwnerRepo("not-a-url"));
+	}
+
+	/**
+	 * Verifies that an {@code ssh://} URL yields the {@code owner/repo} slug rather than
+	 * a path cut at the scheme's colon.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromSshSchemeUrl() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("ssh://git@github.com/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that an HTTPS URL carrying credentials yields the {@code owner/repo} slug,
+	 * so that the owner used for per-org token lookup is the real organisation.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromCredentialedHttpsUrl() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo(
+						"https://x-access-token:secret@github.com/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that a trailing slash is not carried into the {@code owner/repo} slug.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromUrlWithTrailingSlash() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://github.com/almostrealism/common/"));
+	}
 }

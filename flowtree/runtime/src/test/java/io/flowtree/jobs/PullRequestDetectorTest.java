@@ -27,6 +27,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+// TODO(review): validateOwnerRepo no longer exists; update this javadoc and docs/pull-request-detection.md to describe GitOperations.repositorySlug
 /**
  * Tests for {@link PullRequestDetector} covering the static utility methods
  * {@code extractOwnerRepo} and {@code validateOwnerRepo}, and verifying
@@ -86,5 +87,29 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 		PullRequestDetector detector = new PullRequestDetector();
 		Optional<String> result = detector.detect(null, "branch", null);
 		assertFalse("Expected empty optional for null remote URL", result.isPresent());
+	}
+
+	/** Verifies the GitHub URL forms, other than the {@code .git}-suffixed ones, that yield a slug. */
+	@Test(timeout = 30000)
+	public void extractsOwnerRepoFromOtherGitHubForms() {
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("git@github.com:owner/repo"));
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo"));
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("ssh://git@github.com/owner/repo.git"));
+		assertEquals("owner/repo",
+				PullRequestDetector.extractOwnerRepo("https://x-access-token:secret@github.com/owner/repo.git"));
+	}
+
+	/** Verifies that GitHub URLs naming something other than a repository are rejected. */
+	@Test(timeout = 30000)
+	public void rejectsGitHubUrlsThatAreNotRepositories() {
+		assertNull(PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo/pull/3"));
+		assertNull(PullRequestDetector.extractOwnerRepo("git@github.com:owner"));
+		assertNull(PullRequestDetector.extractOwnerRepo("not-a-url"));
+	}
+
+	/** Verifies that a trailing slash is not carried into the slug used to build the API path. */
+	@Test(timeout = 30000)
+	public void extractsOwnerRepoFromUrlWithTrailingSlash() {
+		assertEquals("owner/repo", PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo/"));
 	}
 }
