@@ -224,7 +224,9 @@ public class Tensor<T> {
 		for (T o : l) {
 			if (o instanceof ArrayList) {
 				size += totalSize((ArrayList) o);
-			} else {
+			} else if (o instanceof Leaf && ((Leaf) o).get() != null) {
+				// Count only elements the caller inserted, not the Leaf(null)
+				// placeholders insert() adds to pad a sub-list up to a sparse index.
 				size++;
 			}
 		}
