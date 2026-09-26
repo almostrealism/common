@@ -20,8 +20,11 @@ per-instance mutable state of its own**: it has no static scratch buffers, no
 captured closures, and no invocation-specific mutable globals. (The generated
 header does define a process-wide `M_PI_F` global, initialized once to `M_PI`;
 it is not declared `const`, but a kernel only ever reads it, never writes it.)
-Every *data* region it reads or writes is a caller-supplied argument pointer
-passed in per invocation — the only non-argument value it reads is that
+Every data region that *persists between calls or is shared across them* is a
+caller-supplied argument pointer passed in per invocation; any other storage the
+kernel touches is invocation-local — stack scalars and locally-declared scratch
+arrays created fresh on entry — and so is private to that call rather than shared.
+The only non-argument value it reads is that
 initialized-once `M_PI_F` global, which carries no invocation state (see the
 argument-marshalling contract in
 `NativeInstructionSet` and

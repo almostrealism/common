@@ -191,9 +191,12 @@ import java.util.stream.Stream;
  * static scratch buffers, captured closures, or invocation-specific mutable globals
  * (the generated header's {@code M_PI_F} is a process-wide global initialized once to
  * {@code M_PI} — not declared {@code const}, but only ever read, never written by a
- * kernel). Every <em>data</em> region it reads or writes is a caller-supplied argument
- * passed in per invocation; the only non-argument value it reads is that initialized-once
- * {@code M_PI_F} global, which carries no invocation state.
+ * kernel). Every data region that <em>persists between calls or is shared across them</em>
+ * is a caller-supplied argument passed in per invocation; any other storage the kernel
+ * touches is invocation-local — stack scalars and locally-declared scratch arrays created
+ * fresh on entry — and so is private to that call rather than shared. The only non-argument
+ * value it reads is that initialized-once {@code M_PI_F} global, which carries no invocation
+ * state.
  * Once the instruction set has been configured
  * ({@link #setComputeContext(ComputeContext)}, {@link #setMetadata(OperationMetadata)},
  * {@link #setParallelism(int)}) and its library loaded, {@link #apply(long, long, MemoryData...)}
