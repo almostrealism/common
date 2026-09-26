@@ -83,7 +83,7 @@ Detects an open pull request for the specified branch on a GitHub repository.
 static String extractOwnerRepo(String remoteUrl)
 ```
 
-Extracts the `owner/repo` string from a GitHub remote URL. Supports both SSH and HTTPS formats.
+Extracts the `owner/repo` string from a GitHub remote URL. Supports the SSH, HTTP(S), and `git://` forms recognised by `GitOperations.repositorySlug(String)`, and requires the URL's host to be exactly `github.com` (see [Owner/Repo Extraction](#ownerrepo-extraction)).
 
 **Parameters:**
 
@@ -91,7 +91,7 @@ Extracts the `owner/repo` string from a GitHub remote URL. Supports both SSH and
 |-----------|------|-------------|
 | `remoteUrl` | `String` | The git remote URL |
 
-**Returns:** The `owner/repo` string, or `null` if the URL cannot be parsed into a valid owner/repo pair.
+**Returns:** The `owner/repo` string, or `null` if the URL's host is not `github.com` or the URL cannot be parsed into a valid owner/repo pair.
 
 **Note:** This method has package-private visibility, making it accessible to tests in the same package (`io.flowtree.jobs`).
 

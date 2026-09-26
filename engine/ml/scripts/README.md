@@ -49,8 +49,11 @@ A concrete extractor is a thin config that declares its remap rules and calls
 
 ### extract_sa3_weights.py
 
-Stable Audio 3 config over the generalized core. Extracts either the diffusion
-transformer or the embedded/standalone SAME autoencoder.
+Stable Audio 3 config over the generalized core. Extracts the diffusion
+transformer, the embedded/standalone SAME autoencoder, or the conditioner
+tensors (the learned prompt padding embedding and the duration projection that
+`StableAudio3` loads; the T5Gemma prompt encoder itself is extracted separately
+by `extract_t5gemma_weights.py`).
 
 ```bash
 # DiT weights (what DiffusionTransformer loads):
@@ -59,6 +62,8 @@ python extract_sa3_weights.py model.safetensors out_dir --target dit
 python extract_sa3_weights.py model.safetensors out_dir --target ae
 # Standalone SAME-S/SAME-L repo (bare keys):
 python extract_sa3_weights.py same.safetensors out_dir --target ae --ae-mode standalone
+# Conditioner tensors (padding embedding + duration projection):
+python extract_sa3_weights.py model.safetensors out_dir --target conditioner
 ```
 
 ### Tests

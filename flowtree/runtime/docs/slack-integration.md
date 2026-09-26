@@ -194,6 +194,7 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 - **useTmux** -- workstream-level default for whether to launch agents in a `tmux` session (per-call override at submission time)
 - **dispatchCapable** -- when `true`, agents on this workstream are permitted to call dispatch / orchestration MCP tools (e.g. `workstream_register`, `workstream_update_config`); defaults to `false` for safety
+- **agentPermissionBypassBranches** -- branch-name prefixes (e.g. `ci/`) whose coding-agent jobs may bypass the agent runtime's interactive permission prompts; a job qualifies when its target branch starts with one of the prefixes. Empty by default (no branch qualifies); blank entries are dropped, and a job with no target branch never qualifies
 - **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
 - **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups targeting this workstream are dropped while manual submissions are still accepted
 

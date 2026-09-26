@@ -282,7 +282,7 @@ public class PackedCollectionEnumerate
 	 *
 	 * <p>An enumeration is a structural reindexing (it gathers slices of the input into a
 	 * new traversal order) and does not introduce additional non-zero entries into any
-	 * output row. When the enumerated input is row-monomial (exactly one non-zero per row),
+	 * output row. When the enumerated input is row-monomial (at most one non-zero per row),
 	 * the enumerated output therefore remains row-monomial, so the selection structure that
 	 * enables the downstream gather collapse survives the enumeration. This propagation is
 	 * what allows {@link io.almostrealism.collect.Algebraic#isRowMonomial()} to reach the

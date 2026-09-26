@@ -206,8 +206,9 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	 *
 	 * <p>If the computation is a compilable {@link Computation}, a
 	 * {@link Periodic} is created that generates counter-based conditional
-	 * execution in compiled code. Otherwise, a Java-based fallback is used
-	 * with a {@link PackedCollection} counter.</p>
+	 * execution in compiled code. Otherwise, a Java-based fallback is used.
+	 * Either way the tick count is held in a newly allocated {@link Bytes}
+	 * counter; see {@link #periodic(Computation, int, Bytes)} to supply one.</p>
 	 *
 	 * @param c      the computation to execute periodically
 	 * @param period the number of invocations between executions

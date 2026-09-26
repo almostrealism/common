@@ -846,11 +846,11 @@ build/, node_modules/), IDE files (.idea/, .vscode/), binaries (.exe, .dll, .so,
 media files (.png, .jpg, .mp3, .mp4), database files (.db, .sqlite), hardware acceleration
 outputs (Extensions/, .cl, .metal), and Claude Code artifacts (claude-output/, .claude/).
 
-**Protected Path Patterns** identify test and CI infrastructure:
+**Protected Path Patterns** identify test sources:
 - `**/src/test/**`
 - `**/src/it/**`
-- `.github/workflows/**`
-- `.github/actions/**`
+
+CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`) is not in this set; it is governed by the separate CI file lock (`protectCiFiles`), which `GitCommitHandler` enables for every job except one on a `ci/...` branch or one carrying the controller-signed bypass trailer, and which blocks CI files whole-file whether branch-new or pre-existing. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection).
 
 ### FileStagingConfig (Immutable)
 
@@ -870,8 +870,9 @@ FileStagingConfig config = FileStagingConfig.builder()
 |-------|---------|-------------|
 | `maxFileSizeBytes` | 1,048,576 | Maximum file size threshold |
 | `excludedPatterns` | empty | Glob patterns to exclude |
-| `protectedPathPatterns` | empty | Patterns for protected test/CI files |
+| `protectedPathPatterns` | empty | Patterns for protected test files |
 | `protectTestFiles` | `false` | Whether test file protection is active |
+| `protectCiFiles` | `false` | Whether the CI file lock is active (CI/workflow files blocked whole-file) |
 | `baseBranch` | `"master"` | Branch used for existence checks |
 
 ### StagingResult (Immutable)

@@ -159,7 +159,7 @@ import java.util.stream.Stream;
  * ProcessDetailsFactory factory = ...;
  * AcceleratedProcessDetails details = factory.construct();
  *
- * // complexArg is being evaluated on executor thread
+ * // complexArg is being evaluated asynchronously
  * // details.whenReady() called when all args ready
  * details.whenReady(() -> {
  *     // All arguments evaluated, kernel can execute

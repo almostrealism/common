@@ -257,7 +257,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                     </div>
                     <div class="class-item">
                         <h4><a href="../apidocs/org/almostrealism/hardware/ctx/ContextSpecific.html">ContextSpecific</a></h4>
-                        <p>Thread-local context binding. Ensures operations use correct backend context.</p>
+                        <p>Context-bound values. Tracks one value per compute context and disposes of it when that context is destroyed; per-thread values via ThreadLocalContextSpecific.</p>
                     </div>
                 </div>
             </section>

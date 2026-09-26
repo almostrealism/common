@@ -42,7 +42,7 @@ The instruction set caching system avoids redundant compilation of hardware kern
 Compiling a computation to native code (JNI, OpenCL, Metal) is expensive: it involves scope generation, simplification, code generation, and compilation. Many operations in a computation graph have identical structure but different data arguments. The caching system exploits this by:
 
 1. **Computing a signature** for each operation based on its type, shapes, and input structure (not data values)
-2. **Caching the compiled kernel** in a `FrequencyCache` keyed by signature
+2. **Caching the compiled kernel** in a `FrequencyCache` keyed by signature and compiling `ComputeContext`
 3. **Substituting arguments** when the same kernel is reused by a different operation instance
 
 ### Key Insight
@@ -64,17 +64,19 @@ Two operations are "structurally identical" if they perform the same computation
 |                                                           |
 |  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
 |  +-- ScopeInstructionsManager instances                   |
-|  +-- Keyed by computation signature                       |
+|  +-- Keyed by signature + compiling ComputeContext        |
 |  +-- Auto-destroys evicted managers                       |
 |                                                           |
 +-----------------------------------------------------------+
 ```
 
-The `instructionsCache` maps signatures to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+The `instructionsCache` maps `signature:contextId` keys to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`. The `contextId` is a number `DefaultComputer` assigns to each `ComputeContext` the first time it compiles under it.
 
-**The cache is keyed by signature alone and is shared across the whole `DataContext`,** so structurally identical computations reuse one compiled kernel regardless of which thread builds them. This is sound because a `DataContext` exposes a single `ComputeContext` per backend (and therefore a single command runner): a reused kernel always encodes into — and is committed by — the same runner.
+**The cache is keyed by signature _and_ the compiling `ComputeContext`,** so structurally identical computations reuse one compiled kernel only under the same context. A reused kernel therefore always encodes into — and is committed by — the command runner of the context it was compiled under, and dispatches through that context's memory provider.
 
-> A compiled kernel is bound to the `ComputeContext` that compiled it: its operator dispatches through that context's command runner. This only matters when more than one context exists for a backend. Metal previously handed out a `MetalComputeContext` per thread (proliferated by `Evaluable.async`'s thread-per-dispatch issuance), so a kernel cached at the `DataContext` level and reused on another thread encoded into a command buffer the executing thread never committed — the kernel silently never ran (exactly-zero output). `MetalDataContext` now shares one context across threads (`OpenCL` remains per-thread; `Native` was already shared), which removes the only multi-context-per-backend case and lets the cache key stay signature-only.
+> A compiled kernel is bound to the `ComputeContext` that compiled it: its operator dispatches through that context's command runner. This only matters when more than one context exists for a backend. Metal previously handed out a `MetalComputeContext` per thread (proliferated by `Evaluable.async`'s thread-per-dispatch issuance), so a kernel cached at the `DataContext` level and reused on another thread encoded into a command buffer the executing thread never committed — the kernel silently never ran (exactly-zero output). `MetalDataContext` now shares one context across threads (`OpenCL` remains per-thread; `Native` was already shared), which removed that multi-context case for Metal. The cache key now also includes the compiling context, so even where several contexts exist (for example a scoped context that is created and destroyed while others stay live) a kernel is never handed to an operation placed under a different context.
+
+If the context an entry was compiled under — or that context's `DataContext` — has been destroyed, `getScopeInstructionsManager` evicts the entry and throws `IllegalStateException` rather than returning a manager: the operation was placed under that context deliberately, and its work is never moved to another.
 
 ### Class Structure
 
@@ -135,7 +137,9 @@ AcceleratedComputationOperation.getInstructionSetManager()
     |       |
     |       +-- YES: DefaultComputer.getScopeInstructionsManager(signature, ...)
     |       |       |
-    |       |       +-- instructionsCache.computeIfAbsent(signature, ...)
+    |       |       +-- Context destroyed? evict + throw IllegalStateException
+    |       |       |
+    |       |       +-- instructionsCache.computeIfAbsent(signature:contextId, ...)
     |       |       |       |
     |       |       |       +-- CACHE HIT: Return existing ScopeInstructionsManager
     |       |       |       |
@@ -445,7 +449,7 @@ where `age = (clock - lastAccessTime) / clock`. Entries with the lowest score ar
 
 **Eviction listener:** `DefaultComputer` registers `(key, mgr) -> mgr.destroy()` to release native resources when a manager is evicted.
 
-**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(signature, () -> mgr)`. This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
+**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(cacheKey, () -> mgr)` (where `cacheKey` is `signature:contextId`). This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
 
 ---
 
@@ -509,7 +513,7 @@ verification reuses the same context and cannot create a second set of kernel-ow
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123:<contextId>", ...)
     |       |       +-- MISS: Create new ScopeInstructionsManager
     |       +-- Return manager
     |
@@ -530,7 +534,7 @@ verification reuses the same context and cannot create a second set of kernel-ow
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123:<contextId>", ...)
     |       |       +-- HIT: Return existing ScopeInstructionsManager
     |       |           (an operation from a DIFFERENT context misses here
     |       |            and compiles its own kernel)
@@ -590,7 +594,7 @@ AcceleratedComputationEvaluable.enableRedundantCompilation = false;
 | Aspect | Heap | Instruction Caching |
 |--------|------|-------------------|
 | What it caches | Memory allocations (Bytes) | Compiled kernels (InstructionSet) |
-| Scope | Thread-local, per-stage | Global, per-signature |
+| Scope | Thread-local, per-stage | Global, per signature and compute context |
 | Lifetime | Scope exit (push/pop) | Until eviction from FrequencyCache |
 | Resource type | Memory buffers | Native compiled code |
 
