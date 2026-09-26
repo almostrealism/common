@@ -116,6 +116,12 @@ public class ExpressionCacheBypassTests extends TestSuiteBase {
 				matrix instanceof ExplicitExpressionMatrix);
 		Assert.assertTrue("Matrix entries should not enter the active cache", compilation.isEmpty());
 
+		int[] duplicates = matrix.getRowDuplicates();
+		Assert.assertEquals(ROWS, duplicates.length);
+		for (int i = 0; i < ROWS; i++) {
+			Assert.assertEquals("Row " + i + " should not be recorded as a duplicate", -1, duplicates[i]);
+		}
+
 		for (int i = 0; i < ROWS; i++) {
 			for (int j = 0; j < COLUMNS; j++) {
 				Assert.assertEquals(expected[i][j], matrix.valueAt(i, j));
@@ -146,6 +152,15 @@ public class ExpressionCacheBypassTests extends TestSuiteBase {
 
 		Assert.assertTrue("The matrix should be populated explicitly",
 				matrix instanceof ExplicitExpressionMatrix);
+
+		// Row 0 has no predecessor, and every later row must point directly at
+		// row 0 rather than at its immediate predecessor
+		int[] duplicates = matrix.getRowDuplicates();
+		Assert.assertEquals(ROWS, duplicates.length);
+		Assert.assertEquals(-1, duplicates[0]);
+		for (int i = 1; i < ROWS; i++) {
+			Assert.assertEquals("Row " + i + " should be recorded as a duplicate of row 0", 0, duplicates[i]);
+		}
 
 		for (int i = 0; i < ROWS; i++) {
 			for (int j = 0; j < COLUMNS; j++) {
