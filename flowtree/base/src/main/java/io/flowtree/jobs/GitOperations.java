@@ -1021,6 +1021,29 @@ public class GitOperations implements ConsoleFeatures {
             Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?[^/]+/([^/]+/[^/]+?)(?:\\.git)?/?$");
 
     /**
+     * Pattern matching the host of an SSH-form repository URL
+     * ({@code git@host:owner/repo.git}), capturing the host between the
+     * {@code @} and the {@code :}. Requires the full {@code owner/repo} path
+     * so the host is reported only for a recognised repository URL.
+     */
+    private static final Pattern SSH_HOST_PATTERN =
+            Pattern.compile("^[^/@]+@([^:/]+):[^/]+/[^/]+?(?:\\.git)?/?$");
+
+    /**
+     * Pattern matching the host of an HTTP(S)-form or {@code git://}
+     * repository URL, capturing the host after the scheme and optional
+     * credentials while excluding an optional {@code :port} from the capture
+     * (so a URL with an explicit port reports the same host as one without).
+     * A bracketed IPv6 literal ({@code [2001:db8::1]}) is captured whole,
+     * brackets included, so the host is still reported for the same
+     * {@code [^/]+} authority {@link #HTTP_REPO_PATTERN} accepts. Requires the
+     * full {@code owner/repo} path so the host is reported only for a
+     * recognised repository URL.
+     */
+    private static final Pattern HTTP_HOST_PATTERN =
+            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?(\\[[^\\]]+\\]|[^:/]+)(?::[0-9]+)?/[^/]+/[^/]+?(?:\\.git)?/?$");
+
+    /**
      * Reduces a repository URL to its canonical {@code owner/repo} slug so
      * that URLs naming the same repository in different forms compare equal.
      *
@@ -1050,6 +1073,40 @@ public class GitOperations implements ConsoleFeatures {
         if (ssh.matches()) return ssh.group(1);
 
         Matcher http = HTTP_REPO_PATTERN.matcher(trimmed);
+        if (http.matches()) return http.group(1);
+
+        return null;
+    }
+
+    /**
+     * Extracts the host of a repository URL, so that a caller which needs a
+     * particular service (for example one that will query the GitHub API with
+     * the {@link #repositorySlug(String) slug}) can reject URLs pointing
+     * elsewhere. Because {@code repositorySlug} deliberately drops the host,
+     * a substring check against the raw URL is not a host check — it accepts
+     * a look-alike host such as {@code github.com.evil.example} — whereas this
+     * method returns the exact host to compare.
+     *
+     * <p>The host is reported only for a URL that also parses as a repository
+     * (the same SSH, HTTP(S), and {@code git://} forms {@code repositorySlug}
+     * recognises); an input that is not a repository URL yields {@code null},
+     * exactly as {@code repositorySlug} does.</p>
+     *
+     * @param repoUrl the repository URL in SSH, HTTP(S), or {@code git://}
+     *                form; may be {@code null}
+     * @return the host with its original case, or {@code null} when
+     *         {@code repoUrl} is {@code null}, blank, or not a recognised
+     *         repository URL
+     */
+    public static String repositoryHost(String repoUrl) {
+        if (repoUrl == null) return null;
+        String trimmed = repoUrl.trim();
+        if (trimmed.isEmpty()) return null;
+
+        Matcher ssh = SSH_HOST_PATTERN.matcher(trimmed);
+        if (ssh.matches()) return ssh.group(1);
+
+        Matcher http = HTTP_HOST_PATTERN.matcher(trimmed);
         if (http.matches()) return http.group(1);
 
         return null;
