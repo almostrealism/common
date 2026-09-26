@@ -147,10 +147,10 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
- * <p><strong>Purpose:</strong> Max allocation bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB
- * (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
- * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and
- * {@code NativeMemoryProvider} each reject an over-budget allocation with a {@code HardwareException}
+ * <p><strong>Purpose:</strong> Per-provider tracked memory ceiling (total live bytes, not the size of any single
+ * allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
+ * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and {@code NativeMemoryProvider}
+ * each reject an allocation for which {@code memoryUsed + requested > memoryMax} with a {@code HardwareException}
  * (message {@code "Memory Max Reached"} from the two GPU providers, {@code "Memory max reached"} from
  * {@code NativeMemoryProvider}); the tracked-ceiling rejection throws rather than returning a zero pointer, though a raw OS calloc failure below the ceiling can still yield one (caught at dispatch). See the internals doc.</p>
  * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
@@ -1236,9 +1236,9 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isNativeSharedMemory() { return nativeSharedMemory; }
 
 	/**
-	 * Returns the memory scale exponent for maximum allocation size.
+	 * Returns the memory scale exponent for the per-provider tracked memory ceiling.
 	 *
-	 * <p>Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
+	 * <p>Ceiling bytes (total live, not per allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
 	 *
 	 * @return The memory scale exponent
 	 */
