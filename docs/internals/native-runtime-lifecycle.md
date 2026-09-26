@@ -184,10 +184,10 @@ Distinguish two separate failure modes, because they surface differently:
   (see §5) — but it is a genuine zero pointer produced by the allocator, not something the tracked
   ceiling would have thrown on.
 
-When you see `HardwareException: Memory max
-reached`, raise `AR_HARDWARE_MEMORY_SCALE` (exponential — increase by one step at a time) or reduce
-the working set; see the [hardware README](../../base/hardware/README.md) Memory Configuration
-section.
+When you see a `HardwareException` whose message is `Memory Max Reached` (from `MetalMemoryProvider`
+or `CLMemoryProvider`) or `Memory max reached` (from `NativeMemoryProvider`), raise
+`AR_HARDWARE_MEMORY_SCALE` (exponential — increase by one step at a time) or reduce the working set;
+see the [hardware README](../../base/hardware/README.md) Memory Configuration section.
 
 ---
 
@@ -401,8 +401,9 @@ For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `Nativ
 2. **Rule out "the kernel nulled a pointer internally" (§5).** Codegen cannot assign a pointer.
    A `0x0` inside the kernel came from the JNI boundary or from arithmetic — start at the Java
    caller.
-3. **Separate the two allocation-failure modes (§2).** The *tracked* ceiling throws
-   `HardwareException: Memory max reached` rather than fabricating a pointer, so if you did not see
+3. **Separate the two allocation-failure modes (§2).** The *tracked* ceiling throws a
+   `HardwareException` (`Memory Max Reached` from the GPU providers, `Memory max reached` from
+   `NativeMemoryProvider` — see the §2 table) rather than fabricating a pointer, so if you did not see
    that exception, exhaustion of the tracked ceiling is not your cause. That is not the same as "no
    allocator can produce a zero pointer": `NativeMemoryProvider`'s calloc path can pass the tracked
    check and still get `0` back from `Malloc.apply` when the OS is genuinely out of memory. That zero

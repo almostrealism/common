@@ -62,7 +62,8 @@ narrative. What carried over from the old log, condensed:
   default library directory, `SystemUtils.getExtensionsPath()`, has no visible delete-on-start —
   the plan's claim that libraries are "destroyed every JVM start" is itself unverified);
   the `MEMORY_SCALE`-derived limit is enforced in `MetalMemoryProvider`, `CLMemoryProvider` and
-  `NativeMemoryProvider` (each throws a "Memory max reached" `HardwareException`), but no doc says
+  `NativeMemoryProvider` (the two GPU providers throw a "Memory Max Reached" `HardwareException`,
+  `NativeMemoryProvider` a "Memory max reached" one), but no doc says
   so; there is no internals page for any of it.
 - Recent QA documentation passes fix individual stale claims (line-number citations, a
   non-existent `PackedCollection.load(File)`), but they do not create missing conceptual docs.
@@ -87,7 +88,10 @@ the most direct step toward the self-understanding goal.
 
 #### What comes next
 
-1. Execute this plan; delete `KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` when covered.
+1. This plan is executed: the native runtime lifecycle internals page and its Javadoc have landed,
+   and `KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` is trimmed to its one remaining, out-of-scope entry.
+   Follow up on that entry — the ONNX-induced-pressure gap — as a separate documentation task in
+   `extern/ml-onnx/`, then delete the gap document.
 2. Revisit the deferred structural debt from `docs/MODULE_REVIEW.md` (split
    `io.almostrealism.collect` package) as a code-quality candidate.
 3. Performance: compile-time reduction building on `CONVOLUTION_COMPILE_TIME.md`.

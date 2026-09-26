@@ -9,8 +9,11 @@ native-crash investigation) have been closed by
 `KernelMemoryGuard`, and `MemoryData`:
 
 1. **Generated kernel dylib lifetime** — covered (§1 of the internals doc):
-   libraries are overwritten before load, never reused across runs, and there is
-   no delete-on-start.
+   with the default `LinkedLibraryGenerator` and a single writer per library
+   directory, libraries are overwritten before load, never reused across runs,
+   and there is no delete-on-start. A custom caching generator, or concurrent
+   JVMs sharing one directory (no inter-process lock, JVM-local name counter),
+   can load stale or conflicting bytes; §1 states these conditions.
 2. **Off-heap memory budget** — covered (§2): the `precision.bytes() * 2^N * 64MB`
    ceiling, which providers enforce it, and the `HardwareException` failure mode.
 3. **Codegen value semantics** — covered (§5): numeric-only assignments, no
