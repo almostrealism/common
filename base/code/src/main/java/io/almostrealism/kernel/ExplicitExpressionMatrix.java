@@ -18,6 +18,7 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.sequence.Index;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.ExpressionCache;
 
 /**
  * An {@link ExpressionMatrix} backed by a two-dimensional array of pre-evaluated
@@ -73,34 +74,52 @@ public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 	 * Evaluates the given expression at every {@code (row, col)} position and builds
 	 * the internal matrix and row-duplicate map.
 	 *
+	 * <p>The row index is substituted once per row rather than once per entry, and the
+	 * entries are built with the thread's {@link ExpressionCache} bypassed: they exist only
+	 * for analysis and never reach generated code, so deduplicating them saves nothing while
+	 * flooding the cache of the kernel being compiled (see {@link ExpressionCache#bypass}).</p>
+	 *
 	 * @param e the expression to populate from
 	 */
 	protected void populate(Expression e) {
 		matrix = new Expression[rowCount][colCount];
 		rowDuplicates = new int[rowCount];
 
-		for (int i = 0; i < rowCount; i++) {
-			rowDuplicates[i] = -1;
-			boolean duplicate = true;
-
-			for (int j = 0; j < colCount; j++) {
-				matrix[i][j] = e.withIndex(row, i).withIndex(col, j);
-
-				if (enableProactiveSimplification)
-					matrix[i][j] = matrix[i][j].getSimplified();
-
-				if (i == 0 || !valueAt(i, j).equals(valueAt((i - 1), j))) {
-					duplicate = false;
-				}
+		ExpressionCache.bypass(() -> {
+			for (int i = 0; i < rowCount; i++) {
+				populateRow(i, e.withIndex(row, i));
 			}
-
-			if (duplicate) {
-				rowDuplicates[i] = rowDuplicates[i - 1] < 0 ? i - 1 : rowDuplicates[i - 1];
-			}
-		}
+		});
 
 		if (rowDuplicates[0] == 0) {
 			throw new UnsupportedOperationException();
+		}
+	}
+
+	/**
+	 * Fills one row of the matrix from an expression in which the row index has already
+	 * been substituted, and records whether the row duplicates the one before it.
+	 *
+	 * @param i             the row being filled
+	 * @param rowExpression the populated expression with the row index replaced by {@code i}
+	 */
+	protected void populateRow(int i, Expression rowExpression) {
+		rowDuplicates[i] = -1;
+		boolean duplicate = true;
+
+		for (int j = 0; j < colCount; j++) {
+			matrix[i][j] = rowExpression.withIndex(col, j);
+
+			if (enableProactiveSimplification)
+				matrix[i][j] = matrix[i][j].getSimplified();
+
+			if (i == 0 || !valueAt(i, j).equals(valueAt((i - 1), j))) {
+				duplicate = false;
+			}
+		}
+
+		if (duplicate) {
+			rowDuplicates[i] = rowDuplicates[i - 1] < 0 ? i - 1 : rowDuplicates[i - 1];
 		}
 	}
 

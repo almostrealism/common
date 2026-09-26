@@ -72,6 +72,7 @@ ClaudeCodeJob (io.flowtree.jobs)
 | `getWorkstreamEnv()` / `setWorkstreamEnv(Map)` | `Map<String,String>` | `null` | Per-workstream environment variables that override global pushed-tool env vars. |
 | `getPlanningDocument()` / `setPlanningDocument(String)` | `String` | `null` | Path (relative to working directory) to a planning document the agent must read. |
 | `getDeduplicationMode()` / `setDeduplicationMode(String)` | `String` | `null` | Post-work duplicate-method scan mode. `null` disables. `DEDUP_LOCAL` runs an inline session before the commit. `DEDUP_SPAWN` posts a follow-up job to the workstream. |
+| `isBypassAgentPermissionPrompts()` / `setBypassAgentPermissionPrompts(boolean)` | `boolean` | `false` | Whether the agent session may bypass interactive tool permission prompts. Granted per job from the branch's permission policy (`agentPermissionBypassBranches`); the value travels over the wire only when true. |
 
 All `GitManagedJob` setters are also available: `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setProtectTestFiles`, and `setMaxFileSizeBytes`. These inherited setters control the git harness behavior and status event delivery. When `targetBranch` is null, git operations (staging, committing, pushing) are skipped entirely, and the job simply runs Claude Code and reports its output. When `pushToOrigin` is false, the commit is created locally but not pushed to the remote.
 
@@ -161,7 +162,7 @@ The `Factory` inner class extends `AbstractJobFactory` and is the primary entry 
 
 #### Factory Configuration
 
-All job-level configuration setters are mirrored on the Factory: `setAllowedTools`, `setMaxTurns`, `setMaxBudgetUsd`, `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setCentralizedMcpConfig`, `setPushedToolsConfig`, `setWorkstreamEnv`, `setPlanningDocument`, `setProtectTestFiles`.
+All job-level configuration setters are mirrored on the Factory: `setAllowedTools`, `setMaxTurns`, `setMaxBudgetUsd`, `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setCentralizedMcpConfig`, `setPushedToolsConfig`, `setWorkstreamEnv`, `setPlanningDocument`, `setProtectTestFiles`, `setBypassAgentPermissionPrompts`.
 
 Each setter also calls `set(key, value)` to persist the value in the Factory's property map, ensuring survival across wire serialization.
 
@@ -881,6 +882,7 @@ The first token is the fully qualified class name (used by the deserialization f
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
 | `enforceChanges` | `enforceChanges` | Plain boolean | Always |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
+| `bypassAgentPermissionPrompts` | `bypassAgentPermissionPrompts` | Plain boolean (`true`) | Only when true |
 
 The wall-clock ceiling travels between two wire keys:
 
@@ -929,12 +931,13 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `protectTests`: Parsed as boolean
 - `enforceChanges`: Parsed as boolean
 - `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
+- `bypassAgentPermissionPrompts`: Parsed as boolean into `this.bypassAgentPermissionPrompts` (present only when the grant was made)
 - `maxWallClockHours`: Parsed as `Integer`; an empty value leaves the field `null` so the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`
 - Default: delegated to `super.set(key, value)` for `GitManagedJob` fields
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 
