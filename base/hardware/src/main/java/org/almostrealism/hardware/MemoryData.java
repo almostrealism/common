@@ -539,7 +539,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @return A {@link DoubleStream} of the specified range
 	 */
 	default DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null) {
+		if (getMemOrdering() == null) {
 			return DoubleStream.of(toArray(offset, length));
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
@@ -574,10 +574,12 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 			return getMem().toArray(getOffset() + index, 1)[0];
 		} else {
-			index = getDelegateOrdering().indexOf(index);
-			if (index < 0) return 0.0;
+			if (getDelegateOrdering() != null) {
+				index = getDelegateOrdering().indexOf(index);
+				if (index < 0) return 0.0;
+			}
 
-			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
+			return getDelegate().toDouble(getDelegateOffset() + index);
 		}
 	}
 

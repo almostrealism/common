@@ -19,6 +19,7 @@ package io.almostrealism.streams;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
  * An adapter that wraps a synchronous {@link Evaluable} to provide a
@@ -28,6 +29,14 @@ import java.util.concurrent.Executor;
  * {@link Evaluable} and the asynchronous, push-based model of {@link StreamingEvaluable}.
  * When a request is made, the adapter submits the evaluation task to an {@link Executor}
  * and delivers the result to the downstream consumer when complete.</p>
+ *
+ * <p>An evaluable that is itself a {@link StreamingEvaluable} already knows how to deliver
+ * its result asynchronously (a compiled kernel chains its completion through the provider,
+ * for example). Wrapping such an evaluable does not fall back to its blocking
+ * {@link Evaluable#evaluate(Object...) evaluate}: the adapter forwards each request to the
+ * evaluable's own {@link StreamingEvaluable#request(Object[], Semaphore, Consumer) request}
+ * on the executor, so the executor only carries the issuance of the request and the result
+ * keeps whatever completion the evaluable delivers it with.</p>
  *
  * <p>This is the primary mechanism for converting synchronous evaluables to streaming
  * evaluables, and is used internally by {@link Evaluable#async()}:</p>
@@ -98,16 +107,84 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * The method returns immediately without waiting for the computation to complete
 	 * (unless a synchronous executor is used).</p>
 	 *
-	 * <p>The adapter wraps a synchronous {@link Evaluable} and performs no hardware
-	 * dispatch of its own, so there is no provider into which a dependency could be
-	 * chained; {@code dependsOn} is therefore disregarded and the evaluation is
-	 * submitted immediately.</p>
+	 * <p>When the wrapped evaluable is a synchronous {@link Evaluable}, the adapter performs
+	 * no hardware dispatch of its own, so there is no provider into which {@code dependsOn}
+	 * could be chained. Unlike a hardware dispatch, which only chains a device handle, the
+	 * wrapped evaluable reads the actual contents of {@code args} on the thread that calls
+	 * it, so the dependency is still honored: submission to the executor is non-blocking,
+	 * but the submitted task waits for {@code dependsOn} before evaluating, exactly as
+	 * {@link #request(Object[], Semaphore, Consumer)} does. A wrapped evaluable that is
+	 * itself a {@link StreamingEvaluable} receives {@code dependsOn} through its own
+	 * request instead, and chains it however it chains any dependency.</p>
 	 *
 	 * @param args      the arguments to pass to the underlying evaluable
-	 * @param dependsOn ignored; the wrapped evaluable performs no chainable dispatch
+	 * @param dependsOn completion this evaluation must be ordered after, or
+	 *                  {@code null} when there is no dependency
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
-		executor.execute(() -> getDownstream().accept(evaluable.evaluate(args)));
+		request(args, dependsOn, getDownstream());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delivers to {@code downstream} directly instead of {@link #getDownstream()}, so that
+	 * this adapter can serve several independent requesters (a kernel wrapper re-viewing this
+	 * adapter's result through a {@code resultProcessor}, requested repeatedly across a
+	 * streaming pipeline's lifetime, for example) without any of them contending for
+	 * {@link #setDownstream}.</p>
+	 *
+	 * <p>Submission to the executor is non-blocking. When the wrapped evaluable is itself a
+	 * {@link StreamingEvaluable}, the submitted task forwards {@code args}, {@code dependsOn}
+	 * and {@code downstream} to its own {@link StreamingEvaluable#request(Object[], Semaphore,
+	 * Consumer) request}, so its result is delivered exactly as it would be without this
+	 * adapter, completion included. Otherwise the submitted task waits for {@code dependsOn}
+	 * (when non-null) before calling {@link Evaluable#evaluate(Object...) evaluate}: a host
+	 * function reads the contents of {@code args} rather than chaining a device handle, so a
+	 * dispatch it depends on must have completed before those contents are read, or the
+	 * evaluation could observe memory the dependency has not finished writing.</p>
+	 *
+	 * @param args       the arguments to pass to the underlying evaluable
+	 * @param dependsOn  completion this evaluation must be ordered after, or
+	 *                   {@code null} when there is no dependency
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		executor.execute(() -> {
+			if (evaluable instanceof StreamingEvaluable) {
+				((StreamingEvaluable<T>) evaluable).request(args, dependsOn, downstream);
+				return;
+			}
+
+			if (dependsOn != null) dependsOn.waitFor();
+			downstream.accept(evaluable.evaluate(args));
+		});
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the wrapped evaluable is itself a {@link StreamingEvaluable}, this reports that
+	 * evaluable's own {@link StreamingEvaluable#isDispatchBacked() isDispatchBacked()} instead of
+	 * claiming a capability of its own: as documented on {@link #request(Object[], Semaphore,
+	 * Consumer)}, the submitted task forwards {@code dependsOn} to the wrapped evaluable's own
+	 * request, and whether that request actually chains it &mdash; rather than discarding it
+	 * &mdash; is a fact about the wrapped implementation, not about this adapter. Reporting
+	 * {@code true} regardless would let {@code ProcessDetailsFactory} treat the adapter as
+	 * dependency-safe even when the wrapped implementation is not, and start it against memory a
+	 * preceding dispatch has not finished writing.</p>
+	 *
+	 * <p>Otherwise (the wrapped evaluable is a plain synchronous {@link Evaluable}), this is
+	 * {@code true}: the submitted task waits for {@code dependsOn} itself before reading
+	 * {@code args}, so this adapter orders its work after a supplied dependency instead of
+	 * disregarding it.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return evaluable instanceof StreamingEvaluable
+				? ((StreamingEvaluable<?>) evaluable).isDispatchBacked()
+				: true;
 	}
 }

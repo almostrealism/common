@@ -86,6 +86,26 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Runs {@code r} once {@code dependsOn} has completed, or immediately on the calling
+	 * thread when there is no dependency. This is the non-blocking way for work that cannot
+	 * chain a completion into a dispatch (a host evaluation that reads memory a prior
+	 * dispatch is still writing, for example) to be ordered after it: the caller never
+	 * waits, and the wait happens on the completion's callback thread instead, exactly as
+	 * {@link #onComplete(Runnable)} arranges.
+	 *
+	 * @param dependsOn the completion to order {@code r} after, or {@code null} when there
+	 *                  is nothing to wait for
+	 * @param r         the work to run
+	 */
+	static void onComplete(Semaphore dependsOn, Runnable r) {
+		if (dependsOn == null) {
+			r.run();
+		} else {
+			dependsOn.onComplete(r);
+		}
+	}
+
+	/**
 	 * Returns a {@link Semaphore} that completes once every one of the given semaphores has
 	 * completed &mdash; the merge primitive for an operation that depends on several prior
 	 * completions (multiple asynchronously evaluated arguments, a group of copies, a join

@@ -368,6 +368,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 				int sampledToken = sampleWithTopK(maskedLogits, temperature, topP, topK);
 
+				if (!containsToken(validIds, sampledToken)) {
+					// A masked-out sample can no longer be trusted; stop as if EOS was reached.
+					warn("Sampled token " + sampledToken + " at step " + step +
+							" is outside the validity mask; stopping generation");
+					eosReached = true;
+					break;
+				}
+
 				if (step == 0) {
 					if (sampledToken == config.eosId) {
 						eosReached = true;
@@ -735,6 +743,30 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			}
 		}
 		return Arrays.copyOf(tmp, n);
+	}
+
+	/**
+	 * Reports whether {@code token} is one of {@code validIds}.
+	 *
+	 * <p>Used to double-check every sampled token against the mask that produced
+	 * it. {@code applyMask} sets every disallowed position to a large negative
+	 * logit before sampling, so a properly masked sample should always be found
+	 * here; this is the safety net for the case where it is not, since an
+	 * event-type token outside {@code validIds} would otherwise be fed into
+	 * {@link SkyTntTokenizerV2#getValidTokenIds(int, int)} for the next step
+	 * and fail its own range check.</p>
+	 *
+	 * @param validIds the token IDs the mask allowed at this step
+	 * @param token    the token that was actually sampled
+	 * @return true if {@code token} appears in {@code validIds}
+	 */
+	static boolean containsToken(int[] validIds, int token) {
+		for (int id : validIds) {
+			if (id == token) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// -----------------------------------------------------------------------
