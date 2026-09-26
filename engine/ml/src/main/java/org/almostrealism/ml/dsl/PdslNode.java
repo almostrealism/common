@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.dsl;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -59,14 +61,20 @@ public abstract class PdslNode {
 		/**
 		 * Constructs a program node from a list of top-level definitions.
 		 *
+		 * <p>The list is stored as an unmodifiable copy so a parsed program cannot be
+		 * structurally altered after construction. This is what makes it safe for
+		 * {@link PdslLoader#parseResource(String)} to cache and share one parsed program
+		 * across every build: a caller of {@link #getDefinitions()} cannot corrupt the
+		 * shared instance for later loads.</p>
+		 *
 		 * @param definitions Top-level definitions in source order
 		 */
 		public Program(List<Definition> definitions) {
 			super(1, 1);
-			this.definitions = definitions;
+			this.definitions = Collections.unmodifiableList(new ArrayList<>(definitions));
 		}
 
-		/** Returns the ordered list of top-level definitions. */
+		/** Returns the ordered, unmodifiable list of top-level definitions. */
 		public List<Definition> getDefinitions() { return definitions; }
 	}
 

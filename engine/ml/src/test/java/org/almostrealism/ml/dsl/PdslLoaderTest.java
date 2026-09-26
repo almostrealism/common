@@ -456,6 +456,30 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The parsed program returned by {@link PdslLoader#parseResource} exposes an unmodifiable
+	 * definition list, so a caller cannot corrupt the shared cached instance for every later load.
+	 * A structural edit through {@link PdslNode.Program#getDefinitions()} must fail, and the cached
+	 * program's definition count must be unchanged afterward.
+	 */
+	@Test(timeout = 60000)
+	public void testCachedProgramDefinitionsAreUnmodifiable() {
+		PdslNode.Program program = new PdslLoader().parseResource("/pdsl/attention.pdsl");
+		int before = program.getDefinitions().size();
+		Assert.assertTrue("attention.pdsl should define at least one layer", before > 0);
+
+		try {
+			program.getDefinitions().clear();
+			Assert.fail("getDefinitions() must return an unmodifiable list");
+		} catch (UnsupportedOperationException expected) {
+			// expected — the shared AST cannot be structurally altered
+		}
+
+		PdslNode.Program again = new PdslLoader().parseResource("/pdsl/attention.pdsl");
+		Assert.assertEquals("cached program must be unchanged after an attempted mutation",
+				before, again.getDefinitions().size());
+	}
+
+	/**
 	 * {@link PdslLoader#parseResources} rejects assets that define the same layer, since only one
 	 * of the two definitions could ever be reached: {@code test_layers.pdsl} carries its own copy
 	 * of {@code swiglu_ffn}.
