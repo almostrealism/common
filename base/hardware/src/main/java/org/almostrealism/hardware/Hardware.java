@@ -1238,7 +1238,7 @@ public final class Hardware implements ConsoleFeatures {
 	/**
 	 * Returns the memory scale exponent for maximum allocation size.
 	 *
-	 * <p>Sets {@code maxReservation = 2^MEMORY_SCALE * 64,000,000} elements (default 4); each backend {@code MemoryProvider} enforces {@code memoryMax = precision.bytes() * maxReservation} at allocation, throwing {@link HardwareException} on exhaustion — it never returns a null pointer. Distinct from {@link #getOffHeapSize(ComputeRequirement)} ({@code AR_HARDWARE_OFF_HEAP_SIZE}), which is a separate CL/Metal buffer size, not this ceiling.</p>
+	 * <p>Sets {@code maxReservation = 2^MEMORY_SCALE * 64,000,000} elements (default 4); each backend {@code MemoryProvider} enforces {@code memoryMax = precision.bytes() * maxReservation} at allocation, throwing {@link HardwareException} when the reservation is exhausted. This check does not cover an OS-level allocation failure (the JNI {@code calloc} path returns its result unchecked). Distinct from {@link #getOffHeapSize(ComputeRequirement)} ({@code AR_HARDWARE_OFF_HEAP_SIZE}), which is the CL/Metal threshold below which allocations use the JVM-heap provider instead of the backend provider, not this ceiling.</p>
 	 *
 	 * @return The memory scale exponent
 	 */

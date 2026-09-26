@@ -26,8 +26,10 @@ as "the off-heap budget."
 - **`AR_HARDWARE_OFF_HEAP_SIZE`** (default `Hardware.DEFAULT_OFF_HEAP_SIZE`,
   which is `0`) is a *separate* value read by `Hardware.getOffHeapSize()` and
   passed to the CL and Metal data contexts (`CLDataContext`, `MetalDataContext`)
-  as their off-heap buffer size. It is **not** the allocation ceiling and is
-  **not** derived from the memory scale.
+  as `offHeapSize`: a *provider-selection threshold*. Allocations smaller than
+  it are served by the alternate JVM-heap provider; larger ones go to the main
+  backend provider. It is **not** a buffer size, **not** the allocation ceiling,
+  and **not** derived from the memory scale.
 
 A note on the historical "1024MB off-heap" figure: it is neither of these. The
 actual reservation ceiling is `precision.bytes() * 2^scale * 64MB`, which at the
@@ -77,9 +79,11 @@ for future allocations.
 When the ceiling is hit, the provider throws
 `HardwareException("Memory max reached")`. That is the signal to recognize in a
 crash report — an exception on the allocation path, or an OS-level OOM if the
-process outgrows physical/committed memory. Exhaustion **never** surfaces as a
+process outgrows physical/committed memory. Reservation exhaustion **never** surfaces as a
 silently returned zero/null pointer that later gets dereferenced inside a
-kernel.
+kernel. (A distinct, OS-level failure is not covered by this check: in calloc
+mode `NativeMemoryProvider` returns the `Malloc` result without testing it for
+zero, so a genuine `calloc` failure could yield a `0` address.)
 
 ## The race an investigator should actually suspect
 
@@ -108,7 +112,8 @@ The framework defends this in two places:
 ## What cannot happen
 
 - The framework's allocators **cannot** return a silent zero/null pointer on
-  exhaustion. Exhaustion throws `HardwareException`.
+  *reservation* exhaustion; that throws `HardwareException`. (An OS-level
+  `calloc` failure in calloc mode is not checked — see above.)
 - There is **no** "automatic GC by bytes used" budget that frees live off-heap
   data to stay under a limit. Freeing is driven by holder reachability and
   explicit deallocation only.
@@ -131,7 +136,7 @@ The framework defends this in two places:
 | Concern | Source identifier |
 |---|---|
 | Reservation ceiling from scale | `Hardware` (`MEMORY_SCALE`, `maxReservation`, `getMemoryScale()`) |
-| Separate off-heap buffer size | `Hardware.getOffHeapSize`, `Hardware.DEFAULT_OFF_HEAP_SIZE` |
+| CL/Metal JVM-heap provider threshold | `Hardware.getOffHeapSize`, `Hardware.DEFAULT_OFF_HEAP_SIZE` |
 | Per-backend enforcement | `NativeMemoryProvider.allocate`, `CLMemoryProvider`, `MetalMemoryProvider` |
 | Phantom-reference free path | `org.almostrealism.hardware.mem.HardwareMemoryProvider`, `NativeRef` |
 | Free-while-kernel-running guard | `org.almostrealism.hardware.mem.KernelMemoryGuard` |

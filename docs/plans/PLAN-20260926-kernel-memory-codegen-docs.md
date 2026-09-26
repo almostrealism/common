@@ -119,7 +119,9 @@ in the priority order established by the source plan:
    things the gaps doc warns are easy to conflate: (a) the *configured* limits —
    there are two, `AR_HARDWARE_MEMORY_SCALE` (→ `maxReservation`, the allocation
    ceiling, read in `Hardware`) and the separate `AR_HARDWARE_OFF_HEAP_SIZE`
-   (→ `Hardware.getOffHeapSize()`, a CL/Metal buffer size, *not* the ceiling);
+   (→ `Hardware.getOffHeapSize()`, stored as `offHeapSize` by the CL/Metal data
+   contexts to route allocations below the threshold to the JVM-heap provider —
+   a provider-selection threshold, *not* a buffer size and *not* the ceiling);
    (b) what actually *enforces* the ceiling — each backend `MemoryProvider`'s
    `memoryMax` check at allocation, and that there is no "automatic GC by bytes
    used" budget; (c) the free path — a `MemoryData` whose holder becomes

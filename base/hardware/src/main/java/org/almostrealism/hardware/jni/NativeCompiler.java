@@ -231,7 +231,7 @@ import java.util.function.Consumer;
  *
  * <h2>On-Disk Cache Lifecycle</h2>
  *
- * <p>Compilation writes files into the library directory (resolved by {@link #factory()} from
+ * <p>Compilation writes files into the library directory (resolved by {@link #factory(Precision, boolean)} from
  * {@code AR_HARDWARE_LIBS}, else from {@code SystemUtils.getExtensionsPath()}; created if absent,
  * never emptied). Filenames are derived from the target <em>class name</em>, not from content:
  * for {@code GeneratedOperationN}, {@link #getInputFile(String)} writes {@code GeneratedOperationN.c}

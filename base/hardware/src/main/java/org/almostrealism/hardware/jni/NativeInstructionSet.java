@@ -188,7 +188,8 @@ import java.util.stream.Stream;
  * <p>For the generated kernels that are the only implementations shipped
  * ({@link org.almostrealism.generated.BaseGeneratedOperation} subclasses), the
  * compiled function carries <strong>no per-instance mutable state</strong> — no
- * static scratch buffers, captured closures, or persistent globals. Every region
+ * static scratch buffers, captured closures, or invocation-specific mutable globals
+ * (the generated header's {@code M_PI_F} is a constant initialized once). Every region
  * it reads or writes is a caller-supplied argument passed in per invocation.
  * Once the instruction set has been configured
  * ({@link #setComputeContext(ComputeContext)}, {@link #setMetadata(OperationMetadata)},

@@ -17,7 +17,9 @@ three separate concerns are kept distinct: **compiled-function reentrancy**,
 
 The generated C function behind a `GeneratedOperationN.apply` carries **no
 per-instance mutable state of its own**: it has no static scratch buffers, no
-captured closures, and no globals that persist across or between calls. Every
+captured closures, and no invocation-specific mutable globals. (The generated
+header does define a process-wide `M_PI_F` constant, initialized once to
+`M_PI` and never written by a kernel.) Every
 region it reads or writes is a caller-supplied argument pointer passed in per
 invocation (see the argument-marshalling contract in `NativeInstructionSet` and
 the value semantics in [CODEGEN_VALUE_SEMANTICS.md](CODEGEN_VALUE_SEMANTICS.md)).

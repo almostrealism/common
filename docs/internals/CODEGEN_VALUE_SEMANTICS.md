@@ -12,7 +12,14 @@ mid-invocation. None of those are expressible in the code the framework emits.
 
 ## What is actually true
 
-The unit of generated code is a statement, and the only value-producing
+This page concerns the **generated kernel body**. The JNI marshalling glue that
+surrounds it on the OpenCL path (`CLJNIPrintWriter`) is different: it builds
+`ExpressionAssignment`s that give local pointer variables `malloc` results and
+initialize `cl_event` locals with the C literal `NULL`. Those are glue-local
+variables, not the kernel's argument pointers, and nothing below is weakened by
+them — the kernel body still cannot reassign or null the pointers it receives.
+
+Within the kernel body, the unit of generated code is a statement, and the only value-producing
 statement is an assignment. Assignments are modeled by
 `io.almostrealism.code.ExpressionAssignment`, whose constructor **rejects a
 null value expression** — it throws `IllegalArgumentException` when the
@@ -25,7 +32,7 @@ pointer."
 
 Consequently:
 
-- **Every assigned value is a numeric expression.** Writing `0.0` (or any
+- **Every value assigned in the kernel body is a numeric expression.** Writing `0.0` (or any
   other number) into a value slot is a numeric write, not a pointer-erase. It
   changes the contents of a location; it does not invalidate a pointer.
 - **Pointer arguments are not produced inside the kernel.** The pointers a
@@ -53,8 +60,8 @@ to one of exactly two things:
    assignment is rejected while the `Scope` is being built (the
    `ExpressionAssignment` constructor throws), long before any C is emitted.
 
-There is no third outcome in which the emitted C sets a pointer variable to a
-null/zero pointer.
+There is no third outcome in which the emitted kernel body sets a pointer
+variable to a null/zero pointer.
 
 ## What cannot happen
 
