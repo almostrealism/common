@@ -61,14 +61,14 @@ Detects an open pull request for the specified branch on a GitHub repository.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `remoteUrl` | `String` | The git remote URL (SSH or HTTPS format). Must contain `github.com` for detection to proceed. |
+| `remoteUrl` | `String` | The git remote URL (SSH or HTTPS format). Its host must be exactly `github.com` for detection to proceed. |
 | `targetBranch` | `String` | The branch name to search for an open PR. |
 | `workstreamUrl` | `String` | The workstream URL for controller proxy fallback, or `null` if unavailable. |
 
 **Returns:** An `Optional<String>` containing the PR's `html_url` if an open PR was found, or `Optional.empty()` otherwise.
 
 **Behavior:**
-1. Returns empty if `remoteUrl` is null or does not contain `github.com`
+1. Returns empty if `remoteUrl` is null or its host is not exactly `github.com`
 2. Extracts `owner/repo` from the remote URL
 3. Attempts authentication via `GITHUB_TOKEN` or `GH_TOKEN` environment variable
 4. Falls back to controller proxy if no token is available but `workstreamUrl` is set
@@ -232,45 +232,26 @@ This is not an error condition. The job proceeds normally without a PR URL in th
 
 ## Owner/Repo Extraction
 
-The `extractOwnerRepo()` method converts a git remote URL into the `owner/repo` format required by the GitHub API.
+The `extractOwnerRepo()` method converts a git remote URL into the `owner/repo` format required by the GitHub API. The parsing itself is delegated to `GitOperations.repositorySlug(String)` (in `flowtree/base`), the shared canonical parser also used by `GitHubProxyHandler`; `extractOwnerRepo()` adds the GitHub-host guard described below.
 
-### SSH Format
+### Supported URL Forms
+
+`repositorySlug` recognises the SSH, HTTP(S), and `git://` forms of a repository URL and reduces each to the `owner/repo` slug:
 
 ```
 Input:  git@github.com:owner/repo.git
-Output: owner/repo
-```
-
-The method detects the SSH format by looking for the `git@github.com:` prefix. It extracts the substring after the colon and strips the `.git` suffix.
-
-### HTTPS Format
-
-```
 Input:  https://github.com/owner/repo.git
+Input:  https://github.com/owner/repo
+Input:  ssh://git@github.com/owner/repo.git
+Input:  https://x-access-token:secret@github.com/owner/repo.git
 Output: owner/repo
 ```
 
-The method detects the HTTPS format by looking for `github.com/` in the URL. It extracts the substring after `github.com/` and strips the `.git` suffix.
+Embedded credentials, the optional `.git` suffix, and a trailing slash are all tolerated, and exactly two non-empty path segments are required — a URL naming something other than a repository (e.g. `https://github.com/owner/repo/pull/3`, `org/team/repo`, or just `repo`) yields `null`.
 
-### Validation
+### GitHub-Host Guard
 
-After extraction, the path is validated by the private `validateOwnerRepo()` method:
-
-```java
-private static String validateOwnerRepo(String path) {
-    String[] parts = path.split("/");
-    if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-        return path;
-    }
-    return null;
-}
-```
-
-The validation ensures exactly two non-empty segments separated by a single slash. Paths with more or fewer segments (e.g., `org/team/repo` or just `repo`) are rejected, causing `extractOwnerRepo()` to return `null`.
-
-### Non-GitHub URLs
-
-For URLs that do not contain `github.com`, `extractOwnerRepo()` returns `null`. The `detect()` method checks for this early and returns `Optional.empty()` without attempting any API calls.
+Because `repositorySlug` deliberately drops the host, `extractOwnerRepo()` first checks that the URL's host — obtained from `GitOperations.repositoryHost(String)` — is exactly `github.com` before returning the slug. An exact host match is required rather than a substring check: a substring check would accept a look-alike host such as `github.com.evil.example`, which would then be queried against the GitHub API. The comparison is case-insensitive (hostnames are), so `https://GITHUB.COM/owner/repo.git` is accepted, and an explicit port is not part of the host, so `https://github.com:443/owner/repo.git` is accepted too. URLs whose host is not `github.com` return `null`, and `detect()` — which relies on this same guard rather than any separate substring precheck — returns `Optional.empty()` without attempting any API calls.
 
 ---
 
