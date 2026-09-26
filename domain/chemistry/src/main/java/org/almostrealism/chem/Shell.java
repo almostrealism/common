@@ -514,7 +514,7 @@ public class Shell {
 	 * @param y  electrons in the 2py orbital (0-2)
 	 * @param z  electrons in the 2pz orbital (0-2)
 	 * @return   a new shell for the 2p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p2(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p2x(), Orbital.p2y(), Orbital.p2z() },
@@ -528,7 +528,7 @@ public class Shell {
 	 * @param y  electrons in the 3py orbital (0-2)
 	 * @param z  electrons in the 3pz orbital (0-2)
 	 * @return   a new shell for the 3p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p3(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p3x(), Orbital.p3y(), Orbital.p3z() },
@@ -542,7 +542,7 @@ public class Shell {
 	 * @param y  electrons in the 4py orbital (0-2)
 	 * @param z  electrons in the 4pz orbital (0-2)
 	 * @return   a new shell for the 4p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p4(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p4x(), Orbital.p4y(), Orbital.p4z() },
@@ -556,7 +556,7 @@ public class Shell {
 	 * @param y  electrons in the 5py orbital (0-2)
 	 * @param z  electrons in the 5pz orbital (0-2)
 	 * @return   a new shell for the 5p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p5(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p5x(), Orbital.p5y(), Orbital.p5z() },
@@ -570,7 +570,7 @@ public class Shell {
 	 * @param y  electrons in the 6py orbital (0-2)
 	 * @param z  electrons in the 6pz orbital (0-2)
 	 * @return   a new shell for the 6p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p6(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p6x(), Orbital.p6y(), Orbital.p6z() },
@@ -584,7 +584,7 @@ public class Shell {
 	 * @param y  electrons in the 7py orbital (0-2)
 	 * @param z  electrons in the 7pz orbital (0-2)
 	 * @return   a new shell for the 7p subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p7(int x, int y, int z) {
 		return occupied(new Orbital[] { Orbital.p7x(), Orbital.p7y(), Orbital.p7z() },
@@ -600,7 +600,7 @@ public class Shell {
 	 * @param d  electrons in the 3dd orbital (0-2)
 	 * @param e  electrons in the 3de orbital (0-2)
 	 * @return   a new shell for the 3d subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d3(int a, int b, int c, int d, int e) {
 		return occupied(new Orbital[] { Orbital.d3a(), Orbital.d3b(), Orbital.d3c(), Orbital.d3d(), Orbital.d3e() },
@@ -616,7 +616,7 @@ public class Shell {
 	 * @param d  electrons in the 4dd orbital (0-2)
 	 * @param e  electrons in the 4de orbital (0-2)
 	 * @return   a new shell for the 4d subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d4(int a, int b, int c, int d, int e) {
 		return occupied(new Orbital[] { Orbital.d4a(), Orbital.d4b(), Orbital.d4c(), Orbital.d4d(), Orbital.d4e() },
@@ -632,7 +632,7 @@ public class Shell {
 	 * @param d  electrons in the 5dd orbital (0-2)
 	 * @param e  electrons in the 5de orbital (0-2)
 	 * @return   a new shell for the 5d subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d5(int a, int b, int c, int d, int e) {
 		return occupied(new Orbital[] { Orbital.d5a(), Orbital.d5b(), Orbital.d5c(), Orbital.d5d(), Orbital.d5e() },
@@ -648,7 +648,7 @@ public class Shell {
 	 * @param d  electrons in the 6dd orbital (0-2)
 	 * @param e  electrons in the 6de orbital (0-2)
 	 * @return   a new shell for the 6d subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d6(int a, int b, int c, int d, int e) {
 		return occupied(new Orbital[] { Orbital.d6a(), Orbital.d6b(), Orbital.d6c(), Orbital.d6d(), Orbital.d6e() },
@@ -664,7 +664,7 @@ public class Shell {
 	 * @param d  electrons in the 7dd orbital (0-2)
 	 * @param e  electrons in the 7de orbital (0-2)
 	 * @return   a new shell for the 7d subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d7(int a, int b, int c, int d, int e) {
 		return occupied(new Orbital[] { Orbital.d7a(), Orbital.d7b(), Orbital.d7c(), Orbital.d7d(), Orbital.d7e() },
@@ -682,7 +682,7 @@ public class Shell {
 	 * @param f  electrons in the 4ff orbital (0-2)
 	 * @param g  electrons in the 4fg orbital (0-2)
 	 * @return   a new shell for the 4f subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f4(int a, int b, int c, int d, int e, int f, int g) {
 		return occupied(new Orbital[] { Orbital.f4a(), Orbital.f4b(), Orbital.f4c(), Orbital.f4d(),
@@ -701,7 +701,7 @@ public class Shell {
 	 * @param f  electrons in the 5ff orbital (0-2)
 	 * @param g  electrons in the 5fg orbital (0-2)
 	 * @return   a new shell for the 5f subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f5(int a, int b, int c, int d, int e, int f, int g) {
 		return occupied(new Orbital[] { Orbital.f5a(), Orbital.f5b(), Orbital.f5c(), Orbital.f5d(),
@@ -720,7 +720,7 @@ public class Shell {
 	 * @param f  electrons in the 6ff orbital (0-2)
 	 * @param g  electrons in the 6fg orbital (0-2)
 	 * @return   a new shell for the 6f subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f6(int a, int b, int c, int d, int e, int f, int g) {
 		return occupied(new Orbital[] { Orbital.f6a(), Orbital.f6b(), Orbital.f6c(), Orbital.f6d(),
@@ -739,7 +739,7 @@ public class Shell {
 	 * @param f  electrons in the 7ff orbital (0-2)
 	 * @param g  electrons in the 7fg orbital (0-2)
 	 * @return   a new shell for the 7f subshell
-	 * @throws IllegalArgumentException if any count is negative, or if every count is zero
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f7(int a, int b, int c, int d, int e, int f, int g) {
 		return occupied(new Orbital[] { Orbital.f7a(), Orbital.f7b(), Orbital.f7c(), Orbital.f7d(),

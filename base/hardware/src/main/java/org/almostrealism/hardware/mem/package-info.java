@@ -32,7 +32,7 @@
  *       out of it</li>
  *   <li>{@link org.almostrealism.hardware.mem.MappedMemoryProvider} - read-only source provider
  *       that creates {@code MappedMemory} from an existing file of FP32 or FP64 values (other
- *       precisions are rejected) and rejects empty allocation and writes</li>
+ *       precisions are rejected); it cannot allocate fresh memory by size and rejects writes</li>
  *   <li>{@link org.almostrealism.hardware.mem.HardwareMemoryProvider} - GC-integrated provider;
  *       consults {@link org.almostrealism.hardware.mem.KernelMemoryGuard} before releasing
  *       a block and holds the release back while a kernel is still reading it</li>
