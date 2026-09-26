@@ -200,6 +200,25 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
+ * <h3>Native-Block Lifetime Contract</h3>
+ *
+ * <p>A {@link MemoryData} that owns native memory is the Java handle to an off-heap block. That
+ * block is released either by an explicit {@link Destroyable#destroy()} or, if the handle simply
+ * becomes unreachable, by reclamation driven off a phantom reference the provider registers when
+ * the holder is collected (see {@link org.almostrealism.hardware.mem.HardwareMemoryProvider}). Who
+ * frees the native storage depends on the backing type: for a provider-owned block (such as a JNI
+ * {@code calloc} allocation) the provider frees it explicitly once the holder is collected; for a
+ * direct-buffer-backed block the JVM's own {@code DirectByteBuffer} cleaner owns the native storage
+ * and the provider's reference only unwinds bookkeeping and shared mappings, not the buffer itself.
+ * Either way the block is freed because <em>its holder was collected</em>, a per-object lifetime
+ * mechanism, not budget enforcement. There is <strong>no separate
+ * "GC by bytes used" budget</strong> — nothing sweeps live off-heap data to stay under a limit; an
+ * allocation that would exceed the configured ceiling is rejected with a {@code HardwareException}
+ * rather than triggering a reclaim. A consequence for debugging: a raw content pointer captured
+ * outside a live Java reference can be freed and unmapped once its holder is GC-eligible, so a
+ * numerically-unchanged pointer may address memory that is no longer mapped
+ * (see {@link org.almostrealism.hardware.mem.KernelMemoryGuard}).</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>{@link MemoryData} is <strong>not thread-safe</strong>. Concurrent access must be

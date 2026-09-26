@@ -27,6 +27,21 @@ import org.almostrealism.hardware.jni.NativeInstructionSet;
  * for managing compute context, operation metadata, and parallelism settings
  * required by {@link NativeInstructionSet} implementations.
  *
+ * <p>The pre-generated {@code GeneratedOperationN} subclasses are
+ * <strong>reservation slots, not stored kernels</strong>. Each is an empty
+ * template with a {@code native apply} declaration; it holds no compiled kernel
+ * of its own. {@code NativeCompiler.reserveLibraryTarget()} hands out the next
+ * such slot, and the compiled artifact behind it is <strong>generated fresh per
+ * JVM run</strong> — the C is regenerated and the shared library overwritten
+ * before it is loaded (see {@code NativeCompiler}'s on-disk cache lifecycle).
+ * A given slot therefore never carries a kernel over from a prior run.</p>
+ *
+ * <p>The fields below ({@code context}, {@code metadata}, {@code parallelism})
+ * are configuration, expected to be set once during setup and left unchanged
+ * while kernels run; the compiled {@code apply} function itself carries no
+ * per-instance mutable state. See {@link NativeInstructionSet} for the resulting
+ * thread-safety contract.</p>
+ *
  * @param <T> the type of memory data this operation works with
  */
 public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {
