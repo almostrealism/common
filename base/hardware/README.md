@@ -568,6 +568,11 @@ System.gc();    // Eventually: native memory freed automatically
 3. Background threads monitor queue for GC'd objects
 4. Native memory freed when reference appears in queue
 
+For the full lifecycle — including the off-heap budget and its enforcement, the exact
+use-after-free race `KernelMemoryGuard` closes (and the ones it does not), and how this
+interacts with kernel dispatch — see
+[docs/internals/native-runtime-lifecycle.md](../../docs/internals/native-runtime-lifecycle.md).
+
 **Leak Detection:**
 
 ```java

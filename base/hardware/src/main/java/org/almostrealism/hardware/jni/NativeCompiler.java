@@ -229,6 +229,29 @@ import java.util.function.Consumer;
  * <p>The {@link #reserveLibraryTarget()} method is synchronized to ensure unique class names.
  * Compilation itself is thread-safe, allowing concurrent compilations to different targets.</p>
  *
+ * <h2>Library lifecycle</h2>
+ *
+ * <p>Generated library files persist on disk but are never reused across JVM runs, and there is
+ * <strong>no delete-on-start</strong>: nothing clears the library directory at startup and
+ * {@link #destroy()} is a no-op. Instead, each file is <em>overwritten before it is loaded</em>.
+ * {@link #reserveLibraryTarget()} draws names from a JVM-wide counter ({@code reserveTargetIndex()})
+ * that restarts at {@code 0} every run, so a fresh run reuses the same {@code GeneratedOperationN}
+ * names in the same order. {@link #compile(String, String, boolean)} then truncates and rewrites the
+ * deterministic {@code .c} source path, the toolchain rewrites the deterministic library path, and
+ * only then does {@link #compileAndLoad(Class, String)} call {@code System.load(...)}. A library
+ * left over from an older build therefore can never be loaded by a later run &mdash; it is
+ * regenerated at the same path first. When triaging a native crash, "a stale dylib from a prior
+ * build" is not a possible cause and clearing the library directory is a no-op as a diagnostic.</p>
+ *
+ * <p>This no-cross-run-reuse guarantee holds for the default {@link LinkedLibraryGenerator}
+ * ({@code DefaultLinkedLibraryGenerator}, installed by {@link #factory}), which always runs the
+ * toolchain against the freshly written source. {@link NativeCompiler} accepts an arbitrary
+ * {@link LinkedLibraryGenerator}, and that interface deliberately permits caching and remote-build
+ * strategies; a custom generator that serves a cached artifact instead of recompiling could leave
+ * stale bytes at the deterministic path. A deployment that installs such a generator must supply
+ * the same overwrite guarantee itself for the triage advice above to hold. See
+ * {@code docs/internals/native-runtime-lifecycle.md}.</p>
+ *
  * <h2>Lifecycle</h2>
  *
  * <p>Typically created once per {@link NativeDataContext} and reused for all compilations.

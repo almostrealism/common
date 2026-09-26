@@ -539,6 +539,7 @@ reduce memory usage.
 
 ## See Also
 
+- [native-runtime-lifecycle.md](native-runtime-lifecycle.md) — What happens to the compiled artifact and the memory it reads after dispatch: library lifetime, off-heap budget enforcement, GC-driven release, reentrancy, crash triage
 - [computation-graph-to-process-tree.md](computation-graph-to-process-tree.md) — How process trees are built
 - [process-optimization-pipeline.md](process-optimization-pipeline.md) — How trees are optimized before compilation
 - [expression-evaluation.md](expression-evaluation.md) — How expression trees work within scopes

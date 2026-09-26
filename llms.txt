@@ -78,6 +78,7 @@
 - [Computation Graph to Process Tree](docs/internals/computation-graph-to-process-tree.md): How Producers become Process trees
 - [Process Optimization Pipeline](docs/internals/process-optimization-pipeline.md): CascadingOptimizationStrategy, parallelism scoring
 - [Backend Compilation and Dispatch](docs/internals/backend-compilation-and-dispatch.md): ComputationScopeCompiler, ExecutionKey caching, native code generation
+- [Native Runtime Lifecycle](docs/internals/native-runtime-lifecycle.md): Generated kernel library lifetime, off-heap memory budget and enforcement, GC-driven release, kernel reentrancy, and native-crash triage
 
 ### Expression and Kernel System
 - [Expression Evaluation](docs/internals/expression-evaluation.md): Expression tree evaluation and simplification

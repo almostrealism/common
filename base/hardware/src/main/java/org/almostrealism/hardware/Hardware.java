@@ -147,13 +147,13 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
- * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB</p>
- * <p><strong>Default:</strong> 4 (~4GB with FP32)</p>
- * <pre>
- * # Allow ~16GB max (FP32: 4 * 2^6 * 64MB)
- * export AR_HARDWARE_MEMORY_SCALE=6
- * </pre>
+ * <p><strong>Purpose:</strong> Max allocation bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB
+ * (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
+ * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and
+ * {@code NativeMemoryProvider} each reject an over-budget allocation with a {@code HardwareException}
+ * (message {@code "Memory Max Reached"} from the two GPU providers, {@code "Memory max reached"} from
+ * {@code NativeMemoryProvider}); the tracked-ceiling rejection throws rather than returning a zero pointer, though a raw OS calloc failure below the ceiling can still yield one (caught at dispatch). See the internals doc.</p>
+ * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
  *
  * <h3>AR_HARDWARE_MEMORY_LOCATION</h3>
  * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
@@ -491,7 +491,7 @@ public final class Hardware implements ConsoleFeatures {
 	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
 	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
 
-	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
+	/** Memory scale factor: {@code MEMORY_SCALE=N} sets the base element reservation to {@code 2^N * 64M}; the per-provider byte ceiling is {@code precision.bytes() * 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
 	/** If true, use 64-bit epsilon values for floating-point comparisons. Controlled by {@code AR_HARDWARE_EPSILON_64}. */
