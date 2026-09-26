@@ -566,6 +566,35 @@ public interface ExpressionFeatures {
 	}
 
 	/**
+	 * Computes the greatest common divisor of two values using the Euclidean
+	 * algorithm, with both operands taken as non-negative.
+	 *
+	 * <p>This is the shared host-side integer helper used when analyzing the
+	 * divisibility of index expressions during simplification and kernel period
+	 * analysis (for example computing the common factor of an arithmetic index
+	 * sequence, folding a bounded remainder in a {@link Quotient}, or reducing
+	 * periods to a least common multiple). Operating in the {@code long} domain
+	 * means {@link Math#abs(long)} of an {@code int} operand cannot overflow.</p>
+	 *
+	 * @param a the first value
+	 * @param b the second value
+	 * @return the greatest common divisor of {@code a} and {@code b}, or zero if
+	 *         both are zero
+	 */
+	static long gcd(long a, long b) {
+		a = Math.abs(a);
+		b = Math.abs(b);
+
+		while (b != 0) {
+			long t = a % b;
+			a = b;
+			b = t;
+		}
+
+		return a;
+	}
+
+	/**
 	 * Returns a minimal instance of {@code ExpressionFeatures} for use outside of computations.
 	 *
 	 * @return a default ExpressionFeatures instance

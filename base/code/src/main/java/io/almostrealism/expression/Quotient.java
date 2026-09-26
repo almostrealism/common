@@ -298,11 +298,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 */
 	private static List<ArithmeticIndexSequence> withoutBoundedRemainder(List<ArithmeticIndexSequence> terms, long divisor) {
 		List<ArithmeticIndexSequence> coarse = terms.stream()
-				.filter(t -> gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
+				.filter(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
 		if (coarse.isEmpty() || coarse.size() == terms.size()) return terms;
 		if (coarse.stream().anyMatch(t -> t.min() < 0)) return terms;
 
-		long c = coarse.stream().mapToLong(t -> gcd(t.commonFactor(), divisor)).reduce(divisor, Quotient::gcd);
+		long c = coarse.stream().mapToLong(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor)).reduce(divisor, ExpressionFeatures::gcd);
 		long remainder = 0;
 
 		try {
@@ -316,26 +316,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return remainder < c ? coarse : terms;
-	}
-
-	/**
-	 * Returns the greatest common divisor of two values, taken as non-negative.
-	 *
-	 * @param a the first value
-	 * @param b the second value
-	 * @return the greatest common divisor, or zero if both are zero
-	 */
-	private static long gcd(long a, long b) {
-		a = Math.abs(a);
-		b = Math.abs(b);
-
-		while (b != 0) {
-			long t = a % b;
-			a = b;
-			b = t;
-		}
-
-		return a;
 	}
 
 	/**
@@ -364,11 +344,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			if (term.isPossiblyNegative()) return null;
 
 			long factor = term.constantIntegerFactor();
-			long shared = gcd(factor, divisor);
+			long shared = ExpressionFeatures.gcd(factor, divisor);
 
 			if (shared > 1) {
 				coarse.add(term);
-				c = gcd(c, shared);
+				c = ExpressionFeatures.gcd(c, shared);
 			} else if (term.upperBound().isEmpty()) {
 				return null;
 			} else {
