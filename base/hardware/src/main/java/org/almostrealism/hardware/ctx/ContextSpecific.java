@@ -41,8 +41,12 @@ import java.util.function.Supplier;
  *
  * <h2>Stack-Based Lifecycle</h2>
  *
- * <p>When a new context starts, a new value is pushed onto the stack. When the context is destroyed,
- * the value is popped and optionally disposed:</p>
+ * <p>When a new context starts, a new value is pushed onto the stack. Each value records the
+ * {@link ComputeContext} it was created under; when a context is destroyed, every value created
+ * under it is removed and optionally disposed, wherever it sits in the stack. A value whose
+ * context has been destroyed is never handed out: {@link #getValue()} throws
+ * {@link IllegalStateException} for it rather than creating a replacement under another
+ * context. In the simple nested case this behaves as a push/pop stack:</p>
  * <pre>{@code
  * // Initial state: stack is empty
  * contextSpecific.init();  // Push default value
@@ -54,9 +58,9 @@ import java.util.function.Supplier;
  *   // Context 2 starts (nested)
  *   context2.start();  // Pushes new value (depth: 3)
  *     T value2 = contextSpecific.getValue();  // Returns different value
- *   context2.destroy();  // Pops and disposes value2 (depth: 2)
+ *   context2.destroy();  // Removes and disposes value2 (depth: 2)
  *
- * context1.destroy();  // Pops and disposes value1 (depth: 1)
+ * context1.destroy();  // Removes and disposes value1 (depth: 1)
  * }</pre>
  *
  * <h2>Usage Pattern</h2>

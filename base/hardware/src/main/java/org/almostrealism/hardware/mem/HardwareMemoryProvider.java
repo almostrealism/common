@@ -147,7 +147,7 @@ import java.util.stream.Stream;
  * <pre>
  * provider.destroy();
  * // Output (if leaks exist):
- * // WARN: DirectBuffer[1000] was not deallocated
+ * // WARN: DirectBuffer[1000] was not deallocated and is retained until released
  * //   at DirectBuffer.&lt;init&gt;(DirectBuffer.java:NN)
  * //   at MyClass.allocateBuffers(MyClass.java:NN)
  * //   at MyClass.processData(MyClass.java:NN)

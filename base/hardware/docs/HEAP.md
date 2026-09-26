@@ -449,9 +449,9 @@ Registered via `Heap.addCreatedMemory(MemoryData)`. Temporary buffers created du
 Heap dependency tracking and instruction set caching are **independent systems**:
 
 - **Heap**: Tracks compiled operation instances for lifecycle management. When a stage is destroyed, the operation wrapper is destroyed.
-- **Instruction cache**: `DefaultComputer` maintains a `FrequencyCache<String, ScopeInstructionsManager>` (capacity 500, eviction factor 0.4) keyed by computation signature. The same compiled kernel can be reused by future operations with the same signature.
+- **Instruction cache**: `DefaultComputer` maintains a `FrequencyCache<String, ScopeInstructionsManager>` (capacity 500, eviction factor 0.4) keyed by computation signature and the compiling `ComputeContext`. The same compiled kernel can be reused by future operations with the same signature under the same compute context.
 
-When a heap stage destroys a compiled operation, the underlying `ScopeInstructionsManager` may still exist in the instruction cache if its signature has not been evicted. A future compilation with the same signature will retrieve the cached manager and reuse the compiled kernel, performing only argument substitution (via `ProcessArgumentMap.putSubstitutions()`) instead of full recompilation.
+When a heap stage destroys a compiled operation, the underlying `ScopeInstructionsManager` may still exist in the instruction cache if its signature has not been evicted. A future compilation with the same signature under the same compute context will retrieve the cached manager and reuse the compiled kernel, performing only argument substitution (via `ProcessArgumentMap.putSubstitutions()`) instead of full recompilation.
 
 This means `Heap.stage()` does **not** invalidate the instruction cache. It only frees the operation wrapper and its per-invocation resources.
 

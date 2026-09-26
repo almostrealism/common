@@ -200,8 +200,9 @@ import java.util.function.Supplier;
  * <p>Entries are keyed by the operation signature <em>and</em> the compiling
  * {@link ComputeContext}, so structurally identical operations share one compiled kernel
  * only under the same context. A kernel dispatches through the command runner and memory
- * provider of the context it was compiled under, and an entry whose {@link DataContext}
- * has since been destroyed (a scoped context that has ended) is evicted on access.</p>
+ * provider of the context it was compiled under. When that {@link ComputeContext} or its
+ * {@link DataContext} has since been destroyed (a scoped context that has ended), the entry
+ * is evicted on access and the request fails with an {@link IllegalStateException}.</p>
  *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>

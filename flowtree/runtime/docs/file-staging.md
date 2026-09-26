@@ -85,10 +85,10 @@ This interface abstracts over git command execution for guardrail 2:
 (merge-base resolution, the merge-base file listing, and reading file content
 at the merge-base for `TestMethodProtection`). Only `execute` is abstract, so
 this remains a valid functional interface for guardrails that never enable
-`protectTestFiles`. `evaluateFiles` resolves the merge-base and its file
-listing once per call whenever `protectTestFiles` is set, before it knows
+`protectTestFiles` or `protectCiFiles`. `evaluateFiles` resolves the merge-base
+and its file listing once per call whenever either lock is set, before it knows
 whether any candidate file is under a protected path — so any caller that
-enables `protectTestFiles` must supply a real `executeWithOutput`, or every
+enables either lock must supply a real `executeWithOutput`, or every
 guardrail-2 file (whole-file paths and `.java` protected sources alike) fails
 closed. See `GitManagedJob.asGitOperations()` for the production adapter.
 
@@ -228,8 +228,9 @@ immutability after construction.
 |---------------------------------|------------------|---------------------|-------------|
 | `maxFileSizeBytes(long)`        | `long`           | `1024 * 1024` (1 MB)| Maximum file size threshold. Files exceeding this are skipped. |
 | `excludedPatterns(Set<String>)` | `Set<String>`    | Empty set           | Glob patterns used to exclude files from staging. |
-| `protectedPathPatterns(Set<String>)` | `Set<String>` | Empty set         | Glob patterns identifying protected test/CI files. |
+| `protectedPathPatterns(Set<String>)` | `Set<String>` | Empty set         | Glob patterns identifying protected test files (the test lock's paths). |
 | `protectTestFiles(boolean)`     | `boolean`        | `false`             | Whether test file protection is active. |
+| `protectCiFiles(boolean)`       | `boolean`        | `false`             | Whether the CI file lock is active: CI/workflow files are blocked whole-file, branch-new or not. |
 | `baseBranch(String)`            | `String`         | `"master"`          | Base branch for test file existence checks. |
 
 ### Construction Example
@@ -736,15 +737,18 @@ defaults are not appropriate, but it should be used with extreme caution.
 
 ## Protected Path Patterns
 
-`GitJobConfig.PROTECTED_PATH_PATTERNS` defines patterns for test and CI files
-that receive special protection when `protectTestFiles` is enabled.
+`GitJobConfig.PROTECTED_PATH_PATTERNS` defines the test paths that receive
+special protection when `protectTestFiles` is enabled.
 
 | Pattern | Matches |
 |---------|---------|
 | `**/src/test/**` | All files under any `src/test` directory (unit and integration test sources). |
 | `**/src/it/**` | All files under any `src/it` directory (Maven integration test sources). |
-| `.github/workflows/**` | GitHub Actions workflow definitions. |
-| `.github/actions/**` | Custom GitHub Actions. |
+
+CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`)
+is deliberately **not** in this set: it is governed by the separate CI file
+lock (`protectCiFiles`), whose exemptions differ from the test lock's — a
+`ci/...` branch is exempt from the CI lock but still subject to the test lock.
 
 ### Protection Logic
 
@@ -1098,10 +1102,10 @@ FileStager.GitOperations gitOps = new FileStager.GitOperations() {
 `UnsupportedOperationException` unless overridden), so a bare exit-code
 lambda still type-checks but silently loses content-based checks. Because
 `evaluateFiles` resolves the merge-base and its file listing once per call
-whenever `protectTestFiles` is set — before it knows whether any candidate
-file is under a protected path — this is not limited to `.java` files: every
-guardrail-2 file, whole-file paths included, will fail closed under such a
-lambda. Only guardrails that never enable `protectTestFiles` at all (pattern
+whenever `protectTestFiles` or `protectCiFiles` is set — before it knows
+whether any candidate file is under a protected path — this is not limited to
+`.java` files: every guardrail-2 file, whole-file paths included, will fail
+closed under such a lambda. Only guardrails that enable neither lock (pattern
 exclusion, size, binary detection) are unaffected:
 
 ```java

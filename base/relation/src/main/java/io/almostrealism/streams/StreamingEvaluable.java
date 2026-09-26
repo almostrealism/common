@@ -96,8 +96,8 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * with a {@code dependsOn} completion, an argument whose evaluation is itself a dispatch
 	 * that reads memory written by that prior work must not execute until it has finished.
 	 * Delivery remains asynchronous &mdash; results may still arrive with their own completion.
-	 * An implementation that performs no dispatch (a synchronous adapter, a handle-producing
-	 * host evaluable) may disregard {@code dependsOn}.</p>
+	 * An implementation that performs no dispatch (such as a handle-producing host evaluable)
+	 * may disregard {@code dependsOn}, and reports so through {@link #isDispatchBacked()}.</p>
 	 *
 	 * @param args      the arguments required for computation, in the same format as
 	 *                  {@link #request(Object[])}

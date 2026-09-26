@@ -407,7 +407,8 @@ look-alike host such as `github.com.evil.example`. Comparing the returned
 host for exact equality does not. An optional `:port` in the authority is
 excluded from the host, so `https://github.com:443/owner/repo.git` reports
 `github.com` — the same host as the port-less form, which `repositorySlug`
-also accepts.
+also accepts. A bracketed IPv6 literal host (`https://[2001:db8::1]/owner/repo.git`)
+is returned whole, brackets included.
 
 **Example:**
 

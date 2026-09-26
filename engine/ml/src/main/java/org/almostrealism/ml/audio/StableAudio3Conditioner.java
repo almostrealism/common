@@ -35,7 +35,8 @@ import java.util.List;
  *
  * <p>The prompt encoder, the padding substitution and the duration token are one compiled model
  * whose inputs are the token ids and, as graph leaves, the encoder's validity mask and the
- * normalized duration. {@link #runConditioners(long[], double)} loads those and runs it once; the
+ * duration in seconds, which is normalized inside the graph.
+ * {@link #runConditioners(long[], double)} loads those and runs it once; the
  * global conditioning is a view of the last context token, so nothing is evaluated on the host.
  * The returned tensors are the model's output buffers and are overwritten by the next call.</p>
  */

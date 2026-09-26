@@ -132,9 +132,11 @@ public final class FileStagingConfig {
     /**
      * Returns whether CI/workflow file protection is active. When enabled,
      * a CI/workflow file ({@code .github/workflows/**}, {@code .github/actions/**},
-     * {@code tools/ci/**}) that exists at the merge-base is blocked from
-     * staging. This is the harness side of the repository's CI file lock and
-     * is independent of {@link #isProtectTestFiles()}: a job's test lock says
+     * {@code tools/ci/**}) is blocked from staging whether or not it exists
+     * at the merge-base, since the pipeline's CI file lock rejects a
+     * branch-new workflow file as well as an edit to an existing one. This
+     * is the harness side of the repository's CI file lock and is
+     * independent of {@link #isProtectTestFiles()}: a job's test lock says
      * nothing about whether it may change the pipeline.
      *
      * @return true if CI/workflow file protection is active
@@ -248,8 +250,8 @@ public final class FileStagingConfig {
         /**
          * Sets whether CI/workflow file protection is active.
          *
-         * @param protectCiFiles true to block staging of CI/workflow files
-         *                       that exist at the merge-base
+         * @param protectCiFiles true to block staging of CI/workflow files,
+         *                       whether branch-new or pre-existing
          * @return this builder
          */
         public Builder protectCiFiles(boolean protectCiFiles) {
