@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -101,6 +102,18 @@ import java.util.stream.Stream;
 public class CollectionAddComputation extends TransitiveDeltaExpressionComputation {
 
 	/**
+	 * Cached result of {@link #isRowMonomial()}, computed lazily on first access. This
+	 * computation's operands are fixed at construction ({@link #generate(List)} always
+	 * returns a new instance rather than mutating this one), so the structural property
+	 * can be safely memoized rather than re-derived by walking the operand subgraph on
+	 * every call - which matters because the check recurses into each operand's own
+	 * {@code isRowMonomial()}/{@code isZero()}, and without memoization a shared operand
+	 * reachable through multiple paths in a DAG (common where a computation feeds more
+	 * than one downstream consumer) would be re-evaluated once per path.
+	 */
+	private Boolean rowMonomial;
+
+	/**
 	 * Constructs a new addition computation with default name "add".
 	 *
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -176,5 +189,65 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	public long getExpansionWidth() {
 		int operands = getChildren().size() - 1;
 		return Math.max(1L, operands);
+	}
+
+	/**
+	 * Determines if this element-wise sum preserves a row-monomial structure from one of
+	 * its operands.
+	 *
+	 * <p>Unlike a Hadamard product, a sum of two row-monomial operands is not row-monomial
+	 * in general - two different non-zero positions in the same row would add to a row with
+	 * two non-zero entries. The property survives only in the degenerate case where every
+	 * operand except one is algebraically zero, so the sum reduces to that one operand. This
+	 * is exactly the shape produced by the product-rule {@link CollectionProductComputation#delta(Producer)}
+	 * of a computation (such as convolution) multiplying a row-monomial Jacobian by a factor
+	 * that does not depend on the differentiation target: the other product-rule term has a
+	 * zero derivative and contributes a zero addend here.</p>
+	 *
+	 * <p>Recognition is based on the sole non-zero operand's declared property, not on how it is
+	 * aligned into this sum. A shape-changing wrapper can therefore leave the flag {@code true}
+	 * even when the aligned row no longer has at most one non-zero entry: a {@code reshape} that
+	 * merges rows delegates the flag through unchanged, and a broadcast that repeats a lower-rank
+	 * {@code (rows, 1)} operand across the {@code (rows, columns)} output copies its single
+	 * non-zero into every column of each row. Both are false positives of the row-monomial
+	 * property, but neither corrupts a result:
+	 * {@link io.almostrealism.compute.RowMonomialOptimization} only uses the flag to keep the
+	 * operand inline, and the gather collapse it enables is an independent value-based analysis
+	 * that reads the true value at each row and declines to collapse any row whose non-zero entry
+	 * is not unique, falling back to the dense reduction. The flag gates only whether the collapse
+	 * is attempted, never what value it reads.</p>
+	 *
+	 * @return true if exactly one operand is non-zero and that operand is row-monomial
+	 * @see Algebraic#isRowMonomial(Object)
+	 * @see Algebraic#isZero(Object)
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		if (rowMonomial == null) {
+			rowMonomial = computeRowMonomial();
+		}
+
+		return rowMonomial;
+	}
+
+	/**
+	 * Performs the actual row-monomial determination described by {@link #isRowMonomial()},
+	 * invoked once and cached by that method.
+	 *
+	 * @return true if exactly one operand is non-zero and that operand is row-monomial
+	 */
+	private boolean computeRowMonomial() {
+		List<Producer<PackedCollection>> operands = getInputs().stream().skip(1)
+				.collect(Collectors.toList());
+
+		Producer<PackedCollection> nonZero = null;
+
+		for (Producer<PackedCollection> operand : operands) {
+			if (Algebraic.isZero(operand)) continue;
+			if (nonZero != null) return false;
+			nonZero = operand;
+		}
+
+		return nonZero != null && Algebraic.isRowMonomial(nonZero);
 	}
 }
