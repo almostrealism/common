@@ -710,11 +710,18 @@ public class GitOperations implements ConsoleFeatures {
     /**
      * Reads all output from a process's input stream into a string.
      *
+     * <p>Each line read from the process is appended followed by a {@code "\n"},
+     * so the returned string always ends with a trailing newline when the
+     * process produced any output, and is empty when it produced none. This is
+     * the single reader for process output shared by this class and by
+     * {@code GitCommandExecutor}; it uses no instance state and is therefore
+     * {@code static}.</p>
+     *
      * @param process the process to read from
-     * @return the full output, with lines separated by newlines
+     * @return the full output, with each line terminated by a newline
      * @throws IOException if reading fails
      */
-    private String readProcessOutput(Process process) throws IOException {
+    public static String readProcessOutput(Process process) throws IOException {
         StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream()))) {
