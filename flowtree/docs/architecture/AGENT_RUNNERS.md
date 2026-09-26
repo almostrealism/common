@@ -47,6 +47,11 @@ Carries everything the runner needs to launch one session:
 - `workingDirectory` — where the agent runs (a per-job git worktree)
 - `allowedTools` — CSV of permitted tool names (orchestrator-owned; see below)
 - `mcpConfigJson` — MCP server configuration as JSON
+- `requiredMcpServers` — names of servers in `mcpConfigJson` the session cannot
+  do its job without; if any is unavailable at start the runner reports it in
+  `AgentRunResult.unavailableRequiredMcpServers`
+- `bypassPermissionPrompts` — whether the session may bypass interactive tool
+  permission prompts (granted per job from the branch's permission policy)
 - `environment` — additional env vars (includes `AR_AGENT_ACTIVITY`)
 - `model`, `effort` — runner-specific aliases; null leaves the runner default
 - `maxTurns`, `maxBudgetUsd`, `inactivityTimeoutMillis` — limits
@@ -73,8 +78,14 @@ public record AgentRunResult(
         String stopReason,
         boolean sessionIsError,
         List<String> deniedToolNames,
-        Map<String, String> runnerMetadata) {}
+        Map<String, String> runnerMetadata,
+        List<String> unavailableRequiredMcpServers) {}
 ```
+
+`unavailableRequiredMcpServers` lists any MCP servers the session declared it
+required (see `AgentRunRequest.requiredMcpServers`) that were not available when
+the session started; `isMissingRequiredMcpServer()` is true when it is
+non-empty.
 
 A runner that cannot report a value returns the zero/empty for it and
 declares the gap in `capabilities()`. See [Telemetry](PHASES.md#telemetry)
