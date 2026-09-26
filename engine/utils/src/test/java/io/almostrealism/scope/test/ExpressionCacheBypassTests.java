@@ -122,4 +122,36 @@ public class ExpressionCacheBypassTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/**
+	 * Rows whose entries do not depend on the row index are recorded as duplicates of the
+	 * first row, and {@link ExpressionMatrix#valueAt} follows the duplicate chain so that
+	 * every row returns the first row's entries.
+	 *
+	 * <p>This exercises the row-deduplication path of population, which the fully symbolic
+	 * matrix above deliberately avoids by making every row distinct.</p>
+	 */
+	@Test(timeout = 30000)
+	public void rowIndependentEntriesDeduplicateRows() {
+		DefaultIndex row = new DefaultIndex("row", ROWS);
+		DefaultIndex col = new DefaultIndex("col", COLUMNS);
+		DefaultIndex free = new DefaultIndex("free");
+
+		// The entries depend on the column and a free index but not on the row, so every
+		// row duplicates the first; the free index keeps the matrix explicit
+		Expression<?> target = col.add(free).imod(5).getSimplified();
+
+		ExpressionMatrix<?> matrix = new ExpressionCache().use(() ->
+				ExpressionMatrix.create(row, col, target));
+
+		Assert.assertTrue("The matrix should be populated explicitly",
+				matrix instanceof ExplicitExpressionMatrix);
+
+		for (int i = 0; i < ROWS; i++) {
+			for (int j = 0; j < COLUMNS; j++) {
+				Assert.assertEquals("Every row should resolve to the first row's entry",
+						matrix.valueAt(0, j), matrix.valueAt(i, j));
+			}
+		}
+	}
 }
