@@ -57,7 +57,9 @@ import java.util.stream.Stream;
  *
  * <h2>Recognition is conservative, and a false positive is still sound</h2>
  * <p>{@link Algebraic#isRowMonomial()} defaults to {@code false} and is only overridden by
- * computations that are row-monomial by construction, so this strategy acts only on
+ * computations that are row-monomial by construction or that carry the property through from
+ * an operand (an element-wise product with a row-monomial factor, or a sum whose single
+ * non-zero operand is row-monomial), so this strategy acts only on
  * producers that affirmatively declare the property. Even so, that declaration is not
  * trusted to be exact: a wrapper such as a {@code reshape} delegates the flag through
  * unchanged, so a reshape that merges rows can leave a producer reporting {@code true} whose

@@ -467,7 +467,8 @@ it when a kernel first requires it. Nothing is materialized on the host and
 nothing reaches a device until something actually reads it. `MappedMemory` and
 its `MappedMemoryProvider` (in `org.almostrealism.hardware.mem`) are the base-layer
 read-only source provider for values still in the file they were written to,
-serving them straight out of a `FileMapping`. `CollectionDataMemory` and
+serving them straight out of a `FileMapping`; only FP32 and FP64 files are mapped,
+and other precisions are rejected. `CollectionDataMemory` and
 `MappedCollectionDataMemory` (in `engine/ml`) are a higher-level worked example
 over the same mechanism. Migration is generic rather than
 special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the

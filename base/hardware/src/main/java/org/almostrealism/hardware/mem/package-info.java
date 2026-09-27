@@ -27,6 +27,12 @@
  *       file, ref-counted across every reader; a store holding many ranges of a file maps
  *       the file once rather than once per range, and the mapping is released when the
  *       last reader drops it</li>
+ *   <li>{@link org.almostrealism.hardware.mem.MappedMemory} - read-only memory backed by values
+ *       still in the file that holds them, read through a {@code FileMapping} rather than copied
+ *       out of it</li>
+ *   <li>{@link org.almostrealism.hardware.mem.MappedMemoryProvider} - read-only source provider
+ *       that creates {@code MappedMemory} from an existing file of FP32 or FP64 values (other
+ *       precisions are rejected); it cannot allocate fresh memory by size and rejects writes</li>
  *   <li>{@link org.almostrealism.hardware.mem.HardwareMemoryProvider} - GC-integrated provider;
  *       consults {@link org.almostrealism.hardware.mem.KernelMemoryGuard} before releasing
  *       a block and holds the release back while a kernel is still reading it</li>
