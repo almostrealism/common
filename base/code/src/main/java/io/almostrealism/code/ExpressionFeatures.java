@@ -566,6 +566,49 @@ public interface ExpressionFeatures {
 	}
 
 	/**
+	 * Computes the greatest common divisor of two values using the Euclidean
+	 * algorithm, with both operands taken as non-negative.
+	 *
+	 * <p>This is the shared host-side integer helper used when analyzing the
+	 * divisibility of index expressions during simplification and kernel period
+	 * analysis (for example computing the common factor of an arithmetic index
+	 * sequence, folding a bounded remainder in a {@link Quotient}, or reducing
+	 * periods to a least common multiple). Operating in the {@code long} domain
+	 * means {@link Math#abs(long)} of an {@code int} operand cannot overflow.</p>
+	 *
+	 * <p>The result is always non-negative, with the single exception that a
+	 * greatest common divisor of {@code 2^63} — reachable only when both operands
+	 * are {@link Long#MIN_VALUE}, or when one is {@link Long#MIN_VALUE} and the
+	 * other is zero — has no positive {@code long} representation. Rather than
+	 * silently returning a negative value (which would corrupt the divisibility
+	 * comparisons this helper feeds), such inputs raise an
+	 * {@link ArithmeticException}.</p>
+	 *
+	 * @param a the first value
+	 * @param b the second value
+	 * @return the greatest common divisor of {@code a} and {@code b}, or zero if
+	 *         both are zero
+	 * @throws ArithmeticException if the greatest common divisor is {@code 2^63}
+	 *         and therefore not representable as a non-negative {@code long}
+	 */
+	static long gcd(long a, long b) {
+		while (b != 0) {
+			long t = a % b;
+			a = b;
+			b = t;
+		}
+
+		a = Math.abs(a);
+
+		if (a < 0) {
+			throw new ArithmeticException(
+					"Greatest common divisor 2^63 is not representable as a non-negative long");
+		}
+
+		return a;
+	}
+
+	/**
 	 * Returns a minimal instance of {@code ExpressionFeatures} for use outside of computations.
 	 *
 	 * @return a default ExpressionFeatures instance
