@@ -52,7 +52,9 @@ Carries everything the runner needs to launch one session:
   reports any that are unavailable in `AgentRunResult.unavailableRequiredMcpServers`
   (runner-dependent: `ClaudeCodeRunner` reports it, `OpencodeRunner` does not)
 - `bypassPermissionPrompts` — whether the session may bypass interactive tool
-  permission prompts (granted per job from the branch's permission policy)
+  permission prompts (granted per job from the branch's permission policy;
+  runner-dependent: `ClaudeCodeRunner` honours it, `OpencodeRunner` always
+  launches with prompts bypassed)
 - `environment` — additional env vars (includes `AR_AGENT_ACTIVITY`)
 - `model`, `effort` — runner-specific aliases; null leaves the runner default
 - `maxTurns`, `maxBudgetUsd`, `inactivityTimeoutMillis` — limits

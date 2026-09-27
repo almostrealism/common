@@ -236,16 +236,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * @return the common factor of all values
 	 */
 	public long commonFactor() {
-		long a = Math.abs(offset);
-		long b = Math.abs(scale);
-
-		while (b != 0) {
-			long t = a % b;
-			a = b;
-			b = t;
-		}
-
-		return a;
+		return ExpressionFeatures.gcd(offset, scale);
 	}
 
 	/**

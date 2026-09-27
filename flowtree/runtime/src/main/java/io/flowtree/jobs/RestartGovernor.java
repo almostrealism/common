@@ -40,7 +40,7 @@ import java.util.function.IntFunction;
  * <p>This collaborator closes that gap by becoming the one chokepoint through
  * which all sessions pass. Before each launch {@link #beginSession()} is
  * consulted; once any stop condition holds it refuses every further launch,
- * so no restart path — present or future — can run away. Three independent,
+ * so no restart path — present or future — can run away. Four independent,
  * overlapping ceilings are enforced (the first to trip wins):</p>
  *
  * <ol>
@@ -55,11 +55,18 @@ import java.util.function.IntFunction;
  *   <li><b>Turn budget</b> — cumulative agentic turns may not reach
  *       {@link #getMaxTotalTurns()} (default
  *       {@link #DEFAULT_MAX_TOTAL_TURNS}); {@code 0} disables the check.</li>
+ *   <li><b>Wall-clock ceiling</b> — elapsed time since the first session may
+ *       not reach {@link #getMaxWallClock()} (default
+ *       {@link #DEFAULT_MAX_WALL_CLOCK}); a non-positive duration disables
+ *       the check.</li>
  * </ol>
  *
  * <p>The very first session of a job is always permitted regardless of the
- * ceilings, so a job always performs its primary work; the stop conditions
- * gate only the restarts that follow.</p>
+ * ceilings, so a job always performs its primary work; the ceilings gate only
+ * the restarts that follow. Separately, {@link #stopLaunching(String)} records
+ * a terminal condition that no relaunch can clear (such as a required MCP
+ * server that did not connect); once set, it refuses every further launch,
+ * including a first session that has not yet started.</p>
  *
  * <p>The governor also owns the inactivity-restart relaunch loop
  * ({@link #runWithInactivityRetries(String, IntFunction)}) so that all

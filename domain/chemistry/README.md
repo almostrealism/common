@@ -40,7 +40,7 @@ Access elements by chemical family, period, or group:
 // By chemical family
 List<Element> alkaliMetals = Element.alkaliMetals();     // Li, Na, K, Rb, Cs, Fr
 List<Element> nobleGases = Element.nobleGasses();        // He, Ne, Ar, Kr, Xe, Rn
-List<Element> halogens = Element.halogens();             // F, Cl, Br, I, At
+List<Element> halogens = Element.halogens();             // F, Cl, Br, I, At, Ts
 List<Element> transitionMetals = Element.transitionMetals();
 
 // By orbital block
@@ -53,7 +53,7 @@ List<Element> period2 = Element.Periods.second();  // Li, Be, B, C, N, O, F, Ne
 
 // By group (column)
 List<Element> group1 = Element.Groups.first();     // Alkali metals
-List<Element> group18 = Element.Groups.eighteenth(); // Noble gases
+List<Element> group18 = Element.Groups.eigthteenth(); // Noble gases
 
 // Special groups
 List<Element> lanthanoids = Element.lanthanoids(); // Rare earth elements

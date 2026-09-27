@@ -547,13 +547,18 @@ CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
                 </table>
 
                 <h3>RMS Normalization</h3>
-                <p>RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering:</p>
+                <p>RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering.
+                The <strong>last axis</strong> of <code>weights</code> is the normalized vector length: each contiguous
+                run of that many input features is one row, normalized by its own root-mean-square. The full extent of
+                <code>weights</code> is the span over which the scale and optional bias are applied, so
+                <code>[heads, headSize]</code> weights normalize each head's slice separately while every head keeps its
+                own scale. Any <code>biases</code> must have as many elements as the weights:</p>
                 <div class="code-example">
 <pre><code class="language-java">// RMSNorm with weights
 CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
 
-// RMSNorm with explicit size
-CellularLayer layer = rmsnorm(shape, size, weights, eps);</code></pre>
+// RMSNorm with explicit epsilon
+CellularLayer layer = rmsnorm(shape, weights, eps);</code></pre>
                 </div>
 
                 <h3>Common Pitfalls</h3>
