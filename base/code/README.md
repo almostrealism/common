@@ -292,15 +292,23 @@ Expression<?> deduped = ExpressionCache.match(expression);
 
 Work that builds many throwaway expressions which never reach generated code should
 run inside `ExpressionCache.bypass(...)`, which suspends the active cache and restores
-it afterwards. `ExplicitExpressionMatrix` does this for the per-entry substitutions of
-`uniqueNonZeroOffset` analysis: deduplicating those entries saves nothing, while inserting
-them floods the per-depth caches whose frequency data feeds common sub-expression
-extraction, and costs a lookup, an insertion and (once full) an eviction per node.
+it afterwards (a `Supplier` form returns the task's value). `ExplicitExpressionMatrix`
+does this for the per-entry substitutions of `uniqueNonZeroOffset` analysis:
+deduplicating those entries saves nothing, while inserting them floods the per-depth
+caches whose frequency data feeds common sub-expression extraction, and costs a lookup,
+an insertion and (once full) an eviction per node.
 
 ```java
 // Analysis-only expressions are built without touching the compilation cache
 ExpressionCache.bypass(() -> populateCandidates());
 ```
+
+`ExplicitExpressionMatrix` also substitutes its entries only when they are read, rather
+than all `rowCount * colCount` of them at construction. The analyses that build one
+mostly consult its dimensions and a few entries (`allColumnsMatch()` stops at the first
+column that differs), and eager population of the large index matrices produced by
+gradient graphs used to dominate their compilation. The full array, with its
+row-duplicate map, is populated only when `getRowDuplicates()` is requested.
 
 ### Architecture
 
