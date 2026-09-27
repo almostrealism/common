@@ -159,28 +159,40 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Java heap nothing between being opened and being used, and a tensor no
 	 * kernel ever asks for costs it nothing at all.</p>
 	 *
+	 * <p>The mapping opened to walk the structure is held only for that walk and
+	 * released before returning: each located tensor holds its own mapping of the
+	 * file for the deferred read of its values, so this reader is redundant once
+	 * the walk is done. Releasing it in a {@code finally} also keeps a file that
+	 * fails to parse — a metadata sidecar or a legacy {@code .bin} left beside the
+	 * shards — from leaking a native mapping.</p>
+	 *
 	 * @param weightFile the library to locate tensors in
 	 * @return the number of tensors located
 	 * @throws IOException if the file cannot be read
 	 */
 	private int locateWeights(File weightFile) throws IOException {
-		EncodedMessage library = new EncodedMessage(
-				FileMapping.of(weightFile,
-						CollectionDataMemoryProvider.VALUE_ORDER).buffer(), 0);
+		FileMapping mapping = FileMapping.of(weightFile,
+				CollectionDataMemoryProvider.VALUE_ORDER);
 
-		List<EncodedMessage> entries = library.fields(LIBRARY_COLLECTIONS_FIELD);
+		try {
+			EncodedMessage library = new EncodedMessage(mapping.buffer(), 0);
 
-		for (EncodedMessage entry : entries) {
-			String key = entry.stringOf(ENTRY_KEY_FIELD);
-			CollectionDataReference reference =
-					CollectionDataReference.within(entry, ENTRY_COLLECTION_FIELD);
+			List<EncodedMessage> entries = library.fields(LIBRARY_COLLECTIONS_FIELD);
 
-			if (key != null && reference != null) {
-				weights.put(key, CollectionEncoder.decode(reference, weightFile, false));
+			for (EncodedMessage entry : entries) {
+				String key = entry.stringOf(ENTRY_KEY_FIELD);
+				CollectionDataReference reference =
+						CollectionDataReference.within(entry, ENTRY_COLLECTION_FIELD);
+
+				if (key != null && reference != null) {
+					weights.put(key, CollectionEncoder.decode(reference, weightFile, false));
+				}
 			}
-		}
 
-		return entries.size();
+			return entries.size();
+		} finally {
+			mapping.release();
+		}
 	}
 
 	/**

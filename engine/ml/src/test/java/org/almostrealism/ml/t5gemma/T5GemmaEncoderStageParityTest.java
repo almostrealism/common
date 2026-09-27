@@ -19,6 +19,7 @@ package org.almostrealism.ml.t5gemma;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.SAMEResamplingTestBase;
+import org.almostrealism.ml.ReferenceActivations;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.junit.Test;
@@ -67,7 +68,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 	@Test(timeout = 900000)
 	public void layerZeroStagesMatchReference() throws IOException {
 		File weightDir = firstExisting(WEIGHT_DIRS, "weights");
-		File refDir = firstExisting(REFERENCE_DIRS, "t5_embeddings.bin");
+		File refDir = firstExisting(REFERENCE_DIRS, "t5_embeddings");
 		if (weightDir == null || refDir == null) {
 			log("skipping T5Gemma stage parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
 			return;
@@ -78,8 +79,8 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 		int hidden = config.getHiddenSize();
 		TraversalPolicy blockShape = shape(1, length, hidden);
 
-		float[] ids = loadFlat(new File(refDir, "t5_input_ids.bin").toPath());
-		float[] mask = loadFlat(new File(refDir, "t5_attention_mask.bin").toPath());
+		float[] ids = loadFlat(refDir, "t5_input_ids");
+		float[] mask = loadFlat(refDir, "t5_attention_mask");
 		int valid = 0;
 		while (valid < mask.length && mask[valid] > 0.5) {
 			valid++;
@@ -98,7 +99,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 				encoder.tokenEmbedding(encoder.weight("encoder.embed_tokens.weight", config.getVocabularySize(), hidden)),
 				tokenIds);
 		check(failures, "embeddings", embeddings, refDir, "t5_embeddings");
-		reportPositions("embeddings", embeddings, loadFlat(new File(refDir, "t5_embeddings.bin").toPath()), prompt, hidden);
+		reportPositions("embeddings", embeddings, loadFlat(refDir, "t5_embeddings"), prompt, hidden);
 
 		PackedCollection refEmbeddings = loadShaped(refDir, "t5_embeddings", 1, length, hidden);
 		Block attention = encoder.attentionBranch(blockShape, prefix, encoder.weight("encoder.rotary.inv_freq", config.getHeadDim() / 2));
@@ -108,7 +109,7 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 		PackedCollection afterAttention = cp(refEmbeddings).add(cp(attentionOut)).evaluate();
 		check(failures, "afterAttention", afterAttention, refDir, "t5_l0_after_attn");
 
-		PackedCollection ffInput = new File(refDir, "t5_l0_after_attn.bin").exists() ?
+		PackedCollection ffInput = references(refDir).contains("t5_l0_after_attn") ?
 				loadShaped(refDir, "t5_l0_after_attn", 1, length, hidden) : afterAttention;
 		Block feedForward = encoder.feedForwardBranch(blockShape, prefix);
 		PackedCollection feedForwardOut = evalBlock(feedForward, ffInput);
@@ -151,18 +152,18 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 	 * @param stage    the stage label
 	 * @param actual   the computed activation
 	 * @param refDir   the reference directory
-	 * @param name     the reference name without the {@code .bin} suffix
-	 * @throws IOException if the reference file cannot be read
+	 * @param name     the reference key
+	 * @throws IOException if the references cannot be read
 	 */
 	private void check(List<String> failures, String stage, PackedCollection actual,
 					   File refDir, String name) throws IOException {
-		File file = new File(refDir, name + ".bin");
-		if (!file.exists()) {
+		ReferenceActivations references = references(refDir);
+		if (!references.contains(name)) {
 			log(stage + ": reference " + name + " absent");
 			return;
 		}
 
-		float[] reference = loadFlat(file.toPath());
+		float[] reference = references.load(name);
 		double[] stats = diffStats(actual, reference);
 		report(stage, actual, reference);
 		double tolerance = RELATIVE_TOLERANCE * stats[3];

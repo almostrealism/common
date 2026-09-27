@@ -8,8 +8,8 @@ for their respective sub-models: it builds the **real** released small-music mod
 (``stabilityai/stable-audio-3-small-music``) from the reference ``stable_audio_3``
 source and its ``model_config.json``, runs the real conditioner on a fixed prompt,
 calls the diffusion transformer exactly once on a fixed seeded latent, and writes
-the resulting activations with the Block E serializer
-(:func:`safetensors_extractor.save_reference_output`) for a Java parity test to
+the resulting activations as protobuf collection data
+(:func:`safetensors_extractor.dump_reference_activations`) for a Java parity test to
 compare against.
 
 The conditioning config's ``prompt`` entry names the T5Gemma encoder by
@@ -234,14 +234,19 @@ def main():
     stages, conditioner_tensors = dit_reference_stages(model, io_channels, args.latent_len, args.seed)
 
     os.makedirs(args.out, exist_ok=True)
-    written = core.dump_reference_activations(stages, args.out)
-    written += core.dump_reference_activations(conditioner_tensors, args.out)
+    # Write the stages and the conditioner tensors as ONE dump: they share the default shard
+    # prefix, and dump_reference_activations clears stale same-prefix shards before writing, so a
+    # second call would delete the first call's shards. Their keys are disjoint (dit_* vs cond_*).
+    combined = dict(stages)
+    combined.update(conditioner_tensors)
+    written = core.dump_reference_activations(combined, args.out)
 
     shapes = {name: list(array.shape) for name, array in stages.items()}
     with open(os.path.join(args.out, "dit_shapes.json"), "w") as f:
         json.dump(shapes, f, indent=2, sort_keys=True)
 
-    print("Wrote %d reference activations to %s" % (len(written), args.out))
+    print("Wrote %d reference activations (%d shard(s)) to %s"
+          % (len(combined), len(written), args.out))
     for name in sorted(stages):
         print("  %-20s %s" % (name, list(stages[name].shape)))
     for name in sorted(conditioner_tensors):
