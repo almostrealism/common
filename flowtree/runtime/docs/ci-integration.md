@@ -38,7 +38,7 @@ The key components involved are:
 
 ## Verify-Completion Workflow
 
-The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch.
+The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch, and it is the only thing that starts implementing a plan: until someone dispatches it, a plan branch (whose changes are all under `docs/`) receives only the docs-only review from `auto-review` in `analysis.yaml`, which improves the documents and never carries out the plan.
 
 ### Three-Phase Pipeline
 

@@ -135,8 +135,18 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
 | `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+
+The docs-only review (`docs-review.txt`) reviews and improves documents and
+**never implements a plan**, and it keeps its edits under `docs/` so the branch
+stays on that route. A plan branch's first commit is always docs-only, so this
+route reaches every plan as soon as it is proposed; it once sent the
+implementation prompt (`verify-completion.txt`) and so carried out every plan
+before anyone had read it. Implementation starts only when someone dispatches
+`verify-completion.yaml` on the branch.
+`tools/tests/test_remediation_job_exclusivity.py` pins that `auto-review`
+cannot reach the implementation prompt.
 
 The early two exist so that an agent reaches a stopping point — gates green, no
 simple fixes or review comments outstanding — before anyone pays for the
@@ -209,7 +219,7 @@ test has repeatedly loosened it instead, which fails `test-integrity-check`,
 which dispatches an agent to restore it, which fails the test again — the lock
 breaks that loop. So the "test failures", "test job crash" and "python test
 failures" requests set it to `"true"`, and every other request (build failure,
-code policy, quality gates, docs-only verify, general review, incomplete test
+code policy, quality gates, docs-only review, general review, incomplete test
 execution) sets it to `"false"` and is held to `test-integrity-check` alone,
 the rule every branch meets. `tools/tests/test_analysis_yaml_protect_test_files.py`
 pins that mapping. The early submit jobs set the flag themselves;

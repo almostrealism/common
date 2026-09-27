@@ -1,8 +1,20 @@
 name: "Verify Completion"
 
-# Runs on feature branches to verify (or implement) plan goals.
-# Includes an optional registration step that creates a FlowTree
-# workstream when a new plan document is detected.
+# The manual "implement the plan" trigger. Dispatched by hand on a branch
+# (or through the project_verify_branch MCP tool) once a person has read the
+# branch's plan and approved it; it submits a coding agent that implements
+# every goal the plan sets and proves each one with tests.
+#
+# Nothing starts implementation automatically. On a docs-only branch, which is
+# what a plan branch is until this runs, auto-review in analysis.yaml sends a
+# review that improves the documents and never carries out the plan.
+#
+# Includes an optional registration step that creates a FlowTree workstream
+# when a new plan document is detected.
+#
+# Like the Master Agent Dispatch jobs, every job runs on a GitHub-hosted
+# runner and reaches the controller through its Cloudflare Access tunnel;
+# none of them builds or tests anything.
 
 on:
   workflow_dispatch:
@@ -21,7 +33,7 @@ jobs:
   # ── Phase 1: Detect the plan file ─────────────────────────────────
   detect-plan:
     if: github.ref != 'refs/heads/master'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
 
     outputs:
       plan_file: ${{ steps.detect.outputs.plan_file }}
@@ -34,12 +46,16 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      # plan_file is free text from a dispatch input, so it is read through the
+      # environment rather than interpolated into the script.
       - name: Detect plan file
         id: detect
+        env:
+          PLAN_FILE_INPUT: ${{ github.event.inputs.plan_file }}
         run: |
           # Use explicit input if provided
-          if [ -n "${{ github.event.inputs.plan_file }}" ]; then
-            PLAN="${{ github.event.inputs.plan_file }}"
+          if [ -n "$PLAN_FILE_INPUT" ]; then
+            PLAN="$PLAN_FILE_INPUT"
             if [ ! -f "$PLAN" ]; then
               echo "::error::Plan file not found: $PLAN"
               exit 1
@@ -77,7 +93,7 @@ jobs:
   register-workstream:
     needs: detect-plan
     if: needs.detect-plan.outputs.is_new_plan == 'true'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -87,8 +103,9 @@ jobs:
 
       - name: Register workstream
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
@@ -105,7 +122,7 @@ jobs:
           echo "Registered a FlowTree workstream for branch \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "with planning document \`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Phase 3: Verify / implement ───────────────────────────────────
+  # ── Phase 3: Implement and verify ─────────────────────────────────
   verify:
     needs: [detect-plan, register-workstream]
     # Run after detect-plan succeeds, even if register was skipped (but not if it failed)
@@ -113,7 +130,7 @@ jobs:
       always()
       && needs.detect-plan.result == 'success'
       && needs.register-workstream.result != 'failure'
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -133,11 +150,12 @@ jobs:
 
       - name: Submit agent job
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
-          DESCRIPTION: "Verify completion"
+          DESCRIPTION: "Implement the plan"
           PROTECT_TEST_FILES: "false"
         run: |
           chmod +x ./tools/ci/submit-agent-job.sh
@@ -148,7 +166,7 @@ jobs:
         run: |
           echo "## Verify Completion" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "A FlowTree coding agent job was submitted to verify and implement the goals" >> "$GITHUB_STEP_SUMMARY"
+          echo "A FlowTree coding agent job was submitted to implement and verify the goals" >> "$GITHUB_STEP_SUMMARY"
           echo "on branch \`${{ github.ref_name }}\` as described in" >> "$GITHUB_STEP_SUMMARY"
           echo "\`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

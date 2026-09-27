@@ -2,7 +2,7 @@
 
 "Build and Test" has three remediation jobs — ``auto-resolve-python`` (a
 python-tests failure, submitted at once), ``auto-review`` (build failure, code
-policy, quality gates, docs-only verify or the general review, submitted as
+policy, quality gates, docs-only review or the general review, submitted as
 soon as the gates report) and ``auto-resolve`` (long-running test failures,
 staged on attempt 3+ and submitted by "Auto-Resolve Submit" once the flaky-test
 retries are spent). Two of them submitting for the same attempt would put two
@@ -119,12 +119,27 @@ class RemediationJobConditionTests(unittest.TestCase):
                 self.assertNotIn("auto-resolve-request", _uploaded_artifacts(jobs[producer]))
 
     def test_auto_resolve_does_not_stage_the_early_prompts(self):
-        """auto-review owns the build, policy, quality-gate, verify and review prompts."""
+        """auto-review owns the build, policy, quality-gate and review prompts."""
         runs = " ".join(step.get("run", "") for step in _jobs()["auto-resolve"]["steps"])
         for builder in ("build-review-prompt.sh", "build-verify-prompt.sh",
+                        "build-docs-review-prompt.sh",
                         "build-quality-gate-prompt.sh", "build-policy-violation-prompt.sh"):
             with self.subTest(builder=builder):
                 self.assertNotIn(builder, runs)
+
+    def test_auto_review_never_starts_implementing_a_plan(self):
+        """A plan branch's first commit is docs-only, so whatever auto-review
+        sends a docs-only branch reaches every plan the moment it is proposed.
+        That route once sent the verify-completion prompt, which implements
+        the plan; it must send the docs review, and the implementation prompt
+        must not be reachable from auto-review at all. Implementation is
+        started by hand, from the Verify Completion workflow."""
+        steps = _jobs()["auto-review"]["steps"]
+        runs = " ".join(step.get("run", "") for step in steps)
+        self.assertNotIn("build-verify-prompt.sh", runs)
+        docs = next(s for s in steps if s.get("name") == "Build prompt (docs-only review)")
+        self.assertIn("route == 'docs-review'", docs["if"])
+        self.assertIn("build-docs-review-prompt.sh", docs["run"])
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -165,7 +180,7 @@ class CredentialIsolationTests(unittest.TestCase):
         steps = _jobs()["auto-review"]["steps"]
         select = next(s for s in steps if s.get("name") == "Select prompt")["run"]
         routes = set(re.findall(r"ROUTE=([a-z-]+)", select))
-        self.assertEqual({"docs-verify", "build-failure", "code-policy", "quality-gates",
+        self.assertEqual({"docs-review", "build-failure", "code-policy", "quality-gates",
                           "general-review"}, routes)
         staged = {m for s in steps if s.get("name", "").startswith("Stage submit request")
                   for m in re.findall(r"route == '([a-z-]+)'", str(s.get("if", "")))}
