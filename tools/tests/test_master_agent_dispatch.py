@@ -254,6 +254,38 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
         self.assertNotIn("ENFORCE_CHANGES", env)
 
+    def test_the_planning_job_keeps_one_round_open_at_a_time(self):
+        """Every planning round rewrites the one docs/plans/MANAGER_LOG.md,
+        so two open at once cannot both merge. The job used to gate on the
+        total open-PR count alone, never looked for a planning branch, and
+        started a second round while the first agent was still working.
+        The shared gate must look at the planning prefix, cover the window
+        before the round's PR exists, and apply no interval; the backlog
+        limit must be checked after it, and nothing may run past a gate
+        that declined."""
+        job = self.jobs["plan-next-task"]
+        self.assertNotIn("BRANCH_PREFIX", job.get("env", {}),
+                         "a job-level prefix would enrol this job in the QA checks")
+        steps = job["steps"]
+        gate = next(i for i, s in enumerate(steps)
+                    if "qa-cadence.sh" in s.get("run", ""))
+        env = steps[gate]["env"]
+        self.assertEqual("project/plan-", env["BRANCH_PREFIX"])
+        self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
+        self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
+        self.assertEqual("6", job["env"]["MAX_OPEN_PRS"])
+
+        backlog = next(i for i, s in enumerate(steps) if "MAX_OPEN_PRS" in s.get("run", ""))
+        self.assertGreater(backlog, gate)
+        self.assertIn("steps.decide.outputs.run == 'true'", steps[backlog]["if"])
+        for step in steps[backlog + 1:]:
+            with self.subTest(step=step["name"]):
+                condition = step.get("if", "")
+                self.assertTrue(
+                    "steps.branches.outputs.needs_new_branch == 'true'" in condition
+                    or condition == "always()",
+                    "ungated: " + step["name"])
+
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""
         self.assertTrue(os.path.basename(_WORKFLOW).endswith("master-agent-dispatch.yaml"))

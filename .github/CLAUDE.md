@@ -746,6 +746,19 @@ built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
+`plan-next-task` keeps **exactly one** planning round open, because every round
+rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
+merge. It runs `qa-cadence.sh` from a step-level env (so the QA-job checks do
+not claim it) with `BRANCH_PREFIX=project/plan-`, `MIN_INTERVAL_DAYS=0` and
+`PR_GRACE_HOURS=24`: an open `project/plan-*` PR, or a `project/plan-*` branch
+younger than 24 hours that has never had a PR, means a round is in progress.
+The grace window is load-bearing: the agent opens its PR only when it finishes,
+so without it a merge landing mid-round started a second round beside the first
+(this is how `project/plan-20260926-172935` and `project/plan-20260926-174202`
+came to coexist). Only when no round is in progress does the job check the
+backlog: it starts a round unless more than `MAX_OPEN_PRS` (6, the number of
+automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
+
 Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
 its tests. The one job that runs any tests is `coverage-qa`: it runs the Python
 suites under coverage.py (seconds) and reuses master's `merged-coverage-report`
