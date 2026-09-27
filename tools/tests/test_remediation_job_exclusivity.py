@@ -142,6 +142,71 @@ class RemediationJobConditionTests(unittest.TestCase):
         self.assertIn("build-docs-review-prompt.sh", docs["run"])
 
 
+class AutoReviewRoutingTests(unittest.TestCase):
+    """Runs the `Select prompt` shell to pin which route each state picks.
+
+    The docs-review prompt only edits under `docs/`, so it must reach a branch
+    only when the branch is genuinely docs-only. A non-code change that is not
+    docs-only — a CI file, a root README, a JSON config — has no code but
+    cannot be reviewed under that constraint, and belongs on the general
+    review, not docs-review.
+    """
+
+    def _select(self, **env):
+        script = next(s for s in _jobs()["auto-review"]["steps"]
+                      if s.get("name") == "Select prompt")["run"]
+        with tempfile.NamedTemporaryFile("r", suffix=".out", delete=False) as out:
+            output = out.name
+        try:
+            full = dict(os.environ, GITHUB_OUTPUT=output,
+                        CODE_CHANGED="", BUILD_RESULT="", CODE_POLICY_PASSED="",
+                        QUALITY_HAS_FAILURES="", DOCS_ONLY="")
+            full.update(env)
+            result = subprocess.run(["bash", "-c", script], env=full,
+                                    capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            with open(output) as f:
+                routes = dict(line.strip().split("=", 1) for line in f if "=" in line)
+            return routes["route"]
+        finally:
+            os.unlink(output)
+
+    def test_a_docs_only_branch_is_reviewed_not_implemented(self):
+        self.assertEqual("docs-review", self._select(CODE_CHANGED="false", DOCS_ONLY="true"))
+
+    def test_a_non_code_non_docs_branch_gets_the_general_review(self):
+        """A CI-only or config-only branch has no code and is not docs-only; the
+        docs-review prompt forbids edits outside docs/, so it cannot serve it."""
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="false"))
+
+    def test_a_docs_only_branch_never_routes_to_build_failure(self):
+        """Its build is skipped, so BUILD_RESULT is not 'success'; docs-review
+        must still win over the build-failure arm."""
+        self.assertEqual("docs-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="true",
+                                      BUILD_RESULT="skipped"))
+
+    def test_a_build_failure_routes_to_build_failure(self):
+        self.assertEqual("build-failure",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="failure"))
+
+    def test_a_code_policy_failure_routes_to_code_policy(self):
+        self.assertEqual("code-policy",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="false"))
+
+    def test_a_quality_gate_failure_routes_to_quality_gates(self):
+        self.assertEqual("quality-gates",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="true"))
+
+    def test_a_clean_code_branch_gets_the_general_review(self):
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="false"))
+
+
 class CredentialIsolationTests(unittest.TestCase):
     """No job that runs pull request code holds the controller secret."""
 

@@ -50,7 +50,7 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 
 - `auto-resolve-python` — python-tests failed; submits at once.
 - `auto-review` — attempt 1 only; always submits one of build failure, code
-  policy, quality gates, docs-only verify, or the general review, as soon as the
+  policy, quality gates, docs-only review, or the general review, as soon as the
   gates report. A gate that failed without recording a cause
   (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
   branch gets the general review, with a note that the gate is not the agent's

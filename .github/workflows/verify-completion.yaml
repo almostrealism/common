@@ -114,13 +114,19 @@ jobs:
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
 
+      # plan_file derives from the dispatch input, so it and the ref name reach
+      # the summary through the environment rather than interpolated into the
+      # script, where either could execute.
       - name: Summary
         if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
         run: |
           echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Registered a FlowTree workstream for branch \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "with planning document \`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Registered a FlowTree workstream for branch \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "with planning document \`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
 
   # ── Phase 3: Implement and verify ─────────────────────────────────
   verify:
@@ -161,14 +167,20 @@ jobs:
           chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
+      # plan_file derives from the dispatch input, so it and the ref name reach
+      # the summary through the environment rather than interpolated into the
+      # script, where either could execute.
       - name: Summary
         if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
         run: |
           echo "## Verify Completion" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "A FlowTree coding agent job was submitted to implement and verify the goals" >> "$GITHUB_STEP_SUMMARY"
-          echo "on branch \`${{ github.ref_name }}\` as described in" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "on branch \`$BRANCH\` as described in" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "The agent will:" >> "$GITHUB_STEP_SUMMARY"
           echo "1. Implement any unfinished goals from the plan" >> "$GITHUB_STEP_SUMMARY"

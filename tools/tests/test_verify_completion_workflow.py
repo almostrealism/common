@@ -72,6 +72,15 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
                 with self.subTest(job=name, step=step.get("name")):
                     self.assertNotIn("inputs.plan_file", step.get("run", ""))
 
+    def test_the_detected_plan_file_output_is_not_interpolated_into_a_script(self):
+        """detect-plan's plan_file output is the dispatch input echoed to
+        `$GITHUB_OUTPUT`, so interpolating it into `run:` executes the input
+        just as directly. The summaries must read it through `env:` instead."""
+        for name, job in self.jobs.items():
+            for step in job["steps"]:
+                with self.subTest(job=name, step=step.get("name")):
+                    self.assertNotIn("outputs.plan_file", step.get("run", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

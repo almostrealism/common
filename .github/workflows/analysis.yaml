@@ -3256,16 +3256,22 @@ jobs:
           QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
           DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
         run: |
-          if [ "$CODE_CHANGED" != "true" ]; then
+          # docs-review is checked first: a docs-only branch has no code, so
+          # the build is skipped and BUILD_RESULT would otherwise route it to
+          # build-failure. Its prompt only edits under docs/, so it is reserved
+          # for genuinely docs-only changes — other non-code changes (CI files,
+          # a root README, a JSON config) cannot be reviewed under that
+          # constraint and fall back to the general review.
+          if [ "$DOCS_ONLY" = "true" ]; then
             ROUTE=docs-review
+          elif [ "$CODE_CHANGED" != "true" ]; then
+            ROUTE=general-review
           elif [ "$BUILD_RESULT" != "success" ]; then
             ROUTE=build-failure
           elif [ "$CODE_POLICY_PASSED" != "true" ]; then
             ROUTE=code-policy
           elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
             ROUTE=quality-gates
-          elif [ "$DOCS_ONLY" = "true" ]; then
-            ROUTE=docs-review
           else
             ROUTE=general-review
           fi
