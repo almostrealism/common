@@ -82,7 +82,7 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 	 *
 	 * @throws IOException if a weight directory cannot be read
 	 */
-	@Test(timeout = 5400000)
+	@Test(timeout = 2400000)
 	public void generatesAudioFromTheReleasedWeights() throws IOException {
 		File dit = ReferenceActivations.firstExisting(DIT_DIRS, "model.model.preprocess_conv.weight");
 		File ae = ReferenceActivations.firstExisting(AE_DIRS, "bottleneck.scaling_factor");
@@ -96,40 +96,55 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 			return;
 		}
 
-		StableAudio3 model = StableAudio3.small(
-				new StateDictionary(dit.getPath()),
-				new StateDictionary(conditioner.getPath()),
-				new StateDictionary(encoder.getPath()),
-				new StateDictionary(ae.getPath()),
-				SECONDS).setSteps(STEPS);
+		// Released on every path: re-destroying a dictionary the model already owns is a no-op, so
+		// releasing all four frees the conditioner and autoencoder weights the model does not own.
+		StateDictionary ditWeights = new StateDictionary(dit.getPath());
+		StateDictionary conditionerWeights = new StateDictionary(conditioner.getPath());
+		StateDictionary encoderWeights = new StateDictionary(encoder.getPath());
+		StateDictionary aeWeights = new StateDictionary(ae.getPath());
+
+		StableAudio3 model = null;
 
 		try {
+			model = StableAudio3.small(ditWeights, conditionerWeights, encoderWeights, aeWeights, SECONDS)
+					.setSteps(STEPS);
+
 			PackedCollection audio = model.generate(7, new long[]{5, 7, 9, 11}, SECONDS).evaluate();
 
-			int samples = (int) (SECONDS * StableAudio3.SAMPLE_RATE);
-			assertEquals(2, audio.getShape().getDimensions());
-			assertEquals(samples, audio.getShape().length(1));
+			try {
+				int samples = (int) (SECONDS * StableAudio3.SAMPLE_RATE);
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(samples, audio.getShape().length(1));
 
-			double peak = 0;
-			double energy = 0;
-			int count = audio.getShape().getTotalSize();
+				double peak = 0;
+				double energy = 0;
+				int count = audio.getShape().getTotalSize();
 
-			for (int i = 0; i < count; i++) {
-				double value = audio.toDouble(i);
-				assertTrue("sample " + i + " is " + value, Double.isFinite(value));
-				assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
-				peak = Math.max(peak, Math.abs(value));
-				energy += value * value;
+				for (int i = 0; i < count; i++) {
+					double value = audio.toDouble(i);
+					assertTrue("sample " + i + " is " + value, Double.isFinite(value));
+					assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+					peak = Math.max(peak, Math.abs(value));
+					energy += value * value;
+				}
+
+				double rms = Math.sqrt(energy / count);
+				log(String.format("generated %d channels x %d samples, peak=%.6f rms=%.6f",
+						audio.getShape().length(0), audio.getShape().length(1), peak, rms));
+
+				assertTrue("the decoder produced silence (peak " + peak + ")", peak > 1e-4);
+			} finally {
+				audio.destroy();
+			}
+		} finally {
+			if (model != null) {
+				model.destroy();
 			}
 
-			double rms = Math.sqrt(energy / count);
-			log(String.format("generated %d channels x %d samples, peak=%.6f rms=%.6f",
-					audio.getShape().length(0), audio.getShape().length(1), peak, rms));
-
-			assertTrue("the decoder produced silence (peak " + peak + ")", peak > 1e-4);
-			audio.destroy();
-		} finally {
-			model.destroy();
+			ditWeights.destroy();
+			conditionerWeights.destroy();
+			encoderWeights.destroy();
+			aeWeights.destroy();
 		}
 	}
 }

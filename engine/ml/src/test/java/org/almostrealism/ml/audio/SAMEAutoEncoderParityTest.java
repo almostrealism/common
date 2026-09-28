@@ -99,6 +99,11 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 		StateDictionary weights = new StateDictionary(weightDir.getPath());
 		SAMEAutoEncoder autoencoder = SAMEAutoEncoder.small(weights);
 
+		PackedCollection input = null;
+		PackedCollection encoded = null;
+		PackedCollection latent = null;
+		PackedCollection decoded = null;
+
 		try {
 			float[] refLatent = loadFlat(refDir, "ae_latent");
 			float[] refOutput = loadFlat(refDir, "ae_output");
@@ -109,21 +114,29 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 			assertWithinRelative("runningStd", weights.get("bottleneck.running_std"),
 					refRunningStd, 1e-4);
 
-			PackedCollection input = loadShaped(refDir, "ae_input", 1, CHANNELS, SAMPLES);
-			PackedCollection encoded = evalBlock(autoencoder.encoder(1, SAMPLES), input);
+			input = loadShaped(refDir, "ae_input", 1, CHANNELS, SAMPLES);
+			encoded = evalBlock(autoencoder.encoder(1, SAMPLES), input);
 			assertWithinRelative("latent", encoded, refLatent, ENCODE_TOLERANCE);
 
-			PackedCollection latent = loadShaped(refDir, "ae_latent", 1, LATENT_DIM, LATENT_LEN);
-			PackedCollection decoded = evalBlock(autoencoder.decoder(1, LATENT_LEN), latent);
+			latent = loadShaped(refDir, "ae_latent", 1, LATENT_DIM, LATENT_LEN);
+			decoded = evalBlock(autoencoder.decoder(1, LATENT_LEN), latent);
 
 			report("output", decoded, refOutput);
 			assertTracksReference("output", decoded, refOutput, LEVEL_TOLERANCE, MINIMUM_CORRELATION);
-
-			input.destroy();
-			encoded.destroy();
-			latent.destroy();
-			decoded.destroy();
 		} finally {
+			if (input != null) {
+				input.destroy();
+			}
+			if (encoded != null) {
+				encoded.destroy();
+			}
+			if (latent != null) {
+				latent.destroy();
+			}
+			if (decoded != null) {
+				decoded.destroy();
+			}
+
 			weights.destroy();
 		}
 	}
