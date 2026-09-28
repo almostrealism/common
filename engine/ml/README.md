@@ -245,7 +245,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
                              PackedCollection w1, PackedCollection w2, PackedCollection w3,
                              ComputeRequirement... requirements);
 
-    // Complete transformer layer (attention + feed-forward)
+    // Complete transformer layer (residual attention + residual feed-forward),
+    // built from the transformer.pdsl asset
     default Block transformer(int heads, int kvHeads,
                              PackedCollection rmsAttWeight,
                              PackedCollection wk, PackedCollection wv,

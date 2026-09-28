@@ -46,7 +46,7 @@ import java.util.function.Supplier;
  * (dense, conv1d, rmsnorm, softmax, the activations including snake, slice, lerp, reshape, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
- * causal_mask, weighted_values, sqrt, attention, transformer,
+ * causal_mask, weighted_values, sqrt, attention,
  * shape, range). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -104,7 +104,6 @@ final class PdslBuiltins {
 			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
 			case "sqrt": return callSqrt(args);
 			case "attention": return callAttention(args);
-			case "transformer": return callTransformer(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
 			default: return null;
@@ -823,40 +822,6 @@ final class PdslBuiltins {
 		}
 		throw new PdslParseException(
 				"attention() expects 8, 14, or 15 arguments, got " + args.size());
-	}
-
-	/**
-	 * Builds a full transformer block from evaluated arguments.
-	 *
-	 * @param args Evaluated arguments matching the
-	 *             {@link org.almostrealism.ml.AttentionFeatures#transformer} signature
-	 * @return A transformer {@link Block}
-	 */
-	private static Block callTransformer(List<Object> args) {
-		if (args.size() == 19) {
-			return FEATURES.transformer(
-					toInt(args.get(0)),       // heads
-					toInt(args.get(1)),       // kv_heads
-					(PackedCollection) args.get(2),  // rms_att_weight
-					(PackedCollection) args.get(3),  // wk
-					(PackedCollection) args.get(4),  // wv
-					(PackedCollection) args.get(5),  // wq
-					(PackedCollection) args.get(6),  // wo
-					(PackedCollection) args.get(7),  // bk
-					(PackedCollection) args.get(8),  // bv
-					(PackedCollection) args.get(9),  // bq
-					(PackedCollection) args.get(10), // qk_norm_q
-					(PackedCollection) args.get(11), // qk_norm_k
-					toCollectionProducer(args.get(12)), // freq_cis
-					(PackedCollection) args.get(13), // rms_ffn_weight
-					(PackedCollection) args.get(14), // w1
-					(PackedCollection) args.get(15), // w2
-					(PackedCollection) args.get(16), // w3
-					toProducer(args.get(17)),         // position
-					toDouble(args.get(18)));          // epsilon
-		}
-		throw new PdslParseException(
-				"transformer() expects 19 arguments, got " + args.size());
 	}
 
 	/**

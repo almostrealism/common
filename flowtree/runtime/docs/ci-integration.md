@@ -38,15 +38,30 @@ The key components involved are:
 
 ## Verify-Completion Workflow
 
-The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch.
+The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch, and it is the only thing that starts implementing a plan: until someone dispatches it, a plan branch (whose changes are all under `docs/`) receives only the docs-only review from `auto-review` in `analysis.yaml`, which improves the documents and never carries out the plan.
 
-### Three-Phase Pipeline
+### Four-Phase Pipeline
 
-The workflow runs as a three-job pipeline with conditional execution:
+The workflow runs as a four-job pipeline with conditional execution:
 
 ```
-detect-plan  ──>  register-workstream (conditional)  ──>  verify
+detect-plan  ──>  register-workstream (conditional)  ──>  build-prompt  ──>  verify
 ```
+
+No job that holds the controller's Cloudflare Access service token runs any of
+the branch's scripts. The jobs that need the token (`register-workstream` and
+`verify`) check out the default branch and run its copies of the scripts; the
+one job that runs the branch's own code (`build-prompt`, which renders the
+prompt from the branch's templates) never sees the token and hands its result
+to `verify` as an artifact. This is the same stage-then-submit pattern the
+`auto-review` / `auto-review-submit` jobs in `analysis.yaml` use.
+
+This protects against a branch's edits to *scripts*, not to the *workflow file*:
+`workflow_dispatch` runs the workflow definition from the dispatched ref, so a
+branch that edits `verify-completion.yaml` itself controls every job in the run.
+That is the same exposure `analysis.yaml` has for `pull_request` runs, and is
+covered by the same mitigations — see "No job that runs pull request code holds
+controller credentials" in `.github/CLAUDE.md`.
 
 **Phase 1: Detect Plan** (`detect-plan`)
 
@@ -56,15 +71,19 @@ Identifies the plan document for the branch. The plan file can be provided expli
 
 **Phase 2: Register Workstream** (`register-workstream`, conditional)
 
-Runs only when `is_new_plan` is `true`. Calls `tools/ci/register-workstream.sh` which POSTs to the controller's `POST /api/workstreams` endpoint. This:
+Runs only when `is_new_plan` is `true`. Checks out the default branch (it needs nothing from the branch under review) and calls that copy of `tools/ci/register-workstream.sh`, which POSTs to the controller's `POST /api/workstreams` endpoint. This:
 - Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
 - Auto-creates a **private** Slack channel named `w-<branch>` (with slashes replaced by hyphens)
 - Invites the configured `channelOwnerUserId` to the new channel
 - Persists the workstream to the YAML config file
 
-**Phase 3: Verify** (`verify`)
+**Phase 3: Build Prompt** (`build-prompt`)
 
-Runs after detect-plan succeeds, even if register-workstream was skipped (but not if it failed). Builds a prompt from the plan document via `build-verify-prompt.sh` and submits it as a job via `submit-agent-job.sh`. The agent then implements any unfinished goals, verifies all goals are complete, and ensures each goal has meaningful test coverage.
+Runs after detect-plan succeeds, even if register-workstream was skipped (but not if it failed). Checks out the branch, builds the implementation prompt from the plan document via `build-verify-prompt.sh`, stages it with `stage-submit-request.sh` (which writes `agent-prompt.txt` and `submit.env`), and uploads the result as the `verify-request` artifact. This job holds no controller credentials.
+
+**Phase 4: Verify** (`verify`)
+
+Runs only when build-prompt succeeded. Checks out the default branch, downloads the `verify-request` artifact, and submits it with that branch's `submit-staged-request.sh`. The target branch, base branch and `PROTECT_TEST_FILES` come from this job's own environment, never from the staged request, and `submit-staged-request.sh` reads `submit.env` through a key allowlist, so nothing the branch's code wrote can redirect the submission. Because this job has never run the branch's code, nothing the branch controls has touched `$GITHUB_ENV` or `$GITHUB_PATH` before the token is attached. The agent then implements any unfinished goals, verifies all goals are complete, and ensures each goal has meaningful test coverage.
 
 ### Register Workstream Script
 
@@ -73,11 +92,14 @@ The `tools/ci/register-workstream.sh` script handles workstream registration fro
 **Required environment variables:**
 - `BRANCH` -- target branch for the workstream
 - `BASE_BRANCH` -- base branch (e.g., `master`)
-- `PLAN_FILE` -- path to the planning document
 
 **Optional environment variables:**
-- `CONTROLLER_HOST` -- FlowTree controller hostname (default: `localhost`)
+- `PLAN_FILE` -- path to the planning document; when the workstream already exists, it is updated with this document
+- `CHANNEL_NAME` -- explicit Slack channel name (the controller derives one from the branch when absent)
+- `CONTROLLER_URL` -- controller base URL; takes precedence over `CONTROLLER_HOST`/`CONTROLLER_PORT`, and is how a GitHub-hosted runner reaches the controller through its Cloudflare Access tunnel
+- `CONTROLLER_HOST` -- FlowTree controller hostname, used only when `CONTROLLER_URL` is unset (default: `localhost`)
 - `CONTROLLER_PORT` -- FlowTree controller port (default: `7780`)
+- `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` -- Cloudflare Access service token, sent as request headers when set
 - `REPO_URL` -- repository clone URL
 
 **Channel name derivation:**

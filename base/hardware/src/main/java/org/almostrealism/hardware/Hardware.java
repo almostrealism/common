@@ -147,13 +147,13 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
- * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB</p>
- * <p><strong>Default:</strong> 4 (~4GB with FP32)</p>
- * <pre>
- * # Allow ~16GB max (FP32: 4 * 2^6 * 64MB)
- * export AR_HARDWARE_MEMORY_SCALE=6
- * </pre>
+ * <p><strong>Purpose:</strong> Per-provider tracked memory ceiling (total live bytes, not the size of any single
+ * allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
+ * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and {@code NativeMemoryProvider}
+ * each reject an allocation for which {@code memoryUsed + requested > memoryMax} with a {@code HardwareException}
+ * (message {@code "Memory Max Reached"} from the two GPU providers, {@code "Memory max reached"} from
+ * {@code NativeMemoryProvider}); the tracked-ceiling rejection throws rather than returning a zero pointer, though a raw OS calloc failure below the ceiling can still yield one (caught at dispatch). See the internals doc.</p>
+ * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
  *
  * <h3>AR_HARDWARE_MEMORY_LOCATION</h3>
  * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
@@ -184,7 +184,7 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
- * <p><strong>Purpose:</strong> CL/Metal threshold, in allocation elements (the element count passed to {@link #getMemoryProvider(int)}, not bytes), below which allocations use the JVM-heap provider instead of the backend provider; not a buffer size or allocation ceiling. See {@link #getOffHeapSize(ComputeRequirement)}.</p>
+ * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
  * <p><strong>Default:</strong> {@value #DEFAULT_OFF_HEAP_SIZE}</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
@@ -491,7 +491,7 @@ public final class Hardware implements ConsoleFeatures {
 	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
 	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
 
-	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
+	/** Memory scale factor: {@code MEMORY_SCALE=N} sets the base element reservation to {@code 2^N * 64M}; the per-provider byte ceiling is {@code precision.bytes() * 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
 	/** If true, use 64-bit epsilon values for floating-point comparisons. Controlled by {@code AR_HARDWARE_EPSILON_64}. */
@@ -1236,21 +1236,22 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isNativeSharedMemory() { return nativeSharedMemory; }
 
 	/**
-	 * Returns the memory scale exponent for maximum allocation size.
+	 * Returns the memory scale exponent for the per-provider tracked memory ceiling.
 	 *
-	 * <p>Sets {@code maxReservation = 2^MEMORY_SCALE * 64,000,000} elements (default 4); each backend {@code MemoryProvider} enforces {@code memoryMax = precision.bytes() * maxReservation} at allocation, throwing {@link HardwareException} when the reservation is exhausted. This check does not cover an OS-level allocation failure (the JNI {@code calloc} path returns its result unchecked). Distinct from {@link #getOffHeapSize(ComputeRequirement)} ({@code AR_HARDWARE_OFF_HEAP_SIZE}), which is the CL/Metal threshold below which allocations use the JVM-heap provider instead of the backend provider, not this ceiling.</p>
+	 * <p>Ceiling bytes (total live, not per allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
 	 *
 	 * @return The memory scale exponent
 	 */
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
 	/**
-	 * Returns the CL/Metal provider-selection threshold, in allocation elements, for the specified backend.
+	 * Returns the off-heap buffer size for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} (default: {@value #DEFAULT_OFF_HEAP_SIZE}). {@code CLDataContext}/{@code MetalDataContext} compare it against the element count passed to {@link #getMemoryProvider(int)} (not a byte size), serving allocations smaller than this from the alternate JVM-heap provider and larger ones from the main backend provider; it is not a buffer size and not the allocation ceiling (that is {@link #getMemoryScale()}).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable
+	 * (default: {@value #DEFAULT_OFF_HEAP_SIZE} bytes).</p>
 	 *
 	 * @param type The backend type (currently unused)
-	 * @return The provider-selection threshold in allocation elements
+	 * @return The off-heap buffer size in bytes
 	 */
 	public int getOffHeapSize(ComputeRequirement type) {
 		try {

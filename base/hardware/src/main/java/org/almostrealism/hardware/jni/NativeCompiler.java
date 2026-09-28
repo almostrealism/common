@@ -229,43 +229,41 @@ import java.util.function.Consumer;
  * <p>The {@link #reserveLibraryTarget()} method is synchronized to ensure unique class names.
  * Compilation itself is thread-safe, allowing concurrent compilations to different targets.</p>
  *
- * <h2>On-Disk Cache Lifecycle</h2>
+ * <h2>Library lifecycle</h2>
  *
- * <p>Compilation writes files into the library directory (resolved by {@link #factory(Precision, boolean)} from
- * {@code AR_HARDWARE_LIBS}, else from {@code SystemUtils.getExtensionsPath()}; created if absent,
- * never emptied). Filenames are derived from the target's <em>fully qualified binary class
- * name</em> ({@code target.getName()}), not from content: for {@code GeneratedOperationN},
- * {@link #getInputFile(String)} writes {@code org.almostrealism.generated.GeneratedOperationN.c}
- * and {@link #getOutputFile(String, boolean)} writes the library named by
- * {@code AR_HARDWARE_LIB_FORMAT} over that same stem. Compiling the same class name again <strong>overwrites</strong>
- * those files in place, and {@link #compileAndLoad(Class, String)} always (re)compiles before it
- * calls {@code System.load} — there is no path that loads a library without first regenerating it
- * in the current run.</p>
+ * <p>Generated library files persist on disk but are never reused across JVM runs, and there is
+ * <strong>no delete-on-start</strong>: nothing clears the library directory at startup and
+ * {@link #destroy()} is a no-op. Instead, each file is <em>overwritten before it is loaded</em>.
+ * {@link #reserveLibraryTarget()} draws names from a JVM-wide counter ({@code reserveTargetIndex()})
+ * that restarts at {@code 0} every run, so a fresh run reuses the same {@code GeneratedOperationN}
+ * names in the same order. {@link #compile(String, String, boolean)} then truncates and rewrites the
+ * deterministic {@code .c} source path, the toolchain rewrites the deterministic library path, and
+ * only then does {@link #compileAndLoad(Class, String)} call {@code System.load(...)}. A library
+ * left over from an older build therefore can never be loaded by a later run &mdash; it is
+ * regenerated at the same path first. When triaging a native crash, "a stale dylib from a prior
+ * build" is not a possible cause and clearing the library directory is a no-op as a diagnostic.</p>
  *
- * <p>These files therefore <strong>persist on disk</strong> across JVM runs; there is <em>no
- * startup purge</em> and {@link #destroy()} deletes nothing. Even so, a prior run's compiled
- * artifact is never executed by a later run without being regenerated first: the target index
- * behind {@link #reserveLibraryTarget()} (the static {@code runnableCount}) restarts at {@code 0}
- * in every JVM, so reserving target {@code N} recompiles fresh C into {@code GeneratedOperationN}
- * and overwrites its library before loading it. The invariant a crash investigator needs is
- * <strong>overwrite-before-load</strong>: the artifact loaded for {@code GeneratedOperationN} in a
- * given run is always the one this run just generated, never a leftover from an earlier build. A
- * native crash in {@code GeneratedOperationN.apply} thus cannot be caused by a "stale dylib from a
- * prior build," and clearing the directory is a no-op as a diagnostic.</p>
+ * <p>This no-cross-run-reuse guarantee holds for the default {@link LinkedLibraryGenerator}
+ * ({@code DefaultLinkedLibraryGenerator}, installed by {@link #factory}), which always runs the
+ * toolchain against the freshly written source. {@link NativeCompiler} accepts an arbitrary
+ * {@link LinkedLibraryGenerator}, and that interface deliberately permits caching and remote-build
+ * strategies; a custom generator that serves a cached artifact instead of recompiling could leave
+ * stale bytes at the deterministic path. A deployment that installs such a generator must supply
+ * the same overwrite guarantee itself for the triage advice above to hold.</p>
  *
- * <p>This guarantee is scoped to a <strong>single JVM owning the library directory</strong>.
- * {@code runnableCount} is JVM-local and {@link #reserveLibraryTarget()} only serializes reservation
- * within the process — there is no inter-process lock around compile-then-load. If two JVMs share the
- * same {@code AR_HARDWARE_LIBS} directory, both count from {@code 0} and target the same
- * {@code GeneratedOperationN} path, so one process can overwrite that library between another's compile
- * and {@code System.load}. Overwrite-before-load holds per run only when a single JVM owns the
- * directory; concurrent JVMs must be given distinct library directories.</p>
+ * <p>The guarantee also assumes a single writer per library directory. There is no inter-process
+ * lock on that directory, and the name counter is JVM-local, so two JVMs sharing one directory
+ * (including the default, which may be shared across processes and users) reserve the same names
+ * and write the same {@code .c} and library paths concurrently. One run can then overwrite a source
+ * or library while another is building or loading it, and the loaded artifact can belong to the
+ * other run. For concurrent JVMs the triage advice above does not hold; running more than one
+ * native-backend JVM against a shared library directory is unsupported. See
+ * {@code docs/internals/native-runtime-lifecycle.md}.</p>
  *
  * <h2>Lifecycle</h2>
  *
  * <p>Typically created once per {@link NativeDataContext} and reused for all compilations.
- * {@link #destroy()} is currently a no-op (loaded libraries remain mapped for the life of the JVM)
- * but may clean up resources in future versions.</p>
+ * {@link #destroy()} is currently a no-op but may clean up resources in future versions.</p>
  *
  * @see NativeComputeContext
  * @see NativeInstructionSet

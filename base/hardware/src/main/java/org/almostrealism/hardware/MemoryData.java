@@ -200,26 +200,22 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
- * <h3>Native-Block Lifetime Contract</h3>
- *
- * <p>A {@link MemoryData} that owns native memory is the Java handle to an off-heap block. That
- * block is released in one of two independent ways. An explicit {@link Destroyable#destroy()}
- * releases it immediately, with no involvement from the garbage collector. Otherwise, if the handle
- * simply becomes unreachable, reclamation is driven off a phantom reference the provider registers
- * for the holder and is triggered when the holder is collected (see
- * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider}). On that collection path, who
- * frees the native storage depends on the backing type: for a provider-owned block (such as a JNI
- * {@code calloc} allocation) the provider frees it explicitly once the holder is collected; for a
- * direct-buffer-backed block the JVM's own {@code DirectByteBuffer} cleaner owns the native storage
- * and the provider's reference only unwinds bookkeeping and shared mappings, not the buffer itself.
- * Both paths are per-object lifetime mechanisms (explicit destruction of a handle, or collection of
- * an unreachable one), not budget enforcement. There is <strong>no separate
- * "GC by bytes used" budget</strong> — nothing sweeps live off-heap data to stay under a limit; an
- * allocation that would exceed the configured ceiling is rejected with a {@code HardwareException}
- * rather than triggering a reclaim. A consequence for debugging: a raw content pointer captured
- * outside a live Java reference can be freed and unmapped once its holder is GC-eligible, so a
- * numerically-unchanged pointer may address memory that is no longer mapped
- * (see {@link org.almostrealism.hardware.mem.KernelMemoryGuard}).</p>
+ * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
+ * (JNI/OpenCL/Metal), its lifetime is tied to the provider-owned backing object, not to a bytes-used
+ * budget: {@code HardwareMemoryProvider}'s phantom-reference queue tracks that backing {@code RAM}
+ * (not every {@link MemoryData} instance) and, once it becomes unreachable, frees the native block
+ * at some later garbage-collection cycle. That phantom-queue free applies where the provider owns
+ * the native bytes &mdash; the JNI-calloc path of {@code NativeMemoryProvider}, {@code CLMemoryProvider}
+ * (OpenCL) and {@code MetalMemoryProvider} (Metal). {@code NativeMemoryProvider}'s NIO direct-buffer
+ * mode ({@code isDirect()}) is the exception: those bytes are a JVM {@code DirectByteBuffer} freed by
+ * the JVM's own cleaner, and the provider's phantom reference ({@code NativeBufferRef}) only unmaps
+ * shared memory and notifies deallocation listeners &mdash; it does not free the direct-buffer bytes.
+ * A delegated or view {@link MemoryData} does not own its
+ * {@link Memory}, so collecting the view does not free anything while its delegate &mdash; and thus
+ * the backing block &mdash; is still reachable. Freeing native memory while a dispatched kernel still
+ * reads it is a use-after-free; {@code KernelMemoryGuard} defers the free for kernels dispatched
+ * through the standard operators. Call {@link #destroy()} deterministically (via try-with-resources)
+ * for memory you own and no longer need, rather than waiting for GC.</p>
  *
  * <h2>Thread Safety</h2>
  *

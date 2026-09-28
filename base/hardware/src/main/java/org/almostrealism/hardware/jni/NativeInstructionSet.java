@@ -185,37 +185,18 @@ import java.util.stream.Stream;
  *
  * <h2>Thread Safety</h2>
  *
- * <p>For the generated kernels that are the only implementations shipped
- * ({@link org.almostrealism.generated.BaseGeneratedOperation} subclasses), the
- * compiled function carries <strong>no per-instance mutable state</strong> — no
- * static scratch buffers, captured closures, or invocation-specific mutable globals
- * (the generated header's {@code M_PI_F} is a process-wide global initialized once to
- * {@code M_PI} — not declared {@code const}, but only ever read, never written by a
- * kernel). Every data region that <em>persists between calls or is shared across them</em>
- * is a caller-supplied argument passed in per invocation; any other storage the kernel
- * touches is invocation-local — stack scalars and locally-declared scratch arrays created
- * fresh on entry — and so is private to that call rather than shared. The only non-argument
- * value it reads is that initialized-once {@code M_PI_F} global, which carries no invocation
- * state.
- * Once the instruction set has been configured
- * ({@link #setComputeContext(ComputeContext)}, {@link #setMetadata(OperationMetadata)},
- * {@link #setParallelism(int)}) and its library loaded, {@link #apply(long, long, MemoryData...)}
- * is reentrant with respect to the compiled function.</p>
- *
- * <p>Three caveats bound that guarantee, and must not be conflated with it:</p>
- * <ul>
- *   <li><strong>Configuration is a setup phase, not a concurrent operation.</strong> The wrapper
- *   fields set by the {@code set*} methods are expected to be configured once before use; they
- *   must not be mutated from another thread while kernels are running.</li>
- *   <li><strong>The invocation counter is a benign race.</strong>
- *   {@link #apply(long, long, MemoryData...)} increments the non-atomic static
- *   {@code NativeComputeContext.totalInvocations}; concurrent calls may lose an increment. This
- *   affects only the reported invocation total, never a kernel's output.</li>
- *   <li><strong>Overlapping output buffers are a real hazard.</strong> Reentrancy does not make it
- *   safe for two threads to invoke the same instruction set with overlapping output
- *   {@link MemoryData}; {@link MemoryData} is not safe under concurrent access. Correctness under
- *   concurrency is a property of disjoint arguments, not of the kernel.</li>
- * </ul>
+ * <p>A generated kernel instance is safe to invoke concurrently. {@link #apply(long, long,
+ * MemoryData...)} builds fresh per-call {@code pointers}/{@code offsets}/{@code sizes} arrays and
+ * mutates no instance state; the compiled C body receives all of its state through arguments and
+ * holds no mutable per-call or scratch state shared between calls. The only file-scope declaration
+ * {@code NativeCompiler} prepends is {@code M_PI_F} (a &pi; value the generated code only reads, not
+ * a {@code const}), so there is no captured buffer carried across invocations. The framework relies
+ * on this: when {@link #getParallelism()} exceeds 1,
+ * {@link NativeExecution} dispatches the same instance from several threads over disjoint index
+ * ranges. Concurrency is therefore safe as long as the argument memory the invocations touch does
+ * not alias in a conflicting way (two writers to the same element) &mdash; a property of the
+ * arguments, not of the kernel instance. The native runtime lifecycle internals doc covers the
+ * reentrancy guarantee and the memory races bracketing addresses.</p>
  *
  * @see InstructionSet
  * @see NativeCompiler

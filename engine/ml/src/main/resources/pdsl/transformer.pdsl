@@ -1,0 +1,114 @@
+/**
+ * Pre-norm decoder layer of an autoregressive transformer (Llama 2, Qwen2.5/Qwen3, Moonbeam
+ * MIDI): a residual self-attention stage followed by a residual SwiGLU feed-forward stage.
+ *
+ * This file replaces the Java assembly that used to live in AttentionFeatures.transformer(...),
+ * which built each variant below as a SequentialBlock with two accum(...) calls. The Java
+ * transformer(...) methods now only allocate the attention caches, bind one layer's weights and
+ * build one of the layers below. The model classes still loop over their layers in Java, calling
+ * transformer(...) once per layer with that layer's weights.
+ *
+ * The stages are layers of two other assets, which the loader parses together with this file
+ * into one program:
+ *
+ *   attention, attention_qk_norm, attention_mra     /pdsl/attention.pdsl
+ *   swiglu_ffn                                      /pdsl/feed_forward.pdsl
+ *
+ * The attention stage writes the key and value caches declared by the attention_cache state
+ * block of attention.pdsl; the caller allocates them and binds them as key_cache and
+ * value_cache, and they persist across forward passes.
+ *
+ * Data flow of one forward pass. The input is one token's residual-stream vector:
+ *
+ *   x                                                             [1, dim]
+ *   accum   x = x + attention(x)                                  [1, dim]
+ *             rmsnorm → key/value projections → rotate → cache
+ *             query projection → rotate → attend over the cache → dense(wo)
+ *   accum   x = x + swiglu_ffn(x)                                 [1, dim]
+ *             rmsnorm → silu(dense(w1)) ⊙ dense(w3) → dense(w2)
+ *
+ * Each accum adds its stage's output to the residual stream the stage read, so both stages see
+ * a normalized copy of the stream (pre-norm) while the stream itself is never normalized in
+ * place. The three layers differ only in which attention layer the first stage uses; dim is
+ * heads * head_size throughout.
+ */
+
+/**
+ * Transformer layer with multi-head or grouped-query attention and optional projection biases
+ * (Llama 2 and SkyTNT without biases, Qwen2.5 with them): [1, dim] -> [1, dim].
+ *
+ *   accum   attention(...)     the rmsnorm(rms_att_weight) + attention stage    [1, dim]
+ *   accum   swiglu_ffn(...)    the rmsnorm(rms_ffn_weight) + SwiGLU stage       [1, dim]
+ */
+layer transformer(heads: int, kv_heads: int, head_size: int,
+                  rms_att_weight: weight,
+                  wq: weight, wk: weight, wv: weight, wo: weight,
+                  bq: weight, bk: weight, bv: weight,
+                  freq_cis: weight, position: scalar,
+                  rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
+                  epsilon: float) -> [1, heads * head_size] {
+    // Residual self-attention: the stream plus attention over its normalized copy.
+    accum {
+        attention(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+                  bq, bk, bv, freq_cis, position, epsilon)
+    }
+
+    // Residual feed-forward: the stream plus the SwiGLU network over its normalized copy.
+    accum {
+        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
+    }
+}
+
+/**
+ * Transformer layer whose attention normalizes each projected query and key head by head
+ * before the rotation (QK-norm, Qwen3): [1, dim] -> [1, dim].
+ *
+ *   accum   attention_qk_norm(...)    as attention, with per-head RMSNorm of q and k   [1, dim]
+ *   accum   swiglu_ffn(...)                                                          [1, dim]
+ */
+layer transformer_qk_norm(heads: int, kv_heads: int, head_size: int,
+                          rms_att_weight: weight,
+                          wq: weight, wk: weight, wv: weight, wo: weight,
+                          bq: weight, bk: weight, bv: weight,
+                          qk_norm_q: weight, qk_norm_k: weight,
+                          freq_cis: weight, position: scalar,
+                          rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
+                          epsilon: float) -> [1, heads * head_size] {
+    // Residual self-attention with QK-norm.
+    accum {
+        attention_qk_norm(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+                          bq, bk, bv, qk_norm_q, qk_norm_k, freq_cis, position, epsilon)
+    }
+
+    // Residual feed-forward.
+    accum {
+        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
+    }
+}
+
+/**
+ * Transformer layer whose attention rotates each head group by its own frequency table at its
+ * own attribute position (multidimensional relative attention, Moonbeam MIDI):
+ * [1, dim] -> [1, dim].
+ *
+ *   accum   attention_mra(...)    per-head-group rotary embeddings, no biases   [1, dim]
+ *   accum   swiglu_ffn(...)                                                    [1, dim]
+ */
+layer transformer_mra(heads: int, kv_heads: int, head_size: int,
+                      rms_att_weight: weight,
+                      wq: weight, wk: weight, wv: weight, wo: weight,
+                      q_head_groups: rope_groups, kv_head_groups: rope_groups,
+                      position: scalar,
+                      rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
+                      epsilon: float) -> [1, heads * head_size] {
+    // Residual self-attention with per-head-group rotation.
+    accum {
+        attention_mra(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+                      q_head_groups, kv_head_groups, position, epsilon)
+    }
+
+    // Residual feed-forward.
+    accum {
+        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
+    }
+}

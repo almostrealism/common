@@ -63,6 +63,8 @@ without any special infrastructure.
 | `PullRequestDetector` | Queries GitHub API for open PRs on a branch |
 | `McpConfigBuilder` | Assembles MCP server configuration for Claude Code |
 | `ManagedToolsDownloader` | Downloads and verifies pushed MCP tool files |
+| `AgentLaunchConfig` | Assembles each agent session's MCP config, allowed-tools list, environment, and `AgentRunRequest` from the job's state |
+| `JobWorkOutcome` | Decides whether a job's work was committed, dropped by staging guardrails, or left unpublished, which determines its completion status |
 | `InstructionPromptBuilder` | Constructs the full instruction prompt from job state |
 | `GitJobConfig` | Immutable configuration for git operations |
 | `FileStagingConfig` | Immutable configuration for file staging guardrails |
