@@ -19,9 +19,12 @@
  * Built by compile-cuda.sh into ../resources/libARCUDA-linux-<arch>.so.
  */
 
+#define _GNU_SOURCE
+
 #include <jni.h>
 #include <cuda.h>
 #include <nvrtc.h>
+#include <dlfcn.h>
 
 #include <string>
 #include <vector>
@@ -173,17 +176,45 @@ CU_FN(jbyteArray, compile)(JNIEnv* env, jclass cls, jstring source, jstring name
         return nullptr;
     }
 
+    typedef nvrtcResult (*ImageSizeFn)(nvrtcProgram, size_t*);
+    typedef nvrtcResult (*ImageDataFn)(nvrtcProgram, char*);
+
+    ImageSizeFn imageSize;
+    ImageDataFn imageData;
+    const char* sizeOp;
+    const char* dataOp;
+
+    if (cubin) {
+        // Resolve the CUBIN entry points at runtime so this library still loads on an older
+        // NVRTC that predates them, and report failure when absent so CUDevice.compile falls
+        // back to PTX rather than the process aborting on an unresolved symbol.
+        imageSize = (ImageSizeFn) dlsym(RTLD_DEFAULT, "nvrtcGetCUBINSize");
+        imageData = (ImageDataFn) dlsym(RTLD_DEFAULT, "nvrtcGetCUBIN");
+        sizeOp = "nvrtcGetCUBINSize";
+        dataOp = "nvrtcGetCUBIN";
+
+        if (imageSize == nullptr || imageData == nullptr) {
+            nvrtcDestroyProgram(&program);
+            throwHardwareException(env, "nvrtcGetCUBIN is unavailable in this NVRTC");
+            return nullptr;
+        }
+    } else {
+        imageSize = nvrtcGetPTXSize;
+        imageData = nvrtcGetPTX;
+        sizeOp = "nvrtcGetPTXSize";
+        dataOp = "nvrtcGetPTX";
+    }
+
     size_t size = 0;
-    nvrtcResult sized = cubin ? nvrtcGetCUBINSize(program, &size) : nvrtcGetPTXSize(program, &size);
-    if (!checkNvrtc(env, sized, cubin ? "nvrtcGetCUBINSize" : "nvrtcGetPTXSize", log)) {
+    if (!checkNvrtc(env, imageSize(program, &size), sizeOp, log)) {
         nvrtcDestroyProgram(&program);
         return nullptr;
     }
 
     std::vector<char> image(size);
-    nvrtcResult fetched = cubin ? nvrtcGetCUBIN(program, image.data()) : nvrtcGetPTX(program, image.data());
+    nvrtcResult fetched = imageData(program, image.data());
     nvrtcDestroyProgram(&program);
-    if (!checkNvrtc(env, fetched, cubin ? "nvrtcGetCUBIN" : "nvrtcGetPTX", log)) return nullptr;
+    if (!checkNvrtc(env, fetched, dataOp, log)) return nullptr;
 
     jbyteArray result = env->NewByteArray((jsize) size);
     env->SetByteArrayRegion(result, 0, (jsize) size, (const jbyte*) image.data());

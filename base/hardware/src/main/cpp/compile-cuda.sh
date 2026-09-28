@@ -24,4 +24,4 @@ CUDA.cpp \
 -o "../resources/libARCUDA-linux-${ARCH}.so" \
 -L"${CUDA_HOME}/lib64" \
 -Wl,-rpath,"${CUDA_HOME}/lib64" \
--lcuda -lnvrtc
+-lcuda -lnvrtc -ldl

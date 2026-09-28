@@ -59,8 +59,21 @@ public class CudaStreamRunner {
 										 Semaphore dependsOn, Runnable onComplete) {
 		try {
 			if (dependsOn != null) dependsOn.waitFor();
-			command.accept(stream);
-			stream.synchronize();
+
+			try {
+				command.accept(stream);
+				stream.synchronize();
+			} catch (RuntimeException | Error e) {
+				// A failing launch may already have submitted work that references the argument
+				// buffers, so drain the stream before onComplete releases them; releasing without
+				// synchronizing would turn a failed launch into a use-after-free. Original preserved.
+				try {
+					stream.synchronize();
+				} catch (RuntimeException | Error drainFailure) {
+					e.addSuppressed(drainFailure);
+				}
+				throw e;
+			}
 		} finally {
 			if (onComplete != null) onComplete.run();
 		}

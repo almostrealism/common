@@ -14,8 +14,6 @@ stack ends in a `GeneratedOperationN.apply` JNI call.
 Every claim below names the class (and, where useful, the method) it was verified against. No line
 numbers are cited — they rot; search by the stable identifier instead.
 
-<!-- TODO(review): This page covers JNI/OpenCL/Metal only; add the CUDA backend (CudaMemoryProvider ceiling, CudaOperator reentrancy, NVRTC program lifetime). -->
-
 ---
 
 ## 1. Generated kernel artifacts
@@ -103,11 +101,17 @@ on-disk artifact *can* be wrong for the loading run — but only when another JV
 directory at the same time; a strictly sequential single-JVM history is still immune (the
 overwrite-before-load argument above holds).
 
-### Metal and OpenCL program lifetime
+### Metal, OpenCL, and CUDA program lifetime
 
 The Metal backend and the *standard* OpenCL backend do not go through `NativeCompiler`; their programs
 are built in-memory per JVM (compiled `MTLComputePipelineState` / `cl_program` objects), not written
-to `AR_HARDWARE_LIBS`. The OpenCL backend has an **exception**: when a `ComputeRequirement.C` is
+to `AR_HARDWARE_LIBS`. The **CUDA backend is the same in this respect**: `CUDevice.compile` runs the
+generated kernel source through NVRTC and returns the compiled image as a `byte[]` (a CUBIN for the
+device's `sm_` architecture, falling back to `compute_` PTX the driver JIT-compiles at load), which
+`CUContext.loadModule` hands to `cuModuleLoadData` — an in-memory `CUmodule` per JVM, never written to
+disk. So the on-disk-artifact triage in this section (stale library, shared-directory race) does not
+apply to CUDA any more than it does to Metal; a CUDA kernel's lifetime is bounded by its `CUModule`,
+which `CudaProgram.destroy` unloads. The OpenCL backend has an **exception**: when a `ComputeRequirement.C` is
 requested, `CLDataContext.newContext(...)` builds a `CLNativeComputeContext` instead of the standard
 `CLComputeContext`, and `CLNativeComputeContext.deliver(...)` compiles through `NativeCompiler` —
 writing and loading a generated JNI library on disk exactly like the pure-native backend, subject to
@@ -152,13 +156,14 @@ quantities on the same computation, not a contradiction.
 
 ### Which providers enforce it, and the failure mode
 
-All three hardware-backed memory providers guard the byte ceiling:
+All four hardware-backed memory providers guard the byte ceiling:
 
 | Provider | Method | Exception message |
 |---|---|---|
 | `MetalMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `CLMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 | `NativeMemoryProvider` | `allocate` | `HardwareException: "Memory max reached"` |
+| `CudaMemoryProvider` | `buffer` | `HardwareException: "Memory Max Reached"` |
 
 The ceiling does **not** cover the Java-heap fallback. Unless a custom provider supply is installed,
 `MetalDataContext.getMemoryProvider(int)` and `CLDataContext.getMemoryProvider(int)` route any
@@ -169,13 +174,15 @@ allocation smaller than the context's `offHeapSize` to a `JVMMemoryProvider`, wh
 Each performs the same **pre-allocation check** —
 `if (memoryUsed + requested > memoryMax) throw new HardwareException(...)` — before the backend
 allocation call. The accounting order *after* the check differs by provider:
-`NativeMemoryProvider.allocate` increments `memoryUsed` *before* its backend `calloc`, whereas
-`CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` increment `memoryUsed` only *after* the
-backend `clCreateBuffer`/`newBuffer*` call returns successfully. Treat the check as a guard against a
-single over-budget request, not a hard serialized ceiling: only `NativeMemoryProvider.allocate` is
-`synchronized`, so its check-and-increment is atomic. `CLMemoryProvider.buffer` and
-`MetalMemoryProvider.buffer` run the check and the `memoryUsed` increment without synchronization, so
-two concurrent allocations can each pass the check and push the total past `memoryMax`.
+`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` increment `memoryUsed` *before* their
+backend `calloc`/`cuMemAlloc` (and `CudaMemoryProvider.buffer` rolls the increment back if that
+allocation throws), whereas `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` increment
+`memoryUsed` only *after* the backend `clCreateBuffer`/`newBuffer*` call returns successfully. Treat
+the check as a guard against a single over-budget request, not a hard serialized ceiling:
+`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized` over their
+check-and-increment, so it is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run
+the check and the `memoryUsed` increment without synchronization, so two concurrent allocations can
+each pass the check and push the total past `memoryMax`.
 
 Distinguish two separate failure modes, because they surface differently:
 
@@ -214,7 +221,9 @@ Either way, the backing `RAM` of a collection whose holder becomes unreachable m
 block freed at any subsequent GC cycle.
 
 The phantom-queue *free* applies where the provider owns the native bytes: the JNI-calloc path of
-`NativeMemoryProvider`, `CLMemoryProvider` (OpenCL), and `MetalMemoryProvider` (Metal). The one
+`NativeMemoryProvider`, `CLMemoryProvider` (OpenCL), `MetalMemoryProvider` (Metal), and
+`CudaMemoryProvider` (CUDA), whose `deallocate` releases the owning `CUDeviceBuffer`
+(`cuMemFree`) allocated by `cuMemAlloc`/`cuMemAllocManaged`. The one
 exception is `NativeMemoryProvider`'s **NIO direct-buffer** mode (`isDirect()`), where the bytes are
 a JVM `DirectByteBuffer` and are freed by the JVM's own direct-buffer cleaner when that buffer is
 collected. There the provider's phantom reference is a `NativeBufferRef` whose post-GC work is only
@@ -235,8 +244,10 @@ here).
 The dangerous interaction is: a kernel has been dispatched and is reading a native block, and the GC
 concurrently decides the block's Java holder is unreachable and frees it — a use-after-free.
 `KernelMemoryGuard` closes this race for *bracketed dispatches*. Each backend operator
-(`NativeExecution`, `CLOperator`, `MetalOperator`) calls `KernelMemoryGuard.acquireFor(data)` before
-dispatch and `releaseFor(reservation)` after completion. Acquisition ref-counts each argument's
+(`NativeExecution`, `CLOperator`, `MetalOperator`, `CudaOperator`) calls
+`KernelMemoryGuard.acquireFor(data)` before dispatch and `releaseFor(reservation)` after completion —
+for `CudaOperator` the release runs in the completion callback `CudaStreamRunner.submit` invokes once
+the stream has drained (including its failure paths), so the reservation is never leaked. Acquisition ref-counts each argument's
 native address and holds a strong reference to the resolved `RAM`, so the block cannot be collected
 while the kernel runs; `HardwareMemoryProvider` consults `canDeallocate(address)` and holds the free
 back while the count is non-zero. The reservation records *addresses*, not arguments, precisely
@@ -294,8 +305,9 @@ same element). That is a property of the arguments, not of the kernel instance. 
 `NativeInstructionSet`'s Thread Safety contract can answer the reentrancy question positively for the
 kernels the platform actually generates, rather than deferring it.
 
-**The OpenCL and Metal operators do not share this same-instance concurrency property**, because
-they hold and mutate per-instance state rather than routing everything through call-local arrays:
+**The OpenCL, Metal, and CUDA operators do not share this same-instance concurrency property**,
+because they hold and mutate per-instance state rather than routing everything through call-local
+arrays:
 
 - `CLOperator` caches the last-set arguments in an `argCache` field and skips redundant
   `clSetKernelArg` calls, so a call both reads and mutates instance state and mutates the underlying
@@ -304,6 +316,9 @@ they hold and mutate per-instance state rather than routing everything through c
 - `MetalOperator.accept(...)` is `synchronized`, serializing concurrent calls on one instance; it
   inlines the per-dispatch offset/size arrays into the command so that batched commands do not share
   mutable argument buffers.
+- `CudaOperator.accept(...)` is `synchronized`, and it submits to a single per-compute-context
+  `CudaStreamRunner` whose `submit` is itself `synchronized`, so dispatches on one context are
+  serialized onto its one `CUStream` rather than run concurrently on a shared instance.
 
 So the reusable, lock-free reentrancy guarantee is a property of the JNI generated kernel, not of
 every backend's operator instance.
@@ -446,7 +461,8 @@ For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `Nativ
 | `NativeInstructionSet` (`base/hardware/.../hardware/jni/`) | JNI bridge; pre-dispatch pointer validation and reentrancy contract |
 | `NativeExecution` (`base/hardware/.../hardware/jni/`) | JNI dispatch coordination, memory guard bracketing, reachability fences |
 | `Hardware` (`base/hardware/.../hardware/`) | `MEMORY_SCALE` ceiling and its conversion to per-provider byte limits |
-| `MetalMemoryProvider` / `CLMemoryProvider` / `NativeMemoryProvider` | Enforce the byte ceiling; throw `HardwareException` on exhaustion |
+| `MetalMemoryProvider` / `CLMemoryProvider` / `NativeMemoryProvider` / `CudaMemoryProvider` | Enforce the byte ceiling; throw `HardwareException` on exhaustion |
+| `CudaOperator` / `CudaStreamRunner` (`base/hardware/.../hardware/cuda/`) | CUDA dispatch: memory-guard bracketing and stream-drained completion |
 | `HardwareMemoryProvider` (`base/hardware/.../hardware/mem/`) | Phantom-reference/`ReferenceQueue` GC-driven native release |
 | `KernelMemoryGuard` (`base/hardware/.../hardware/mem/`) | Ref-counts in-flight kernel memory to defer release |
 | `MemoryData` (`base/hardware/.../hardware/`) | Lifetime contract for hardware-accessible memory |

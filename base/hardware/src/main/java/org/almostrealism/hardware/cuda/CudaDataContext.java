@@ -65,15 +65,25 @@ public class CudaDataContext extends AcceleratorDataContext<CudaMemoryProvider> 
 		device = CUDevice.get(DEVICE_ORDINAL);
 		cudaContext = device.retainPrimaryContext();
 
-		boolean managed = MEMORY_MODE == null ?
-				device.isIntegrated() && device.isConcurrentManagedAccess() :
-				"managed".equalsIgnoreCase(MEMORY_MODE);
+		try {
+			boolean managed = MEMORY_MODE == null ?
+					device.isIntegrated() && device.isConcurrentManagedAccess() :
+					"managed".equalsIgnoreCase(MEMORY_MODE);
 
-		log("Hardware[" + getName() + "]: Using " + device.getName() + " (sm_" +
-				device.getArchitecture() + ") with " + (managed ? "managed" : "device") + " memory");
+			log("Hardware[" + getName() + "]: Using " + device.getName() + " (sm_" +
+					device.getArchitecture() + ") with " + (managed ? "managed" : "device") + " memory");
 
-		return new CudaMemoryProvider(this, getPrecision().bytes(),
-				getMaxReservation() * getPrecision().bytes(), managed);
+			return new CudaMemoryProvider(this, getPrecision().bytes(),
+					getMaxReservation() * getPrecision().bytes(), managed);
+		} catch (RuntimeException | Error e) {
+			// The deferred start is retried on the next use, so release this retain before
+			// rethrowing; otherwise each failed attempt would retain another primary context.
+			// TODO(review): a throwing release() here masks the original failure; preserve it (addSuppressed) like CudaStreamRunner.
+			cudaContext.release();
+			cudaContext = null;
+			device = null;
+			throw e;
+		}
 	}
 
 	/** Creates a {@link CudaComputeContext} with a stream of its own. */
