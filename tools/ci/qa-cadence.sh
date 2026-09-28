@@ -2,19 +2,29 @@
 # ─── Decide whether a recurring QA job should be submitted ────────────
 #
 # Shared by every recurring quality job (documentation review, defect
-# hunt). Each such job creates a branch named
+# hunt, ...) and by the planning job, which uses it to keep one planning
+# round open at a time. Each such job creates a branch named
 # "<prefix><UTC timestamp>", registers a workstream for it, and opens a
 # PR if the agent finds anything. This script answers one question:
 # should another one start right now?
 #
-# Two conditions, in order:
+# Three conditions, in order:
 #
 #   1. A PR from a previous run of this job is still open. Then there is
 #      nothing to start — the previous round has not been dealt with,
 #      and stacking another on top of it is what produced dozens of
 #      abandoned branches and workstreams.
 #
-#   2. The most recent run of this job is younger than MIN_INTERVAL_DAYS.
+#   2. (Only when PR_GRACE_HOURS is set.) A previous run's branch is
+#      younger than PR_GRACE_HOURS and has never had a PR. The agent
+#      opens its PR only when it finishes, so a round that is still
+#      working is invisible to condition 1. A job whose only spacing is
+#      condition 1 (MIN_INTERVAL_DAYS=0) needs this, or a second merge
+#      landing while the agent works starts a second round beside it.
+#      The window bounds how long a round whose agent never opened a PR
+#      can hold the job off.
+#
+#   3. The most recent run of this job is younger than MIN_INTERVAL_DAYS.
 #      Then it is simply too soon.
 #
 # Otherwise the job runs.
@@ -34,9 +44,12 @@
 #
 # Optional environment variables:
 #   MIN_INTERVAL_DAYS   - minimum days between runs (default: 7)
-#   FORCE               - "true" bypasses both conditions
+#   PR_GRACE_HOURS      - hours a branch without any PR still counts as
+#                         an open round (default: 0, condition 2 off)
+#   FORCE               - "true" bypasses every condition
 #   GITHUB_REPOSITORY   - owner/repo, for the open-PR query
 #   GITHUB_TOKEN        - token for the open-PR query
+#   GITHUB_API_URL      - GitHub API base (default: https://api.github.com)
 #   REMOTE              - git remote to inspect (default: origin)
 #
 # Outputs (to stdout, and to $GITHUB_OUTPUT when set):
@@ -55,6 +68,8 @@ if [ -z "${BRANCH_PREFIX:-}" ]; then
 fi
 
 MIN_INTERVAL_DAYS="${MIN_INTERVAL_DAYS:-7}"
+PR_GRACE_HOURS="${PR_GRACE_HOURS:-0}"
+GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 REMOTE="${REMOTE:-origin}"
 
 emit() {
@@ -63,6 +78,22 @@ emit() {
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
         echo "run=$1" >> "$GITHUB_OUTPUT"
         echo "reason=$2" >> "$GITHUB_OUTPUT"
+    fi
+}
+
+# Seconds since the epoch of a UTC "YYYYMMDD" day and "HHMMSS" time.
+# date(1) differs between BSD (macOS runners) and GNU (Linux runners).
+#
+# BSD date fills any field the format leaves out from the current
+# wall-clock time rather than zero, so the time is always passed in
+# full — a day alone once silently carried today's time-of-day and
+# corrupted every age computed from it.
+stamp_epoch() {
+    local day="$1" time="$2"
+    if date -j >/dev/null 2>&1; then
+        date -u -j -f "%Y%m%d %H%M%S" "$day $time" "+%s"
+    else
+        date -u -d "$day ${time:0:2}:${time:2:2}:${time:4:2}" "+%s"
     fi
 }
 
@@ -91,7 +122,7 @@ if [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
         PR_JSON=$(curl -sS -f \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=${PER_PAGE}&page=${PAGE}") \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=${PER_PAGE}&page=${PAGE}") \
             || {
                 echo "::warning::Could not list open PRs — assuming one is open and skipping."
                 emit false pr-query-failed
@@ -126,7 +157,51 @@ else
     echo "::warning::GITHUB_REPOSITORY/GITHUB_TOKEN unset — skipping the open-PR check"
 fi
 
-# ─── Condition 2: the last run is younger than the interval ──────────
+ALL_BRANCHES=$(git ls-remote --heads "$REMOTE" "${BRANCH_PREFIX}*" 2>/dev/null \
+    | sed 's|.*refs/heads/||' || true)
+
+# ─── Condition 2: a recent branch has not opened its PR yet ──────────
+#
+# Only names carrying a full "YYYYMMDD-HHMMSS" stamp can be aged to the
+# hour; a name without one is left to condition 3's handling.
+#
+# As in condition 1, a failed query is read as "a round is open".
+if [ "$PR_GRACE_HOURS" -gt 0 ]; then
+    if [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+        NOW_EPOCH=$(date -u "+%s")
+        OWNER="${GITHUB_REPOSITORY%%/*}"
+        for BRANCH in $ALL_BRANCHES; do
+            FULL_STAMP=$(echo "${BRANCH#"$BRANCH_PREFIX"}" | grep -oE '^[0-9]{8}-[0-9]{6}' || true)
+            [ -z "$FULL_STAMP" ] && continue
+
+            BRANCH_EPOCH=$(stamp_epoch "${FULL_STAMP:0:8}" "${FULL_STAMP:9:6}")
+            AGE_HOURS=$(( (NOW_EPOCH - BRANCH_EPOCH) / 3600 ))
+            [ "$AGE_HOURS" -ge "$PR_GRACE_HOURS" ] && continue
+
+            BRANCH_PRS=$(curl -sS -f -G \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                --data-urlencode "state=all" \
+                --data-urlencode "head=${OWNER}:${BRANCH}" \
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls") \
+                || {
+                    echo "::warning::Could not look up the PR for ${BRANCH} — assuming its round is open and skipping."
+                    emit false pr-query-failed
+                    exit 0
+                }
+
+            if [ "$(echo "$BRANCH_PRS" | jq 'length')" -eq 0 ]; then
+                echo "::notice::${BRANCH} is ${AGE_HOURS}h old and has not opened its PR yet — skipping; its round is still in progress."
+                emit false awaiting-pr
+                exit 0
+            fi
+        done
+    else
+        echo "::warning::GITHUB_REPOSITORY/GITHUB_TOKEN unset — skipping the awaiting-PR check"
+    fi
+fi
+
+# ─── Condition 3: the last run is younger than the interval ──────────
 #
 # The branch name carries its own creation time, so among the names that
 # carry a readable date the newest sorts last.
@@ -137,8 +212,6 @@ fi
 # be read as "the most recent run", fail to parse, and fall through to
 # "treat as due" — holding the gate permanently open, which is the exact
 # failure this script exists to prevent.
-ALL_BRANCHES=$(git ls-remote --heads "$REMOTE" "${BRANCH_PREFIX}*" 2>/dev/null \
-    | sed 's|.*refs/heads/||' || true)
 
 if [ -z "$ALL_BRANCHES" ]; then
     echo "::notice::No previous ${BRANCH_PREFIX}* branch — first run"
@@ -159,18 +232,8 @@ fi
 LATEST_BRANCH="${BRANCH_PREFIX}${STAMP}"
 DAY="${STAMP:0:8}"
 
-# date(1) differs between BSD (macOS runners) and GNU (Linux runners).
-if date -j >/dev/null 2>&1; then
-    # "%Y%m%d" alone leaves hour/minute/second unspecified, and BSD date
-    # fills unspecified fields from the current wall-clock time rather than
-    # midnight — so LAST_EPOCH silently carried today's time-of-day instead
-    # of "$DAY 00:00:00", corrupting AGE_DAYS whenever a branch landed
-    # exactly MIN_INTERVAL_DAYS ago. Supplying an explicit midnight and -u
-    # (parse as UTC, matching NOW_EPOCH below) fixes both.
-    LAST_EPOCH=$(date -u -j -f "%Y%m%d %H:%M:%S" "$DAY 00:00:00" "+%s")
-else
-    LAST_EPOCH=$(date -u -d "$DAY" "+%s")
-fi
+# Ages are counted in whole days from midnight, not from the run's time.
+LAST_EPOCH=$(stamp_epoch "$DAY" 000000)
 
 NOW_EPOCH=$(date -u "+%s")
 AGE_DAYS=$(( (NOW_EPOCH - LAST_EPOCH) / 86400 ))

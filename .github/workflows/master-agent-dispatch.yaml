@@ -69,8 +69,17 @@ on:
 
 jobs:
   # ── Project Manager ──────────────────────────────────────────────────
-  # Maintains a fixed number of active project branches by creating a new
-  # planning task whenever a branch is merged.
+  # Keeps exactly one planning branch open: a merge to master starts a new
+  # planning round whenever none is in progress, unless the open-PR backlog
+  # is already more than anyone can review alongside it.
+  #
+  # There is one docs/plans/MANAGER_LOG.md, and every planning round
+  # rewrites it, so two rounds open at once cannot both merge. The gate
+  # used to be "fewer than 3 open PRs of any kind", which never looked for
+  # a planning branch at all: a round has no PR until its agent finishes,
+  # so a second merge landing while the first agent worked started a
+  # second round beside it (project/plan-20260926-172935 and
+  # project/plan-20260926-174202, twelve minutes apart).
   plan-next-task:
     if: >-
       github.event_name != 'workflow_dispatch' ||
@@ -81,16 +90,17 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Only one project-manager run at a time to avoid race conditions
-    # when counting branches and creating new ones.
+    # Serialize so two merges landing together cannot both pass the gate.
     concurrency:
       group: project-manager
       cancel-in-progress: false
 
     env:
-      # Target number of active project branches to maintain.
-      # When the count drops below this, a new planning branch is created.
-      PROJECT_BRANCH_TARGET: "3"
+      # Above this many open PRs of any kind, no planning round starts. It
+      # matches the number of automated QA rounds, so a backlog past it
+      # means other work beyond QA is already waiting for review, and a new
+      # proposal would only compete with it.
+      MAX_OPEN_PRS: "6"
 
     steps:
       - name: Checkout Code
@@ -100,28 +110,45 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Count active project branches
-        id: branches
+      # The shared cadence gate answers "is a planning round already in
+      # progress?": an open project/plan-* PR, or a project/plan-* branch
+      # created within PR_GRACE_HOURS that has not opened one yet. No
+      # interval applies (MIN_INTERVAL_DAYS=0); the next round may start as
+      # soon as the last one is merged or closed. BRANCH_PREFIX is set on
+      # this step rather than the job so the QA-job checks in
+      # tools/tests/test_master_agent_dispatch.py do not claim this job.
+      - name: Check for a planning round in progress
+        id: decide
         env:
+          BRANCH_PREFIX: "project/plan-"
+          MIN_INTERVAL_DAYS: "0"
+          PR_GRACE_HOURS: "24"
+          FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Count open PRs targeting master via the GitHub CLI. The previous
-          # ar-github MCP CLI mode was retired when the tool was consolidated
-          # into ar-manager; ar-manager is an HTTP MCP server and is not
-          # invokable from a CI shell step.
-          OPEN_PR_COUNT=$(gh pr list --base master --state open --json number --jq 'length')
-          echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
-          echo "target=$PROJECT_BRANCH_TARGET" >> "$GITHUB_OUTPUT"
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
 
-          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+      - name: Check the open PR backlog
+        id: branches
+        if: steps.decide.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          OPEN_PR_COUNT=$(gh pr list --base master --state open --limit 1000 --json number --jq 'length')
+          echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
+          echo "max_open_prs=$MAX_OPEN_PRS" >> "$GITHUB_OUTPUT"
+
+          if [ "$FORCE" = "true" ]; then
             echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Force mode — creating new planning branch regardless of count"
-          elif [ "$OPEN_PR_COUNT" -lt "$PROJECT_BRANCH_TARGET" ]; then
+            echo "::notice::Force mode — creating new planning branch regardless of the backlog"
+          elif [ "$OPEN_PR_COUNT" -le "$MAX_OPEN_PRS" ]; then
             echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Open PRs ($OPEN_PR_COUNT) below target ($PROJECT_BRANCH_TARGET) — creating new planning branch"
+            echo "::notice::No planning round open and $OPEN_PR_COUNT open PRs (limit $MAX_OPEN_PRS) — creating new planning branch"
           else
             echo "needs_new_branch=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Open PRs ($OPEN_PR_COUNT) at or above target ($PROJECT_BRANCH_TARGET) — no new branch needed"
+            echo "::notice::$OPEN_PR_COUNT open PRs exceeds the limit of $MAX_OPEN_PRS — not starting a planning round"
           fi
 
       # The timestamp stays in the name even when a title is given: two
@@ -226,8 +253,8 @@ jobs:
         run: |
           echo "## Project Manager" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Target:** ${{ steps.branches.outputs.target }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Round in progress check:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }} (limit ${{ steps.branches.outputs.max_open_prs }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.branches.outputs.needs_new_branch }}" = "true" ]; then
             echo "Created new planning branch: \`${{ steps.new_branch.outputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
@@ -240,7 +267,7 @@ jobs:
               echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "No new branch needed — active branch count is at or above target." >> "$GITHUB_STEP_SUMMARY"
+            echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ── Quality Assurance — Documentation ────────────────────────────────

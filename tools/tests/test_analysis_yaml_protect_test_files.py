@@ -9,7 +9,7 @@ instead, which fails test-integrity-check, which dispatches another agent to
 restore it, which fails the test again; the lock is what breaks that loop.
 
 Every other remediation job (build failure, code policy, quality gates,
-docs-only verify, general review, incomplete test execution) is held to
+docs-only review, general review, incomplete test execution) is held to
 test-integrity-check alone, the rule every branch meets. The lock used to be
 on for all of them, which contradicted that rule — a review could not even
 improve an existing test.

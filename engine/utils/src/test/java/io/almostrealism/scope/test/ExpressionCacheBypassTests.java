@@ -79,6 +79,27 @@ public class ExpressionCacheBypassTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The value-returning form of {@link ExpressionCache#bypass} runs its task with no
+	 * cache active, returns the task's value, and restores the cache that was active.
+	 */
+	@Test(timeout = 10000)
+	public void bypassReturnsTheSuppliedValue() {
+		ExpressionCache cache = new ExpressionCache();
+
+		cache.use(() -> {
+			String value = ExpressionCache.bypass(() -> {
+				Assert.assertNull(ExpressionCache.getCurrent());
+				return "bypassed";
+			});
+
+			Assert.assertEquals("bypassed", value);
+			Assert.assertSame(cache, ExpressionCache.getCurrent());
+		});
+
+		Assert.assertNull(ExpressionCache.getCurrent());
+	}
+
+	/**
 	 * Populating an {@link ExplicitExpressionMatrix} while a compilation cache is active
 	 * produces the entries of direct substitution without inserting any of them into that
 	 * cache.

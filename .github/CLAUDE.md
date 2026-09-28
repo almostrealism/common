@@ -135,8 +135,18 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only verify → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
 | `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+
+The docs-only review (`docs-review.txt`) reviews and improves documents and
+**never implements a plan**, and it keeps its edits under `docs/` so the branch
+stays on that route. A plan branch's first commit is always docs-only, so this
+route reaches every plan as soon as it is proposed; it once sent the
+implementation prompt (`verify-completion.txt`) and so carried out every plan
+before anyone had read it. Implementation starts only when someone dispatches
+`verify-completion.yaml` on the branch.
+`tools/tests/test_remediation_job_exclusivity.py` pins that `auto-review`
+cannot reach the implementation prompt.
 
 The early two exist so that an agent reaches a stopping point — gates green, no
 simple fixes or review comments outstanding — before anyone pays for the
@@ -179,7 +189,14 @@ This guards against pull request *scripts*, not against a pull request's edit to
 the *workflow*: a `pull_request` run uses the workflow from the PR's merge with
 the base, and any job in it can read a repository secret, so a branch that edits
 `analysis.yaml` can reach `FLOWTREE_CF_ACCESS_CLIENT_SECRET` (as it can through
-`register-workstream`). This is accepted for now, since pipelines do not run for
+`register-workstream`). `verify-completion.yaml` has the same exposure by a
+different route: `workflow_dispatch` runs the workflow file from the dispatched
+branch, so its default-branch checkouts protect the secret from the branch's
+scripts but not from the branch's edit to that YAML. Moving the submission into
+a reusable workflow on the default branch would not close this, because the
+branch's caller YAML still decides which jobs receive the secret; closing it
+needs the secret scoped so that a branch's workflow cannot read it at all.
+This is accepted for now, since pipelines do not run for
 pull requests from outside the organization and agent commits cannot change CI
 files outside `ci/...` branches. The fix is tracked in the ar-manager tracker
 ("Keep FlowTree controller credentials out of pull_request workflow runs").
@@ -209,7 +226,7 @@ test has repeatedly loosened it instead, which fails `test-integrity-check`,
 which dispatches an agent to restore it, which fails the test again — the lock
 breaks that loop. So the "test failures", "test job crash" and "python test
 failures" requests set it to `"true"`, and every other request (build failure,
-code policy, quality gates, docs-only verify, general review, incomplete test
+code policy, quality gates, docs-only review, general review, incomplete test
 execution) sets it to `"false"` and is held to `test-integrity-check` alone,
 the rule every branch meets. `tools/tests/test_analysis_yaml_protect_test_files.py`
 pins that mapping. The early submit jobs set the flag themselves;
@@ -745,6 +762,19 @@ the previous rounds, then a branch is created, a workstream registered, a prompt
 built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
+
+`plan-next-task` keeps **exactly one** planning round open, because every round
+rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
+merge. It runs `qa-cadence.sh` from a step-level env (so the QA-job checks do
+not claim it) with `BRANCH_PREFIX=project/plan-`, `MIN_INTERVAL_DAYS=0` and
+`PR_GRACE_HOURS=24`: an open `project/plan-*` PR, or a `project/plan-*` branch
+younger than 24 hours that has never had a PR, means a round is in progress.
+The grace window is load-bearing: the agent opens its PR only when it finishes,
+so without it a merge landing mid-round started a second round beside the first
+(this is how `project/plan-20260926-172935` and `project/plan-20260926-174202`
+came to coexist). Only when no round is in progress does the job check the
+backlog: it starts a round unless more than `MAX_OPEN_PRS` (6, the number of
+automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
 
 Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
 its tests. The one job that runs any tests is `coverage-qa`: it runs the Python
