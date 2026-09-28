@@ -124,15 +124,6 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 	@Override
 	public double getHeight() { return this.h; }
 
-	/**
-	 * Sets the orientation vector pointing upward across the surface.
-	 *
-	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
-	 *           absorption plane. This vector must be orthagonal to the surface normal.
-	 */
-	@Override
-	public void setOrientation(double[] p) { this.up = p; this.across = null; }
-
 	/** No-op: absorption delay is not used by this absorber. */
 	@Override
 	public void setAbsorbDelay(double t) { }
