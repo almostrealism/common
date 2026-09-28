@@ -250,6 +250,60 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	}
 
 	/**
+	 * Asserts that a computed signal is finite, sits at the reference's level and follows its
+	 * waveform, reporting all three measures. This is the check for a stage whose per-sample
+	 * agreement is not assertable because the computation amplifies rounding differences — an
+	 * ill-conditioned stack, where any correct FP32 implementation diverges sample by sample while
+	 * still reproducing the signal. It is not a substitute for {@link #assertWithinRelative} on a
+	 * stage that can be held to a per-sample threshold.
+	 *
+	 * @param stage               the stage label
+	 * @param actual              the computed collection
+	 * @param reference           the flat reference values
+	 * @param levelTolerance      the permitted relative difference in RMS level
+	 * @param minimumCorrelation  the required correlation with the reference
+	 */
+	protected void assertTracksReference(String stage, PackedCollection actual, float[] reference,
+										 double levelTolerance, double minimumCorrelation) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		double actualEnergy = 0;
+		double referenceEnergy = 0;
+		double crossEnergy = 0;
+
+		for (int i = 0; i < reference.length; i++) {
+			double value = actual.toDouble(i);
+			if (!Double.isFinite(value)) {
+				throw new AssertionError(stage + ": sample " + i + " is " + value);
+			}
+
+			actualEnergy += value * value;
+			referenceEnergy += reference[i] * (double) reference[i];
+			crossEnergy += value * reference[i];
+		}
+
+		double actualRms = Math.sqrt(actualEnergy / reference.length);
+		double referenceRms = Math.sqrt(referenceEnergy / reference.length);
+		double correlation = crossEnergy / Math.sqrt(actualEnergy * referenceEnergy);
+
+		log(String.format("%-18s rms=%.3e refRms=%.3e correlation=%.6f",
+				stage, actualRms, referenceRms, correlation));
+
+		if (!(actualRms > 0)) {
+			throw new AssertionError(stage + ": produced silence (rms " + actualRms + ")");
+		} else if (!(Math.abs(actualRms - referenceRms) <= levelTolerance * referenceRms)) {
+			throw new AssertionError(stage + ": level " + actualRms +
+					" differs from the reference " + referenceRms);
+		} else if (!(correlation >= minimumCorrelation)) {
+			throw new AssertionError(stage + ": does not track the reference (correlation " +
+					correlation + ")");
+		}
+	}
+
+	/**
 	 * Asserts that the maximum absolute difference for one stage is within tolerance.
 	 *
 	 * @param stage     the stage label
