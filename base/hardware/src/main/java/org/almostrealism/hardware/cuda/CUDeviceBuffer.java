@@ -157,9 +157,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * @throws IndexOutOfBoundsException if the range falls outside the allocation
 	 */
 	private void checkRange(long offset, long bytes) {
-		if (offset < 0 || bytes < 0 || offset + bytes > size) {
-			throw new IndexOutOfBoundsException("Range [" + offset + ", " + (offset + bytes) +
-					") is outside an allocation of " + size + " bytes");
+		if (outOfRange(offset, bytes, size)) {
+			throw new IndexOutOfBoundsException("Range at offset " + offset + " of " + bytes +
+					" bytes is outside an allocation of " + size + " bytes");
 		}
 	}
 
@@ -171,10 +171,27 @@ public class CUDeviceBuffer extends CUObject {
 	 * @throws IndexOutOfBoundsException if the range falls outside the buffer
 	 */
 	private static void checkBuffer(ByteBuffer buffer, long offset, long bytes) {
-		if (offset < 0 || bytes < 0 || offset + bytes > buffer.capacity()) {
-			throw new IndexOutOfBoundsException("Range [" + offset + ", " + (offset + bytes) +
-					") is outside a buffer of " + buffer.capacity() + " bytes");
+		if (outOfRange(offset, bytes, buffer.capacity())) {
+			throw new IndexOutOfBoundsException("Range at offset " + offset + " of " + bytes +
+					" bytes is outside a buffer of " + buffer.capacity() + " bytes");
 		}
+	}
+
+	/**
+	 * Returns true if {@code [offset, offset + bytes)} is not contained in {@code [0, limit)}.
+	 * The upper bound is checked as {@code offset > limit - bytes} rather than
+	 * {@code offset + bytes > limit}, because the latter can overflow to a negative value (for
+	 * example when {@code bytes} is near {@link Long#MAX_VALUE}) and let an out-of-bounds range
+	 * pass. Since {@code offset} and {@code bytes} are already known non-negative and
+	 * {@code limit} is non-negative, {@code limit - bytes} cannot overflow.
+	 *
+	 * @param offset the start of the range
+	 * @param bytes  the length of the range
+	 * @param limit  the exclusive upper bound
+	 * @return true if the range falls outside {@code [0, limit)}
+	 */
+	private static boolean outOfRange(long offset, long bytes, long limit) {
+		return offset < 0 || bytes < 0 || offset > limit - bytes;
 	}
 
 	/** Frees this allocation. */

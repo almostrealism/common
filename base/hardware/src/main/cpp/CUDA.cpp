@@ -7,8 +7,11 @@
  *
  * Conventions:
  *  - Every entry point that needs a CUDA context receives it explicitly and makes it
- *    current on the calling thread (cached per thread), because the JVM calls in from
- *    many threads and a CUDA context is current per thread.
+ *    current on the calling thread, because the JVM calls in from many threads and a CUDA
+ *    context is current per thread. The context is set on every call rather than cached:
+ *    cuCtxSetCurrent is cheap, and a per-thread cache cannot be invalidated on the other
+ *    threads when a primary context is released, which would let them issue work against a
+ *    stale context.
  *  - Every failing CUresult / nvrtcResult is converted to a Java HardwareException
  *    carrying the error name and description (and the NVRTC log for compile failures).
  *    No entry point reports failure by silently returning 0.
@@ -22,8 +25,6 @@
 
 #include <string>
 #include <vector>
-
-static thread_local CUcontext currentContext = nullptr;
 
 static void throwHardwareException(JNIEnv* env, const std::string& message) {
     jclass cls = env->FindClass("org/almostrealism/hardware/HardwareException");
@@ -62,11 +63,7 @@ static bool checkNvrtc(JNIEnv* env, nvrtcResult result, const char* operation, c
 }
 
 static bool makeCurrent(JNIEnv* env, jlong context) {
-    CUcontext ctx = (CUcontext) context;
-    if (ctx == currentContext) return true;
-    if (!check(env, cuCtxSetCurrent(ctx), "cuCtxSetCurrent")) return false;
-    currentContext = ctx;
-    return true;
+    return check(env, cuCtxSetCurrent((CUcontext) context), "cuCtxSetCurrent");
 }
 
 #define CU_FN(ret, name) extern "C" JNIEXPORT ret JNICALL Java_org_almostrealism_hardware_cuda_CU_##name
@@ -128,7 +125,6 @@ CU_FN(jlong, primaryContextRetain)(JNIEnv* env, jclass cls, jint device) {
 
 CU_FN(void, primaryContextRelease)(JNIEnv* env, jclass cls, jint device) {
     check(env, cuDevicePrimaryCtxRelease((CUdevice) device), "cuDevicePrimaryCtxRelease");
-    currentContext = nullptr;
 }
 
 CU_FN(void, synchronize)(JNIEnv* env, jclass cls, jlong context) {

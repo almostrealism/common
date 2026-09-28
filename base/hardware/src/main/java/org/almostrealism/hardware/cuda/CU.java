@@ -81,7 +81,7 @@ public final class CU {
 	public static final int FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 0;
 
 	static {
-		String resource = "libARCUDA-linux-" + System.getProperty("os.arch") + ".so";
+		String resource = "libARCUDA-linux-" + libraryArch(System.getProperty("os.arch")) + ".so";
 		InputStream is = CU.class.getClassLoader().getResourceAsStream(resource);
 		if (is == null) {
 			throw new UnsatisfiedLinkError("No CUDA bridge library " + resource + " on the classpath");
@@ -105,6 +105,21 @@ public final class CU {
 
 	/** Not instantiable; all bindings are static. */
 	private CU() { }
+
+	/**
+	 * Maps the JVM's {@code os.arch} to the architecture suffix {@code compile-cuda.sh} names
+	 * the library with. The build script uses {@code uname -m}, which reports 64-bit x86 as
+	 * {@code x86_64}, whereas the JVM reports it as {@code amd64}; without this mapping the
+	 * loader would look for {@code libARCUDA-linux-amd64.so} and never find the built
+	 * {@code libARCUDA-linux-x86_64.so}. Every other architecture (notably {@code aarch64})
+	 * is spelled the same by both, so it is returned unchanged.
+	 *
+	 * @param osArch the value of the {@code os.arch} system property
+	 * @return the architecture suffix used in the library resource name
+	 */
+	static String libraryArch(String osArch) {
+		return "amd64".equals(osArch) ? "x86_64" : osArch;
+	}
 
 	/** Initializes the driver API ({@code cuInit}). Called once when the library loads. */
 	private static native void init();

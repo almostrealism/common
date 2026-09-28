@@ -68,12 +68,28 @@ public class CUContext extends CUObject {
 
 	/** Allocates zero-filled device memory, which is not addressable from the host. */
 	public CUDeviceBuffer allocate(long bytes) {
+		checkSize(bytes);
 		return new CUDeviceBuffer(this, CU.memAlloc(getNativePointer(), bytes), bytes, false);
 	}
 
 	/** Allocates zero-filled managed memory, addressable from both the host and the device. */
 	public CUDeviceBuffer allocateManaged(long bytes) {
+		checkSize(bytes);
 		return new CUDeviceBuffer(this, CU.memAllocManaged(getNativePointer(), bytes), bytes, true);
+	}
+
+	/**
+	 * Rejects a negative allocation size before it reaches native code. The driver takes the
+	 * byte count as a {@code size_t}, so a negative {@code long} would be reinterpreted as a
+	 * near-maximum unsigned value and turned into an enormous allocation request.
+	 *
+	 * @param bytes the requested allocation size in bytes
+	 * @throws IllegalArgumentException if {@code bytes} is negative
+	 */
+	private static void checkSize(long bytes) {
+		if (bytes < 0) {
+			throw new IllegalArgumentException("Allocation size " + bytes + " is negative");
+		}
 	}
 
 	/** Releases this retain of the device's primary context. */

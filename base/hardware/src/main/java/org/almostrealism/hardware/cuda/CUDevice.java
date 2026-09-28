@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.cuda;
 
+import org.almostrealism.hardware.HardwareException;
+
 import java.util.stream.Stream;
 
 /**
@@ -88,19 +90,41 @@ public class CUDevice {
 	}
 
 	/**
-	 * Compiles CUDA C++ source for this device into a CUBIN image.
+	 * Compiles CUDA C++ source for this device.
+	 *
+	 * <p>A CUBIN targeting this device's exact {@code sm_} architecture is produced first, which
+	 * needs no further work at module load. If NVRTC cannot produce that CUBIN — for example an
+	 * NVRTC predating the toolkit that added CUBIN generation, or one that does not know this
+	 * device's architecture — the compile falls back to virtual-architecture ({@code compute_})
+	 * PTX, which the installed driver JIT-compiles for the device when the module is loaded.</p>
 	 *
 	 * @param source  the source to compile
 	 * @param name    the program name used in diagnostics
 	 * @param options additional NVRTC options
 	 * @return the compiled image, to be loaded with {@link CUContext#loadModule(byte[])}
-	 * @throws org.almostrealism.hardware.HardwareException if compilation fails; the
-	 *         message includes the NVRTC log
+	 * @throws HardwareException if both the CUBIN and the PTX compile fail; the message
+	 *         includes the NVRTC log
 	 */
 	public byte[] compile(String source, String name, String... options) {
-		String[] all = Stream.concat(Stream.of("--gpu-architecture=sm_" + getArchitecture()),
+		try {
+			return CU.compile(source, name, architectureOptions("sm_", options), true);
+		} catch (HardwareException e) {
+			return CU.compile(source, name, architectureOptions("compute_", options), false);
+		}
+	}
+
+	/**
+	 * Prepends {@code --gpu-architecture=<prefix><arch>} for this device to the given NVRTC
+	 * options. {@code sm_} names a real architecture (for a CUBIN); {@code compute_} names the
+	 * matching virtual architecture (for PTX).
+	 *
+	 * @param prefix  the architecture-kind prefix, {@code sm_} or {@code compute_}
+	 * @param options the additional NVRTC options
+	 * @return the full NVRTC option array
+	 */
+	private String[] architectureOptions(String prefix, String[] options) {
+		return Stream.concat(Stream.of("--gpu-architecture=" + prefix + getArchitecture()),
 				Stream.of(options)).toArray(String[]::new);
-		return CU.compile(source, name, all, true);
 	}
 
 	/**
