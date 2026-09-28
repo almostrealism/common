@@ -16,6 +16,7 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.GitOperations;
@@ -1196,28 +1197,28 @@ public class Workstream {
     public String toSummaryJson() {
         StringBuilder json = new StringBuilder();
         json.append("{");
-        json.append("\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+        json.append("\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
 
         if (channelName != null) {
-            json.append(",\"channelName\":\"").append(escapeForJson(channelName)).append("\"");
+            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
         }
         if (defaultBranch != null) {
-            json.append(",\"defaultBranch\":\"").append(escapeForJson(defaultBranch)).append("\"");
+            json.append(",\"defaultBranch\":\"").append(JsonFieldExtractor.escapeJson(defaultBranch)).append("\"");
         }
         if (baseBranch != null) {
-            json.append(",\"baseBranch\":\"").append(escapeForJson(baseBranch)).append("\"");
+            json.append(",\"baseBranch\":\"").append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
         }
         if (repoUrl != null) {
-            json.append(",\"repoUrl\":\"").append(escapeForJson(repoUrl)).append("\"");
+            json.append(",\"repoUrl\":\"").append(JsonFieldExtractor.escapeJson(repoUrl)).append("\"");
         }
         if (githubOrg != null) {
-            json.append(",\"githubOrg\":\"").append(escapeForJson(githubOrg)).append("\"");
+            json.append(",\"githubOrg\":\"").append(JsonFieldExtractor.escapeJson(githubOrg)).append("\"");
         }
         if (workspaceId != null) {
-            json.append(",\"workspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
+            json.append(",\"workspaceId\":\"").append(JsonFieldExtractor.escapeJson(workspaceId)).append("\"");
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
-            json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
+            json.append(",\"planningDocument\":\"").append(JsonFieldExtractor.escapeJson(planningDocument)).append("\"");
         }
 
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
@@ -1243,7 +1244,7 @@ public class Workstream {
         // so an operator scanning a list can see which rows are
         // orchestrator/standing without opening each one.
         if (!"feature".equals(getKind())) {
-            json.append(",\"kind\":\"").append(escapeForJson(getKind())).append("\"");
+            json.append(",\"kind\":\"").append(JsonFieldExtractor.escapeJson(getKind())).append("\"");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
@@ -1252,7 +1253,7 @@ public class Workstream {
             for (String repo : dependentRepos) {
                 if (!first) json.append(",");
                 first = false;
-                json.append("\"").append(escapeForJson(repo)).append("\"");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(repo)).append("\"");
             }
             json.append("]");
         }
@@ -1263,28 +1264,14 @@ public class Workstream {
             for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
                 if (!first) json.append(",");
                 first = false;
-                json.append("\"").append(escapeForJson(entry.getKey())).append("\":");
-                json.append("\"").append(escapeForJson(entry.getValue())).append("\"");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getKey())).append("\":");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getValue())).append("\"");
             }
             json.append("}");
         }
 
         json.append("}");
         return json.toString();
-    }
-
-    /**
-     * Escapes a string for safe inclusion as a JSON string value.
-     *
-     * @param s the string to escape, or {@code null}
-     * @return the escaped string, never {@code null}
-     */
-    private static String escapeForJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     /**
