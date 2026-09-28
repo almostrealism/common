@@ -60,6 +60,38 @@ public class AbsorptionPlaneGeometryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The across axis is cached on first access but recomputed after either
+	 * {@link Plane#setOrientation(double[])} or
+	 * {@link Plane#setSurfaceNormal(io.almostrealism.relation.Producer)} invalidates
+	 * the cache. This invalidation is the contract every {@link Plane#getAcross()}
+	 * call site depends on, so it is pinned here directly.
+	 */
+	@Test(timeout = 60000)
+	public void acrossRecomputesAfterReorientation() {
+		Plane plane = new Plane();
+		configure(plane);
+
+		double[] first = plane.getAcross();
+		assertEquals(1.0, first[0]);
+		assertEquals(0.0, first[1]);
+		assertEquals(0.0, first[2]);
+
+		// Flip the up axis: across = up x normal = (0,-1,0) x (0,0,1) = (-1,0,0).
+		plane.setOrientation(new double[] { 0.0, -1.0, 0.0 });
+		double[] afterUp = plane.getAcross();
+		assertEquals(-1.0, afterUp[0]);
+		assertEquals(0.0, afterUp[1]);
+		assertEquals(0.0, afterUp[2]);
+
+		// Flip the normal: across = up x normal = (0,-1,0) x (0,0,-1) = (1,0,0).
+		plane.setSurfaceNormal(vector(0.0, 0.0, -1.0));
+		double[] afterNormal = plane.getAcross();
+		assertEquals(1.0, afterNormal[0]);
+		assertEquals(0.0, afterNormal[1]);
+		assertEquals(0.0, afterNormal[2]);
+	}
+
+	/**
 	 * {@link Plane#getSpatialCoords(double[])} maps unit-square coordinates onto
 	 * a point expressed along the across and up axes.
 	 */
