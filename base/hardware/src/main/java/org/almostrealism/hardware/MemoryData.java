@@ -200,6 +200,23 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
+ * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
+ * (JNI/OpenCL/Metal), its lifetime is tied to the provider-owned backing object, not to a bytes-used
+ * budget: {@code HardwareMemoryProvider}'s phantom-reference queue tracks that backing {@code RAM}
+ * (not every {@link MemoryData} instance) and, once it becomes unreachable, frees the native block
+ * at some later garbage-collection cycle. That phantom-queue free applies where the provider owns
+ * the native bytes &mdash; the JNI-calloc path of {@code NativeMemoryProvider}, {@code CLMemoryProvider}
+ * (OpenCL) and {@code MetalMemoryProvider} (Metal). {@code NativeMemoryProvider}'s NIO direct-buffer
+ * mode ({@code isDirect()}) is the exception: those bytes are a JVM {@code DirectByteBuffer} freed by
+ * the JVM's own cleaner, and the provider's phantom reference ({@code NativeBufferRef}) only unmaps
+ * shared memory and notifies deallocation listeners &mdash; it does not free the direct-buffer bytes.
+ * A delegated or view {@link MemoryData} does not own its
+ * {@link Memory}, so collecting the view does not free anything while its delegate &mdash; and thus
+ * the backing block &mdash; is still reachable. Freeing native memory while a dispatched kernel still
+ * reads it is a use-after-free; {@code KernelMemoryGuard} defers the free for kernels dispatched
+ * through the standard operators. Call {@link #destroy()} deterministically (via try-with-resources)
+ * for memory you own and no longer need, rather than waiting for GC.</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>{@link MemoryData} is <strong>not thread-safe</strong>. Concurrent access must be

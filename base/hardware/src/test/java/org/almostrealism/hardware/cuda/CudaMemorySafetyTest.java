@@ -101,4 +101,85 @@ public class CudaMemorySafetyTest {
 		assertRejects(IndexOutOfBoundsException.class, () -> destination.copyFrom(source, 0, 0, 2048));
 		assertRejects(IndexOutOfBoundsException.class, () -> destination.copyFrom(source, -1, 0, 4));
 	}
+
+	/**
+	 * The asynchronous stream copy validates both ranges exactly as the synchronous
+	 * {@link CUDeviceBuffer#copyFrom} does, so it cannot be used to bypass those checks.
+	 */
+	@Test(timeout = 30000)
+	public void streamCopyRejectsOutOfRange() {
+		CUStream stream = new CUStream(null, 0L);
+		CUDeviceBuffer source = new CUDeviceBuffer(null, 0L, 1024L, false);
+		CUDeviceBuffer destination = new CUDeviceBuffer(null, 0L, 512L, false);
+
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, 8, destination, 8, Long.MAX_VALUE));
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, 0, destination, 0, 1024));
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, 1000, destination, 0, 32));
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, -1, destination, 0, 4));
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, 0, destination, -4, 4));
+		assertRejects(IndexOutOfBoundsException.class, () -> stream.copy(source, 0, destination, 0, -1));
+	}
+
+	/**
+	 * A kernel argument whose element range does not lie within its buffer is rejected before
+	 * the launch crosses JNI, including an offset whose byte position overflows {@code int}.
+	 */
+	@Test(timeout = 30000)
+	public void launchRejectsArgumentOutsideBuffer() {
+		CUFunction function = new CUFunction(new CUModule(null, 0L), 0L);
+		CUStream stream = new CUStream(null, 0L);
+		CUDeviceBuffer[] buffers = { new CUDeviceBuffer(null, 0L, 16L * Float.BYTES, false) };
+
+		assertRejects(IndexOutOfBoundsException.class, () -> function.launch(stream, 1, 64, buffers,
+				new int[] { 1 }, new int[] { 16 }, Float.BYTES, 16, 0));
+		assertRejects(IndexOutOfBoundsException.class, () -> function.launch(stream, 1, 64, buffers,
+				new int[] { -1 }, new int[] { 4 }, Float.BYTES, 4, 0));
+		assertRejects(IndexOutOfBoundsException.class, () -> function.launch(stream, 1, 64, buffers,
+				new int[] { 0 }, new int[] { -4 }, Float.BYTES, 4, 0));
+		assertRejects(IndexOutOfBoundsException.class, () -> function.launch(stream, 1, 64, buffers,
+				new int[] { Integer.MAX_VALUE }, new int[] { 1 }, Float.BYTES, 1, 0));
+		assertRejects(IndexOutOfBoundsException.class, () -> function.launch(stream, 1, 64, buffers,
+				new int[] { 0 }, new int[] { 9 }, Double.BYTES, 9, 0));
+	}
+
+	/**
+	 * An invalid launch geometry, element size or argument array shape is rejected before the
+	 * launch crosses JNI.
+	 */
+	@Test(timeout = 30000)
+	public void launchRejectsInvalidGeometry() {
+		CUFunction function = new CUFunction(new CUModule(null, 0L), 0L);
+		CUStream stream = new CUStream(null, 0L);
+		CUDeviceBuffer[] buffers = { new CUDeviceBuffer(null, 0L, 64L, false) };
+		int[] offsets = { 0 };
+		int[] sizes = { 4 };
+
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 0, 64, buffers, offsets, sizes, 4, 4, 0));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, -1, buffers, offsets, sizes, 4, 4, 0));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers, offsets, sizes, 4, -1, 0));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers, offsets, sizes, 4, 4, -1));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers, offsets, sizes, 0, 4, 0));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers, new int[0], sizes, 4, 4, 0));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers, offsets, new int[2], 4, 4, 0));
+	}
+
+	/**
+	 * The grid covers the work with the fewest blocks, and does not overflow to a negative grid
+	 * (which would pass the device maximum-grid check) for a work size near {@link Long#MAX_VALUE}.
+	 */
+	@Test(timeout = 30000)
+	public void gridSizeIsOverflowSafeCeiling() {
+		Assert.assertEquals(0L, CUFunction.gridSize(0, 256));
+		Assert.assertEquals(1L, CUFunction.gridSize(1, 256));
+		Assert.assertEquals(1L, CUFunction.gridSize(256, 256));
+		Assert.assertEquals(2L, CUFunction.gridSize(257, 256));
+		Assert.assertEquals(4L, CUFunction.gridSize(1000, 256));
+		Assert.assertEquals(Long.MAX_VALUE, CUFunction.gridSize(Long.MAX_VALUE, 1));
+		Assert.assertEquals(Long.MAX_VALUE / 256 + 1, CUFunction.gridSize(Long.MAX_VALUE, 256));
+		Assert.assertEquals(Long.MAX_VALUE / 1024 + 1, CUFunction.gridSize(Long.MAX_VALUE - 1, 1024));
+
+		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(-1, 256));
+		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(10, 0));
+		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(10, -8));
+	}
 }

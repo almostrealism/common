@@ -156,7 +156,7 @@ public class CUDeviceBuffer extends CUObject {
 	 *
 	 * @throws IndexOutOfBoundsException if the range falls outside the allocation
 	 */
-	private void checkRange(long offset, long bytes) {
+	void checkRange(long offset, long bytes) {
 		if (outOfRange(offset, bytes, size)) {
 			throw new IndexOutOfBoundsException("Range at offset " + offset + " of " + bytes +
 					" bytes is outside an allocation of " + size + " bytes");

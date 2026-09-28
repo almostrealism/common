@@ -46,9 +46,15 @@ public class CUStream extends CUObject {
 
 	/**
 	 * Enqueues a copy of {@code bytes} bytes between two device buffers. Offsets are in bytes.
+	 * Both ranges are validated before the copy is enqueued, exactly as for the synchronous
+	 * {@link CUDeviceBuffer#copyFrom}, because the driver performs raw pointer arithmetic on them.
+	 *
+	 * @throws IndexOutOfBoundsException if either range falls outside its allocation
 	 */
 	public void copy(CUDeviceBuffer source, long sourceOffset,
 					 CUDeviceBuffer destination, long destinationOffset, long bytes) {
+		source.checkRange(sourceOffset, bytes);
+		destination.checkRange(destinationOffset, bytes);
 		CU.memcpyDtoDAsync(getContextPointer(),
 				destination.getNativePointer() + destinationOffset,
 				source.getNativePointer() + sourceOffset,

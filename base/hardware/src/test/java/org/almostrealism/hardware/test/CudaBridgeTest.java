@@ -147,7 +147,7 @@ public class CudaBridgeTest {
 		try {
 			CUFunction packing = module.getFunction("packing");
 			packing.launch(stream, 1, 64, new CUDeviceBuffer[] { a, b, c },
-					new int[] { 1, 2, 3 }, new int[] { 8, 5, 6 }, 1, 0);
+					new int[] { 1, 2, 3 }, new int[] { 8, 5, 6 }, Float.BYTES, 1, 0);
 			stream.synchronize();
 
 			Assert.assertArrayEquals(new float[] { 1, 2, 3, 8, 5, 6, 1, 0 }, read(a, 1, 8), 0.0f);
@@ -172,7 +172,7 @@ public class CudaBridgeTest {
 
 		try {
 			module.getFunction("mark").launch(stream, 1, 64, new CUDeviceBuffer[] { y },
-					new int[] { 0 }, new int[] { 64 }, 3, 2);
+					new int[] { 0 }, new int[] { 64 }, Float.BYTES, 3, 2);
 			stream.synchronize();
 
 			Assert.assertArrayEquals(new float[] { 0, 0, 1, 1, 1, 0, 0, 0 }, read(y, 0, 8), 0.0f);
@@ -213,8 +213,8 @@ public class CudaBridgeTest {
 
 			CUFunction saxpy = module.getFunction("saxpy");
 			int block = Math.min(256, saxpy.getMaxThreadsPerBlock());
-			saxpy.launch(stream, (n + block - 1) / block, block, new CUDeviceBuffer[] { x, y },
-					new int[] { 4, 7 }, new int[] { n, n }, n, 0);
+			saxpy.launch(stream, (int) CUFunction.gridSize(n, block), block, new CUDeviceBuffer[] { x, y },
+					new int[] { 4, 7 }, new int[] { n, n }, Float.BYTES, n, 0);
 			stream.synchronize();
 
 			float[] result = read(y, 0, n + 7);

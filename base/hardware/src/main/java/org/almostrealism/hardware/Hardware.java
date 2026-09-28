@@ -149,13 +149,13 @@ import java.util.stream.Stream;
  * </pre>
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
- * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB</p>
- * <p><strong>Default:</strong> 4 (~4GB with FP32)</p>
- * <pre>
- * # Allow ~16GB max (FP32: 4 * 2^6 * 64MB)
- * export AR_HARDWARE_MEMORY_SCALE=6
- * </pre>
+ * <p><strong>Purpose:</strong> Per-provider tracked memory ceiling (total live bytes, not the size of any single
+ * allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
+ * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider}, {@code CudaMemoryProvider}
+ * and {@code NativeMemoryProvider} each reject an allocation for which {@code memoryUsed + requested > memoryMax}
+ * with a {@code HardwareException} (message {@code "Memory Max Reached"} from the three GPU providers, {@code "Memory max reached"} from
+ * {@code NativeMemoryProvider}); the tracked-ceiling rejection throws rather than returning a zero pointer, though a raw OS calloc failure below the ceiling can still yield one (caught at dispatch). See the internals doc.</p>
+ * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
  *
  * <h3>AR_HARDWARE_MEMORY_LOCATION</h3>
  * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
@@ -497,7 +497,7 @@ public final class Hardware implements ConsoleFeatures {
 	private static final List<Class<?>> ACCELERATOR_PREFERENCE =
 			List.of(MetalDataContext.class, CudaDataContext.class, CLDataContext.class);
 
-	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
+	/** Memory scale factor: {@code MEMORY_SCALE=N} sets the base element reservation to {@code 2^N * 64M}; the per-provider byte ceiling is {@code precision.bytes() * 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
 	/** If true, use 64-bit epsilon values for floating-point comparisons. Controlled by {@code AR_HARDWARE_EPSILON_64}. */
@@ -1241,9 +1241,9 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isNativeSharedMemory() { return nativeSharedMemory; }
 
 	/**
-	 * Returns the memory scale exponent for maximum allocation size.
+	 * Returns the memory scale exponent for the per-provider tracked memory ceiling.
 	 *
-	 * <p>Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
+	 * <p>Ceiling bytes (total live, not per allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
 	 *
 	 * @return The memory scale exponent
 	 */

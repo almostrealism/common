@@ -415,6 +415,13 @@ test_timeouts, duplicate_code, invalid_files). Phase 0 was completed by the deve
 JDK 17, Maven and clang were installed, and the MCP servers must be launched with
 `/home/agent0/agent-venv` on `PATH`.
 
+**Open before merge (2026-09-27):** the committed `libARCUDA-linux-aarch64.so`
+predates the `CUDA.cpp` change that removed the per-thread cached current context
+(`makeCurrent` now calls `cuCtxSetCurrent` on every entry). Until the library is
+rebuilt with `compile-cuda.sh` on an aarch64 CUDA host and committed, the runtime
+still uses the old cache and can issue work against a released primary context from
+another thread. Sessions without a CUDA toolkit cannot rebuild it.
+
 - `src/main/cpp/CUDA.cpp`, `compile-cuda.sh`, the committed
   `libARCUDA-linux-aarch64.so`, and the `cuda/CU.java` natives with the error
   translation described above.

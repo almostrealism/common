@@ -122,7 +122,8 @@ public class CudaOperator extends HardwareOperator {
 		long count = getGlobalWorkSize();
 		long offset = getGlobalWorkOffset();
 		int block = getWorkgroupSize();
-		long grid = (count + block - 1) / block;
+		int elementBytes = context.getDataContext().getPrecision().bytes();
+		long grid = CUFunction.gridSize(count, block);
 
 		if (grid > context.getMaxGridSize()) {
 			throw new HardwareException("Global work size " + count + " for " + getName() +
@@ -140,7 +141,7 @@ public class CudaOperator extends HardwareOperator {
 
 		return context.getStreamRunner().submit(getMetadata(), stream -> recordDuration(null, () -> {
 			if (count > 0) {
-				function.launch(stream, (int) grid, block, buffers, offsets, sizes, count, offset);
+				function.launch(stream, (int) grid, block, buffers, offsets, sizes, elementBytes, count, offset);
 			}
 		}), dependsOn, () -> {
 			KernelMemoryGuard.releaseFor(guard);
