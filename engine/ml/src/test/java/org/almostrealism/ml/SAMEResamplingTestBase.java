@@ -59,15 +59,26 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * on {@code input}. This is the top-of-stack boundary at which compilation and evaluation are
 	 * permitted; the block itself never evaluates.
 	 *
+	 * <p>The compiled {@link Model} and {@link CompiledModel} are released before returning, so each
+	 * call leaves no native graph behind — otherwise every invocation would strand a full compiled
+	 * graph (two large ones per round trip in the gated parity tests). The forward output is a buffer
+	 * the compiled graph owns, so it is cloned into independent memory that outlives the release.</p>
+	 *
 	 * @param block the resampling block (from {@link TransformerResamplingFeatures#transformerResamplingBlock})
 	 * @param input the block input, matching {@link Block#getInputShape()}
-	 * @return the forward-pass output
+	 * @return the forward-pass output, held in memory independent of the compiled graph
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
 		model.add(block);
 		CompiledModel compiled = model.compile(false);
-		return compiled.forward(input);
+
+		try {
+			return compiled.forward(input).clone();
+		} finally {
+			compiled.destroy();
+			model.destroy();
+		}
 	}
 
 	/**
