@@ -19,7 +19,7 @@ Two conventions make the move safe, and both matter more than they look:
   name nothing called.
 """
 
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import server
 from server import mcp
@@ -706,9 +706,10 @@ def tracker_upsert_goal_task(
     its stage and status are left alone, so a task a person declined or
     closed stays that way.
 
-    Only goal-derived tasks can be changed: ``source`` must start with
-    ``goals:``, and updating a task that does not carry such a source — any
-    task a person wrote — is refused. Nothing is ever deleted.
+    Only goal-derived tasks can be changed: ``source`` must be
+    ``goals:<document>``, and updating a task that does not carry such a
+    source — any task a person wrote — is refused by the tracker in the same
+    step as the write. Nothing is ever deleted.
 
     Requires the calling workstream to hold the ``steward`` tracker
     capability.
@@ -735,9 +736,10 @@ def tracker_upsert_goal_task(
     server._require_tracker_capability(server.TRACKER_STEWARD)
     server._audit("tracker_upsert_goal_task", project=project, release=release,
                   task_id=task_id)
-    if not source.startswith(GOAL_SOURCE_PREFIX):
+    source = source.strip()
+    if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) == len(GOAL_SOURCE_PREFIX):
         return {"ok": False,
-                "error": f"source must start with '{GOAL_SOURCE_PREFIX}' (e.g. goals:docs/GOALS.md)"}
+                "error": f"source must be '{GOAL_SOURCE_PREFIX}<document>' (e.g. goals:docs/GOALS.md)"}
 
     target = _ensure_release(project, release)
     if not target.get("ok"):
@@ -755,10 +757,7 @@ def tracker_upsert_goal_task(
         return server._tracker_post("/v1/tasks", dict(
             fields, source=source, stage="ready", status="open"))
 
-    existing = server._tracker_get(f"/v1/tasks/{task_id}")
-    if not existing.get("ok"):
-        return existing
-    if not (existing.get("task") or {}).get("source", "").startswith(GOAL_SOURCE_PREFIX):
-        return {"ok": False,
-                "error": "Task was not derived from goal documents; only a person may change it"}
-    return server._tracker_put(f"/v1/tasks/{task_id}", dict(fields, source=source))
+    # The tracker checks the stored source and writes in one step, so a task a
+    # person takes over between any earlier read and this request is refused.
+    return server._tracker_put(f"/v1/tasks/{quote(task_id, safe='')}?only_goal_derived=true",
+                               dict(fields, source=source))

@@ -226,13 +226,75 @@ class TestUpsertGoalTask(_GoalToolTestBase):
     @patch.object(server, "_controller_get")
     def test_a_task_a_person_wrote_is_never_changed(
             self, mock_get, mock_tracker_get, mock_post, mock_put):
+        # The tracker refuses the conditional update of a person's task; the
+        # refusal is returned unchanged and nothing else is written.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
         mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
-        mock_tracker_get.return_value = {"ok": True, "task": {"id": "t1", "source": "person"}}
+        refusal = {"ok": False,
+                   "error": "Task was not derived from goal documents; only a person may change it"}
+        mock_put.return_value = refusal
         result = server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md", task_id="t1")
-        self.assertFalse(result["ok"])
-        mock_put.assert_not_called()
+        self.assertEqual(refusal, result)
+        mock_put.assert_called_once()
+        self.assertEqual(1, mock_post.call_count)
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_get")
+    def test_the_source_check_and_the_write_are_one_request(
+            self, mock_get, mock_tracker_get, mock_post, mock_put):
+        # A separate GET of the task's source followed by a PUT would let a
+        # person take the task over in between and still be overwritten. The
+        # tool must instead ask the tracker for a conditional update.
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_upsert_goal_task(
+            "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md", task_id="t1")
+        mock_tracker_get.assert_not_called()
+        path, payload = mock_put.call_args[0]
+        self.assertEqual("/v1/tasks/t1?only_goal_derived=true", path)
+        self.assertEqual("goals:docs/PLAN.md", payload["source"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_the_task_id_cannot_alter_the_request(self, mock_get, mock_post, mock_put):
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
+        mock_put.return_value = {"ok": True, "task": {"id": "x"}}
+        server.tracker_upsert_goal_task(
+            "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md",
+            task_id="t1?only_goal_derived=false#")
+        self.assertEqual("/v1/tasks/t1%3Fonly_goal_derived%3Dfalse%23?only_goal_derived=true",
+                         mock_put.call_args[0][0])
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_a_bare_goals_source_creates_nothing(self, mock_get, mock_post):
+        # The tracker would refuse the task anyway; the tool must refuse it
+        # before ensuring the release so no orphan release is left behind.
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        for source in ("goals:", "  goals:  ", "GOALS:docs/PLAN.md", ""):
+            result = server.tracker_upsert_goal_task(
+                "Framework", "Framework 1.3", "t", source)
+            self.assertFalse(result["ok"], source)
+            self.assertIn("goals:<document>", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_the_source_is_stripped_before_it_is_sent(self, mock_get, mock_post):
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        mock_post.side_effect = [
+            {"ok": True, "release": _RELEASE, "created": False},
+            {"ok": True, "task": {"id": "new"}},
+        ]
+        server.tracker_upsert_goal_task(
+            "Framework", "Framework 1.2", "t", "  goals:docs/PLAN.md ")
+        self.assertEqual("goals:docs/PLAN.md", mock_post.call_args_list[1][0][1]["source"])
 
     @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
@@ -242,13 +304,11 @@ class TestUpsertGoalTask(_GoalToolTestBase):
             self, mock_get, mock_tracker_get, mock_post, mock_put):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
         mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
-        mock_tracker_get.return_value = {
-            "ok": True, "task": {"id": "t1", "source": "goals:docs/PLAN.md"}}
         mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md", task_id="t1")
         path, payload = mock_put.call_args[0]
-        self.assertEqual("/v1/tasks/t1", path)
+        self.assertTrue(path.startswith("/v1/tasks/t1?"))
         self.assertEqual("renamed", payload["title"])
         self.assertNotIn("stage", payload)
         self.assertNotIn("status", payload)

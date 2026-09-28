@@ -338,6 +338,93 @@ class BulkImportTests(_StoreTestBase):
         resp = self._import("not-a-task")
         self.assertEqual(400, resp.status_code)
 
+    def test_a_rejection_by_the_store_rolls_back_the_whole_import(self):
+        # Rejections only the store or the database detects - a missing id, an
+        # out-of-range priority, an unknown foreign key - must not leave the
+        # records before them in an open transaction for a later write to commit.
+        valid = self._goal_task("ok")
+        for bad in ({"title": "no id"},
+                    self._goal_task("bad", priority=3),
+                    self._goal_task("bad", project_id="no-such-project")):
+            resp = self._import(valid, bad)
+            self.assertEqual(400, resp.status_code, bad)
+            self.store.create_task(title="later write")
+            self.assertIsNone(self.store.get_task("ok"), bad)
+            self.assertIsNone(self.store.get_task("bad"), bad)
+
+    def test_projects_and_releases_are_rolled_back_with_a_rejected_task(self):
+        resp = self.client.post("/v1/import", json={
+            "projects": [{"id": "p-new", "name": "New"}],
+            "releases": [{"id": "r-new", "name": "New 1.0", "project_id": "p-new"}],
+            "tasks": [{"title": "no id"}]})
+        self.assertEqual(400, resp.status_code)
+        self.store.create_task(title="later write")
+        self.assertIsNone(self.store.get_project("p-new"))
+        self.assertIsNone(self.store.get_release("r-new"))
+
+    def test_an_unexpected_failure_rolls_back_the_whole_import(self):
+        # A malformed record that raises something other than a database
+        # error must still leave nothing for a later write to commit.
+        with self.assertRaises(AttributeError):
+            self.store.bulk_import([{"id": "p-new", "name": "New"}, "not-a-project"], [], [])
+        self.store.create_task(title="later write")
+        self.assertIsNone(self.store.get_project("p-new"))
+
+
+class GoalOnlyUpdateTests(_StoreTestBase):
+    """An update restricted to goal-derived tasks checks and writes atomically."""
+
+    def test_a_goal_task_is_updated(self):
+        task = self._task("goal", source="goals:docs/GOALS.md")
+        updated = self.store.update_task(task["id"], title="renamed", only_goal_derived=True)
+        self.assertEqual("renamed", updated["title"])
+
+    def test_a_person_task_is_left_untouched(self):
+        blocker = self._task("blocker", stage="backlog")
+        task = self._task("mine", source="person", blocked_by=[blocker["id"]])
+        result = self.store.update_task(
+            task["id"], title="taken", source="goals:docs/GOALS.md", blocked_by=[],
+            only_goal_derived=True)
+        self.assertIsNone(result)
+        kept = self.store.get_task(task["id"])
+        self.assertEqual(("mine", "person", [blocker["id"]]),
+                         (kept["title"], kept["source"], kept["blocked_by"]))
+
+    def test_without_the_restriction_a_person_task_can_be_changed(self):
+        task = self._task("mine", source="person")
+        self.assertEqual("edited", self.store.update_task(task["id"], title="edited")["title"])
+
+    def test_a_missing_task_is_not_updated(self):
+        self.assertIsNone(self.store.update_task("missing", title="x"))
+        self.assertIsNone(self.store.update_task("missing", title="x", only_goal_derived=True))
+
+    def test_the_api_refuses_a_person_task_with_a_conflict(self):
+        task = self._task("mine", source="person")
+        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=true",
+                               json={"title": "taken", "source": "goals:docs/GOALS.md"})
+        self.assertEqual(409, resp.status_code)
+        self.assertIn("only a person may change it", resp.json()["error"])
+        self.assertEqual("mine", self.store.get_task(task["id"])["title"])
+
+    def test_the_api_updates_a_goal_task(self):
+        task = self._task("goal", source="goals:docs/GOALS.md")
+        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=true",
+                               json={"title": "renamed"})
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual("renamed", resp.json()["task"]["title"])
+
+    def test_the_api_ignores_the_restriction_unless_it_is_true(self):
+        task = self._task("mine", source="person")
+        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=false",
+                               json={"title": "edited"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("edited", resp.json()["task"]["title"])
+
+    def test_the_api_reports_a_missing_task(self):
+        resp = self.client.put("/v1/tasks/missing?only_goal_derived=true",
+                               json={"title": "x"})
+        self.assertEqual(404, resp.status_code)
+
 
 class ApiTests(_StoreTestBase):
     """The HTTP surface the controller and ar-manager use."""

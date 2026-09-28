@@ -40,6 +40,10 @@ _CLAIMABLE = (
     "WHERE b.task_id = tasks.id AND blocker.status != 'closed')"
 )
 
+# Source prefix of a task an agent derived from a goal document
+# ("goals:<document>"); any other task was written by a person.
+GOAL_SOURCE_PREFIX = "goals:"
+
 # Claim order: the most important task first, then the one waiting longest.
 _CLAIM_ORDER = "tasks.priority DESC, tasks.created_at ASC"
 
@@ -129,15 +133,19 @@ class TrackerStore:
     # ------------------------------------------------------------------
 
     def create_release(self, name: str, project_id: Optional[str] = None) -> dict:
-        """Create a new release and return it."""
-        # TODO(review): not under self._lock, so it can race ensure_release and duplicate a release name.
+        """Create a new release and return it.
+
+        The insert takes the store lock, so it cannot interleave with the
+        lookup-then-insert of :meth:`ensure_release`.
+        """
         release_id = str(uuid.uuid4())
         created_at = _now()
-        self._conn.execute(
-            "INSERT INTO releases (id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
-            (release_id, name, project_id or None, created_at),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO releases (id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
+                (release_id, name, project_id or None, created_at),
+            )
+            self._conn.commit()
         return {
             "id": release_id,
             "name": name,
@@ -365,6 +373,7 @@ class TrackerStore:
         stage: object = UNSET,
         source: object = UNSET,
         blocked_by: object = UNSET,
+        only_goal_derived: bool = False,
     ) -> Optional[dict]:
         """Update a task's fields.
 
@@ -372,6 +381,16 @@ class TrackerStore:
         Pass None to clear an optional FK field. The priority field
         cannot be cleared — it always has an integer value in [-2, 2].
         ``blocked_by`` replaces the whole set of blocking task ids.
+
+        With ``only_goal_derived`` the update applies only while the stored
+        task's source starts with :data:`GOAL_SOURCE_PREFIX`. The check is part
+        of the UPDATE itself, so a person taking a task over between a caller's
+        read and this write can never be overwritten.
+
+        Returns:
+            The updated task, or None when no task was changed: the task does
+            not exist, or ``only_goal_derived`` was set and it was not
+            goal-derived.
         """
         updates = ["updated_at = ?"]
         params: list = [_now()]
@@ -391,11 +410,17 @@ class TrackerStore:
                 updates.append(f"{field} = ?")
                 params.append(int(val) if field == "priority" else val)
 
+        where = "id = ?"
         params.append(task_id)
+        if only_goal_derived:
+            where += " AND substr(source, 1, ?) = ?"
+            params.extend([len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX])
         with self._lock:
-            self._conn.execute(
-                f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params
+            cursor = self._conn.execute(
+                f"UPDATE tasks SET {', '.join(updates)} WHERE {where}", params
             )
+            if cursor.rowcount == 0:
+                return None
             if not isinstance(blocked_by, _Unset):
                 self._set_blockers(task_id, blocked_by or [])
             self._conn.commit()
@@ -681,54 +706,77 @@ class TrackerStore:
         Existing records (matched by ID) are updated; new records are inserted.
         Tasks carry ``stage``, ``source`` and ``blocked_by`` like any other
         task; an absent field keeps an existing task's value, or takes the
-        column default for a new one. Returns counts of created and updated
-        records per entity type.
+        column default for a new one.
+
+        The import is all-or-nothing: it runs as one transaction under the
+        store lock, and a record the import rejects, or one the database
+        refuses (an unknown foreign key, a value outside a CHECK constraint),
+        rolls back everything written before it.
+
+        Returns:
+            Counts of created and updated records per entity type, or a dict
+            with ``error`` when nothing was imported.
         """
+        with self._lock:
+            try:
+                result = self._bulk_import_locked(projects, releases, tasks)
+            except sqlite3.Error as e:
+                result = {"error": f"import rejected by the database: {e}"}
+            except Exception:
+                self._conn.rollback()
+                raise
+            if "error" in result:
+                self._conn.rollback()
+            else:
+                self._conn.commit()
+        return result
+
+    def _bulk_import_locked(self, projects: list, releases: list, tasks: list) -> dict:
+        """Write the records of :meth:`bulk_import`. The caller holds the
+        store lock and commits or rolls back."""
         created = {"projects": 0, "releases": 0, "tasks": 0}
         updated = {"projects": 0, "releases": 0, "tasks": 0}
 
         for idx, p in enumerate(projects):
             if not p.get("id") or not p.get("name"):
                 return {"error": f"projects[{idx}] must have 'id' and 'name'"}
-            with self._lock:
-                cur = self._conn.execute(
-                    "UPDATE projects SET name = ? WHERE id = ?",
-                    (p["name"], p["id"]),
+            cur = self._conn.execute(
+                "UPDATE projects SET name = ? WHERE id = ?",
+                (p["name"], p["id"]),
+            )
+            if cur.rowcount > 0:
+                updated["projects"] += 1
+            else:
+                cur2 = self._conn.execute(
+                    "INSERT OR IGNORE INTO projects (id, name, created_at) "
+                    "VALUES (?, ?, ?)",
+                    (p["id"], p["name"], p.get("created_at") or _now()),
                 )
-                if cur.rowcount > 0:
-                    updated["projects"] += 1
+                if cur2.rowcount > 0:
+                    created["projects"] += 1
                 else:
-                    cur2 = self._conn.execute(
-                        "INSERT OR IGNORE INTO projects (id, name, created_at) "
-                        "VALUES (?, ?, ?)",
-                        (p["id"], p["name"], p.get("created_at") or _now()),
-                    )
-                    if cur2.rowcount > 0:
-                        created["projects"] += 1
-                    else:
-                        updated["projects"] += 1
+                    updated["projects"] += 1
 
         for idx, r in enumerate(releases):
             if not r.get("id") or not r.get("name"):
                 return {"error": f"releases[{idx}] must have 'id' and 'name'"}
-            with self._lock:
-                cur = self._conn.execute(
-                    "UPDATE releases SET name = ?, project_id = ? WHERE id = ?",
-                    (r["name"], r.get("project_id"), r["id"]),
+            cur = self._conn.execute(
+                "UPDATE releases SET name = ?, project_id = ? WHERE id = ?",
+                (r["name"], r.get("project_id"), r["id"]),
+            )
+            if cur.rowcount > 0:
+                updated["releases"] += 1
+            else:
+                cur2 = self._conn.execute(
+                    "INSERT OR IGNORE INTO releases "
+                    "(id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
+                    (r["id"], r["name"], r.get("project_id"),
+                     r.get("created_at") or _now()),
                 )
-                if cur.rowcount > 0:
-                    updated["releases"] += 1
+                if cur2.rowcount > 0:
+                    created["releases"] += 1
                 else:
-                    cur2 = self._conn.execute(
-                        "INSERT OR IGNORE INTO releases "
-                        "(id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
-                        (r["id"], r["name"], r.get("project_id"),
-                         r.get("created_at") or _now()),
-                    )
-                    if cur2.rowcount > 0:
-                        created["releases"] += 1
-                    else:
-                        updated["releases"] += 1
+                    updated["releases"] += 1
 
         for idx, t in enumerate(tasks):
             if not t.get("id"):
@@ -739,53 +787,49 @@ class TrackerStore:
                     "error": f"tasks[{idx}].priority must be an integer in [-2, 2]"
                 }
             now = _now()
-            with self._lock:
-                existing = self.get_task(t["id"])
-                if existing:
-                    self._conn.execute(
-                        "UPDATE tasks SET title = ?, description = ?, status = ?, "
-                        "priority = ?, stage = ?, source = ?, project_id = ?, "
-                        "release_id = ?, workstream_id = ?, updated_at = ? "
-                        "WHERE id = ?",
-                        (t.get("title", existing["title"]),
-                         t.get("description", existing["description"]),
-                         t.get("status", existing["status"]),
-                         t.get("priority", existing["priority"]),
-                         t.get("stage", existing["stage"]),
-                         t.get("source", existing["source"]).strip(),
-                         t.get("project_id", existing["project_id"]),
-                         t.get("release_id", existing["release_id"]),
-                         t.get("workstream_id", existing["workstream_id"]),
-                         now, t["id"]),
-                    )
-                    updated["tasks"] += 1
+            existing = self.get_task(t["id"])
+            if existing:
+                self._conn.execute(
+                    "UPDATE tasks SET title = ?, description = ?, status = ?, "
+                    "priority = ?, stage = ?, source = ?, project_id = ?, "
+                    "release_id = ?, workstream_id = ?, updated_at = ? "
+                    "WHERE id = ?",
+                    (t.get("title", existing["title"]),
+                     t.get("description", existing["description"]),
+                     t.get("status", existing["status"]),
+                     t.get("priority", existing["priority"]),
+                     t.get("stage", existing["stage"]),
+                     t.get("source", existing["source"]).strip(),
+                     t.get("project_id", existing["project_id"]),
+                     t.get("release_id", existing["release_id"]),
+                     t.get("workstream_id", existing["workstream_id"]),
+                     now, t["id"]),
+                )
+                updated["tasks"] += 1
+            else:
+                cur = self._conn.execute(
+                    "INSERT OR IGNORE INTO tasks "
+                    "(id, title, description, status, priority, stage, source, "
+                    " project_id, release_id, workstream_id, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (t["id"], t.get("title", ""), t.get("description"),
+                     t.get("status", "open"), priority,
+                     t.get("stage", "backlog"), t.get("source", "person").strip(),
+                     t.get("project_id"), t.get("release_id"),
+                     t.get("workstream_id"),
+                     t.get("created_at") or now, t.get("updated_at") or now),
+                )
+                if cur.rowcount > 0:
+                    created["tasks"] += 1
                 else:
-                    cur = self._conn.execute(
-                        "INSERT OR IGNORE INTO tasks "
-                        "(id, title, description, status, priority, stage, source, "
-                        " project_id, release_id, workstream_id, created_at, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (t["id"], t.get("title", ""), t.get("description"),
-                         t.get("status", "open"), priority,
-                         t.get("stage", "backlog"), t.get("source", "person").strip(),
-                         t.get("project_id"), t.get("release_id"),
-                         t.get("workstream_id"),
-                         t.get("created_at") or now, t.get("updated_at") or now),
-                    )
-                    if cur.rowcount > 0:
-                        created["tasks"] += 1
-                    else:
-                        updated["tasks"] += 1
+                    updated["tasks"] += 1
 
         # Blockers are linked once every task exists, so a task may be blocked
         # by one that appears later in the same import. As with update_task, a
         # supplied blocked_by replaces the set; an absent one leaves it alone.
-        with self._lock:
-            for t in tasks:
-                if "blocked_by" in t:
-                    self._set_blockers(t["id"], t["blocked_by"] or [])
-
-        self._conn.commit()
+        for t in tasks:
+            if "blocked_by" in t:
+                self._set_blockers(t["id"], t["blocked_by"] or [])
         return {"created": created, "updated": updated}
 
     # ------------------------------------------------------------------

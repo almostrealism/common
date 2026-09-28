@@ -221,7 +221,8 @@ DELETE /v1/releases/{id}                Delete a release
 GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines; ?stage=)
 POST   /v1/tasks                        Create a task
 GET    /v1/tasks/{id}                   Get a task
-PUT    /v1/tasks/{id}                   Update a task
+PUT    /v1/tasks/{id}                   Update a task (?only_goal_derived=true: only while the
+                                        stored task is a goals: task, else 409, checked atomically)
 DELETE /v1/tasks/{id}                   Delete a task
 
 GET    /v1/projects/{id}/tasks          Tasks for a project
@@ -233,7 +234,7 @@ GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
 GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
 POST   /v1/claim                        Claim the next one for a workstream
                                         ({"project", "release", "workstream_id"})
-POST   /v1/import                       Bulk import (idempotent upsert)
+POST   /v1/import                       Bulk import (idempotent upsert; all-or-nothing)
 ```
 
 ---

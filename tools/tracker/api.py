@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from store import UNSET
+from store import GOAL_SOURCE_PREFIX, UNSET
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,6 @@ _VALID_STAGES = {"backlog", "ready", "declined"}
 # goal document ("goals:<document>"). The database CHECK constraint mirrors
 # this, so a value that never reaches the API cannot be persisted either.
 _PERSON_SOURCE = "person"
-_GOAL_SOURCE_PREFIX = "goals:"
 
 
 def _valid_source(value: object) -> bool:
@@ -41,8 +40,11 @@ def _valid_source(value: object) -> bool:
     source = value.strip()
     if source == _PERSON_SOURCE:
         return True
-    return (source.startswith(_GOAL_SOURCE_PREFIX)
-            and len(source) > len(_GOAL_SOURCE_PREFIX))
+    return (source.startswith(GOAL_SOURCE_PREFIX)
+            and len(source) > len(GOAL_SOURCE_PREFIX))
+
+# Refusal of a goal-only update of a task a person wrote.
+_NOT_GOAL_DERIVED = "Task was not derived from goal documents; only a person may change it"
 
 # Priority is a signed integer; database CHECK constraint mirrors this range.
 _MIN_PRIORITY = -2
@@ -437,7 +439,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"ok": True, "task": task})
 
     async def update_task(request: Request) -> JSONResponse:
-        """PUT /v1/tasks/{id}"""
+        """PUT /v1/tasks/{id}
+
+        With the query parameter ``only_goal_derived=true`` the update applies
+        only while the stored task is goal-derived; a task a person wrote is
+        left untouched and the response is a 409. The check and the write are
+        one atomic step in the store.
+        """
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
@@ -484,6 +492,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 return None
             return coerce(val) if coerce else val
 
+        only_goal_derived = (
+            request.query_params.get("only_goal_derived", "").lower() in ("1", "true"))
         task = store.update_task(
             task_id=task_id,
             title=_field("title", coerce=lambda v: v.strip()),
@@ -496,7 +506,16 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             stage=_field("stage"),
             source=_field("source", coerce=lambda v: v.strip()),
             blocked_by=_field("blocked_by"),
+            only_goal_derived=only_goal_derived,
         )
+        if task is None:
+            if only_goal_derived and store.get_task(task_id):
+                return JSONResponse(
+                    {"ok": False, "error": _NOT_GOAL_DERIVED}, status_code=409
+                )
+            return JSONResponse(
+                {"ok": False, "error": "Task not found"}, status_code=404
+            )
         return JSONResponse({"ok": True, "task": task})
 
     async def delete_task(request: Request) -> JSONResponse:
@@ -588,6 +607,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
+        # TODO(review): non-object projects/releases entries raise in the store (500) instead of a 400.
         projects = body.get("projects") or []
         releases = body.get("releases") or []
         tasks = body.get("tasks") or []
