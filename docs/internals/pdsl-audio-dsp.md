@@ -98,8 +98,9 @@ composes the KV-cached attention block from these; `attention()` loads that asse
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
 pre-norm transformer layer from the layers of those two assets — `accum` around an attention
-layer, then `accum` around `swiglu_ffn` — and `transformer()` builds it from the three assets
-parsed into one program with `PdslLoader.parseResources`. A layer called from another layer
+layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
+statements (see [Imports](#imports)), so `transformer()` builds it from
+`PdslLoader.parseResource(TRANSFORMER_ASSET)` alone. A layer called from another layer
 sees the program's `data` and `state` entries, and a program's own layers take precedence over
 registered primitives and built-ins of the same name — except inside that layer's own construction,
 where its name reaches the primitive or built-in it shadows (so a layer can wrap it), and a call that
@@ -203,3 +204,46 @@ The caller owns and supplies the backing `PackedCollection`s; they persist acros
 `forward()` calls. State is written inside the primitive's `push()` via `into(...)` — a
 `CollectionProducer` write, never `setMem()`/`toDouble()` — so a stateful PDSL block behaves
 like a `CachedStateCell` from the cell graph's perspective without any adapter code.
+
+## Imports
+
+A `.pdsl` file declares the assets it depends on with `import` statements at the top of the
+file, each naming the classpath resource of another asset — the same absolute path a Java
+caller passes to `PdslLoader.parseResource`:
+
+```pdsl
+import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+layer transformer(/* ... */) {
+    accum { attention(/* ... */) }
+    accum { swiglu_ffn(/* ... */) }
+}
+```
+
+The imported files' layers, `config`, `data` and `state` blocks are all in scope, so a layer
+may call a layer defined in an imported file. Because the dependency lives in the asset rather
+than in the Java caller, `PdslLoader.parseResource(root)` resolves it: the returned program
+holds `root`'s own definitions together with those of every asset it imports, transitively.
+A caller building a layer from `root` names only `root`; adding a call to a new asset inside
+`root` is a one-line `import` in `root`, not a change every caller must repeat. (Comments may
+precede the imports; the imports must come before the first `config`/`data`/`state`/`layer`/`model`
+definition.)
+
+Two rules keep resolution unambiguous:
+
+- **Duplicate definitions are an error.** If two *distinct* resources define the same name for
+  the same kind of definition (two `layer swiglu_ffn`, say), resolution fails with a
+  `PdslParseException` naming the offender, because only one of the two could ever be reached.
+  It is the *resources* that are deduplicated, not the definitions: a diamond — `A` imports `B`
+  and `C`, and both import `D` — pulls `D` in exactly once and succeeds. Definitions collide
+  only when they come from two different files.
+- **Import cycles are an error.** If an asset imports itself, directly or through a chain that
+  leads back to it, resolution fails with a `PdslParseException` naming the cycle
+  (`a.pdsl -> b.pdsl -> a.pdsl`), mirroring the interpreter's rejection of a layer that calls
+  itself.
+
+`PdslLoader.parseResources(String...)` remains for assembling genuinely unrelated assets into
+one program in a single call; it follows each argument's imports and applies the same dedup and
+collision rules. Prefer an `import` in the asset that depends on another — the dependency then
+travels with the asset instead of being re-enumerated at every call site.

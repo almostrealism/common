@@ -227,47 +227,138 @@ public class PdslLoader {
 	}
 
 	/**
-	 * Parse a PDSL program from a classpath resource.
+	 * Parse a PDSL program from a classpath resource, resolving its {@code import} statements.
 	 *
 	 * <p>The resource path must be absolute (e.g. {@code "/pdsl/midi/skytnt_block.pdsl"}).
 	 * An {@link IllegalStateException} is thrown if the resource cannot be found or read.</p>
 	 *
+	 * <p>Imports are resolved transitively — the returned program holds this resource's own
+	 * definitions together with those of every asset it imports, and every asset those import,
+	 * so a caller building a layer from this asset need only name it. A resource reached by more
+	 * than one import path (a diamond) is merged once; an import cycle and a name defined by two
+	 * distinct resources are both rejected with a {@link PdslParseException}. A resource that
+	 * imports nothing is returned exactly as it is cached, so repeated loads share one instance.</p>
+	 *
 	 * @param classpathResource absolute classpath path to the .pdsl resource
-	 * @return the parsed program
-	 * @throws IllegalStateException if the resource is not found or cannot be read
+	 * @return the parsed program, with imported definitions merged in
+	 * @throws IllegalStateException if the resource, or one it imports, is not found or cannot be read
+	 * @throws PdslParseException    if an import cycle is detected, or a name is defined by two
+	 *                               distinct resources for the same kind of definition
 	 */
 	public PdslNode.Program parseResource(String classpathResource) {
-		return RESOURCE_CACHE.computeIfAbsent(classpathResource, resource -> parse(readResource(resource)));
+		PdslNode.Program parsed = parseSingleResource(classpathResource);
+		if (parsed.getImports().isEmpty()) {
+			return parsed;
+		}
+		return mergeResources(classpathResource);
 	}
 
 	/**
 	 * Parse several classpath .pdsl resources into one program, so that a layer of one asset
-	 * can call the layers of another (as {@code transformer.pdsl} calls the attention layers of
-	 * {@code attention.pdsl} and the {@code swiglu_ffn} layer of {@code feed_forward.pdsl}).
-	 * Each resource is parsed on its own, so a parse error reports its line within that
-	 * resource, and the definitions of all resources are gathered in the order given.
+	 * can call the layers of another. Prefer declaring an {@code import} in the asset that
+	 * depends on another; this method remains the way to assemble genuinely unrelated assets
+	 * into one program. Each resource is parsed on its own (so a parse error reports its line
+	 * within that resource) together with everything it imports, and the definitions are
+	 * gathered in the order given, imported dependencies before the resource that imports them.
 	 *
 	 * @param classpathResources absolute classpath paths of the .pdsl resources
-	 * @return the program holding every definition of every resource
+	 * @return the program holding every definition of every resource and its imports
 	 * @throws IllegalStateException if a resource is not found or cannot be read
-	 * @throws PdslParseException    if a name is defined more than once for the same kind of
-	 *                               definition, which would otherwise leave all but one of the
-	 *                               definitions silently unreachable
+	 * @throws PdslParseException    if an import cycle is detected, or a name is defined more than
+	 *                               once for the same kind of definition, which would otherwise
+	 *                               leave all but one of the definitions silently unreachable
 	 */
 	public PdslNode.Program parseResources(String... classpathResources) {
+		return mergeResources(classpathResources);
+	}
+
+	/**
+	 * Parse a single classpath .pdsl resource, without resolving its imports. The result is
+	 * memoized in {@link #RESOURCE_CACHE} — a resource does not change while the JVM runs and
+	 * parsing it is a pure function of its text — so it is parsed at most once per JVM. The
+	 * cached program is treated as read-only: {@link #mergeResources} copies its definitions
+	 * into a fresh list rather than mutating it.
+	 *
+	 * @param classpathResource absolute classpath path to the .pdsl resource
+	 * @return the resource's own parsed program, imports unresolved
+	 */
+	private PdslNode.Program parseSingleResource(String classpathResource) {
+		return RESOURCE_CACHE.computeIfAbsent(classpathResource, resource -> parse(readResource(resource)));
+	}
+
+	/**
+	 * Resolve {@code roots} and their transitive imports into one program. Each resource is
+	 * merged once (so a diamond of imports pulls a shared dependency in a single time); a
+	 * resource reached while it is still being resolved is an import cycle; and a name defined
+	 * by two distinct resources for the same kind of definition is a collision. Definitions are
+	 * gathered depth-first, imports before importer, in the order the roots are given.
+	 *
+	 * @param roots absolute classpath paths of the resources to resolve
+	 * @return the merged program built from copies of the cached definitions
+	 * @throws PdslParseException if an import cycle or a duplicate definition name is detected
+	 */
+	private PdslNode.Program mergeResources(String... roots) {
 		List<PdslNode.Definition> definitions = new ArrayList<>();
-		Set<String> defined = new HashSet<>();
-		for (String resource : classpathResources) {
-			for (PdslNode.Definition definition : parseResource(resource).getDefinitions()) {
-				String key = definition.getClass().getSimpleName() + " " + definition.getName();
-				if (!defined.add(key)) {
-					throw new PdslParseException("'" + definition.getName() + "' is defined more than once"
-							+ " among " + String.join(", ", classpathResources) + " (again in " + resource + ")");
-				}
-				definitions.add(definition);
-			}
+		Map<String, String> definedBy = new HashMap<>();
+		Set<String> merged = new HashSet<>();
+		List<String> importing = new ArrayList<>();
+		for (String root : roots) {
+			mergeResource(root, definitions, definedBy, merged, importing);
 		}
 		return new PdslNode.Program(definitions);
+	}
+
+	/**
+	 * Merge one resource and everything it imports into {@code definitions}, depth-first.
+	 *
+	 * @param resource    the resource to merge
+	 * @param definitions accumulates the definitions of every resource merged
+	 * @param definedBy   maps each definition key to the resource that first defined it
+	 * @param merged      resources already fully merged, so a diamond dependency is added once
+	 * @param importing   the chain of resources currently being resolved, for cycle detection
+	 * @throws PdslParseException if {@code resource} closes an import cycle, or redefines a name
+	 */
+	private void mergeResource(String resource, List<PdslNode.Definition> definitions,
+							   Map<String, String> definedBy, Set<String> merged, List<String> importing) {
+		if (merged.contains(resource)) {
+			return;
+		}
+		if (importing.contains(resource)) {
+			throw new PdslParseException("'" + resource + "' imports itself ("
+					+ importCycle(importing, resource) + "); a PDSL asset cannot import itself,"
+					+ " directly or transitively");
+		}
+		importing.add(resource);
+		PdslNode.Program parsed = parseSingleResource(resource);
+		for (PdslNode.Import imported : parsed.getImports()) {
+			mergeResource(imported.getResource(), definitions, definedBy, merged, importing);
+		}
+		for (PdslNode.Definition definition : parsed.getDefinitions()) {
+			String key = definition.getClass().getSimpleName() + " " + definition.getName();
+			String prior = definedBy.putIfAbsent(key, resource);
+			if (prior != null) {
+				throw new PdslParseException("'" + definition.getName() + "' is defined more than once"
+						+ " (in " + prior + " and " + resource + ")");
+			}
+			definitions.add(definition);
+		}
+		merged.add(resource);
+		importing.remove(importing.size() - 1);
+	}
+
+	/**
+	 * Describes the chain of imports currently being resolved that leads back to {@code resource},
+	 * for the message of an import-cycle {@link PdslParseException}. Mirrors the layer
+	 * self-recursion cycle reported by the interpreter.
+	 *
+	 * @param importing the resources currently being resolved, outermost first
+	 * @param resource  the resource whose re-entry closes the cycle
+	 * @return the cycle chain, e.g. {@code a.pdsl -> b.pdsl -> a.pdsl}
+	 */
+	private static String importCycle(List<String> importing, String resource) {
+		List<String> chain = new ArrayList<>(importing.subList(importing.indexOf(resource), importing.size()));
+		chain.add(resource);
+		return String.join(" -> ", chain);
 	}
 
 	/**

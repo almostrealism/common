@@ -28,7 +28,8 @@ import java.util.Map;
  *
  * <p>Grammar overview:
  * <pre>
- * program      = definition*
+ * program      = import* definition*
+ * import       = 'import' STRING
  * definition   = config_def | layer_def | model_def
  * config_def   = 'config' IDENT '{' (IDENT '=' expr)* '}'
  * layer_def    = 'layer' IDENT '(' params ')' ('->' shape)? '{' body '}'
@@ -73,11 +74,26 @@ public class PdslParser {
 	 * @return the program node
 	 */
 	public PdslNode.Program parse() {
+		List<PdslNode.Import> imports = new ArrayList<>();
+		while (check(PdslToken.Type.IMPORT)) {
+			imports.add(parseImport());
+		}
 		List<PdslNode.Definition> definitions = new ArrayList<>();
 		while (!check(PdslToken.Type.EOF)) {
 			definitions.add(parseDefinition());
 		}
-		return new PdslNode.Program(definitions);
+		return new PdslNode.Program(imports, definitions);
+	}
+
+	/**
+	 * Parses an {@code import "resource"} statement.
+	 *
+	 * @return The parsed import node
+	 */
+	private PdslNode.Import parseImport() {
+		PdslToken kw = consume(PdslToken.Type.IMPORT);
+		PdslToken resource = consume(PdslToken.Type.STRING);
+		return new PdslNode.Import(resource.getValue(), kw.getLine(), kw.getColumn());
 	}
 
 	/**

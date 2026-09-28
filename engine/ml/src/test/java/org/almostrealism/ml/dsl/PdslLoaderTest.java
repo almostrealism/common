@@ -415,7 +415,9 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * {@link PdslLoader#parseResources} forms one program from several assets: the transformer
 	 * asset together with the attention and feed-forward assets whose layers it calls holds every
-	 * layer and state block of the three.
+	 * layer and state block of the three. Because {@code transformer.pdsl} now imports the other
+	 * two, they are named both explicitly in this call and by that import, yet each resource's
+	 * definitions appear exactly once — the resources are deduped, not the definitions.
 	 */
 	@Test(timeout = 60000)
 	public void testParseResourcesCombinesAssets() {
@@ -423,10 +425,10 @@ public class PdslLoaderTest extends TestSuiteBase {
 		PdslNode.Program program = loader.parseResources(
 				"/pdsl/attention.pdsl", "/pdsl/feed_forward.pdsl", "/pdsl/transformer.pdsl");
 
-		int separately = loader.parseResource("/pdsl/attention.pdsl").getDefinitions().size()
-				+ loader.parseResource("/pdsl/feed_forward.pdsl").getDefinitions().size()
-				+ loader.parseResource("/pdsl/transformer.pdsl").getDefinitions().size();
-		Assert.assertEquals(separately, program.getDefinitions().size());
+		int ownDefinitions = loader.parse(loader.readResource("/pdsl/attention.pdsl")).getDefinitions().size()
+				+ loader.parse(loader.readResource("/pdsl/feed_forward.pdsl")).getDefinitions().size()
+				+ loader.parse(loader.readResource("/pdsl/transformer.pdsl")).getDefinitions().size();
+		Assert.assertEquals(ownDefinitions, program.getDefinitions().size());
 
 		PdslInterpreter interpreter = new PdslInterpreter(program);
 		for (String layer : new String[] { "attention", "attention_qk_norm", "attention_mra", "swiglu_ffn",
@@ -492,6 +494,118 @@ public class PdslLoaderTest extends TestSuiteBase {
 			Assert.fail("parseResources() should reject a layer defined by two resources");
 		} catch (PdslParseException expected) {
 			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("'swiglu_ffn'"));
+		}
+	}
+
+	/**
+	 * A single {@code import} brings the imported file's definitions into the resolved program,
+	 * so a layer of the importing file can call a layer of the imported file and both are built
+	 * from a single {@link PdslLoader#parseResource} of the importing file.
+	 */
+	@Test(timeout = 60000)
+	public void testImportBringsInDefinitions() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/imports/single.pdsl");
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		Assert.assertTrue("imported leaf_identity should be in scope",
+				interpreter.getLayerNames().contains("leaf_identity"));
+		Assert.assertTrue("single_wrap should be defined",
+				interpreter.getLayerNames().contains("single_wrap"));
+
+		Block block = loader.buildLayer(program, "single_wrap",
+				new TraversalPolicy(1, 4), new HashMap<>());
+		Assert.assertNotNull("single_wrap should build from the imported layer", block);
+	}
+
+	/**
+	 * Imports are resolved transitively: importing an asset that itself imports another pulls the
+	 * whole chain into one program, so {@code chain_top.pdsl} (imports {@code single.pdsl}, which
+	 * imports {@code leaf.pdsl}) yields all three layers from one {@link PdslLoader#parseResource}.
+	 */
+	@Test(timeout = 60000)
+	public void testTransitiveImportChain() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/imports/chain_top.pdsl");
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		for (String layer : new String[] { "leaf_identity", "single_wrap", "chain_top_wrap" }) {
+			Assert.assertTrue("transitive chain should define '" + layer + "'",
+					interpreter.getLayerNames().contains(layer));
+		}
+	}
+
+	/**
+	 * A diamond of imports — {@code diamond_top.pdsl} imports {@code single.pdsl} and
+	 * {@code diamond_other.pdsl}, both of which import {@code leaf.pdsl} — resolves the shared
+	 * {@code leaf.pdsl} exactly once and succeeds, rather than reporting {@code leaf_identity}
+	 * as a duplicate. Exactly four distinct layers result.
+	 */
+	@Test(timeout = 60000)
+	public void testDiamondImportResolvesOnce() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/imports/diamond_top.pdsl");
+
+		Assert.assertEquals("shared leaf.pdsl must be merged once, giving four distinct layers",
+				4, program.getDefinitions().size());
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		for (String layer : new String[] { "leaf_identity", "single_wrap", "diamond_other_wrap",
+				"diamond_top_wrap" }) {
+			Assert.assertTrue("diamond should define '" + layer + "'",
+					interpreter.getLayerNames().contains(layer));
+		}
+	}
+
+	/**
+	 * An import cycle is rejected with a {@link PdslParseException} that names the cycle, mirroring
+	 * the interpreter's rejection of a layer that calls itself.
+	 */
+	@Test(timeout = 60000)
+	public void testImportCycleRejected() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.parseResource("/pdsl/imports/cycle_x.pdsl");
+			Assert.fail("parseResource() should reject an import cycle");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("/pdsl/imports/cycle_x.pdsl -> "
+							+ "/pdsl/imports/cycle_y.pdsl -> /pdsl/imports/cycle_x.pdsl"));
+		}
+	}
+
+	/**
+	 * When two distinct resources define the same layer name — {@code dup_child.pdsl} imports
+	 * {@code leaf.pdsl} and then redefines its {@code leaf_identity} layer — resolution rejects it
+	 * as a duplicate definition, since only one of the two could ever be reached.
+	 */
+	@Test(timeout = 60000)
+	public void testImportDuplicateDefinitionRejected() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.parseResource("/pdsl/imports/dup_child.pdsl");
+			Assert.fail("parseResource() should reject a layer defined by an import and the importer");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("'leaf_identity'"));
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("is defined more than once"));
+		}
+	}
+
+	/**
+	 * An {@code import} of a resource that is not on the classpath fails clearly, naming the
+	 * missing resource, the same way {@link PdslLoader#parseResource} does for a missing root.
+	 */
+	@Test(timeout = 60000)
+	public void testMissingImportFailsClearly() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.parseResource("/pdsl/imports/missing_import.pdsl");
+			Assert.fail("parseResource() should reject an import of a missing resource");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("/pdsl/imports/does_not_exist.pdsl"));
 		}
 	}
 

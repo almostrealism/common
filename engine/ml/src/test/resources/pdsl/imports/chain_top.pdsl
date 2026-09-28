@@ -1,0 +1,7 @@
+// Top of a transitive chain: imports single.pdsl, which imports leaf.pdsl. Resolving this
+// file alone must pull in single_wrap and leaf_identity as well.
+import "/pdsl/imports/single.pdsl"
+
+layer chain_top_wrap() -> [1, 4] {
+    single_wrap()
+}

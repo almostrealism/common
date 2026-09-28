@@ -1,0 +1,8 @@
+// Apex of a diamond: imports two files that both import leaf.pdsl. Resolving this file must
+// merge leaf.pdsl exactly once and succeed, rather than reporting leaf_identity twice.
+import "/pdsl/imports/single.pdsl"
+import "/pdsl/imports/diamond_other.pdsl"
+
+layer diamond_top_wrap() -> [1, 4] {
+    leaf_identity()
+}

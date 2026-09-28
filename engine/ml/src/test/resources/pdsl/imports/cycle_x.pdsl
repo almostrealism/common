@@ -1,0 +1,6 @@
+// One half of an import cycle: cycle_x imports cycle_y, which imports cycle_x.
+import "/pdsl/imports/cycle_y.pdsl"
+
+layer cycle_x_layer() -> [1, 4] {
+    identity()
+}
