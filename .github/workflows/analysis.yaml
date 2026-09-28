@@ -3031,7 +3031,7 @@ jobs:
   #                        this run, without waiting for anything else.
   #   auto-review          Every other case, on attempt 1 only: a build
   #                        failure, code policy violations, other quality gate
-  #                        failures, a docs-only verify, or — when every gate
+  #                        failures, a docs-only review, or — when every gate
   #                        passed — the general review. Submits as soon as the
   #                        gates report, from inside this run, while the
   #                        long-running test jobs are still going. The gates
@@ -3216,7 +3216,7 @@ jobs:
           NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
           if [ -n "$CHANGED_FILES" ] && [ -z "$NON_DOCS" ]; then
             echo "docs_only=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::All changes are under docs/ — will use verify prompt instead of review"
+            echo "::notice::All changes are under docs/ — will use the docs review prompt"
           else
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
           fi
@@ -3256,16 +3256,22 @@ jobs:
           QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
           DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
         run: |
-          if [ "$CODE_CHANGED" != "true" ]; then
-            ROUTE=docs-verify
+          # docs-review is checked first: a docs-only branch has no code, so
+          # the build is skipped and BUILD_RESULT would otherwise route it to
+          # build-failure. Its prompt only edits under docs/, so it is reserved
+          # for genuinely docs-only changes — other non-code changes (CI files,
+          # a root README, a JSON config) cannot be reviewed under that
+          # constraint and fall back to the general review.
+          if [ "$DOCS_ONLY" = "true" ]; then
+            ROUTE=docs-review
+          elif [ "$CODE_CHANGED" != "true" ]; then
+            ROUTE=general-review
           elif [ "$BUILD_RESULT" != "success" ]; then
             ROUTE=build-failure
           elif [ "$CODE_POLICY_PASSED" != "true" ]; then
             ROUTE=code-policy
           elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
             ROUTE=quality-gates
-          elif [ "$DOCS_ONLY" = "true" ]; then
-            ROUTE=docs-verify
           else
             ROUTE=general-review
           fi
@@ -3345,27 +3351,31 @@ jobs:
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
 
-      # ── Docs-only verify path ───────────────────────────────────
-      # Docs-only changes are typically plan documents for a workstream, so
-      # they get the verify-completion prompt instead of the general review.
-      - name: Build prompt (docs-only verify)
-        if: steps.route.outputs.route == 'docs-verify'
+      # ── Docs-only review path ───────────────────────────────────
+      # Docs-only changes are usually a plan awaiting approval, so they get a
+      # review that improves the documents and never implements the plan. A
+      # plan branch's first commit is always docs-only; this route once sent
+      # the verify-completion prompt, which implemented every plan the moment
+      # it was proposed. Implementation is started by hand, with the Verify
+      # Completion workflow, once a person has approved the plan.
+      - name: Build prompt (docs-only review)
+        if: steps.route.outputs.route == 'docs-review'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          chmod +x ./tools/ci/prompts/build-docs-review-prompt.sh
+          ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Stage submit request (docs-only verify)
-        if: steps.route.outputs.route == 'docs-verify'
+      - name: Stage submit request (docs-only review)
+        if: steps.route.outputs.route == 'docs-review'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Verify docs changes"
+          DESCRIPTION: "Review docs changes"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
 
@@ -3428,7 +3438,7 @@ jobs:
             echo "## Auto-Review"
             echo ""
             case "$ROUTE" in
-              docs-verify)    echo "**Docs-only change** — submitted a job to verify the docs changes." ;;
+              docs-review)    echo "**Docs-only change** — submitted a job to review the docs changes (it does not implement a plan)." ;;
               build-failure)  echo "**Build failed** — submitted a job to fix the build." ;;
               code-policy)    echo "**Code policy violations detected** — submitted a job with the dedicated policy violation prompt." ;;
               quality-gates)

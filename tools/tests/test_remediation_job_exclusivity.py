@@ -2,7 +2,7 @@
 
 "Build and Test" has three remediation jobs — ``auto-resolve-python`` (a
 python-tests failure, submitted at once), ``auto-review`` (build failure, code
-policy, quality gates, docs-only verify or the general review, submitted as
+policy, quality gates, docs-only review or the general review, submitted as
 soon as the gates report) and ``auto-resolve`` (long-running test failures,
 staged on attempt 3+ and submitted by "Auto-Resolve Submit" once the flaky-test
 retries are spent). Two of them submitting for the same attempt would put two
@@ -119,12 +119,92 @@ class RemediationJobConditionTests(unittest.TestCase):
                 self.assertNotIn("auto-resolve-request", _uploaded_artifacts(jobs[producer]))
 
     def test_auto_resolve_does_not_stage_the_early_prompts(self):
-        """auto-review owns the build, policy, quality-gate, verify and review prompts."""
+        """auto-review owns the build, policy, quality-gate and review prompts."""
         runs = " ".join(step.get("run", "") for step in _jobs()["auto-resolve"]["steps"])
         for builder in ("build-review-prompt.sh", "build-verify-prompt.sh",
+                        "build-docs-review-prompt.sh",
                         "build-quality-gate-prompt.sh", "build-policy-violation-prompt.sh"):
             with self.subTest(builder=builder):
                 self.assertNotIn(builder, runs)
+
+    def test_auto_review_never_starts_implementing_a_plan(self):
+        """A plan branch's first commit is docs-only, so whatever auto-review
+        sends a docs-only branch reaches every plan the moment it is proposed.
+        That route once sent the verify-completion prompt, which implements
+        the plan; it must send the docs review, and the implementation prompt
+        must not be reachable from auto-review at all. Implementation is
+        started by hand, from the Verify Completion workflow."""
+        steps = _jobs()["auto-review"]["steps"]
+        runs = " ".join(step.get("run", "") for step in steps)
+        self.assertNotIn("build-verify-prompt.sh", runs)
+        docs = next(s for s in steps if s.get("name") == "Build prompt (docs-only review)")
+        self.assertIn("route == 'docs-review'", docs["if"])
+        self.assertIn("build-docs-review-prompt.sh", docs["run"])
+
+
+class AutoReviewRoutingTests(unittest.TestCase):
+    """Runs the `Select prompt` shell to pin which route each state picks.
+
+    The docs-review prompt only edits under `docs/`, so it must reach a branch
+    only when the branch is genuinely docs-only. A non-code change that is not
+    docs-only — a CI file, a root README, a JSON config — has no code but
+    cannot be reviewed under that constraint, and belongs on the general
+    review, not docs-review.
+    """
+
+    def _select(self, **env):
+        script = next(s for s in _jobs()["auto-review"]["steps"]
+                      if s.get("name") == "Select prompt")["run"]
+        with tempfile.NamedTemporaryFile("r", suffix=".out", delete=False) as out:
+            output = out.name
+        try:
+            full = dict(os.environ, GITHUB_OUTPUT=output,
+                        CODE_CHANGED="", BUILD_RESULT="", CODE_POLICY_PASSED="",
+                        QUALITY_HAS_FAILURES="", DOCS_ONLY="")
+            full.update(env)
+            result = subprocess.run(["bash", "-c", script], env=full,
+                                    capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            with open(output) as f:
+                routes = dict(line.strip().split("=", 1) for line in f if "=" in line)
+            return routes["route"]
+        finally:
+            os.unlink(output)
+
+    def test_a_docs_only_branch_is_reviewed_not_implemented(self):
+        self.assertEqual("docs-review", self._select(CODE_CHANGED="false", DOCS_ONLY="true"))
+
+    def test_a_non_code_non_docs_branch_gets_the_general_review(self):
+        """A CI-only or config-only branch has no code and is not docs-only; the
+        docs-review prompt forbids edits outside docs/, so it cannot serve it."""
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="false"))
+
+    def test_a_docs_only_branch_never_routes_to_build_failure(self):
+        """Its build is skipped, so BUILD_RESULT is not 'success'; docs-review
+        must still win over the build-failure arm."""
+        self.assertEqual("docs-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="true",
+                                      BUILD_RESULT="skipped"))
+
+    def test_a_build_failure_routes_to_build_failure(self):
+        self.assertEqual("build-failure",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="failure"))
+
+    def test_a_code_policy_failure_routes_to_code_policy(self):
+        self.assertEqual("code-policy",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="false"))
+
+    def test_a_quality_gate_failure_routes_to_quality_gates(self):
+        self.assertEqual("quality-gates",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="true"))
+
+    def test_a_clean_code_branch_gets_the_general_review(self):
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="false"))
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -165,7 +245,7 @@ class CredentialIsolationTests(unittest.TestCase):
         steps = _jobs()["auto-review"]["steps"]
         select = next(s for s in steps if s.get("name") == "Select prompt")["run"]
         routes = set(re.findall(r"ROUTE=([a-z-]+)", select))
-        self.assertEqual({"docs-verify", "build-failure", "code-policy", "quality-gates",
+        self.assertEqual({"docs-review", "build-failure", "code-policy", "quality-gates",
                           "general-review"}, routes)
         staged = {m for s in steps if s.get("name", "").startswith("Stage submit request")
                   for m in re.findall(r"route == '([a-z-]+)'", str(s.get("if", "")))}

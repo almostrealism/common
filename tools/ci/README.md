@@ -50,7 +50,7 @@ one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 
 - `auto-resolve-python` — python-tests failed; submits at once.
 - `auto-review` — attempt 1 only; always submits one of build failure, code
-  policy, quality gates, docs-only verify, or the general review, as soon as the
+  policy, quality gates, docs-only review, or the general review, as soon as the
   gates report. A gate that failed without recording a cause
   (`check-quality-gates.sh`'s `unattributed`) is never reported as a finding: the
   branch gets the general review, with a note that the gate is not the agent's
@@ -122,6 +122,7 @@ it knowingly does not cover are in
 | `build-build-failure-prompt.sh` | Build prompt for agent when compilation fails |
 | `build-consolidation-prompt.sh` | Build prompt for the recurring consolidation (duplication) round |
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
+| `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
@@ -132,10 +133,11 @@ it knowingly does not cover are in
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
-| `build-verify-prompt.sh` | Build prompt for verify-completion workflow |
+| `build-verify-prompt.sh` | Build prompt for the verify-completion workflow, the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt |
+| `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
