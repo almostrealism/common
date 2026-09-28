@@ -111,16 +111,33 @@ public class ChartTest extends TestSuiteBase {
 		Assert.assertTrue(rendered.contains("[--------]:"));
 	}
 
-	/** Once the entry cap is exceeded the oldest lines are discarded. */
+	/**
+	 * Once the entry cap is exceeded the oldest lines are discarded, not arbitrary ones.
+	 * The sequence rises monotonically, so no peak/valley annotation fires and each
+	 * {@link Chart#addEntry(double)} appends exactly one line, leaving exactly the last
+	 * three. Values above {@code scale * div} (0.05 * 80 = 4.0) render a trailing
+	 * formatted value, so the three newest values must appear and the newest discarded
+	 * value (9) must not.
+	 */
 	@Test(timeout = 10000)
-	public void capBoundsRetainedLines() {
+	public void capDiscardsOldestLines() {
 		Chart chart = new Chart(3);
 		for (int i = 1; i <= 12; i++) {
 			chart.addEntry(i);
 		}
 
-		Assert.assertTrue("Retained lines must not exceed the configured cap",
-				chart.size() <= 3);
+		Assert.assertEquals("Cap should retain exactly the configured number of lines",
+				3, chart.size());
+
+		String rendered = chart.toString();
+		Assert.assertTrue("Newest retained value 10 should be present",
+				rendered.contains(" 10.000"));
+		Assert.assertTrue("Newest retained value 11 should be present",
+				rendered.contains(" 11.000"));
+		Assert.assertTrue("Newest retained value 12 should be present",
+				rendered.contains(" 12.000"));
+		Assert.assertFalse("Discarded value 9 should be absent once the oldest lines are dropped",
+				rendered.contains(" 9.000"));
 	}
 
 	/** {@link Chart#storeValues(File)} writes each recorded value on its own line. */
