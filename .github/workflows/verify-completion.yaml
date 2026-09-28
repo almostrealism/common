@@ -16,11 +16,22 @@ name: "Verify Completion"
 # runner and reaches the controller through its Cloudflare Access tunnel;
 # none of them builds or tests anything.
 #
-# The scripts that run with the controller service token attached
-# (register-workstream.sh, submit-agent-job.sh) are executed from a checkout of
-# the default branch, not the dispatched branch's own tree: manual dispatch is
-# not a code-integrity boundary, so the secret only ever runs against reviewed
-# code.
+# Manual dispatch is not a code-integrity boundary: a branch author who edited
+# a script this workflow runs could exfiltrate the controller service token
+# when it is dispatched on their branch. So no job that holds the token runs any
+# of the branch's code. register-workstream needs nothing from the branch and
+# runs register-workstream.sh from a default-branch checkout. The prompt does
+# come from the branch's own templates, so it is built in a separate job
+# (build-prompt) that never sees the token and stages the result as an artifact;
+# the token-bearing submit job (verify) checks out the default branch, downloads
+# that artifact, and submits it with submit-staged-request.sh. Building the
+# prompt in its own job — rather than re-checking-out the default branch inside
+# the submit job — is deliberate: a re-checkout replaces the workspace files but
+# not $GITHUB_ENV/$GITHUB_PATH, so a prompt builder that appended BASH_ENV, PATH
+# or LD_PRELOAD to them would still steer the trusted submit step. A separate job
+# has never run the branch's code, so its environment is clean. This is the same
+# stage-then-submit pattern the auto-review/auto-resolve jobs in analysis.yaml
+# use.
 
 on:
   workflow_dispatch:
@@ -152,8 +163,12 @@ jobs:
           echo "Registered a FlowTree workstream for branch \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
           echo "with planning document \`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Phase 3: Implement and verify ─────────────────────────────────
-  verify:
+  # ── Phase 3: Build the implementation prompt ──────────────────────
+  # The prompt is built from the branch's own templates, so it runs the branch's
+  # code — but this job never holds the controller token, so that code cannot
+  # reach it. The prompt is staged as an artifact for the trusted submit job
+  # below, the same way auto-review stages its request in analysis.yaml.
+  build-prompt:
     needs: [detect-plan, register-workstream]
     # Run after detect-plan succeeds, even if register was skipped (but not if it failed)
     if: |
@@ -165,10 +180,6 @@ jobs:
       contents: read
 
     steps:
-      # The prompt is built from the branch's own templates, so build it against
-      # the branch checkout. It carries no secret, and it is written to
-      # runner.temp — outside the workspace — so it survives the trusted
-      # re-checkout below.
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -184,37 +195,68 @@ jobs:
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
           ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      # Manual dispatch is not a code-integrity boundary: the branch checkout
-      # above includes the branch's copy of submit-agent-job.sh, which runs
-      # below with the Cloudflare Access service token in its environment, so a
-      # branch author who edited that script could exfiltrate the token. Replace
-      # the workspace with the trusted default-branch tree before the secret is
-      # attached — the same "Checkout trusted scripts" pattern the submit jobs in
-      # analysis.yaml use. This overwrites anything the branch's build step may
-      # have changed on disk; the prompt in runner.temp is untouched.
+      - name: Stage submit request
+        env:
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Implement the plan"
+          PROTECT_TEST_FILES: "false"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" verify-request
+
+      - name: Upload staged request
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: verify-request
+          path: verify-request/
+          retention-days: 1
+
+  # ── Phase 4: Submit the implementation job (trusted) ──────────────
+  # Holds the controller token, so it runs only default-branch code. No branch
+  # code has run in this job, so nothing the branch controls has touched
+  # $GITHUB_ENV/$GITHUB_PATH before the token is attached. The prompt comes in as
+  # the staged artifact, and submit-staged-request.sh reads it through a key
+  # allowlist that ignores BASH_ENV/PATH/LD_PRELOAD and the like.
+  verify:
+    needs: [detect-plan, build-prompt]
+    if: |
+      always()
+      && needs.build-prompt.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: verify-request
+          path: staged-request
 
       - name: Submit agent job
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          # The target comes from this run's event, never from the staged
+          # request, which the branch's code wrote.
           BRANCH: ${{ github.ref_name }}
           BASE_BRANCH: master
-          DESCRIPTION: "Implement the plan"
           PROTECT_TEST_FILES: "false"
         run: |
           # The script is read from the default branch, which lacks it until the
           # change that added it has merged; submit nothing rather than fail.
-          if [ ! -f ./tools/ci/submit-agent-job.sh ]; then
-            echo "::warning::The default branch has no tools/ci/submit-agent-job.sh yet — the implementation job is not submitted"
+          if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the implementation job is not submitted"
             exit 0
           fi
-          chmod +x ./tools/ci/submit-agent-job.sh
-          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+          bash ./tools/ci/submit-staged-request.sh staged-request
 
       # plan_file derives from the dispatch input, so it and the ref name reach
       # the summary through the environment rather than interpolated into the

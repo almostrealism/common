@@ -12,10 +12,15 @@ passing pipeline:
   the self-hosted fleet and addressed the controller by a LAN hostname; a
   button that fails when pressed is no better than no button.
 - The scripts it runs with the Cloudflare Access service token attached must
-  come from the trusted default branch, not the dispatched branch's own tree.
-  Manual dispatch is not a code-integrity boundary: a branch author who edited
-  ``register-workstream.sh`` or ``submit-agent-job.sh`` could otherwise
-  exfiltrate the token when the workflow is dispatched on that branch.
+  come from the trusted default branch, not the dispatched branch's own tree,
+  and no job that holds the token may run any of the branch's own code — not
+  even a prompt builder, whose writes to ``$GITHUB_ENV``/``$GITHUB_PATH`` would
+  survive a re-checkout and steer the trusted submit step. Manual dispatch is
+  not a code-integrity boundary: a branch author who edited a script the
+  token-bearing job runs, or the prompt builder that runs beside it, could
+  otherwise exfiltrate the token when the workflow is dispatched on that branch.
+  So the prompt is built in a separate, token-free job and handed to the submit
+  job as an artifact.
 """
 
 import os
@@ -29,7 +34,11 @@ _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "verify-completion.
 # YAML 1.1 reads the unquoted key `on` as the boolean True; PyYAML follows it.
 _ON = True
 
-_CONTROLLER_SCRIPTS = ("register-workstream.sh", "submit-agent-job.sh")
+# The scripts that run with the controller service token attached. The prompt
+# is submitted through submit-staged-request.sh (which reads the staged request
+# through a key allowlist), never submit-agent-job.sh directly, so that the
+# token-bearing job runs only trusted default-branch code.
+_CONTROLLER_SCRIPTS = ("register-workstream.sh", "submit-staged-request.sh")
 
 # The trusted checkout the secret-bearing steps must run against: the repository
 # default branch, which only carries reviewed code.
@@ -52,9 +61,38 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         self.assertEqual(["workflow_dispatch"], list(self.workflow[_ON]))
 
     def test_it_submits_the_implementation_prompt(self):
-        runs = " ".join(step.get("run", "") for step in self.jobs["verify"]["steps"])
-        self.assertIn("build-verify-prompt.sh", runs)
-        self.assertIn("submit-agent-job.sh", runs)
+        build_runs = " ".join(step.get("run", "")
+                              for step in self.jobs["build-prompt"]["steps"])
+        self.assertIn("build-verify-prompt.sh", build_runs)
+        self.assertIn("stage-submit-request.sh", build_runs)
+        submit_runs = " ".join(step.get("run", "")
+                              for step in self.jobs["verify"]["steps"])
+        self.assertIn("submit-staged-request.sh", submit_runs)
+
+    def test_the_prompt_is_built_in_a_token_free_job(self):
+        """The branch's prompt builder must not run in a job that holds the
+        controller token. A prompt builder that appended ``BASH_ENV``/``PATH``/
+        ``LD_PRELOAD`` to ``$GITHUB_ENV`` would otherwise steer the trusted
+        submit step, since a re-checkout replaces the workspace but not the
+        environment. Building the prompt in its own job, whose environment has
+        never seen the branch's code, closes that.
+        """
+        def _holds_the_token(job):
+            return any("CF_ACCESS_CLIENT_SECRET" in str(step.get("env", {}))
+                       for step in job["steps"])
+
+        for name, job in self.jobs.items():
+            runs = " ".join(step.get("run", "") for step in job["steps"])
+            if "build-verify-prompt.sh" in runs:
+                with self.subTest(job=name):
+                    self.assertFalse(
+                        _holds_the_token(job),
+                        "the prompt builder runs in a job that holds the token")
+        # And the token-bearing submit job runs no branch prompt builder.
+        self.assertTrue(_holds_the_token(self.jobs["verify"]))
+        verify_runs = " ".join(step.get("run", "")
+                               for step in self.jobs["verify"]["steps"])
+        self.assertNotIn("build-verify-prompt.sh", verify_runs)
 
     def test_every_job_reaches_the_controller_through_the_tunnel(self):
         found = 0
