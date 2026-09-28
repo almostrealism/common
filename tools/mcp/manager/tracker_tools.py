@@ -545,3 +545,201 @@ def tracker_project_summary(project_id: str) -> dict:
             pass
     summary["by_workstream"] = filtered_ws
     return result
+
+
+# ---------------------------------------------------------------------------
+# Narrow tools for planning and goal-decomposition agents
+# ---------------------------------------------------------------------------
+# Agents cannot use the general tracker write tools above. These three give
+# the two agent roles in goal-driven release automation exactly what each
+# needs, with the limits enforced here rather than left to the prompt:
+#
+#   planner - tracker_claim_next_task
+#   steward - tracker_list_release_tasks, tracker_upsert_goal_task
+#
+# A workstream holds a role through its trackerCapabilities controller
+# setting; see server._require_tracker_capability.
+
+# The source prefix of a task an agent derived from goal documents. Agents may
+# only change tasks that carry it; every other task belongs to a person.
+GOAL_SOURCE_PREFIX = "goals:"
+
+
+def _named_release(project: str, release: str) -> dict:
+    """Look up a release by project and release name.
+
+    Returns:
+        The tracker response: ``{"ok": True, "release": {...}}``, or an error
+        dict (a missing release is ``ok: False`` with a 404 message).
+    """
+    qs = urlencode({"project": project, "release": release})
+    return server._tracker_get(f"/v1/releases/lookup?{qs}")
+
+
+@mcp.tool()
+def tracker_claim_next_task(project: str, release: str) -> dict:
+    """Claim the next ready task of a release for this job's workstream.
+
+    Takes the highest-priority task in the release that is marked ready, not
+    yet linked to any workstream, and not blocked by an open task, and links
+    it to the calling workstream. The claim is atomic: two callers never
+    receive the same task.
+
+    Requires the calling workstream to hold the ``planner`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name (e.g. the repository's project).
+        release: Full release name, ``<Project> <version>``.
+
+    Returns:
+        dict with ok=True and ``task`` — the claimed task, or None when the
+        release has nothing claimable (then there is no work to plan).
+    """
+    server._require_scope("write")
+    workstream_id = server._require_tracker_capability(server.TRACKER_PLANNER)
+    server._audit("tracker_claim_next_task", project=project, release=release,
+                  workstream_id=workstream_id)
+    return server._tracker_post("/v1/claim", {
+        "project": project, "release": release, "workstream_id": workstream_id,
+    })
+
+
+@mcp.tool()
+def tracker_list_release_tasks(
+    project: str,
+    release: str,
+    fields: str = "full",
+    limit: int = 200,
+    offset: int = 0,
+) -> dict:
+    """List every task in one release, whoever it belongs to.
+
+    Unlike tracker_list_tasks, this view is not limited to tasks linked to the
+    caller's workspace, so a goal-decomposition agent can see what a release
+    already holds before creating anything.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        fields: "full" (default) or "headlines" (omits descriptions).
+        limit: Maximum tasks to return (max 200).
+        offset: Pagination offset.
+
+    Returns:
+        dict with ok=True, ``release`` and the tasks with pagination info.
+        A release that does not exist yet has no tasks: ``tasks`` is empty.
+    """
+    server._require_scope("read")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_list_release_tasks", project=project, release=release)
+    found = _named_release(project, release)
+    if not found.get("ok"):
+        return {"ok": True, "release": None, "tasks": [], "total": 0,
+                "limit": limit, "offset": offset}
+    release_id = found["release"]["id"]
+    qs = urlencode({"release_id": release_id, "fields": fields,
+                    "limit": limit, "offset": offset})
+    result = server._tracker_get(f"/v1/tasks?{qs}")
+    if result.get("ok"):
+        result["release"] = found["release"]
+    return result
+
+
+def _ensure_release(project: str, release: str) -> dict:
+    """Return the named release, creating it in the named project if needed.
+
+    A project is never created: a missing project is an error.
+    """
+    found = _named_release(project, release)
+    if found.get("ok"):
+        return found
+    projects = server._tracker_get("/v1/projects")
+    if not projects.get("ok"):
+        return projects
+    match = [p for p in projects.get("projects") or [] if p.get("name") == project]
+    if not match:
+        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
+    return server._tracker_post("/v1/releases", {
+        "name": release, "project_id": match[0]["id"],
+    })
+
+
+@mcp.tool()
+def tracker_upsert_goal_task(
+    project: str,
+    release: str,
+    title: str,
+    source: str,
+    description: str = "",
+    priority: int = 0,
+    blocked_by: str = "",
+    task_id: str = "",
+) -> dict:
+    """Create or update a task derived from goal documents.
+
+    A new task is created ready to be planned, in the named release, which is
+    created too if it does not exist yet (the project must exist). An update
+    changes the task's title, description, priority, release and blockers;
+    its stage and status are left alone, so a task a person declined or
+    closed stays that way.
+
+    Only goal-derived tasks can be changed: ``source`` must start with
+    ``goals:``, and updating a task that does not carry such a source — any
+    task a person wrote — is refused. Nothing is ever deleted.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        title: Short task title.
+        source: ``goals:<document path>`` naming the document the task was
+            derived from.
+        description: Markdown description: what the work is, why the release
+            needs it, and how to tell it is done.
+        priority: Integer in [-2, 2]; 0 is medium.
+        blocked_by: Comma-separated ids of tasks that must close before this
+            one is planned, for example the framework task an application
+            task depends on. Empty clears the blockers.
+        task_id: Id of an existing goal-derived task to update. Omit to
+            create a new task.
+
+    Returns:
+        dict with ok=True and the created or updated task.
+    """
+    server._require_scope("write")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_upsert_goal_task", project=project, release=release,
+                  task_id=task_id)
+    if not source.startswith(GOAL_SOURCE_PREFIX):
+        return {"ok": False,
+                "error": f"source must start with '{GOAL_SOURCE_PREFIX}' (e.g. goals:docs/GOALS.md)"}
+
+    target = _ensure_release(project, release)
+    if not target.get("ok"):
+        return target
+    fields = {
+        "title": title,
+        "description": description or None,
+        "priority": priority,
+        "project_id": target["release"]["project_id"],
+        "release_id": target["release"]["id"],
+        "blocked_by": [b.strip() for b in blocked_by.split(",") if b.strip()],
+    }
+
+    if not task_id:
+        return server._tracker_post("/v1/tasks", dict(
+            fields, source=source, stage="ready", status="open"))
+
+    existing = server._tracker_get(f"/v1/tasks/{task_id}")
+    if not existing.get("ok"):
+        return existing
+    if not (existing.get("task") or {}).get("source", "").startswith(GOAL_SOURCE_PREFIX):
+        return {"ok": False,
+                "error": "Task was not derived from goal documents; only a person may change it"}
+    return server._tracker_put(f"/v1/tasks/{task_id}", dict(fields, source=source))

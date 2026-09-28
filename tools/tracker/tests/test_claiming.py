@@ -1,0 +1,229 @@
+"""Tests for task readiness, provenance, blockers and claiming.
+
+A planning agent may only take a task a person (or an approved goal document)
+has marked ready, that nobody has taken, and that is not waiting on unfinished
+work. The count the controller's gate reports and the claim an agent makes use
+the same definition, so these tests check both against the same fixtures.
+"""
+
+import os
+import sqlite3
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from starlette.testclient import TestClient
+
+import migrate
+from store import TrackerStore
+from api import create_http_app
+
+
+class _StoreTestBase(unittest.TestCase):
+    """A fresh store with one project and release."""
+
+    def setUp(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        self.path = tmp.name
+        self.store = TrackerStore(self.path)
+        self.project = self.store.create_project("Framework")
+        self.release = self.store.create_release("Framework 1.2", self.project["id"])
+        self.client = TestClient(create_http_app(self.store))
+
+    def tearDown(self):
+        self.store.close()
+        os.unlink(self.path)
+
+    def _task(self, title, stage="ready", priority=0, **kwargs):
+        return self.store.create_task(
+            title=title, stage=stage, priority=priority,
+            project_id=self.project["id"], release_id=self.release["id"], **kwargs)
+
+    def _count(self):
+        return self.store.count_claimable(self.release["id"])
+
+
+class ClaimableTests(_StoreTestBase):
+    """What counts as claimable."""
+
+    def test_a_new_task_is_backlog_by_a_person(self):
+        task = self.store.create_task(title="t", release_id=self.release["id"])
+        self.assertEqual("backlog", task["stage"])
+        self.assertEqual("person", task["source"])
+        self.assertEqual([], task["blocked_by"])
+
+    def test_only_ready_tasks_are_claimable(self):
+        self._task("backlog", stage="backlog")
+        self._task("declined", stage="declined")
+        self.assertEqual(0, self._count())
+        self._task("ready")
+        self.assertEqual(1, self._count())
+
+    def test_closed_and_claimed_tasks_are_not_claimable(self):
+        self._task("closed", status="closed")
+        self._task("claimed", workstream_id="ws-1")
+        self.assertEqual(0, self._count())
+
+    def test_an_open_blocker_holds_a_task_back_until_it_closes(self):
+        blocker = self._task("blocker", stage="backlog")
+        self._task("blocked", blocked_by=[blocker["id"]])
+        self.assertEqual(0, self._count())
+        self.store.update_task(blocker["id"], status="closed")
+        self.assertEqual(1, self._count())
+
+    def test_other_releases_do_not_count(self):
+        other = self.store.create_release("Framework 1.3", self.project["id"])
+        self.store.create_task(title="later", stage="ready", release_id=other["id"])
+        self.assertEqual(0, self._count())
+
+
+class ClaimTests(_StoreTestBase):
+    """Taking the next task."""
+
+    def test_the_highest_priority_task_is_claimed_first(self):
+        self._task("low", priority=-1)
+        high = self._task("high", priority=2)
+        claimed = self.store.claim_next(self.release["id"], "ws-1")
+        self.assertEqual(high["id"], claimed["id"])
+        self.assertEqual("ws-1", claimed["workstream_id"])
+
+    def test_the_oldest_task_wins_among_equal_priorities(self):
+        older = self.store.create_task(
+            title="older", stage="ready", release_id=self.release["id"],
+            created_at="2020-01-01T00:00:00Z")
+        self.store.create_task(
+            title="newer", stage="ready", release_id=self.release["id"],
+            created_at="2021-01-01T00:00:00Z")
+        self.assertEqual(older["id"], self.store.claim_next(self.release["id"], "ws")["id"])
+
+    def test_two_claims_never_take_the_same_task(self):
+        first = self._task("a")
+        second = self._task("b")
+        claimed = {self.store.claim_next(self.release["id"], "ws-1")["id"],
+                   self.store.claim_next(self.release["id"], "ws-2")["id"]}
+        self.assertEqual({first["id"], second["id"]}, claimed)
+        self.assertIsNone(self.store.claim_next(self.release["id"], "ws-3"))
+
+    def test_nothing_claimable_returns_none(self):
+        self._task("backlog", stage="backlog")
+        self.assertIsNone(self.store.claim_next(self.release["id"], "ws-1"))
+
+
+class BlockerTests(_StoreTestBase):
+    """blocked_by is stored as a set and replaced on update."""
+
+    def test_update_replaces_the_blockers(self):
+        a = self._task("a")
+        b = self._task("b")
+        task = self._task("t", blocked_by=[a["id"]])
+        self.assertEqual([a["id"]], task["blocked_by"])
+        task = self.store.update_task(task["id"], blocked_by=[b["id"]])
+        self.assertEqual([b["id"]], task["blocked_by"])
+        task = self.store.update_task(task["id"], blocked_by=[])
+        self.assertEqual([], task["blocked_by"])
+
+    def test_listed_tasks_carry_their_blockers(self):
+        a = self._task("a")
+        self._task("t", blocked_by=[a["id"]])
+        tasks = {t["title"]: t for t in self.store.list_tasks()["tasks"]}
+        self.assertEqual([a["id"]], tasks["t"]["blocked_by"])
+
+
+class MigrationTests(unittest.TestCase):
+    """Tasks that existed before readiness was tracked stay out of the queue."""
+
+    def test_existing_tasks_become_backlog_tasks_by_a_person(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        try:
+            conn = sqlite3.connect(tmp.name)
+            conn.executescript(migrate._SCHEMA_V1)
+            conn.execute("INSERT INTO schema_version VALUES (1)")
+            conn.executescript(migrate._SCHEMA_V2)
+            conn.execute("UPDATE schema_version SET version = 2")
+            conn.execute(
+                "INSERT INTO tasks (id, title, status, created_at, updated_at) "
+                "VALUES ('old', 'old task', 'open', 'x', 'x')")
+            conn.commit()
+            conn.close()
+
+            store = TrackerStore(tmp.name)
+            task = store.get_task("old")
+            store.close()
+            self.assertEqual("backlog", task["stage"])
+            self.assertEqual("person", task["source"])
+        finally:
+            os.unlink(tmp.name)
+
+
+class ApiTests(_StoreTestBase):
+    """The HTTP surface the controller and ar-manager use."""
+
+    def test_claimable_counts_by_name(self):
+        self._task("ready")
+        resp = self.client.get("/v1/claimable",
+                               params={"project": "Framework", "release": "Framework 1.2"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(1, resp.json()["count"])
+        self.assertEqual(self.release["id"], resp.json()["release_id"])
+
+    def test_an_unknown_release_has_nothing_to_claim(self):
+        resp = self.client.get("/v1/claimable",
+                               params={"project": "Framework", "release": "Framework 9.9"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(0, resp.json()["count"])
+
+    def test_claimable_requires_both_names(self):
+        resp = self.client.get("/v1/claimable", params={"project": "Framework"})
+        self.assertEqual(400, resp.status_code)
+
+    def test_claim_links_the_task_to_the_workstream(self):
+        task = self._task("ready")
+        resp = self.client.post("/v1/claim", json={
+            "project": "Framework", "release": "Framework 1.2", "workstream_id": "ws-1"})
+        self.assertEqual(task["id"], resp.json()["task"]["id"])
+        self.assertEqual("ws-1", self.store.get_task(task["id"])["workstream_id"])
+        resp = self.client.post("/v1/claim", json={
+            "project": "Framework", "release": "Framework 1.2", "workstream_id": "ws-2"})
+        self.assertIsNone(resp.json()["task"])
+
+    def test_claim_requires_a_workstream(self):
+        resp = self.client.post("/v1/claim", json={
+            "project": "Framework", "release": "Framework 1.2"})
+        self.assertEqual(400, resp.status_code)
+
+    def test_release_lookup_by_name(self):
+        resp = self.client.get("/v1/releases/lookup",
+                               params={"project": "Framework", "release": "Framework 1.2"})
+        self.assertEqual(self.release["id"], resp.json()["release"]["id"])
+        missing = self.client.get("/v1/releases/lookup",
+                                  params={"project": "Framework", "release": "nope"})
+        self.assertEqual(404, missing.status_code)
+
+    def test_task_fields_are_validated(self):
+        base = {"title": "t", "release_id": self.release["id"]}
+        self.assertEqual(400, self.client.post(
+            "/v1/tasks", json=dict(base, stage="started")).status_code)
+        self.assertEqual(400, self.client.post(
+            "/v1/tasks", json=dict(base, blocked_by=["missing"])).status_code)
+        self.assertEqual(400, self.client.post(
+            "/v1/tasks", json=dict(base, source="  ")).status_code)
+        created = self.client.post("/v1/tasks", json=dict(
+            base, stage="ready", source="goals:docs/GOALS.md")).json()["task"]
+        self.assertEqual("ready", created["stage"])
+        self.assertEqual("goals:docs/GOALS.md", created["source"])
+        self.assertEqual(400, self.client.put(
+            f"/v1/tasks/{created['id']}", json={"blocked_by": [created["id"]]}).status_code)
+
+    def test_list_filters_by_stage(self):
+        self._task("ready")
+        self._task("backlog", stage="backlog")
+        resp = self.client.get("/v1/tasks", params={"stage": "ready"})
+        self.assertEqual(["ready"], [t["title"] for t in resp.json()["tasks"]])
+
+
+if __name__ == "__main__":
+    unittest.main()

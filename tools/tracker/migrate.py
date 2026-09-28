@@ -81,6 +81,33 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 """
 
 
+# v3: readiness, provenance and dependencies, for agents that pick up work.
+#
+# stage   - 'backlog' (default: not to be picked up), 'ready' (may be claimed
+#           by a planning agent), or 'declined' (its plan was rejected; kept
+#           out of the queue until a person returns it to 'ready').
+# source  - who created the task: 'person' (default, and every task that
+#           existed before v3), or 'goals:<document>' for a task derived from
+#           goal documents by an agent. Agents may only edit 'goals:' tasks.
+# task_blockers - a task is blocked while any task it names here is open.
+_SCHEMA_V3 = """
+ALTER TABLE tasks ADD COLUMN stage TEXT NOT NULL DEFAULT 'backlog'
+    CHECK (stage IN ('backlog', 'ready', 'declined'));
+
+ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'person';
+
+CREATE INDEX IF NOT EXISTS idx_tasks_stage ON tasks(stage);
+
+CREATE TABLE IF NOT EXISTS task_blockers (
+    task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    blocker_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, blocker_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_blockers_blocker ON task_blockers(blocker_id);
+"""
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all pending schema migrations to the database connection.
 
@@ -103,6 +130,11 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     if version < 2:
         conn.executescript(_SCHEMA_V2)
         conn.execute("UPDATE schema_version SET version = 2")
+        conn.commit()
+
+    if version < 3:
+        conn.executescript(_SCHEMA_V3)
+        conn.execute("UPDATE schema_version SET version = 3")
         conn.commit()
 
 

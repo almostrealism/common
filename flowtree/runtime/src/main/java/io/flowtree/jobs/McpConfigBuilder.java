@@ -60,7 +60,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names (without the {@code mcp__ar-manager__} prefix)
      * that are always included for agent jobs.
      *
-     * <p>Tracker tools are read-only for agents. Task endpoints
+     * <p>The general tracker tools are read-only for agents. Task endpoints
      * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
      * {@code tracker_search_tasks}) are workspace-scoped on the server
      * and only expose tasks attached to a workstream in the agent's
@@ -69,6 +69,15 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * and {@code tracker_list_releases}) remain available for shared
      * project and release visibility and are not documented here as
      * strictly workspace-filtered.</p>
+     *
+     * <p>Three narrow tracker tools that do write are listed here too:
+     * {@code tracker_claim_next_task}, {@code tracker_list_release_tasks}
+     * and {@code tracker_upsert_goal_task}. They are not gated by this
+     * allowlist but by ar-manager itself, which refuses them unless the
+     * calling workstream holds the matching entry of
+     * {@link io.flowtree.workstream.Workstream#getTrackerCapabilities()},
+     * and each enforces its own limits (claiming only ready tasks, editing
+     * only goal-derived ones, never deleting).</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
@@ -127,7 +136,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_search_tasks",
             "tracker_project_summary",
             "tracker_list_projects",
-            "tracker_list_releases"
+            "tracker_list_releases",
+            "tracker_claim_next_task",
+            "tracker_list_release_tasks",
+            "tracker_upsert_goal_task"
         ))
     );
 

@@ -20,6 +20,9 @@ log = logging.getLogger(__name__)
 # Allowed status values
 _VALID_STATUSES = {"open", "closed"}
 
+# Allowed stage values; the database CHECK constraint mirrors this set.
+_VALID_STAGES = {"backlog", "ready", "declined"}
+
 # Priority is a signed integer; database CHECK constraint mirrors this range.
 _MIN_PRIORITY = -2
 _MAX_PRIORITY = 2
@@ -54,6 +57,45 @@ def _validate_priority(value: object) -> tuple:
             status_code=400,
         )
     return priority, None
+
+
+def _bad_request(message: str) -> JSONResponse:
+    """Return a 400 response carrying *message*."""
+    return JSONResponse({"ok": False, "error": message}, status_code=400)
+
+
+def _validate_task_fields(store, body: dict, task_id: Optional[str] = None):
+    """Check the stage, source and blocked_by fields of a task request body.
+
+    Only fields present in *body* are checked.
+
+    Args:
+        store: The TrackerStore, used to confirm blocking tasks exist.
+        body: The parsed JSON body.
+        task_id: The task being updated, or None when creating one.
+
+    Returns:
+        A 400 JSONResponse describing the first problem, or None when the
+        fields are valid.
+    """
+    if "stage" in body and body["stage"] not in _VALID_STAGES:
+        return _bad_request(f"stage must be one of: {sorted(_VALID_STAGES)}")
+    if "source" in body:
+        source = body["source"]
+        if not isinstance(source, str) or not source.strip():
+            return _bad_request("source must be a non-empty string")
+    if "blocked_by" in body:
+        blockers = body["blocked_by"]
+        if blockers is None:
+            return None
+        if not isinstance(blockers, list) or not all(isinstance(b, str) for b in blockers):
+            return _bad_request("blocked_by must be a list of task ids")
+        for blocker in blockers:
+            if blocker == task_id:
+                return _bad_request("a task cannot block itself")
+            if not store.get_task(blocker):
+                return _bad_request(f"blocked_by names an unknown task: {blocker}")
+    return None
 
 
 def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
@@ -302,7 +344,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "fields must be 'full' or 'headlines'"},
                 status_code=400,
             )
+        stage = qp.get("stage")
+        if stage and stage not in _VALID_STAGES:
+            return _bad_request(f"stage must be one of: {sorted(_VALID_STAGES)}")
         result = store.list_tasks(
+            stage=stage or None,
             project_id=qp.get("project_id") or None,
             release_id=qp.get("release_id") or None,
             workstream_id=qp.get("workstream_id") or None,
@@ -339,6 +385,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             priority, err_resp = _validate_priority(body["priority"])
             if err_resp:
                 return err_resp
+        err_resp = _validate_task_fields(store, body)
+        if err_resp:
+            return err_resp
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
@@ -347,6 +396,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             project_id=body.get("project_id") or None,
             release_id=body.get("release_id") or None,
             workstream_id=body.get("workstream_id") or None,
+            stage=body.get("stage") or "backlog",
+            source=(body.get("source") or "person").strip(),
+            blocked_by=body.get("blocked_by") or None,
         )
         return JSONResponse({"ok": True, "task": task}, status_code=201)
 
@@ -390,6 +442,10 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "title cannot be empty"}, status_code=400
             )
 
+        err_resp = _validate_task_fields(store, body, task_id=task_id)
+        if err_resp:
+            return err_resp
+
         priority_field: object = UNSET
         if "priority" in body:
             priority_value, err_resp = _validate_priority(body["priority"])
@@ -415,6 +471,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             project_id=_field("project_id"),
             release_id=_field("release_id"),
             workstream_id=_field("workstream_id"),
+            stage=_field("stage"),
+            source=_field("source", coerce=lambda v: v.strip()),
+            blocked_by=_field("blocked_by"),
         )
         return JSONResponse({"ok": True, "task": task})
 
@@ -582,6 +641,78 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         )
         return JSONResponse({"ok": True, **result})
 
+    # ------------------------------------------------------------------
+    # Claiming work
+    # ------------------------------------------------------------------
+
+    def _named_release(params) -> tuple:
+        """Resolve the ``project`` and ``release`` names in *params*.
+
+        Returns:
+            A (release_or_None, error_response_or_None) tuple. A release that
+            does not exist is not an error: it is returned as None.
+        """
+        project = (params.get("project") or "").strip()
+        release = (params.get("release") or "").strip()
+        if not project or not release:
+            return None, _bad_request("project and release names are required")
+        return store.find_release(project, release), None
+
+    async def lookup_release(request: Request) -> JSONResponse:
+        """GET /v1/releases/lookup?project=<name>&release=<name>"""
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        release, err = _named_release(request.query_params)
+        if err:
+            return err
+        if not release:
+            return JSONResponse(
+                {"ok": False, "error": "Release not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "release": release})
+
+    async def claimable(request: Request) -> JSONResponse:
+        """GET /v1/claimable?project=<name>&release=<name>
+
+        Counts the tasks an agent could claim in the named release right now.
+        A release that does not exist has nothing to claim, so it reports a
+        count of zero rather than an error.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        release, err = _named_release(request.query_params)
+        if err:
+            return err
+        count = store.count_claimable(release["id"]) if release else 0
+        return JSONResponse({
+            "ok": True,
+            "release_id": release["id"] if release else None,
+            "count": count,
+        })
+
+    async def claim(request: Request) -> JSONResponse:
+        """POST /v1/claim  {"project", "release", "workstream_id"}
+
+        Links the next claimable task in the named release to the workstream
+        and returns it, or returns ``"task": null`` when there is none.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        workstream_id = (body.get("workstream_id") or "").strip()
+        if not workstream_id:
+            return _bad_request("workstream_id is required")
+        release, err = _named_release(body)
+        if err:
+            return err
+        task = store.claim_next(release["id"], workstream_id) if release else None
+        return JSONResponse({"ok": True, "task": task})
+
     routes = [
         Route("/api/health", health),
         Route("/v1/projects", list_projects, methods=["GET"]),
@@ -593,6 +724,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/projects/{id}/tasks", project_tasks, methods=["GET"]),
         Route("/v1/releases", list_releases, methods=["GET"]),
         Route("/v1/releases", create_release, methods=["POST"]),
+        Route("/v1/releases/lookup", lookup_release, methods=["GET"]),
         Route("/v1/releases/{id}", get_release, methods=["GET"]),
         Route("/v1/releases/{id}", update_release, methods=["PUT"]),
         Route("/v1/releases/{id}", delete_release, methods=["DELETE"]),
@@ -604,6 +736,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/tasks/{id}", delete_task, methods=["DELETE"]),
         Route("/v1/workstreams/{id}/tasks", workstream_tasks, methods=["GET"]),
         Route("/v1/search/tasks", search_tasks, methods=["GET"]),
+        Route("/v1/claimable", claimable, methods=["GET"]),
+        Route("/v1/claim", claim, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]
 

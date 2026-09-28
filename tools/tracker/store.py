@@ -18,6 +18,38 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Task columns, in the order every query returns them. The headline projection
+# omits only the description, for callers scanning large backlogs.
+_TASK_HEADLINE_COLUMNS = (
+    "id", "title", "status", "priority", "stage", "source", "project_id",
+    "release_id", "workstream_id", "created_at", "updated_at",
+)
+_TASK_FULL_COLUMNS = (
+    _TASK_HEADLINE_COLUMNS[:2] + ("description",) + _TASK_HEADLINE_COLUMNS[2:]
+)
+
+# The one definition of a task an agent may claim: open, marked ready, not yet
+# linked to a workstream, and not waiting on any task that is still open. Both
+# counting and claiming use it, so the question "is there work?" and the act of
+# taking it can never disagree.
+_CLAIMABLE = (
+    "tasks.status = 'open' AND tasks.stage = 'ready' "
+    "AND tasks.workstream_id IS NULL "
+    "AND NOT EXISTS (SELECT 1 FROM task_blockers b "
+    "JOIN tasks blocker ON blocker.id = b.blocker_id "
+    "WHERE b.task_id = tasks.id AND blocker.status != 'closed')"
+)
+
+# Claim order: the most important task first, then the one waiting longest.
+_CLAIM_ORDER = "tasks.priority DESC, tasks.created_at ASC"
+
+
+def _task_columns(headlines_only: bool = False) -> str:
+    """Return the task column list for a SELECT on the ``tasks`` table."""
+    names = _TASK_HEADLINE_COLUMNS if headlines_only else _TASK_FULL_COLUMNS
+    return ", ".join("tasks." + n for n in names)
+
+
 class _Unset:
     """Sentinel meaning 'caller did not supply this field — leave it unchanged'."""
 
@@ -185,31 +217,65 @@ class TrackerStore:
         workstream_id: Optional[str] = None,
         task_id: Optional[str] = None,
         created_at: Optional[str] = None,
+        stage: str = "backlog",
+        source: str = "person",
+        blocked_by: Optional[list] = None,
     ) -> dict:
-        """Create a new task and return it."""
+        """Create a new task and return it.
+
+        ``blocked_by`` lists the ids of tasks that must close before this one
+        can be claimed.
+        """
         task_id = task_id or str(uuid.uuid4())
         now = created_at or _now()
-        self._conn.execute(
-            "INSERT INTO tasks "
-            "(id, title, description, status, priority, project_id, "
-            " release_id, workstream_id, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (task_id, title, description, status, int(priority),
-             project_id or None, release_id or None,
-             workstream_id or None, now, now),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO tasks "
+                "(id, title, description, status, priority, stage, source, "
+                " project_id, release_id, workstream_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (task_id, title, description, status, int(priority), stage, source,
+                 project_id or None, release_id or None,
+                 workstream_id or None, now, now),
+            )
+            if blocked_by:
+                self._set_blockers(task_id, blocked_by)
+            self._conn.commit()
         return self.get_task(task_id)
 
     def get_task(self, task_id: str) -> Optional[dict]:
         """Return a task by ID, or None if not found."""
         row = self._conn.execute(
-            "SELECT id, title, description, status, priority, project_id, "
-            "release_id, workstream_id, created_at, updated_at "
-            "FROM tasks WHERE id = ?",
+            f"SELECT {_task_columns()} FROM tasks WHERE tasks.id = ?",
             (task_id,),
         ).fetchone()
-        return dict(row) if row else None
+        return self._with_blockers([dict(row)])[0] if row else None
+
+    def _set_blockers(self, task_id: str, blocker_ids: list) -> None:
+        """Replace the set of tasks blocking *task_id*. The caller commits."""
+        self._conn.execute("DELETE FROM task_blockers WHERE task_id = ?", (task_id,))
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO task_blockers (task_id, blocker_id) VALUES (?, ?)",
+            [(task_id, b) for b in blocker_ids],
+        )
+
+    def _with_blockers(self, tasks: list) -> list:
+        """Set ``blocked_by`` on each task dict to the ids blocking it."""
+        if not tasks:
+            return tasks
+        ids = [t["id"] for t in tasks]
+        placeholders = ", ".join("?" for _ in ids)
+        rows = self._conn.execute(
+            "SELECT task_id, blocker_id FROM task_blockers "
+            f"WHERE task_id IN ({placeholders}) ORDER BY blocker_id",
+            ids,
+        ).fetchall()
+        blockers: dict = {}
+        for r in rows:
+            blockers.setdefault(r["task_id"], []).append(r["blocker_id"])
+        for t in tasks:
+            t["blocked_by"] = blockers.get(t["id"], [])
+        return tasks
 
     def list_tasks(
         self,
@@ -222,6 +288,7 @@ class TrackerStore:
         sort: str = "created_at",
         order: str = "desc",
         headlines_only: bool = False,
+        stage: Optional[str] = None,
     ) -> dict:
         """List tasks with optional filtering and pagination.
 
@@ -236,6 +303,7 @@ class TrackerStore:
             order: Sort direction (asc, desc).
             headlines_only: When True, omit the description field from
                 each returned task. Use when scanning large backlogs.
+            stage: Filter by stage.
 
         Returns:
             dict with 'tasks', 'total', 'limit', and 'offset'.
@@ -244,14 +312,7 @@ class TrackerStore:
         sort_col = sort if sort in ("created_at", "updated_at", "priority") else "created_at"
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
-        columns = (
-            "id, title, status, priority, project_id, release_id, "
-            "workstream_id, created_at, updated_at"
-            if headlines_only
-            else
-            "id, title, description, status, priority, project_id, "
-            "release_id, workstream_id, created_at, updated_at"
-        )
+        columns = _task_columns(headlines_only)
 
         conditions = []
         params: list = []
@@ -267,6 +328,9 @@ class TrackerStore:
         if status is not None:
             conditions.append("status = ?")
             params.append(status)
+        if stage is not None:
+            conditions.append("stage = ?")
+            params.append(stage)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -281,7 +345,7 @@ class TrackerStore:
         ).fetchall()
 
         return {
-            "tasks": [dict(r) for r in rows],
+            "tasks": self._with_blockers([dict(r) for r in rows]),
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -297,12 +361,16 @@ class TrackerStore:
         project_id: object = UNSET,
         release_id: object = UNSET,
         workstream_id: object = UNSET,
+        stage: object = UNSET,
+        source: object = UNSET,
+        blocked_by: object = UNSET,
     ) -> Optional[dict]:
         """Update a task's fields.
 
         Pass UNSET (the default) to leave a field unchanged.
         Pass None to clear an optional FK field. The priority field
         cannot be cleared — it always has an integer value in [-2, 2].
+        ``blocked_by`` replaces the whole set of blocking task ids.
         """
         updates = ["updated_at = ?"]
         params: list = [_now()]
@@ -315,17 +383,76 @@ class TrackerStore:
             ("project_id", project_id),
             ("release_id", release_id),
             ("workstream_id", workstream_id),
+            ("stage", stage),
+            ("source", source),
         ]:
             if not isinstance(val, _Unset):
                 updates.append(f"{field} = ?")
                 params.append(int(val) if field == "priority" else val)
 
         params.append(task_id)
-        self._conn.execute(
-            f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params
+            )
+            if not isinstance(blocked_by, _Unset):
+                self._set_blockers(task_id, blocked_by or [])
+            self._conn.commit()
         return self.get_task(task_id)
+
+    # ------------------------------------------------------------------
+    # Claiming work
+    # ------------------------------------------------------------------
+
+    def find_release(self, project_name: str, release_name: str) -> Optional[dict]:
+        """Return the release named *release_name* in the project named
+        *project_name*, or None when either does not exist.
+
+        The returned dict carries the release fields plus ``project_name``.
+        """
+        row = self._conn.execute(
+            "SELECT releases.id, releases.name, releases.project_id, "
+            "releases.created_at, projects.name AS project_name "
+            "FROM releases JOIN projects ON projects.id = releases.project_id "
+            "WHERE projects.name = ? AND releases.name = ?",
+            (project_name, release_name),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def count_claimable(self, release_id: str) -> int:
+        """Return how many tasks in *release_id* an agent could claim now."""
+        return self._conn.execute(
+            f"SELECT COUNT(*) FROM tasks WHERE tasks.release_id = ? AND {_CLAIMABLE}",
+            (release_id,),
+        ).fetchone()[0]
+
+    def claim_next(self, release_id: str, workstream_id: str) -> Optional[dict]:
+        """Link the next claimable task in *release_id* to *workstream_id*.
+
+        The task taken is the highest-priority claimable one, oldest first
+        among equals. The update is conditional on the task still being
+        unlinked, so two callers can never take the same task.
+
+        Returns:
+            The claimed task, or None when nothing is claimable.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT tasks.id FROM tasks WHERE tasks.release_id = ? AND {_CLAIMABLE} "
+                f"ORDER BY {_CLAIM_ORDER} LIMIT 1",
+                (release_id,),
+            ).fetchone()
+            if not row:
+                return None
+            cursor = self._conn.execute(
+                "UPDATE tasks SET workstream_id = ?, updated_at = ? "
+                "WHERE id = ? AND workstream_id IS NULL",
+                (workstream_id, _now(), row["id"]),
+            )
+            self._conn.commit()
+            if cursor.rowcount == 0:
+                return None
+        return self.get_task(row["id"])
 
     def delete_task(self, task_id: str) -> bool:
         """Delete a task. Returns True if a row was deleted."""
@@ -373,18 +500,7 @@ class TrackerStore:
 
         where = "WHERE " + " AND ".join(conditions)
 
-        if headlines_only:
-            select_cols = (
-                "tasks.id, tasks.title, tasks.status, tasks.priority, "
-                "tasks.project_id, tasks.release_id, "
-                "tasks.workstream_id, tasks.created_at, tasks.updated_at"
-            )
-        else:
-            select_cols = (
-                "tasks.id, tasks.title, tasks.description, tasks.status, "
-                "tasks.priority, tasks.project_id, tasks.release_id, "
-                "tasks.workstream_id, tasks.created_at, tasks.updated_at"
-            )
+        select_cols = _task_columns(headlines_only)
 
         try:
             total = self._conn.execute(
@@ -399,7 +515,7 @@ class TrackerStore:
             return {"tasks": [], "total": 0, "query": query, "limit": limit, "offset": offset}
 
         return {
-            "tasks": [dict(r) for r in rows],
+            "tasks": self._with_blockers([dict(r) for r in rows]),
             "total": total,
             "query": query,
             "limit": limit,

@@ -239,6 +239,21 @@ public class Workstream {
     private boolean dispatchCapable;
 
     /**
+     * Tracker roles granted to agents running on this workstream, each of
+     * which unlocks narrow tracker tools on the ar-manager server:
+     * {@code planner} may claim the next ready task of a release, and
+     * {@code steward} may list a release and create or update tasks derived
+     * from goal documents. Empty by default. The tools are always on the
+     * agent allowlist; ar-manager refuses them unless the calling
+     * workstream holds the role, which it reads from
+     * {@link #toSummaryJson()}.
+     */
+    private List<String> trackerCapabilities = List.of();
+
+    /** Every value {@link #setTrackerCapabilities(List)} accepts. */
+    public static final Set<String> TRACKER_CAPABILITIES = Set.of("planner", "steward");
+
+    /**
      * Branch-name prefixes whose jobs may bypass the agent runtime's
      * interactive permission prompts. Empty or unset means no branch may —
      * which is the default, because the grant lets a session write the
@@ -902,6 +917,47 @@ public class Workstream {
     }
 
     /**
+     * Returns the tracker roles granted to agents on this workstream; see
+     * {@link #trackerCapabilities}. Never {@code null}.
+     */
+    public List<String> getTrackerCapabilities() {
+        return trackerCapabilities;
+    }
+
+    /**
+     * Replaces the tracker roles granted to agents on this workstream.
+     * Callers taking the list from a request should reject it first with
+     * {@link #unknownTrackerCapability(List)}.
+     *
+     * @param trackerCapabilities the roles to grant; {@code null} grants none
+     * @throws IllegalArgumentException if a value is not in
+     *         {@link #TRACKER_CAPABILITIES}
+     */
+    public void setTrackerCapabilities(List<String> trackerCapabilities) {
+        String unknown = unknownTrackerCapability(trackerCapabilities);
+        if (unknown != null) {
+            throw new IllegalArgumentException("Unknown tracker capability: " + unknown);
+        }
+        this.trackerCapabilities = trackerCapabilities == null
+                ? List.of() : List.copyOf(trackerCapabilities);
+    }
+
+    /**
+     * Returns the first entry of {@code capabilities} that is not a known
+     * tracker role, or {@code null} when every entry is known.
+     *
+     * @param capabilities the proposed roles; may be {@code null}
+     * @return the first unknown value, or {@code null}
+     */
+    public static String unknownTrackerCapability(List<String> capabilities) {
+        if (capabilities == null) return null;
+        for (String capability : capabilities) {
+            if (!TRACKER_CAPABILITIES.contains(capability)) return capability;
+        }
+        return null;
+    }
+
+    /**
      * Returns the workstream-level default for {@code useTmux}. When
      * {@code true}, coding-agent jobs on this workstream that do not set
      * the per-job {@code use_tmux} flag explicitly are launched inside a
@@ -1184,7 +1240,8 @@ public class Workstream {
      * {@code dependentRepos}, {@code requiredLabels}.</p>
      *
      * <p>Capability flags (omitted when {@code false}): {@code archived},
-     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.</p>
+     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.
+     * {@code trackerCapabilities} is an array, omitted when empty.</p>
      *
      * <p>{@code pipelineCapable} is computed as {@code repoUrl} being non-null and non-empty.
      * {@code maxWallClockHours} is emitted only when explicitly set on this workstream
@@ -1229,6 +1286,7 @@ public class Workstream {
         if (dispatchCapable) {
             json.append(",\"dispatchCapable\":true");
         }
+        appendStringArray(json, "trackerCapabilities", trackerCapabilities);
         if (maxWallClockHours != null) {
             json.append(",\"maxWallClockHours\":").append(maxWallClockHours.intValue());
         }
@@ -1246,16 +1304,7 @@ public class Workstream {
             json.append(",\"kind\":\"").append(escapeForJson(getKind())).append("\"");
         }
 
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            json.append(",\"dependentRepos\":[");
-            boolean first = true;
-            for (String repo : dependentRepos) {
-                if (!first) json.append(",");
-                first = false;
-                json.append("\"").append(escapeForJson(repo)).append("\"");
-            }
-            json.append("]");
-        }
+        appendStringArray(json, "dependentRepos", dependentRepos);
 
         if (requiredLabels != null && !requiredLabels.isEmpty()) {
             json.append(",\"requiredLabels\":{");
@@ -1271,6 +1320,24 @@ public class Workstream {
 
         json.append("}");
         return json.toString();
+    }
+
+    /**
+     * Appends {@code ,"key":["a","b"]} to {@code json}, or nothing when
+     * {@code values} is {@code null} or empty.
+     *
+     * @param json   the JSON object being built
+     * @param key    the field name
+     * @param values the strings to write
+     */
+    private static void appendStringArray(StringBuilder json, String key, List<String> values) {
+        if (values == null || values.isEmpty()) return;
+        json.append(",\"").append(key).append("\":[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) json.append(",");
+            json.append("\"").append(escapeForJson(values.get(i))).append("\"");
+        }
+        json.append("]");
     }
 
     /**

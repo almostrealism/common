@@ -464,6 +464,12 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        List<String> trackerCapabilities = JsonFieldExtractor.extractStringArray(body, "trackerCapabilities");
+        String unknownCapability = Workstream.unknownTrackerCapability(trackerCapabilities);
+        if (unknownCapability != null) {
+            return Registration.failed(errorResponse.apply(
+                "Unknown tracker capability: " + unknownCapability));
+        }
         boolean hasMaxWallClockHours = JsonFieldExtractor.hasField(body, "maxWallClockHours");
         int maxWallClockHours = hasMaxWallClockHours
                 ? JsonFieldExtractor.extractInt(body, "maxWallClockHours") : 0;
@@ -580,6 +586,7 @@ final class WorkstreamRegistrationHandler {
         // the controller-side backstop is enforced on the calling workstream
         // when an ar-manager tool that requires dispatch is invoked.
         workstream.setDispatchCapable(dispatchCapable);
+        workstream.setTrackerCapabilities(trackerCapabilities);
         // Workstream-level default for tmux-backed agent launches. The
         // default is false; opt in explicitly to make every job on this
         // workstream launch inside a tmux session by default. The per-job
@@ -742,6 +749,17 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "dispatchCapable")) {
             workstream.setDispatchCapable(
                     JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
+        }
+        // Tracker roles: same presence signal. The list replaces the current
+        // one, so an empty list revokes every role.
+        if (JsonFieldExtractor.hasField(body, "trackerCapabilities")) {
+            List<String> trackerCapabilities =
+                    JsonFieldExtractor.extractStringArray(body, "trackerCapabilities");
+            String unknownCapability = Workstream.unknownTrackerCapability(trackerCapabilities);
+            if (unknownCapability != null) {
+                return errorResponse.apply("Unknown tracker capability: " + unknownCapability);
+            }
+            workstream.setTrackerCapabilities(trackerCapabilities);
         }
         // Workstream-level tmux default: same presence-signal pattern as
         // dispatch_capable so an unrelated update does not silently flip

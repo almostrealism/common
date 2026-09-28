@@ -253,6 +253,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
+
+    /** Answers {@code GET /api/tracker/claimable}; {@code null} until configured. */
+    private TrackerQueryHandler trackerQueryHandler;
     /** Pushed-tools configuration JSON forwarded to every submitted job. */
     private String pushedToolsConfig;
     /** Executor for delayed job submissions. Daemon thread so it never blocks JVM shutdown. */
@@ -384,6 +387,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setArManagerUrl(String url) {
         this.arManagerUrl = url;
+    }
+
+    /**
+     * Points {@code GET /api/tracker/claimable} at the tracker service.
+     *
+     * @param url       the tracker base URL (e.g., "http://ar-tracker:8030")
+     * @param authToken the tracker bearer token, or {@code null} when it has none
+     */
+    public void setTrackerService(String url, String authToken) {
+        this.trackerQueryHandler = new TrackerQueryHandler(url, authToken);
     }
 
     /**
@@ -523,6 +536,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
             return alertHandler.handle(session);
+        }
+
+        if (Method.GET.equals(method) && "/api/tracker/claimable".equals(uri)) {
+            return trackerQueryHandler == null
+                    ? errorResponse("tracker service not configured")
+                    : trackerQueryHandler.handleClaimable(session, this::errorResponse);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
