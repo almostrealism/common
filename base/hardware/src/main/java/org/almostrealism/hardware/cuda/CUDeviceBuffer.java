@@ -16,11 +16,8 @@
 
 package org.almostrealism.hardware.cuda;
 
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
 
 /**
  * A CUDA memory allocation, either device memory or managed memory.
@@ -67,27 +64,33 @@ public class CUDeviceBuffer extends CUObject {
 	}
 
 	/**
-	 * Copies {@code bytes} bytes from a direct buffer into this allocation.
+	 * Copies {@code bytes} bytes from a direct buffer into this allocation. Both the source
+	 * buffer's byte range and this allocation's byte range are validated before the copy, so
+	 * a caller cannot make the driver read past the end of the host buffer.
 	 *
-	 * @param source            a direct buffer
+	 * @param source            a direct byte buffer
 	 * @param sourceOffset      byte offset into the source
 	 * @param destinationOffset byte offset into this allocation
 	 * @param bytes             number of bytes to copy
 	 */
-	public void write(Buffer source, long sourceOffset, long destinationOffset, long bytes) {
+	public void write(ByteBuffer source, long sourceOffset, long destinationOffset, long bytes) {
+		checkBuffer(source, sourceOffset, bytes);
 		checkRange(destinationOffset, bytes);
 		CU.memcpyHtoD(getContextPointer(), getNativePointer(), destinationOffset, source, sourceOffset, bytes);
 	}
 
 	/**
-	 * Copies {@code bytes} bytes from this allocation into a direct buffer.
+	 * Copies {@code bytes} bytes from this allocation into a direct buffer. Both this
+	 * allocation's byte range and the destination buffer's byte range are validated before the
+	 * copy, so a caller cannot make the driver write past the end of the host buffer.
 	 *
-	 * @param destination       a direct buffer
+	 * @param destination       a direct byte buffer
 	 * @param destinationOffset byte offset into the destination
 	 * @param sourceOffset      byte offset into this allocation
 	 * @param bytes             number of bytes to copy
 	 */
-	public void read(Buffer destination, long destinationOffset, long sourceOffset, long bytes) {
+	public void read(ByteBuffer destination, long destinationOffset, long sourceOffset, long bytes) {
+		checkBuffer(destination, destinationOffset, bytes);
 		checkRange(sourceOffset, bytes);
 		CU.memcpyDtoH(getContextPointer(), destination, destinationOffset, getNativePointer(), sourceOffset, bytes);
 	}
@@ -97,8 +100,8 @@ public class CUDeviceBuffer extends CUObject {
 	 * into this allocation, treated as an array of floats, starting at element {@code offset}.
 	 */
 	public void setContents(float[] source, int sourceOffset, int offset, int length) {
-		FloatBuffer buf = direct(length, Float.BYTES).asFloatBuffer();
-		buf.put(source, sourceOffset, length);
+		ByteBuffer buf = direct(length, Float.BYTES);
+		buf.asFloatBuffer().put(source, sourceOffset, length);
 		write(buf, 0, (long) offset * Float.BYTES, (long) length * Float.BYTES);
 	}
 
@@ -107,8 +110,8 @@ public class CUDeviceBuffer extends CUObject {
 	 * into this allocation, treated as an array of doubles, starting at element {@code offset}.
 	 */
 	public void setContents(double[] source, int sourceOffset, int offset, int length) {
-		DoubleBuffer buf = direct(length, Double.BYTES).asDoubleBuffer();
-		buf.put(source, sourceOffset, length);
+		ByteBuffer buf = direct(length, Double.BYTES);
+		buf.asDoubleBuffer().put(source, sourceOffset, length);
 		write(buf, 0, (long) offset * Double.BYTES, (long) length * Double.BYTES);
 	}
 
@@ -117,9 +120,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * starting at element {@code offset}, into {@code out} starting at {@code outOffset}.
 	 */
 	public void getContents(float[] out, int outOffset, int offset, int length) {
-		FloatBuffer buf = direct(length, Float.BYTES).asFloatBuffer();
+		ByteBuffer buf = direct(length, Float.BYTES);
 		read(buf, 0, (long) offset * Float.BYTES, (long) length * Float.BYTES);
-		buf.get(out, outOffset, length);
+		buf.asFloatBuffer().get(out, outOffset, length);
 	}
 
 	/**
@@ -127,9 +130,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * starting at element {@code offset}, into {@code out} starting at {@code outOffset}.
 	 */
 	public void getContents(double[] out, int outOffset, int offset, int length) {
-		DoubleBuffer buf = direct(length, Double.BYTES).asDoubleBuffer();
+		ByteBuffer buf = direct(length, Double.BYTES);
 		read(buf, 0, (long) offset * Double.BYTES, (long) length * Double.BYTES);
-		buf.get(out, outOffset, length);
+		buf.asDoubleBuffer().get(out, outOffset, length);
 	}
 
 	/** Returns a direct, native-order staging buffer for {@code count} elements of {@code elementSize} bytes. */
@@ -157,6 +160,20 @@ public class CUDeviceBuffer extends CUObject {
 		if (offset < 0 || bytes < 0 || offset + bytes > size) {
 			throw new IndexOutOfBoundsException("Range [" + offset + ", " + (offset + bytes) +
 					") is outside an allocation of " + size + " bytes");
+		}
+	}
+
+	/**
+	 * Throws if {@code [offset, offset + bytes)} is not within {@code buffer}, whose
+	 * {@link ByteBuffer#capacity() capacity} is its length in bytes. This guards the JNI copy,
+	 * which reads the buffer's raw address and would otherwise run past its end.
+	 *
+	 * @throws IndexOutOfBoundsException if the range falls outside the buffer
+	 */
+	private static void checkBuffer(ByteBuffer buffer, long offset, long bytes) {
+		if (offset < 0 || bytes < 0 || offset + bytes > buffer.capacity()) {
+			throw new IndexOutOfBoundsException("Range [" + offset + ", " + (offset + bytes) +
+					") is outside a buffer of " + buffer.capacity() + " bytes");
 		}
 	}
 

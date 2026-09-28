@@ -57,9 +57,8 @@ public class CudaStreamRunner {
 	 */
 	public synchronized Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
 										 Semaphore dependsOn, Runnable onComplete) {
-		if (dependsOn != null) dependsOn.waitFor();
-
 		try {
+			if (dependsOn != null) dependsOn.waitFor();
 			command.accept(stream);
 			stream.synchronize();
 		} finally {

@@ -833,10 +833,9 @@ public final class Hardware implements ConsoleFeatures {
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
 						ctx.getPrecision().name() + ")");
 
-				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
-					if (!(ctx instanceof NativeDataContext)) {
-						sharedMemoryCtx = ctx;
-					}
+				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null &&
+						(ctx instanceof MetalDataContext || ctx instanceof CLDataContext)) {
+					sharedMemoryCtx = ctx;
 				}
 
 				contexts.add(ctx);

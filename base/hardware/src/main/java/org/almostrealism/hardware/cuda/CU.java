@@ -33,11 +33,12 @@ import java.nio.file.StandardCopyOption;
  *
  * <h2>Library Loading</h2>
  *
- * <p>The library for the current architecture is extracted from the classpath to a
- * per-process file in the OS temp directory and loaded, following the convention of the
- * Metal bridge, so that concurrent JVMs sharing a temp directory never overwrite a library
- * another process is loading. On a host without the CUDA driver the load fails with an
- * {@link UnsatisfiedLinkError}, which hardware initialization treats like any other
+ * <p>The library for the current architecture is extracted from the classpath to a freshly
+ * created, uniquely named temporary file in the OS temp directory and loaded. The file is
+ * created atomically with {@link java.nio.file.Files#createTempFile}, so concurrent JVMs
+ * sharing a temp directory never collide and the extraction cannot be redirected through a
+ * pre-planted symlink at a predictable path. On a host without the CUDA driver the load fails
+ * with an {@link UnsatisfiedLinkError}, which hardware initialization treats like any other
  * unavailable backend.</p>
  *
  * <h2>Contexts and Errors</h2>
@@ -89,8 +90,9 @@ public final class CU {
 		File tempDir = new File(System.getProperty("java.io.tmpdir"));
 		tempDir.mkdir();
 
-		File tempLibFile = new File(tempDir, "libARCUDA-" + ProcessHandle.current().pid() + ".so");
+		File tempLibFile;
 		try (InputStream in = is) {
+			tempLibFile = Files.createTempFile(tempDir.toPath(), "libARCUDA-", ".so").toFile();
 			Files.copy(in, tempLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			tempLibFile.deleteOnExit();
 		} catch (IOException e) {

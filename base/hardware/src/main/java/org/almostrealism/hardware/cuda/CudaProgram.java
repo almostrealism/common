@@ -104,8 +104,16 @@ public class CudaProgram implements OperationInfo, Signature, Destroyable, Conso
 		try {
 			CudaDataContext dc = context.getDataContext();
 			byte[] image = dc.getDevice().compile(src, func + ".cu");
-			module = dc.getCudaContext().loadModule(image);
-			function = module.getFunction(func);
+			CUModule loaded = dc.getCudaContext().loadModule(image);
+
+			try {
+				function = loaded.getFunction(func);
+			} catch (RuntimeException e) {
+				loaded.release();
+				throw e;
+			}
+
+			module = loaded;
 		} catch (HardwareException e) {
 			if (HardwareOperator.enableFailedInstructionSetMonitoring) recordInstructionSet();
 			throw e;
