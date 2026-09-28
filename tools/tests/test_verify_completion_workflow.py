@@ -30,6 +30,7 @@ import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "verify-completion.yaml")
+_DOC = os.path.join(_REPO_ROOT, "flowtree", "runtime", "docs", "ci-integration.md")
 
 # YAML 1.1 reads the unquoted key `on` as the boolean True; PyYAML follows it.
 _ON = True
@@ -146,6 +147,24 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
             for step in job["steps"]:
                 with self.subTest(job=name, step=step.get("name")):
                     self.assertNotIn("outputs.plan_file", step.get("run", ""))
+
+    def test_the_operator_documentation_describes_every_job(self):
+        """ci-integration.md is where an operator learns what this workflow
+        does. It once kept describing a three-job pipeline that submitted
+        through submit-agent-job.sh after the workflow had moved to a
+        token-free build-prompt job and submit-staged-request.sh, which sent
+        readers to a submission path the workflow no longer takes."""
+        with open(_DOC) as f:
+            doc = f.read()
+        start = doc.index("## Verify-Completion Workflow")
+        section = doc[start:doc.index("\n## ", start + 1)]
+        for name in self.jobs:
+            with self.subTest(job=name):
+                self.assertIn("`%s`" % name, section)
+        for script in _CONTROLLER_SCRIPTS:
+            with self.subTest(script=script):
+                self.assertIn(script, section)
+        self.assertNotIn("submit-agent-job.sh", section)
 
 
 if __name__ == "__main__":

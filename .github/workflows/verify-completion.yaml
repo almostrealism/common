@@ -32,6 +32,15 @@ name: "Verify Completion"
 # has never run the branch's code, so its environment is clean. This is the same
 # stage-then-submit pattern the auto-review/auto-resolve jobs in analysis.yaml
 # use.
+#
+# This guards the token against the branch's scripts, not against the branch's
+# copy of this file: workflow_dispatch runs the workflow definition from the
+# dispatched ref, so a branch that edits this YAML controls every job in the
+# run. Pinning the submission to a default-branch reusable workflow would not
+# change that, since the caller YAML still decides what runs with the secret.
+# The exposure is the one analysis.yaml already has for pull_request runs and
+# rests on the same mitigations; see "No job that runs pull request code holds
+# controller credentials" in .github/CLAUDE.md.
 
 on:
   workflow_dispatch:

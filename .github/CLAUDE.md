@@ -189,7 +189,14 @@ This guards against pull request *scripts*, not against a pull request's edit to
 the *workflow*: a `pull_request` run uses the workflow from the PR's merge with
 the base, and any job in it can read a repository secret, so a branch that edits
 `analysis.yaml` can reach `FLOWTREE_CF_ACCESS_CLIENT_SECRET` (as it can through
-`register-workstream`). This is accepted for now, since pipelines do not run for
+`register-workstream`). `verify-completion.yaml` has the same exposure by a
+different route: `workflow_dispatch` runs the workflow file from the dispatched
+branch, so its default-branch checkouts protect the secret from the branch's
+scripts but not from the branch's edit to that YAML. Moving the submission into
+a reusable workflow on the default branch would not close this, because the
+branch's caller YAML still decides which jobs receive the secret; closing it
+needs the secret scoped so that a branch's workflow cannot read it at all.
+This is accepted for now, since pipelines do not run for
 pull requests from outside the organization and agent commits cannot change CI
 files outside `ci/...` branches. The fix is tracked in the ar-manager tracker
 ("Keep FlowTree controller credentials out of pull_request workflow runs").
