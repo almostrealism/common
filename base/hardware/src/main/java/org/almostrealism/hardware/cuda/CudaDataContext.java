@@ -78,10 +78,16 @@ public class CudaDataContext extends AcceleratorDataContext<CudaMemoryProvider> 
 		} catch (RuntimeException | Error e) {
 			// The deferred start is retried on the next use, so release this retain before
 			// rethrowing; otherwise each failed attempt would retain another primary context.
-			// TODO(review): a throwing release() here masks the original failure; preserve it (addSuppressed) like CudaStreamRunner.
-			cudaContext.release();
-			cudaContext = null;
-			device = null;
+			// A failing release is suppressed so the original start failure is what propagates.
+			try {
+				cudaContext.release();
+			} catch (RuntimeException | Error releaseFailure) {
+				e.addSuppressed(releaseFailure);
+			} finally {
+				cudaContext = null;
+				device = null;
+			}
+
 			throw e;
 		}
 	}
