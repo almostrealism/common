@@ -96,15 +96,16 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 			return;
 		}
 
-		StateDictionary weights = new StateDictionary(weightDir.getPath());
-		SAMEAutoEncoder autoencoder = SAMEAutoEncoder.small(weights);
-
+		StateDictionary weights = null;
 		PackedCollection input = null;
 		PackedCollection encoded = null;
 		PackedCollection latent = null;
 		PackedCollection decoded = null;
 
 		try {
+			weights = new StateDictionary(weightDir.getPath());
+			SAMEAutoEncoder autoencoder = SAMEAutoEncoder.small(weights);
+
 			float[] refLatent = loadFlat(refDir, "ae_latent");
 			float[] refOutput = loadFlat(refDir, "ae_output");
 			float[] refRunningStd = loadFlat(refDir, "ae_running_std");
@@ -136,8 +137,9 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 			if (decoded != null) {
 				decoded.destroy();
 			}
-
-			weights.destroy();
+			if (weights != null) {
+				weights.destroy();
+			}
 		}
 	}
 

@@ -96,16 +96,21 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 			return;
 		}
 
-		// Released on every path: re-destroying a dictionary the model already owns is a no-op, so
-		// releasing all four frees the conditioner and autoencoder weights the model does not own.
-		StateDictionary ditWeights = new StateDictionary(dit.getPath());
-		StateDictionary conditionerWeights = new StateDictionary(conditioner.getPath());
-		StateDictionary encoderWeights = new StateDictionary(encoder.getPath());
-		StateDictionary aeWeights = new StateDictionary(ae.getPath());
-
+		// Released on every path, including a failure while loading a later shard: re-destroying a
+		// dictionary the model already owns is a no-op, so releasing all four frees the conditioner
+		// and autoencoder weights the model does not own.
+		StateDictionary ditWeights = null;
+		StateDictionary conditionerWeights = null;
+		StateDictionary encoderWeights = null;
+		StateDictionary aeWeights = null;
 		StableAudio3 model = null;
 
 		try {
+			ditWeights = new StateDictionary(dit.getPath());
+			conditionerWeights = new StateDictionary(conditioner.getPath());
+			encoderWeights = new StateDictionary(encoder.getPath());
+			aeWeights = new StateDictionary(ae.getPath());
+
 			model = StableAudio3.small(ditWeights, conditionerWeights, encoderWeights, aeWeights, SECONDS)
 					.setSteps(STEPS);
 
@@ -141,10 +146,18 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 				model.destroy();
 			}
 
-			ditWeights.destroy();
-			conditionerWeights.destroy();
-			encoderWeights.destroy();
-			aeWeights.destroy();
+			if (ditWeights != null) {
+				ditWeights.destroy();
+			}
+			if (conditionerWeights != null) {
+				conditionerWeights.destroy();
+			}
+			if (encoderWeights != null) {
+				encoderWeights.destroy();
+			}
+			if (aeWeights != null) {
+				aeWeights.destroy();
+			}
 		}
 	}
 }

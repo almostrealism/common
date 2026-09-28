@@ -99,8 +99,9 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 
 		DiffusionTransformerConfig config = StableAudio3.smallTransformer(COND_DIM, COND_SEQ_LEN)
 				.withSequenceLengths(LATENT_LEN, COND_SEQ_LEN);
-		DiffusionTransformer transformer = new DiffusionTransformer(config, new StateDictionary(weightDir.getPath()));
 
+		StateDictionary weights = null;
+		DiffusionTransformer transformer = null;
 		PackedCollection x = null;
 		PackedCollection t = null;
 		PackedCollection context = null;
@@ -108,6 +109,9 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 		PackedCollection postTail = null;
 
 		try {
+			weights = new StateDictionary(weightDir.getPath());
+			transformer = new DiffusionTransformer(config, weights);
+
 			x = loadShaped(refDir, "dit_x", 1, CHANNELS, LATENT_LEN);
 			t = loadShaped(refDir, "dit_t", 1, 1);
 			context = loadShaped(refDir, "dit_cross_attn_cond", 1, COND_SEQ_LEN, COND_DIM);
@@ -142,8 +146,12 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 			if (postTail != null) {
 				postTail.destroy();
 			}
-
-			transformer.destroy();
+			if (transformer != null) {
+				transformer.destroy();
+			}
+			if (weights != null) {
+				weights.destroy();
+			}
 		}
 	}
 }
