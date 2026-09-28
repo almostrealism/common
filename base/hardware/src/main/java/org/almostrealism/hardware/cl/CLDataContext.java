@@ -71,7 +71,7 @@ import java.util.stream.Stream;
  *     "GPU",                    // Name
  *     Precision.FP64,          // Ceiling on the precision that may be selected
  *     1024 * 1024 * 1024,      // 1GB max reservation
- *     1024 * 1024,             // 1MB off-heap threshold
+ *     1024 * 1024,             // off-heap threshold (element count)
  *     CLMemoryProvider.Location.DEVICE
  * );
  *
@@ -170,7 +170,7 @@ import java.util.stream.Stream;
  * <p>Selects memory provider based on allocation size:</p>
  *
  * <pre>{@code
- * // Small allocations (<= offHeapSize) use JVM heap
+ * // Small allocations (< offHeapSize elements) use JVM heap
  * MemoryProvider<?> small = context.getMemoryProvider(1024);
  * // Returns JVMMemoryProvider
  *
@@ -260,7 +260,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The maximum memory reservation in bytes. */
 	private final long maxReservation;
 
-	/** The threshold size in bytes below which allocations use JVM heap. */
+	/** The threshold size, in allocation elements, below which allocations use JVM heap. */
 	private final int offHeapSize;
 
 	/** The memory allocation strategy; only {@link CLMemoryProvider.Location#DEVICE} is honored. */
@@ -358,7 +358,8 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * @param maximumPrecision the highest precision this context may select; the device
 	 *                         capability is used when it is lower, and it is never exceeded
 	 * @param maxReservation   the maximum memory reservation in bytes
-	 * @param offHeapSize      the threshold size in bytes below which allocations use JVM heap
+	 * @param offHeapSize      the threshold size, in allocation elements (the count passed to
+	 *                         {@link #getMemoryProvider(int)}), below which allocations use JVM heap
 	 * @param location         the memory allocation strategy; only {@link CLMemoryProvider.Location#DEVICE}
 	 *                         is honored — the deprecated {@code HOST}, {@code HEAP}, and {@code DELEGATE}
 	 *                         values behave as {@code DEVICE}
@@ -673,7 +674,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 * uses that; otherwise returns the alternate provider for small allocations
 	 * (below {@code offHeapSize}) or the main provider for larger allocations.
 	 *
-	 * @param size the size of the allocation in bytes
+	 * @param size the size of the allocation in elements
 	 * @return the appropriate memory provider for the given size
 	 */
 	@Override

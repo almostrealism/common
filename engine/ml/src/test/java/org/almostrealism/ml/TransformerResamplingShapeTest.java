@@ -144,6 +144,51 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 	}
 
 	/**
+	 * Regression test for the weight ownership of {@link SAMEResamplingTestBase#evalBlock}: a single
+	 * {@link StateDictionary} must survive being used to build and evaluate more than one block, exactly
+	 * as the gated parity tests reuse one loaded checkpoint across every stage and the culminating
+	 * full-block evaluation. {@code evalBlock} wraps the caller's block in a throwaway {@link
+	 * org.almostrealism.model.Model} and must release only the compiled graph, never the model — the
+	 * model's layers hold these very weight collections, so destroying it would free the dictionary and
+	 * leave the second evaluation reading released memory (a {@code NaN} or crash rather than the same
+	 * deterministic output). Identical weights and input therefore must yield bit-for-bit identical
+	 * output across the two calls.
+	 */
+	@Test(timeout = 120000)
+	public void reusesWeightsAcrossBlocks() {
+		// TODO(0.76): Metal uninitialised-memory NaN in resampling block — re-enable on Metal once fixed.
+		skipWhenMetalPresent();
+
+		ResamplingConfig config = smallConfig(true);
+		int length = 8;
+		StateDictionary weights = syntheticWeights(config, "enc");
+
+		PackedCollection input = new PackedCollection(shape(1, config.getInChannels(), length)).randnFill();
+		PackedCollection first = null;
+		PackedCollection second = null;
+
+		try {
+			first = evalBlock(transformerResamplingBlock(1, length, config, weights, "enc"), input);
+			second = evalBlock(transformerResamplingBlock(1, length, config, weights, "enc"), input);
+
+			assertFinite(first);
+			assertFinite(second);
+
+			int total = first.getShape().getTotalSize();
+			assertEquals(second.getShape().getTotalSize(), total);
+			double[] a = first.toArray(0, total);
+			double[] b = second.toArray(0, total);
+			for (int i = 0; i < total; i++) {
+				assertEquals(a[i], b[i], 0.0);
+			}
+		} finally {
+			// first and second are evalBlock clones owned and released by SAMEResamplingTestBase.
+			input.destroy();
+			weights.destroy();
+		}
+	}
+
+	/**
 	 * The intermediate encoder stages must have the segment/chunk shapes the architecture prescribes.
 	 */
 	@Test(timeout = 120000)

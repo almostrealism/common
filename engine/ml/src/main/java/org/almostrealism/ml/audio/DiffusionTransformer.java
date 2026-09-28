@@ -1086,6 +1086,14 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		if (validLength != null) {
 			validLength.destroy();
 		}
+
+		if (preTransformerState != null) {
+			preTransformerState.destroy();
+		}
+
+		if (postTransformerState != null) {
+			postTransformerState.destroy();
+		}
 	}
 
 	/**
