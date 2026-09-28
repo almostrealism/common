@@ -172,6 +172,22 @@ class SourceConstraintTests(_StoreTestBase):
             self.store.create_task(
                 title="t", source="goals:", release_id=self.release["id"])
 
+    def test_the_goals_prefix_is_case_sensitive_in_the_database(self):
+        # The API recognises only lowercase 'goals:'; a case-insensitive
+        # predicate (SQLite LIKE) would let a direct caller store 'GOALS:x'.
+        for source in ("GOALS:docs/GOALS.md", "Goals:x", "PERSON"):
+            with self.assertRaises(sqlite3.IntegrityError, msg=source):
+                self.store.create_task(
+                    title="t", source=source, release_id=self.release["id"])
+        with self.assertRaises(sqlite3.IntegrityError):
+            task = self.store.create_task(title="t", release_id=self.release["id"])
+            self.store.update_task(task["id"], source="GOALS:x")
+
+    def test_the_api_refuses_an_uppercase_goals_prefix(self):
+        resp = self.client.post("/v1/tasks", json={
+            "title": "t", "release_id": self.release["id"], "source": "GOALS:x"})
+        self.assertEqual(400, resp.status_code)
+
     def test_person_and_goal_sources_are_accepted(self):
         person = self.store.create_task(title="p", release_id=self.release["id"])
         self.assertEqual("person", person["source"])
@@ -195,6 +211,75 @@ class DuplicateReleaseTests(_StoreTestBase):
         # a claimable count and a claim can never target different ids.
         self.assertEqual("rel-old", self.store.find_release("Framework", "Dup 1.0")["id"])
         self.assertEqual("rel-old", self.store.find_release("Framework", "Dup 1.0")["id"])
+
+
+class BulkImportTests(_StoreTestBase):
+    """POST /v1/import carries readiness, provenance and blockers."""
+
+    def _import(self, *tasks):
+        return self.client.post("/v1/import", json={"tasks": list(tasks)})
+
+    def _goal_task(self, task_id, **fields):
+        task = {"id": task_id, "title": task_id, "release_id": self.release["id"],
+                "stage": "ready", "source": "goals:docs/GOALS.md"}
+        task.update(fields)
+        return task
+
+    def test_a_ready_goal_task_is_imported_as_given(self):
+        resp = self._import(self._goal_task("g1"))
+        self.assertEqual(200, resp.status_code, resp.text)
+        task = self.store.get_task("g1")
+        self.assertEqual("ready", task["stage"])
+        self.assertEqual("goals:docs/GOALS.md", task["source"])
+        self.assertEqual(1, self._count())
+
+    def test_a_blocker_may_appear_later_in_the_same_import(self):
+        resp = self._import(self._goal_task("blocked", blocked_by=["blocker"]),
+                            self._goal_task("blocker", stage="backlog"))
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual(["blocker"], self.store.get_task("blocked")["blocked_by"])
+        # The blocker is still open, so the imported ready task is held back.
+        self.assertEqual(0, self._count())
+
+    def test_absent_fields_take_defaults_on_insert_and_are_kept_on_update(self):
+        blocker = self._task("blocker", stage="backlog")
+        self._import({"id": "plain", "title": "plain", "release_id": self.release["id"]})
+        plain = self.store.get_task("plain")
+        self.assertEqual(("backlog", "person", []),
+                         (plain["stage"], plain["source"], plain["blocked_by"]))
+
+        self._import(self._goal_task("g1", blocked_by=[blocker["id"]]))
+        self._import({"id": "g1", "title": "renamed"})
+        kept = self.store.get_task("g1")
+        self.assertEqual("renamed", kept["title"])
+        self.assertEqual(("ready", "goals:docs/GOALS.md", [blocker["id"]]),
+                         (kept["stage"], kept["source"], kept["blocked_by"]))
+
+    def test_supplied_fields_replace_existing_values_on_update(self):
+        blocker = self._task("blocker", stage="backlog")
+        self._import(self._goal_task("g1", blocked_by=[blocker["id"]]))
+        self._import({"id": "g1", "stage": "declined", "source": "person", "blocked_by": []})
+        task = self.store.get_task("g1")
+        self.assertEqual(("declined", "person", []),
+                         (task["stage"], task["source"], task["blocked_by"]))
+
+    def test_invalid_task_fields_are_refused_before_anything_is_written(self):
+        valid = self._goal_task("ok")
+        for bad in (self._goal_task("bad", stage="started"),
+                    self._goal_task("bad", source="GOALS:x"),
+                    self._goal_task("bad", source="goals:"),
+                    self._goal_task("bad", blocked_by=["missing"]),
+                    self._goal_task("bad", blocked_by=["bad"]),
+                    self._goal_task("bad", blocked_by="ok")):
+            resp = self._import(valid, bad)
+            self.assertEqual(400, resp.status_code, bad)
+            self.assertIn("tasks[1]", resp.json()["error"])
+        self.assertIsNone(self.store.get_task("ok"))
+        self.assertIsNone(self.store.get_task("bad"))
+
+    def test_a_task_that_is_not_an_object_is_refused(self):
+        resp = self._import("not-a-task")
+        self.assertEqual(400, resp.status_code)
 
 
 class ApiTests(_StoreTestBase):

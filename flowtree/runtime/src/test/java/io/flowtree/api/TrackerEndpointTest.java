@@ -200,6 +200,43 @@ public class TrackerEndpointTest extends TestSuiteBase {
         assertEquals("docs/original.md", ws.getPlanningDocument());
     }
 
+    /**
+     * A role list that is not an array of strings is refused at registration
+     * rather than coerced: a bare string must not read as the body's next
+     * array (here {@code dependentRepos}), and a non-string element must not be
+     * silently dropped.
+     */
+    @Test(timeout = 30000)
+    public void registrationRejectsMalformedRoles() throws Exception {
+        assertEquals(400, post("/api/workstreams", "{\"defaultBranch\":\"feature/a\","
+                + "\"trackerCapabilities\":\"planner\",\"dependentRepos\":[\"steward\"]}").statusCode());
+        assertEquals(400, post("/api/workstreams", "{\"defaultBranch\":\"feature/b\","
+                + "\"trackerCapabilities\":[\"planner\",1]}").statusCode());
+        assertEquals(400, post("/api/workstreams", "{\"defaultBranch\":\"feature/c\","
+                + "\"trackerCapabilities\":[null]}").statusCode());
+        assertTrue(notifier.getWorkstreams().isEmpty());
+    }
+
+    /** A malformed role list rejects an update and leaves the granted roles and other fields alone. */
+    @Test(timeout = 30000)
+    public void updateRejectsMalformedRoles() throws Exception {
+        Workstream ws = new Workstream(null, "steward");
+        ws.setDefaultBranch("feature/steward");
+        ws.setPlanningDocument("docs/original.md");
+        ws.setTrackerCapabilities(List.of("steward"));
+        notifier.registerWorkstream(ws);
+        String path = "/api/workstreams/" + ws.getWorkstreamId() + "/update";
+
+        assertEquals(400, post(path, "{\"planningDocument\":\"docs/changed.md\","
+                + "\"trackerCapabilities\":\"planner\"}").statusCode());
+        assertEquals(400, post(path, "{\"trackerCapabilities\":[\"planner\",true]}").statusCode());
+        assertEquals("docs/original.md", ws.getPlanningDocument());
+        assertEquals(List.of("steward"), ws.getTrackerCapabilities());
+
+        assertEquals(200, post(path, "{\"trackerCapabilities\":null}").statusCode());
+        assertTrue(ws.getTrackerCapabilities().isEmpty());
+    }
+
     /** Issues a GET against the endpoint. */
     private HttpResponse<String> get(String path) throws IOException, InterruptedException {
         return client.send(HttpRequest.newBuilder(uri(path)).GET().build(),

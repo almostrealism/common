@@ -1242,9 +1242,9 @@ public class FlowTreeController implements ConsoleFeatures {
 
             // Sibling services: ar-memory stores messages, ar-manager issues
             // agent tokens, and the tracker answers /api/tracker/claimable.
-            String memoryUrl = SystemUtils.getProperty("AR_MEMORY_URL", "http://localhost:8020");
-            String arManagerUrl = SystemUtils.getProperty("AR_MANAGER_URL", "http://ar-manager:8010");
-            String trackerUrl = SystemUtils.getProperty("AR_TRACKER_URL", "http://ar-tracker:8030");
+            String memoryUrl = SystemUtils.getNonEmptyProperty("AR_MEMORY_URL", "http://localhost:8020");
+            String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", "http://ar-manager:8010");
+            String trackerUrl = SystemUtils.getNonEmptyProperty("AR_TRACKER_URL", "http://ar-tracker:8030");
             apiEndpoint.setMemoryServerUrl(memoryUrl);
             apiEndpoint.setArManagerUrl(arManagerUrl);
             apiEndpoint.setTrackerService(trackerUrl, SystemUtils.getProperty("AR_TRACKER_AUTH_TOKEN"));

@@ -85,8 +85,9 @@ def _bad_request(message: str) -> JSONResponse:
     return JSONResponse({"ok": False, "error": message}, status_code=400)
 
 
-def _validate_task_fields(store, body: dict, task_id: Optional[str] = None):
-    """Check the stage, source and blocked_by fields of a task request body.
+def _task_field_error(store, body: dict, task_id: Optional[str] = None,
+                      pending_ids: frozenset = frozenset()) -> Optional[str]:
+    """Check the stage, source and blocked_by fields of a task body.
 
     Only fields present in *body* are checked.
 
@@ -94,28 +95,28 @@ def _validate_task_fields(store, body: dict, task_id: Optional[str] = None):
         store: The TrackerStore, used to confirm blocking tasks exist.
         body: The parsed JSON body.
         task_id: The task being updated, or None when creating one.
+        pending_ids: Ids of tasks written by the same request, which a
+            blocker may name even though they are not stored yet.
 
     Returns:
-        A 400 JSONResponse describing the first problem, or None when the
-        fields are valid.
+        A message describing the first problem, or None when the fields are
+        valid.
     """
     if "stage" in body and body["stage"] not in _VALID_STAGES:
-        return _bad_request(f"stage must be one of: {sorted(_VALID_STAGES)}")
-    if "source" in body:
-        if not _valid_source(body["source"]):
-            return _bad_request(
-                "source must be 'person' or 'goals:<document>'")
+        return f"stage must be one of: {sorted(_VALID_STAGES)}"
+    if "source" in body and not _valid_source(body["source"]):
+        return "source must be 'person' or 'goals:<document>'"
     if "blocked_by" in body:
         blockers = body["blocked_by"]
         if blockers is None:
             return None
         if not isinstance(blockers, list) or not all(isinstance(b, str) for b in blockers):
-            return _bad_request("blocked_by must be a list of task ids")
+            return "blocked_by must be a list of task ids"
         for blocker in blockers:
             if blocker == task_id:
-                return _bad_request("a task cannot block itself")
-            if not store.get_task(blocker):
-                return _bad_request(f"blocked_by names an unknown task: {blocker}")
+                return "a task cannot block itself"
+            if blocker not in pending_ids and not store.get_task(blocker):
+                return f"blocked_by names an unknown task: {blocker}"
     return None
 
 
@@ -406,9 +407,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             priority, err_resp = _validate_priority(body["priority"])
             if err_resp:
                 return err_resp
-        err_resp = _validate_task_fields(store, body)
-        if err_resp:
-            return err_resp
+        field_error = _task_field_error(store, body)
+        if field_error:
+            return _bad_request(field_error)
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
@@ -463,9 +464,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "title cannot be empty"}, status_code=400
             )
 
-        err_resp = _validate_task_fields(store, body, task_id=task_id)
-        if err_resp:
-            return err_resp
+        field_error = _task_field_error(store, body, task_id=task_id)
+        if field_error:
+            return _bad_request(field_error)
 
         priority_field: object = UNSET
         if "priority" in body:
@@ -590,6 +591,18 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         projects = body.get("projects") or []
         releases = body.get("releases") or []
         tasks = body.get("tasks") or []
+        # Every task is checked before anything is written, with the same
+        # rules as a single create or update; a blocker may name any task in
+        # this import, since the store links blockers after all are written.
+        imported_ids = frozenset(
+            t["id"] for t in tasks if isinstance(t, dict) and isinstance(t.get("id"), str))
+        for idx, t in enumerate(tasks):
+            if not isinstance(t, dict):
+                return _bad_request(f"tasks[{idx}] must be an object")
+            field_error = _task_field_error(
+                store, t, task_id=t.get("id"), pending_ids=imported_ids)
+            if field_error:
+                return _bad_request(f"tasks[{idx}]: {field_error}")
         result = store.bulk_import(projects, releases, tasks)
         if "error" in result:
             return JSONResponse({"ok": False, "error": result["error"]}, status_code=400)

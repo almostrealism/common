@@ -635,7 +635,10 @@ class TrackerStore:
         """Upsert projects, releases, and tasks in bulk.
 
         Existing records (matched by ID) are updated; new records are inserted.
-        Returns counts of created and updated records per entity type.
+        Tasks carry ``stage``, ``source`` and ``blocked_by`` like any other
+        task; an absent field keeps an existing task's value, or takes the
+        column default for a new one. Returns counts of created and updated
+        records per entity type.
         """
         created = {"projects": 0, "releases": 0, "tasks": 0}
         updated = {"projects": 0, "releases": 0, "tasks": 0}
@@ -697,12 +700,15 @@ class TrackerStore:
                 if existing:
                     self._conn.execute(
                         "UPDATE tasks SET title = ?, description = ?, status = ?, "
-                        "priority = ?, project_id = ?, release_id = ?, "
-                        "workstream_id = ?, updated_at = ? WHERE id = ?",
+                        "priority = ?, stage = ?, source = ?, project_id = ?, "
+                        "release_id = ?, workstream_id = ?, updated_at = ? "
+                        "WHERE id = ?",
                         (t.get("title", existing["title"]),
                          t.get("description", existing["description"]),
                          t.get("status", existing["status"]),
                          t.get("priority", existing["priority"]),
+                         t.get("stage", existing["stage"]),
+                         t.get("source", existing["source"]).strip(),
                          t.get("project_id", existing["project_id"]),
                          t.get("release_id", existing["release_id"]),
                          t.get("workstream_id", existing["workstream_id"]),
@@ -712,11 +718,12 @@ class TrackerStore:
                 else:
                     cur = self._conn.execute(
                         "INSERT OR IGNORE INTO tasks "
-                        "(id, title, description, status, priority, project_id, "
-                        " release_id, workstream_id, created_at, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "(id, title, description, status, priority, stage, source, "
+                        " project_id, release_id, workstream_id, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (t["id"], t.get("title", ""), t.get("description"),
                          t.get("status", "open"), priority,
+                         t.get("stage", "backlog"), t.get("source", "person").strip(),
                          t.get("project_id"), t.get("release_id"),
                          t.get("workstream_id"),
                          t.get("created_at") or now, t.get("updated_at") or now),
@@ -725,6 +732,14 @@ class TrackerStore:
                         created["tasks"] += 1
                     else:
                         updated["tasks"] += 1
+
+        # Blockers are linked once every task exists, so a task may be blocked
+        # by one that appears later in the same import. As with update_task, a
+        # supplied blocked_by replaces the set; an absent one leaves it alone.
+        with self._lock:
+            for t in tasks:
+                if "blocked_by" in t:
+                    self._set_blockers(t["id"], t["blocked_by"] or [])
 
         self._conn.commit()
         return {"created": created, "updated": updated}
