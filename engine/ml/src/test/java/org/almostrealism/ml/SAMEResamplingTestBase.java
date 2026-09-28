@@ -59,10 +59,21 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * on {@code input}. This is the top-of-stack boundary at which compilation and evaluation are
 	 * permitted; the block itself never evaluates.
 	 *
-	 * <p>The compiled {@link Model} and {@link CompiledModel} are released before returning, so each
-	 * call leaves no native graph behind — otherwise every invocation would strand a full compiled
-	 * graph (two large ones per round trip in the gated parity tests). The forward output is a buffer
-	 * the compiled graph owns, so it is cloned into independent memory that outlives the release.</p>
+	 * <p>The {@link CompiledModel} is released before returning, so each call leaves no compiled
+	 * graph behind — otherwise every invocation would strand a full compiled graph (two large ones
+	 * per round trip in the gated parity tests). The forward output is a buffer the compiled graph
+	 * owns, so it is cloned into independent memory that outlives the release.</p>
+	 *
+	 * <p>The {@link Model} is deliberately <em>not</em> destroyed. It is a throwaway wrapper around
+	 * the caller-supplied {@code block}, whose layers hold the weight {@link PackedCollection}s the
+	 * caller loaded into a {@link StateDictionary} and reuses across every block it evaluates.
+	 * {@link Model#destroy()} cascades into those layers and frees their weights, so destroying it
+	 * here would release memory the caller still owns — invalidating the dictionary for every
+	 * subsequent {@code evalBlock} built from the same weights (the encoder call followed by the
+	 * decoder call in {@code SAMEAutoEncoderParityTest}, and the repeated calls that culminate in the
+	 * full-block evaluation in {@code SAMEResamplingParityTest}). Releasing the compiled graph frees
+	 * the per-call native memory without taking ownership of the borrowed weights; the caller
+	 * destroys its {@link StateDictionary} once, when it is done with every block.</p>
 	 *
 	 * @param block the resampling block (from {@link TransformerResamplingFeatures#transformerResamplingBlock})
 	 * @param input the block input, matching {@link Block#getInputShape()}
@@ -70,15 +81,13 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
-		CompiledModel compiled = null;
+		model.add(block);
 
+		CompiledModel compiled = model.compile(false);
 		try {
-			model.add(block);
-			compiled = model.compile(false);
 			return compiled.forward(input).clone();
 		} finally {
-			if (compiled != null) compiled.destroy();
-			model.destroy();
+			compiled.destroy();
 		}
 	}
 
