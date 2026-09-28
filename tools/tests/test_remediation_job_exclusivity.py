@@ -31,6 +31,7 @@ _ANALYSIS = os.path.join(_WORKFLOWS, "analysis.yaml")
 _SUBMIT_WORKFLOW = os.path.join(_WORKFLOWS, "auto-resolve-submit.yaml")
 _RERUN_SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "rerun-flaky-tests.sh")
 _SUBMIT_STAGED = os.path.join(_REPO_ROOT, "tools", "ci", "submit-staged-request.sh")
+_SUBMIT_AGENT_JOB = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh")
 
 _SECRET = "secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET"
 _PYTHON_FAILED = "needs.python-tests.result == 'failure'"
@@ -555,6 +556,89 @@ class SubmitStagedRequestTests(unittest.TestCase):
         result = self._run()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertFalse(os.path.exists(self.captured))
+
+
+class SubmitAgentJobSkipTests(unittest.TestCase):
+    """Runs submit-agent-job.sh against stub curl and jq to pin the skip path.
+
+    A controller skip is a 200 response carrying ``skipped: true``. The step
+    must stay green (a skip is a successful response) while making the dropped
+    request visible: a workflow ``::warning::`` and, when running under Actions,
+    a line in the job step summary. The stubs let the test drive the response
+    without a real controller or a system ``jq``.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="submit-agent-job-test-")
+        self.script = os.path.join(self.tmp, "submit-agent-job.sh")
+        shutil.copy(_SUBMIT_AGENT_JOB, self.script)
+        self.prompt = os.path.join(self.tmp, "prompt.txt")
+        with open(self.prompt, "w") as f:
+            f.write("do the thing\n")
+        self.summary = os.path.join(self.tmp, "summary.md")
+        # curl echoes the staged body followed by the HTTP status on its own
+        # line, matching the `-w "\n%{http_code}"` the script parses.
+        _write_executable(os.path.join(self.tmp, "curl"), """#!/usr/bin/env bash
+printf '%s\\n200\\n' "$STUB_BODY"
+""")
+        # jq answers only the field reads the skip path makes; every payload
+        # build or field it does not recognise yields an empty object, which is
+        # all the script needs before it reaches the skip branch.
+        _write_executable(os.path.join(self.tmp, "jq"), """#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    ".skipped // empty") echo "$STUB_SKIPPED"; exit 0 ;;
+    '.reason // "unknown"') echo "$STUB_REASON"; exit 0 ;;
+    "if .automated"*) echo "false"; exit 0 ;;
+    ".jobId // empty") echo "job-123"; exit 0 ;;
+    ".workstreamCreated // empty") echo ""; exit 0 ;;
+  esac
+done
+echo "{}"
+""")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, skipped, reason="", step_summary=True):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("STARTED_AFTER", "REPO_URL", "GITHUB_REPOSITORY",
+                            "DESCRIPTION", "GITHUB_STEP_SUMMARY")}
+        env.update(PATH=self.tmp + os.pathsep + os.environ["PATH"],
+                   BRANCH="feature/x", BASE_BRANCH="master",
+                   STUB_BODY='{"skipped":true}', STUB_SKIPPED=skipped,
+                   STUB_REASON=reason)
+        if step_summary:
+            env["GITHUB_STEP_SUMMARY"] = self.summary
+        return subprocess.run(["bash", self.script, self.prompt], env=env,
+                              capture_output=True, text=True)
+
+    def test_a_controller_skip_is_a_warning_and_leaves_the_step_green(self):
+        result = self._run("true", reason="a newer job exists")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("::warning::Agent job skipped by the controller: a newer job exists",
+                      result.stdout)
+
+    def test_a_controller_skip_records_the_branch_and_reason_in_the_step_summary(self):
+        result = self._run("true", reason="a newer job exists")
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(self.summary) as f:
+            summary = f.read()
+        self.assertIn("feature/x", summary)
+        self.assertIn("a newer job exists", summary)
+
+    def test_a_skip_without_a_step_summary_still_succeeds(self):
+        """Outside Actions GITHUB_STEP_SUMMARY is unset; the skip must not crash."""
+        result = self._run("true", reason="a newer job exists", step_summary=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("::warning::Agent job skipped by the controller", result.stdout)
+
+    def test_a_normal_submission_is_not_reported_as_a_skip(self):
+        """The warning must fire only on a skip, never on an accepted job."""
+        result = self._run("", step_summary=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("skipped by the controller", result.stdout)
+        self.assertIn("job_id=job-123", result.stdout)
 
 
 if __name__ == "__main__":
