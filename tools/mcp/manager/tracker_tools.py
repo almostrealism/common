@@ -673,25 +673,18 @@ def tracker_list_release_tasks(
 def _ensure_release(project: str, release: str) -> dict:
     """Return the named release, creating it in the named project if needed.
 
-    A project is never created: a missing project is an error.
+    A project is never created: a missing project is an error. The tracker
+    performs the lookup and the create as one atomic step, so stewards working
+    concurrently on the same release never create duplicates of it and attach
+    their tasks to different release ids. Any tracker error, including an
+    outage, is returned unchanged.
     """
-    found = _named_release(project, release)
-    if found.get("ok"):
-        return found
-    if not _release_missing(found):
-        # Only an explicit not-found means the release should be created. A
-        # tracker outage or error must propagate rather than trigger a create
-        # that could duplicate a release once the tracker recovers.
-        return found
-    projects = server._tracker_get("/v1/projects")
-    if not projects.get("ok"):
-        return projects
-    match = [p for p in projects.get("projects") or [] if p.get("name") == project]
-    if not match:
-        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
-    return server._tracker_post("/v1/releases", {
-        "name": release, "project_id": match[0]["id"],
+    result = server._tracker_post("/v1/releases/ensure", {
+        "project": project, "release": release,
     })
+    if not result.get("ok") and result.get("error") == "Project not found":
+        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
+    return result
 
 
 @mcp.tool()

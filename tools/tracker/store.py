@@ -130,6 +130,7 @@ class TrackerStore:
 
     def create_release(self, name: str, project_id: Optional[str] = None) -> dict:
         """Create a new release and return it."""
+        # TODO(review): not under self._lock, so it can race ensure_release and duplicate a release name.
         release_id = str(uuid.uuid4())
         created_at = _now()
         self._conn.execute(
@@ -424,6 +425,49 @@ class TrackerStore:
             (project_name, release_name),
         ).fetchone()
         return dict(row) if row else None
+
+    def ensure_release(self, project_name: str, release_name: str) -> tuple:
+        """Return the release named *release_name* in the project named
+        *project_name*, creating it if it does not exist yet.
+
+        The lookup and the insert run under the store lock, so concurrent
+        callers asking for the same names all receive the same release rather
+        than each creating its own duplicate. When the release already exists
+        the result is the one :meth:`find_release` resolves. A missing project
+        is never created; when several projects share the name the release is
+        created in the oldest.
+
+        Returns:
+            A (release_or_None, created) tuple. The release is None when no
+            project has the name; ``created`` is True only when this call
+            inserted the release.
+        """
+        with self._lock:
+            existing = self.find_release(project_name, release_name)
+            if existing:
+                return existing, False
+            project = self._conn.execute(
+                "SELECT id, name FROM projects WHERE name = ? "
+                "ORDER BY created_at ASC, id ASC LIMIT 1",
+                (project_name,),
+            ).fetchone()
+            if not project:
+                return None, False
+            release_id = str(uuid.uuid4())
+            created_at = _now()
+            self._conn.execute(
+                "INSERT INTO releases (id, name, project_id, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (release_id, release_name, project["id"], created_at),
+            )
+            self._conn.commit()
+        return {
+            "id": release_id,
+            "name": release_name,
+            "project_id": project["id"],
+            "created_at": created_at,
+            "project_name": project["name"],
+        }, True
 
     def count_claimable(self, release_id: str) -> int:
         """Return how many tasks in *release_id* an agent could claim now."""

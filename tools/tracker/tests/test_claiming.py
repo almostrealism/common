@@ -10,6 +10,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -213,6 +214,62 @@ class DuplicateReleaseTests(_StoreTestBase):
         self.assertEqual("rel-old", self.store.find_release("Framework", "Dup 1.0")["id"])
 
 
+class EnsureReleaseTests(_StoreTestBase):
+    """Get-or-create of a release by name is atomic."""
+
+    def _releases_named(self, name):
+        return self.store._conn.execute(
+            "SELECT COUNT(*) FROM releases WHERE name = ?", (name,)).fetchone()[0]
+
+    def test_an_existing_release_is_returned_not_duplicated(self):
+        release, created = self.store.ensure_release("Framework", "Framework 1.2")
+        self.assertFalse(created)
+        self.assertEqual(self.release["id"], release["id"])
+        self.assertEqual(1, self._releases_named("Framework 1.2"))
+
+    def test_a_missing_release_is_created_in_the_project(self):
+        release, created = self.store.ensure_release("Framework", "Framework 1.3")
+        self.assertTrue(created)
+        self.assertEqual(self.project["id"], release["project_id"])
+        self.assertEqual("Framework", release["project_name"])
+        # A second call finds the release the first one created.
+        again, created_again = self.store.ensure_release("Framework", "Framework 1.3")
+        self.assertFalse(created_again)
+        self.assertEqual(release["id"], again["id"])
+        self.assertEqual(release["id"], self.store.find_release("Framework", "Framework 1.3")["id"])
+
+    def test_a_missing_project_is_never_created(self):
+        release, created = self.store.ensure_release("Nowhere", "Nowhere 1.0")
+        self.assertIsNone(release)
+        self.assertFalse(created)
+        self.assertEqual(["Framework"], [p["name"] for p in self.store.list_projects()])
+        self.assertEqual(0, self._releases_named("Nowhere 1.0"))
+
+    def test_the_same_name_in_another_project_is_a_different_release(self):
+        self.store.create_project("Application")
+        release, created = self.store.ensure_release("Application", "Framework 1.2")
+        self.assertTrue(created)
+        self.assertNotEqual(self.release["id"], release["id"])
+
+    def test_concurrent_callers_receive_one_release(self):
+        barrier = threading.Barrier(8)
+        ids = []
+
+        def ensure():
+            barrier.wait()
+            release, _ = self.store.ensure_release("Framework", "Framework 2.0")
+            ids.append(release["id"])
+
+        threads = [threading.Thread(target=ensure) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        self.assertEqual(8, len(ids))
+        self.assertEqual(1, len(set(ids)))
+        self.assertEqual(1, self._releases_named("Framework 2.0"))
+
+
 class BulkImportTests(_StoreTestBase):
     """POST /v1/import carries readiness, provenance and blockers."""
 
@@ -325,6 +382,32 @@ class ApiTests(_StoreTestBase):
         missing = self.client.get("/v1/releases/lookup",
                                   params={"project": "Framework", "release": "nope"})
         self.assertEqual(404, missing.status_code)
+
+    def test_release_ensure_gets_or_creates_by_name(self):
+        existing = self.client.post("/v1/releases/ensure", json={
+            "project": "Framework", "release": "Framework 1.2"})
+        self.assertEqual(200, existing.status_code)
+        self.assertFalse(existing.json()["created"])
+        self.assertEqual(self.release["id"], existing.json()["release"]["id"])
+        created = self.client.post("/v1/releases/ensure", json={
+            "project": "Framework", "release": " Framework 1.3 "})
+        self.assertEqual(201, created.status_code)
+        self.assertTrue(created.json()["created"])
+        self.assertEqual("Framework 1.3", created.json()["release"]["name"])
+        again = self.client.post("/v1/releases/ensure", json={
+            "project": "Framework", "release": "Framework 1.3"})
+        self.assertEqual(200, again.status_code)
+        self.assertEqual(created.json()["release"]["id"], again.json()["release"]["id"])
+
+    def test_release_ensure_never_creates_a_project(self):
+        resp = self.client.post("/v1/releases/ensure", json={
+            "project": "Nowhere", "release": "Nowhere 1.0"})
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual("Project not found", resp.json()["error"])
+        self.assertEqual(400, self.client.post("/v1/releases/ensure", json={
+            "project": "Framework", "release": "  "}).status_code)
+        self.assertEqual(400, self.client.post("/v1/releases/ensure", json={
+            "release": "Framework 1.3"}).status_code)
 
     def test_task_fields_are_validated(self):
         base = {"title": "t", "release_id": self.release["id"]}

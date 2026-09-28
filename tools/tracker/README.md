@@ -212,6 +212,8 @@ GET    /v1/projects/{id}/summary        Aggregate task counts for a project
 GET    /v1/releases                     List releases (?project_id=)
 POST   /v1/releases                     Create a release
 GET    /v1/releases/lookup              Find a release by name (?project=&release=)
+POST   /v1/releases/ensure              Atomically get or create a release by name
+                                        ({"project", "release"}; never creates the project)
 GET    /v1/releases/{id}                Get a release
 PUT    /v1/releases/{id}                Update a release
 DELETE /v1/releases/{id}                Delete a release

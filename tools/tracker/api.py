@@ -706,6 +706,32 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             )
         return JSONResponse({"ok": True, "release": release})
 
+    async def ensure_release(request: Request) -> JSONResponse:
+        """POST /v1/releases/ensure  {"project", "release"}
+
+        Returns the named release, creating it in the named project when it
+        does not exist yet. Unlike a lookup followed by ``POST /v1/releases``,
+        concurrent callers can never create duplicate releases for the same
+        names. The project is never created: a missing project is a 404.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        project = (body.get("project") or "").strip()
+        name = (body.get("release") or "").strip()
+        if not project or not name:
+            return _bad_request("project and release names are required")
+        release, created = store.ensure_release(project, name)
+        if not release:
+            return JSONResponse(
+                {"ok": False, "error": "Project not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "release": release, "created": created},
+                            status_code=201 if created else 200)
+
     async def claimable(request: Request) -> JSONResponse:
         """GET /v1/claimable?project=<name>&release=<name>
 
@@ -759,6 +785,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/releases", list_releases, methods=["GET"]),
         Route("/v1/releases", create_release, methods=["POST"]),
         Route("/v1/releases/lookup", lookup_release, methods=["GET"]),
+        Route("/v1/releases/ensure", ensure_release, methods=["POST"]),
         Route("/v1/releases/{id}", get_release, methods=["GET"]),
         Route("/v1/releases/{id}", update_release, methods=["PUT"]),
         Route("/v1/releases/{id}", delete_release, methods=["DELETE"]),

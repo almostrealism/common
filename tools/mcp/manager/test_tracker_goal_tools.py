@@ -155,95 +155,95 @@ class TestUpsertGoalTask(_GoalToolTestBase):
         self.assertFalse(result["ok"])
 
     @patch.object(server, "_tracker_post")
-    @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
-    def test_a_new_task_is_created_ready(self, mock_get, mock_tracker_get, mock_post):
+    def test_a_new_task_is_created_ready(self, mock_get, mock_post):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.return_value = {"ok": True, "release": _RELEASE}
-        mock_post.return_value = {"ok": True, "task": {"id": "new"}}
+        mock_post.side_effect = [
+            {"ok": True, "release": _RELEASE, "created": False},
+            {"ok": True, "task": {"id": "new"}},
+        ]
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "Add a thing", "goals:docs/PLAN.md",
             description="why", priority=1, blocked_by="a, b")
-        mock_post.assert_called_once_with("/v1/tasks", {
+        self.assertEqual(("/v1/tasks", {
             "title": "Add a thing", "description": "why", "priority": 1,
             "project_id": "p1", "release_id": "r1", "blocked_by": ["a", "b"],
-            "source": "goals:docs/PLAN.md", "stage": "ready", "status": "open"})
+            "source": "goals:docs/PLAN.md", "stage": "ready", "status": "open"}),
+            mock_post.call_args_list[1][0])
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
-    def test_a_missing_release_is_created_in_the_project(
+    def test_the_release_is_resolved_in_one_atomic_request(
             self, mock_get, mock_tracker_get, mock_post):
+        # A lookup followed by a separate create lets two concurrent stewards
+        # each create the release and attach tasks to different ids. The tool
+        # must instead ask the tracker to get-or-create it in a single request.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.side_effect = [
-            {"ok": False, "error": "Release not found"},
-            {"ok": True, "projects": [{"id": "p1", "name": "Framework"}]},
-        ]
         mock_post.side_effect = [
-            {"ok": True, "release": {"id": "r2", "name": "Framework 1.3", "project_id": "p1"}},
+            {"ok": True, "created": True,
+             "release": {"id": "r2", "name": "Framework 1.3", "project_id": "p1"}},
             {"ok": True, "task": {"id": "new"}},
         ]
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.3", "t", "goals:docs/PLAN.md")
         self.assertEqual(
-            ("/v1/releases", {"name": "Framework 1.3", "project_id": "p1"}),
+            ("/v1/releases/ensure", {"project": "Framework", "release": "Framework 1.3"}),
             mock_post.call_args_list[0][0])
         self.assertEqual("r2", mock_post.call_args_list[1][0][1]["release_id"])
+        self.assertEqual(2, mock_post.call_count)
+        mock_tracker_get.assert_not_called()
 
     @patch.object(server, "_tracker_post")
-    @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
-    def test_a_project_is_never_created(self, mock_get, mock_tracker_get, mock_post):
+    def test_a_project_is_never_created(self, mock_get, mock_post):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.side_effect = [
-            {"ok": False, "error": "Release not found"},
-            {"ok": True, "projects": []},
-        ]
+        mock_post.return_value = {"ok": False, "error": "Project not found"}
         result = server.tracker_upsert_goal_task(
             "Nowhere", "Nowhere 1.0", "t", "goals:docs/PLAN.md")
         self.assertFalse(result["ok"])
-        mock_post.assert_not_called()
+        self.assertEqual("Tracker project 'Nowhere' does not exist", result["error"])
+        # Only the ensure request was made: no project, and no task.
+        mock_post.assert_called_once_with(
+            "/v1/releases/ensure", {"project": "Nowhere", "release": "Nowhere 1.0"})
 
     @patch.object(server, "_tracker_post")
-    @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
-    def test_a_tracker_outage_does_not_create_a_release(
-            self, mock_get, mock_tracker_get, mock_post):
-        # A transient failure must not be mistaken for "release not found" and
-        # trigger a create that duplicates the release once the tracker recovers.
+    def test_a_tracker_outage_creates_nothing(self, mock_get, mock_post):
+        # A transient failure is reported as-is and no task is filed against a
+        # release the tracker could not confirm.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.return_value = {"ok": False, "error": "Tracker unreachable: down"}
+        mock_post.return_value = {"ok": False, "error": "Tracker unreachable: down"}
         result = server.tracker_upsert_goal_task(
             "Framework", "Framework 1.3", "t", "goals:docs/PLAN.md")
         self.assertFalse(result["ok"])
         self.assertEqual("Tracker unreachable: down", result["error"])
-        mock_post.assert_not_called()
+        self.assertEqual(1, mock_post.call_count)
 
     @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_a_task_a_person_wrote_is_never_changed(
-            self, mock_get, mock_tracker_get, mock_put):
+            self, mock_get, mock_tracker_get, mock_post, mock_put):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.side_effect = [
-            {"ok": True, "release": _RELEASE},
-            {"ok": True, "task": {"id": "t1", "source": "person"}},
-        ]
+        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
+        mock_tracker_get.return_value = {"ok": True, "task": {"id": "t1", "source": "person"}}
         result = server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md", task_id="t1")
         self.assertFalse(result["ok"])
         mock_put.assert_not_called()
 
     @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_updating_a_goal_task_leaves_its_stage_and_status_alone(
-            self, mock_get, mock_tracker_get, mock_put):
+            self, mock_get, mock_tracker_get, mock_post, mock_put):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_tracker_get.side_effect = [
-            {"ok": True, "release": _RELEASE},
-            {"ok": True, "task": {"id": "t1", "source": "goals:docs/PLAN.md"}},
-        ]
+        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
+        mock_tracker_get.return_value = {
+            "ok": True, "task": {"id": "t1", "source": "goals:docs/PLAN.md"}}
         mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md", task_id="t1")
