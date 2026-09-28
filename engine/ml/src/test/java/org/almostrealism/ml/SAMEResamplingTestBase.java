@@ -29,7 +29,9 @@ import org.junit.After;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,6 +44,9 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 
 	/** The reference directories the running test has read, each opened once. */
 	private final Map<File, ReferenceActivations> references = new HashMap<>();
+
+	/** The clones {@link #evalBlock} returned during the running test, released when it ends. */
+	private final List<PackedCollection> blockOutputs = new ArrayList<>();
 
 	/**
 	 * Evaluates a producer at the test boundary (top of the call stack), applying the optimization pass
@@ -59,15 +64,55 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * on {@code input}. This is the top-of-stack boundary at which compilation and evaluation are
 	 * permitted; the block itself never evaluates.
 	 *
+	 * <p>The {@link CompiledModel} is released before returning, so each call leaves no compiled
+	 * graph behind — otherwise every invocation would strand a full compiled graph (two large ones
+	 * per round trip in the gated parity tests). The forward output is a buffer the compiled graph
+	 * owns, so it is cloned into independent memory that outlives the release.</p>
+	 *
+	 * <p>That clone is owned by this test infrastructure, not the caller: it is registered here and
+	 * released by {@link #releaseBlockOutputs()} when the test ends, so a caller must not destroy it,
+	 * and a test that reuses one {@link StateDictionary} across many blocks (the gated parity tests,
+	 * which discard several stage outputs inline) cannot leak a clone by forgetting to.</p>
+	 *
+	 * <p>The {@link Model} is deliberately <em>not</em> destroyed. It is a throwaway wrapper around
+	 * the caller-supplied {@code block}, whose layers hold the weight {@link PackedCollection}s the
+	 * caller loaded into a {@link StateDictionary} and reuses across every block it evaluates.
+	 * {@link Model#destroy()} cascades into those layers and frees their weights, so destroying it
+	 * here would release memory the caller still owns — invalidating the dictionary for every
+	 * subsequent {@code evalBlock} built from the same weights (the encoder call followed by the
+	 * decoder call in {@code SAMEAutoEncoderParityTest}, and the repeated calls that culminate in the
+	 * full-block evaluation in {@code SAMEResamplingParityTest}). Releasing the compiled graph frees
+	 * the per-call native memory without taking ownership of the borrowed weights; the caller
+	 * destroys its {@link StateDictionary} once, when it is done with every block.</p>
+	 *
 	 * @param block the resampling block (from {@link TransformerResamplingFeatures#transformerResamplingBlock})
 	 * @param input the block input, matching {@link Block#getInputShape()}
-	 * @return the forward-pass output
+	 * @return the forward-pass output, held in memory independent of the compiled graph and released
+	 *         with the test by {@link #releaseBlockOutputs()}
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
 		model.add(block);
+
 		CompiledModel compiled = model.compile(false);
-		return compiled.forward(input);
+		try {
+			PackedCollection output = compiled.forward(input).clone();
+			blockOutputs.add(output);
+			return output;
+		} finally {
+			compiled.destroy();
+		}
+	}
+
+	/**
+	 * Releases every clone {@link #evalBlock} returned during the finished test. The clones are
+	 * independent memory (not views into the reference shards), so this runs independently of
+	 * {@link #releaseReferences()}.
+	 */
+	@After
+	public void releaseBlockOutputs() {
+		blockOutputs.forEach(PackedCollection::destroy);
+		blockOutputs.clear();
 	}
 
 	/**
@@ -247,6 +292,60 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 		double[] stats = diffStats(actual, reference);
 		log(String.format("%-18s maxAbs=%.3e meanAbs=%.3e rmse=%.3e (refMaxAbs=%.3e, n=%d)",
 				stage, stats[0], stats[1], stats[2], stats[3], reference.length));
+	}
+
+	/**
+	 * Asserts that a computed signal is finite, sits at the reference's level and follows its
+	 * waveform, reporting all three measures. This is the check for a stage whose per-sample
+	 * agreement is not assertable because the computation amplifies rounding differences — an
+	 * ill-conditioned stack, where any correct FP32 implementation diverges sample by sample while
+	 * still reproducing the signal. It is not a substitute for {@link #assertWithinRelative} on a
+	 * stage that can be held to a per-sample threshold.
+	 *
+	 * @param stage               the stage label
+	 * @param actual              the computed collection
+	 * @param reference           the flat reference values
+	 * @param levelTolerance      the permitted relative difference in RMS level
+	 * @param minimumCorrelation  the required correlation with the reference
+	 */
+	protected void assertTracksReference(String stage, PackedCollection actual, float[] reference,
+										 double levelTolerance, double minimumCorrelation) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		double actualEnergy = 0;
+		double referenceEnergy = 0;
+		double crossEnergy = 0;
+
+		for (int i = 0; i < reference.length; i++) {
+			double value = actual.toDouble(i);
+			if (!Double.isFinite(value)) {
+				throw new AssertionError(stage + ": sample " + i + " is " + value);
+			}
+
+			actualEnergy += value * value;
+			referenceEnergy += reference[i] * (double) reference[i];
+			crossEnergy += value * reference[i];
+		}
+
+		double actualRms = Math.sqrt(actualEnergy / reference.length);
+		double referenceRms = Math.sqrt(referenceEnergy / reference.length);
+		double correlation = crossEnergy / Math.sqrt(actualEnergy * referenceEnergy);
+
+		log(String.format("%-18s rms=%.3e refRms=%.3e correlation=%.6f",
+				stage, actualRms, referenceRms, correlation));
+
+		if (!(actualRms > 0)) {
+			throw new AssertionError(stage + ": produced silence (rms " + actualRms + ")");
+		} else if (!(Math.abs(actualRms - referenceRms) <= levelTolerance * referenceRms)) {
+			throw new AssertionError(stage + ": level " + actualRms +
+					" differs from the reference " + referenceRms);
+		} else if (!(correlation >= minimumCorrelation)) {
+			throw new AssertionError(stage + ": does not track the reference (correlation " +
+					correlation + ")");
+		}
 	}
 
 	/**
