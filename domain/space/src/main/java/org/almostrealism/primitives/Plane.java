@@ -148,9 +148,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 		double y = Math.abs(dotProduct(x, vector(up[0], up[1], up[2])).get().evaluate().toDouble(0));
 		if (y > this.h / 2.0) return false;
 
-		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
-
+		double[] across = getAcross();
 		double z = Math.abs(dotProduct(x, vector(across[0], across[1], across[2])).get().evaluate().toDouble(0));
 		return !(z > this.w / 2.0);
 	}
@@ -190,10 +188,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 
 	@Override
 	public double[] getSpatialCoords(double[] uv) {
-		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
-
-		return new Vector(this.across).multiply((uv[0] - 0.5) * this.w)
+		return new Vector(getAcross()).multiply((uv[0] - 0.5) * this.w)
 				.add(new Vector(this.up).multiply((0.5 - uv[1]) * this.h)).toArray();
 	}
 
@@ -201,10 +196,7 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	public double[] getSurfaceCoords(Producer<PackedCollection> v) {
 		double[] xyz = v.get().evaluate().toArray();
 
-		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
-		
-		return new double[] { 0.5 + new Vector(this.across).dotProduct(new Vector(xyz)) / this.w,
+		return new double[] { 0.5 + new Vector(getAcross()).dotProduct(new Vector(xyz)) / this.w,
 							0.5 - new Vector(this.up).dotProduct(new Vector(xyz)) / this.h };
 	}
 }

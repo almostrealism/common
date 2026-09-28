@@ -154,9 +154,8 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 		if (this.energy == null)
 			this.energy = new double[this.w][this.h];
 
-		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
-		
+		double[] across = getAcross();
+
 		if (this.image == null) {
 			this.image = new RGB[this.w][this.h];
 			
@@ -166,7 +165,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 					this.image[i][j] = new RGB(0.0, 0.0, 0.0);
 		}
 		
-		double a = x.dotProduct(new Vector(this.across)) / this.pixel;
+		double a = x.dotProduct(new Vector(across)) / this.pixel;
 		double b = x.dotProduct(new Vector(this.up)) / this.pixel;
 		a = (this.h / 2.0) - a;
 		b = (this.w / 2.0) + b;
