@@ -16,10 +16,13 @@
 
 package org.almostrealism.hardware.cuda;
 
+import io.almostrealism.code.Precision;
+import org.almostrealism.io.PrintWriter;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
+import java.util.Collections;
 
 /**
  * Host-side validation that {@link CUContext} and {@link CUDeviceBuffer} perform before crossing
@@ -181,5 +184,73 @@ public class CudaMemorySafetyTest {
 		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(-1, 256));
 		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(10, 0));
 		assertRejects(IllegalArgumentException.class, () -> CUFunction.gridSize(10, -8));
+	}
+
+	/**
+	 * A work range whose {@code globalOffset + globalCount} overflows {@code long} is rejected
+	 * before the launch crosses JNI. The generated kernel bounds the thread with that sum, so an
+	 * overflowing pair would wrap the bound negative and let every thread index out of range.
+	 */
+	@Test(timeout = 30000)
+	public void launchRejectsWorkRangeOverflow() {
+		CUFunction function = new CUFunction(new CUModule(null, 0L), 0L);
+		CUStream stream = new CUStream(null, 0L);
+		CUDeviceBuffer[] buffers = { new CUDeviceBuffer(null, 0L, 64L, false) };
+		int[] offsets = { 0 };
+		int[] sizes = { 4 };
+
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers,
+				offsets, sizes, 4, Long.MAX_VALUE, 1));
+		assertRejects(IllegalArgumentException.class, () -> function.launch(stream, 1, 64, buffers,
+				offsets, sizes, 4, 2, Long.MAX_VALUE - 1));
+	}
+
+	/**
+	 * The bounds guard {@link CudaPrintWriter} emits must be overflow-safe: it compares
+	 * {@code global_id - global_offset} against {@code global_count} rather than forming
+	 * {@code global_offset + global_count}, which wraps negative for an offset near
+	 * {@link Long#MAX_VALUE} and would let every launched thread pass the guard.
+	 */
+	@Test(timeout = 30000)
+	public void generatedKernelGuardIsOverflowSafe() {
+		StringBuilder generated = new StringBuilder();
+		CudaPrintWriter writer = new CudaPrintWriter(
+				PrintWriter.of(generated::append), "kernel", Precision.FP32);
+
+		writer.renderArgumentReads(Collections.emptyList());
+
+		String source = generated.toString();
+		Assert.assertTrue("Expected a subtraction-based bound: " + source,
+				source.contains("global_id - global_offset >= global_count"));
+		Assert.assertTrue("Expected the lower-bound guard: " + source,
+				source.contains("global_id < global_offset"));
+		Assert.assertFalse("Guard must not form the overflowing sum: " + source,
+				source.contains("global_offset + global_count"));
+	}
+
+	/**
+	 * {@link CUObject} exposes its released state through {@link CUObject#isReleased()} and refuses
+	 * to hand out the native handle once {@link CUObject#release()} has run. The flag is
+	 * {@code volatile} so a release on one thread is visible to the others sharing the wrapper.
+	 */
+	@Test(timeout = 30000)
+	public void releasedHandleIsRefused() {
+		ReleasableStub object = new ReleasableStub(42L);
+
+		Assert.assertFalse(object.isReleased());
+		Assert.assertEquals(42L, object.getNativePointer());
+
+		object.release();
+
+		Assert.assertTrue(object.isReleased());
+		assertRejects(IllegalStateException.class, object::getNativePointer);
+	}
+
+	/** A minimal {@link CUObject} whose {@link #release()} touches no native state. */
+	private static final class ReleasableStub extends CUObject {
+		/** Wraps the given placeholder handle in a context-less object. */
+		private ReleasableStub(long nativePointer) {
+			super(null, nativePointer);
+		}
 	}
 }

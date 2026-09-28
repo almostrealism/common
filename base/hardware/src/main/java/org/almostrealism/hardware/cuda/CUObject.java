@@ -34,8 +34,14 @@ public abstract class CUObject implements ConsoleFeatures {
 	/** The native handle. */
 	private final long nativePointer;
 
-	/** Whether {@link #release()} has run. */
-	private boolean released;
+	/**
+	 * Whether {@link #release()} has run. Written under the synchronized {@link #release()}
+	 * and read without synchronization by {@link #getNativePointer()} and {@link #isReleased()},
+	 * so it is {@code volatile} to make a release performed on one thread visible to the others
+	 * that share the wrapper — otherwise a stale {@code false} could let a released handle reach
+	 * a {@link CU} call.
+	 */
+	private volatile boolean released;
 
 	/**
 	 * Wraps a native handle owned by the given context.

@@ -68,7 +68,8 @@ public class CUFunction extends CUObject {
 	 * @param globalCount  the number of work items
 	 * @param globalOffset the index of the first work item
 	 * @throws IllegalArgumentException  if the geometry, the element size or the argument
-	 *                                   arrays are invalid
+	 *                                   arrays are invalid, or if {@code globalOffset + globalCount}
+	 *                                   would overflow {@code long}
 	 * @throws IndexOutOfBoundsException if an argument range falls outside its buffer
 	 */
 	public void launch(CUStream stream, int gridSize, int blockSize,
@@ -77,6 +78,11 @@ public class CUFunction extends CUObject {
 		if (gridSize <= 0 || blockSize <= 0 || globalCount < 0 || globalOffset < 0) {
 			throw new IllegalArgumentException("Invalid launch geometry: grid " + gridSize +
 					", block " + blockSize + ", " + globalCount + " work items from " + globalOffset);
+		}
+
+		if (globalCount > Long.MAX_VALUE - globalOffset) {
+			throw new IllegalArgumentException("Work range overflows: " + globalCount +
+					" work items from " + globalOffset);
 		}
 
 		if (elementBytes <= 0 || offsets.length != buffers.length || sizes.length != buffers.length) {

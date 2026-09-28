@@ -53,7 +53,7 @@ public class CudaPrintWriter extends CPrintWriter {
 	@Override
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		println("long global_id = (long) blockIdx.x * blockDim.x + threadIdx.x + global_offset;");
-		println("if (global_id >= global_offset + global_count) return;");
+		println("if (global_id < global_offset || global_id - global_offset >= global_count) return;");
 		super.renderArgumentReads(arguments);
 	}
 }
