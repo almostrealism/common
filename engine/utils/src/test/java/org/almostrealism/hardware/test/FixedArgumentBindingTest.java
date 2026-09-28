@@ -128,12 +128,28 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 	}
 
 	/**
-	 * Evaluates a compiled kernel whose arguments are all fixed many times and confirms that
-	 * the evaluations do not start a thread for each argument of each invocation.
+	 * Evaluates a compiled kernel whose arguments are all fixed and confirms that the number of
+	 * threads started does not scale with the number of evaluations.
+	 *
+	 * <p>Requesting a plain evaluable starts one thread per invocation (its {@link Evaluable#async()}
+	 * executor starts a thread per request), so a regression that stopped binding fixed arguments
+	 * directly would start threads in proportion to the evaluation count. Binding them directly
+	 * starts none. The test measures a small batch and a batch four times larger from the same warm
+	 * kernel: a per-invocation regression makes the larger batch start roughly four times as many
+	 * threads as the smaller one, while direct binding leaves the two counts equal. Asserting that
+	 * the larger batch starts no more than a small fixed slack above the smaller batch rejects the
+	 * regression without depending on an exact zero &mdash; the JVM may start a few unrelated threads
+	 * (JIT, GC) during either window &mdash; and, unlike an absolute threshold, cannot be satisfied by
+	 * a regression that merely starts fewer threads per invocation.</p>
 	 */
 	@Test(timeout = 120000)
 	public void repeatedEvaluationDoesNotStartThreadPerArgument() {
-		int evaluations = 200;
+		int baseEvaluations = 100;
+		int largeEvaluations = 4 * baseEvaluations;
+
+		// Threads the JVM may start for reasons unrelated to argument binding (JIT, GC) during
+		// either measurement window; far below the one-thread-per-invocation a regression starts.
+		int slack = 16;
 
 		PackedCollection a = new PackedCollection(shape(16));
 		PackedCollection b = new PackedCollection(shape(16));
@@ -148,21 +164,38 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 		}
 
 		ThreadMXBean threads = ManagementFactory.getThreadMXBean();
+
+		long baseStarted = evaluateAndCountStartedThreads(ev, baseEvaluations, threads);
+		long largeStarted = evaluateAndCountStartedThreads(ev, largeEvaluations, threads);
+
+		log("baseEvaluations=" + baseEvaluations + " baseThreadsStarted=" + baseStarted +
+				" largeEvaluations=" + largeEvaluations + " largeThreadsStarted=" + largeStarted);
+
+		Assert.assertTrue("Threads started scaled with evaluations: " + baseStarted + " over " +
+						baseEvaluations + " but " + largeStarted + " over " + largeEvaluations,
+				largeStarted <= baseStarted + slack);
+	}
+
+	/**
+	 * Evaluates {@code ev} the given number of times and returns how many threads the JVM started
+	 * during those evaluations, checking the result of each evaluation along the way.
+	 *
+	 * @param ev          the compiled kernel to evaluate
+	 * @param evaluations the number of evaluations to perform
+	 * @param threads     the thread management bean used to count started threads
+	 * @return the number of threads started while performing the evaluations
+	 */
+	private long evaluateAndCountStartedThreads(Evaluable<PackedCollection> ev, int evaluations,
+												ThreadMXBean threads) {
 		long startedBefore = threads.getTotalStartedThreadCount();
 
-		PackedCollection last = null;
 		for (int i = 0; i < evaluations; i++) {
-			last = ev.evaluate();
+			PackedCollection result = ev.evaluate();
+			for (int j = 0; j < 16; j++) {
+				assertEquals(0.375, result.toDouble(j));
+			}
 		}
 
-		long started = threads.getTotalStartedThreadCount() - startedBefore;
-		log("evaluations=" + evaluations + " threadsStarted=" + started);
-
-		for (int i = 0; i < 16; i++) {
-			assertEquals(0.375, last.toDouble(i));
-		}
-
-		Assert.assertTrue("Started " + started + " threads over " + evaluations + " evaluations",
-				started < evaluations);
+		return threads.getTotalStartedThreadCount() - startedBefore;
 	}
 }
