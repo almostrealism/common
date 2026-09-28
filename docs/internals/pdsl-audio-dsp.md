@@ -42,10 +42,12 @@ PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 
 ## Audio DSL files
 
-All four files live in `engine/ml/src/main/resources/pdsl/audio/`.
+These files live in `engine/ml/src/main/resources/pdsl/audio/`.
 
 | File | What it defines |
 |------|-----------------|
+| `oobleck_residual_block.pdsl` | The Oobleck codec's residual unit — `oobleck_residual_block`: `accum` around Snake → `conv1d` (kernel 7) → Snake → `conv1d` (kernel 1). Loaded by `OobleckCodec.buildResidualBlock`. |
+| `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders, which parse it together with `oobleck_residual_block.pdsl`. |
 | `efx_channel.pdsl` | EFX channel layers — `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix`, the composite `efx_channel` (dry + filtered/scaled/delayed wet via `accum_blocks`), and the `feedback_comb` closed-loop comb. States: `efx_delay_state`, `feedback_comb_state`. |
 | `mixdown_channel.pdsl` | Single-channel mixdown — `mixdown_main` (HP → `scale` → LP) and `mixdown_channel` (full path with wet/delay). State: `mixdown_delay_state`. |
 | `delay_feedback_bank.pdsl` | Multi-channel delay bank — `delay_feedback_bank`: `repeat` → per-channel `delay` → `route` → `sum_channels`. State: `delay_bank_state`. |
@@ -89,8 +91,9 @@ audio-domain assumption:
 | `sum_channels` | `sum_channels()` | Axis-0 reduction, `[C, S]` → `[1, S]`. |
 | `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
 
-(`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
-activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `repeat_each`, `cache_write`,
+(`PdslBuiltins` also supplies the ML primitives — `dense`, `conv1d`, `conv_transpose1d`,
+`rmsnorm`, `softmax`, the activations including `snake`, `slice`, `reshape`, `range`, `lerp`,
+`capture`, `repeat_each`, `cache_write`,
 `cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
 `attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
@@ -100,6 +103,11 @@ composes the KV-cached attention block from these; `attention()` loads that asse
 pre-norm transformer layer from the layers of those two assets — `accum` around an attention
 layer, then `accum` around `swiglu_ffn` — and `transformer()` builds it from the three assets
 parsed into one program with `PdslLoader.parseResources`. A layer called from another layer
+is built, as a built-in is, for the signal at the point where the call is placed — after the
+stages before it, or as the input of the `accum`, `product`, `accum_blocks` or `concat_blocks`
+that holds it — unless it declares a `-> [shape]` annotation, in which case it is built for that
+shape; so a layer over `[batch, channels, length]` signals nests as readily as one over a
+`[1, dim]` token vector. A called layer
 sees the program's `data` and `state` entries, and a program's own layers take precedence over
 registered primitives and built-ins of the same name — except inside that layer's own construction,
 where its name reaches the primitive or built-in it shadows (so a layer can wrap it), and a call that

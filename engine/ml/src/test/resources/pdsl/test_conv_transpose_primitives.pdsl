@@ -1,0 +1,18 @@
+/**
+ * Fixtures for the conv_transpose1d tensor primitive, one form per layer, so a test can pin it on
+ * small hand-checkable inputs independently of the Oobleck decoder stages that use it. A test
+ * parses these together with the conv1d and snake fixtures of test_conv_snake_primitives.pdsl.
+ */
+
+/**
+ * [batch, in_channels, length] -> [batch, out_channels, (length - 1) * stride - 2 * padding + kernel
+ * + output_padding]: transposed 1-D convolution with a bias.
+ */
+layer conv_transpose1d_biased(w: weight, bias: weight, stride: int, padding: int, output_padding: int) {
+    conv_transpose1d(w, bias, stride, padding, output_padding)
+}
+
+/** The same transposed 1-D convolution without a bias. */
+layer conv_transpose1d_unbiased(w: weight, stride: int, padding: int, output_padding: int) {
+    conv_transpose1d(w, stride, padding, output_padding)
+}

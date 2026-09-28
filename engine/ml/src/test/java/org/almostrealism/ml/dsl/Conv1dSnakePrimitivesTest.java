@@ -26,23 +26,22 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Pins the {@code conv1d} and {@code snake} PDSL primitives on their own, through the
- * single-primitive layers of {@code test_conv_snake_primitives.pdsl}, independently of the
- * Oobleck residual unit that composes them.
+ * Pins the {@code conv1d}, {@code conv_transpose1d} and {@code snake} PDSL primitives on their
+ * own, through the single-primitive layers of {@code test_conv_snake_primitives.pdsl} and
+ * {@code test_conv_transpose_primitives.pdsl}, independently of the Oobleck codec stages that
+ * compose them.
  *
  * <p>Each primitive is checked two ways: against the {@code ConvolutionLayerFeatures}/
  * {@code ActivationFeatures} method it dispatches to (so the argument mapping — weight, bias,
- * stride and padding for the convolution; per-channel alpha and beta for Snake — is exercised),
- * and against a value computed on the host straight from the primitive's definition (so the
- * primitive is checked against its own arithmetic rather than only against the framework layer).</p>
+ * stride and padding for the convolutions, and output padding for the transposed one; per-channel
+ * alpha and beta for Snake — is exercised), and against a value computed on the host straight from
+ * the primitive's definition (so the primitive is checked against its own arithmetic rather than
+ * only against the framework layer).</p>
  */
 public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRoutingFeatures {
 
@@ -52,8 +51,11 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	/** Absolute tolerance when comparing a single-precision kernel to a double-precision expectation. */
 	private static final double REFERENCE_TOLERANCE = 2e-3;
 
-	/** Classpath location of the fixture program. */
+	/** Classpath location of the {@code conv1d} and {@code snake} fixture program. */
 	private static final String FIXTURE = "/pdsl/test_conv_snake_primitives.pdsl";
+
+	/** Classpath location of the {@code conv_transpose1d} fixture program, parsed with {@link #FIXTURE}. */
+	private static final String TRANSPOSE_FIXTURE = "/pdsl/test_conv_transpose_primitives.pdsl";
 
 	/**
 	 * The {@code conv1d} primitive produces the same result as {@code convolution1d} for a
@@ -224,6 +226,128 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	}
 
 	/**
+	 * The {@code conv_transpose1d} primitive produces the same result as {@code convTranspose1d}
+	 * for a strided, padded transposed convolution with output padding whose output-channel count
+	 * differs from its input-channel count, so the primitive reads the channel counts from the
+	 * {@code [in_channels, out_channels, kernel]} weight and passes the stride, padding and output
+	 * padding through in order.
+	 */
+	@Test(timeout = 120000)
+	public void convTranspose1dMatchesConvolutionLayer() {
+		int batch = 1;
+		int inChannels = 2;
+		int outChannels = 3;
+		int length = 4;
+		int kernel = 3;
+		int stride = 2;
+		int padding = 1;
+		int outputPadding = 1;
+
+		PackedCollection weight = wave(shape(inChannels, outChannels, kernel), 0.37);
+		PackedCollection bias = wave(shape(outChannels), 0.19);
+		PackedCollection input = wave(shape(batch, inChannels, length), 0.53);
+
+		double[] actual = run("conv_transpose1d_biased", shape(batch, inChannels, length),
+				args("w", weight, "bias", bias, "stride", stride, "padding", padding,
+						"output_padding", outputPadding), input);
+
+		Model reference = new Model(shape(batch, inChannels, length));
+		reference.add(convTranspose1d(batch, inChannels, outChannels, length, kernel, stride, padding,
+				outputPadding, weight, bias));
+		double[] expected = reference.compile().forward(input).toArray();
+
+		assertClose("conv_transpose1d vs convTranspose1d", expected, actual, KERNEL_TOLERANCE);
+	}
+
+	/**
+	 * The four-argument {@code conv_transpose1d} form (no bias) produces the same result as
+	 * {@code convTranspose1d} with a {@code null} bias, at a stride larger than the kernel's
+	 * overlap and with output padding but no padding.
+	 */
+	@Test(timeout = 120000)
+	public void convTranspose1dWithoutBiasMatchesConvolutionLayer() {
+		int batch = 1;
+		int inChannels = 3;
+		int outChannels = 2;
+		int length = 3;
+		int kernel = 4;
+		int stride = 3;
+		int outputPadding = 2;
+
+		PackedCollection weight = wave(shape(inChannels, outChannels, kernel), 0.41);
+		PackedCollection input = wave(shape(batch, inChannels, length), 0.61);
+
+		double[] actual = run("conv_transpose1d_unbiased", shape(batch, inChannels, length),
+				args("w", weight, "stride", stride, "padding", 0, "output_padding", outputPadding), input);
+
+		Model reference = new Model(shape(batch, inChannels, length));
+		reference.add(convTranspose1d(batch, inChannels, outChannels, length, kernel, stride, 0,
+				outputPadding, weight, null));
+		double[] expected = reference.compile().forward(input).toArray();
+
+		assertClose("conv_transpose1d (no bias) vs convTranspose1d", expected, actual, KERNEL_TOLERANCE);
+	}
+
+	/**
+	 * The {@code conv_transpose1d} primitive computes the transposed convolution by definition,
+	 * checked against values worked out by hand. One input channel {@code [1, 2]} with the
+	 * kernel {@code [1, 2, 3]}, bias 0.5 and stride 2: sample 0 adds {@code 1 * [1, 2, 3]} to
+	 * outputs 0 to 2 and sample 1 adds {@code 2 * [1, 2, 3]} to outputs 2 to 4, so with no
+	 * padding the output is {@code [1, 2, 3 + 2, 4, 6] + 0.5 = [1.5, 2.5, 5.5, 4.5, 6.5]}.
+	 * Padding 1 trims one sample from each end and output padding 1 adds one back on the right,
+	 * leaving {@code [2, 5, 4, 6] + 0.5}; output padding alone appends a sample no input reaches,
+	 * which holds only the bias.
+	 */
+	@Test(timeout = 120000)
+	public void convTranspose1dMatchesHandComputedReference() {
+		TraversalPolicy weightShape = shape(1, 1, 3);
+		TraversalPolicy biasShape = shape(1);
+		TraversalPolicy inputShape = shape(1, 1, 2);
+		PackedCollection weight = pack(weightShape, 1.0, 2.0, 3.0);
+		PackedCollection bias = pack(biasShape, 0.5);
+		PackedCollection input = pack(inputShape, 1.0, 2.0);
+
+		assertClose("stride 2", new double[] {1.5, 2.5, 5.5, 4.5, 6.5},
+				run("conv_transpose1d_biased", inputShape, args("w", weight, "bias", bias,
+						"stride", 2, "padding", 0, "output_padding", 0), input), KERNEL_TOLERANCE);
+		assertClose("stride 2, padding 1, output padding 1", new double[] {2.5, 5.5, 4.5, 6.5},
+				run("conv_transpose1d_biased", inputShape, args("w", weight, "bias", bias,
+						"stride", 2, "padding", 1, "output_padding", 1), input), KERNEL_TOLERANCE);
+		assertClose("stride 2, output padding 1", new double[] {1.5, 2.5, 5.5, 4.5, 6.5, 0.5},
+				run("conv_transpose1d_biased", inputShape, args("w", weight, "bias", bias,
+						"stride", 2, "padding", 0, "output_padding", 1), input), KERNEL_TOLERANCE);
+	}
+
+	/** {@code conv_transpose1d} rejects an argument count that is neither four nor five. */
+	@Test(timeout = 60000)
+	public void convTranspose1dRejectsWrongArgumentCount() {
+		PackedCollection weight = new PackedCollection(shape(2, 2, 3));
+		try {
+			PdslBuiltins.call("conv_transpose1d", List.of(weight, 2, 1));
+			Assert.fail("conv_transpose1d should reject a three-argument call");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("output_padding"));
+		}
+	}
+
+	/**
+	 * {@code conv_transpose1d} reads its input-channel count from the weight's leading axis, as a
+	 * transposed convolution's {@code [in_channels, out_channels, kernel]} weight is laid out, and
+	 * rejects an input with a different number of channels.
+	 */
+	@Test(timeout = 60000)
+	public void convTranspose1dRejectsInputChannelMismatch() {
+		PackedCollection weight = wave(shape(2, 3, 3), 0.37);
+		try {
+			run("conv_transpose1d_unbiased", shape(1, 3, 4),
+					args("w", weight, "stride", 2, "padding", 0, "output_padding", 0), wave(shape(1, 3, 4), 0.5));
+			Assert.fail("conv_transpose1d should reject a 3-channel input to a 2-input-channel weight");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("expects 2 input channels"));
+		}
+	}
+
+	/**
 	 * Standard 1-D cross-correlation of {@code input} against {@code weight} on the host:
 	 * {@code out[o, t] = bias[o] + sum over c, k of weight[o, c, k] * input[c, t * stride + k - padding]},
 	 * with out-of-range input positions treated as zero.
@@ -265,21 +389,11 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	private double[] run(String layer, TraversalPolicy inputShape, Map<String, Object> args,
 						 PackedCollection input) {
 		PdslLoader loader = new PdslLoader();
-		Block block = loader.buildLayer(loader.parse(fixture()), layer, inputShape, args);
+		Block block = loader.buildLayer(loader.parseResources(FIXTURE, TRANSPOSE_FIXTURE), layer, inputShape, args);
 		Model model = new Model(inputShape);
 		model.add(block);
 		CompiledModel compiled = model.compile();
 		return compiled.forward(input).toArray();
-	}
-
-	/** Reads the fixture program source from the test classpath. */
-	private String fixture() {
-		try (InputStream in = getClass().getResourceAsStream(FIXTURE)) {
-			Assert.assertNotNull("Fixture " + FIXTURE + " missing from the test classpath", in);
-			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to read " + FIXTURE, e);
-		}
 	}
 
 	/** Builds an argument map from alternating names and values. */
