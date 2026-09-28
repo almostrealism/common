@@ -291,6 +291,62 @@ class CredentialIsolationTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertNotIn("environment", job)
 
+    def test_auto_resolve_leaves_the_stale_guard_to_the_submit_workflow(self):
+        """The pipeline's start time predates auto-review's own submission, so a
+        STARTED_AFTER staged from it would have the controller skip the request."""
+        for step in _jobs()["auto-resolve"]["steps"]:
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("STARTED_AFTER", step.get("env") or {})
+
+
+def _submit_step():
+    job = _load(_SUBMIT_WORKFLOW)["jobs"]["submit"]
+    return next(s for s in job["steps"] if s.get("name") == "Submit agent job")
+
+
+class AutoResolveSubmitStepTests(unittest.TestCase):
+    """Runs the submit step of auto-resolve-submit.yaml with a stub submit script."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="auto-resolve-submit-test-")
+        self.captured = os.path.join(self.tmp, "captured")
+        os.makedirs(os.path.join(self.tmp, "tools", "ci"))
+        _write_executable(os.path.join(self.tmp, "tools", "ci", "submit-staged-request.sh"),
+                          """#!/usr/bin/env bash
+{ echo "request=$1"; env; } > "%s"
+""" % self.captured)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, attempt_started_at):
+        env = {k: v for k, v in os.environ.items() if k != "STARTED_AFTER"}
+        env["ATTEMPT_STARTED_AT"] = attempt_started_at
+        return subprocess.run(["bash", "-e", "-c", _submit_step()["run"]], cwd=self.tmp,
+                              env=env, capture_output=True, text=True)
+
+    def _captured_env(self):
+        with open(self.captured) as f:
+            return dict(line.rstrip("\n").split("=", 1) for line in f if "=" in line)
+
+    def test_the_guard_is_scoped_to_the_attempt_that_staged_the_request(self):
+        """run_started_at is the start of the latest attempt, not of the run."""
+        self.assertEqual("${{ github.event.workflow_run.run_started_at }}",
+                         _submit_step()["env"]["ATTEMPT_STARTED_AT"])
+
+    def test_the_attempt_start_is_sent_as_epoch_millis(self):
+        result = self._run("2026-09-28T10:41:56Z")
+        self.assertEqual(0, result.returncode, result.stderr)
+        env = self._captured_env()
+        self.assertEqual("1790592116000", env["STARTED_AFTER"])
+        self.assertEqual("auto-resolve-request", env["request"])
+
+    def test_a_missing_attempt_start_submits_nothing(self):
+        """`date -d ""` is midnight today; it must never stand in for the attempt start."""
+        result = self._run("")
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(os.path.exists(self.captured))
+
 
 def _write_executable(path, text):
     with open(path, "w") as f:
