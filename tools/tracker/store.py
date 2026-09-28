@@ -409,12 +409,18 @@ class TrackerStore:
         *project_name*, or None when either does not exist.
 
         The returned dict carries the release fields plus ``project_name``.
+
+        Names are not constrained to be unique, so more than one row can match.
+        Selection is deterministic — the oldest matching release, ties broken by
+        id — so a lookup, a claimable count and a claim always resolve the same
+        release and can never target different ids for the same names.
         """
         row = self._conn.execute(
             "SELECT releases.id, releases.name, releases.project_id, "
             "releases.created_at, projects.name AS project_name "
             "FROM releases JOIN projects ON projects.id = releases.project_id "
-            "WHERE projects.name = ? AND releases.name = ?",
+            "WHERE projects.name = ? AND releases.name = ? "
+            "ORDER BY releases.created_at ASC, releases.id ASC LIMIT 1",
             (project_name, release_name),
         ).fetchone()
         return dict(row) if row else None

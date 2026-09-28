@@ -83,6 +83,15 @@ class TestCapabilityGate(_GoalToolTestBase):
         with self.assertRaises(PermissionError):
             server.tracker_claim_next_task("Framework", "Framework 1.2")
 
+    @patch.object(server, "_controller_get")
+    def test_the_denial_names_the_string_argument_form(self, mock_get):
+        # The message must show tracker_capabilities as the comma-separated
+        # string the MCP tool declares, not a list literal.
+        mock_get.return_value = _as_job("ws-1", ["steward"])
+        with self.assertRaises(PermissionError) as caught:
+            server.tracker_claim_next_task("Framework", "Framework 1.2")
+        self.assertIn('tracker_capabilities="', str(caught.exception))
+
 
 class TestClaimNextTask(_GoalToolTestBase):
 
@@ -123,6 +132,17 @@ class TestListReleaseTasks(_GoalToolTestBase):
         self.assertTrue(result["ok"])
         self.assertEqual([], result["tasks"])
         self.assertIsNone(result["release"])
+
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_get")
+    def test_a_tracker_error_is_not_reported_as_an_empty_release(self, mock_get, mock_tracker):
+        # An outage or auth failure must surface, not read as "no tasks", which
+        # would let the steward decompose from a false empty view.
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        mock_tracker.return_value = {"ok": False, "error": "Tracker unreachable: down"}
+        result = server.tracker_list_release_tasks("Framework", "Framework 1.2")
+        self.assertFalse(result["ok"])
+        self.assertEqual("Tracker unreachable: down", result["error"])
 
 
 class TestUpsertGoalTask(_GoalToolTestBase):
@@ -182,6 +202,21 @@ class TestUpsertGoalTask(_GoalToolTestBase):
         result = server.tracker_upsert_goal_task(
             "Nowhere", "Nowhere 1.0", "t", "goals:docs/PLAN.md")
         self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_get")
+    def test_a_tracker_outage_does_not_create_a_release(
+            self, mock_get, mock_tracker_get, mock_post):
+        # A transient failure must not be mistaken for "release not found" and
+        # trigger a create that duplicates the release once the tracker recovers.
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        mock_tracker_get.return_value = {"ok": False, "error": "Tracker unreachable: down"}
+        result = server.tracker_upsert_goal_task(
+            "Framework", "Framework 1.3", "t", "goals:docs/PLAN.md")
+        self.assertFalse(result["ok"])
+        self.assertEqual("Tracker unreachable: down", result["error"])
         mock_post.assert_not_called()
 
     @patch.object(server, "_tracker_put")

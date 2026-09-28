@@ -89,12 +89,17 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 # source  - who created the task: 'person' (default, and every task that
 #           existed before v3), or 'goals:<document>' for a task derived from
 #           goal documents by an agent. Agents may only edit 'goals:' tasks.
+#           The CHECK is the data-integrity backstop the API validation mirrors,
+#           so a direct TrackerStore caller cannot persist a value outside the
+#           provenance model. 'goals:_%' requires at least one character after
+#           the prefix, rejecting a bare 'goals:'.
 # task_blockers - a task is blocked while any task it names here is open.
 _SCHEMA_V3 = """
 ALTER TABLE tasks ADD COLUMN stage TEXT NOT NULL DEFAULT 'backlog'
     CHECK (stage IN ('backlog', 'ready', 'declined'));
 
-ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'person';
+ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'person'
+    CHECK (source = 'person' OR source LIKE 'goals:_%');
 
 CREATE INDEX IF NOT EXISTS idx_tasks_stage ON tasks(stage);
 

@@ -186,6 +186,20 @@ public class TrackerEndpointTest extends TestSuiteBase {
         assertTrue(ws.getTrackerCapabilities().isEmpty());
     }
 
+    /** An unknown role rejects the whole update without applying other fields. */
+    @Test(timeout = 30000)
+    public void updateValidatesRolesBeforeMutating() throws Exception {
+        Workstream ws = new Workstream(null, "steward");
+        ws.setDefaultBranch("feature/steward");
+        ws.setPlanningDocument("docs/original.md");
+        notifier.registerWorkstream(ws);
+        String path = "/api/workstreams/" + ws.getWorkstreamId() + "/update";
+
+        assertEquals(400, post(path,
+                "{\"planningDocument\":\"docs/changed.md\",\"trackerCapabilities\":[\"root\"]}").statusCode());
+        assertEquals("docs/original.md", ws.getPlanningDocument());
+    }
+
     /** Issues a GET against the endpoint. */
     private HttpResponse<String> get(String path) throws IOException, InterruptedException {
         return client.send(HttpRequest.newBuilder(uri(path)).GET().build(),

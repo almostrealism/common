@@ -87,6 +87,24 @@ public class WorkstreamTrackerCapabilitiesTest extends TestSuiteBase {
 		assertTrue(ws.getTrackerCapabilities().isEmpty());
 	}
 
+	/**
+	 * A null entry is reported as an unknown role ("null") rather than passing
+	 * as the method's null success sentinel, so a malformed list (e.g. from
+	 * malformed YAML) is refused with a clear message instead of failing later
+	 * inside {@link java.util.List#copyOf} with a NullPointerException.
+	 */
+	@Test(timeout = 10000)
+	public void aNullRoleEntryIsRefusedCleanly() {
+		assertEquals("null", Workstream.unknownTrackerCapability(Arrays.asList("planner", null)));
+		Workstream ws = new Workstream("ws-null", "C", "#c");
+		try {
+			ws.setTrackerCapabilities(Arrays.asList((String) null));
+			throw new AssertionError("a null role must be refused");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(ws.getTrackerCapabilities().isEmpty());
+		}
+	}
+
 	/** Roles survive a YAML load, a runtime change and a save-and-reload. */
 	@Test(timeout = 10000)
 	public void rolesRoundTripThroughYaml() throws IOException {

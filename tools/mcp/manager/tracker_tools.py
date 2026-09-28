@@ -565,6 +565,14 @@ def tracker_project_summary(project_id: str) -> dict:
 GOAL_SOURCE_PREFIX = "goals:"
 
 
+# The tracker's error message for a release that simply does not exist yet. Any
+# other failure (outage, auth, 5xx) is an error to surface, not a signal that
+# the release is empty or absent — mistaking one for the other lets a steward
+# decompose from a false empty view or create a duplicate after a transient
+# failure.
+_RELEASE_NOT_FOUND = "Release not found"
+
+
 def _named_release(project: str, release: str) -> dict:
     """Look up a release by project and release name.
 
@@ -574,6 +582,15 @@ def _named_release(project: str, release: str) -> dict:
     """
     qs = urlencode({"project": project, "release": release})
     return server._tracker_get(f"/v1/releases/lookup?{qs}")
+
+
+def _release_missing(resp: dict) -> bool:
+    """Return True only for the tracker's explicit release-not-found response.
+
+    Every other unsuccessful response is a real error to propagate rather than a
+    release that does not exist.
+    """
+    return not resp.get("ok") and resp.get("error") == _RELEASE_NOT_FOUND
 
 
 @mcp.tool()
@@ -638,8 +655,12 @@ def tracker_list_release_tasks(
     server._audit("tracker_list_release_tasks", project=project, release=release)
     found = _named_release(project, release)
     if not found.get("ok"):
-        return {"ok": True, "release": None, "tasks": [], "total": 0,
-                "limit": limit, "offset": offset}
+        if _release_missing(found):
+            return {"ok": True, "release": None, "tasks": [], "total": 0,
+                    "limit": limit, "offset": offset}
+        # A tracker outage or error is not an empty release; surface it so the
+        # steward does not decompose from a false empty view.
+        return found
     release_id = found["release"]["id"]
     qs = urlencode({"release_id": release_id, "fields": fields,
                     "limit": limit, "offset": offset})
@@ -656,6 +677,11 @@ def _ensure_release(project: str, release: str) -> dict:
     """
     found = _named_release(project, release)
     if found.get("ok"):
+        return found
+    if not _release_missing(found):
+        # Only an explicit not-found means the release should be created. A
+        # tracker outage or error must propagate rather than trigger a create
+        # that could duplicate a release once the tracker recovers.
         return found
     projects = server._tracker_get("/v1/projects")
     if not projects.get("ok"):

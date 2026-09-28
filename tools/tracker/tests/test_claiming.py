@@ -159,6 +159,44 @@ class MigrationTests(unittest.TestCase):
             os.unlink(tmp.name)
 
 
+class SourceConstraintTests(_StoreTestBase):
+    """The database, not only the API, confines provenance to the model."""
+
+    def test_a_free_form_source_is_refused_by_the_database(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.create_task(
+                title="t", source="automation", release_id=self.release["id"])
+
+    def test_a_bare_goals_prefix_is_refused_by_the_database(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.create_task(
+                title="t", source="goals:", release_id=self.release["id"])
+
+    def test_person_and_goal_sources_are_accepted(self):
+        person = self.store.create_task(title="p", release_id=self.release["id"])
+        self.assertEqual("person", person["source"])
+        goal = self.store.create_task(
+            title="g", source="goals:docs/GOALS.md", release_id=self.release["id"])
+        self.assertEqual("goals:docs/GOALS.md", goal["source"])
+
+
+class DuplicateReleaseTests(_StoreTestBase):
+    """Release names are not unique, so lookup resolves one deterministically."""
+
+    def test_lookup_resolves_the_oldest_duplicate_every_time(self):
+        for rid, created in (("rel-new", "2021-01-01T00:00:00Z"),
+                             ("rel-old", "2020-01-01T00:00:00Z")):
+            self.store._conn.execute(
+                "INSERT INTO releases (id, name, project_id, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (rid, "Dup 1.0", self.project["id"], created))
+        self.store._conn.commit()
+        # The oldest wins, and the same release resolves on repeated lookups, so
+        # a claimable count and a claim can never target different ids.
+        self.assertEqual("rel-old", self.store.find_release("Framework", "Dup 1.0")["id"])
+        self.assertEqual("rel-old", self.store.find_release("Framework", "Dup 1.0")["id"])
+
+
 class ApiTests(_StoreTestBase):
     """The HTTP surface the controller and ar-manager use."""
 
@@ -217,6 +255,16 @@ class ApiTests(_StoreTestBase):
         self.assertEqual("goals:docs/GOALS.md", created["source"])
         self.assertEqual(400, self.client.put(
             f"/v1/tasks/{created['id']}", json={"blocked_by": [created["id"]]}).status_code)
+        # source is confined to 'person' or 'goals:<document>'; a free-form
+        # value and a bare 'goals:' prefix are refused on both create and update.
+        self.assertEqual(400, self.client.post(
+            "/v1/tasks", json=dict(base, source="automation")).status_code)
+        self.assertEqual(400, self.client.post(
+            "/v1/tasks", json=dict(base, source="goals:")).status_code)
+        self.assertEqual(400, self.client.put(
+            f"/v1/tasks/{created['id']}", json={"source": "automation"}).status_code)
+        self.assertEqual("person", self.client.post(
+            "/v1/tasks", json=dict(base, source="person")).json()["task"]["source"])
 
     def test_list_filters_by_stage(self):
         self._task("ready")

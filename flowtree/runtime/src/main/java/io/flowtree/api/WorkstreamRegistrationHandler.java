@@ -704,6 +704,19 @@ final class WorkstreamRegistrationHandler {
         List<String> completionListeners = hasCompletionListeners
                 ? extractCompletionListeners(body) : null;
 
+        // Validated before any setter below mutates the live workstream, so an
+        // unknown role rejects the whole update rather than leaving another
+        // field's change applied to a workstream whose update was refused.
+        boolean hasTrackerCapabilities = JsonFieldExtractor.hasField(body, "trackerCapabilities");
+        List<String> trackerCapabilities = hasTrackerCapabilities
+                ? JsonFieldExtractor.extractStringArray(body, "trackerCapabilities") : null;
+        if (hasTrackerCapabilities) {
+            String unknownCapability = Workstream.unknownTrackerCapability(trackerCapabilities);
+            if (unknownCapability != null) {
+                return errorResponse.apply("Unknown tracker capability: " + unknownCapability);
+            }
+        }
+
         if (channelId != null && !channelId.isEmpty()) {
             workstream.setChannelId(channelId);
         }
@@ -751,14 +764,9 @@ final class WorkstreamRegistrationHandler {
                     JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
         }
         // Tracker roles: same presence signal. The list replaces the current
-        // one, so an empty list revokes every role.
-        if (JsonFieldExtractor.hasField(body, "trackerCapabilities")) {
-            List<String> trackerCapabilities =
-                    JsonFieldExtractor.extractStringArray(body, "trackerCapabilities");
-            String unknownCapability = Workstream.unknownTrackerCapability(trackerCapabilities);
-            if (unknownCapability != null) {
-                return errorResponse.apply("Unknown tracker capability: " + unknownCapability);
-            }
+        // one, so an empty list revokes every role. Validated above before any
+        // setter ran.
+        if (hasTrackerCapabilities) {
             workstream.setTrackerCapabilities(trackerCapabilities);
         }
         // Workstream-level tmux default: same presence-signal pattern as

@@ -428,7 +428,7 @@ def _require_tracker_capability(capability: str) -> str:
     raise PermissionError(
         "This tracker tool requires the '" + capability + "' tracker capability,"
         " which workstream '" + caller_ws_id + "' does not have. Operators grant"
-        " it with workstream_update_config(..., tracker_capabilities=[...]).")
+        " it with workstream_update_config(..., tracker_capabilities=\"planner,steward\").")
 
 
 # ---------------------------------------------------------------------------

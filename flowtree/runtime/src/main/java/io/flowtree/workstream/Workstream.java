@@ -946,12 +946,20 @@ public class Workstream {
      * Returns the first entry of {@code capabilities} that is not a known
      * tracker role, or {@code null} when every entry is known.
      *
+     * <p>A {@code null} entry is itself unknown and is reported as the string
+     * {@code "null"}: returning the entry verbatim would collide with the
+     * method's {@code null} success sentinel, letting a malformed list (e.g.
+     * from malformed YAML) pass validation and then fail in {@code List.copyOf}
+     * with an opaque {@link NullPointerException} instead of a clear rejection.</p>
+     *
      * @param capabilities the proposed roles; may be {@code null}
-     * @return the first unknown value, or {@code null}
+     * @return the first unknown value ({@code "null"} for a null entry), or
+     *         {@code null} when every entry is a known role
      */
     public static String unknownTrackerCapability(List<String> capabilities) {
         if (capabilities == null) return null;
         for (String capability : capabilities) {
+            if (capability == null) return "null";
             if (!TRACKER_CAPABILITIES.contains(capability)) return capability;
         }
         return null;

@@ -23,6 +23,27 @@ _VALID_STATUSES = {"open", "closed"}
 # Allowed stage values; the database CHECK constraint mirrors this set.
 _VALID_STAGES = {"backlog", "ready", "declined"}
 
+# Allowed task provenance: a person, or a task an agent derived from a named
+# goal document ("goals:<document>"). The database CHECK constraint mirrors
+# this, so a value that never reaches the API cannot be persisted either.
+_PERSON_SOURCE = "person"
+_GOAL_SOURCE_PREFIX = "goals:"
+
+
+def _valid_source(value: object) -> bool:
+    """Return True when *value* is a recognised task provenance.
+
+    A source is either the literal ``person`` or ``goals:<document>`` naming a
+    non-empty document. Bare ``goals:`` and free-form strings are rejected.
+    """
+    if not isinstance(value, str):
+        return False
+    source = value.strip()
+    if source == _PERSON_SOURCE:
+        return True
+    return (source.startswith(_GOAL_SOURCE_PREFIX)
+            and len(source) > len(_GOAL_SOURCE_PREFIX))
+
 # Priority is a signed integer; database CHECK constraint mirrors this range.
 _MIN_PRIORITY = -2
 _MAX_PRIORITY = 2
@@ -81,9 +102,9 @@ def _validate_task_fields(store, body: dict, task_id: Optional[str] = None):
     if "stage" in body and body["stage"] not in _VALID_STAGES:
         return _bad_request(f"stage must be one of: {sorted(_VALID_STAGES)}")
     if "source" in body:
-        source = body["source"]
-        if not isinstance(source, str) or not source.strip():
-            return _bad_request("source must be a non-empty string")
+        if not _valid_source(body["source"]):
+            return _bad_request(
+                "source must be 'person' or 'goals:<document>'")
     if "blocked_by" in body:
         blockers = body["blocked_by"]
         if blockers is None:
