@@ -23,7 +23,7 @@ import org.almostrealism.io.SystemUtils;
  * An enumeration of the hardware or language backends that a computation can target.
  *
  * <p>Each constant identifies a specific execution context (CPU, GPU, FPGA) or a
- * target code language (C, OpenCL, Metal, JNI). The {@link #getMaximumPrecision()}
+ * target code language (C, OpenCL, Metal, CUDA, JNI). The {@link #getMaximumPrecision()}
  * method returns the highest floating-point precision supported by that backend.</p>
  */
 public enum ComputeRequirement {
@@ -39,6 +39,8 @@ public enum ComputeRequirement {
 	CL,
 	/** Metal (Apple GPU) kernel execution. Limited to FP32. */
 	MTL,
+	/** CUDA (NVIDIA GPU) kernel execution. Limited to FP32. */
+	CUDA,
 	/** JNI (Java Native Interface) execution. Supports FP64. */
 	JNI,
 	/** External process execution. Supports FP64. */
@@ -83,6 +85,8 @@ public enum ComputeRequirement {
 			case CL:
 				return SystemUtils.isAarch64() ? Precision.FP32 : Precision.FP64;
 			case MTL:
+				return Precision.FP32;
+			case CUDA:
 				return Precision.FP32;
 			case JNI:
 				return Precision.FP64;

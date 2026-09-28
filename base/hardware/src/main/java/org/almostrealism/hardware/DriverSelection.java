@@ -34,7 +34,7 @@ import java.util.Set;
  * expectations:</p>
  *
  * <ul>
- *   <li><strong>Named</strong> — {@code cl}, {@code mtl}, {@code native},
+ *   <li><strong>Named</strong> — {@code cl}, {@code mtl}, {@code cuda}, {@code native},
  *       {@code cpu}, {@code gpu}. The caller stated which backend they want, so
  *       a backend that then fails to initialize is a failure of the request.
  *       {@link #isRequired(ComputeRequirement)} reports true for these.</li>
@@ -139,7 +139,7 @@ public class DriverSelection {
 	/**
 	 * Parses an {@code AR_HARDWARE_DRIVER} value.
 	 *
-	 * <p>The value is a comma-separated list of {@code cl}, {@code mtl},
+	 * <p>The value is a comma-separated list of {@code cl}, {@code mtl}, {@code cuda},
 	 * {@code native}, {@code cpu}, {@code gpu}, and {@code *}. Case is ignored
 	 * and surrounding whitespace is trimmed.</p>
 	 *
@@ -170,6 +170,9 @@ public class DriverSelection {
 			} else if ("mtl".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.MTL);
 				required.add(ComputeRequirement.MTL);
+			} else if ("cuda".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.CUDA);
+				required.add(ComputeRequirement.CUDA);
 			} else if ("native".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.JNI);
 				required.add(ComputeRequirement.JNI);
