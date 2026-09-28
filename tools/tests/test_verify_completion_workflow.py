@@ -148,6 +148,29 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
                 with self.subTest(job=name, step=step.get("name")):
                     self.assertNotIn("outputs.plan_file", step.get("run", ""))
 
+    def test_a_cancelled_run_does_not_submit_the_implementation(self):
+        """The jobs downstream of registration gate on ``!cancelled()``, never
+        ``always()``. ``always()`` runs a job even when the run was cancelled,
+        so a run cancelled after registration (or after the prompt was staged)
+        would still build and submit the implementation. ``!cancelled()`` stops
+        the chain when the run is cancelled while keeping it running through a
+        skipped register-workstream (the is_new_plan-false path)."""
+        for name in ("build-prompt", "verify"):
+            with self.subTest(job=name):
+                condition = self.jobs[name]["if"]
+                self.assertIn("!cancelled()", condition)
+                self.assertNotIn("always()", condition)
+
+    def test_build_prompt_does_not_run_after_cancelled_registration(self):
+        """A cancelled register-workstream has result ``cancelled``, which a
+        ``!= 'failure'`` test would let through. build-prompt must instead allow
+        only registration that succeeded or was skipped, so a cancelled (or
+        failed) registration blocks it."""
+        condition = self.jobs["build-prompt"]["if"]
+        self.assertIn("needs.register-workstream.result == 'success'", condition)
+        self.assertIn("needs.register-workstream.result == 'skipped'", condition)
+        self.assertNotIn("!= 'failure'", condition)
+
     def test_the_operator_documentation_describes_every_job(self):
         """ci-integration.md is where an operator learns what this workflow
         does. It once kept describing a three-job pipeline that submitted

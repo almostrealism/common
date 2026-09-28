@@ -179,11 +179,17 @@ jobs:
   # below, the same way auto-review stages its request in analysis.yaml.
   build-prompt:
     needs: [detect-plan, register-workstream]
-    # Run after detect-plan succeeds, even if register was skipped (but not if it failed)
+    # Run after detect-plan succeeds, even if register was skipped (is_new_plan
+    # false) — but not if register failed, and not if the run was cancelled.
+    # `!cancelled()` (not `always()`) so a cancelled run stops here instead of
+    # building and submitting the implementation anyway; register-workstream is
+    # allowed only when it succeeded or was skipped, so its `cancelled` result
+    # blocks this job rather than passing a `!= 'failure'` test.
     if: |
-      always()
+      !cancelled()
       && needs.detect-plan.result == 'success'
-      && needs.register-workstream.result != 'failure'
+      && (needs.register-workstream.result == 'success'
+          || needs.register-workstream.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -229,8 +235,11 @@ jobs:
   # allowlist that ignores BASH_ENV/PATH/LD_PRELOAD and the like.
   verify:
     needs: [detect-plan, build-prompt]
+    # `!cancelled()` (not `always()`) so cancelling the run after build-prompt
+    # has staged its artifact stops the submission instead of letting the
+    # token-bearing job run anyway. build-prompt must have succeeded.
     if: |
-      always()
+      !cancelled()
       && needs.build-prompt.result == 'success'
     runs-on: ubuntu-latest
     permissions:
