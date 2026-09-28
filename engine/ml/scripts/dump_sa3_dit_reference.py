@@ -129,10 +129,16 @@ def dit_reference_stages(model, io_channels, latent_len, seed):
     capture the transformer stack's input (after ``project_in`` and the
     memory-token/global-conditioning prepending that happens inside
     ``ContinuousTransformer.forward``) and a forward hook on the
-    ``ContinuousTransformer`` itself to capture its output (after ``project_out``,
-    before the DiT strips the prepended tokens and applies ``postprocess_conv``).
-    Both match the states ``DiffusionTransformer`` captures: the input after its
-    input projection and prepending, and the output after its output projection.
+    ``ContinuousTransformer`` itself to capture its output (before
+    ``postprocess_conv``).
+
+    The captured input matches the state ``DiffusionTransformer`` captures after its
+    input projection and prepending, so it carries the prepended positions on both
+    sides. The captured output does NOT: ``ContinuousTransformer.forward`` strips the
+    prepended positions and only then applies ``project_out``, so this hook can only
+    ever observe the surviving positions, while ``DiffusionTransformer`` projects the
+    whole sequence and strips afterwards. The reference is therefore the tail of the
+    state AR captures, which is what ``StableAudio3TransformerParityTest`` compares.
     """
     device = torch.device("cpu")
 
