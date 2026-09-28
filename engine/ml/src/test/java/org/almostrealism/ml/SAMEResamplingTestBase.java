@@ -29,7 +29,9 @@ import org.junit.After;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,6 +44,9 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 
 	/** The reference directories the running test has read, each opened once. */
 	private final Map<File, ReferenceActivations> references = new HashMap<>();
+
+	/** The clones {@link #evalBlock} returned during the running test, released when it ends. */
+	private final List<PackedCollection> blockOutputs = new ArrayList<>();
 
 	/**
 	 * Evaluates a producer at the test boundary (top of the call stack), applying the optimization pass
@@ -64,6 +69,11 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * per round trip in the gated parity tests). The forward output is a buffer the compiled graph
 	 * owns, so it is cloned into independent memory that outlives the release.</p>
 	 *
+	 * <p>That clone is owned by this test infrastructure, not the caller: it is registered here and
+	 * released by {@link #releaseBlockOutputs()} when the test ends, so a caller must not destroy it,
+	 * and a test that reuses one {@link StateDictionary} across many blocks (the gated parity tests,
+	 * which discard several stage outputs inline) cannot leak a clone by forgetting to.</p>
+	 *
 	 * <p>The {@link Model} is deliberately <em>not</em> destroyed. It is a throwaway wrapper around
 	 * the caller-supplied {@code block}, whose layers hold the weight {@link PackedCollection}s the
 	 * caller loaded into a {@link StateDictionary} and reuses across every block it evaluates.
@@ -77,7 +87,8 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 *
 	 * @param block the resampling block (from {@link TransformerResamplingFeatures#transformerResamplingBlock})
 	 * @param input the block input, matching {@link Block#getInputShape()}
-	 * @return the forward-pass output, held in memory independent of the compiled graph
+	 * @return the forward-pass output, held in memory independent of the compiled graph and released
+	 *         with the test by {@link #releaseBlockOutputs()}
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
@@ -85,10 +96,23 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 
 		CompiledModel compiled = model.compile(false);
 		try {
-			return compiled.forward(input).clone();
+			PackedCollection output = compiled.forward(input).clone();
+			blockOutputs.add(output);
+			return output;
 		} finally {
 			compiled.destroy();
 		}
+	}
+
+	/**
+	 * Releases every clone {@link #evalBlock} returned during the finished test. The clones are
+	 * independent memory (not views into the reference shards), so this runs independently of
+	 * {@link #releaseReferences()}.
+	 */
+	@After
+	public void releaseBlockOutputs() {
+		blockOutputs.forEach(PackedCollection::destroy);
+		blockOutputs.clear();
 	}
 
 	/**

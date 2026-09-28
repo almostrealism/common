@@ -182,8 +182,7 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 				assertEquals(a[i], b[i], 0.0);
 			}
 		} finally {
-			if (first != null) first.destroy();
-			if (second != null) second.destroy();
+			// first and second are evalBlock clones owned and released by SAMEResamplingTestBase.
 			input.destroy();
 			weights.destroy();
 		}

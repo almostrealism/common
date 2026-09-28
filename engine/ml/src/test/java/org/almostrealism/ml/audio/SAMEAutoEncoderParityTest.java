@@ -125,17 +125,12 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 			report("output", decoded, refOutput);
 			assertTracksReference("output", decoded, refOutput, LEVEL_TOLERANCE, MINIMUM_CORRELATION);
 		} finally {
+			// encoded and decoded are evalBlock clones owned and released by SAMEResamplingTestBase.
 			if (input != null) {
 				input.destroy();
 			}
-			if (encoded != null) {
-				encoded.destroy();
-			}
 			if (latent != null) {
 				latent.destroy();
-			}
-			if (decoded != null) {
-				decoded.destroy();
 			}
 			if (weights != null) {
 				weights.destroy();

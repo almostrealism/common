@@ -441,6 +441,12 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 	 * state buffers. Both are allocated when the model graph is built (on the first forward pass)
 	 * and captured by reference into the compiled graph, so the transformer is their only owner and
 	 * they would otherwise leak native memory with every instance.
+	 *
+	 * <p>The transformer is destroyed in an outer {@code finally} so a throw while building the
+	 * graph, running the forward pass, or asserting cannot strand the very state this test verifies.
+	 * {@link DiffusionTransformer#destroy()} is idempotent (each field is null-guarded and native
+	 * release nulls the buffer), so the asserted in-body {@code destroy()} and the cleanup call
+	 * cannot double-free.</p>
 	 */
 	@Test(timeout = 120000)
 	public void destroyReleasesCapturedStateBuffers() {
@@ -450,29 +456,33 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 				ioChannels, 32, 1, 2, 1, 0, 0, "rf_denoiser", audioSeqLen, 4, null, false);
 
 		int batchSize = DiffusionTransformer.batchSize;
-		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
-		input.randFill();
-		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.randFill();
-
 		try {
-			transformer.forward(input, timestep, null, null);
+			PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
+			input.randFill();
+			PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
+			timestep.randFill();
+
+			try {
+				transformer.forward(input, timestep, null, null);
+			} finally {
+				input.destroy();
+				timestep.destroy();
+			}
+
+			PackedCollection preState = transformer.getPreTransformerState();
+			PackedCollection postState = transformer.getPostTransformerState();
+			assertNotNull("Pre-transformer state must be allocated once the model is built", preState);
+			assertNotNull("Post-transformer state must be allocated once the model is built", postState);
+			assertFalse("Pre-transformer state must be live before destroy", preState.isDestroyed());
+			assertFalse("Post-transformer state must be live before destroy", postState.isDestroyed());
+
+			transformer.destroy();
+
+			assertTrue("destroy() must release the pre-transformer state", preState.isDestroyed());
+			assertTrue("destroy() must release the post-transformer state", postState.isDestroyed());
 		} finally {
-			input.destroy();
-			timestep.destroy();
+			transformer.destroy();
 		}
-
-		PackedCollection preState = transformer.getPreTransformerState();
-		PackedCollection postState = transformer.getPostTransformerState();
-		assertNotNull("Pre-transformer state must be allocated once the model is built", preState);
-		assertNotNull("Post-transformer state must be allocated once the model is built", postState);
-		assertFalse("Pre-transformer state must be live before destroy", preState.isDestroyed());
-		assertFalse("Post-transformer state must be live before destroy", postState.isDestroyed());
-
-		transformer.destroy();
-
-		assertTrue("destroy() must release the pre-transformer state", preState.isDestroyed());
-		assertTrue("destroy() must release the post-transformer state", postState.isDestroyed());
 	}
 
 	/**
