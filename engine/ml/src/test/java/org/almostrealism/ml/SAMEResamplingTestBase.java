@@ -70,13 +70,14 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
-		model.add(block);
-		CompiledModel compiled = model.compile(false);
+		CompiledModel compiled = null;
 
 		try {
+			model.add(block);
+			compiled = model.compile(false);
 			return compiled.forward(input).clone();
 		} finally {
-			compiled.destroy();
+			if (compiled != null) compiled.destroy();
 			model.destroy();
 		}
 	}

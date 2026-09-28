@@ -31,7 +31,7 @@ import java.io.IOException;
  *
  * <p>This asks only whether the assembled pipeline produces sound — a clip of the requested length,
  * every sample finite and within the clamp, and carrying signal rather than silence. It is not a
- * numerical-parity test: eight ping-pong steps from a seeded latent do not reproduce another
+ * numerical-parity test: a few ping-pong steps ({@code STEPS}) from a seeded latent do not reproduce another
  * implementation's samples, and the per-block parity tests are where agreement with the reference is
  * established. What this covers is the part those cannot: that the blocks compose, that the real
  * weight layout loads into them, and that the whole graph compiles and runs at released dimensions.</p>
