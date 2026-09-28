@@ -11,6 +11,11 @@ passing pipeline:
 - It must be able to reach the controller from wherever it runs. It once ran on
   the self-hosted fleet and addressed the controller by a LAN hostname; a
   button that fails when pressed is no better than no button.
+- The scripts it runs with the Cloudflare Access service token attached must
+  come from the trusted default branch, not the dispatched branch's own tree.
+  Manual dispatch is not a code-integrity boundary: a branch author who edited
+  ``register-workstream.sh`` or ``submit-agent-job.sh`` could otherwise
+  exfiltrate the token when the workflow is dispatched on that branch.
 """
 
 import os
@@ -25,6 +30,10 @@ _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "verify-completion.
 _ON = True
 
 _CONTROLLER_SCRIPTS = ("register-workstream.sh", "submit-agent-job.sh")
+
+# The trusted checkout the secret-bearing steps must run against: the repository
+# default branch, which only carries reviewed code.
+_TRUSTED_REF = "github.event.repository.default_branch"
 
 
 def _workflow():
@@ -64,6 +73,25 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
                     self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
                                   env.get("CF_ACCESS_CLIENT_SECRET", ""))
         self.assertEqual(len(_CONTROLLER_SCRIPTS), found)
+
+    def test_secret_bearing_scripts_run_from_the_trusted_checkout(self):
+        """A step that runs a controller script with the service token must be
+        preceded, in its own job, by a checkout of the default branch — never
+        left running the dispatched branch's copy of that script."""
+        checked = 0
+        for name, job in self.jobs.items():
+            last_checkout_ref = None
+            for step in job["steps"]:
+                if step.get("uses", "").startswith("actions/checkout"):
+                    last_checkout_ref = str(step.get("with", {}).get("ref", ""))
+                if not any(s in step.get("run", "") for s in _CONTROLLER_SCRIPTS):
+                    continue
+                checked += 1
+                with self.subTest(job=name, step=step["name"]):
+                    self.assertIsNotNone(last_checkout_ref,
+                                         "secret-bearing step has no preceding checkout")
+                    self.assertIn(_TRUSTED_REF, last_checkout_ref)
+        self.assertEqual(len(_CONTROLLER_SCRIPTS), checked)
 
     def test_the_plan_file_input_is_not_interpolated_into_a_script(self):
         """A dispatch input is free text; interpolated into `run:` it executes."""

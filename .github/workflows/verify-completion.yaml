@@ -15,6 +15,12 @@ name: "Verify Completion"
 # Like the Master Agent Dispatch jobs, every job runs on a GitHub-hosted
 # runner and reaches the controller through its Cloudflare Access tunnel;
 # none of them builds or tests anything.
+#
+# The scripts that run with the controller service token attached
+# (register-workstream.sh, submit-agent-job.sh) are executed from a checkout of
+# the default branch, not the dispatched branch's own tree: manual dispatch is
+# not a code-integrity boundary, so the secret only ever runs against reviewed
+# code.
 
 on:
   workflow_dispatch:
@@ -94,12 +100,24 @@ jobs:
     needs: detect-plan
     if: needs.detect-plan.outputs.is_new_plan == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout Code
+      # This workflow is dispatched by hand on a branch, so its checkout would
+      # otherwise be the branch's own tree — including its copy of
+      # register-workstream.sh, which runs below with the Cloudflare Access
+      # service token in its environment. Manual dispatch is not a code-integrity
+      # boundary: a branch author who edited that script could exfiltrate the
+      # token. Check out the trusted default-branch copy instead, the same way
+      # the auto-review/auto-resolve submit jobs in analysis.yaml do, so the
+      # secret only ever runs against reviewed code. This job needs nothing from
+      # the branch — register-workstream.sh takes its target from the environment
+      # (BRANCH/BASE_BRANCH/PLAN_FILE), not from the working tree.
+      - name: Checkout trusted scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Register workstream
         env:
@@ -111,6 +129,12 @@ jobs:
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: |
+          # The script is read from the default branch, which lacks it until the
+          # change that added it has merged; register nothing rather than fail.
+          if [ ! -f ./tools/ci/register-workstream.sh ]; then
+            echo "::warning::The default branch has no tools/ci/register-workstream.sh yet — the workstream is not registered here; the submission below creates it on demand"
+            exit 0
+          fi
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
 
@@ -137,8 +161,14 @@ jobs:
       && needs.detect-plan.result == 'success'
       && needs.register-workstream.result != 'failure'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
+      # The prompt is built from the branch's own templates, so build it against
+      # the branch checkout. It carries no secret, and it is written to
+      # runner.temp — outside the workspace — so it survives the trusted
+      # re-checkout below.
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -154,6 +184,19 @@ jobs:
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
           ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
+      # Manual dispatch is not a code-integrity boundary: the branch checkout
+      # above includes the branch's copy of submit-agent-job.sh, which runs
+      # below with the Cloudflare Access service token in its environment, so a
+      # branch author who edited that script could exfiltrate the token. Replace
+      # the workspace with the trusted default-branch tree before the secret is
+      # attached — the same "Checkout trusted scripts" pattern the submit jobs in
+      # analysis.yaml use. This overwrites anything the branch's build step may
+      # have changed on disk; the prompt in runner.temp is untouched.
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       - name: Submit agent job
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -164,6 +207,12 @@ jobs:
           DESCRIPTION: "Implement the plan"
           PROTECT_TEST_FILES: "false"
         run: |
+          # The script is read from the default branch, which lacks it until the
+          # change that added it has merged; submit nothing rather than fail.
+          if [ ! -f ./tools/ci/submit-agent-job.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-agent-job.sh yet — the implementation job is not submitted"
+            exit 0
+          fi
           chmod +x ./tools/ci/submit-agent-job.sh
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
