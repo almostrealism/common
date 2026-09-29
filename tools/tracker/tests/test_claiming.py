@@ -874,5 +874,164 @@ class ApiTests(_StoreTestBase):
         self.assertEqual(1, len(self.client.get("/v1/tasks").json()["tasks"]))
 
 
+class ReadIsolationTests(_StoreTestBase):
+    """Reads on the shared connection never see another thread's open write.
+
+    A read on a SQLite connection sees the uncommitted rows of the transaction
+    open on that same connection, so a read that did not wait for the store
+    lock could report a task a failing write is about to roll back.
+    """
+
+    def _read_during_failing_create(self, read):
+        """Run *read* on another thread while a doomed create_task holds its
+        transaction open, and return what it saw."""
+        started = threading.Event()
+        proceed = threading.Event()
+        real_set_blockers = self.store._set_blockers
+
+        def slow_set_blockers(task_id, blocker_ids):
+            started.set()
+            proceed.wait(5)
+            return real_set_blockers(task_id, blocker_ids)
+
+        def failing_create():
+            try:
+                with patch.object(self.store, "_set_blockers", slow_set_blockers):
+                    self.store.create_task(
+                        title="leak", task_id="leak-id", stage="ready",
+                        project_id=self.project["id"], release_id=self.release["id"],
+                        blocked_by=["no-such-task"])
+            except sqlite3.IntegrityError:
+                pass
+
+        seen = []
+        creator = threading.Thread(target=failing_create)
+        creator.start()
+        self.assertTrue(started.wait(5))
+        reader = threading.Thread(target=lambda: seen.append(read()))
+        reader.start()
+        # The reader must wait for the write to finish rather than answer from
+        # the half-written transaction.
+        reader.join(0.5)
+        self.assertTrue(reader.is_alive())
+        self.assertEqual([], seen)
+        proceed.set()
+        creator.join(5)
+        reader.join(5)
+        self.assertEqual(1, len(seen))
+        return seen[0]
+
+    def test_get_task_does_not_see_a_row_being_rolled_back(self):
+        self.assertIsNone(self._read_during_failing_create(
+            lambda: self.store.get_task("leak-id")))
+
+    def test_count_claimable_does_not_count_a_row_being_rolled_back(self):
+        self.assertEqual(0, self._read_during_failing_create(self._count))
+
+    def test_list_tasks_does_not_list_a_row_being_rolled_back(self):
+        listed = self._read_during_failing_create(
+            lambda: self.store.list_tasks(release_id=self.release["id"]))
+        self.assertEqual((0, []), (listed["total"], listed["tasks"]))
+
+    def test_health_counts_do_not_count_a_row_being_rolled_back(self):
+        self.assertEqual(0, self._read_during_failing_create(self.store.counts)["tasks"])
+
+    def test_reads_inside_a_locked_write_do_not_deadlock(self):
+        # bulk_import and upsert_goal_task resolve rows through the locking
+        # read methods while holding the lock, which needs the lock reentrant.
+        existing = self._task("existing")
+        result = self.store.bulk_import([], [], [{"id": existing["id"], "title": "renamed"}])
+        self.assertEqual(1, result["updated"]["tasks"])
+        upsert = self.store.upsert_goal_task(
+            "Framework", "Framework 1.2", "g", "goals:docs/PLAN.md")
+        self.assertEqual(("ok", "g"), (upsert["status"], upsert["task"]["title"]))
+        self.assertEqual("renamed", self.store.get_task(existing["id"])["title"])
+
+
+class NonStringFieldTests(_StoreTestBase):
+    """A JSON value of the wrong type is a 400, never a 500."""
+
+    _WRONG_TYPES = ([], {}, 7, True)
+
+    def test_an_unhashable_stage_or_status_is_refused_on_create(self):
+        for field in ("stage", "status"):
+            for value in self._WRONG_TYPES:
+                with self.subTest(field=field, value=value):
+                    resp = self.client.post("/v1/tasks", json={"title": "t", field: value})
+                    self.assertEqual(400, resp.status_code, resp.text)
+                    self.assertIn(f"{field} must be one of", resp.json()["error"])
+        self.assertEqual(0, self.store.counts()["tasks"])
+
+    def test_an_unhashable_stage_or_status_is_refused_on_update(self):
+        task = self._task("t")
+        for field in ("stage", "status"):
+            for value in self._WRONG_TYPES:
+                with self.subTest(field=field, value=value):
+                    resp = self.client.put(f"/v1/tasks/{task['id']}", json={field: value})
+                    self.assertEqual(400, resp.status_code, resp.text)
+        kept = self.store.get_task(task["id"])
+        self.assertEqual(("ready", "open"), (kept["stage"], kept["status"]))
+
+    def test_an_unhashable_stage_is_refused_in_a_bulk_import(self):
+        resp = self.client.post("/v1/import", json={
+            "tasks": [{"id": "imp-1", "title": "t", "stage": ["ready"]}]})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertTrue(resp.json()["error"].startswith("tasks[0]: stage must be one of"))
+        self.assertIsNone(self.store.get_task("imp-1"))
+
+    def test_a_non_string_name_or_title_is_refused(self):
+        task = self._task("t")
+        writes = [
+            ("post", "/v1/projects", "name"),
+            ("put", f"/v1/projects/{self.project['id']}", "name"),
+            ("post", "/v1/releases", "name"),
+            ("post", "/v1/tasks", "title"),
+            ("put", f"/v1/tasks/{task['id']}", "title"),
+        ]
+        for method, path, field in writes:
+            for value in self._WRONG_TYPES:
+                with self.subTest(path=path, value=value):
+                    resp = getattr(self.client, method)(path, json={field: value})
+                    self.assertEqual(400, resp.status_code, resp.text)
+        self.assertEqual("Framework", self.store.get_project(self.project["id"])["name"])
+        self.assertEqual("t", self.store.get_task(task["id"])["title"])
+
+    def test_non_string_release_names_are_refused(self):
+        for path, extra in (("/v1/releases/ensure", {}),
+                            ("/v1/claim", {"workstream_id": "ws-1"}),
+                            ("/v1/goal-tasks", {"title": "t", "source": "goals:d.md"})):
+            for field in ("project", "release"):
+                with self.subTest(path=path, field=field):
+                    body = {"project": "Framework", "release": "Framework 9.0", **extra}
+                    body[field] = ["Framework"]
+                    resp = self.client.post(path, json=body)
+                    self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIsNone(self.store.find_release("Framework", "Framework 9.0"))
+
+    def test_a_non_string_workstream_id_cannot_claim(self):
+        self._task("ready")
+        resp = self.client.post("/v1/claim", json={
+            "project": "Framework", "release": "Framework 1.2", "workstream_id": 42})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertEqual(1, self._count())
+
+    def test_goal_task_fields_of_the_wrong_type_are_refused(self):
+        goal = self._task("orig", source="goals:docs/OLD.md")
+        base = {"project": "Framework", "release": "Framework 1.2",
+                "title": "t", "source": "goals:docs/PLAN.md"}
+        for field, value, message in (
+                ("title", ["t"], "title is required"),
+                ("source", {"goals": "x"}, "source must be 'goals:<document>'"),
+                ("task_id", [goal["id"]], "task_id must be a string"),
+                ("task_id", 5, "task_id must be a string")):
+            with self.subTest(field=field, value=value):
+                resp = self.client.post("/v1/goal-tasks", json={**base, field: value})
+                self.assertEqual(400, resp.status_code, resp.text)
+                self.assertEqual(message, resp.json()["error"])
+        # A task_id of the wrong type is refused, not read as "create a new task".
+        self.assertEqual(1, self.store.list_tasks()["total"])
+        self.assertEqual("orig", self.store.get_task(goal["id"])["title"])
+
+
 if __name__ == "__main__":
     unittest.main()

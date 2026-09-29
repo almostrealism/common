@@ -71,7 +71,13 @@ class TrackerStore:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._lock = threading.Lock()
+        # Every statement on the shared connection, read or write, runs under
+        # this lock. A read on the connection sees the rows of a transaction
+        # another thread has open, so an unlocked read could return a task or
+        # release that a failing write is about to roll back. The lock is
+        # reentrant because the locked writes resolve rows through the same
+        # read methods.
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         run_migrations(self._conn)
@@ -119,16 +125,18 @@ class TrackerStore:
 
     def get_project(self, project_id: str) -> Optional[dict]:
         """Return a project by ID, or None if not found."""
-        row = self._conn.execute(
-            "SELECT id, name, created_at FROM projects WHERE id = ?", (project_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, name, created_at FROM projects WHERE id = ?", (project_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def list_projects(self) -> list:
         """Return all projects ordered by name."""
-        rows = self._conn.execute(
-            "SELECT id, name, created_at FROM projects ORDER BY name"
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, name, created_at FROM projects ORDER BY name"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def update_project(self, project_id: str, name: str) -> Optional[dict]:
@@ -173,24 +181,26 @@ class TrackerStore:
 
     def get_release(self, release_id: str) -> Optional[dict]:
         """Return a release by ID, or None if not found."""
-        row = self._conn.execute(
-            "SELECT id, name, project_id, created_at FROM releases WHERE id = ?",
-            (release_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, name, project_id, created_at FROM releases WHERE id = ?",
+                (release_id,),
+            ).fetchone()
         return dict(row) if row else None
 
     def list_releases(self, project_id: Optional[str] = None) -> list:
         """Return all releases, optionally filtered by project_id."""
-        if project_id:
-            rows = self._conn.execute(
-                "SELECT id, name, project_id, created_at FROM releases "
-                "WHERE project_id = ? ORDER BY name",
-                (project_id,),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT id, name, project_id, created_at FROM releases ORDER BY name"
-            ).fetchall()
+        with self._lock:
+            if project_id:
+                rows = self._conn.execute(
+                    "SELECT id, name, project_id, created_at FROM releases "
+                    "WHERE project_id = ? ORDER BY name",
+                    (project_id,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT id, name, project_id, created_at FROM releases ORDER BY name"
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def update_release(
@@ -271,11 +281,12 @@ class TrackerStore:
 
     def get_task(self, task_id: str) -> Optional[dict]:
         """Return a task by ID, or None if not found."""
-        row = self._conn.execute(
-            f"SELECT {_task_columns()} FROM tasks WHERE tasks.id = ?",
-            (task_id,),
-        ).fetchone()
-        return self._with_blockers([dict(row)])[0] if row else None
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {_task_columns()} FROM tasks WHERE tasks.id = ?",
+                (task_id,),
+            ).fetchone()
+            return self._with_blockers([dict(row)])[0] if row else None
 
     def _set_blockers(self, task_id: str, blocker_ids: list) -> None:
         """Replace the set of tasks blocking *task_id*. The caller commits or
@@ -292,7 +303,8 @@ class TrackerStore:
         )
 
     def _with_blockers(self, tasks: list) -> list:
-        """Set ``blocked_by`` on each task dict to the ids blocking it."""
+        """Set ``blocked_by`` on each task dict to the ids blocking it. The
+        caller holds the store lock."""
         if not tasks:
             return tasks
         ids = [t["id"] for t in tasks]
@@ -366,22 +378,23 @@ class TrackerStore:
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        total = self._conn.execute(
-            f"SELECT COUNT(*) FROM tasks {where}", params
-        ).fetchone()[0]
+        with self._lock:
+            total = self._conn.execute(
+                f"SELECT COUNT(*) FROM tasks {where}", params
+            ).fetchone()[0]
 
-        rows = self._conn.execute(
-            f"SELECT {columns} FROM tasks {where} "
-            f"ORDER BY {sort_col} {order_dir} LIMIT ? OFFSET ?",
-            params + [limit, offset],
-        ).fetchall()
+            rows = self._conn.execute(
+                f"SELECT {columns} FROM tasks {where} "
+                f"ORDER BY {sort_col} {order_dir} LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
 
-        return {
-            "tasks": self._with_blockers([dict(r) for r in rows]),
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        }
+            return {
+                "tasks": self._with_blockers([dict(r) for r in rows]),
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
 
     def update_task(
         self,
@@ -596,14 +609,15 @@ class TrackerStore:
         id — so a lookup, a claimable count and a claim always resolve the same
         release and can never target different ids for the same names.
         """
-        row = self._conn.execute(
-            "SELECT releases.id, releases.name, releases.project_id, "
-            "releases.created_at, projects.name AS project_name "
-            "FROM releases JOIN projects ON projects.id = releases.project_id "
-            "WHERE projects.name = ? AND releases.name = ? "
-            "ORDER BY releases.created_at ASC, releases.id ASC LIMIT 1",
-            (project_name, release_name),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT releases.id, releases.name, releases.project_id, "
+                "releases.created_at, projects.name AS project_name "
+                "FROM releases JOIN projects ON projects.id = releases.project_id "
+                "WHERE projects.name = ? AND releases.name = ? "
+                "ORDER BY releases.created_at ASC, releases.id ASC LIMIT 1",
+                (project_name, release_name),
+            ).fetchone()
         return dict(row) if row else None
 
     def ensure_release(self, project_name: str, release_name: str) -> tuple:
@@ -651,10 +665,11 @@ class TrackerStore:
 
     def count_claimable(self, release_id: str) -> int:
         """Return how many tasks in *release_id* an agent could claim now."""
-        return self._conn.execute(
-            f"SELECT COUNT(*) FROM tasks WHERE tasks.release_id = ? AND {_CLAIMABLE}",
-            (release_id,),
-        ).fetchone()[0]
+        with self._lock:
+            return self._conn.execute(
+                f"SELECT COUNT(*) FROM tasks WHERE tasks.release_id = ? AND {_CLAIMABLE}",
+                (release_id,),
+            ).fetchone()[0]
 
     def claim_next(self, release_id: str, workstream_id: str) -> Optional[dict]:
         """Link the next claimable task in *release_id* to *workstream_id*.
@@ -732,25 +747,27 @@ class TrackerStore:
 
         select_cols = _task_columns(headlines_only)
 
-        try:
-            total = self._conn.execute(
-                f"SELECT COUNT(*) FROM tasks {where}", params
-            ).fetchone()[0]
+        with self._lock:
+            try:
+                total = self._conn.execute(
+                    f"SELECT COUNT(*) FROM tasks {where}", params
+                ).fetchone()[0]
 
-            rows = self._conn.execute(
-                f"SELECT {select_cols} FROM tasks {where} LIMIT ? OFFSET ?",
-                params + [limit, offset],
-            ).fetchall()
-        except sqlite3.OperationalError:
-            return {"tasks": [], "total": 0, "query": query, "limit": limit, "offset": offset}
+                rows = self._conn.execute(
+                    f"SELECT {select_cols} FROM tasks {where} LIMIT ? OFFSET ?",
+                    params + [limit, offset],
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return {"tasks": [], "total": 0, "query": query,
+                        "limit": limit, "offset": offset}
 
-        return {
-            "tasks": self._with_blockers([dict(r) for r in rows]),
-            "total": total,
-            "query": query,
-            "limit": limit,
-            "offset": offset,
-        }
+            return {
+                "tasks": self._with_blockers([dict(r) for r in rows]),
+                "total": total,
+                "query": query,
+                "limit": limit,
+                "offset": offset,
+            }
 
     def project_summary(self, project_id: str) -> Optional[dict]:
         """Return aggregate task counts for a project.
@@ -762,94 +779,95 @@ class TrackerStore:
             dict with total_tasks, by_status, by_priority, by_release, and
             by_workstream, or None if the project does not exist.
         """
-        if not self.get_project(project_id):
-            return None
+        with self._lock:
+            if not self.get_project(project_id):
+                return None
 
-        total = self._conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,)
-        ).fetchone()[0]
+            total = self._conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,)
+            ).fetchone()[0]
 
-        status_rows = self._conn.execute(
-            "SELECT status, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY status",
-            (project_id,),
-        ).fetchall()
-        by_status = {row[0]: row[1] for row in status_rows}
+            status_rows = self._conn.execute(
+                "SELECT status, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY status",
+                (project_id,),
+            ).fetchall()
+            by_status = {row[0]: row[1] for row in status_rows}
 
-        priority_rows = self._conn.execute(
-            "SELECT priority, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY priority",
-            (project_id,),
-        ).fetchall()
-        # Priority keys are integers in storage but JSON object keys must be strings.
-        # Use string representation so the shape survives JSON round-trips.
-        by_priority = {str(row[0]): row[1] for row in priority_rows}
+            priority_rows = self._conn.execute(
+                "SELECT priority, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY priority",
+                (project_id,),
+            ).fetchall()
+            # Priority keys are integers in storage but JSON object keys must be strings.
+            # Use string representation so the shape survives JSON round-trips.
+            by_priority = {str(row[0]): row[1] for row in priority_rows}
 
-        release_rows = self._conn.execute(
-            "SELECT r.id, r.name, "
-            "COUNT(t.id) AS task_count, "
-            "COALESCE(SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
-            "FROM releases r "
-            "LEFT JOIN tasks t ON t.release_id = r.id AND t.project_id = ? "
-            "WHERE r.project_id = ? "
-            "GROUP BY r.id, r.name",
-            (project_id, project_id),
-        ).fetchall()
-        by_release = [
-            {
-                "release_id": row[0],
-                "release_name": row[1],
-                "task_count": row[2],
-                "open_count": row[3],
+            release_rows = self._conn.execute(
+                "SELECT r.id, r.name, "
+                "COUNT(t.id) AS task_count, "
+                "COALESCE(SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+                "FROM releases r "
+                "LEFT JOIN tasks t ON t.release_id = r.id AND t.project_id = ? "
+                "WHERE r.project_id = ? "
+                "GROUP BY r.id, r.name",
+                (project_id, project_id),
+            ).fetchall()
+            by_release = [
+                {
+                    "release_id": row[0],
+                    "release_name": row[1],
+                    "task_count": row[2],
+                    "open_count": row[3],
+                }
+                for row in release_rows
+            ]
+            no_release_row = self._conn.execute(
+                "SELECT COUNT(*) AS task_count, "
+                "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+                "FROM tasks WHERE project_id = ? AND release_id IS NULL",
+                (project_id,),
+            ).fetchone()
+            by_release.append({
+                "release_id": None,
+                "release_name": None,
+                "task_count": no_release_row[0],
+                "open_count": no_release_row[1],
+            })
+
+            ws_rows = self._conn.execute(
+                "SELECT workstream_id, COUNT(*) AS task_count, "
+                "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+                "FROM tasks WHERE project_id = ? AND workstream_id IS NOT NULL "
+                "GROUP BY workstream_id",
+                (project_id,),
+            ).fetchall()
+            by_workstream = [
+                {
+                    "workstream_id": row[0],
+                    "task_count": row[1],
+                    "open_count": row[2],
+                }
+                for row in ws_rows
+            ]
+            no_ws_row = self._conn.execute(
+                "SELECT COUNT(*) AS task_count, "
+                "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+                "FROM tasks WHERE project_id = ? AND workstream_id IS NULL",
+                (project_id,),
+            ).fetchone()
+            by_workstream.append({
+                "workstream_id": None,
+                "task_count": no_ws_row[0],
+                "open_count": no_ws_row[1],
+            })
+
+            return {
+                "project_id": project_id,
+                "total_tasks": total,
+                "by_status": by_status,
+                "by_priority": by_priority,
+                "by_release": by_release,
+                "by_workstream": by_workstream,
             }
-            for row in release_rows
-        ]
-        no_release_row = self._conn.execute(
-            "SELECT COUNT(*) AS task_count, "
-            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
-            "FROM tasks WHERE project_id = ? AND release_id IS NULL",
-            (project_id,),
-        ).fetchone()
-        by_release.append({
-            "release_id": None,
-            "release_name": None,
-            "task_count": no_release_row[0],
-            "open_count": no_release_row[1],
-        })
-
-        ws_rows = self._conn.execute(
-            "SELECT workstream_id, COUNT(*) AS task_count, "
-            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
-            "FROM tasks WHERE project_id = ? AND workstream_id IS NOT NULL "
-            "GROUP BY workstream_id",
-            (project_id,),
-        ).fetchall()
-        by_workstream = [
-            {
-                "workstream_id": row[0],
-                "task_count": row[1],
-                "open_count": row[2],
-            }
-            for row in ws_rows
-        ]
-        no_ws_row = self._conn.execute(
-            "SELECT COUNT(*) AS task_count, "
-            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
-            "FROM tasks WHERE project_id = ? AND workstream_id IS NULL",
-            (project_id,),
-        ).fetchone()
-        by_workstream.append({
-            "workstream_id": None,
-            "task_count": no_ws_row[0],
-            "open_count": no_ws_row[1],
-        })
-
-        return {
-            "project_id": project_id,
-            "total_tasks": total,
-            "by_status": by_status,
-            "by_priority": by_priority,
-            "by_release": by_release,
-            "by_workstream": by_workstream,
-        }
 
     # ------------------------------------------------------------------
     # Bulk import
@@ -990,8 +1008,9 @@ class TrackerStore:
         """Return entity counts for the health endpoint."""
         def _count(table: str) -> int:
             return self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        return {
-            "projects": _count("projects"),
-            "releases": _count("releases"),
-            "tasks": _count("tasks"),
-        }
+        with self._lock:
+            return {
+                "projects": _count("projects"),
+                "releases": _count("releases"),
+                "tasks": _count("tasks"),
+            }

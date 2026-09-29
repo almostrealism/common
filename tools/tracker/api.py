@@ -82,6 +82,31 @@ def _validate_priority(value: object) -> tuple:
     return priority, None
 
 
+def _one_of(value: object, allowed: set) -> bool:
+    """Return True when *value* is a string in *allowed*.
+
+    JSON can carry a list or an object where a string is expected, and those
+    are unhashable, so a bare ``value in allowed`` raises ``TypeError`` (a 500)
+    instead of reporting the invalid value.
+    """
+    return isinstance(value, str) and value in allowed
+
+
+def _text_field(body, key: str) -> Optional[str]:
+    """Return the string at ``body[key]`` with surrounding whitespace removed.
+
+    An absent or null field reads as the empty string. A field holding any
+    other JSON type (a number, list or object) returns None, so the caller
+    refuses it with a 400 rather than failing on ``.strip()`` with a 500.
+    """
+    value = body.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return None
+    return value.strip()
+
+
 def _bad_request(message: str) -> JSONResponse:
     """Return a 400 response carrying *message*."""
     return JSONResponse({"ok": False, "error": message}, status_code=400)
@@ -104,7 +129,7 @@ def _task_field_error(store, body: dict, task_id: Optional[str] = None,
         A message describing the first problem, or None when the fields are
         valid.
     """
-    if "stage" in body and body["stage"] not in _VALID_STAGES:
+    if "stage" in body and not _one_of(body["stage"], _VALID_STAGES):
         return f"stage must be one of: {sorted(_VALID_STAGES)}"
     if "source" in body and not _valid_source(body["source"]):
         return "source must be 'person' or 'goals:<document>'"
@@ -187,7 +212,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
+        name = _text_field(body, "name")
         if not name:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
@@ -215,7 +240,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
+        name = _text_field(body, "name")
         if not name:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
@@ -259,7 +284,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
+        name = _text_field(body, "name")
         if not name:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
@@ -397,13 +422,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        title = (body.get("title") or "").strip()
+        title = _text_field(body, "title")
         if not title:
             return JSONResponse(
                 {"ok": False, "error": "title is required"}, status_code=400
             )
         status = body.get("status", "open")
-        if status not in _VALID_STATUSES:
+        if not _one_of(status, _VALID_STATUSES):
             return JSONResponse(
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
@@ -416,6 +441,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         field_error = _task_field_error(store, body)
         if field_error:
             return _bad_request(field_error)
+        # TODO(review): description/project_id/release_id/workstream_id are not type-checked; a list or object value still reaches sqlite and 500s.
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
@@ -465,13 +491,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             )
 
         status = body.get("status")
-        if status is not None and status not in _VALID_STATUSES:
+        if status is not None and not _one_of(status, _VALID_STATUSES):
             return JSONResponse(
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
             )
 
-        if "title" in body and not (body.get("title") or "").strip():
+        if "title" in body and not _text_field(body, "title"):
             return JSONResponse(
                 {"ok": False, "error": "title cannot be empty"}, status_code=400
             )
@@ -718,8 +744,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             A (release_or_None, error_response_or_None) tuple. A release that
             does not exist is not an error: it is returned as None.
         """
-        project = (params.get("project") or "").strip()
-        release = (params.get("release") or "").strip()
+        project = _text_field(params, "project")
+        release = _text_field(params, "release")
         if not project or not release:
             return None, _bad_request("project and release names are required")
         return store.find_release(project, release), None
@@ -752,8 +778,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        project = (body.get("project") or "").strip()
-        name = (body.get("release") or "").strip()
+        project = _text_field(body, "project")
+        name = _text_field(body, "release")
         if not project or not name:
             return _bad_request("project and release names are required")
         release, created = store.ensure_release(project, name)
@@ -796,7 +822,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        workstream_id = (body.get("workstream_id") or "").strip()
+        workstream_id = _text_field(body, "workstream_id")
         if not workstream_id:
             return _bad_request("workstream_id is required")
         release, err = _named_release(body)
@@ -824,14 +850,14 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        project = (body.get("project") or "").strip()
-        release = (body.get("release") or "").strip()
+        project = _text_field(body, "project")
+        release = _text_field(body, "release")
         if not project or not release:
             return _bad_request("project and release names are required")
-        title = (body.get("title") or "").strip()
+        title = _text_field(body, "title")
         if not title:
             return _bad_request("title is required")
-        source = (body.get("source") or "").strip()
+        source = _text_field(body, "source") or ""
         if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) <= len(GOAL_SOURCE_PREFIX):
             return _bad_request("source must be 'goals:<document>'")
         priority = 0
@@ -839,7 +865,10 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             priority, err_resp = _validate_priority(body["priority"])
             if err_resp:
                 return err_resp
-        task_id = (body.get("task_id") or "").strip() or None
+        task_id = _text_field(body, "task_id")
+        if task_id is None:
+            return _bad_request("task_id must be a string")
+        task_id = task_id or None
         blocked_by = body.get("blocked_by")
         check_body = {"source": source}
         if blocked_by is not None:
