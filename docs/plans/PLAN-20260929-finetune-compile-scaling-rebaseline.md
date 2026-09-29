@@ -163,20 +163,45 @@ Concrete, ordered deliverables:
    `numHeads`, and `globalCondDim` all change together with `embedDim`, and every point is
    `depth=1`, so these configurations measure a combined "model size" axis, not embed alone.
 
-2. **Capture a fresh backward-compile profile.** Run the new profiled-measurement method from
-   step 0 (the `testProfiledFineTuning()` configuration: embed=64, depth=1), which writes an
-   `OperationProfileNode` XML. Load it with `ar-profile-analyzer` and rank compile cost with
-   `find_slowest_by_category` using `category="compile"`. Plain `find_slowest` ranks total
-   (compile + run) duration, so once compile time has fallen, a node with a heavy run can push a
-   compile hot spot out of its result set. Then drill into the top compile nodes with
-   `get_timing_breakdown` and `get_source`, and identify what now dominates backward-pass
-   compilation. Confirm or refute that the Feb-2026 hot spots
+2. **Capture a fresh backward-compile profile, and rank the two timing kinds separately.** Run the
+   new profiled-measurement method from step 0 (the `testProfiledFineTuning()` configuration:
+   embed=64, depth=1), which writes an `OperationProfileNode` XML. Load it with `ar-profile-analyzer`.
+   Two distinct costs must be ranked, and the analyzer surfaces them through two different tools that
+   are **not interchangeable**:
+
+   - **Backend compile timings (per-operation metric entries).** `find_slowest_by_category` with
+     `category="compile"` ranks nodes by the sum of their metric entries whose key ends in
+     `" compile"` (`ProfileAnalyzerCLI.getCategoryDuration` reads `OperationProfileNode.getMetricEntries()`).
+     These are the backend compiler's per-kernel timings — the cost of turning an already-built
+     expression graph into a native kernel. Prefer this over plain `find_slowest`, which ranks total
+     (compile + run) duration and, once compile has fallen, can let a run-heavy node displace a
+     compile hot spot.
+   - **Stage-detail timings (`expressionCacheMatch`, `kernelSeries`).** These are *not* metric
+     entries and carry no `" compile"` suffix, so `find_slowest_by_category(category="compile")` does
+     **not** rank them. They live in `getStageDetailTime()` and are surfaced per node by
+     `get_timing_breakdown` (which prints a node's `stage_details`). This is the JVM-side
+     expression-construction / cache-matching cost that the February profile identified as the
+     *largest* accumulated entry (`expressionCacheMatch` ~1375.6 s) — precisely the cost the
+     `ExplicitExpressionMatrix` work targeted. Because these entries are non-exclusive (see
+     Motivation) they are reported as accumulated seconds only, never as a percentage of the run or
+     ranked against node-level compile shares.
+
+   Consequently, the compile-category top list alone cannot answer "what now dominates backward-pass
+   compilation": in February the dominant cost was a stage-detail entry that this ranking excludes.
+   Produce **both** rankings — a backend-compile top list from `find_slowest_by_category(category="compile")`
+   and the stage-detail accumulations from `get_timing_breakdown` on the backward-pass nodes — and
+   read the verdict from the two together.
+
+   **Scope the analysis to the backward phase.** The profiled method wraps model creation, forward
+   execution, and three training epochs (`runProfiledFineTuning` builds the model, then calls
+   `optimizer.optimize(3)`), so an all-node ranking over the whole profile is not backward-specific.
+   Use `list_children` to locate the backward subtree and rank within it (or, if the harness in
+   step 0 is extended to profile only the first backward step, over that scope), rather than reading
+   a whole-run top list as a backward-compile result. Then drill into the top nodes with
+   `get_timing_breakdown` and `get_source`, and confirm or refute that the Feb-2026 hot spots
    (`collectionProductComputation`, `collectionAddComputation`, nested-`reshape` overhead,
    the 72×-larger `projectDelta` intermediate) are still the top consumers, or whether the
-   dominant cost has shifted to something else after the kernel-series work. Keep the two kinds
-   of timing apart when ranking: node-level shares are comparable with each other, but
-   `stageDetailTime` entries are non-exclusive (see Motivation) and must be reported as accumulated
-   time, never as a percentage of the run or ranked against node shares.
+   dominant cost has shifted to something else after the kernel-series work.
 
 3. **Produce a current scaling curve and feasibility verdict — within the limits of what is
    measured.** Rebuild the table with today's numbers alongside the Feb-2026 numbers. The
@@ -274,11 +299,14 @@ end-to-end training runs.
   come from a *controlled* series (embed varied with other dimensions fixed; ≥2 depth points at
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
-- A fresh `finetune_profile_embed64` profile captured and analyzed, with the current
-  top-3 backward-compile cost nodes named from `ar-profile-analyzer`
-  (`find_slowest_by_category`, `category="compile"`). Each node carries its compile time and its
-  share of total compile time. Any `stageDetailTime` entry is quoted as accumulated seconds, not
-  as a share.
+- A fresh `finetune_profile_embed64` profile captured and analyzed **within the backward-pass
+  scope** (not a whole-run ranking over model creation, forward, and the three profiled epochs),
+  with two separate rankings. First, the current top-3 backend-compile cost nodes from
+  `ar-profile-analyzer` `find_slowest_by_category` (`category="compile"`), each carrying its compile
+  time and its share of total compile time. Second, the stage-detail accumulations
+  (`expressionCacheMatch`, `kernelSeries`) from `get_timing_breakdown`, each quoted as accumulated
+  seconds only — never as a share, and never ranked against the node-level compile shares, since
+  `find_slowest_by_category(category="compile")` does not include them.
   *Conditional on the profile being capturable:* if the profiled run still fails with the
   `delta()` scope error and that fix is ruled out of scope (see Open questions), this criterion is
   instead met by one of two things. The first is an analysis of the partial profile saved on failure,
