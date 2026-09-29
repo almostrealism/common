@@ -16,8 +16,11 @@
 
 package org.almostrealism.space.test;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.physics.Clock;
+import org.almostrealism.primitives.RigidSphere;
+import org.almostrealism.primitives.Sphere;
 import org.almostrealism.space.Animation;
 import org.almostrealism.space.Scene;
 import org.almostrealism.util.TestSuiteBase;
@@ -102,5 +105,58 @@ public class AnimationTest extends TestSuiteBase {
 	public void averageVelocityOfEmptySceneIsZero() {
 		Animation<ShadableSurface> anim = new Animation<>();
 		Assert.assertEquals(0.0, anim.getAverageLinearVelocity(), 0.0);
+	}
+
+	/**
+	 * A scene containing only non-{@link org.almostrealism.physics.RigidBody} surfaces reports 0.0,
+	 * because there are no rigid bodies to average over even though the scene is not empty.
+	 */
+	@Test(timeout = 10000)
+	public void averageVelocityIgnoresNonRigidSurfaces() {
+		Animation<ShadableSurface> anim = new Animation<>();
+		anim.add(new Sphere());
+		Assert.assertEquals(0.0, anim.getAverageLinearVelocity(), 0.0);
+	}
+
+	/**
+	 * The average is taken over the rigid bodies alone. A single rigid body of speed 3.0 sharing the
+	 * scene with a static, non-rigid {@link Sphere} reports 3.0, not the 1.5 that would result from
+	 * dividing by the total surface count. Both {@code sqrt(3^2)} and {@code 3.0/1} are exact in
+	 * IEEE-754, so the assertion needs no tolerance.
+	 */
+	@Test(timeout = 10000)
+	public void averageVelocityCountsOnlyRigidBodies() {
+		RigidSphere body = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(0.0, 3.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				1.0, 1.0, 1.0, 4);
+
+		Animation<ShadableSurface> anim = new Animation<>();
+		anim.add(body);
+		anim.add(new Sphere());
+
+		Assert.assertEquals(3.0, anim.getAverageLinearVelocity(), 0.0);
+	}
+
+	/**
+	 * With two rigid bodies the average is the mean of their speeds: speeds 4.0 and 2.0 average to
+	 * {@code (4.0 + 2.0) / 2 = 3.0} exactly.
+	 */
+	@Test(timeout = 10000)
+	public void averageVelocityIsMeanOfRigidBodySpeeds() {
+		RigidSphere fast = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(4.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				1.0, 1.0, 1.0, 4);
+		RigidSphere slow = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(2.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				1.0, 1.0, 1.0, 4);
+
+		Animation<ShadableSurface> anim = new Animation<>();
+		anim.add(fast);
+		anim.add(slow);
+
+		Assert.assertEquals(3.0, anim.getAverageLinearVelocity(), 0.0);
 	}
 }

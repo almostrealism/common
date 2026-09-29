@@ -221,20 +221,25 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 	/**
 	 * Computes the average linear velocity magnitude over all {@link RigidBody} objects in the scene.
+	 * Non-{@link RigidBody} surfaces are excluded from both the sum and the divisor, so the result is
+	 * the mean speed of the rigid bodies alone and is unaffected by any static geometry sharing the scene.
 	 *
-	 * @return the mean linear velocity magnitude, or 0.0 if the scene is empty
+	 * @return the mean linear velocity magnitude of the rigid bodies, or 0.0 if the scene contains none
 	 */
 	public double getAverageLinearVelocity() {
-		if (size() == 0) return 0.0;
-
 		double total = 0.0;
+		int count = 0;
 
 		for (ShadableSurface s : this) {
-			if (s instanceof RigidBody)
+			if (s instanceof RigidBody) {
 				total += ((RigidBody) s).getState().getLinearVelocity().length();
+				count++;
+			}
 		}
 
-		return total / size();
+		if (count == 0) return 0.0;
+
+		return total / count;
 	}
 
 	/**

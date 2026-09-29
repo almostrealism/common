@@ -229,6 +229,50 @@ public class AbstractSurfaceTest extends TestSuiteBase {
 		Assert.assertSame(t1, itr.next());
 	}
 
+	/**
+	 * The texture Set iterator's {@code remove()} honors the {@link Iterator} contract:
+	 * it throws {@link IllegalStateException} when called before any {@code next()} and
+	 * when called twice for a single {@code next()}, rather than corrupting the index and
+	 * failing with an array-copy exception.
+	 */
+	@Test(timeout = 10000)
+	public void textureSetIteratorRemoveContract() {
+		Plane p = new Plane();
+		Texture t0 = new ConstantTexture(new RGB(1.0, 0.0, 0.0));
+		Texture t1 = new ConstantTexture(new RGB(0.0, 1.0, 0.0));
+
+		Set<Texture> set = p.getTextureSet();
+		set.addAll(Arrays.asList(t0, t1));
+
+		// remove() before next() is illegal.
+		Iterator<Texture> itr = set.iterator();
+		try {
+			itr.remove();
+			Assert.fail("remove() before next() should throw IllegalStateException");
+		} catch (IllegalStateException expected) {
+			// expected
+		}
+
+		// The set must be untouched by the illegal call.
+		Assert.assertEquals(2, set.size());
+
+		// A single next() permits exactly one remove(); a second remove() is illegal.
+		Assert.assertSame(t0, itr.next());
+		itr.remove();
+		try {
+			itr.remove();
+			Assert.fail("remove() twice after one next() should throw IllegalStateException");
+		} catch (IllegalStateException expected) {
+			// expected
+		}
+
+		// Only t0 was removed by the single valid remove(); t1 survives.
+		Assert.assertEquals(1, set.size());
+		Assert.assertFalse(set.contains(t0));
+		Assert.assertTrue(set.contains(t1));
+		Assert.assertSame(t1, p.getTexture(0));
+	}
+
 	/** setShaders clears the set and addShader grows it. */
 	@Test(timeout = 10000)
 	public void shaderSetGrows() {
