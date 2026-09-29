@@ -701,6 +701,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
      * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
      *
+     * <p>{@code bypassAgentPermissionPrompts=true} grants this job alone the agent runtime's
+     * permission-prompt bypass (see {@link CodingAgentJobFactory#setBypassAgentPermissionPrompts}),
+     * in addition to any grant the workstream's branch policy makes. It is never written back to
+     * the workstream, so the next job on the branch does not inherit it; that job still receives
+     * the bypass independently when its target branch matches the workstream's
+     * {@code agentPermissionBypassBranches} policy. The ar-manager submit tool refuses to forward
+     * it from an in-flight agent.</p>
+     *
      * <p>{@code selfNotify} is rejected unless {@code jobType=shell}: a shell command has no
      * agent intelligence to act on its own completion, so a wake-up is the only way that
      * completion becomes actionable, whereas a coding-agent job can already submit its own
@@ -1053,7 +1061,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        workstream.applyCapabilities(factory, factory.getTargetBranch());
+        workstream.applyCapabilities(factory, factory.getTargetBranch(),
+                extractJsonBooleanField(body, "bypassAgentPermissionPrompts"));
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
@@ -1104,6 +1113,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
+        json.append(",\"bypassAgentPermissionPrompts\":")
+                .append(factory.isBypassAgentPermissionPrompts());
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.

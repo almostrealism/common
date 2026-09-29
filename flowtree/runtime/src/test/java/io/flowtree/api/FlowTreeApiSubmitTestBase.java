@@ -32,10 +32,13 @@ import java.nio.charset.StandardCharsets;
  * Shared scaffolding for HTTP-level tests against a live {@link FlowTreeApiEndpoint} bound to an
  * ephemeral port, with no workstream registered and no peer connected -- the shape every
  * submission-validation test needs, since the checks under test all run before workstream
- * resolution or peer connectivity.
+ * resolution or peer connectivity. A test that needs a submission to go through registers its
+ * workstream on {@link #notifier} and supplies a server with {@link FlowTreeApiEndpoint#setServer}.
  */
 public abstract class FlowTreeApiSubmitTestBase extends TestSuiteBase {
 
+    /** Notifier backing the endpoint; tests that need a workstream register it here. */
+    protected SlackNotifier notifier;
     /** Live API endpoint under test. */
     protected FlowTreeApiEndpoint endpoint;
     /** Listening port assigned by NanoHTTPD. */
@@ -44,7 +47,8 @@ public abstract class FlowTreeApiSubmitTestBase extends TestSuiteBase {
     /** Starts the API endpoint on an ephemeral port. */
     @Before
     public void setUp() throws Exception {
-        endpoint = new FlowTreeApiEndpoint(0, new SlackNotifier(null));
+        notifier = new SlackNotifier(null);
+        endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         port = endpoint.getListeningPort();
     }
