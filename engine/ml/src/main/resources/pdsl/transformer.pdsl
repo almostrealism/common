@@ -8,8 +8,8 @@
  * build one of the layers below. The model classes still loop over their layers in Java, calling
  * transformer(...) once per layer with that layer's weights.
  *
- * The stages are layers of two other assets, which the loader parses together with this file
- * into one program:
+ * The stages are layers of two other assets, which this file imports so the loader resolves
+ * them into one program; a caller need only build from this asset:
  *
  *   attention, attention_qk_norm, attention_mra     /pdsl/attention.pdsl
  *   swiglu_ffn                                      /pdsl/feed_forward.pdsl
@@ -32,6 +32,9 @@
  * place. The three layers differ only in which attention layer the first stage uses; dim is
  * heads * head_size throughout.
  */
+
+import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
 
 /**
  * Transformer layer with multi-head or grouped-query attention and optional projection biases
