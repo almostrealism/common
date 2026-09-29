@@ -304,9 +304,10 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 
 				long fc = l + iter - 1;
 				if (getMaster().getFrameCount() != fc) {
-					log("Cursor out of sync (" +
-							getMaster().getFrameCount() + " != " + fc + ")");
-					throw new RuntimeException();
+					String detail = "Cursor out of sync (" +
+							getMaster().getFrameCount() + " != " + fc + ")";
+					log(detail);
+					throw new RuntimeException(detail);
 				}
 
 				getMeasures().values().forEach(m -> {
