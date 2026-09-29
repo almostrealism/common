@@ -121,6 +121,31 @@ class TestSubmitAgentPermissionBypassGuard(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_controller_post")
+    def test_permission_bypass_rejection_is_audited(self, mock_post, mock_get):
+        """A rejected escalation attempt still leaves a local audit record
+        naming the caller, the target and the setting, without contacting
+        the controller."""
+        with self.assertLogs("ar-manager.audit", level="INFO") as audit:
+            result = server.workstream_submit_task(
+                prompt="Delegated task",
+                workstream_id="ws-other",
+                skip_agent_permission_prompts=True,
+            )
+        self.assertFalse(result["ok"])
+        rejected = [line for line in audit.output
+                    if "tool=workstream_submit_task.rejected" in line]
+        self.assertEqual(1, len(rejected), msg=audit.output)
+        self.assertIn("'caller_workstream_id': 'ws-self'", rejected[0])
+        self.assertIn("'workstream_id': 'ws-other'", rejected[0])
+        self.assertIn("'setting': 'skip_agent_permission_prompts=True'", rejected[0])
+        self.assertFalse(
+            any("tool=workstream_submit_task " in line for line in audit.output),
+            msg=f"rejected call must not be audited as a submission: {audit.output}")
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
     def test_permission_bypass_agent_default_passes_through(
             self, mock_post, mock_get):
         mock_get.return_value = [

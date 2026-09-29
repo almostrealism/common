@@ -572,11 +572,12 @@ def workstream_submit_task(
     # this is a no-op for callers that leave them alone. The check is placed
     # BEFORE workspace-scope resolution (which may refresh the workspace map
     # from the controller) and before the payload is built, so a rejected
-    # call never contacts the controller at all.
-    # TODO(review): rejected operator-only attempts now return before server._audit, so they leave no audit entry; decide whether to audit them.
+    # call never contacts the controller at all. Each rejection still writes
+    # a local audit entry, because an attempt to widen a delegated job's
+    # capabilities is exactly what the audit log exists to record.
     if caller_workstream_id and not sensitive_file_protection_enabled:
         return _operator_only_rejection(
-            caller_workstream_id,
+            caller_workstream_id, workstream_id,
             "sensitive_file_protection_enabled=False",
             "opting out of sensitive-file protection for a delegated job would "
             "let the agent self-authorise a controller-signed bypass HMAC for "
@@ -594,7 +595,7 @@ def workstream_submit_task(
     # bright-line guard intact rather than eroding it for one exception.
     if caller_workstream_id and skip_agent_permission_prompts:
         return _operator_only_rejection(
-            caller_workstream_id,
+            caller_workstream_id, workstream_id,
             "skip_agent_permission_prompts=True",
             "bypassing the permission prompts of a delegated job would let the "
             "agent grant another session write access to the guardrails "
@@ -710,12 +711,16 @@ def workstream_submit_task(
     return result
 
 
-def _operator_only_rejection(caller_workstream_id: str, setting: str,
-                             consequence: str, remedy: str) -> dict:
-    """Builds the rejection returned when an in-flight agent sets an operator-only flag.
+def _operator_only_rejection(caller_workstream_id: str, workstream_id: str,
+                             setting: str, consequence: str, remedy: str) -> dict:
+    """Audits and builds the rejection returned when an in-flight agent sets an operator-only flag.
+
+    The audit entry is written to the local audit log only, so recording the
+    attempt never contacts the controller.
 
     Args:
         caller_workstream_id: The workstream the calling agent's token is bound to.
+        workstream_id: The workstream the rejected job was to be submitted to.
         setting: The offending parameter and value, as the caller wrote it.
         consequence: What honouring the setting would let the agent do.
         remedy: The first next step: how to re-submit without the setting.
@@ -723,6 +728,9 @@ def _operator_only_rejection(caller_workstream_id: str, setting: str,
     Returns:
         dict with ok=False, an error naming the setting, and next_steps.
     """
+    server._audit("workstream_submit_task.rejected",
+                  caller_workstream_id=caller_workstream_id,
+                  workstream_id=workstream_id, setting=setting)
     return {
         "ok": False,
         "error": (
