@@ -148,15 +148,7 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 	 */
 	@Override
 	public Expression<T> valueAt(int i, int j) {
-		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
-			throw new UnsupportedOperationException();
-		}
-
-		if (rowDuplicates[i] >= 0) {
-			return valueAt(rowDuplicates[i], j);
-		}
-
-		return (Expression) Constant.of(sequenceValueAt(i, j));
+		return (Expression) Constant.of(sequenceValueAt(canonicalRow(i), j));
 	}
 
 	/**
@@ -168,16 +160,25 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 	 */
 	@Override
 	protected Number numberAt(int i, int j) {
+		Number n = sequenceValueAt(canonicalRow(i), j);
+		return n instanceof Integer || n instanceof Long || n instanceof Double ? n : null;
+	}
+
+	/**
+	 * Follows the row-duplicate chain from row {@code i} to the row whose values are
+	 * actually read from the backing sequence.
+	 *
+	 * @param i the row index
+	 * @return the canonical row holding the values of row {@code i}
+	 * @throws UnsupportedOperationException if {@code i} is outside the row-duplicate map
+	 *         or is recorded as a duplicate of itself
+	 */
+	protected int canonicalRow(int i) {
 		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
 			throw new UnsupportedOperationException();
 		}
 
-		if (rowDuplicates[i] >= 0) {
-			return numberAt(rowDuplicates[i], j);
-		}
-
-		Number n = sequenceValueAt(i, j);
-		return n instanceof Integer || n instanceof Long || n instanceof Double ? n : null;
+		return rowDuplicates[i] >= 0 ? canonicalRow(rowDuplicates[i]) : i;
 	}
 
 	/**
