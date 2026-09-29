@@ -15,6 +15,21 @@ import server
 from server import mcp
 
 
+def _parse_tracker_capabilities(value: str) -> tuple:
+    """Split a comma-separated tracker-capability list and check each entry.
+
+    Returns:
+        A ``(capabilities, error)`` tuple: the list (possibly empty) and
+        None, or None and an error dict naming the unknown entry.
+    """
+    known = (server.TRACKER_PLANNER, server.TRACKER_STEWARD)
+    caps = [c.strip() for c in value.split(",") if c.strip()]
+    for cap in caps:
+        if cap not in known:
+            return None, {"ok": False, "error": (
+                f"Unknown tracker capability '{cap}'; expected any of {list(known)}")}
+    return caps, None
+
 
 @mcp.tool()
 def workstream_register(
@@ -34,6 +49,7 @@ def workstream_register(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: bool = False,
+    tracker_capabilities: str = "",
     default_use_tmux: bool = False,
     max_wall_clock_hours: int = -1,
     kind: str = "",
@@ -144,6 +160,11 @@ def workstream_register(
             ceilings, so the flag is the gate but not the only safety
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
+        tracker_capabilities: Comma-separated tracker roles granted to agents
+            on this workstream: ``planner`` (may claim the next ready task of
+            a release with tracker_claim_next_task) and ``steward`` (may list
+            a release and create or update goal-derived tasks). Empty grants
+            none, which is the default.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real
             controlling tty) by default. The per-job ``use_tmux`` flag
@@ -303,6 +324,11 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    if tracker_capabilities:
+        caps, err = _parse_tracker_capabilities(tracker_capabilities)
+        if err:
+            return err
+        payload["trackerCapabilities"] = caps
     # defaultUseTmux follows the same unconditional-forward pattern as
     # dispatchCapable: a boolean forwarded verbatim so the controller
     # sees the operator's intent regardless of whether the field
@@ -381,6 +407,7 @@ def workstream_update_config(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
+    tracker_capabilities: Optional[str] = None,
     default_use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     kind: str = "",
@@ -440,6 +467,10 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
+        tracker_capabilities: Comma-separated tracker roles (``planner``,
+            ``steward``) granted to agents on this workstream, replacing the
+            current set. ``""`` revokes them all; omitting the parameter
+            (``None``) leaves them unchanged.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real
             controlling tty) by default. The per-job ``use_tmux`` flag
@@ -543,6 +574,11 @@ def workstream_update_config(
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
+    if tracker_capabilities is not None:
+        caps, err = _parse_tracker_capabilities(tracker_capabilities)
+        if err:
+            return err
+        payload["trackerCapabilities"] = caps
     # default_use_tmux follows the same Optional-presence pattern as
     # dispatch_capable: omitted = no change, ``False`` = clear the
     # workstream-level tmux opt-in, ``True`` = opt the workstream in.

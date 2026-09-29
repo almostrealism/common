@@ -64,7 +64,7 @@ export AR_TRACKER_AUTH_TOKEN=<your-token>
 
 ## MCP Tools
 
-ar-manager exposes 17 MCP tools for the tracker. All follow the `tracker_*` naming
+ar-manager exposes 18 MCP tools for the tracker. All follow the `tracker_*` naming
 convention and mirror the REST API:
 
 | Tool | Scope | Description |
@@ -84,6 +84,39 @@ convention and mirror the REST API:
 | `tracker_delete_task` | write | Permanently delete a task |
 | `tracker_search_tasks` | read | Full-text search; supports headlines projection |
 | `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |
+| `tracker_claim_next_task` | write + `planner` role | Claim the next ready task of a release for the calling workstream |
+| `tracker_list_release_tasks` | read + `steward` role | Every task of one release, unscoped |
+| `tracker_upsert_goal_task` | write + `steward` role | Create or update a task derived from goal documents |
+
+### Readiness, provenance and dependencies
+
+Every task carries three fields that decide whether an agent may pick it up:
+
+- **`stage`** — `backlog` (the default, and every task that existed before
+  these fields), `ready` (may be claimed by a planning agent), or `declined`
+  (its plan was rejected; out of the queue until a person makes it `ready`).
+- **`source`** — `person` (the default) or `goals:<document>` for a task an
+  agent derived from goal documents. Agents may only change `goals:` tasks.
+- **`blocked_by`** — ids of tasks that must close first.
+
+A task is **claimable** when it is open, `ready`, not linked to a workstream,
+and not blocked by an open task. That definition lives in one place
+(`_CLAIMABLE` in `store.py`) and is used by both `/v1/claimable` and
+`/v1/claim`, so asking "is there work?" and taking it never disagree.
+
+### Agent roles
+
+Agents cannot use the general write tools. The three tools above are granted
+to every agent session but refused by ar-manager unless the calling
+workstream holds the matching role in its `trackerCapabilities` setting
+(`workstream_register` / `workstream_update_config`, `tracker_capabilities`):
+
+- **`planner`** may claim the next ready task of a release; the claim links
+  the task to the caller's workstream and is atomic.
+- **`steward`** may list a release, and create or update `goals:` tasks. New
+  tasks are created `ready`; updates never change a task's stage or status;
+  a missing release is created, a missing project never is; nothing is
+  deleted.
 
 ### Context-efficiency: fetching a single task
 
@@ -178,14 +211,18 @@ GET    /v1/projects/{id}/summary        Aggregate task counts for a project
 
 GET    /v1/releases                     List releases (?project_id=)
 POST   /v1/releases                     Create a release
+GET    /v1/releases/lookup              Find a release by name (?project=&release=)
+POST   /v1/releases/ensure              Atomically get or create a release by name
+                                        ({"project", "release"}; never creates the project)
 GET    /v1/releases/{id}                Get a release
 PUT    /v1/releases/{id}                Update a release
 DELETE /v1/releases/{id}                Delete a release
 
-GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines)
+GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines; ?stage=)
 POST   /v1/tasks                        Create a task
 GET    /v1/tasks/{id}                   Get a task
-PUT    /v1/tasks/{id}                   Update a task
+PUT    /v1/tasks/{id}                   Update a task (?only_goal_derived=true: only while the
+                                        stored task is a goals: task, else 409, checked atomically)
 DELETE /v1/tasks/{id}                   Delete a task
 
 GET    /v1/projects/{id}/tasks          Tasks for a project
@@ -193,7 +230,15 @@ GET    /v1/releases/{id}/tasks          Tasks for a release
 GET    /v1/workstreams/{id}/tasks       Tasks for a workstream
 
 GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
-POST   /v1/import                       Bulk import (idempotent upsert)
+
+GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
+POST   /v1/claim                        Claim the next one for a workstream
+                                        ({"project", "release", "workstream_id"})
+POST   /v1/goal-tasks                   Ensure the release and create/update a goal task
+                                        in one transaction (a failed write leaves no
+                                        orphan release; a body "task_id" updates only
+                                        while the stored task is still goal-derived)
+POST   /v1/import                       Bulk import (idempotent upsert; all-or-nothing)
 ```
 
 ---

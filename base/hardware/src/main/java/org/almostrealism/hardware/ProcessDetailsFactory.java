@@ -23,6 +23,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -613,9 +614,22 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * providing no additional correctness guarantee: blocking it on {@code dependsOn} would also
 	 * violate the non-blocking submission contract (a submit with an outstanding foreign
 	 * dependency must return, and a same-provider dependency must remain free). An argument that
-	 * instead needs a sized destination (built via {@code Evaluable::into} below) is always
-	 * dispatch-backed, since it only reaches that path by being a genuine kernel evaluation
-	 * rather than a handle-only reference.</p>
+	 * is requested into a sized destination (built via {@code Evaluable::into} below) is always
+	 * dispatch-backed: a sized destination that is only a fixed handle is bound directly instead
+	 * (see below), so only a genuine kernel evaluation reaches that request.</p>
+	 *
+	 * <p>An argument whose evaluable is a {@link FixedEvaluable} is never requested at all. Its
+	 * value is already known when the invocation is constructed and depends on no pending work
+	 * &mdash; a {@link io.almostrealism.relation.Provider} of a collection or of an argument
+	 * map's root delegate, or the handle that {@link MemoryDataDestination#into(Object)} returns
+	 * for the sized destination allocated below &mdash; so it is bound as a resolved kernel
+	 * argument, exactly like a constant or a positional reference. Requesting it through a
+	 * {@link StreamingEvaluable} instead would start a dedicated thread for every invocation (a
+	 * plain evaluable is wrapped by {@link Evaluable#async()}, whose executor starts one per
+	 * request) only to hand back a value that was never in question, and a destination handle,
+	 * marked dispatch-backed, would first wait on the host for {@code dependsOn}. Neither is
+	 * needed for ordering: {@link AcceleratedOperation#apply(MemoryBank, Object[], Semaphore)
+	 * apply} merges {@code dependsOn} into the kernel's own dispatch semaphore.</p>
 	 *
 	 * <p>Separately, an argument evaluation that is requested ahead of dispatch is never
 	 * submitted to the {@code ComputeContext}'s own bounded executor while dispatch is
@@ -678,6 +692,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		boolean[] direct = new boolean[arguments.size()];
 
 		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			// A fixed value is bound directly (see this method's javadoc)
+			kernelArgs[i] = fixedArgument(kernelArgEvaluables[i], prepared.args);
 			if (kernelArgs[i] != null) continue i;
 
 			// Determine if the argument can be evaluated immediately,
@@ -748,6 +766,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			Evaluable sized = kernelArgEvaluables[i].into(result);
+			kernelArgs[i] = fixedArgument(sized, prepared.args);
+			if (kernelArgs[i] != null) continue;
+
 			asyncEvaluables[i] = selectAsyncEvaluable(sized, direct, i);
 			dispatchBacked[i] = true;
 		}
@@ -793,6 +814,28 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		/* The details are ready */
 		return details;
+	}
+
+	/**
+	 * Returns the value of an argument whose evaluable is a {@link FixedEvaluable}, so that
+	 * {@link #construct(PreparedArguments, Semaphore) construct} can bind it as a resolved
+	 * kernel argument of the invocation instead of requesting it asynchronously.
+	 *
+	 * <p>A fixed evaluable's value is predetermined: it does not depend on the invocation's
+	 * arguments, and producing it reads no memory that pending work could still be writing.
+	 * A value that is not {@link MemoryData} is left to the ordinary request path, so that
+	 * such an argument is rejected exactly where it always was.</p>
+	 *
+	 * @param evaluable the evaluable of one kernel argument
+	 * @param args      the invocation's positional arguments
+	 * @return the fixed value, or {@code null} when the evaluable is not a {@link FixedEvaluable}
+	 *         or its value is not {@link MemoryData}
+	 */
+	private static MemoryData fixedArgument(Evaluable<?> evaluable, Object[] args) {
+		if (!(evaluable instanceof FixedEvaluable)) return null;
+
+		Object value = evaluable.evaluate(args);
+		return value instanceof MemoryData ? (MemoryData) value : null;
 	}
 
 	/**

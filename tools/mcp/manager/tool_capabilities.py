@@ -22,6 +22,13 @@ runtime.
 
 # Granted to coding agents by default. Mirrors
 # McpConfigBuilder.AR_MANAGER_TOOL_NAMES.
+#
+# tracker_claim_next_task, tracker_list_release_tasks and
+# tracker_upsert_goal_task are granted to every session but gated in
+# ar-manager by the calling workstream's trackerCapabilities (see
+# _require_tracker_capability): the same controller-side model the opencode
+# harness relies on for dispatch. Comments stay out of the tuple itself, which
+# McpToolClassificationParityTest parses as a plain literal.
 GRANTED_TOOLS = (
     "controller_health",
     "agent_options",
@@ -57,6 +64,9 @@ GRANTED_TOOLS = (
     "tracker_project_summary",
     "tracker_list_projects",
     "tracker_list_releases",
+    "tracker_claim_next_task",
+    "tracker_list_release_tasks",
+    "tracker_upsert_goal_task",
 )
 
 # Withheld from coding agents. Mirrors

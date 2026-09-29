@@ -81,6 +81,9 @@ services:
     environment:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
+      # The tracker, which GET /api/tracker/claimable asks on CI's behalf.
+      - AR_TRACKER_URL=http://ar-tracker:8030
+      - AR_TRACKER_AUTH_TOKEN=${AR_TRACKER_AUTH_TOKEN:-}
       # The ar-manager address handed to every agent job's MCP config, so it
       # has to be reachable from wherever agents run — the Docker pool and
       # the native macOS agent alike, neither of which can see the tailnet.

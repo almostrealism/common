@@ -240,6 +240,21 @@ public class Workstream {
     private boolean dispatchCapable;
 
     /**
+     * Tracker roles granted to agents running on this workstream, each of
+     * which unlocks narrow tracker tools on the ar-manager server:
+     * {@code planner} may claim the next ready task of a release, and
+     * {@code steward} may list a release and create or update tasks derived
+     * from goal documents. Empty by default. The tools are always on the
+     * agent allowlist; ar-manager refuses them unless the calling
+     * workstream holds the role, which it reads from
+     * {@link #toSummaryJson()}.
+     */
+    private List<String> trackerCapabilities = List.of();
+
+    /** Every value {@link #setTrackerCapabilities(List)} accepts. */
+    public static final Set<String> TRACKER_CAPABILITIES = Set.of("planner", "steward");
+
+    /**
      * Branch-name prefixes whose jobs may bypass the agent runtime's
      * interactive permission prompts. Empty or unset means no branch may —
      * which is the default, because the grant lets a session write the
@@ -808,10 +823,37 @@ public class Workstream {
      *
      * @param factory      the factory to configure
      * @param targetBranch the branch the job will run against; may be {@code null}
+     * @see #applyCapabilities(CodingAgentJobFactory, String, boolean)
      */
     public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch) {
+        applyCapabilities(factory, targetBranch, false);
+    }
+
+    /**
+     * Applies this workstream's agent capabilities to a job factory, adding the
+     * permission-prompt bypass when the submission itself asks for it.
+     *
+     * <p>The per-job grant is for an operator who wants one job to edit the
+     * agent runtime's own tooling ({@code .claude/settings.json},
+     * {@code .claude/hooks/}) without opening that door for every job on the
+     * branch. It can only add to what {@link #permitsAgentPermissionBypass(String)}
+     * grants, never revoke it, and nothing here is stored on the workstream, so
+     * the next job on the branch — including a completion-listener wake-up,
+     * which goes through {@link #applyCapabilities(CodingAgentJobFactory, String)}
+     * — does not inherit the per-job grant. That job may still receive the
+     * bypass independently, when its target branch satisfies
+     * {@link #permitsAgentPermissionBypass(String)}.</p>
+     *
+     * @param factory                the factory to configure
+     * @param targetBranch           the branch the job will run against; may be {@code null}
+     * @param jobGrantsPermissionBypass {@code true} when the submission grants
+     *                               this job the permission-prompt bypass
+     */
+    public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch,
+                                  boolean jobGrantsPermissionBypass) {
         factory.setDispatchCapable(dispatchCapable);
-        factory.setBypassAgentPermissionPrompts(permitsAgentPermissionBypass(targetBranch));
+        factory.setBypassAgentPermissionPrompts(jobGrantsPermissionBypass
+                || permitsAgentPermissionBypass(targetBranch));
     }
 
     /**
@@ -900,6 +942,55 @@ public class Workstream {
      */
     public void setDispatchCapable(boolean dispatchCapable) {
         this.dispatchCapable = dispatchCapable;
+    }
+
+    /**
+     * Returns the tracker roles granted to agents on this workstream; see
+     * {@link #trackerCapabilities}. Never {@code null}.
+     */
+    public List<String> getTrackerCapabilities() {
+        return trackerCapabilities;
+    }
+
+    /**
+     * Replaces the tracker roles granted to agents on this workstream.
+     * Callers taking the list from a request should reject it first with
+     * {@link #unknownTrackerCapability(List)}.
+     *
+     * @param trackerCapabilities the roles to grant; {@code null} grants none
+     * @throws IllegalArgumentException if a value is not in
+     *         {@link #TRACKER_CAPABILITIES}
+     */
+    public void setTrackerCapabilities(List<String> trackerCapabilities) {
+        String unknown = unknownTrackerCapability(trackerCapabilities);
+        if (unknown != null) {
+            throw new IllegalArgumentException("Unknown tracker capability: " + unknown);
+        }
+        this.trackerCapabilities = trackerCapabilities == null
+                ? List.of() : List.copyOf(trackerCapabilities);
+    }
+
+    /**
+     * Returns the first entry of {@code capabilities} that is not a known
+     * tracker role, or {@code null} when every entry is known.
+     *
+     * <p>A {@code null} entry is itself unknown and is reported as the string
+     * {@code "null"}: returning the entry verbatim would collide with the
+     * method's {@code null} success sentinel, letting a malformed list (e.g.
+     * from malformed YAML) pass validation and then fail in {@code List.copyOf}
+     * with an opaque {@link NullPointerException} instead of a clear rejection.</p>
+     *
+     * @param capabilities the proposed roles; may be {@code null}
+     * @return the first unknown value ({@code "null"} for a null entry), or
+     *         {@code null} when every entry is a known role
+     */
+    public static String unknownTrackerCapability(List<String> capabilities) {
+        if (capabilities == null) return null;
+        for (String capability : capabilities) {
+            if (capability == null) return "null";
+            if (!TRACKER_CAPABILITIES.contains(capability)) return capability;
+        }
+        return null;
     }
 
     /**
@@ -1185,7 +1276,8 @@ public class Workstream {
      * {@code dependentRepos}, {@code requiredLabels}.</p>
      *
      * <p>Capability flags (omitted when {@code false}): {@code archived},
-     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.</p>
+     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.
+     * {@code trackerCapabilities} is an array, omitted when empty.</p>
      *
      * <p>{@code pipelineCapable} is computed as {@code repoUrl} being non-null and non-empty.
      * {@code maxWallClockHours} is emitted only when explicitly set on this workstream
@@ -1230,6 +1322,7 @@ public class Workstream {
         if (dispatchCapable) {
             json.append(",\"dispatchCapable\":true");
         }
+        appendStringArray(json, "trackerCapabilities", trackerCapabilities);
         if (maxWallClockHours != null) {
             json.append(",\"maxWallClockHours\":").append(maxWallClockHours.intValue());
         }
@@ -1247,16 +1340,7 @@ public class Workstream {
             json.append(",\"kind\":\"").append(JsonFieldExtractor.escapeJson(getKind())).append("\"");
         }
 
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            json.append(",\"dependentRepos\":[");
-            boolean first = true;
-            for (String repo : dependentRepos) {
-                if (!first) json.append(",");
-                first = false;
-                json.append("\"").append(JsonFieldExtractor.escapeJson(repo)).append("\"");
-            }
-            json.append("]");
-        }
+        appendStringArray(json, "dependentRepos", dependentRepos);
 
         if (requiredLabels != null && !requiredLabels.isEmpty()) {
             json.append(",\"requiredLabels\":{");
@@ -1272,6 +1356,24 @@ public class Workstream {
 
         json.append("}");
         return json.toString();
+    }
+
+    /**
+     * Appends {@code ,"key":["a","b"]} to {@code json}, or nothing when
+     * {@code values} is {@code null} or empty.
+     *
+     * @param json   the JSON object being built
+     * @param key    the field name
+     * @param values the strings to write
+     */
+    private static void appendStringArray(StringBuilder json, String key, List<String> values) {
+        if (values == null || values.isEmpty()) return;
+        json.append(",\"").append(key).append("\":[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) json.append(",");
+            json.append("\"").append(JsonFieldExtractor.escapeJson(values.get(i))).append("\"");
+        }
+        json.append("]");
     }
 
     /**

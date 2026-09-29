@@ -271,6 +271,28 @@ _dispatch_capable_cache: dict = {"ids": None, "fetched": 0.0}
 _dispatch_capable_lock = threading.Lock()
 
 
+def _fetch_workstream_entries() -> list:
+    """Fetch the controller's workstream list for a capability check.
+
+    Returns an empty list when the controller is unreachable or returns an
+    unexpected payload. Every capability built on it therefore fails closed:
+    an ar-manager that cannot reach its controller grants nothing.
+    """
+    try:
+        import sys as _sys
+        _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
+        result = _cget("/api/workstreams")
+    except Exception:
+        return []
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict):
+        entries = result.get("workstreams", [])
+    else:
+        return []
+    return entries if isinstance(entries, list) else []
+
+
 def _refresh_dispatch_capable_ids() -> set:
     """Fetch the workstream list from the controller and return the set
     of workstream IDs that have ``dispatchCapable: true``.
@@ -279,22 +301,8 @@ def _refresh_dispatch_capable_ids() -> set:
     non-list payload.  The empty set is the fail-closed default: an
     ar-manager that cannot reach its controller refuses to grant dispatch.
     """
-    try:
-        import sys as _sys
-        _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-        result = _cget("/api/workstreams")
-    except Exception:
-        return set()
-    if isinstance(result, list):
-        entries = result
-    elif isinstance(result, dict):
-        entries = result.get("workstreams", [])
-    else:
-        return set()
-    if not isinstance(entries, list):
-        return set()
     ids = set()
-    for ws in entries:
+    for ws in _fetch_workstream_entries():
         if not isinstance(ws, dict):
             continue
         if ws.get("dispatchCapable") is True:
@@ -353,6 +361,74 @@ def _require_dispatch_capable() -> None:
         " harness allowlist are separate, and a denial can come from"
         " either."
     )
+
+
+# ---------------------------------------------------------------------------
+# Tracker capabilities
+# ---------------------------------------------------------------------------
+# The controller's workstream list carries ``"trackerCapabilities": [...]``
+# for a workstream granted any. Each capability unlocks a narrow tracker
+# tool: ``planner`` may claim the next ready task of a release, ``steward``
+# may list a release and create or update goal-derived tasks. Cached on the
+# same TTL as the dispatch flag, and failing closed the same way.
+
+TRACKER_PLANNER = "planner"
+TRACKER_STEWARD = "steward"
+
+_tracker_capability_cache: dict = {"map": None, "fetched": 0.0}
+_tracker_capability_lock = threading.Lock()
+
+
+def _refresh_tracker_capabilities() -> dict:
+    """Return ``{workstream_id: set(capabilities)}`` from the controller."""
+    caps = {}
+    for ws in _fetch_workstream_entries():
+        if not isinstance(ws, dict):
+            continue
+        granted = ws.get("trackerCapabilities")
+        wid = ws.get("workstreamId")
+        if wid and isinstance(granted, list):
+            caps[wid] = {c for c in granted if isinstance(c, str)}
+    return caps
+
+
+def _get_tracker_capabilities(workstream_id: str) -> set:
+    """Return the tracker capabilities granted to *workstream_id*, refreshing
+    the cache when it is older than :data:`~config.WORKSPACE_CACHE_TTL`.
+    """
+    now = time.monotonic()
+    with _tracker_capability_lock:
+        caps = _tracker_capability_cache.get("map")
+        fresh = (caps is not None
+                 and (now - _tracker_capability_cache.get("fetched", 0.0))
+                 <= WORKSPACE_CACHE_TTL)
+    if not fresh:
+        caps = _refresh_tracker_capabilities()
+        with _tracker_capability_lock:
+            _tracker_capability_cache["map"] = caps
+            _tracker_capability_cache["fetched"] = time.monotonic()
+    return caps.get(workstream_id, set())
+
+
+def _require_tracker_capability(capability: str) -> str:
+    """Return the calling job's workstream ID, or raise
+    :class:`PermissionError` unless that workstream holds *capability*.
+
+    Unlike the dispatch gate, an unscoped caller is not waved through: every
+    tool behind this gate acts on behalf of a workstream (a claim links the
+    task to it), so a caller must be a job with a workstream binding.
+    """
+    caller_ws_id = _get_token_workstream_id()
+    if not caller_ws_id:
+        raise PermissionError(
+            "This tracker tool acts for the calling job's workstream, and the"
+            " request carries no workstream binding. Call it from an agent job.")
+    if capability in _get_tracker_capabilities(caller_ws_id):
+        return caller_ws_id
+    raise PermissionError(
+        "This tracker tool requires the '" + capability + "' tracker capability,"
+        " which workstream '" + caller_ws_id + "' does not have. Operators grant"
+        " it with workstream_update_config(..., tracker_capabilities=\"planner,steward\").")
 
 
 # ---------------------------------------------------------------------------

@@ -1166,6 +1166,9 @@ class TestToolRegistration(unittest.TestCase):
             "tracker_delete_task",
             "tracker_search_tasks",
             "tracker_project_summary",
+            "tracker_claim_next_task",
+            "tracker_list_release_tasks",
+            "tracker_upsert_goal_task",
             "workspace_secret_list_names",
             "workspace_secret_render_file",
         }

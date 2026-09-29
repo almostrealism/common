@@ -190,4 +190,61 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals("a}b", names.get(0));
 		Assert.assertEquals("c", names.get(1));
 	}
+
+	/** A well-formed array of strings is returned in order, escapes decoded. */
+	@Test(timeout = 10000)
+	public void strictStringArrayReturnsValuesInOrder() {
+		String json = "{\"roles\":[\"planner\",\"a\\/b\"],\"other\":[\"x\"]}";
+
+		Assert.assertEquals(List.of("planner", "a/b"),
+				JsonFieldExtractor.extractStrictStringArray(json, "roles"));
+		Assert.assertEquals(List.of(),
+				JsonFieldExtractor.extractStrictStringArray("{\"roles\":[]}", "roles"));
+	}
+
+	/** An absent field and an explicit {@code null} both read as {@code null}. */
+	@Test(timeout = 10000)
+	public void strictStringArrayAbsentOrNullIsNull() {
+		Assert.assertNull(JsonFieldExtractor.extractStrictStringArray("{\"a\":1}", "roles"));
+		Assert.assertNull(JsonFieldExtractor.extractStrictStringArray("{\"roles\":null}", "roles"));
+	}
+
+	/**
+	 * A string value is refused. The lenient extractor would instead read the
+	 * next array in the document — here {@code other} — as the field's value.
+	 */
+	@Test(timeout = 10000)
+	public void strictStringArrayRejectsScalarValue() {
+		String json = "{\"roles\":\"planner\",\"other\":[\"steward\"]}";
+
+		Assert.assertEquals(List.of("steward"), JsonFieldExtractor.extractStringArray(json, "roles"));
+		assertRejected(json);
+	}
+
+	/** Non-string elements are refused rather than silently skipped. */
+	@Test(timeout = 10000)
+	public void strictStringArrayRejectsNonStringElements() {
+		assertRejected("{\"roles\":[\"planner\",1]}");
+		assertRejected("{\"roles\":[\"planner\",null]}");
+		assertRejected("{\"roles\":[[\"planner\"]]}");
+		assertRejected("{\"roles\":{\"planner\":true}}");
+	}
+
+	/** A body that is not a JSON object is refused. */
+	@Test(timeout = 10000)
+	public void strictStringArrayRejectsMalformedBody() {
+		assertRejected("{\"roles\":[\"planner\"");
+		assertRejected("[\"planner\"]");
+		assertRejected(null);
+	}
+
+	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */
+	private static void assertRejected(String json) {
+		try {
+			JsonFieldExtractor.extractStrictStringArray(json, "roles");
+			Assert.fail("Expected IllegalArgumentException for " + json);
+		} catch (IllegalArgumentException expected) {
+			Assert.assertNotNull(expected.getMessage());
+		}
+	}
 }
