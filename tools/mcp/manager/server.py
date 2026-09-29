@@ -252,6 +252,13 @@ from workspace_map import (
     _refresh_dispatch_capable_ids,
     _get_dispatch_capable_ids,
     _require_dispatch_capable,
+    _fetch_workstream_entries,
+    _tracker_capability_cache,
+    _refresh_tracker_capabilities,
+    _get_tracker_capabilities,
+    _require_tracker_capability,
+    TRACKER_PLANNER,
+    TRACKER_STEWARD,
     _filter_workstreams_by_scope,
     _filter_tasks_by_scope,
     _pipeline_error,
@@ -1481,6 +1488,9 @@ from tracker_tools import (  # noqa: E402
     tracker_delete_task,
     tracker_search_tasks,
     tracker_project_summary,
+    tracker_claim_next_task,
+    tracker_list_release_tasks,
+    tracker_upsert_goal_task,
 )
 
 
