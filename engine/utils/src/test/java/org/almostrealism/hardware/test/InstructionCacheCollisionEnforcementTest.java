@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducer;
@@ -25,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.hardware.mem.KernelConstantProviderSupplier;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -182,6 +184,58 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 				assertEquals(i < length ? 2.0 * (i + 1) : -1.0, values[i]);
 			}
 		}
+	}
+
+	/**
+	 * Before compilation, only a declared provider whose root memory is within the
+	 * aggregation size limit is reported as an aggregation target. The root decides, not
+	 * the view: a small view of a large root is not folded, and a view of a small root is.
+	 * Computed producers and kernel-owned constant memory are never targets, and
+	 * {@link Provider#valueOf(Object)} yields nothing for them.
+	 */
+	@Test(timeout = 60000)
+	public void aggregationTargetOfProducerBeforeCompilation() {
+		int limit = MemoryDataArgumentMap.maxAggregateLength;
+		PackedCollection small = new PackedCollection(limit / 4);
+		PackedCollection atLimit = new PackedCollection(limit);
+		PackedCollection large = new PackedCollection(limit + 1);
+
+		Assert.assertTrue(MemoryDataArgumentMap.isAggregationTarget(p(small)));
+		Assert.assertTrue(MemoryDataArgumentMap.isAggregationTarget(p(atLimit)));
+		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(p(large)));
+		Assert.assertTrue(MemoryDataArgumentMap.isAggregationTarget(p(small.range(shape(2), 1))));
+		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(p(large.range(shape(2), 1))));
+
+		CollectionProducer computed = cp(small).multiply(2.0);
+		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(computed));
+		Assert.assertNull(Provider.valueOf(computed));
+		Assert.assertNull(Provider.valueOf(null));
+		Assert.assertSame(small, Provider.valueOf(p(small)));
+
+		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(
+				new KernelConstantProviderSupplier(small)));
+	}
+
+	/**
+	 * An assignment's signature records whether its destination is aggregated, so the same
+	 * value assigned to destinations on each side of the aggregation size limit yields two
+	 * signatures that differ only by the aggregation marker.
+	 */
+	@Test(timeout = 60000)
+	public void assignmentSignatureMarksAggregatedDestination() {
+		int limit = MemoryDataArgumentMap.maxAggregateLength;
+		PackedCollection source = new PackedCollection(8);
+
+		String aggregated = a("markProbe", p(new PackedCollection(limit).range(shape(8)).each()),
+				cp(source.each()).multiply(3.0)).signature();
+		String separate = a("markProbe", p(new PackedCollection(limit + 1).range(shape(8)).each()),
+				cp(source.each()).multiply(3.0)).signature();
+
+		Assert.assertNotNull(aggregated);
+		Assert.assertNotNull(separate);
+		Assert.assertTrue(aggregated, aggregated.contains("&aggregateDestination"));
+		Assert.assertFalse(separate, separate.contains("&aggregateDestination"));
+		Assert.assertEquals(separate, aggregated.replace("&aggregateDestination", ""));
 	}
 
 	/**

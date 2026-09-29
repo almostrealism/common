@@ -62,6 +62,20 @@ public class ExpressionMatrixNonZeroTests extends TestSuiteBase {
 			{ 1, 6, 0 }
 	};
 
+	/** A 0/1 mask selecting the diagonal, valid for a mask stored as floating-point values. */
+	private static final int[][] IDENTITY = {
+			{ 1, 0, 0 },
+			{ 0, 1, 0 },
+			{ 0, 0, 1 }
+	};
+
+	/** Every row identical, with its single non-zero entry in the middle column. */
+	private static final int[][] DUPLICATE_ROWS = {
+			{ 0, 4, 0 },
+			{ 0, 4, 0 },
+			{ 0, 4, 0 }
+	};
+
 	/**
 	 * A sequence matrix with exactly one non-zero entry per row yields that entry's column
 	 * for every row.
@@ -126,16 +140,51 @@ public class ExpressionMatrixNonZeroTests extends TestSuiteBase {
 		assertMatchesExpressionTest(matrix, null);
 	}
 
+	/**
+	 * Rows that repeat the row before them are answered through the duplicate chain, and
+	 * the raw numbers found there agree with the entry expressions.
+	 */
+	@Test(timeout = 30000)
+	public void sequenceMatrixDuplicateRows() {
+		ExpressionMatrix<?> matrix = sequenceOf(DUPLICATE_ROWS);
+
+		Expression<?> offset = matrix.uniqueNonZeroOffset(row);
+		Assert.assertNotNull("Each row has exactly one non-zero entry", offset);
+		assertMatchesExpressionTest(matrix, offset);
+		assertOffsets(offset, 1, 1, 1);
+	}
+
+	/**
+	 * A mask stored as floating-point values is not decided from its raw numbers; it
+	 * falls back to the entry expressions and still selects the same columns.
+	 */
+	@Test(timeout = 30000)
+	public void doubleMaskFallsBackToExpressions() {
+		ExpressionMatrix<?> matrix = new MaskMatrix<>(row, col,
+				sequenceOf(Double.class, IDENTITY), sequenceOf(DENSE));
+
+		Expression<?> offset = matrix.uniqueNonZeroOffset(row);
+		Assert.assertNotNull("The mask selects exactly one non-zero entry per row", offset);
+		assertMatchesExpressionTest(matrix, offset);
+		assertOffsets(offset, 0, 1, 2);
+	}
+
 	/** Creates a sequence matrix holding the given integer entries. */
 	private SequenceMatrix<Integer> sequenceOf(int[][] entries) {
+		return sequenceOf(Integer.class, entries);
+	}
+
+	/** Creates a sequence matrix holding the given entries, stored as the given number type. */
+	private <N extends Number> SequenceMatrix<N> sequenceOf(Class<N> type, int[][] entries) {
 		Number[] values = new Number[entries.length * entries[0].length];
 		for (int i = 0; i < entries.length; i++) {
 			for (int j = 0; j < entries[i].length; j++) {
-				values[i * entries[i].length + j] = entries[i][j];
+				values[i * entries[i].length + j] = type == Double.class
+						? (Number) Double.valueOf(entries[i][j]) : (Number) Integer.valueOf(entries[i][j]);
 			}
 		}
 
-		return new SequenceMatrix<>(row, col, ArrayIndexSequence.of(Integer.class, values));
+		return new SequenceMatrix<>(row, col, ArrayIndexSequence.of(type, values));
 	}
 
 	/**
