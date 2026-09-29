@@ -227,10 +227,15 @@ if [ "$HTTP_CODE" != "200" ]; then
     exit 1
 fi
 
+# A skip is a successful response, so the step stays green; a warning and a
+# summary line keep a request the controller dropped from passing unnoticed.
 SKIPPED=$(echo "$BODY" | jq -r '.skipped // empty')
 if [ "$SKIPPED" = "true" ]; then
     REASON=$(echo "$BODY" | jq -r '.reason // "unknown"')
-    echo "::notice::Agent job skipped: $REASON"
+    echo "::warning::Agent job skipped by the controller: $REASON"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "Agent job for \`$BRANCH\` was not submitted — the controller skipped it: $REASON" >> "$GITHUB_STEP_SUMMARY"
+    fi
     exit 0
 fi
 
