@@ -174,7 +174,7 @@ public class PackedCollectionRepeat
 	 * @see #PackedCollectionRepeat(TraversalPolicy, int, Producer)
 	 */
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
-		this(Shape.requireShape(collection, "Repeat").item(), repeat, collection);
+		this(Shape.requireShape("Repeat", collection).item(), repeat, collection);
 	}
 
 	/**
@@ -213,7 +213,7 @@ public class PackedCollectionRepeat
 	 * @see #shape(int, TraversalPolicy)
 	 */
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super("repeat" + repeat, Shape.requireShape(collection, "Repeat").replace(shape.prependDimension(repeat)).traverse(),
+		super("repeat" + repeat, Shape.requireShape("Repeat", collection).replace(shape.prependDimension(repeat)).traverse(),
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);

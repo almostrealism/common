@@ -260,6 +260,6 @@ public class CollectionPermute
 	 * @see TraversalPolicy#extentShape()
 	 */
 	protected static TraversalPolicy computeShape(Producer<?> collection, int... order) {
-		return Shape.requireShape(collection, "Permute").permute(order).extentShape();
+		return Shape.requireShape("Permute", collection).permute(order).extentShape();
 	}
 }

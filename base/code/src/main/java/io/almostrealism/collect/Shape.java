@@ -55,19 +55,35 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	TraversalPolicy getShape();
 
 	/**
-	 * Returns the {@link TraversalPolicy} of a value that an operation cannot
-	 * be performed without, rejecting any value that is not a {@link Shape}.
+	 * Returns the {@code value} as a {@link Shape}, rejecting any value that an
+	 * operation cannot be performed on because it is not a {@link Shape}.
 	 *
-	 * @param value     the input whose shape the operation requires
 	 * @param operation the name of the operation, used in the error message
-	 * @return the shape of {@code value}
+	 * @param value     the input the operation requires to be a {@link Shape}
+	 * @param <T>       the declared type of {@code value}
+	 * @return {@code value} as a {@link Shape}
 	 * @throws IllegalArgumentException if {@code value} does not implement {@link Shape}
 	 */
-	static TraversalPolicy requireShape(Object value, String operation) {
+	static <T> Shape<?> asShape(String operation, T value) {
 		if (!(value instanceof Shape))
 			throw new IllegalArgumentException(operation + " cannot be performed without a TraversalPolicy");
 
-		return ((Shape<?>) value).getShape();
+		return (Shape<?>) value;
+	}
+
+	/**
+	 * Returns the {@link TraversalPolicy} of a value that an operation cannot
+	 * be performed without, rejecting any value that is not a {@link Shape}.
+	 *
+	 * @param operation the name of the operation, used in the error message
+	 * @param value     the input whose shape the operation requires
+	 * @param <T>       the declared type of {@code value}
+	 * @return the shape of {@code value}
+	 * @throws IllegalArgumentException if {@code value} does not implement {@link Shape}
+	 * @see #asShape(String, Object)
+	 */
+	static <T> TraversalPolicy requireShape(String operation, T value) {
+		return asShape(operation, value).getShape();
 	}
 
 	/**

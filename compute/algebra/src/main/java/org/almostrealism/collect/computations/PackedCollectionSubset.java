@@ -169,7 +169,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
 		super("subset", shape, null, collection);
-		Shape.requireShape(collection, "Subset");
+		Shape.requireShape("Subset", collection);
 
 		this.pos = pos;
 		init();
@@ -201,7 +201,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
 		super("subset", shape, null, collection, pos);
-		Shape.requireShape(collection, "Subset");
+		Shape.requireShape("Subset", collection);
 
 		if (!shape(pos).equalsIgnoreAxis(shape(shape.getDimensions()))) {
 			throw new IllegalArgumentException();

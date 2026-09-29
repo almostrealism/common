@@ -100,7 +100,7 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 	public CollectionSubsetComputation(TraversalPolicy shape, Producer<PackedCollection> input, Expression<?>... pos) {
 		super("subset", shape, input);
 
-		this.inputShape = Shape.requireShape(input, "Subset");
+		this.inputShape = Shape.requireShape("Subset", input);
 		this.pos = pos;
 		init();
 	}
