@@ -3515,7 +3515,9 @@ jobs:
   # "Remediation Jobs" above); "Auto-Resolve Submit" submits the request once
   # the run completes, if rerun-flaky-tests.sh has no retry left to spend.
   # Stages nothing when no test failed — the review for this commit was
-  # auto-review's, on attempt 1.
+  # auto-review's, on attempt 1. Its requests carry no STARTED_AFTER: the
+  # submit workflow sets it to the start of this attempt, since the pipeline
+  # start would make auto-review's own submission look like newer work.
   #
   # Concurrency note: GitHub Actions does not natively support "skip if
   # already running" semantics. The concurrency group below ensures only
@@ -3778,7 +3780,6 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -3803,7 +3804,6 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -3828,7 +3828,6 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
