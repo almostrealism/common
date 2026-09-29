@@ -35,6 +35,7 @@ public class PdslLexer {
 	static {
 		KEYWORDS.put("layer", PdslToken.Type.LAYER);
 		KEYWORDS.put("model", PdslToken.Type.MODEL);
+		KEYWORDS.put("import", PdslToken.Type.IMPORT);
 		KEYWORDS.put("config", PdslToken.Type.CONFIG);
 		KEYWORDS.put("data", PdslToken.Type.DATA);
 		KEYWORDS.put("state", PdslToken.Type.STATE);

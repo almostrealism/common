@@ -1,0 +1,143 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.almostrealism.expression.test;
+
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.Cast;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Product;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexValues;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+/**
+ * Verifies that a cast to {@code long} truncates the fractional part when its
+ * value is computed by the framework, agreeing with the generated
+ * {@code (long)} code and with the sibling {@code int} cast.
+ *
+ * <p>{@link io.almostrealism.expression.ExpressionArithmetic#toLong()} wraps a
+ * floating-point expression in a {@code (long)} {@link Cast}, and the generated
+ * source truncates that value toward zero exactly as C does. The framework's own
+ * value-computation path ({@link Expression#value(IndexValues)} /
+ * {@link Expression#evaluate(Number...)}) is required to agree with the generated
+ * code, as the sibling {@code (int)} cast does. A {@code long} cast that reports
+ * the un-truncated double instead disagrees with the kernel it compiles to.</p>
+ *
+ * <p>The dividend used throughout is {@code (kernel index) * 0.5}: a non-constant
+ * floating-point expression that equals {@code 1.5} at kernel index {@code 3},
+ * which {@code (long)} truncates to {@code 1}.</p>
+ */
+public class CastLongTruncationTest extends TestSuiteBase implements ExpressionFeatures {
+
+	/** Language operations used to render expressions in messages. */
+	private static final LanguageOperations lang = new LanguageOperationsStub();
+
+	/**
+	 * A {@code (long)} cast of a fractional floating-point value must compute the
+	 * truncated integer through {@link Expression#value(IndexValues)}, matching
+	 * the {@code (long)} truncation in the generated code.
+	 */
+	@Test(timeout = 30000)
+	public void longCastTruncatesInValuePath() {
+		Expression<?> half = Product.of(kernel(), new DoubleConstant(0.5));
+		Assert.assertTrue("The dividend expression must be floating-point", half.isFP());
+
+		Expression<?> cast = (Expression<?>) half.toLong();
+
+		String rendered = cast.getExpression(lang);
+		Assert.assertTrue("A long cast must render a (long) truncation: " + rendered,
+				rendered.contains("(long)"));
+
+		IndexValues at3 = new IndexValues().put(kernel(), 3);
+
+		Assert.assertEquals("control: the un-cast dividend is fractional at index 3",
+				1.5, half.value(at3).doubleValue(), 0.0);
+
+		Assert.assertEquals("(long) 1.5 must compute to 1, matching the generated code",
+				1.0, cast.value(at3).doubleValue(), 0.0);
+	}
+
+	/**
+	 * A {@code (long)} cast must truncate through {@link Expression#evaluate(Number...)}
+	 * too, exactly as the sibling {@code (int)} cast does.
+	 */
+	@Test(timeout = 30000)
+	public void longCastTruncatesInEvaluate() {
+		Expression<?> half = Product.of(kernel(), new DoubleConstant(0.5));
+
+		Expression<?> longCast = (Expression<?>) half.toLong();
+		Expression<?> intCast = (Expression<?>) half.toInt();
+
+		Assert.assertEquals("(int) 1.5 is the reference and truncates to 1",
+				1.0, intCast.evaluate(Double.valueOf(1.5)).doubleValue(), 0.0);
+
+		Assert.assertEquals("(long) 1.5 must evaluate to 1, matching the (int) cast",
+				1.0, longCast.evaluate(Double.valueOf(1.5)).doubleValue(), 0.0);
+	}
+
+	/**
+	 * A {@code (long)} cast must truncate each element toward zero in the block
+	 * evaluation path ({@link Expression#values(IndexRange)} /
+	 * {@link io.almostrealism.expression.Cast#computeValues(IndexRange)}), agreeing
+	 * with the per-point {@link Expression#value(IndexValues)} path.
+	 */
+	@Test(timeout = 30000)
+	public void longCastTruncatesInRangePath() {
+		Expression<?> half = Product.of(kernel(), new DoubleConstant(0.5));
+		Expression<?> cast = (Expression<?>) half.toLong();
+
+		int len = 8;
+		IndexRange range = new IndexRange(kernel(), 0, len);
+		double[] values = cast.values(range);
+
+		Assert.assertEquals(len, values.length);
+
+		for (int i = 0; i < len; i++) {
+			Assert.assertEquals("(long) (" + i + " * 0.5) must truncate toward zero",
+					(double) ((long) (i * 0.5)), values[i], 0.0);
+		}
+	}
+
+	/**
+	 * A {@code (long)} cast whose truncated result exceeds {@link IndexRange#MAX_EXACT}
+	 * must refuse the block value via {@link IndexRange.InexactValueException} rather
+	 * than storing a rounded {@code double}, so the caller falls back to exact point
+	 * evaluation. {@code 2^54} is exactly representable as a {@code double} yet exceeds
+	 * {@link IndexRange#MAX_EXACT} ({@code 2^53}), so it is refused rather than silently
+	 * rounded.
+	 */
+	@Test(timeout = 30000)
+	public void longCastBeyondExactRangeRefusesBlockValue() {
+		Expression<?> huge = Product.of(kernel().add(1), new DoubleConstant((double) (1L << 54)));
+		Assert.assertTrue("The dividend expression must be floating-point", huge.isFP());
+
+		Expression<?> cast = (Expression<?>) huge.toLong();
+
+		IndexRange range = new IndexRange(kernel(), 0, 4);
+		try {
+			cast.values(range);
+			Assert.fail("A long cast beyond MAX_EXACT must refuse the block value");
+		} catch (IndexRange.InexactValueException e) {
+			log("Refused: " + e.getMessage());
+		}
+	}
+}

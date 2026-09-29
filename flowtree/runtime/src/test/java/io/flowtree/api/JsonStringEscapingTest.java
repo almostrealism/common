@@ -25,6 +25,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -76,6 +77,24 @@ public class JsonStringEscapingTest extends TestSuiteBase {
 
 		assertTrue(json, json.contains("col\\tumn \\u001b[31mred\\u001b[0m"));
 		assertEquals(CONTROL, MAPPER.readTree(json).get("channelName").asText());
+	}
+
+	/**
+	 * String arrays in a workstream summary use the same escaping as scalar
+	 * fields, so an array element carrying a tab, an escape character or a
+	 * quote still parses under a strict parser and decodes to the original.
+	 */
+	@Test(timeout = 10000)
+	public void workstreamSummaryArraysEscapeControlCharacters() throws IOException {
+		Workstream ws = new Workstream("ws-1", "C1", "#c");
+		ws.setDependentRepos(List.of(CONTROL, BASIC));
+		String json = ws.toSummaryJson();
+
+		assertTrue(json, json.contains("\"dependentRepos\":[\"col\\tumn \\u001b[31mred\\u001b[0m\","));
+		JsonNode repos = MAPPER.readTree(json).get("dependentRepos");
+		assertEquals(2, repos.size());
+		assertEquals(CONTROL, repos.get(0).asText());
+		assertEquals(BASIC, repos.get(1).asText());
 	}
 
 	/**
