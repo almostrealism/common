@@ -266,10 +266,15 @@ Concrete, ordered deliverables:
    `CONVOLUTION_COMPILE_TIME.md` §"What remains": reshape/delegate-chain fusion, the 72×
    `projectDelta` intermediate, or a remaining enumeration hot spot). Cite the evidence in the
    unit its timing kind supports. For a profile node, give its compile time and its share of
-   total compile time — computed against a compile-category denominator (the summed
-   `find_slowest_by_category(category="compile")` durations), **not** the analyzer's own
-   `percentage` field, which `ProfileAnalyzerCLI.printSlowest` derives against total node
-   duration (compile + run) and so understates the compile share. For a `stageDetailTime` entry (for example an `expressionCacheMatch` or
+   total compile time — computed against the **whole-profile** compile-category denominator (the
+   summed compile duration of *every* compile-bearing node, obtained by calling
+   `find_slowest_by_category(category="compile")` with a `limit` large enough to return all nodes
+   with a non-zero compile duration and summing their `duration` fields), **not** the summed
+   durations of only the ranked top few (which would normalize the reported nodes to 100 % and
+   overstate each share), and **not** the analyzer's own `percentage` field, which
+   `ProfileAnalyzerCLI.printSlowest` derives against total node duration (compile + run, the
+   summed `getNodeDuration` over all nodes) and so understates the compile share. For a
+   `stageDetailTime` entry (for example an `expressionCacheMatch` or
    `kernelSeries` hot spot), give its accumulated seconds only. That figure is non-exclusive
    (see Motivation), so no valid percentage of the run exists for it. If the profile could not be
    captured (see Open questions), say so. Name the lever as a hypothesis backed by wall-clock data,
@@ -345,8 +350,11 @@ end-to-end training runs.
   model creation, forward, and the three profiled epochs,
   with the two timing kinds reported separately. First, the current top-3 backend-compile cost nodes from
   `ar-profile-analyzer` `find_slowest_by_category` (`category="compile"`), each carrying its compile
-  time and its share of total compile time, where that share is computed against a compile-category
-  denominator (the summed compile durations of the ranked nodes) rather than the analyzer's
+  time and its share of total compile time, where that share is computed against the whole-profile
+  compile-category denominator (the summed compile duration of every compile-bearing node in the
+  profile, obtained by requesting a `limit` large enough to return them all — not the summed compile
+  durations of only the ranked top few, which would normalize them to 100 % and overstate each
+  share) rather than the analyzer's
   reported `percentage`, which is a share of total node duration (compile + run). Second, the accumulated stage-detail seconds
   (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the known
   backward-phase node(s) — a point lookup, not a ranking, since no analyzer command aggregates or
