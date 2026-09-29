@@ -220,7 +220,8 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	/**
 	 * Returns an expression that maps each row index to the unique non-zero column in
-	 * that row, or {@code null} if any row has zero or more than one non-zero entry.
+	 * that row, or {@code null} if any row has more than one non-zero entry or any entry
+	 * is missing. A row with no non-zero entry maps to column zero.
 	 *
 	 * @param rowIndex the row index expression used to parameterise the result
 	 * @return an index expression, or {@code null}
@@ -231,7 +232,8 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	/**
 	 * Returns an expression that maps each row index to the unique column satisfying the
-	 * predicate in that row, or {@code null} if any row has zero or more than one matching entry.
+	 * predicate in that row, or {@code null} if any row has more than one matching entry or
+	 * any entry is missing. A row with no matching entry maps to column zero.
 	 *
 	 * @param rowIndex  the row index expression used to parameterise the result
 	 * @param predicate the predicate that identifies the target column
