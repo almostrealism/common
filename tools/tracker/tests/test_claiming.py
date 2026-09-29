@@ -427,6 +427,49 @@ class BulkImportTests(_StoreTestBase):
         self.store.create_task(title="later write")
         self.assertIsNone(self.store.get_project("p-new"))
 
+    def test_falsey_collections_of_the_wrong_type_are_refused(self):
+        for body, expected in (
+                ({"tasks": {}}, "tasks must be a list"),
+                ({"projects": ""}, "projects must be a list"),
+                ({"releases": 0}, "releases must be a list"),
+                ({"tasks": False}, "tasks must be a list")):
+            resp = self.client.post("/v1/import", json=body)
+            self.assertEqual(400, resp.status_code, body)
+            self.assertIn(expected, resp.json()["error"])
+
+    def test_absent_collections_are_an_empty_import(self):
+        resp = self.client.post("/v1/import", json={})
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual({"projects": 0, "releases": 0, "tasks": 0}, resp.json()["created"])
+        self.assertEqual({"projects": 0, "releases": 0, "tasks": 0}, resp.json()["updated"])
+
+    def test_a_new_task_the_database_refuses_is_reported_not_counted(self):
+        # A direct store caller bypasses the API's field checks; the CHECK and
+        # NOT NULL constraints must then fail the import instead of the insert
+        # being skipped and the task counted as updated.
+        for bad in (self._goal_task("bad", stage="started"),
+                    self._goal_task("bad", source="GOALS:x"),
+                    self._goal_task("bad", title=None)):
+            result = self.store.bulk_import(
+                [{"id": "p-new", "name": "New"}], [], [self._goal_task("ok"), bad])
+            self.assertIn("error", result, bad)
+            self.assertIn("import rejected by the database", result["error"])
+            self.store.create_task(title="later write")
+            self.assertIsNone(self.store.get_task("ok"), bad)
+            self.assertIsNone(self.store.get_task("bad"), bad)
+            self.assertIsNone(self.store.get_project("p-new"), bad)
+
+    def test_new_and_existing_records_are_counted_separately(self):
+        payload = {"projects": [{"id": "p-new", "name": "New"}],
+                   "releases": [{"id": "r-new", "name": "New 1.0", "project_id": "p-new"}],
+                   "tasks": [self._goal_task("g1")]}
+        first = self.client.post("/v1/import", json=payload).json()
+        self.assertEqual({"projects": 1, "releases": 1, "tasks": 1}, first["created"])
+        self.assertEqual({"projects": 0, "releases": 0, "tasks": 0}, first["updated"])
+        second = self.client.post("/v1/import", json=payload).json()
+        self.assertEqual({"projects": 0, "releases": 0, "tasks": 0}, second["created"])
+        self.assertEqual({"projects": 1, "releases": 1, "tasks": 1}, second["updated"])
+
 
 class GoalOnlyUpdateTests(_StoreTestBase):
     """An update restricted to goal-derived tasks checks and writes atomically."""

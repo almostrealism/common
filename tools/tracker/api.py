@@ -607,9 +607,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        projects = body.get("projects") or []
-        releases = body.get("releases") or []
-        tasks = body.get("tasks") or []
+        # Only an absent collection defaults to empty; a supplied one of the
+        # wrong type ({} or "" included) is refused rather than coerced.
+        projects = body.get("projects", [])
+        releases = body.get("releases", [])
+        tasks = body.get("tasks", [])
         for key, entries in (("projects", projects), ("releases", releases), ("tasks", tasks)):
             if not isinstance(entries, list):
                 return _bad_request(f"{key} must be a list")

@@ -756,7 +756,12 @@ class TrackerStore:
 
     def _bulk_import_locked(self, projects: list, releases: list, tasks: list) -> dict:
         """Write the records of :meth:`bulk_import`. The caller holds the
-        store lock and commits or rolls back."""
+        store lock and commits or rolls back.
+
+        A record is inserted only after its update matched nothing, so the
+        row cannot already exist and a plain INSERT is used: ``INSERT OR
+        IGNORE`` would also silently skip a row that breaks a NOT NULL or
+        CHECK constraint, reporting success for a record never written."""
         created = {"projects": 0, "releases": 0, "tasks": 0}
         updated = {"projects": 0, "releases": 0, "tasks": 0}
 
@@ -770,15 +775,11 @@ class TrackerStore:
             if cur.rowcount > 0:
                 updated["projects"] += 1
             else:
-                cur2 = self._conn.execute(
-                    "INSERT OR IGNORE INTO projects (id, name, created_at) "
-                    "VALUES (?, ?, ?)",
+                self._conn.execute(
+                    "INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)",
                     (p["id"], p["name"], p.get("created_at") or _now()),
                 )
-                if cur2.rowcount > 0:
-                    created["projects"] += 1
-                else:
-                    updated["projects"] += 1
+                created["projects"] += 1
 
         for idx, r in enumerate(releases):
             if not r.get("id") or not r.get("name"):
@@ -790,16 +791,13 @@ class TrackerStore:
             if cur.rowcount > 0:
                 updated["releases"] += 1
             else:
-                cur2 = self._conn.execute(
-                    "INSERT OR IGNORE INTO releases "
+                self._conn.execute(
+                    "INSERT INTO releases "
                     "(id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
                     (r["id"], r["name"], r.get("project_id"),
                      r.get("created_at") or _now()),
                 )
-                if cur2.rowcount > 0:
-                    created["releases"] += 1
-                else:
-                    updated["releases"] += 1
+                created["releases"] += 1
 
         for idx, t in enumerate(tasks):
             if not t.get("id"):
@@ -830,8 +828,8 @@ class TrackerStore:
                 )
                 updated["tasks"] += 1
             else:
-                cur = self._conn.execute(
-                    "INSERT OR IGNORE INTO tasks "
+                self._conn.execute(
+                    "INSERT INTO tasks "
                     "(id, title, description, status, priority, stage, source, "
                     " project_id, release_id, workstream_id, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -842,10 +840,7 @@ class TrackerStore:
                      t.get("workstream_id"),
                      t.get("created_at") or now, t.get("updated_at") or now),
                 )
-                if cur.rowcount > 0:
-                    created["tasks"] += 1
-                else:
-                    updated["tasks"] += 1
+                created["tasks"] += 1
 
         # Blockers are linked once every task exists, so a task may be blocked
         # by one that appears later in the same import. As with update_task, a
