@@ -639,6 +639,34 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The same saturation guarantee applies to the flat interleaved
+	 * {@code double[]} write overload, which converts samples through a separate
+	 * call site from the channel-indexed one. A two-channel buffer whose frames
+	 * peak over full scale in both channels must clip to full scale of the
+	 * matching polarity, not wrap to the opposite sign.
+	 */
+	@Test(timeout = 60000)
+	public void outOfRangeSamplesSaturateOnFlatWritePath() throws IOException {
+		double[] interleaved = {1.01, -1.01, -1.5, 1.5, 2.0, -2.0};
+		int frames = interleaved.length / 2;
+
+		File file = tempWav();
+		try (WavFile wav = WavFile.newWavFile(file, 2, frames, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(frames, wav.writeFrames(interleaved, frames));
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			double[] in = new double[interleaved.length];
+			Assert.assertEquals(frames, wav.readFrames(in, frames));
+
+			for (int i = 0; i < interleaved.length; i++) {
+				Assert.assertEquals("sample " + i + " (written " + interleaved[i] + ")",
+						Math.signum(interleaved[i]), in[i], TOL_16);
+			}
+		}
+	}
+
+	/**
 	 * A RIFF container whose type id is not {@code WAVE} is rejected.
 	 */
 	@Test(timeout = 60000)
