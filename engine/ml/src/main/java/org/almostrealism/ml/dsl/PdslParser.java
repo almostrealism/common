@@ -86,12 +86,19 @@ public class PdslParser {
 	}
 
 	/**
-	 * Parses an {@code import "resource"} statement.
+	 * Parses an {@code import "resource"} statement. The resource must be an absolute classpath
+	 * path: a relative one would be resolved against the loader's own package rather than the
+	 * importing file, so it is rejected here with the position of the offending string.
 	 *
 	 * @return The parsed import node
+	 * @throws PdslParseException if the imported resource path is not absolute
 	 */
 	private PdslNode.Import parseImport() {
 		PdslToken kw = consume(PdslToken.Type.IMPORT);
+		if (check(PdslToken.Type.STRING) && !peek().getValue().startsWith("/")) {
+			throw error("Import of '" + peek().getValue() + "' must name an absolute classpath"
+					+ " resource beginning with '/'");
+		}
 		PdslToken resource = consume(PdslToken.Type.STRING);
 		return new PdslNode.Import(resource.getValue(), kw.getLine(), kw.getColumn());
 	}
@@ -109,6 +116,8 @@ public class PdslParser {
 			case STATE:     return parseStateDef();
 			case LAYER:     return parseLayerDef();
 			case MODEL:     return parseModelDef();
+			case IMPORT:
+				throw error("Import statements must precede every definition");
 			default:
 				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
 		}

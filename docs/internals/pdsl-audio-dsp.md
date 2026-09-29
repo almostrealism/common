@@ -228,7 +228,9 @@ holds `root`'s own definitions together with those of every asset it imports, tr
 A caller building a layer from `root` names only `root`; adding a call to a new asset inside
 `root` is a one-line `import` in `root`, not a change every caller must repeat. (Comments may
 precede the imports; the imports must come before the first `config`/`data`/`state`/`layer`/`model`
-definition.)
+definition, and each must name an absolute path beginning with `/`; the parser rejects a
+misplaced or relative import with its line and column. Paths are canonicalized before they are
+compared, so `/pdsl/a/../b.pdsl` and `/pdsl/b.pdsl` are one resource.)
 
 Two rules keep resolution unambiguous:
 

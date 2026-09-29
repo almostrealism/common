@@ -632,6 +632,68 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Every spelling of a resource path that differs only in empty, {@code .} or {@code ..}
+	 * segments — including a {@code ..} that would climb above the classpath root — resolves to
+	 * the one cached program of the canonical path, so {@link PdslLoader#parseResource} parses the
+	 * resource once and returns the same instance for each alias.
+	 */
+	@Test(timeout = 60000)
+	public void testResourcePathAliasesShareOneCachedProgram() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program canonical = loader.parseResource("/pdsl/imports/leaf.pdsl");
+		for (String alias : new String[] { "/pdsl/imports/./leaf.pdsl", "//pdsl//imports/leaf.pdsl",
+				"/pdsl/other/../imports/leaf.pdsl", "/../pdsl/imports/leaf.pdsl" }) {
+			Assert.assertSame("'" + alias + "' should resolve to the canonical resource",
+					canonical, loader.parseResource(alias));
+		}
+	}
+
+	/**
+	 * An {@code import} must name an absolute classpath resource. A relative path would be
+	 * resolved against the loader's package rather than the importing file, so the parser rejects
+	 * it with the position of the offending import instead of failing later as a missing resource.
+	 */
+	@Test(timeout = 60000)
+	public void testRelativeImportRejected() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.parse("import \"imports/leaf.pdsl\"\nlayer f() -> [1, 4] { identity() }");
+			Assert.fail("parse() should reject a relative import path");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("'imports/leaf.pdsl'"));
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("absolute classpath resource"));
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("at line " + 1 + ","));
+		}
+	}
+
+	/**
+	 * Imports come before every definition. An {@code import} after a definition is rejected
+	 * with a message saying so and the line of the misplaced import, while imports at the top of
+	 * a program parse into {@link PdslNode.Program#getImports()} in source order.
+	 */
+	@Test(timeout = 60000)
+	public void testImportPlacement() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse("import \"/a.pdsl\"\nimport \"/b.pdsl\"\n"
+				+ "layer f() -> [1, 4] { identity() }");
+		Assert.assertEquals(2, program.getImports().size());
+		Assert.assertEquals("/a.pdsl", program.getImports().get(0).getResource());
+		Assert.assertEquals("/b.pdsl", program.getImports().get(1).getResource());
+		Assert.assertEquals(1, program.getDefinitions().size());
+
+		try {
+			loader.parse("layer f() -> [1, 4] { identity() }\nimport \"/a.pdsl\"");
+			Assert.fail("parse() should reject an import that follows a definition");
+		} catch (PdslParseException expected) {
+			Assert.assertTrue(expected.getMessage(),
+					expected.getMessage().contains("Import statements must precede every definition"));
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("at line " + 2 + ","));
+		}
+	}
+
+	/**
 	 * Load the data-block PDSL test fixture from the classpath resource.
 	 *
 	 * @return the PDSL source text
