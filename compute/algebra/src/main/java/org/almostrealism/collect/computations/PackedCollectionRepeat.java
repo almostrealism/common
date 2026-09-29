@@ -174,7 +174,7 @@ public class PackedCollectionRepeat
 	 * @see #PackedCollectionRepeat(TraversalPolicy, int, Producer)
 	 */
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
-		this(shape(collection).item(), repeat, collection);
+		this(Shape.requireShape(collection, "Repeat").item(), repeat, collection);
 	}
 
 	/**
@@ -213,7 +213,7 @@ public class PackedCollectionRepeat
 	 * @see #shape(int, TraversalPolicy)
 	 */
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super("repeat" + repeat, shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+		super("repeat" + repeat, Shape.requireShape(collection, "Repeat").replace(shape.prependDimension(repeat)).traverse(),
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
@@ -477,26 +477,6 @@ public class PackedCollectionRepeat
 	@Override
 	public String description(List<String> children) {
 		return children.size() == 1 ? children.get(0) : super.description(children);
-	}
-
-	/**
-	 * Extracts the traversal policy from a collection producer.
-	 * 
-	 * <p>This utility method ensures that the provided producer implements
-	 * the {@link Shape} interface, which is required for repeat operations
-	 * to determine the appropriate traversal policy.</p>
-	 * 
-	 * @param collection the collection producer to extract shape from
-	 * @return the traversal policy of the collection
-	 * @throws IllegalArgumentException if the collection doesn't implement Shape
-	 * 
-	 * @see Shape#getShape()
-	 */
-	private static TraversalPolicy shape(Producer<?> collection) {
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Repeat cannot be performed without a TraversalPolicy");
-
-		return ((Shape) collection).getShape();
 	}
 
 	/**

@@ -55,6 +55,22 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	TraversalPolicy getShape();
 
 	/**
+	 * Returns the {@link TraversalPolicy} of a value that an operation cannot
+	 * be performed without, rejecting any value that is not a {@link Shape}.
+	 *
+	 * @param value     the input whose shape the operation requires
+	 * @param operation the name of the operation, used in the error message
+	 * @return the shape of {@code value}
+	 * @throws IllegalArgumentException if {@code value} does not implement {@link Shape}
+	 */
+	static TraversalPolicy requireShape(Object value, String operation) {
+		if (!(value instanceof Shape))
+			throw new IllegalArgumentException(operation + " cannot be performed without a TraversalPolicy");
+
+		return ((Shape<?>) value).getShape();
+	}
+
+	/**
 	 * Reshapes this object to the specified dimensions. The total number of elements
 	 * must remain the same. A dimension value of -1 indicates that dimension should
 	 * be inferred from the total size and other dimensions.

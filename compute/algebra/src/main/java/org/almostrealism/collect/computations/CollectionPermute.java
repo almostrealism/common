@@ -123,9 +123,6 @@ public class CollectionPermute
 	 */
 	public CollectionPermute(Producer<?> collection, int... order) {
 		super("permute", computeShape(collection, order), null, collection);
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Permute cannot be performed without a TraversalPolicy");
-
 		this.order = order;
 	}
 
@@ -263,10 +260,6 @@ public class CollectionPermute
 	 * @see TraversalPolicy#extentShape()
 	 */
 	protected static TraversalPolicy computeShape(Producer<?> collection, int... order) {
-		if (!(collection instanceof Shape)) {
-			throw new IllegalArgumentException("Collection must implement Shape to compute permute shape");
-		}
-
-		return ((Shape) collection).getShape().permute(order).extentShape();
+		return Shape.requireShape(collection, "Permute").permute(order).extentShape();
 	}
 }
