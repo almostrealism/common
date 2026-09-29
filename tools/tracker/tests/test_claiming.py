@@ -642,6 +642,28 @@ class BulkImportTests(_StoreTestBase):
         resp = self._import("not-a-task")
         self.assertEqual(400, resp.status_code)
 
+    def test_an_invalid_status_in_a_bulk_import_is_refused(self):
+        # status is API-only (no database CHECK), so the import preflight must
+        # reject a value outside open/closed before it is persisted.
+        resp = self._import({"id": "imp-1", "title": "t", "status": "done"})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIn("tasks[0]: status must be one of", resp.json()["error"])
+        self.assertIsNone(self.store.get_task("imp-1"))
+
+    def test_a_boolean_priority_in_a_bulk_import_is_refused(self):
+        # Python treats True as the integer 1, so a JSON boolean would slip
+        # past the store's int/range check and persist as priority 1.
+        resp = self._import({"id": "imp-1", "title": "t", "priority": True})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIn("tasks[0]: priority must be an integer", resp.json()["error"])
+        self.assertIsNone(self.store.get_task("imp-1"))
+
+    def test_an_out_of_range_priority_in_a_bulk_import_is_refused(self):
+        resp = self._import({"id": "imp-1", "title": "t", "priority": 5})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIn("tasks[0]: priority must be an integer", resp.json()["error"])
+        self.assertIsNone(self.store.get_task("imp-1"))
+
     def test_a_rejection_by_the_store_rolls_back_the_whole_import(self):
         # Rejections only the store or the database detects - a missing id, an
         # out-of-range priority, an unknown foreign key - must not leave the
@@ -1059,6 +1081,31 @@ class NonStringFieldTests(_StoreTestBase):
             "project": "Framework", "release": "Framework 1.2", "workstream_id": 42})
         self.assertEqual(400, resp.status_code, resp.text)
         self.assertEqual(1, self._count())
+
+    def test_a_non_string_text_or_id_field_is_refused(self):
+        # description/project_id/release_id/workstream_id are bound straight to
+        # sqlite; a list or dict would raise ProgrammingError (a 500) unless it
+        # is refused with a 400 first. A string or null is still accepted.
+        task = self._task("t")
+        for field in ("description", "project_id", "release_id", "workstream_id"):
+            for value in self._WRONG_TYPES:
+                with self.subTest(field=field, value=value):
+                    resp = self.client.post("/v1/tasks", json={"title": "t", field: value})
+                    self.assertEqual(400, resp.status_code, resp.text)
+                    self.assertIn(f"{field} must be a string or null", resp.json()["error"])
+                    resp = self.client.put(f"/v1/tasks/{task['id']}", json={field: value})
+                    self.assertEqual(400, resp.status_code, resp.text)
+                    self.assertIn(f"{field} must be a string or null", resp.json()["error"])
+        # Nothing beyond the fixture task was created, and it is unchanged.
+        self.assertEqual(1, self.store.counts()["tasks"])
+        self.assertEqual("t", self.store.get_task(task["id"])["title"])
+
+    def test_a_non_string_id_field_is_refused_in_a_bulk_import(self):
+        resp = self.client.post("/v1/import", json={
+            "tasks": [{"id": "imp-1", "title": "t", "project_id": ["p"]}]})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIn("tasks[0]: project_id must be a string or null", resp.json()["error"])
+        self.assertIsNone(self.store.get_task("imp-1"))
 
     def test_goal_task_fields_of_the_wrong_type_are_refused(self):
         goal = self._task("orig", source="goals:docs/OLD.md")

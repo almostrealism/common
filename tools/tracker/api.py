@@ -50,6 +50,13 @@ _NOT_GOAL_DERIVED = "Task was not derived from goal documents; only a person may
 _MIN_PRIORITY = -2
 _MAX_PRIORITY = 2
 
+# Optional free-text and foreign-key task fields. Each accepts a string or
+# null; any other JSON type (a number, boolean, list or object) is refused
+# with a 400 before it reaches the store, where create_task and update_task
+# bind it straight to sqlite and a list or dict raises sqlite3.ProgrammingError
+# — turning ordinary client input into a 500.
+_NULLABLE_TEXT_FIELDS = ("description", "project_id", "release_id", "workstream_id")
+
 
 def _validate_priority(value: object) -> tuple:
     """Coerce and range-check a priority value from a request body.
@@ -114,9 +121,11 @@ def _bad_request(message: str) -> JSONResponse:
 
 def _task_field_error(store, body: dict, task_id: Optional[str] = None,
                       pending_ids: frozenset = frozenset()) -> Optional[str]:
-    """Check the stage, source and blocked_by fields of a task body.
+    """Check the stage, source, blocked_by and optional text/id fields of a task body.
 
-    Only fields present in *body* are checked.
+    Only fields present in *body* are checked. The optional free-text and
+    foreign-key fields (see :data:`_NULLABLE_TEXT_FIELDS`) must each be a string
+    or null.
 
     Args:
         store: The TrackerStore, used to confirm blocking tasks exist.
@@ -133,6 +142,9 @@ def _task_field_error(store, body: dict, task_id: Optional[str] = None,
         return f"stage must be one of: {sorted(_VALID_STAGES)}"
     if "source" in body and not _valid_source(body["source"]):
         return "source must be 'person' or 'goals:<document>'"
+    for key in _NULLABLE_TEXT_FIELDS:
+        if key in body and body[key] is not None and not isinstance(body[key], str):
+            return f"{key} must be a string or null"
     if "blocked_by" in body:
         blockers = body["blocked_by"]
         if blockers is None:
@@ -441,7 +453,6 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         field_error = _task_field_error(store, body)
         if field_error:
             return _bad_request(field_error)
-        # TODO(review): description/project_id/release_id/workstream_id are not type-checked; a list or object value still reaches sqlite and 500s.
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
@@ -657,6 +668,15 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         for idx, t in enumerate(tasks):
             if not isinstance(t, dict):
                 return _bad_request(f"tasks[{idx}] must be an object")
+            if "status" in t and not _one_of(t["status"], _VALID_STATUSES):
+                return _bad_request(
+                    f"tasks[{idx}]: status must be one of: {sorted(_VALID_STATUSES)}")
+            if "priority" in t:
+                priority = t["priority"]
+                if (isinstance(priority, bool) or not isinstance(priority, int)
+                        or priority < _MIN_PRIORITY or priority > _MAX_PRIORITY):
+                    return _bad_request(
+                        f"tasks[{idx}]: priority must be an integer in [-2, 2]")
             field_error = _task_field_error(
                 store, t, task_id=t.get("id"), pending_ids=imported_ids)
             if field_error:
