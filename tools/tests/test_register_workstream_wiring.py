@@ -180,8 +180,12 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: identity and its Slack/planning attachments — nothing that selects a
     #: model. Adding a key here is the deliberate act the test exists to
     #: require.
+    #: ``trackerCapabilities`` grants the workstream's agents a tracker role
+    #: (the task-planning round registers its workstream as a "planner"); it
+    #: is a permission, not a model setting.
     _ALLOWED_PAYLOAD_KEYS = frozenset({
         "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
+        "trackerCapabilities",
     })
 
     @staticmethod

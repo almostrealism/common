@@ -275,7 +275,10 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
         self.assertEqual("6", job["env"]["MAX_OPEN_PRS"])
 
-        backlog = next(i for i, s in enumerate(steps) if "MAX_OPEN_PRS" in s.get("run", ""))
+        # The backlog limit is applied by the script both planning jobs share.
+        backlog = next(i for i, s in enumerate(steps)
+                       if "open-pr-backlog.sh" in s.get("run", ""))
+        self.assertEqual("branches", steps[backlog]["id"])
         self.assertGreater(backlog, gate)
         self.assertIn("steps.decide.outputs.run == 'true'", steps[backlog]["if"])
         for step in steps[backlog + 1:]:
@@ -285,6 +288,67 @@ class MasterAgentDispatchTests(unittest.TestCase):
                     "steps.branches.outputs.needs_new_branch == 'true'" in condition
                     or condition == "always()",
                     "ungated: " + step["name"])
+
+    def test_the_task_planning_round_is_gated_in_order(self):
+        """A task-planning round starts only when no round is in progress,
+        the open-PR backlog has room, and the release has a claimable task —
+        checked in that order, each gating the next, so that with nothing to
+        plan no branch, workstream or agent job is created. `force` may skip
+        the first two checks but never the third: without a task there is
+        nothing to plan."""
+        job = self.jobs["plan-release-task"]
+        self.assertNotIn("BRANCH_PREFIX", job.get("env", {}),
+                         "a job-level prefix would enrol this job in the QA checks")
+        steps = job["steps"]
+
+        def index(script):
+            return next(i for i, s in enumerate(steps) if script in s.get("run", ""))
+
+        gate, backlog, claimable = (index("qa-cadence.sh"), index("open-pr-backlog.sh"),
+                                    index("tracker-claimable.sh"))
+        self.assertLess(gate, backlog)
+        self.assertLess(backlog, claimable)
+
+        env = steps[gate]["env"]
+        self.assertEqual("project/task-", env["BRANCH_PREFIX"])
+        self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
+        self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
+        self.assertIn("steps.decide.outputs.run == 'true'", steps[backlog]["if"])
+        self.assertIn("steps.backlog.outputs.needs_new_branch == 'true'", steps[claimable]["if"])
+        self.assertNotIn("FORCE", steps[claimable].get("env", {}))
+        self.assertIn("steps.release.outputs.release", steps[claimable]["env"]["TRACKER_RELEASE"])
+
+        for step in steps[claimable + 1:]:
+            with self.subTest(step=step["name"]):
+                condition = step.get("if", "")
+                self.assertTrue(
+                    "steps.claimable.outputs.run == 'true'" in condition
+                    or condition == "always()",
+                    "ungated: " + step["name"])
+
+    def test_the_task_planning_workstream_holds_the_planner_role(self):
+        """The agent claims its task with tracker_claim_next_task, which
+        ar-manager refuses unless the workstream holds the planner role."""
+        steps = self.jobs["plan-release-task"]["steps"]
+        register = next(s for s in steps if "register-workstream.sh" in s.get("run", ""))
+        self.assertEqual("planner", register["env"]["TRACKER_CAPABILITIES"])
+        submit = next(s for s in steps if "submit-agent-job.sh" in s.get("run", ""))
+        self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
+        # Workspace defaults decide the model; the round sets none.
+        self.assertNotIn("PHASE_CONFIGS", submit["env"])
+        prompt = next(s for s in steps if "build-task-planning-prompt.sh" in s.get("run", ""))
+        self.assertIn("steps.release.outputs.release", prompt["env"]["TRACKER_RELEASE"])
+
+    def test_both_planning_rounds_share_one_backlog_limit(self):
+        """Free-form plans and task plans compete for the same reviewer, so
+        both rounds apply the same open-PR limit through the same script."""
+        limits = set()
+        for name in ("plan-next-task", "plan-release-task"):
+            job = self.jobs[name]
+            with self.subTest(job=name):
+                self.assertIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
+                limits.add(job["env"]["MAX_OPEN_PRS"])
+        self.assertEqual({"6"}, limits)
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""
