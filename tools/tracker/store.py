@@ -45,6 +45,21 @@ _CLAIMABLE = (
 # ("goals:<document>"); any other task was written by a person.
 GOAL_SOURCE_PREFIX = "goals:"
 
+
+def _normalized_source(source: object) -> object:
+    """Strip surrounding whitespace from a task ``source`` before it is stored.
+
+    The API validates a source with Python's Unicode-aware :meth:`str.strip`,
+    but the database CHECK can only exclude the ASCII whitespace set. Without
+    this normalization a direct store caller could persist a Unicode-whitespace
+    only goal document such as ``"goals:\\u00a0"`` that the API refuses: the DB
+    predicate would count ``\\u00a0`` as a document character. Stripping here
+    collapses such a value to the bare ``"goals:"`` the CHECK already rejects,
+    so the store and the API agree on what provenance is valid. A non-string is
+    returned unchanged for the database's own NOT NULL/type handling to catch.
+    """
+    return source.strip() if isinstance(source, str) else source
+
 # Claim order: the most important task first, then the one waiting longest.
 _CLAIM_ORDER = "tasks.priority DESC, tasks.created_at ASC"
 
@@ -271,7 +286,8 @@ class TrackerStore:
                 "(id, title, description, status, priority, stage, source, "
                 " project_id, release_id, workstream_id, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (task_id, title, description, status, int(priority), stage, source,
+                (task_id, title, description, status, int(priority), stage,
+                 _normalized_source(source),
                  project_id or None, release_id or None,
                  workstream_id or None, now, now),
             )
@@ -444,7 +460,12 @@ class TrackerStore:
         ]:
             if not isinstance(val, _Unset):
                 updates.append(f"{field} = ?")
-                params.append(int(val) if field == "priority" else val)
+                if field == "priority":
+                    params.append(int(val))
+                elif field == "source":
+                    params.append(_normalized_source(val))
+                else:
+                    params.append(val)
 
         where = "id = ?"
         params.append(task_id)
@@ -567,7 +588,8 @@ class TrackerStore:
                 "(id, title, description, status, priority, stage, source, "
                 " project_id, release_id, workstream_id, created_at, updated_at) "
                 "VALUES (?, ?, ?, 'open', ?, 'ready', ?, ?, ?, NULL, ?, ?)",
-                (new_id, title, description, int(priority), source,
+                (new_id, title, description, int(priority),
+                 _normalized_source(source),
                  release["project_id"], release["id"], now, now),
             )
             if blocked_by:
@@ -578,7 +600,7 @@ class TrackerStore:
                 "UPDATE tasks SET title = ?, description = ?, priority = ?, "
                 "source = ?, project_id = ?, release_id = ?, updated_at = ? "
                 "WHERE id = ? AND substr(source, 1, ?) = ?",
-                (title, description, int(priority), source,
+                (title, description, int(priority), _normalized_source(source),
                  release["project_id"], release["id"], now, task_id,
                  len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX),
             )
@@ -970,7 +992,7 @@ class TrackerStore:
                      t.get("status", existing["status"]),
                      t.get("priority", existing["priority"]),
                      t.get("stage", existing["stage"]),
-                     t.get("source", existing["source"]).strip(),
+                     _normalized_source(t.get("source", existing["source"])),
                      t.get("project_id", existing["project_id"]),
                      t.get("release_id", existing["release_id"]),
                      t.get("workstream_id", existing["workstream_id"]),
@@ -985,7 +1007,8 @@ class TrackerStore:
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (t["id"], t.get("title", ""), t.get("description"),
                      t.get("status", "open"), priority,
-                     t.get("stage", "backlog"), t.get("source", "person").strip(),
+                     t.get("stage", "backlog"),
+                     _normalized_source(t.get("source", "person")),
                      t.get("project_id"), t.get("release_id"),
                      t.get("workstream_id"),
                      t.get("created_at") or now, t.get("updated_at") or now),

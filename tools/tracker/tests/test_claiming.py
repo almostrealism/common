@@ -270,6 +270,33 @@ class SourceConstraintTests(_StoreTestBase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.store.update_task(task["id"], source="goals: ")
 
+    def test_a_unicode_whitespace_only_goal_document_is_refused_by_the_database(self):
+        # The API strips with Python's Unicode-aware str.strip, so 'goals: '
+        # (a non-breaking space) reduces to a bare 'goals:' and is refused. The
+        # database CHECK can only exclude ASCII whitespace, so the store
+        # normalizes the source before writing it; a Unicode-whitespace-only
+        # document therefore collapses to 'goals:' and the CHECK rejects it here
+        # too, keeping the store and the API in agreement.
+        for source in ("goals: ", "goals: ", "goals:  ", "goals:　"):
+            with self.assertRaises(sqlite3.IntegrityError, msg=source):
+                self.store.create_task(
+                    title="t", source=source, release_id=self.release["id"])
+        task = self.store.create_task(title="t", release_id=self.release["id"])
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.update_task(task["id"], source="goals: ")
+
+    def test_the_store_strips_surrounding_whitespace_from_a_goal_source(self):
+        # A source with internal characters but surrounding whitespace is a
+        # valid document; the store trims it to match what the API stores.
+        task = self.store.create_task(
+            title="t", source=" goals:docs/PLAN.md ", release_id=self.release["id"])
+        self.assertEqual("goals:docs/PLAN.md", task["source"])
+
+    def test_the_api_refuses_a_unicode_whitespace_only_goal_document(self):
+        resp = self.client.post("/v1/tasks", json={
+            "title": "t", "release_id": self.release["id"], "source": "goals: "})
+        self.assertEqual(400, resp.status_code)
+
     def test_the_api_refuses_an_uppercase_goals_prefix(self):
         resp = self.client.post("/v1/tasks", json={
             "title": "t", "release_id": self.release["id"], "source": "GOALS:x"})
@@ -572,6 +599,24 @@ class GoalTaskUpsertTests(_StoreTestBase):
         resp = self._post_goal_task(release="Framework 4.4", title="   ")
         self.assertEqual(400, resp.status_code)
         self.assertEqual(0, self._releases_named("Framework 4.4"))
+
+    def test_a_non_string_description_is_refused_and_leaves_no_orphan_release(self):
+        # The create/update/import endpoints reject a non-string description
+        # with a 400; the goal-task endpoint must too, rather than silently
+        # coercing a falsey value such as [], {}, 0 or false to null.
+        for description in ([], {}, 0, False, 7, ["x"]):
+            resp = self._post_goal_task(release="Framework 4.5", description=description)
+            self.assertEqual(400, resp.status_code, repr(description))
+            self.assertIn("description", resp.json()["error"])
+        self.assertEqual(0, self._releases_named("Framework 4.5"))
+
+    def test_a_string_or_null_description_is_accepted(self):
+        ok = self._post_goal_task(release="Framework 4.6", description="why")
+        self.assertEqual(201, ok.status_code, ok.text)
+        self.assertEqual("why", ok.json()["task"]["description"])
+        cleared = self._post_goal_task(release="Framework 4.7", description=None)
+        self.assertEqual(201, cleared.status_code, cleared.text)
+        self.assertIsNone(cleared.json()["task"]["description"])
 
 
 class BulkImportTests(_StoreTestBase):

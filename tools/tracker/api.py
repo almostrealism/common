@@ -893,6 +893,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         check_body = {"source": source}
         if blocked_by is not None:
             check_body["blocked_by"] = blocked_by
+        # Validate description as the create/update/import endpoints do, so a
+        # non-string value (a list, object, number or boolean) is refused with
+        # a 400 rather than silently coerced to null by ``body.get(...) or None``
+        # below.
+        if "description" in body:
+            check_body["description"] = body["description"]
         field_error = _task_field_error(store, check_body, task_id=task_id)
         if field_error:
             return _bad_request(field_error)
