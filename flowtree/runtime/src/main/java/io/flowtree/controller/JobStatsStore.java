@@ -16,6 +16,7 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
@@ -1328,8 +1329,8 @@ public class JobStatsStore implements ConsoleFeatures {
          */
         public String toJson(Instant now) {
             StringBuilder json = new StringBuilder("{");
-            json.append("\"jobId\":\"").append(escapeForJson(jobId)).append("\"");
-            json.append(",\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+            json.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(jobId)).append("\"");
+            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
             if (startedAt != null) {
                 json.append(",\"startedAt\":\"").append(startedAt).append("\"");
             }
@@ -1339,21 +1340,9 @@ public class JobStatsStore implements ConsoleFeatures {
             json.append(",\"ageSeconds\":").append(age(now).getSeconds());
             json.append(",\"sinceHeartbeatSeconds\":").append(sinceHeartbeat(now).getSeconds());
             if (description != null) {
-                json.append(",\"description\":\"").append(escapeForJson(description)).append("\"");
+                json.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(description)).append("\"");
             }
             return json.append("}").toString();
-        }
-
-        /**
-         * Escapes a value for embedding in the JSON rendered above.
-         *
-         * @param value the raw value; may be {@code null}
-         * @return the escaped value, or an empty string when {@code null}
-         */
-        private static String escapeForJson(String value) {
-            if (value == null) return "";
-            return value.replace("\\", "\\\\").replace("\"", "\\\"")
-                    .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
         }
     }
 
