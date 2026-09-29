@@ -67,7 +67,8 @@ public class MeshDataIntersectionTest extends TestSuiteBase {
 	public void evaluateIntersectionMiss() {
 		MeshData md = planeTriangle().getMeshData();
 
-		// Ray far outside the triangle, pointing away in z.
+		// Origin projects outside the triangle in x/y, so the ray misses even though
+		// its -z direction still points at the z = 0 plane the triangle lies in.
 		Producer<Ray> ray = (Producer) ray(vector(500.0, 500.0, 1.0), vector(0.0, 0.0, -1.0));
 		Pair result = md.evaluateIntersection(ray.get(), new Object[0]);
 
