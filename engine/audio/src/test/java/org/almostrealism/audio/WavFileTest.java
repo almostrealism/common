@@ -608,6 +608,37 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Normalized samples outside {@code [-1.0, 1.0]} — which a mix routinely
+	 * produces when it peaks slightly over full scale — must saturate at full
+	 * scale of the same polarity. Converting them without a clamp overflows the
+	 * sample's byte width, and the truncated bits wrap around to a near
+	 * full-scale sample of the opposite sign: a loud click in the written file
+	 * instead of ordinary clipping. Checked at the signed 16-bit and 24-bit
+	 * depths and at the unsigned 8-bit depth, whose offset encoding wraps too.
+	 */
+	@Test(timeout = 60000)
+	public void outOfRangeSamplesSaturateInsteadOfWrapping() throws IOException {
+		double[] out = {1.01, -1.01, 1.5, -1.5, 2.0, -2.0};
+
+		for (int bits : new int[] {8, 16, 24}) {
+			File file = tempWav();
+			try (WavFile wav = WavFile.newWavFile(file, 1, out.length, bits, SAMPLE_RATE)) {
+				Assert.assertEquals(out.length, wav.writeFrames(new double[][] {out}));
+			}
+
+			try (WavFile wav = WavFile.openWavFile(file)) {
+				double[][] in = new double[1][out.length];
+				Assert.assertEquals(out.length, wav.readFrames(in, out.length));
+
+				for (int i = 0; i < out.length; i++) {
+					Assert.assertEquals(bits + "-bit sample " + i + " (written " + out[i] + ")",
+							Math.signum(out[i]), in[0][i], TOL_16);
+				}
+			}
+		}
+	}
+
+	/**
 	 * A RIFF container whose type id is not {@code WAVE} is rejected.
 	 */
 	@Test(timeout = 60000)
