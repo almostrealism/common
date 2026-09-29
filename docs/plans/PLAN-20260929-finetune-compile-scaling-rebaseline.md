@@ -131,7 +131,7 @@ Concrete, ordered deliverables:
    a step-0 finding to record — the profile-scope success criterion below then falls back to a
    whole-run profile with the limitation stated, not to an unsupported subtree ranking.
 
-   The same harness change must also fix two measurement defects in the existing code, or the
+   The same harness change must also fix three measurement defects in the existing code, or the
    numbers it produces will not mean what the rest of this plan needs them to mean:
 
    - **`bwdMs` is not backward-compile time.** `measureCompilation()` reports as `Bwd(ms)` the
@@ -179,7 +179,7 @@ Concrete, ordered deliverables:
    `numHeads`, and `globalCondDim` all change together with `embedDim`, and every point is
    `depth=1`, so these configurations measure a combined "model size" axis, not embed alone.
 
-2. **Capture a fresh backward-compile profile, and rank the two timing kinds separately.** Run the
+2. **Capture a fresh backward-compile profile, and treat the two timing kinds separately.** Run the
    new profiled-measurement method from step 0 (the `testProfiledFineTuning()` configuration:
    embed=64, depth=1), which writes an `OperationProfileNode` XML. Load it with `ar-profile-analyzer`.
    Two distinct costs must be ranked, and the analyzer surfaces them through two different tools that
@@ -194,19 +194,32 @@ Concrete, ordered deliverables:
      compile hot spot.
    - **Stage-detail timings (`expressionCacheMatch`, `kernelSeries`).** These are *not* metric
      entries and carry no `" compile"` suffix, so `find_slowest_by_category(category="compile")` does
-     **not** rank them. They live in `getStageDetailTime()` and are surfaced per node by
-     `get_timing_breakdown` (which prints a node's `stage_details`). This is the JVM-side
-     expression-construction / cache-matching cost that the February profile identified as the
-     *largest* accumulated entry (`expressionCacheMatch` ~1375.6 s) — precisely the cost the
-     `ExplicitExpressionMatrix` work targeted. Because these entries are non-exclusive (see
-     Motivation) they are reported as accumulated seconds only, never as a percentage of the run or
-     ranked against node-level compile shares.
+     **not** rank them. They live in `getStageDetailTime()`, recorded per node, and the analyzer
+     offers no command that ranks or aggregates them across the profile: `get_timing_breakdown` is a
+     **point lookup by node key** (`ProfileAnalyzerCLI.printBreakdown` resolves a single node via
+     `findByKey` and prints only that node's `stage_details`), and the node-discovery commands that
+     could feed it a key — `search` (`searchOperations`) and `list_children` (`printChildren`) — each
+     return only the 20 nodes with the greatest *total* duration. A node carrying a large accumulated
+     stage-detail cost but a modest total duration can therefore be missed entirely. Read the
+     stage-detail totals from `get_timing_breakdown` on the backward-phase operation node(s) whose
+     keys are already known (the backward-only profile's root and its named top-level operations),
+     and treat this as accumulated evidence, not a ranking. Because these entries are non-exclusive
+     (see Motivation) they are reported as accumulated seconds only, never as a percentage of the run
+     or ranked against node-level compile shares. This is the JVM-side expression-construction /
+     cache-matching cost that the February profile identified as the *largest* accumulated entry
+     (`expressionCacheMatch` ~1375.6 s) — precisely the cost the `ExplicitExpressionMatrix` work
+     targeted.
 
    Consequently, the compile-category top list alone cannot answer "what now dominates backward-pass
    compilation": in February the dominant cost was a stage-detail entry that this ranking excludes.
-   Produce **both** rankings — a backend-compile top list from `find_slowest_by_category(category="compile")`
-   and the stage-detail accumulations from `get_timing_breakdown` on the backward-pass nodes — and
-   read the verdict from the two together.
+   Produce **two** pieces of evidence — a backend-compile top list from
+   `find_slowest_by_category(category="compile")`, and the accumulated stage-detail seconds
+   (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the known
+   backward-phase nodes — and read the verdict from the two together. If a stage-detail hot spot is
+   suspected on a node that total-duration-based discovery does not surface, record that the analyzer
+   cannot rank stage-detail entries and that locating it would require extending the analyzer (or
+   exhaustively walking the profile's nodes); do not report a stage-detail *ranking* the tooling
+   cannot produce.
 
    **Scope the analysis to the backward phase.** The *existing* `runProfiledFineTuning` wraps model
    creation, forward execution, and three training epochs (`optimizer.optimize(3)`), so an all-node
@@ -330,13 +343,15 @@ end-to-end training runs.
   scope** — a profile emitted around the first `backward.run()` alone (per Scope step 0), since
   the analyzer cannot scope a ranking to a subtree after the fact — not a whole-run ranking over
   model creation, forward, and the three profiled epochs,
-  with two separate rankings. First, the current top-3 backend-compile cost nodes from
+  with the two timing kinds reported separately. First, the current top-3 backend-compile cost nodes from
   `ar-profile-analyzer` `find_slowest_by_category` (`category="compile"`), each carrying its compile
   time and its share of total compile time, where that share is computed against a compile-category
   denominator (the summed compile durations of the ranked nodes) rather than the analyzer's
-  reported `percentage`, which is a share of total node duration (compile + run). Second, the stage-detail accumulations
-  (`expressionCacheMatch`, `kernelSeries`) from `get_timing_breakdown`, each quoted as accumulated
-  seconds only — never as a share, and never ranked against the node-level compile shares, since
+  reported `percentage`, which is a share of total node duration (compile + run). Second, the accumulated stage-detail seconds
+  (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the known
+  backward-phase node(s) — a point lookup, not a ranking, since no analyzer command aggregates or
+  ranks stage-detail entries across the profile — each quoted as accumulated
+  seconds only, never as a share, and never ranked against the node-level compile shares, since
   `find_slowest_by_category(category="compile")` does not include them.
   *Conditional on the profile being capturable:* if the profiled run still fails with the
   `delta()` scope error and that fix is ruled out of scope (see Open questions), this criterion is
