@@ -234,6 +234,10 @@ GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
 GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
 POST   /v1/claim                        Claim the next one for a workstream
                                         ({"project", "release", "workstream_id"})
+POST   /v1/goal-tasks                   Ensure the release and create/update a goal task
+                                        in one transaction (a failed write leaves no
+                                        orphan release; a body "task_id" updates only
+                                        while the stored task is still goal-derived)
 POST   /v1/import                       Bulk import (idempotent upsert; all-or-nothing)
 ```
 

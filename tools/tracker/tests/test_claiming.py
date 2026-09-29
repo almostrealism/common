@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -313,6 +314,219 @@ class EnsureReleaseTests(_StoreTestBase):
         self.assertEqual(8, len(ids))
         self.assertEqual(1, len(set(ids)))
         self.assertEqual(1, self._releases_named("Framework 2.0"))
+
+
+class SharedConnectionLockTests(_StoreTestBase):
+    """Every write on the shared connection is serialized by the store lock.
+
+    Without this, a write that commits on the shared connection while another
+    thread holds an open :meth:`TrackerStore._write` transaction commits that
+    transaction's uncommitted rows, so a rollback in the failing write becomes
+    a no-op and leaves a partial task behind.
+    """
+
+    class _CountingLock:
+        """Wraps a real lock and counts how often it is entered."""
+
+        def __init__(self, real):
+            self._real = real
+            self.entered = 0
+
+        def __enter__(self):
+            self.entered += 1
+            return self._real.__enter__()
+
+        def __exit__(self, *exc):
+            return self._real.__exit__(*exc)
+
+    def _entries_during(self, call):
+        counting = self._CountingLock(self.store._lock)
+        self.store._lock = counting
+        try:
+            call()
+        finally:
+            self.store._lock = counting._real
+        return counting.entered
+
+    def test_every_mutating_method_takes_the_store_lock(self):
+        project = self.store.create_project("Locked")
+        release = self.store.create_release("Locked 1.0", project["id"])
+        task = self.store.create_task(title="t", release_id=release["id"])
+        cases = {
+            "create_project": lambda: self.store.create_project("p2"),
+            "update_project": lambda: self.store.update_project(project["id"], "renamed"),
+            "create_release": lambda: self.store.create_release("Locked 2.0", project["id"]),
+            "update_release": lambda: self.store.update_release(release["id"], name="Locked 1.1"),
+            "delete_task": lambda: self.store.delete_task(task["id"]),
+            "delete_release": lambda: self.store.delete_release(release["id"]),
+            "delete_project": lambda: self.store.delete_project(project["id"]),
+        }
+        for name, call in cases.items():
+            self.assertGreaterEqual(self._entries_during(call), 1, name)
+
+    def test_a_concurrent_write_cannot_commit_a_failing_writes_partial_row(self):
+        # While a create_task that is about to fail holds the lock, a concurrent
+        # delete must wait for it to roll back rather than commit its partial
+        # INSERT. Before the fix the delete committed on the shared connection
+        # without the lock and left the half-written task behind.
+        victim = self._task("victim")
+        started = threading.Event()
+        proceed = threading.Event()
+        real_set_blockers = self.store._set_blockers
+
+        def slow_set_blockers(task_id, blocker_ids):
+            started.set()
+            proceed.wait(5)
+            return real_set_blockers(task_id, blocker_ids)
+
+        def failing_create():
+            try:
+                with patch.object(self.store, "_set_blockers", slow_set_blockers):
+                    self.store.create_task(title="leak", task_id="leak-id",
+                                           blocked_by=["no-such-task"])
+            except sqlite3.IntegrityError:
+                pass
+
+        creator = threading.Thread(target=failing_create)
+        creator.start()
+        self.assertTrue(started.wait(5))
+        deleter = threading.Thread(target=lambda: self.store.delete_task(victim["id"]))
+        deleter.start()
+        proceed.set()
+        creator.join(5)
+        deleter.join(5)
+        self.store.create_project("later write")
+        self.assertIsNone(self.store.get_task("leak-id"))
+        self.assertIsNone(self.store.get_task(victim["id"]))
+
+
+class GoalTaskUpsertTests(_StoreTestBase):
+    """Ensuring the release and writing the goal task are one transaction."""
+
+    def _releases_named(self, name):
+        return self.store._conn.execute(
+            "SELECT COUNT(*) FROM releases WHERE name = ?", (name,)).fetchone()[0]
+
+    def test_a_new_task_is_created_ready_in_a_created_release(self):
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 3.0", "Add a thing", "goals:docs/PLAN.md",
+            description="why", priority=1)
+        self.assertEqual("ok", result["status"])
+        self.assertTrue(result["created_release"])
+        task = result["task"]
+        self.assertEqual(("Add a thing", "ready", "open", "goals:docs/PLAN.md", 1),
+                         (task["title"], task["stage"], task["status"],
+                          task["source"], task["priority"]))
+        self.assertEqual(result["release"]["id"], task["release_id"])
+
+    def test_an_existing_release_is_reused_not_duplicated(self):
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md")
+        self.assertEqual("ok", result["status"])
+        self.assertFalse(result["created_release"])
+        self.assertEqual(self.release["id"], result["release"]["id"])
+        self.assertEqual(1, self._releases_named("Framework 1.2"))
+
+    def test_a_missing_project_creates_no_release(self):
+        result = self.store.upsert_goal_task(
+            "Nowhere", "Nowhere 1.0", "t", "goals:docs/PLAN.md")
+        self.assertEqual("project_not_found", result["status"])
+        self.assertEqual(0, self._releases_named("Nowhere 1.0"))
+
+    def test_an_unknown_blocker_rolls_back_the_created_release(self):
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 3.1", "t", "goals:docs/PLAN.md",
+            blocked_by=["no-such-task"])
+        self.assertEqual("db_error", result["status"])
+        # The release this call would have created is rolled back with the task.
+        self.store.create_project("later write")
+        self.assertEqual(0, self._releases_named("Framework 3.1"))
+        self.assertIsNone(self.store.find_release("Framework", "Framework 3.1"))
+
+    def test_updating_a_person_task_is_refused_and_creates_no_release(self):
+        person = self.store.create_task(
+            title="hand written", release_id=self.release["id"], source="person")
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 3.2", "hijack", "goals:docs/PLAN.md",
+            task_id=person["id"])
+        self.assertEqual("not_goal_derived", result["status"])
+        self.store.create_project("later write")
+        self.assertEqual(0, self._releases_named("Framework 3.2"))
+        kept = self.store.get_task(person["id"])
+        self.assertEqual(("hand written", "person"), (kept["title"], kept["source"]))
+
+    def test_updating_a_missing_task_is_task_not_found_and_creates_no_release(self):
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 3.3", "t", "goals:docs/PLAN.md",
+            task_id="ghost")
+        self.assertEqual("task_not_found", result["status"])
+        self.store.create_project("later write")
+        self.assertEqual(0, self._releases_named("Framework 3.3"))
+
+    def test_updating_a_goal_task_changes_fields_and_keeps_stage_and_status(self):
+        goal = self.store.create_task(
+            title="original", release_id=self.release["id"], stage="ready",
+            source="goals:docs/OLD.md", priority=0)
+        result = self.store.upsert_goal_task(
+            "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md",
+            priority=2, task_id=goal["id"])
+        self.assertEqual("ok", result["status"])
+        task = result["task"]
+        self.assertEqual(("renamed", 2, "goals:docs/PLAN.md"),
+                         (task["title"], task["priority"], task["source"]))
+        # Stage and status are never touched by an upsert.
+        self.assertEqual(("ready", "open"), (task["stage"], task["status"]))
+
+    # --- API surface -------------------------------------------------------
+
+    def _post_goal_task(self, **body):
+        payload = {"project": "Framework", "release": "Framework 1.2",
+                   "title": "t", "source": "goals:docs/PLAN.md"}
+        payload.update(body)
+        return self.client.post("/v1/goal-tasks", json=payload)
+
+    def test_the_endpoint_creates_a_task_and_release(self):
+        resp = self._post_goal_task(release="Framework 4.0", title="new")
+        self.assertEqual(201, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["created_release"])
+        self.assertEqual("ready", body["task"]["stage"])
+
+    def test_the_endpoint_updates_with_a_task_id(self):
+        goal = self.store.create_task(
+            title="orig", release_id=self.release["id"], stage="ready",
+            source="goals:docs/OLD.md")
+        resp = self._post_goal_task(title="renamed", task_id=goal["id"])
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual("renamed", resp.json()["task"]["title"])
+
+    def test_a_person_task_update_is_409_and_leaves_no_orphan_release(self):
+        person = self.store.create_task(
+            title="hand written", release_id=self.release["id"], source="person")
+        resp = self._post_goal_task(release="Framework 4.1", task_id=person["id"])
+        self.assertEqual(409, resp.status_code, resp.text)
+        self.assertEqual(0, self._releases_named("Framework 4.1"))
+
+    def test_an_unknown_blocker_is_a_bad_request_and_leaves_no_orphan_release(self):
+        resp = self._post_goal_task(release="Framework 4.2", blocked_by=["no-such-task"])
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertEqual(0, self._releases_named("Framework 4.2"))
+
+    def test_a_missing_project_is_404(self):
+        resp = self._post_goal_task(project="Nowhere", release="Nowhere 9.9")
+        self.assertEqual(404, resp.status_code, resp.text)
+
+    def test_a_non_goal_source_is_refused(self):
+        for source in ("person", "goals:", "automation", "GOALS:x"):
+            resp = self._post_goal_task(release="Framework 4.3", source=source)
+            self.assertEqual(400, resp.status_code, source)
+        self.assertEqual(0, self._releases_named("Framework 4.3"))
+
+    def test_a_blank_title_is_refused(self):
+        resp = self._post_goal_task(release="Framework 4.4", title="   ")
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual(0, self._releases_named("Framework 4.4"))
 
 
 class BulkImportTests(_StoreTestBase):

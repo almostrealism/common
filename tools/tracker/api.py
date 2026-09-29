@@ -805,6 +805,73 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         task = store.claim_next(release["id"], workstream_id) if release else None
         return JSONResponse({"ok": True, "task": task})
 
+    async def upsert_goal_task(request: Request) -> JSONResponse:
+        """POST /v1/goal-tasks
+
+        Body: ``{"project", "release", "title", "source", "description",
+        "priority", "blocked_by", "task_id"}``.
+
+        Resolves the named release (creating it in the named project when it
+        does not exist yet) and creates or, when ``task_id`` is given, updates
+        a goal-derived task in it — as one transaction. A failure leaves no
+        partial state, so a rejected write never creates an orphan release.
+        The stored task's ``source`` must start with ``goals:``; an update of a
+        task a person owns is refused with a 409 and the task is left untouched.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        project = (body.get("project") or "").strip()
+        release = (body.get("release") or "").strip()
+        if not project or not release:
+            return _bad_request("project and release names are required")
+        title = (body.get("title") or "").strip()
+        if not title:
+            return _bad_request("title is required")
+        source = (body.get("source") or "").strip()
+        if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) <= len(GOAL_SOURCE_PREFIX):
+            return _bad_request("source must be 'goals:<document>'")
+        priority = 0
+        if "priority" in body:
+            priority, err_resp = _validate_priority(body["priority"])
+            if err_resp:
+                return err_resp
+        task_id = (body.get("task_id") or "").strip() or None
+        blocked_by = body.get("blocked_by")
+        check_body = {"source": source}
+        if blocked_by is not None:
+            check_body["blocked_by"] = blocked_by
+        field_error = _task_field_error(store, check_body, task_id=task_id)
+        if field_error:
+            return _bad_request(field_error)
+        result = store.upsert_goal_task(
+            project_name=project,
+            release_name=release,
+            title=title,
+            source=source,
+            description=(body.get("description") or None),
+            priority=priority,
+            blocked_by=blocked_by,
+            task_id=task_id,
+        )
+        status = result["status"]
+        if status == "project_not_found":
+            return JSONResponse({"ok": False, "error": "Project not found"}, status_code=404)
+        if status == "task_not_found":
+            return JSONResponse({"ok": False, "error": "Task not found"}, status_code=404)
+        if status == "not_goal_derived":
+            return JSONResponse({"ok": False, "error": _NOT_GOAL_DERIVED}, status_code=409)
+        if status == "db_error":
+            return _bad_request(f"write rejected by the database: {result['error']}")
+        return JSONResponse(
+            {"ok": True, "task": result["task"], "release": result["release"],
+             "created_release": result["created_release"]},
+            status_code=201 if task_id is None else 200,
+        )
+
     routes = [
         Route("/api/health", health),
         Route("/v1/projects", list_projects, methods=["GET"]),
@@ -831,6 +898,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/search/tasks", search_tasks, methods=["GET"]),
         Route("/v1/claimable", claimable, methods=["GET"]),
         Route("/v1/claim", claim, methods=["POST"]),
+        Route("/v1/goal-tasks", upsert_goal_task, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]
 

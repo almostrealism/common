@@ -158,40 +158,36 @@ class TestUpsertGoalTask(_GoalToolTestBase):
     @patch.object(server, "_controller_get")
     def test_a_new_task_is_created_ready(self, mock_get, mock_post):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.side_effect = [
-            {"ok": True, "release": _RELEASE, "created": False},
-            {"ok": True, "task": {"id": "new"}},
-        ]
+        mock_post.return_value = {"ok": True, "task": {"id": "new"},
+                                  "release": _RELEASE, "created_release": False}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "Add a thing", "goals:docs/PLAN.md",
             description="why", priority=1, blocked_by="a, b")
-        self.assertEqual(("/v1/tasks", {
-            "title": "Add a thing", "description": "why", "priority": 1,
-            "project_id": "p1", "release_id": "r1", "blocked_by": ["a", "b"],
-            "source": "goals:docs/PLAN.md", "stage": "ready", "status": "open"}),
-            mock_post.call_args_list[1][0])
+        mock_post.assert_called_once_with("/v1/goal-tasks", {
+            "project": "Framework", "release": "Framework 1.2",
+            "title": "Add a thing", "source": "goals:docs/PLAN.md",
+            "description": "why", "priority": 1, "blocked_by": ["a", "b"]})
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_the_release_is_resolved_in_one_atomic_request(
             self, mock_get, mock_tracker_get, mock_post):
-        # A lookup followed by a separate create lets two concurrent stewards
-        # each create the release and attach tasks to different ids. The tool
-        # must instead ask the tracker to get-or-create it in a single request.
+        # Ensuring the release and writing the task must be a single tracker
+        # request: a lookup-then-create split lets two concurrent stewards each
+        # create the release and attach tasks to different ids, and a task
+        # write that then fails would leave an orphan release behind.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.side_effect = [
-            {"ok": True, "created": True,
-             "release": {"id": "r2", "name": "Framework 1.3", "project_id": "p1"}},
-            {"ok": True, "task": {"id": "new"}},
-        ]
+        mock_post.return_value = {
+            "ok": True, "task": {"id": "new"}, "created_release": True,
+            "release": {"id": "r2", "name": "Framework 1.3", "project_id": "p1"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.3", "t", "goals:docs/PLAN.md")
-        self.assertEqual(
-            ("/v1/releases/ensure", {"project": "Framework", "release": "Framework 1.3"}),
-            mock_post.call_args_list[0][0])
-        self.assertEqual("r2", mock_post.call_args_list[1][0][1]["release_id"])
-        self.assertEqual(2, mock_post.call_count)
+        self.assertEqual(1, mock_post.call_count)
+        path, payload = mock_post.call_args[0]
+        self.assertEqual("/v1/goal-tasks", path)
+        self.assertEqual("Framework", payload["project"])
+        self.assertEqual("Framework 1.3", payload["release"])
         mock_tracker_get.assert_not_called()
 
     @patch.object(server, "_tracker_post")
@@ -203,9 +199,10 @@ class TestUpsertGoalTask(_GoalToolTestBase):
             "Nowhere", "Nowhere 1.0", "t", "goals:docs/PLAN.md")
         self.assertFalse(result["ok"])
         self.assertEqual("Tracker project 'Nowhere' does not exist", result["error"])
-        # Only the ensure request was made: no project, and no task.
-        mock_post.assert_called_once_with(
-            "/v1/releases/ensure", {"project": "Nowhere", "release": "Nowhere 1.0"})
+        mock_post.assert_called_once_with("/v1/goal-tasks", {
+            "project": "Nowhere", "release": "Nowhere 1.0", "title": "t",
+            "source": "goals:docs/PLAN.md", "description": None,
+            "priority": 0, "blocked_by": []})
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
@@ -220,62 +217,64 @@ class TestUpsertGoalTask(_GoalToolTestBase):
         self.assertEqual("Tracker unreachable: down", result["error"])
         self.assertEqual(1, mock_post.call_count)
 
-    @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_a_task_a_person_wrote_is_never_changed(
-            self, mock_get, mock_tracker_get, mock_post, mock_put):
-        # The tracker refuses the conditional update of a person's task; the
-        # refusal is returned unchanged and nothing else is written.
+            self, mock_get, mock_tracker_get, mock_post):
+        # The tracker refuses the conditional update of a person's task in the
+        # same request that would ensure the release, so the refusal is returned
+        # unchanged and no release is created.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
         refusal = {"ok": False,
                    "error": "Task was not derived from goal documents; only a person may change it"}
-        mock_put.return_value = refusal
+        mock_post.return_value = refusal
         result = server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md", task_id="t1")
         self.assertEqual(refusal, result)
-        mock_put.assert_called_once()
         self.assertEqual(1, mock_post.call_count)
+        self.assertEqual("t1", mock_post.call_args[0][1]["task_id"])
+        mock_tracker_get.assert_not_called()
 
-    @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_the_source_check_and_the_write_are_one_request(
-            self, mock_get, mock_tracker_get, mock_post, mock_put):
-        # A separate GET of the task's source followed by a PUT would let a
+            self, mock_get, mock_tracker_get, mock_post):
+        # A separate read of the task's source followed by a write would let a
         # person take the task over in between and still be overwritten. The
-        # tool must instead ask the tracker for a conditional update.
+        # tool sends one request; the tracker checks the source and writes
+        # atomically.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
-        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md", task_id="t1")
         mock_tracker_get.assert_not_called()
-        path, payload = mock_put.call_args[0]
-        self.assertEqual("/v1/tasks/t1?only_goal_derived=true", path)
+        self.assertEqual(1, mock_post.call_count)
+        path, payload = mock_post.call_args[0]
+        self.assertEqual("/v1/goal-tasks", path)
+        self.assertEqual("t1", payload["task_id"])
         self.assertEqual("goals:docs/PLAN.md", payload["source"])
 
-    @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
-    def test_the_task_id_cannot_alter_the_request(self, mock_get, mock_post, mock_put):
+    def test_the_task_id_cannot_alter_the_request(self, mock_get, mock_post):
+        # task_id travels in the JSON body, so even a value full of URL
+        # metacharacters cannot change the request path or query.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
-        mock_put.return_value = {"ok": True, "task": {"id": "x"}}
+        mock_post.return_value = {"ok": True, "task": {"id": "x"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md",
             task_id="t1?only_goal_derived=false#")
-        self.assertEqual("/v1/tasks/t1%3Fonly_goal_derived%3Dfalse%23?only_goal_derived=true",
-                         mock_put.call_args[0][0])
+        path, payload = mock_post.call_args[0]
+        self.assertEqual("/v1/goal-tasks", path)
+        self.assertEqual("t1?only_goal_derived=false#", payload["task_id"])
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
     def test_a_bare_goals_source_creates_nothing(self, mock_get, mock_post):
-        # The tracker would refuse the task anyway; the tool must refuse it
-        # before ensuring the release so no orphan release is left behind.
+        # The tracker would refuse the task anyway; the tool refuses it before
+        # any request, so no orphan release is left behind.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
         for source in ("goals:", "  goals:  ", "GOALS:docs/PLAN.md", ""):
             result = server.tracker_upsert_goal_task(
@@ -284,12 +283,11 @@ class TestUpsertGoalTask(_GoalToolTestBase):
             self.assertIn("goals:<document>", result["error"])
         mock_post.assert_not_called()
 
-    @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
-    def test_a_blank_title_ensures_no_release(self, mock_get, mock_post, mock_put):
-        # Ensuring the release is a write, so a task the tracker would refuse
-        # must be refused first; otherwise a new, empty release is left behind.
+    def test_a_blank_title_ensures_no_release(self, mock_get, mock_post):
+        # A task the tracker would refuse must be refused before any request;
+        # otherwise the tracker would ensure a release for a doomed write.
         mock_get.return_value = _as_job("ws-steward", ["steward"])
         for title in ("", "   ", "\t\n"):
             for task_id in ("", "t1"):
@@ -298,7 +296,6 @@ class TestUpsertGoalTask(_GoalToolTestBase):
                     task_id=task_id)
                 self.assertEqual({"ok": False, "error": "title is required"}, result)
         mock_post.assert_not_called()
-        mock_put.assert_not_called()
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
@@ -319,42 +316,35 @@ class TestUpsertGoalTask(_GoalToolTestBase):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
         for priority in (-2, 2):
             mock_post.reset_mock()
-            mock_post.side_effect = [
-                {"ok": True, "release": _RELEASE, "created": False},
-                {"ok": True, "task": {"id": "new"}},
-            ]
+            mock_post.return_value = {"ok": True, "task": {"id": "new"}}
             result = server.tracker_upsert_goal_task(
                 "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md",
                 priority=priority)
             self.assertTrue(result["ok"])
-            self.assertEqual(priority, mock_post.call_args_list[1][0][1]["priority"])
+            self.assertEqual(priority, mock_post.call_args[0][1]["priority"])
 
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
     def test_the_source_is_stripped_before_it_is_sent(self, mock_get, mock_post):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.side_effect = [
-            {"ok": True, "release": _RELEASE, "created": False},
-            {"ok": True, "task": {"id": "new"}},
-        ]
+        mock_post.return_value = {"ok": True, "task": {"id": "new"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "t", "  goals:docs/PLAN.md ")
-        self.assertEqual("goals:docs/PLAN.md", mock_post.call_args_list[1][0][1]["source"])
+        self.assertEqual("goals:docs/PLAN.md", mock_post.call_args[0][1]["source"])
 
-    @patch.object(server, "_tracker_put")
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_tracker_get")
     @patch.object(server, "_controller_get")
     def test_updating_a_goal_task_leaves_its_stage_and_status_alone(
-            self, mock_get, mock_tracker_get, mock_post, mock_put):
+            self, mock_get, mock_tracker_get, mock_post):
         mock_get.return_value = _as_job("ws-steward", ["steward"])
-        mock_post.return_value = {"ok": True, "release": _RELEASE, "created": False}
-        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
         server.tracker_upsert_goal_task(
             "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md", task_id="t1")
-        path, payload = mock_put.call_args[0]
-        self.assertTrue(path.startswith("/v1/tasks/t1?"))
+        path, payload = mock_post.call_args[0]
+        self.assertEqual("/v1/goal-tasks", path)
         self.assertEqual("renamed", payload["title"])
+        self.assertEqual("t1", payload["task_id"])
         self.assertNotIn("stage", payload)
         self.assertNotIn("status", payload)
 

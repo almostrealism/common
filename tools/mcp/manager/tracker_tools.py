@@ -19,7 +19,7 @@ Two conventions make the move safe, and both matter more than they look:
   name nothing called.
 """
 
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 import server
 from server import mcp
@@ -670,23 +670,6 @@ def tracker_list_release_tasks(
     return result
 
 
-def _ensure_release(project: str, release: str) -> dict:
-    """Return the named release, creating it in the named project if needed.
-
-    A project is never created: a missing project is an error. The tracker
-    performs the lookup and the create as one atomic step, so stewards working
-    concurrently on the same release never create duplicates of it and attach
-    their tasks to different release ids. Any tracker error, including an
-    outage, is returned unchanged.
-    """
-    result = server._tracker_post("/v1/releases/ensure", {
-        "project": project, "release": release,
-    })
-    if not result.get("ok") and result.get("error") == "Project not found":
-        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
-    return result
-
-
 @mcp.tool()
 def tracker_upsert_goal_task(
     project: str,
@@ -740,31 +723,31 @@ def tracker_upsert_goal_task(
     if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) == len(GOAL_SOURCE_PREFIX):
         return {"ok": False,
                 "error": f"source must be '{GOAL_SOURCE_PREFIX}<document>' (e.g. goals:docs/GOALS.md)"}
-    # Checked here as well as by the tracker because ensuring the release is a
-    # write: a request the tracker would refuse must not leave a new, empty
-    # release behind.
+    # Checked here as well as by the tracker so an obviously bad request fails
+    # fast without a round trip; the tracker validates the same fields and,
+    # because the whole upsert is one transaction there, a request it refuses
+    # never leaves a new, empty release behind.
     if not title.strip():
         return {"ok": False, "error": "title is required"}
     if isinstance(priority, bool) or not isinstance(priority, int) or not -2 <= priority <= 2:
         return {"ok": False, "error": "priority must be an integer in [-2, 2]"}
 
-    target = _ensure_release(project, release)
-    if not target.get("ok"):
-        return target
-    fields = {
+    # The tracker ensures the release and creates or conditionally updates the
+    # task in one transaction. A failed write rolls the release creation back,
+    # so no orphan release is left behind, and a task a person takes over
+    # between any earlier read and this write is never overwritten.
+    payload = {
+        "project": project,
+        "release": release,
         "title": title,
+        "source": source,
         "description": description or None,
         "priority": priority,
-        "project_id": target["release"]["project_id"],
-        "release_id": target["release"]["id"],
         "blocked_by": [b.strip() for b in blocked_by.split(",") if b.strip()],
     }
-
-    if not task_id:
-        return server._tracker_post("/v1/tasks", dict(
-            fields, source=source, stage="ready", status="open"))
-
-    # The tracker checks the stored source and writes in one step, so a task a
-    # person takes over between any earlier read and this request is refused.
-    return server._tracker_put(f"/v1/tasks/{quote(task_id, safe='')}?only_goal_derived=true",
-                               dict(fields, source=source))
+    if task_id:
+        payload["task_id"] = task_id
+    result = server._tracker_post("/v1/goal-tasks", payload)
+    if not result.get("ok") and result.get("error") == "Project not found":
+        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
+    return result

@@ -110,11 +110,11 @@ class TrackerStore:
         """Create a new project and return it."""
         project_id = str(uuid.uuid4())
         created_at = _now()
-        self._conn.execute(
-            "INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)",
-            (project_id, name, created_at),
-        )
-        self._conn.commit()
+        with self._write():
+            self._conn.execute(
+                "INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)",
+                (project_id, name, created_at),
+            )
         return {"id": project_id, "name": name, "created_at": created_at}
 
     def get_project(self, project_id: str) -> Optional[dict]:
@@ -133,18 +133,18 @@ class TrackerStore:
 
     def update_project(self, project_id: str, name: str) -> Optional[dict]:
         """Update a project's name. Returns the updated project or None."""
-        self._conn.execute(
-            "UPDATE projects SET name = ? WHERE id = ?", (name, project_id)
-        )
-        self._conn.commit()
+        with self._write():
+            self._conn.execute(
+                "UPDATE projects SET name = ? WHERE id = ?", (name, project_id)
+            )
         return self.get_project(project_id)
 
     def delete_project(self, project_id: str) -> bool:
         """Delete a project. Returns True if a row was deleted."""
-        cursor = self._conn.execute(
-            "DELETE FROM projects WHERE id = ?", (project_id,)
-        )
-        self._conn.commit()
+        with self._write():
+            cursor = self._conn.execute(
+                "DELETE FROM projects WHERE id = ?", (project_id,)
+            )
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -159,12 +159,11 @@ class TrackerStore:
         """
         release_id = str(uuid.uuid4())
         created_at = _now()
-        with self._lock:
+        with self._write():
             self._conn.execute(
                 "INSERT INTO releases (id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
                 (release_id, name, project_id or None, created_at),
             )
-            self._conn.commit()
         return {
             "id": release_id,
             "name": name,
@@ -216,18 +215,18 @@ class TrackerStore:
         if not updates:
             return self.get_release(release_id)
         params.append(release_id)
-        self._conn.execute(
-            f"UPDATE releases SET {', '.join(updates)} WHERE id = ?", params
-        )
-        self._conn.commit()
+        with self._write():
+            self._conn.execute(
+                f"UPDATE releases SET {', '.join(updates)} WHERE id = ?", params
+            )
         return self.get_release(release_id)
 
     def delete_release(self, release_id: str) -> bool:
         """Delete a release. Returns True if a row was deleted."""
-        cursor = self._conn.execute(
-            "DELETE FROM releases WHERE id = ?", (release_id,)
-        )
-        self._conn.commit()
+        with self._write():
+            cursor = self._conn.execute(
+                "DELETE FROM releases WHERE id = ?", (release_id,)
+            )
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -450,6 +449,139 @@ class TrackerStore:
         return self.get_task(task_id)
 
     # ------------------------------------------------------------------
+    # Goal-derived task upsert
+    # ------------------------------------------------------------------
+
+    def upsert_goal_task(
+        self,
+        project_name: str,
+        release_name: str,
+        title: str,
+        source: str,
+        description: Optional[str] = None,
+        priority: int = 0,
+        blocked_by: Optional[list] = None,
+        task_id: Optional[str] = None,
+    ) -> dict:
+        """Ensure the named release exists and create or update a goal task in it.
+
+        The release resolution (create-if-missing, in the named project) and the
+        task create or conditional update run as one transaction under the store
+        lock. Anything that makes the task write fail — a missing project, an
+        unknown blocker id, or an update naming a task that is not goal-derived —
+        rolls the whole thing back, so a failed upsert never leaves behind a
+        release this call would otherwise have created. The project is never
+        created.
+
+        When ``task_id`` is given the update applies only while the stored task's
+        source starts with :data:`GOAL_SOURCE_PREFIX`, so a person taking the task
+        over between any earlier read and this write is never overwritten.
+
+        Returns a dict whose ``status`` is one of:
+            ``ok`` — with ``task``, ``release`` and ``created_release`` (bool);
+            ``project_not_found`` — no project has ``project_name``;
+            ``task_not_found`` — ``task_id`` names no task;
+            ``not_goal_derived`` — ``task_id`` names a task a person owns;
+            ``db_error`` — the database refused a write (e.g. an unknown
+                blocker), with ``error`` describing it.
+        """
+        with self._lock:
+            try:
+                result = self._upsert_goal_task_locked(
+                    project_name, release_name, title, source,
+                    description, priority, blocked_by, task_id)
+            except sqlite3.Error as e:
+                self._conn.rollback()
+                return {"status": "db_error", "error": str(e)}
+            except BaseException:
+                self._conn.rollback()
+                raise
+            if result["status"] == "ok":
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+        if result["status"] == "ok":
+            result["task"] = self.get_task(result.pop("_task_id"))
+        return result
+
+    def _upsert_goal_task_locked(
+        self,
+        project_name: str,
+        release_name: str,
+        title: str,
+        source: str,
+        description: Optional[str],
+        priority: int,
+        blocked_by: Optional[list],
+        task_id: Optional[str],
+    ) -> dict:
+        """Do the work of :meth:`upsert_goal_task`. The caller holds the store
+        lock and commits on an ``ok`` status, rolling back otherwise, so this
+        never commits or rolls back itself.
+
+        On the ``ok`` path the result carries ``_task_id`` for the caller to
+        resolve into a full task after the commit.
+        """
+        release = self.find_release(project_name, release_name)
+        created_release = False
+        if release is None:
+            project = self._conn.execute(
+                "SELECT id, name FROM projects WHERE name = ? "
+                "ORDER BY created_at ASC, id ASC LIMIT 1",
+                (project_name,),
+            ).fetchone()
+            if not project:
+                return {"status": "project_not_found"}
+            release_id = str(uuid.uuid4())
+            created_at = _now()
+            self._conn.execute(
+                "INSERT INTO releases (id, name, project_id, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (release_id, release_name, project["id"], created_at),
+            )
+            release = {
+                "id": release_id, "name": release_name,
+                "project_id": project["id"], "created_at": created_at,
+                "project_name": project["name"],
+            }
+            created_release = True
+
+        now = _now()
+        if not task_id:
+            new_id = str(uuid.uuid4())
+            self._conn.execute(
+                "INSERT INTO tasks "
+                "(id, title, description, status, priority, stage, source, "
+                " project_id, release_id, workstream_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'open', ?, 'ready', ?, ?, ?, NULL, ?, ?)",
+                (new_id, title, description, int(priority), source,
+                 release["project_id"], release["id"], now, now),
+            )
+            if blocked_by:
+                self._set_blockers(new_id, blocked_by)
+            written_id = new_id
+        else:
+            cursor = self._conn.execute(
+                "UPDATE tasks SET title = ?, description = ?, priority = ?, "
+                "source = ?, project_id = ?, release_id = ?, updated_at = ? "
+                "WHERE id = ? AND substr(source, 1, ?) = ?",
+                (title, description, int(priority), source,
+                 release["project_id"], release["id"], now, task_id,
+                 len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX),
+            )
+            if cursor.rowcount == 0:
+                exists = self._conn.execute(
+                    "SELECT 1 FROM tasks WHERE id = ?", (task_id,)
+                ).fetchone()
+                return {"status": "not_goal_derived" if exists else "task_not_found"}
+            if blocked_by is not None:
+                self._set_blockers(task_id, blocked_by or [])
+            written_id = task_id
+
+        return {"status": "ok", "_task_id": written_id,
+                "release": release, "created_release": created_release}
+
+    # ------------------------------------------------------------------
     # Claiming work
     # ------------------------------------------------------------------
 
@@ -554,8 +686,8 @@ class TrackerStore:
 
     def delete_task(self, task_id: str) -> bool:
         """Delete a task. Returns True if a row was deleted."""
-        cursor = self._conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        self._conn.commit()
+        with self._write():
+            cursor = self._conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
