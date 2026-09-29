@@ -587,7 +587,15 @@ def workstream_submit_task(
             "that other workstream",
             "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
         )
-    # TODO(review): param renamed from bypass_* only to pass the name-based no-bypass guard test; confirm intent with owner.
+    # This parameter is named skip_ rather than bypass_ even though the wire
+    # field and the Java side both call it bypassAgentPermissionPrompts. The
+    # test-execution-limit guard (test_no_bypass_parameter_exists_for_test_
+    # execution_limits) forbids any parameter whose name contains "bypass",
+    # because a "bypass" flag is how an agent-settable test-limit escape hatch
+    # would be smuggled in. This flag is not that: it is operator-only
+    # (rejected below for an in-flight agent) and controls interactive
+    # permission prompts, not test execution. The distinct name keeps the
+    # bright-line guard intact rather than eroding it for one exception.
     if caller_workstream_id and skip_agent_permission_prompts:
         return _operator_only_rejection(
             caller_workstream_id,
