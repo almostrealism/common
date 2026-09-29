@@ -208,6 +208,17 @@ comments exist cannot act on them. The controller holds the job for the delay
 before dispatching it. The delay comes from the submit job's own environment,
 never from the staged request.
 
+`STARTED_AFTER` is the controller's stale-submission guard: it skips a job when
+anything was submitted on the workstream after that time. The early submitters
+send the pipeline's start (`needs.changes.outputs.started_at`). `auto-resolve`
+stages none; `auto-resolve-submit.yaml` sends the start of the attempt that
+staged the request (`workflow_run.run_started_at`, which moves forward with each
+re-run). The slow path is attempt-scoped: measured from the pipeline's start,
+auto-review's own attempt-1 submission counted as newer work and the controller
+skipped every auto-resolve that followed one (run 36380449113). A skip is a
+successful response, so `submit-agent-job.sh` reports it as a warning and in the
+step summary rather than failing the step.
+
 No remediation job declares `environment:` — in a `pull_request` run that
 attaches a deployment status to the PR head, and an abandoned one shows as a
 spurious "had a problem deploying" red X. `auto-resolve-submit.yaml` keeps its
