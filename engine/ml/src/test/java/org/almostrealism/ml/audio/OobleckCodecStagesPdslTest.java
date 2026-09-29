@@ -19,6 +19,9 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.dsl.PdslInterpreter;
+import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -129,6 +132,31 @@ public class OobleckCodecStagesPdslTest extends TestSuiteBase {
 
 	/** Length of the decoder chain's output: 2 frames upsampled to 2 * 2 + 1 = 5, then to 5 * 4 + 1. */
 	private static final int DECODER_SAMPLES = 21;
+
+	/**
+	 * The codec asset declares its dependency on the residual unit with an {@code import}, so
+	 * parsing it alone — as {@code OobleckCodec.buildCodecLayer} does — yields a program holding
+	 * the residual unit and every stage, with the residual unit's definitions merged exactly once
+	 * ahead of the stages that call it.
+	 */
+	@Test(timeout = 60000)
+	public void codecAssetImportsResidualUnit() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource(OobleckCodec.CODEC_ASSET);
+
+		int ownDefinitions = loader.parse(loader.readResource(OobleckCodec.RESIDUAL_ASSET)).getDefinitions().size()
+				+ loader.parse(loader.readResource(OobleckCodec.CODEC_ASSET)).getDefinitions().size();
+		Assert.assertEquals(ownDefinitions, program.getDefinitions().size());
+		Assert.assertEquals("oobleck_residual_block", program.getDefinitions().get(0).getName());
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		for (String layer : new String[] { "oobleck_residual_block", "oobleck_input_projection",
+				"oobleck_encoder_block", "oobleck_encoder_output", "oobleck_decoder_block",
+				"oobleck_decoder_output" }) {
+			Assert.assertTrue("codec program should define '" + layer + "'",
+					interpreter.getLayerNames().contains(layer));
+		}
+	}
 
 	/**
 	 * The encoder stage the asset builds reproduces, element for element, the Java assembly it
