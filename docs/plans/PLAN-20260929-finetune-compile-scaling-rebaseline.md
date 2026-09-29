@@ -341,8 +341,11 @@ Concrete, ordered deliverables:
    with a non-zero compile duration and summing their `duration` fields), **not** the summed
    durations of only the ranked top few (which would normalize the reported nodes to 100 % and
    overstate each share), and **not** the analyzer's own `percentage` field, which
-   `ProfileAnalyzerCLI.printSlowest` derives against total node duration (compile + run, the
-   summed `getNodeDuration` over all nodes) and so understates the compile share. For a
+   `ProfileAnalyzerCLI.printSlowest` derives against the summed `getNodeDuration` over all
+   nodes — where `getNodeDuration` returns a node's measured wall-clock duration when that is
+   positive and otherwise its self duration (`getSelfDuration`, which itself mixes compile, run,
+   and exclusive scope-stage entries), not a compile-only total — and so understates the compile
+   share. For a
    `stageDetailTime` entry (for example an `expressionCacheMatch` or
    `kernelSeries` hot spot), give its accumulated seconds only. That figure is non-exclusive
    (see Motivation), so no valid percentage of the run exists for it. If the profile could not be
@@ -408,6 +411,11 @@ end-to-end training runs.
   (wrapping just the first `backward.run()`, or the whole run with the limitation recorded if that
   could not be isolated), and the profiled run writes its XML under the module's
   `results/` directory rather than a hard-coded container path.
+- Because Scope step 0 always changes Java test source (independently of whether the conditional
+  step-6 optimization is implemented), the build validator is run and is clean (`checkstyle`,
+  `code_policy`, `test_timeouts`, `duplicate_code`) for that harness change before the task is
+  considered complete — per the repository's completion policy, which requires validation for
+  every code task, not only when a production optimization lands.
 - Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
   or the explicitly labelled `cold − warm` estimate, never raw first-step latency.
 - Current backward-compile numbers for at least embed ∈ {8, 16, 32, 64} on today's `master`,
@@ -420,8 +428,10 @@ end-to-end training runs.
   limited to the measured configurations and the gap is recorded as an open question.
 - A fresh `finetune_profile_embed64` profile captured and analyzed **within the backward-pass
   scope** — a profile emitted around the first `backward.run()` alone (per Scope step 0), since
-  the analyzer cannot scope a ranking to a subtree after the fact — not a whole-run ranking over
-  model creation, forward, and the three profiled epochs,
+  the analyzer cannot scope a ranking to a subtree after the fact — rather than a whole-run
+  ranking over model creation, forward, and the three profiled epochs; or, if step 0 could not
+  isolate the backward step cleanly, a whole-run profile with that limitation explicitly recorded
+  (the fallback allowed by Scope steps 0 and 2),
   with the two timing kinds reported separately. First, the current top-3 backend-compile cost nodes from
   `ar-profile-analyzer` `find_slowest_by_category` (`category="compile"`), each carrying its compile
   time and its share of total compile time, where that share is computed against the whole-profile
@@ -429,7 +439,9 @@ end-to-end training runs.
   profile, obtained by requesting a `limit` large enough to return them all — not the summed compile
   durations of only the ranked top few, which would normalize them to 100 % and overstate each
   share) rather than the analyzer's
-  reported `percentage`, which is a share of total node duration (compile + run). Second, the accumulated stage-detail seconds
+  reported `percentage`, which is a share of the summed `getNodeDuration` over all nodes (each
+  node's measured wall-clock duration when positive, otherwise its self duration — not a
+  compile-only total). Second, the accumulated stage-detail seconds
   (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the keyed
   backward-phase operation node(s) — not the profile's null-keyed root, which `findByKey` cannot
   resolve — a point lookup, not a ranking, since no analyzer command aggregates or
