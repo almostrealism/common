@@ -266,6 +266,9 @@ jobs:
   # above, not instead of it: that round maintains the repository on its own
   # judgement, this one works through the tasks goal-driven release
   # automation files in the tracker.
+  # TODO(review): reword "the tasks goal-driven release automation files in the
+  # tracker" — a word appears dropped (likely "the tasks in the goal-driven
+  # release automation files in the tracker").
   #
   # The round is gated three ways, in order: no task-planning round already
   # in progress (the shared cadence gate on project/task- branches), room in

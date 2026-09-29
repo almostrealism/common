@@ -760,10 +760,10 @@ Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
 (Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa`,
-`performance-qa` and `pdsl-qa`. The first three were separate workflows with
-byte-identical triggers; merging them keeps the Actions sidebar navigable
-without changing what any of them does, and each job added since lands here for
-the same reason.
+`performance-qa` and `pdsl-qa`. The `plan-next-task`, `doc-qa` and `defect-hunt`
+jobs were separate workflows with byte-identical triggers; merging them keeps the
+Actions sidebar navigable without changing what any of them does, and each job
+added since — `plan-release-task` among them — lands here for the same reason.
 
 The six QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`) share a shape:

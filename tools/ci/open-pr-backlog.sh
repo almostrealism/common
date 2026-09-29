@@ -40,15 +40,22 @@ emit() {
     fi
 }
 
+# Force skips the backlog gate entirely, so the count is never queried on
+# that path: a forced round must start even when GitHub cannot be reached.
+if [ "${FORCE:-false}" = "true" ]; then
+    emit "open_prs=not-checked"
+    emit "max_open_prs=$MAX_OPEN_PRS"
+    emit "needs_new_branch=true"
+    echo "::notice::Force mode — starting a planning round regardless of the backlog"
+    exit 0
+fi
+
 OPEN_PR_COUNT=$(gh pr list --base "${BASE_BRANCH:-master}" --state open \
     --limit 1000 --json number --jq 'length')
 emit "open_prs=$OPEN_PR_COUNT"
 emit "max_open_prs=$MAX_OPEN_PRS"
 
-if [ "${FORCE:-false}" = "true" ]; then
-    emit "needs_new_branch=true"
-    echo "::notice::Force mode — starting a planning round regardless of the backlog"
-elif [ "$OPEN_PR_COUNT" -le "$MAX_OPEN_PRS" ]; then
+if [ "$OPEN_PR_COUNT" -le "$MAX_OPEN_PRS" ]; then
     emit "needs_new_branch=true"
     echo "::notice::$OPEN_PR_COUNT open PRs (limit $MAX_OPEN_PRS) — room for a planning round"
 else

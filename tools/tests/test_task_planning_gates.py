@@ -173,6 +173,19 @@ class OpenPrBacklogTests(unittest.TestCase):
         _, out, _ = self._decide(50, force="true")
         self.assertEqual("true", out["needs_new_branch"])
 
+    def test_force_starts_a_round_even_when_github_cannot_be_queried(self):
+        bin_dir = tempfile.mkdtemp(prefix="failing-gh-")
+        fake = os.path.join(bin_dir, "gh")
+        with open(fake, "w") as f:
+            f.write("#!/usr/bin/env bash\necho 'gh unavailable' >&2\nexit 1\n")
+        os.chmod(fake, os.stat(fake).st_mode | stat.S_IEXEC)
+        code, out, _ = _run("open-pr-backlog.sh", {
+            "PATH": bin_dir + os.pathsep + os.environ.get("PATH", ""),
+            "MAX_OPEN_PRS": "6", "FORCE": "true", "GITHUB_TOKEN": "t"})
+        self.assertEqual(0, code)
+        self.assertEqual("true", out["needs_new_branch"])
+        self.assertEqual("not-checked", out["open_prs"])
+
     def test_a_missing_limit_is_refused(self):
         code, _, _ = self._decide(0, limit="")
         self.assertEqual(1, code)
