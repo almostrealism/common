@@ -545,3 +545,209 @@ def tracker_project_summary(project_id: str) -> dict:
             pass
     summary["by_workstream"] = filtered_ws
     return result
+
+
+# ---------------------------------------------------------------------------
+# Narrow tools for planning and goal-decomposition agents
+# ---------------------------------------------------------------------------
+# Agents cannot use the general tracker write tools above. These three give
+# the two agent roles in goal-driven release automation exactly what each
+# needs, with the limits enforced here rather than left to the prompt:
+#
+#   planner - tracker_claim_next_task
+#   steward - tracker_list_release_tasks, tracker_upsert_goal_task
+#
+# A workstream holds a role through its trackerCapabilities controller
+# setting; see server._require_tracker_capability.
+
+# The source prefix of a task an agent derived from goal documents. Agents may
+# only change tasks that carry it; every other task belongs to a person.
+GOAL_SOURCE_PREFIX = "goals:"
+
+
+# The tracker's error message for a release that simply does not exist yet. Any
+# other failure (outage, auth, 5xx) is an error to surface, not a signal that
+# the release is empty or absent — mistaking one for the other lets a steward
+# decompose from a false empty view or create a duplicate after a transient
+# failure.
+_RELEASE_NOT_FOUND = "Release not found"
+
+
+def _named_release(project: str, release: str) -> dict:
+    """Look up a release by project and release name.
+
+    Returns:
+        The tracker response: ``{"ok": True, "release": {...}}``, or an error
+        dict (a missing release is ``ok: False`` with a 404 message).
+    """
+    qs = urlencode({"project": project, "release": release})
+    return server._tracker_get(f"/v1/releases/lookup?{qs}")
+
+
+def _release_missing(resp: dict) -> bool:
+    """Return True only for the tracker's explicit release-not-found response.
+
+    Every other unsuccessful response is a real error to propagate rather than a
+    release that does not exist.
+    """
+    return not resp.get("ok") and resp.get("error") == _RELEASE_NOT_FOUND
+
+
+@mcp.tool()
+def tracker_claim_next_task(project: str, release: str) -> dict:
+    """Claim the next ready task of a release for this job's workstream.
+
+    Takes the highest-priority task in the release that is marked ready, not
+    yet linked to any workstream, and not blocked by an open task, and links
+    it to the calling workstream. The claim is atomic: two callers never
+    receive the same task.
+
+    Requires the calling workstream to hold the ``planner`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name (e.g. the repository's project).
+        release: Full release name, ``<Project> <version>``.
+
+    Returns:
+        dict with ok=True and ``task`` — the claimed task, or None when the
+        release has nothing claimable (then there is no work to plan).
+    """
+    server._require_scope("write")
+    workstream_id = server._require_tracker_capability(server.TRACKER_PLANNER)
+    server._audit("tracker_claim_next_task", project=project, release=release,
+                  workstream_id=workstream_id)
+    return server._tracker_post("/v1/claim", {
+        "project": project, "release": release, "workstream_id": workstream_id,
+    })
+
+
+@mcp.tool()
+def tracker_list_release_tasks(
+    project: str,
+    release: str,
+    fields: str = "full",
+    limit: int = 200,
+    offset: int = 0,
+) -> dict:
+    """List every task in one release, whoever it belongs to.
+
+    Unlike tracker_list_tasks, this view is not limited to tasks linked to the
+    caller's workspace, so a goal-decomposition agent can see what a release
+    already holds before creating anything.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        fields: "full" (default) or "headlines" (omits descriptions).
+        limit: Maximum tasks to return (max 200).
+        offset: Pagination offset.
+
+    Returns:
+        dict with ok=True, ``release`` and the tasks with pagination info.
+        A release that does not exist yet has no tasks: ``tasks`` is empty.
+    """
+    server._require_scope("read")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_list_release_tasks", project=project, release=release)
+    found = _named_release(project, release)
+    if not found.get("ok"):
+        if _release_missing(found):
+            return {"ok": True, "release": None, "tasks": [], "total": 0,
+                    "limit": limit, "offset": offset}
+        # A tracker outage or error is not an empty release; surface it so the
+        # steward does not decompose from a false empty view.
+        return found
+    release_id = found["release"]["id"]
+    qs = urlencode({"release_id": release_id, "fields": fields,
+                    "limit": limit, "offset": offset})
+    result = server._tracker_get(f"/v1/tasks?{qs}")
+    if result.get("ok"):
+        result["release"] = found["release"]
+    return result
+
+
+@mcp.tool()
+def tracker_upsert_goal_task(
+    project: str,
+    release: str,
+    title: str,
+    source: str,
+    description: str = "",
+    priority: int = 0,
+    blocked_by: str = "",
+    task_id: str = "",
+) -> dict:
+    """Create or update a task derived from goal documents.
+
+    A new task is created ready to be planned, in the named release, which is
+    created too if it does not exist yet (the project must exist). An update
+    changes the task's title, description, priority, release and blockers;
+    its stage and status are left alone, so a task a person declined or
+    closed stays that way.
+
+    Only goal-derived tasks can be changed: ``source`` must be
+    ``goals:<document>``, and updating a task that does not carry such a
+    source — any task a person wrote — is refused by the tracker in the same
+    step as the write. Nothing is ever deleted.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        title: Short task title.
+        source: ``goals:<document path>`` naming the document the task was
+            derived from.
+        description: Markdown description: what the work is, why the release
+            needs it, and how to tell it is done.
+        priority: Integer in [-2, 2]; 0 is medium.
+        blocked_by: Comma-separated ids of tasks that must close before this
+            one is planned, for example the framework task an application
+            task depends on. Empty clears the blockers.
+        task_id: Id of an existing goal-derived task to update. Omit to
+            create a new task.
+
+    Returns:
+        dict with ok=True and the created or updated task.
+    """
+    server._require_scope("write")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_upsert_goal_task", project=project, release=release,
+                  task_id=task_id)
+    source = source.strip()
+    if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) == len(GOAL_SOURCE_PREFIX):
+        return {"ok": False,
+                "error": f"source must be '{GOAL_SOURCE_PREFIX}<document>' (e.g. goals:docs/GOALS.md)"}
+    # Checked here as well as by the tracker so an obviously bad request fails
+    # fast without a round trip; the tracker validates the same fields and,
+    # because the whole upsert is one transaction there, a request it refuses
+    # never leaves a new, empty release behind.
+    if not title.strip():
+        return {"ok": False, "error": "title is required"}
+    if isinstance(priority, bool) or not isinstance(priority, int) or not -2 <= priority <= 2:
+        return {"ok": False, "error": "priority must be an integer in [-2, 2]"}
+
+    # The tracker ensures the release and creates or conditionally updates the
+    # task in one transaction. A failed write rolls the release creation back,
+    # so no orphan release is left behind, and a task a person takes over
+    # between any earlier read and this write is never overwritten.
+    payload = {
+        "project": project,
+        "release": release,
+        "title": title,
+        "source": source,
+        "description": description or None,
+        "priority": priority,
+        "blocked_by": [b.strip() for b in blocked_by.split(",") if b.strip()],
+    }
+    if task_id:
+        payload["task_id"] = task_id
+    result = server._tracker_post("/v1/goal-tasks", payload)
+    if not result.get("ok") and result.get("error") == "Project not found":
+        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
+    return result

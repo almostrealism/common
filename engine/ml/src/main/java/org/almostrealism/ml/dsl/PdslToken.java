@@ -28,6 +28,12 @@ public class PdslToken {
 		LAYER,
 		/** {@code model} keyword introducing a model definition. */
 		MODEL,
+		/**
+		 * {@code import} keyword introducing an import statement. Followed by a string literal
+		 * naming the classpath resource of another {@code .pdsl} asset whose definitions this
+		 * file depends on.
+		 */
+		IMPORT,
 		/** {@code config} keyword introducing a configuration block. */
 		CONFIG,
 		/** {@code data} keyword introducing a data block definition. */

@@ -946,14 +946,15 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * attention stage followed by a residual SwiGLU feed-forward stage. Its {@code transformer},
 	 * {@code transformer_qk_norm} and {@code transformer_mra} layers are what the
 	 * {@link #transformer} methods build. They call the layers of {@link #ATTENTION_ASSET} and
-	 * {@link #FEED_FORWARD_ASSET}, so the three assets are parsed into one program.
+	 * {@link #FEED_FORWARD_ASSET}, which this asset imports, so parsing it alone resolves all
+	 * three into one program.
 	 */
 	String TRANSFORMER_ASSET = "/pdsl/transformer.pdsl";
 
 	/**
-	 * Builds one layer of {@link #TRANSFORMER_ASSET} for a {@code (1, dim)} token vector, from the
-	 * program formed by that asset together with {@link #ATTENTION_ASSET} and
-	 * {@link #FEED_FORWARD_ASSET}, whose layers it composes.
+	 * Builds one layer of {@link #TRANSFORMER_ASSET} for a {@code (1, dim)} token vector. That
+	 * asset imports {@link #ATTENTION_ASSET} and {@link #FEED_FORWARD_ASSET}, whose layers it
+	 * composes, so parsing it alone yields the program that holds all three.
 	 *
 	 * @param layer the layer name: {@code transformer}, {@code transformer_qk_norm} or
 	 *              {@code transformer_mra}
@@ -979,7 +980,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 
 		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
 		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResources(ATTENTION_ASSET, FEED_FORWARD_ASSET, TRANSFORMER_ASSET),
+		return loader.buildLayer(loader.parseResource(TRANSFORMER_ASSET),
 				layer, shape(1, dim), args, requirements);
 	}
 

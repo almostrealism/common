@@ -7,6 +7,11 @@
 // The lm_head.weight is a no-bias linear layer [3406, 1024] shared between
 // both transformers in the SkyTNT architecture.
 
+// Assembly root of the SkyTNT transformer: importing the block asset lets a caller resolve
+// every layer of the model (a stack of skytnt_block capped by skytnt_norm/skytnt_lm_head)
+// from this one file.
+import "/pdsl/midi/skytnt_block.pdsl"
+
 // ----- Final RMSNorm only -----
 // Used for the main transformer (net) output before passing to net_token.
 

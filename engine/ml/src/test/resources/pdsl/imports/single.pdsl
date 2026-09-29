@@ -1,0 +1,7 @@
+// Imports the leaf asset and calls its layer, proving a single import brings the
+// imported file's definitions into scope.
+import "/pdsl/imports/leaf.pdsl"
+
+layer single_wrap() -> [1, 4] {
+    leaf_identity()
+}
