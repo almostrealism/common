@@ -111,9 +111,18 @@ Concrete, ordered deliverables:
    than 2x") mechanically rejects a net timeout increase above 2× (5 min → anything over 10 min).
    Step 0 must therefore also add a **new, independently selectable profiled-measurement method**
    (embed=64, depth=1, same configuration as `testProfiledFineTuning()`) with its own explicit
-   JUnit timeout sized to the expected run and no larger than the 40-minute runner ceiling. A
-   brand-new method with a larger timeout has no removed counterpart, so it does not trip
-   Pattern 9; the existing method is left exactly as it is.
+   JUnit timeout sized to the expected run and **strictly shorter than the runner timeout, not
+   merely equal to it**. The runner timeout is a total wall-clock budget that already includes the
+   synchronous preflight/build step before the test JVM's own timer is armed
+   (`_remaining_timeout_seconds` in `tools/mcp/test-runner/server.py` subtracts elapsed preflight
+   from `timeout_minutes * 60`, so the JVM's remaining budget is *less* than the configured runner
+   timeout). A JUnit timeout set equal to the 40-minute runner ceiling would therefore be killed by
+   the runner before JUnit could abort the method and run the `finally` block that saves the
+   profile (see the save-on-failure defect below). Size the JUnit timeout to the expected run plus
+   a margin, and keep it below the runner timeout with explicit headroom reserved for preflight and
+   for the profile-persistence `finally` block — e.g. a JUnit timeout of ~30 min under a 40-min
+   runner budget, not 40 under 40. A brand-new method with a larger timeout has no removed
+   counterpart, so it does not trip Pattern 9; the existing method is left exactly as it is.
 
    **This new method must wrap only the first backward step in its own `OperationProfile`** so
    the emitted XML is backward-scoped. This is not a convenience: `ar-profile-analyzer` cannot
@@ -184,15 +193,28 @@ Concrete, ordered deliverables:
 
 1. **Reproduce the scaling measurement on current `master`.** Using the harness prepared in
    step 0, run the small-to-mid configurations (embed 8 → 64, at minimum) individually and
-   capture the current numbers alongside the documented Feb-2026 numbers. **Record the exact
-   `master` commit SHA the measurements were taken at**, together with the host and backend (see
-   Open questions): "current `master`" is not a reproducible baseline — it moves, and if the
+   capture the current numbers alongside the documented Feb-2026 numbers. **Record two SHAs for
+   every measurement: the base `master`/compiler commit the branch was built on, and the exact
+   commit of the tested worktree that actually produced the numbers**, together with the host and
+   backend (see Open questions). The base `master` SHA alone does not identify the code that ran:
+   step 0 first changes `AggressiveFineTuningTest`, so every measurement executes a branch worktree
+   whose tree differs from that `master` commit, and the numbers belong to the tested commit, not
+   to `master`. "Current `master`" is not a reproducible baseline — it moves, and if the
    conditional step-6 optimization later lands in this same workstream the before/after numbers
    would otherwise no longer be tied to the compiler source that produced them. Every reported
-   figure and every before/after comparison names the SHA it was measured at. The like-for-like
+   figure and every before/after comparison names both SHAs it was measured at. The like-for-like
    comparison with Feb-2026 is **cold first-step latency** (that is what the old `Backward (ms)`
    column measured); the derived compile estimate (`cold − warm`) is reported next to it, never in
-   place of it. Note that `FINE_TUNE_FAIL.md` holds *two* Feb-2026 scaling tables that disagree for
+   place of it. **Repeat each configuration and report a median plus spread, not a single
+   observation.** When compile took tens of minutes, one sample was enough because host noise was
+   negligible against the signal; if compile has fallen to seconds, `cold − warm` becomes the
+   difference of two small, noisy wall-clock samples, and host load, JVM warm-up, and GC can shift
+   it enough to change the fitted scaling exponent or a step-6 before/after conclusion. Take
+   several **independent cold starts** per configuration — each in a fresh process (or at least a
+   freshly built model) so lazy backward compilation is not already cached — record the warm step
+   from each, and report the median and the spread (min–max or inter-quartile range) for both cold
+   and derived-compile figures. Any step-6 before/after uses the same repetition protocol on both
+   sides so the comparison is between distributions, not between two single runs. Note that `FINE_TUNE_FAIL.md` holds *two* Feb-2026 scaling tables that disagree for
    the same configurations (§"Current Scaling Data": embed=8 51,988 ms, embed=16 cancelled after
    >300,000 ms; §"Scaling Test Results": embed=8 37,957 ms, embed=16 472,645 ms). Compare against
    both, state which one each ratio uses, and do not quote a single "Feb-2026 number" as if it were
@@ -356,8 +378,10 @@ end-to-end training runs.
    independent limits this must satisfy: the runner-level timeout is a ceiling the harness
    enforces, but each `@Test` also carries its own JUnit `@Test(timeout = 5 * 60000)`, and the
    runner cannot lengthen that — so the new per-configuration and profiled methods added in
-   step 0 each need a JUnit timeout sized to their own expected run (at most the 40-minute runner
-   ceiling), while the timeouts on the existing methods stay unchanged. Run the new profiled
+   step 0 each need a JUnit timeout sized to their own expected run and **strictly shorter than the
+   runner timeout** (the runner budget includes preflight/build time, so a JUnit timeout equal to
+   the 40-minute runner ceiling would be killed before the method can unwind and save its profile;
+   reserve explicit margin), while the timeouts on the existing methods stay unchanged. Run the new profiled
    method and each scaling configuration as its own selectable method; prefer the smaller configurations
    first, and if embed=128/256 do not complete in budget, record that as the current practical
    ceiling rather than forcing it.
@@ -387,8 +411,10 @@ end-to-end training runs.
 - Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
   or the explicitly labelled `cold − warm` estimate, never raw first-step latency.
 - Current backward-compile numbers for at least embed ∈ {8, 16, 32, 64} on today's `master`,
-  presented next to the Feb-2026 numbers, each annotated with the exact `master` commit SHA, host,
-  and backend they were measured at (per Scope step 1). For any embed-scaling or depth claim, the numbers
+  presented next to the Feb-2026 numbers, each annotated with both the base `master` commit SHA
+  and the exact tested-worktree commit SHA (the branch commit carrying the step-0 harness change,
+  which is what actually produced the numbers), plus the host and backend they were measured at
+  (per Scope step 1). For any embed-scaling or depth claim, the numbers
   come from a *controlled* series (embed varied with other dimensions fixed; ≥2 depth points at
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
@@ -427,7 +453,9 @@ end-to-end training runs.
   `feature/lora-gradients` work. The lever is profile-evidenced when a complete profile exists.
   Otherwise it is explicitly labelled as a hypothesis from wall-clock and partial-profile data.
 - If a clean lever was implemented: a before/after measurement from the same harness showing
-  the effect; the relevant targeted test(s) pass; and the build validator is clean
+  the effect, taken with the same repetition protocol on both sides (median plus spread over
+  several independent cold starts, per Scope step 1) so the change is distinguishable from
+  measurement noise; the relevant targeted test(s) pass; and the build validator is clean
   (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`).
 - A `performance`-namespace memory recording the revised feasibility verdict.
 
@@ -467,9 +495,12 @@ Recorded for whoever approves this plan; none of them is resolved by this docume
   measurement differences. Cold first-step latency is the closest like-for-like metric; any
   headline ratio should say which metric it compares.
 - **Machine, backend, and commit.** The Feb-2026 numbers do not record the host or the
-  `AR_HARDWARE_DRIVER` backend. Current runs should record both **and the exact `master` commit
-  SHA** they were taken at (per Scope step 1), since "current `master`" moves and any before/after
-  from a step-6 optimization must be tied to the compiler source that produced each number.
+  `AR_HARDWARE_DRIVER` backend. Current runs should record both **and two SHAs — the base `master`
+  commit and the exact tested-worktree commit that produced the numbers** (per Scope step 1). The
+  tested commit is the one that matters: step 0 changes the harness, so the measured tree is never
+  plain `master`; recording only the `master` SHA would not identify the code that ran. "Current
+  `master`" also moves, and any before/after from a step-6 optimization must be tied to the exact
+  compiler source that produced each number.
   Cross-machine ratios should
   be treated as indicative only (the `CONVOLUTION_COMPILE_TIME.md` discipline of profile-based
   ratios applies).
