@@ -115,6 +115,22 @@ Concrete, ordered deliverables:
    brand-new method with a larger timeout has no removed counterpart, so it does not trip
    Pattern 9; the existing method is left exactly as it is.
 
+   **This new method must wrap only the first backward step in its own `OperationProfile`** so
+   the emitted XML is backward-scoped. This is not a convenience: `ar-profile-analyzer` cannot
+   restrict a ranking to a subtree. `find_slowest_by_category` (backed by `ProfileAnalyzerCLI.printSlowest`)
+   always collects every node in the profile (`collectNodes(root, …)`) and takes no node key, and
+   `list_children` (`ProfileAnalyzerCLI.printChildren`) returns only the 20 children with the greatest
+   *total* duration, so a compile-heavy but run-light descendant of the backward subtree can be
+   dropped from its output and it cannot feed a category ranking anyway. The only reliable way to
+   get a backward-specific compile ranking out of the analyzer is to hand it a profile that already
+   contains only the backward pass. The existing `runProfiledFineTuning` wraps model creation,
+   forward execution, and three epochs in one profile; the new method must instead build the model
+   and warm the forward pass outside the profiled region and profile just the first
+   `backward.run()` (the lazy-compile step), writing that scoped profile to the module `results/`
+   directory. If isolating the backward step cleanly is not feasible in the harness, that is itself
+   a step-0 finding to record — the profile-scope success criterion below then falls back to a
+   whole-run profile with the limitation stated, not to an unsupported subtree ranking.
+
    The same harness change must also fix two measurement defects in the existing code, or the
    numbers it produces will not mean what the rest of this plan needs them to mean:
 
@@ -192,12 +208,18 @@ Concrete, ordered deliverables:
    and the stage-detail accumulations from `get_timing_breakdown` on the backward-pass nodes — and
    read the verdict from the two together.
 
-   **Scope the analysis to the backward phase.** The profiled method wraps model creation, forward
-   execution, and three training epochs (`runProfiledFineTuning` builds the model, then calls
-   `optimizer.optimize(3)`), so an all-node ranking over the whole profile is not backward-specific.
-   Use `list_children` to locate the backward subtree and rank within it (or, if the harness in
-   step 0 is extended to profile only the first backward step, over that scope), rather than reading
-   a whole-run top list as a backward-compile result. Then drill into the top nodes with
+   **Scope the analysis to the backward phase.** The *existing* `runProfiledFineTuning` wraps model
+   creation, forward execution, and three training epochs (`optimizer.optimize(3)`), so an all-node
+   ranking over that whole profile is not backward-specific. The analyzer cannot fix this after the
+   fact — `find_slowest_by_category` always ranks over the entire profile and takes no subtree key,
+   and `list_children` only returns the 20 highest *total*-duration children, so it neither scopes a
+   category ranking nor is guaranteed to surface a compile-heavy/run-light backward node. Backward
+   scoping must therefore come from the profile itself: rank over the backward-only profile that
+   step 0's new method emits (a profile wrapping just the first `backward.run()`), so a plain
+   whole-profile `find_slowest_by_category(category="compile")` is already backward-specific. Only if
+   step 0 could not isolate the backward step is a whole-run profile used, and then the ranking is
+   reported with the explicit caveat that it includes model-creation and forward/epoch nodes.
+   Then drill into the top nodes with
    `get_timing_breakdown` and `get_source`, and confirm or refute that the Feb-2026 hot spots
    (`collectionProductComputation`, `collectionAddComputation`, nested-`reshape` overhead,
    the 72×-larger `projectDelta` intermediate) are still the top consumers, or whether the
@@ -231,7 +253,10 @@ Concrete, ordered deliverables:
    `CONVOLUTION_COMPILE_TIME.md` §"What remains": reshape/delegate-chain fusion, the 72×
    `projectDelta` intermediate, or a remaining enumeration hot spot). Cite the evidence in the
    unit its timing kind supports. For a profile node, give its compile time and its share of
-   total compile time. For a `stageDetailTime` entry (for example an `expressionCacheMatch` or
+   total compile time — computed against a compile-category denominator (the summed
+   `find_slowest_by_category(category="compile")` durations), **not** the analyzer's own
+   `percentage` field, which `ProfileAnalyzerCLI.printSlowest` derives against total node
+   duration (compile + run) and so understates the compile share. For a `stageDetailTime` entry (for example an `expressionCacheMatch` or
    `kernelSeries` hot spot), give its accumulated seconds only. That figure is non-exclusive
    (see Motivation), so no valid percentage of the run exists for it. If the profile could not be
    captured (see Open questions), say so. Name the lever as a hypothesis backed by wall-clock data,
@@ -290,7 +315,9 @@ end-to-end training runs.
 - The additive harness change from Scope step 0 landed (per-configuration and profiled
   methods, each individually selectable and bounded) with the existing tests, including their
   timeouts, unchanged; it reports cold first-step and
-  warm second-step latency separately, and the profiled run writes its XML under the module's
+  warm second-step latency separately, the profiled method emits a backward-scoped profile
+  (wrapping just the first `backward.run()`, or the whole run with the limitation recorded if that
+  could not be isolated), and the profiled run writes its XML under the module's
   `results/` directory rather than a hard-coded container path.
 - Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
   or the explicitly labelled `cold − warm` estimate, never raw first-step latency.
@@ -300,10 +327,14 @@ end-to-end training runs.
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
 - A fresh `finetune_profile_embed64` profile captured and analyzed **within the backward-pass
-  scope** (not a whole-run ranking over model creation, forward, and the three profiled epochs),
+  scope** — a profile emitted around the first `backward.run()` alone (per Scope step 0), since
+  the analyzer cannot scope a ranking to a subtree after the fact — not a whole-run ranking over
+  model creation, forward, and the three profiled epochs,
   with two separate rankings. First, the current top-3 backend-compile cost nodes from
   `ar-profile-analyzer` `find_slowest_by_category` (`category="compile"`), each carrying its compile
-  time and its share of total compile time. Second, the stage-detail accumulations
+  time and its share of total compile time, where that share is computed against a compile-category
+  denominator (the summed compile durations of the ranked nodes) rather than the analyzer's
+  reported `percentage`, which is a share of total node duration (compile + run). Second, the stage-detail accumulations
   (`expressionCacheMatch`, `kernelSeries`) from `get_timing_breakdown`, each quoted as accumulated
   seconds only — never as a share, and never ranked against the node-level compile shares, since
   `find_slowest_by_category(category="compile")` does not include them.
