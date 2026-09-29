@@ -58,18 +58,24 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 `FINE_TUNE_FAIL.md` is the platform's authoritative verdict on training feasibility, and it says, in
 bold, that production-scale LoRA fine-tuning is **infeasible** — backward-pass compile time scaling
 super-linearly, projected to "days, not minutes" at embed=1024/depth=16. That measurement is from
-**February 2026**, and its own profile attributes the cost to matrix-multiply derivatives, gradient
-accumulation, and nested-`reshape` index arithmetic — i.e. exactly the `Sum.simplify → getSeries →
-Expression.sequence` analysis that the September kernel-series work then optimized ~150×. Two later
-compile-cache changes also touched the fine-tuning path. Nobody has re-measured the transformer
-backward pass since. The verdict that gates the entire proof-of-value trajectory is very likely
-stale — and stale in the pessimistic direction.
+**February 2026**. Its stage-detail profile names `expressionCacheMatch` (~1375.6 s) as the *dominant*
+backward-compile cost, with the kernel-series / `Sum.simplify → getSeries → Expression.sequence`
+analysis a *secondary* consumer (~150 s). Both fronts have since moved, but by *different* work, and
+it is worth keeping them straight: the September `ExplicitExpressionMatrix` cache-bypass and
+on-demand-entry changes attacked the dominant `expressionCacheMatch` cost directly (isolated
+`testSingleAttentionBackward` ~186 s → ~3.6 s on Metal), while the `feature/cl-profile-perf`
+kernel-series rebuild (`convDeltaSmall` 172 s → 1.15 s, ~150×) attacked the secondary one. The
+~150× convolution figure therefore is *not* a prediction for the fine-tuning backward pass; it is
+the smaller of the two levers. Nobody has re-measured the transformer backward pass against either.
+The verdict that gates the entire proof-of-value trajectory is very likely stale — and stale in the
+pessimistic direction.
 
 Separately confirmed while investigating: frozen-weight gradient pruning already exists at the
 layer level (`DefaultGradientPropagation` only calls `delta()` on the trainable weight list; LoRA
 excludes base weights), so the remaining backward-compile cost is the *expression-tree size* of
-differentiating the trainable weights through the deep forward graph — precisely what the
-kernel-series work attacks. That reinforces the premise that the old numbers should move.
+differentiating the trainable weights through the deep forward graph — precisely the territory
+both the `ExplicitExpressionMatrix` cache work and the kernel-series work attack. That reinforces
+the premise that the old numbers should move.
 
 #### Why this task
 
