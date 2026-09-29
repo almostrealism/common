@@ -757,12 +757,13 @@ so that check is made from the agent's side with `lsof`.
 ### What the `Master Agent Dispatch` workflow does
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
-that fire on a merge to master: `plan-next-task` (Project Manager), `doc-qa`
+that fire on a merge to master: `plan-next-task` (Project Manager),
+`plan-release-task` (Task Planning), `doc-qa`
 (Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa`,
-`performance-qa` and `pdsl-qa`. The first three were separate workflows with
-byte-identical triggers; merging them keeps the Actions sidebar navigable
-without changing what any of them does, and each job added since lands here for
-the same reason.
+`performance-qa` and `pdsl-qa`. The `plan-next-task`, `doc-qa` and `defect-hunt`
+jobs were separate workflows with byte-identical triggers; merging them keeps the
+Actions sidebar navigable without changing what any of them does, and each job
+added since — `plan-release-task` among them — lands here for the same reason.
 
 The six QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`) share a shape:
@@ -786,6 +787,20 @@ so without it a merge landing mid-round started a second round beside the first
 came to coexist). Only when no round is in progress does the job check the
 backlog: it starts a round unless more than `MAX_OPEN_PRS` (6, the number of
 automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
+
+`plan-release-task` plans the next ready tracker task of the release master is
+building (`<TRACKER_PROJECT> <root pom.xml version>`), beside the free-form
+round rather than instead of it. It is gated three ways, in order: no
+`project/task-*` round in progress (`qa-cadence.sh`, same settings as above),
+room in the backlog (`tools/ci/open-pr-backlog.sh`, which `plan-next-task` uses
+too, with the same `MAX_OPEN_PRS`), and a claimable task
+(`tools/ci/tracker-claimable.sh`, which asks the controller's
+`GET /api/tracker/claimable` and fails closed). With nothing claimable no
+branch, workstream or agent job is created. `force` skips the first two gates,
+never the third. The round's workstream is registered with the tracker
+`planner` role (`TRACKER_CAPABILITIES`), which is what lets its agent call
+`tracker_claim_next_task`; the agent claims the task itself, plans only that
+task, and never writes `docs/plans/MANAGER_LOG.md`.
 
 Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
 its tests. The one job that runs any tests is `coverage-qa`: it runs the Python

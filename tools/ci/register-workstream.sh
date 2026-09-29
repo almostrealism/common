@@ -34,6 +34,9 @@
 #                             sent as CF-Access-Client-Id header when set
 #   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret;
 #                             sent as CF-Access-Client-Secret header when set
+#   TRACKER_CAPABILITIES - comma-separated tracker roles granted to agents
+#                       on the workstream (e.g. "planner"). Applied on
+#                       registration, and to an existing workstream too.
 #   REPO_URL          - repository clone URL. Sent as repoUrl: it identifies
 #                       the workstream alongside the branch, and a workstream
 #                       is cloned from it — hence the SSH form, matching
@@ -105,6 +108,14 @@ if [ -n "${REPO_URL:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg url "$REPO_URL" '. + {repoUrl: $url}')
 fi
 
+# Tracker roles as a JSON array, e.g. "planner, steward" -> ["planner","steward"].
+TRACKER_CAPABILITIES_JSON=""
+if [ -n "${TRACKER_CAPABILITIES:-}" ]; then
+    TRACKER_CAPABILITIES_JSON=$(jq -cn --arg caps "$TRACKER_CAPABILITIES" \
+        '$caps | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
+fi
+
 RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
@@ -125,26 +136,52 @@ fi
 WORKSTREAM_ID=$(echo "$BODY" | jq -r '.workstreamId // empty')
 EXISTING=$(echo "$BODY" | jq -r '.existing // false')
 
-# If the workstream already existed and we have a plan file, update it
-# so the planning document gets attached to the existing workstream.
-if [ "$EXISTING" = "true" ] && [ -n "${PLAN_FILE:-}" ] && [ -n "$WORKSTREAM_ID" ]; then
-    echo "Workstream already exists ($WORKSTREAM_ID) — updating with planning document"
+# If the workstream already existed, registration returned it unchanged, so
+# the planning document and tracker roles are applied with an update.
+UPDATE_PAYLOAD='{}'
+if [ -n "${PLAN_FILE:-}" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --arg plan "$PLAN_FILE" '. + {planningDocument: $plan}')
+fi
+if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
+fi
+if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREAM_ID" ]; then
+    echo "Workstream already exists ($WORKSTREAM_ID) — updating it"
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
-    UPDATE_PAYLOAD=$(jq -n --arg plan "$PLAN_FILE" '{planningDocument: $plan}')
+
+    # An update that carries tracker capabilities must succeed: a task-planning
+    # agent submitted without its "planner" role cannot call
+    # tracker_claim_next_task, so a silently-dropped update would produce a
+    # round that can do nothing. A plan-only update stays best-effort — the
+    # planning document is not load-bearing for the agent's ability to work.
+    REQUIRE_UPDATE=false
+    if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
+        REQUIRE_UPDATE=true
+    fi
 
     UPDATE_RESPONSE=$(curl "${CURL_ARGS[@]}" \
         -d "$UPDATE_PAYLOAD" "$UPDATE_ENDPOINT") || UPDATE_EXIT=$?
 
+    UPDATE_OK=false
     if [ "${UPDATE_EXIT:-0}" -ne 0 ]; then
-        echo "::warning::Failed to update workstream with planning document (curl exit $UPDATE_EXIT)"
+        UPDATE_MESSAGE="Failed to update workstream (curl exit $UPDATE_EXIT)"
     else
         UPDATE_CODE=$(echo "$UPDATE_RESPONSE" | tail -1)
         UPDATE_BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
         if [ "$UPDATE_CODE" != "200" ]; then
-            echo "::warning::Failed to update workstream with planning document (HTTP $UPDATE_CODE): $UPDATE_BODY"
+            UPDATE_MESSAGE="Failed to update workstream (HTTP $UPDATE_CODE): $UPDATE_BODY"
         else
-            echo "Updated workstream $WORKSTREAM_ID with planning document: $PLAN_FILE"
+            UPDATE_OK=true
         fi
+    fi
+
+    if [ "$UPDATE_OK" = "true" ]; then
+        echo "Updated workstream $WORKSTREAM_ID: $UPDATE_PAYLOAD"
+    elif [ "$REQUIRE_UPDATE" = "true" ]; then
+        echo "::error::${UPDATE_MESSAGE} — tracker capabilities could not be applied"
+        exit 1
+    else
+        echo "::warning::${UPDATE_MESSAGE}"
     fi
 fi
 
