@@ -253,6 +253,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
+
+    /** Answers {@code GET /api/tracker/claimable}; {@code null} until configured. */
+    private TrackerQueryHandler trackerQueryHandler;
     /** Pushed-tools configuration JSON forwarded to every submitted job. */
     private String pushedToolsConfig;
     /** Executor for delayed job submissions. Daemon thread so it never blocks JVM shutdown. */
@@ -384,6 +387,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setArManagerUrl(String url) {
         this.arManagerUrl = url;
+    }
+
+    /**
+     * Points {@code GET /api/tracker/claimable} at the tracker service.
+     *
+     * @param url       the tracker base URL (e.g., "http://ar-tracker:8030")
+     * @param authToken the tracker bearer token, or {@code null} when it has none
+     */
+    public void setTrackerService(String url, String authToken) {
+        this.trackerQueryHandler = new TrackerQueryHandler(url, authToken);
     }
 
     /**
@@ -523,6 +536,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
             return alertHandler.handle(session);
+        }
+
+        if (Method.GET.equals(method) && "/api/tracker/claimable".equals(uri)) {
+            return trackerQueryHandler == null
+                    ? errorResponse("tracker service not configured")
+                    : trackerQueryHandler.handleClaimable(session, this::errorResponse);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
@@ -681,6 +700,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
      * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
+     *
+     * <p>{@code bypassAgentPermissionPrompts=true} grants this job alone the agent runtime's
+     * permission-prompt bypass (see {@link CodingAgentJobFactory#setBypassAgentPermissionPrompts}),
+     * in addition to any grant the workstream's branch policy makes. It is never written back to
+     * the workstream, so the next job on the branch does not inherit it; that job still receives
+     * the bypass independently when its target branch matches the workstream's
+     * {@code agentPermissionBypassBranches} policy. The ar-manager submit tool refuses to forward
+     * it from an in-flight agent.</p>
      *
      * <p>{@code selfNotify} is rejected unless {@code jobType=shell}: a shell command has no
      * agent intelligence to act on its own completion, so a wake-up is the only way that
@@ -1034,7 +1061,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        workstream.applyCapabilities(factory, factory.getTargetBranch());
+        workstream.applyCapabilities(factory, factory.getTargetBranch(),
+                extractJsonBooleanField(body, "bypassAgentPermissionPrompts"));
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
@@ -1085,6 +1113,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
+        json.append(",\"bypassAgentPermissionPrompts\":")
+                .append(factory.isBypassAgentPermissionPrompts());
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.

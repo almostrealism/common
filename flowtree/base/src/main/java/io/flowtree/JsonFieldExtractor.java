@@ -293,6 +293,47 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts a top-level field that must be a JSON array of strings, rejecting
+	 * any other shape rather than coercing it.
+	 *
+	 * <p>{@link #extractStringArray(String, String)} is lenient: a string value
+	 * reads as whatever array appears next in the document, and non-string
+	 * elements are skipped. Use this method where a malformed value must be
+	 * refused, such as a request field that grants permissions.</p>
+	 *
+	 * @param json  the JSON object string
+	 * @param field the field name
+	 * @return the array's strings in order, or {@code null} when the field is
+	 *         absent or explicitly {@code null}
+	 * @throws IllegalArgumentException if {@code json} is not a JSON object, or
+	 *         the field is neither {@code null} nor an array of strings
+	 */
+	public static List<String> extractStrictStringArray(String json, String field) {
+		JsonNode root;
+		try {
+			root = json == null ? null : MAPPER.readTree(json);
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Invalid JSON body", e);
+		}
+		if (root == null || !root.isObject()) {
+			throw new IllegalArgumentException("Expected a JSON object");
+		}
+		JsonNode node = root.get(field);
+		if (node == null || node.isNull()) return null;
+		if (!node.isArray()) {
+			throw new IllegalArgumentException(field + " must be an array of strings");
+		}
+		List<String> result = new ArrayList<>();
+		for (JsonNode element : node) {
+			if (!element.isTextual()) {
+				throw new IllegalArgumentException(field + " must be an array of strings");
+			}
+			result.add(element.asText());
+		}
+		return result;
+	}
+
+	/**
 	 * Counts the number of object entries in a JSON array field.
 	 *
 	 * @param json  the JSON string

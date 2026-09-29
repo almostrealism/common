@@ -95,6 +95,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
 | GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
+| GET | `/api/tracker/claimable` | -- | How many tasks of a tracker release an agent could claim (query params: `project`, `release` — names). Returns the tracker's own `{"ok", "release_id", "count"}`; used by CI to decide whether to start a task-planning round. 503 when the tracker is unreachable |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
 #### Workstream listing filters
@@ -194,7 +195,8 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 - **useTmux** -- workstream-level default for whether to launch agents in a `tmux` session (per-call override at submission time)
 - **dispatchCapable** -- when `true`, agents on this workstream are permitted to call dispatch / orchestration MCP tools (e.g. `workstream_register`, `workstream_update_config`); defaults to `false` for safety
-- **agentPermissionBypassBranches** -- branch-name prefixes (e.g. `ci/`) whose coding-agent jobs may bypass the agent runtime's interactive permission prompts; a job qualifies when its target branch starts with one of the prefixes. Empty by default (no branch qualifies); blank entries are dropped, and a job with no target branch never qualifies
+- **trackerCapabilities** -- tracker roles granted to agents on this workstream: `planner` (may claim the next ready task of a release with `tracker_claim_next_task`) and `steward` (may list a release with `tracker_list_release_tasks` and create or update goal-derived tasks with `tracker_upsert_goal_task`); empty by default. ar-manager refuses those tools to a workstream without the role
+- **agentPermissionBypassBranches** -- branch-name prefixes (e.g. `ci/`) whose coding-agent jobs may bypass the agent runtime's interactive permission prompts; a job qualifies when its target branch starts with one of the prefixes. Empty by default (no branch qualifies); blank entries are dropped, and a job with no target branch never qualifies. Prefer the per-job grant (`skip_agent_permission_prompts` on `workstream_submit_task`), which applies to one job and is never stored on the workstream
 - **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
 - **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups targeting this workstream are dropped while manual submissions are still accepted
 

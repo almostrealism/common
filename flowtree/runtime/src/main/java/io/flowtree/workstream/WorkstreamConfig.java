@@ -219,6 +219,13 @@ public class WorkstreamConfig {
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean dispatchCapable;
         /**
+         * Tracker roles granted to agents on this workstream. Persisted as a
+         * {@code trackerCapabilities} list, omitted when empty. See
+         * {@link Workstream#getTrackerCapabilities()}.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private List<String> trackerCapabilities;
+        /**
          * Workstream-level default for the agent subprocess launch mode.
          * When {@code true}, coding-agent jobs on this workstream that do
          * not set the per-job {@code use_tmux} flag explicitly are launched
@@ -477,6 +484,11 @@ public class WorkstreamConfig {
          */
         public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
 
+        /** Returns the tracker roles granted to agents on this workstream, or {@code null}. */
+        public List<String> getTrackerCapabilities() { return trackerCapabilities; }
+        /** Sets the tracker roles granted to agents on this workstream. */
+        public void setTrackerCapabilities(List<String> trackerCapabilities) { this.trackerCapabilities = trackerCapabilities; }
+
         /**
          * Returns the workstream's wall-clock ceiling in hours.
          *
@@ -568,6 +580,7 @@ public class WorkstreamConfig {
             ws.setCompletionListeners(completionListeners);
             ws.setAgentPermissionBypassBranches(agentPermissionBypassBranches);
             ws.setDispatchCapable(dispatchCapable);
+            ws.setTrackerCapabilities(trackerCapabilities);
             ws.setUseTmux(useTmux);
             ws.setMaxWallClockHours(maxWallClockHours);
             ws.setDormantForCompletionListeners(dormantForCompletionListeners);
@@ -1163,6 +1176,7 @@ public class WorkstreamConfig {
         entry.setCompletionListeners(ws.getCompletionListeners());
         entry.setAgentPermissionBypassBranches(ws.getAgentPermissionBypassBranches());
         entry.setDispatchCapable(ws.isDispatchCapable());
+        entry.setTrackerCapabilities(ws.getTrackerCapabilities());
         entry.setUseTmux(ws.isUseTmux());
         entry.setMaxWallClockHours(ws.getMaxWallClockHours());
         entry.setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
