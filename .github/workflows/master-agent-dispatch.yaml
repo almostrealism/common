@@ -263,12 +263,9 @@ jobs:
   # ── Task Planning ────────────────────────────────────────────────────
   # Plans the next ready tracker task of the release this repository's
   # master is building. It runs beside the free-form Project Manager round
-  # above, not instead of it: that round maintains the repository on its own
-  # judgement, this one works through the tasks goal-driven release
-  # automation files in the tracker.
-  # TODO(review): reword "the tasks goal-driven release automation files in the
-  # tracker" — a word appears dropped (likely "the tasks in the goal-driven
-  # release automation files in the tracker").
+  # above, not instead of it: that round decides for itself what the
+  # repository needs next, while this one works through the tasks a person
+  # has already approved in the release's goal documents in the tracker.
   #
   # The round is gated three ways, in order: no task-planning round already
   # in progress (the shared cadence gate on project/task- branches), room in

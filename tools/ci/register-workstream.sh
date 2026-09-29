@@ -149,19 +149,39 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
     echo "Workstream already exists ($WORKSTREAM_ID) — updating it"
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
 
+    # An update that carries tracker capabilities must succeed: a task-planning
+    # agent submitted without its "planner" role cannot call
+    # tracker_claim_next_task, so a silently-dropped update would produce a
+    # round that can do nothing. A plan-only update stays best-effort — the
+    # planning document is not load-bearing for the agent's ability to work.
+    REQUIRE_UPDATE=false
+    if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
+        REQUIRE_UPDATE=true
+    fi
+
     UPDATE_RESPONSE=$(curl "${CURL_ARGS[@]}" \
         -d "$UPDATE_PAYLOAD" "$UPDATE_ENDPOINT") || UPDATE_EXIT=$?
 
+    UPDATE_OK=false
     if [ "${UPDATE_EXIT:-0}" -ne 0 ]; then
-        echo "::warning::Failed to update workstream (curl exit $UPDATE_EXIT)"
+        UPDATE_MESSAGE="Failed to update workstream (curl exit $UPDATE_EXIT)"
     else
         UPDATE_CODE=$(echo "$UPDATE_RESPONSE" | tail -1)
         UPDATE_BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
         if [ "$UPDATE_CODE" != "200" ]; then
-            echo "::warning::Failed to update workstream (HTTP $UPDATE_CODE): $UPDATE_BODY"
+            UPDATE_MESSAGE="Failed to update workstream (HTTP $UPDATE_CODE): $UPDATE_BODY"
         else
-            echo "Updated workstream $WORKSTREAM_ID: $UPDATE_PAYLOAD"
+            UPDATE_OK=true
         fi
+    fi
+
+    if [ "$UPDATE_OK" = "true" ]; then
+        echo "Updated workstream $WORKSTREAM_ID: $UPDATE_PAYLOAD"
+    elif [ "$REQUIRE_UPDATE" = "true" ]; then
+        echo "::error::${UPDATE_MESSAGE} — tracker capabilities could not be applied"
+        exit 1
+    else
+        echo "::warning::${UPDATE_MESSAGE}"
     fi
 fi
 

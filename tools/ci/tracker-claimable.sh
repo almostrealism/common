@@ -22,6 +22,8 @@
 # Optional environment variables:
 #   CF_ACCESS_CLIENT_ID     - Cloudflare Access service token client ID
 #   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret
+#   CURL_CONNECT_TIMEOUT    - seconds to wait for the connection (default 10)
+#   CURL_MAX_TIME           - seconds to bound the whole request  (default 30)
 #
 # Outputs (to stdout, and to $GITHUB_OUTPUT when set):
 #   claimable=<count>
@@ -51,7 +53,17 @@ emit() {
 
 # Seeded rather than declared empty: under `set -u`, bash 3.2 treats the
 # expansion of an empty array as an unbound variable.
-CURL_ARGS=(-sS -f -G -H "Accept: application/json")
+#
+# --connect-timeout and --max-time bound the request so a controller that
+# accepts the connection but stops responding cannot hold the task-planning
+# concurrency slot open indefinitely: curl gives up, the request fails, and
+# the fail-closed fallback below runs promptly instead. Both bounds are
+# overridable (CURL_CONNECT_TIMEOUT, CURL_MAX_TIME) for callers that need a
+# tighter or looser budget.
+CURL_ARGS=(-sS -f -G \
+    --connect-timeout "${CURL_CONNECT_TIMEOUT:-10}" \
+    --max-time "${CURL_MAX_TIME:-30}" \
+    -H "Accept: application/json")
 if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
     CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
     CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")

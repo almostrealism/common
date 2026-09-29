@@ -15,6 +15,7 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -27,13 +28,20 @@ class _ControllerStub:
     """A local stand-in for the FlowTree controller.
 
     ``claimable`` is the (status, body) the claimable endpoint answers with;
-    ``existing`` makes workstream registration report an existing workstream.
+    ``existing`` makes workstream registration report an existing workstream;
+    ``update`` is the (status, body) the ``/update`` endpoint answers with;
+    ``claimable_delay`` sleeps that many seconds before answering the
+    claimable endpoint, to stand in for a controller that accepts the
+    connection but stops responding.
     Every request is recorded as (method, path, query, headers, body).
     """
 
-    def __init__(self, claimable=(200, {"ok": True, "count": 0}), existing=False):
+    def __init__(self, claimable=(200, {"ok": True, "count": 0}), existing=False,
+                 update=(200, {"ok": True}), claimable_delay=0):
         self.claimable = claimable
         self.existing = existing
+        self.update = update
+        self.claimable_delay = claimable_delay
         self.seen = []
         stub = self
 
@@ -54,6 +62,8 @@ class _ControllerStub:
 
             def do_GET(self):
                 self._record(None)
+                if stub.claimable_delay:
+                    time.sleep(stub.claimable_delay)
                 self._reply(*stub.claimable)
 
             def do_POST(self):
@@ -61,7 +71,7 @@ class _ControllerStub:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 path = self._record(body)
                 if path.endswith("/update"):
-                    self._reply(200, {"ok": True})
+                    self._reply(*stub.update)
                 else:
                     self._reply(200, {"workstreamId": "ws-1", "existing": stub.existing})
 
@@ -130,6 +140,17 @@ class TrackerClaimableTests(unittest.TestCase):
             "TRACKER_PROJECT": "Common", "TRACKER_RELEASE": "Common 1.2",
             "CONTROLLER_URL": url})
         self.assertEqual((0, "false"), (code, out["run"]))
+
+    def test_a_hanging_controller_starts_nothing_within_the_budget(self):
+        # The controller accepts the connection but never answers in time;
+        # --max-time must make curl give up so the fail-closed fallback runs
+        # instead of the request holding the concurrency slot indefinitely.
+        stub = _ControllerStub(claimable=(200, {"ok": True, "count": 5}),
+                               claimable_delay=30)
+        started = time.monotonic()
+        code, out, _ = self._ask(stub, CURL_MAX_TIME="1", CURL_CONNECT_TIMEOUT="2")
+        self.assertEqual((0, "false"), (code, out["run"]))
+        self.assertLess(time.monotonic() - started, 15)
 
     def test_the_access_token_is_sent_when_both_halves_are_set(self):
         stub = _ControllerStub(claimable=(200, {"ok": True, "count": 1}))
@@ -226,6 +247,28 @@ class RegisterWorkstreamRoleTests(unittest.TestCase):
         stub = _ControllerStub(existing=True)
         self._register(stub, "")
         self.assertEqual(1, len(stub.seen))
+
+    def test_a_failed_capability_update_fails_the_registration(self):
+        # A task-planning agent submitted without its "planner" role cannot
+        # claim a task, so a dropped capability update must fail the step
+        # rather than warn and exit 0.
+        stub = _ControllerStub(existing=True, update=(503, {"ok": False}))
+        code, _, log = self._register(stub, "planner")
+        self.assertEqual(1, code, log)
+        self.assertEqual(2, len(stub.seen))
+
+    def test_a_failed_plan_only_update_stays_best_effort(self):
+        # No capabilities requested: a failed planning-document update warns
+        # but still exits 0, preserving the pre-existing behavior.
+        stub = _ControllerStub(existing=True, update=(503, {"ok": False}))
+        self.addCleanup(stub.close)
+        code, out, log = _run("register-workstream.sh", {
+            "BRANCH": "project/task-1", "BASE_BRANCH": "master",
+            "CONTROLLER_URL": stub.url, "TRACKER_CAPABILITIES": "",
+            "PLAN_FILE": "docs/plans/PLAN.md"})
+        self.assertEqual(0, code, log)
+        self.assertEqual("ws-1", out["workstream_id"])
+        self.assertEqual(2, len(stub.seen))
 
 
 if __name__ == "__main__":
