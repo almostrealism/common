@@ -3,8 +3,8 @@
 ## Title
 
 Re-measure and re-baseline transformer backward-pass compilation scaling after the
-kernel-series / block-evaluation optimization, and revise the fine-tuning feasibility
-verdict accordingly.
+`ExplicitExpressionMatrix` expression-cache work and the kernel-series / block-evaluation
+optimization, and revise the fine-tuning feasibility verdict accordingly.
 
 ## Category
 
@@ -138,6 +138,13 @@ Concrete, ordered deliverables:
      workers, where `/workspace` is not writable) `Files.createDirectories` fails before any
      measurement is taken. The profile should be written under the module's own `results/`
      directory, which is where `ar-profile-analyzer` expects `<module>/results/*.xml`.
+   - **The profile is lost if the run fails.** `testProfiledFineTuning()` calls `profile.save(...)`
+     only after `profile(profile, ...)` returns. The known `IndexProjectionProducerComputation.delta()`
+     scope error (see Open questions) propagates out of `runProfiledFineTuning` as an exception, so
+     no XML is written, including the compile timings recorded before the failure. The new
+     profiled method should save the profile whether the run succeeds or fails (for example, in a
+     `finally` block) and should record which of the two happened. A partial profile of a failed
+     run is still evidence of where compile time went up to the failure.
 
 1. **Reproduce the scaling measurement on current `master`.** Using the harness prepared in
    step 0, run the small-to-mid configurations (embed 8 → 64, at minimum) individually and
@@ -158,9 +165,12 @@ Concrete, ordered deliverables:
 
 2. **Capture a fresh backward-compile profile.** Run the new profiled-measurement method from
    step 0 (the `testProfiledFineTuning()` configuration: embed=64, depth=1), which writes an
-   `OperationProfileNode` XML. Load it with `ar-profile-analyzer`
-   (`load_profile`, `find_slowest`, `get_timing_breakdown`, `get_source`) and identify what
-   now dominates backward-pass compilation. Confirm or refute that the Feb-2026 hot spots
+   `OperationProfileNode` XML. Load it with `ar-profile-analyzer` and rank compile cost with
+   `find_slowest_by_category` using `category="compile"`. Plain `find_slowest` ranks total
+   (compile + run) duration, so once compile time has fallen, a node with a heavy run can push a
+   compile hot spot out of its result set. Then drill into the top compile nodes with
+   `get_timing_breakdown` and `get_source`, and identify what now dominates backward-pass
+   compilation. Confirm or refute that the Feb-2026 hot spots
    (`collectionProductComputation`, `collectionAddComputation`, nested-`reshape` overhead,
    the 72×-larger `projectDelta` intermediate) are still the top consumers, or whether the
    dominant cost has shifted to something else after the kernel-series work. Keep the two kinds
@@ -194,8 +204,13 @@ Concrete, ordered deliverables:
    name the one optimization that would most reduce current backward-compile time (candidates
    already catalogued in `FINE_TUNE_FAIL.md` §"Potential Solutions" and
    `CONVOLUTION_COMPILE_TIME.md` §"What remains": reshape/delegate-chain fusion, the 72×
-   `projectDelta` intermediate, or a remaining enumeration hot spot). Cite the profile node
-   and its share of total time.
+   `projectDelta` intermediate, or a remaining enumeration hot spot). Cite the evidence in the
+   unit its timing kind supports. For a profile node, give its compile time and its share of
+   total compile time. For a `stageDetailTime` entry (for example an `expressionCacheMatch` or
+   `kernelSeries` hot spot), give its accumulated seconds only. That figure is non-exclusive
+   (see Motivation), so no valid percentage of the run exists for it. If the profile could not be
+   captured (see Open questions), say so. Name the lever as a hypothesis backed by wall-clock data,
+   not as a profile-evidenced one.
 
 6. **(Conditional) Land one small, self-contained optimization.** *Only if* step 5 surfaces
    a lever that is genuinely low-risk, self-contained, and does not overlap the in-flight
@@ -234,7 +249,8 @@ end-to-end training runs.
 
 3. **Use `ar-profile-analyzer` before any hand-instrumentation.** Per the project's
    kernel-behavior rule, the fresh profile is loaded and inspected with the analyzer's
-   `get_source` / `get_timing_breakdown` / `find_slowest` before adding any `log()` probe.
+   `find_slowest_by_category` (`category="compile"`) / `get_timing_breakdown` / `get_source`
+   before adding any `log()` probe.
 
 4. **Keep the doc rewrite faithful to source.** Every claim in the revised
    `FINE_TUNE_FAIL.md` is tied to a measured number or a generated-source inspection, not to
@@ -259,12 +275,20 @@ end-to-end training runs.
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
 - A fresh `finetune_profile_embed64` profile captured and analyzed, with the current
-  top-3 backward-compile cost nodes and their time shares named from `ar-profile-analyzer`
-  (node-level shares; any `stageDetailTime` entry is quoted as accumulated time, not as a share).
+  top-3 backward-compile cost nodes named from `ar-profile-analyzer`
+  (`find_slowest_by_category`, `category="compile"`). Each node carries its compile time and its
+  share of total compile time. Any `stageDetailTime` entry is quoted as accumulated seconds, not
+  as a share.
+  *Conditional on the profile being capturable:* if the profiled run still fails with the
+  `delta()` scope error and that fix is ruled out of scope (see Open questions), this criterion is
+  instead met by one of two things. The first is an analysis of the partial profile saved on failure,
+  labelled as covering only the work before the failure. The second, if even that profile is
+  empty, is a recorded statement that no profile could be captured, with the exact current error.
 - `docs/plans/FINE_TUNE_FAIL.md` rewritten so its headline verdict matches the current
   measurement, with pre-optimization numbers retained and labelled.
-- A named, evidenced next optimization lever, scoped so it does not collide with the
-  in-flight `feature/lora-gradients` work.
+- A named next optimization lever, scoped so it does not collide with the in-flight
+  `feature/lora-gradients` work. The lever is profile-evidenced when a complete profile exists.
+  Otherwise it is explicitly labelled as a hypothesis from wall-clock and partial-profile data.
 - If a clean lever was implemented: a before/after measurement from the same harness showing
   the effect; the relevant targeted test(s) pass; and the build validator is clean
   (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`).
@@ -291,8 +315,14 @@ Recorded for whoever approves this plan; none of them is resolved by this docume
   (`'_..._i' undeclared`). Scope step 4 treats that as something to re-check, but steps 2 and 5
   depend on the profile existing. If the error still reproduces, the profile-driven attribution
   (step 2), the "top-3 cost nodes" success criterion, and the next-lever choice (step 5) all fall
-  back to wall-clock data only, and the plan's core deliverable shrinks to the scaling table. The
-  approver should decide up front whether fixing that error is in scope here or is a separate plan.
+  back to wall-clock data and whatever partial profile the step 0 save-on-failure change preserves.
+  The plan's core deliverable then shrinks to the scaling table. The success criteria already give
+  that fallback, so the plan can be carried out either way. The approver should still decide up
+  front whether fixing that error is in scope here or is a separate plan. Fixing it means changing
+  autodiff code near the `feature/lora-gradients` work that this plan otherwise avoids.
+  `FINE_TUNE_FAIL.md` records the error only against `testProfiledFineTuning`. It does not say
+  whether `testCompilationScaling()` hits it too, so the step 0 per-configuration methods may be
+  affected as well.
 - **How much of the delta is the harness, not the platform?** Step 0 changes how the numbers
   are taken (separate cold/warm columns, per-configuration methods, different timeouts). Since the
   Feb-2026 figures came from a harness configuration that no longer matches `master` (they exceed

@@ -102,7 +102,8 @@ what training is now possible so the next cycle can plan against reality.
    under the module's `results/`), then current scaling numbers, a fresh embed=64 backward-compile
    profile, a rewritten `FINE_TUNE_FAIL.md`, and a named next lever. Open risk: the profiled run
    may still hit the `IndexProjectionProducerComputation.delta()` scope error recorded in
-   `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data.
+   `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data
+   and a partial profile (the new profiled method saves the profile even when the run fails).
 2. If the verdict flips toward feasible: scope the **minimal end-to-end self-hosted training run** —
    a tiny model trained on the platform's own docs/source via `ModelOptimizer` — the first concrete
    step toward software that studies itself. (This was item 4 of the prior cycle's "what next".)
