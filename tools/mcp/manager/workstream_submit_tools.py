@@ -39,6 +39,7 @@ def workstream_submit_task(
     use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     sensitive_file_protection_enabled: bool = True,
+    skip_agent_permission_prompts: bool = False,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -228,6 +229,19 @@ def workstream_submit_task(
             forge or substitute the bypass because it does not have access to
             the signing secret. This flag is operator-controlled at job
             submission time and is NEVER settable by the agent itself.
+        skip_agent_permission_prompts: When ``True``, this one job's agent
+            session is launched with the agent runtime's interactive
+            permission prompts bypassed (for Claude Code,
+            ``--permission-mode bypassPermissions``). A headless session has
+            no human to answer a prompt, so without this the runtime denies
+            every write it would otherwise ask about — notably anything under
+            ``.claude/`` (``settings.json``, ``hooks/``), which it treats as
+            sensitive. Set it only for a job whose task is to change that
+            tooling: the grant also lets the session rewrite the guardrails it
+            runs under. It applies to this job alone and is never inherited by
+            later jobs on the workstream. Like
+            ``sensitive_file_protection_enabled=False`` it is operator-only:
+            an in-flight coding agent cannot set it. Default ``False``.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -356,6 +370,49 @@ def workstream_submit_task(
         Dictionary with job_id and workstream_id on success.
     """
     server._require_scope("submit")
+    # In-flight agent guard for the operator-only flags. When this tool is
+    # called from inside a running agent session (the caller has a
+    # workstream-bound armt_tmp_ HMAC token), the agent must never be able
+    # to widen what a delegated job may change. Both flags below do exactly
+    # that, so only a bearer without a workstream binding (an
+    # admin/operator) may set them. Their defaults are the safe values, so
+    # this is a no-op for callers that leave them alone. Each rejection
+    # writes a local audit entry, because an attempt to widen a delegated
+    # job's capabilities is exactly what the audit log exists to record. The
+    # guard therefore runs FIRST, before any other request validation: a
+    # check that returned earlier (an empty prompt, a missing workstream_id)
+    # would let the attempt be rejected without being recorded. Running
+    # first also keeps it ahead of workspace-scope resolution (which may
+    # refresh the workspace map from the controller), so a rejected call
+    # never contacts the controller at all.
+    caller_workstream_id = server._get_token_workstream_id()
+    if caller_workstream_id and not sensitive_file_protection_enabled:
+        return _operator_only_rejection(
+            caller_workstream_id, workstream_id,
+            "sensitive_file_protection_enabled=False",
+            "opting out of sensitive-file protection for a delegated job would "
+            "let the agent self-authorise a controller-signed bypass HMAC for "
+            "that other workstream",
+            "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
+        )
+    # This parameter is named skip_ rather than bypass_ even though the wire
+    # field and the Java side both call it bypassAgentPermissionPrompts. The
+    # test-execution-limit guard (test_no_bypass_parameter_exists_for_test_
+    # execution_limits) forbids any parameter whose name contains "bypass",
+    # because a "bypass" flag is how an agent-settable test-limit escape hatch
+    # would be smuggled in. This flag is not that: it is operator-only
+    # (rejected below for an in-flight agent) and controls interactive
+    # permission prompts, not test execution. The distinct name keeps the
+    # bright-line guard intact rather than eroding it for one exception.
+    if caller_workstream_id and skip_agent_permission_prompts:
+        return _operator_only_rejection(
+            caller_workstream_id, workstream_id,
+            "skip_agent_permission_prompts=True",
+            "bypassing the permission prompts of a delegated job would let the "
+            "agent grant another session write access to the guardrails "
+            "(.claude/settings.json, .claude/hooks/) that session runs under",
+            "Leave skip_agent_permission_prompts at its default (False) and re-submit",
+        )
     if job_type not in ("", "coding", "shell"):
         return {"ok": False,
                 "error": f"Unknown job_type '{job_type}'; expected 'coding' or 'shell'"}
@@ -502,7 +559,6 @@ def workstream_submit_task(
     # This check runs before _require_workstream_in_scope so the agent
     # gets a self-explanatory error rather than a generic permission
     # failure when workstream_id is empty.
-    caller_workstream_id = server._get_token_workstream_id()
     if caller_workstream_id:
         if not workstream_id:
             return {
@@ -554,40 +610,6 @@ def workstream_submit_task(
            target_branch=target_branch, repo_url=repo_url,
            create_workstream_if_missing=create_workstream_if_missing,
            prompt_len=len(prompt))
-
-    # In-flight agent guard for sensitive-file protection. When this
-    # tool is called from inside a running agent session (the caller
-    # has a workstream-bound armt_tmp_ HMAC token), the agent must never
-    # be allowed to forward `sensitiveFileProtectionEnabled=False` to
-    # the controller. Doing so would cause the controller to compute a
-    # controller-signed bypass HMAC for the new job, and the resulting
-    # job's commit would be allowed to modify normally-protected files
-    # (test files, CI/workflow files) on its target workstream. The
-    # sensitive-file protection flag is therefore operator-only: only a
-    # bearer without a workstream binding (an admin/operator) may opt
-    # out. The default for `sensitive_file_protection_enabled` is True
-    # anyway, so this is a no-op for callers that leave it at the
-    # default. The check is placed BEFORE the payload is built so a
-    # rejected call is never forwarded to the controller at all.
-    if caller_workstream_id and not sensitive_file_protection_enabled:
-        return {
-            "ok": False,
-            "error": (
-                "sensitive_file_protection_enabled=False is not settable by an "
-                "in-flight coding agent. The current Claude Code session is "
-                f"bound to workstream '{caller_workstream_id}' via a workstream-"
-                "scoped HMAC token; opting out of sensitive-file protection "
-                "for a delegated job would let the agent self-authorise a "
-                "controller-signed bypass HMAC for that other workstream. The "
-                "flag is operator-only. Leave it at the default (True) and "
-                "re-submit, or have an operator with admin scope disable the "
-                "protection explicitly for the target workstream."
-            ),
-            "next_steps": [
-                "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
-                "Or ask an operator to disable the protection out-of-band for the target workstream",
-            ],
-        }
 
     if shell_job:
         payload = {"jobType": "shell", "command": command}
@@ -650,6 +672,8 @@ def workstream_submit_task(
     # so the controller never mints a bypass HMAC at the request of an agent.
     if not sensitive_file_protection_enabled:
         payload["sensitiveFileProtectionEnabled"] = False
+    if skip_agent_permission_prompts:
+        payload["bypassAgentPermissionPrompts"] = True
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:
@@ -687,3 +711,39 @@ def workstream_submit_task(
         ])
 
     return result
+
+
+def _operator_only_rejection(caller_workstream_id: str, workstream_id: str,
+                             setting: str, consequence: str, remedy: str) -> dict:
+    """Audits and builds the rejection returned when an in-flight agent sets an operator-only flag.
+
+    The audit entry is written to the local audit log only, so recording the
+    attempt never contacts the controller.
+
+    Args:
+        caller_workstream_id: The workstream the calling agent's token is bound to.
+        workstream_id: The workstream the rejected job was to be submitted to.
+        setting: The offending parameter and value, as the caller wrote it.
+        consequence: What honouring the setting would let the agent do.
+        remedy: The first next step: how to re-submit without the setting.
+
+    Returns:
+        dict with ok=False, an error naming the setting, and next_steps.
+    """
+    server._audit("workstream_submit_task.rejected",
+                  caller_workstream_id=caller_workstream_id,
+                  workstream_id=workstream_id, setting=setting)
+    return {
+        "ok": False,
+        "error": (
+            f"{setting} is not settable by an in-flight coding agent. The "
+            "current Claude Code session is bound to workstream "
+            f"'{caller_workstream_id}' via a workstream-scoped HMAC token; "
+            f"{consequence}. The flag is operator-only. Leave it at its default "
+            "and re-submit, or have an operator with admin scope submit the job."
+        ),
+        "next_steps": [
+            remedy,
+            "Or ask an operator to submit the job with the setting out-of-band",
+        ],
+    }

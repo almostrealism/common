@@ -19,8 +19,9 @@ may do:
   human to approve: its own configuration and hooks, environment files,
   credentials.
 
-Both are decided by the controller from workstream policy, in one place
-(`Workstream.applyCapabilities`), and both travel to the agent node through
+Both are decided by the controller in one place (`Workstream.applyCapabilities`)
+— from workstream policy, and for the permission bypass also from an operator's
+per-job request on `/api/submit` — and both travel to the agent node through
 `CodingAgentJobFactory`'s property map.
 
 ## The weakness
