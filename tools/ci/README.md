@@ -22,7 +22,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `archive-stale-workstreams.sh` | Archive the workstreams of a recurring QA job's previous rounds |
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
-| `register-workstream.sh` | Register a workstream with the FlowTree controller |
+| `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
+| `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
+| `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check` |
@@ -128,6 +130,7 @@ it knowingly does not cover are in
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
 | `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
+| `build-task-planning-prompt.sh` | Build prompt for the task-planning round: claim the next ready tracker task and plan it |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests job fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
@@ -142,8 +145,10 @@ it knowingly does not cover are in
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
+| `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
 | `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
 | `project-planning.txt` | Template for the planning workflow |
+| `task-planning.txt` | Template for the task-planning round |
 | `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`) |
 | `verify-completion.txt` | Template for verify-completion prompt |
 

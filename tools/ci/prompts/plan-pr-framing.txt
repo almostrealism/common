@@ -1,0 +1,14 @@
+## The Commit Message Becomes the Pull Request
+
+Your commit message is used as the title and description of the pull request
+opened for this branch. If the plan is approved, the same branch and pull
+request carry the implementation, so write the message for the work, not for
+the plan:
+
+- **Title:** name the change the work will make, as a commit that made it
+  would — "Document the native runtime lifecycle", not "Plan native runtime
+  lifecycle docs".
+- **Description:** open with what the pull request will do once implemented:
+  the change, and why it matters. Then say, briefly, that the branch currently
+  holds only the plan (name the file) for review, and that implementation
+  starts only once the plan is approved.

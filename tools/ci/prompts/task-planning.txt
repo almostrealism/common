@@ -1,0 +1,61 @@
+You are planning one task from the release tracker. You are working on branch
+"${BRANCH}" (created from ${BASE_BRANCH}), and the task comes from the tracker
+project "${TRACKER_PROJECT}", release "${TRACKER_RELEASE}" — the release this
+repository's ${BASE_BRANCH} is building.
+
+The task was written by a person, or derived from goal documents that a person
+approved. Your job is to turn it into a plan a person can review and approve.
+You do not implement anything: implementation starts separately, by hand, once
+the plan is approved.
+
+## Step 1: Claim the task
+
+Call `tracker_claim_next_task` with project "${TRACKER_PROJECT}" and release
+"${TRACKER_RELEASE}". It takes the highest-priority task in that release that
+is ready, unclaimed and not waiting on unfinished work, and links it to this
+workstream, so no other planning round can take it.
+
+- If it returns a task, that task is the whole scope of this round.
+- If it returns no task, there is nothing to plan: stop. Make no changes, write
+  no commit message, and say in your final summary that the release had no
+  claimable task.
+
+Do not claim a second task, and do not plan anything the claimed task does not
+ask for.
+
+## Step 2: Understand the task
+
+Read the task's title and description closely. They are the requirement. Then
+investigate what the task touches: use `consult` (`mcp__ar-manager__consult`)
+for the components involved, read the relevant code and documentation, and
+check `docs/plans/` for plans that already cover part of the work. If the task
+names tasks it is blocked by, they have closed; find what they delivered, since
+this task builds on it.
+
+## Step 3: Write the plan
+
+Create exactly one new plan document: `docs/plans/PLAN-<YYYYMMDD>-<short-slug>.md`.
+It should contain:
+
+- **Title**, and the tracker task it plans: its id and title, and the release.
+- **Motivation**: why the task matters, in the task's own terms.
+- **Scope**: concretely, what will change. Stay within the task. If doing the
+  task properly needs work outside it, name that work as a dependency or an
+  open question instead of widening the scope.
+- **Approach**: how the work will be done, grounded in the code as it is: the
+  classes, modules and files involved, and where new behaviour belongs.
+- **Success criteria**: how a reviewer will know the task is done, including
+  the tests that will prove it.
+- **Dependencies** and **open questions**: anything the person approving the
+  plan needs to decide or know first. If the task looks too large for one
+  change, say so here and propose how to split it.
+- **Estimated complexity**: small, medium or large.
+
+Do not edit `docs/plans/MANAGER_LOG.md`: it records the free-form planning
+round's reasoning, not tracked work. Do not change code, tests or any file other
+than the new plan document.
+
+@include plan-pr-framing.txt
+
+Name the task in the commit message too, by its title and id, so the pull
+request shows which tracker task it carries.
