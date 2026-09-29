@@ -205,6 +205,34 @@ class MigrationTests(unittest.TestCase):
         finally:
             os.unlink(tmp.name)
 
+    def test_a_failed_migration_rolls_back_and_keeps_the_old_version(self):
+        # A migration that fails partway must not leave the schema half-applied
+        # with the version behind: the next startup would then re-run it and
+        # fail forever on a column that already exists.
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        try:
+            conn = sqlite3.connect(tmp.name)
+            conn.executescript(migrate._SCHEMA_V1)
+            conn.execute("INSERT INTO schema_version VALUES (1)")
+            conn.executescript(migrate._SCHEMA_V2)
+            conn.execute("UPDATE schema_version SET version = 2")
+            # Force v3 to fail on its second statement: 'source' already exists,
+            # so 'ADD COLUMN source' raises after 'ADD COLUMN stage' has run in
+            # the same transaction.
+            conn.execute("ALTER TABLE tasks ADD COLUMN source TEXT")
+            conn.commit()
+
+            with self.assertRaises(sqlite3.OperationalError):
+                migrate.run_migrations(conn)
+
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
+            self.assertNotIn("stage", columns)
+            self.assertEqual(2, migrate._get_version(conn))
+            conn.close()
+        finally:
+            os.unlink(tmp.name)
+
 
 class SourceConstraintTests(_StoreTestBase):
     """The database, not only the API, confines provenance to the model."""
@@ -230,9 +258,26 @@ class SourceConstraintTests(_StoreTestBase):
             task = self.store.create_task(title="t", release_id=self.release["id"])
             self.store.update_task(task["id"], source="GOALS:x")
 
+    def test_a_whitespace_only_goal_document_is_refused_by_the_database(self):
+        # The API strips the source and requires a non-empty document after the
+        # prefix, so 'goals: ' and 'goals:\t' are rejected there; the CHECK
+        # mirrors that instead of accepting a whitespace-only document name.
+        for source in ("goals: ", "goals:\t", "goals:   ", "goals:\t\n"):
+            with self.assertRaises(sqlite3.IntegrityError, msg=source):
+                self.store.create_task(
+                    title="t", source=source, release_id=self.release["id"])
+        task = self.store.create_task(title="t", release_id=self.release["id"])
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.update_task(task["id"], source="goals: ")
+
     def test_the_api_refuses_an_uppercase_goals_prefix(self):
         resp = self.client.post("/v1/tasks", json={
             "title": "t", "release_id": self.release["id"], "source": "GOALS:x"})
+        self.assertEqual(400, resp.status_code)
+
+    def test_the_api_refuses_a_whitespace_only_goal_document(self):
+        resp = self.client.post("/v1/tasks", json={
+            "title": "t", "release_id": self.release["id"], "source": "goals: "})
         self.assertEqual(400, resp.status_code)
 
     def test_person_and_goal_sources_are_accepted(self):
