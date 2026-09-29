@@ -23,6 +23,7 @@ import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
@@ -138,6 +139,47 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 			double[] values = destination.toArray();
 			for (int i = 0; i < size; i++) {
 				assertEquals(0.0, values[i]);
+			}
+		}
+	}
+
+	/**
+	 * One assignment kernel must serve aggregated destinations whose roots differ in length,
+	 * reading its source correctly and writing only the destination's view of each root.
+	 *
+	 * <p>Aggregation lays roots out one after another, so a root's length decides the offset
+	 * of every aggregated argument placed after it. The assignment's signature records that
+	 * its destination is aggregated but not the length of the destination's root, which is
+	 * sound only because the destination is placed after every argument of the value: the
+	 * value's inputs are prepared before the assignment's own arguments are assigned. The
+	 * three assignments below share one signature, so the later ones reuse the first kernel,
+	 * and reuse verifies that the aggregate positions match; a layout that placed the
+	 * destination before the source would fail that verification here.</p>
+	 */
+	@Test(timeout = 60000)
+	public void assignmentReusedAcrossAggregatedDestinationRootLengths() {
+		int length = 64;
+		PackedCollection source = integers(1, length + 1).evaluate();
+		int[] rootLengths = { 128, 576, 256 };
+		String firstSignature = null;
+
+		for (int rootLength : rootLengths) {
+			PackedCollection root = new PackedCollection(rootLength).fill(-1.0);
+			PackedCollection destination = root.range(shape(length));
+			Assignment<PackedCollection> scale =
+					a("scaleProbe", p(destination.each()), cp(source.each()).multiply(2.0));
+
+			String signature = scale.signature();
+			Assert.assertNotNull(signature);
+			Assert.assertTrue(signature, signature.contains("&aggregateDestination"));
+			if (firstSignature == null) firstSignature = signature;
+			Assert.assertEquals(firstSignature, signature);
+
+			scale.get().run();
+
+			double[] values = root.toArray();
+			for (int i = 0; i < rootLength; i++) {
+				assertEquals(i < length ? 2.0 * (i + 1) : -1.0, values[i]);
 			}
 		}
 	}

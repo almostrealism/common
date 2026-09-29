@@ -504,6 +504,14 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * aggregation size limit matched both to one signature and failed as an instruction cache
 	 * collision.</p>
 	 *
+	 * <p>The length of an aggregated destination's root is not needed. Aggregated roots are laid
+	 * out in the order they are mapped, and a provider destination is mapped last: preparing the
+	 * inputs maps the value's arguments (a provider maps nothing), and only then are this
+	 * assignment's own arguments, the destination among them, assigned. So the destination's
+	 * root length shifts no other argument's position, and the positions of the value's
+	 * aggregated arguments are fixed by the value's signature. Reuse compares the aggregate
+	 * positions regardless, and fails loudly if they ever differ.</p>
+	 *
 	 * @return the signature string, or null if destination or value lacks a signature
 	 */
 	@Override
