@@ -253,6 +253,17 @@ measurements above.
 
 1. Can a small synchronous `evaluate()` avoid spawning a thread? This is the
    cheapest possible win and is not HNSW-specific.
+   *Answered (2026-09-27):* yes for the arguments that caused it.
+   `ProcessDetailsFactory.construct` now binds every argument whose evaluable is
+   a `FixedEvaluable` (a `Provider` of a collection or of an argument map's root
+   delegate, and the handle `MemoryDataDestination.into` now returns for a
+   sized output) as a resolved kernel argument, so they no longer go through
+   `Evaluable.async()`. A compiled `multiply(p(a), p(b))` evaluated 200 times
+   went from 400 thread starts to 0, and
+   `SimilarityOverheadTest#cachedComputationEvaluation` (one compiled
+   similarity graph evaluated 4950 times) went from 0.51–0.55 to 0.38–0.40
+   ms/eval on Metal and from 0.29–0.33 to 0.15–0.16 ms/eval on the native
+   backend. Question 2 below is what remains.
 2. What does a dispatch actually cost once the thread is out of the picture — is
    the remaining 430 µs mostly graph construction, compilation, or transfer? The
    generated source and argument bindings are readable via `ar-profile-analyzer`,
