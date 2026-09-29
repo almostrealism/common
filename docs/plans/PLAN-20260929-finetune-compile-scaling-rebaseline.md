@@ -17,8 +17,9 @@ pessimistic one.
 
 `docs/plans/FINE_TUNE_FAIL.md` concludes, in bold, that **"production-scale LoRA
 fine-tuning is currently infeasible with the existing compilation architecture."** Its
-scaling table (embed 8 → 128) shows backward-pass compilation time growing from ~38 s to
-~31 min for a *single* transformer block, and it extrapolates to "days, not minutes" for
+scaling table (embed 8 → 128) shows first-training-step latency — which at that scale was
+almost entirely lazy backward-pass compilation — growing from ~38 s to ~31 min for a *single*
+transformer block, and it extrapolates to "days, not minutes" for
 the production configuration (embed=1024, depth=16). Every downstream planning decision
 that touches training — and the entire proof-of-value / self-hosted-training trajectory in
 the Manager Log — inherits that verdict.
@@ -33,6 +34,7 @@ one of which is the very cost that `FINE_TUNE_FAIL.md` names as dominant. It is 
 to keep these separate, because it is easy to overstate how directly the headline
 convolution result predicts the fine-tuning result:
 
+<!-- TODO(review): 1375.6 s is accumulated stage-detail time (268% of the 512.8 s run) and cannot be "the bulk" of it; reconcile with the node-level 28.5%/22.0% collectionProduct/collectionAdd shares cited above. -->
 - **The dominant fine-tuning cost — expression-cache matching.** `FINE_TUNE_FAIL.md`'s own
   stage-detail breakdown attributes the bulk of the embed=64 backward-compile time to
   `expressionCacheMatch` (**~1375.6 s**, the single largest entry), with `kernelSeries` a
@@ -89,9 +91,42 @@ Concrete, ordered deliverables:
    is *not* part of this documentation review; it is the first coding task for whoever implements
    the plan, and every measurement step below depends on it.
 
+   The same harness change must also fix two measurement defects in the existing code, or the
+   numbers it produces will not mean what the rest of this plan needs them to mean:
+
+   - **`bwdMs` is not backward-compile time.** `measureCompilation()` reports as `Bwd(ms)` the
+     wall-clock of the *entire* first `optimizer.optimize(1)` call. The backward pass is compiled
+     lazily inside the first `backward.run()` (`FINE_TUNE_FAIL.md` §"Critical Finding: Lazy
+     Compilation During Backward Execution"), so that interval contains the lazy compile **plus**
+     forward execution, loss evaluation, backward execution, the parameter update, and any other
+     work `ModelOptimizer` does in its first step. The second `optimize(1)` (`Train1(ms)`)
+     measures the same work warm. When compile took tens of minutes, the runtime share was noise
+     (the Feb-2026 warm step was 0.2–3 s); if compile has fallen to seconds, it no longer is, and
+     treating `bwdMs` as compile time would distort the scaling curve. The harness must therefore
+     report **cold first-step latency and warm second-step latency as separate columns**, and the
+     plan's compile figure is the *derived* estimate `cold − warm`, labelled as such. Attribution
+     of that compile cost (what it is spent on) comes from the profile in step 2, which separates
+     compile, run, and `stageDetailTime` (`expressionCacheMatch`, `kernelSeries`) entries — not
+     from wall-clock subtraction.
+   - **The profile path is hard-coded to a container layout.** `testProfiledFineTuning()` creates
+     and writes `/workspace/project/common/utils/results/finetune_profile_embed64.xml`. That
+     absolute path exists only in the agent container; on a host without it (e.g. the macOS
+     workers, where `/workspace` is not writable) `Files.createDirectories` fails before any
+     measurement is taken. The profile should be written under the module's own `results/`
+     directory, which is where `ar-profile-analyzer` expects `<module>/results/*.xml`.
+
 1. **Reproduce the scaling measurement on current `master`.** Using the harness prepared in
    step 0, run the small-to-mid configurations (embed 8 → 64, at minimum) individually and
-   capture the current numbers alongside the documented Feb-2026 numbers. Note the harness is
+   capture the current numbers alongside the documented Feb-2026 numbers. The like-for-like
+   comparison with Feb-2026 is **cold first-step latency** (that is what the old `Backward (ms)`
+   column measured); the derived compile estimate (`cold − warm`) is reported next to it, never in
+   place of it. Note that `FINE_TUNE_FAIL.md` holds *two* Feb-2026 scaling tables that disagree for
+   the same configurations (§"Current Scaling Data": embed=8 51,988 ms, embed=16 cancelled after
+   >300,000 ms; §"Scaling Test Results": embed=8 37,957 ms, embed=16 472,645 ms). Compare against
+   both, state which one each ratio uses, and do not quote a single "Feb-2026 number" as if it were
+   settled. Several of those historical figures (up to ~44 min) are also far longer than the
+   five-minute JUnit timeout the method carries today, so they were taken under a different harness
+   configuration than the one on `master`. Note the harness is
    marked `@TestProperties(knownIssue = true)`; the measurement re-validates whether that marker
    is still warranted. **Record the confounds in the existing sweep** (see step 3): `ioChannels`,
    `numHeads`, and `globalCondDim` all change together with `embedDim`, and every point is
@@ -184,7 +219,11 @@ end-to-end training runs.
 ## Success Criteria
 
 - The additive harness change from Scope step 0 landed (per-configuration, individually
-  selectable, bounded runs) with the existing tests unweakened.
+  selectable, bounded runs) with the existing tests unweakened; it reports cold first-step and
+  warm second-step latency separately, and the profiled run writes its XML under the module's
+  `results/` directory rather than a hard-coded container path.
+- Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
+  or the explicitly labelled `cold − warm` estimate, never raw first-step latency.
 - Current backward-compile numbers for at least embed ∈ {8, 16, 32, 64} on today's `master`,
   presented next to the Feb-2026 numbers. For any embed-scaling or depth claim, the numbers
   come from a *controlled* series (embed varied with other dimensions fixed; ≥2 depth points at
@@ -212,6 +251,32 @@ end-to-end training runs.
 - Coordinate-around (not depend-on): the in-flight `feature/lora-gradients` family. This
   task must not modify the sparse-Jacobian projection computations, the `Sum` reordering
   budget, or the memoization gating those branches own.
+
+## Open questions
+
+Recorded for whoever approves this plan; none of them is resolved by this document.
+
+- **Can the profile be captured at all?** `FINE_TUNE_FAIL.md` opens with "BLOCKED":
+  `testProfiledFineTuning` failed with the `IndexProjectionProducerComputation.delta()` scope error
+  (`'_..._i' undeclared`). Scope step 4 treats that as something to re-check, but steps 2 and 5
+  depend on the profile existing. If the error still reproduces, the profile-driven attribution
+  (step 2), the "top-3 cost nodes" success criterion, and the next-lever choice (step 5) all fall
+  back to wall-clock data only, and the plan's core deliverable shrinks to the scaling table. The
+  approver should decide up front whether fixing that error is in scope here or is a separate plan.
+- **How much of the delta is the harness, not the platform?** Step 0 changes how the numbers
+  are taken (separate cold/warm columns, per-configuration methods, different timeouts). Since the
+  Feb-2026 figures came from a harness configuration that no longer matches `master` (they exceed
+  the current five-minute JUnit timeout), a large improvement could partly reflect
+  measurement differences. Cold first-step latency is the closest like-for-like metric; any
+  headline ratio should say which metric it compares.
+- **Machine and backend.** The Feb-2026 numbers do not record the host or the
+  `AR_HARDWARE_DRIVER` backend. Current runs should record both, and cross-machine ratios should
+  be treated as indicative only (the `CONVOLUTION_COMPILE_TIME.md` discipline of profile-based
+  ratios applies).
+- **Does "feasible" have a threshold?** The plan asks whether the verdict is "slow but feasible"
+  or "false" without saying what compile budget counts as feasible for the proof-of-value run.
+  Without a number (for example, first-step latency for the proof-of-value configuration under
+  some fixed ceiling), the revised verdict risks being as subjective as the one it replaces.
 
 ## Estimated Complexity
 
