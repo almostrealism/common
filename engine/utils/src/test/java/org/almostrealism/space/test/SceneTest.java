@@ -107,6 +107,10 @@ public class SceneTest extends TestSuiteBase {
 		Assert.assertSame(light, clone.getLight(0));
 		Assert.assertSame(scene.getLights(), clone.getLights());
 		Assert.assertTrue(clone.contains(surface));
+		// The clone must copy each surface exactly once, preserving size and order.
+		Assert.assertEquals(scene.size(), clone.size());
+		Assert.assertEquals(1, clone.size());
+		Assert.assertSame(surface, clone.get(0));
 	}
 
 	/** An empty scene has no bounding solid. */

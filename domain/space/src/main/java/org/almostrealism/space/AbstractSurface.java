@@ -294,8 +294,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		Texture[] newTextures = new Texture[this.textures.length - 1];
 
 		if (index >= 0) System.arraycopy(this.textures, 0, newTextures, 0, index);
-		if (newTextures.length - (index + 1) >= 0)
-			System.arraycopy(this.textures, index + 1, newTextures, index + 1, newTextures.length - (index + 1));
+		if (newTextures.length - index > 0)
+			System.arraycopy(this.textures, index + 1, newTextures, index, newTextures.length - index);
 		
 		this.textures = newTextures;
 	}

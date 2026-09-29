@@ -112,6 +112,8 @@ public class TriangleBehaviorTest extends TestSuiteBase {
 		t.setVertices(new Vector(0.0, 0.0, 0.0), new Vector(1.0, 0.0, 0.0), new Vector(0.0, 1.0, 0.0));
 		PackedCollection after = t.getData();
 		Assert.assertNotNull(after);
+		// setVertices recomputes the data, producing a distinct backing collection.
+		Assert.assertNotSame(before, after);
 		// 4 rows x 3 columns of precomputed triangle data.
 		Assert.assertEquals(12, after.getMemLength());
 	}

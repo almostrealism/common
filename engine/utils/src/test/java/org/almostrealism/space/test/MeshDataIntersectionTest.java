@@ -30,8 +30,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Behavioral tests for {@link MeshData} and {@link Mesh#intersectAt(Producer)},
- * verifying ray-triangle intersection distances against a known single-triangle mesh.
+ * Behavioral tests for {@link MeshData}'s ray-triangle intersection, verifying
+ * intersection distances against a known single-triangle {@link Mesh}.
  */
 public class MeshDataIntersectionTest extends TestSuiteBase {
 

@@ -97,10 +97,10 @@ public class AnimationTest extends TestSuiteBase {
 		Assert.assertNotSame(anim, scene);
 	}
 
-	/** With no rigid bodies present, the mean linear velocity is undefined (NaN from 0/0). */
+	/** An empty scene reports a mean linear velocity of 0.0, per the documented contract. */
 	@Test(timeout = 10000)
-	public void averageVelocityOfEmptySceneIsNaN() {
+	public void averageVelocityOfEmptySceneIsZero() {
 		Animation<ShadableSurface> anim = new Animation<>();
-		Assert.assertTrue(Double.isNaN(anim.getAverageLinearVelocity()));
+		Assert.assertEquals(0.0, anim.getAverageLinearVelocity(), 0.0);
 	}
 }

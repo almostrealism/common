@@ -46,8 +46,10 @@ public class SurfaceGroupTest extends TestSuiteBase {
 		SurfaceGroup<ShadableSurface> group = new SurfaceGroup<>();
 		Plane p = new Plane(Plane.XY);
 		group.addSurface(p);
+		Assert.assertEquals(1L, group.children().count());
 		group.removeSurface(0);
 		Assert.assertNull(p.getParent());
+		Assert.assertEquals(0L, group.children().count());
 	}
 
 	/** The group is iterable and exposes its children as a stream. */

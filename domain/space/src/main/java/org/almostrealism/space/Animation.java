@@ -225,6 +225,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 * @return the mean linear velocity magnitude, or 0.0 if the scene is empty
 	 */
 	public double getAverageLinearVelocity() {
+		if (size() == 0) return 0.0;
+
 		double total = 0.0;
 
 		for (ShadableSurface s : this) {

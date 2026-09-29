@@ -111,12 +111,8 @@ public class AbstractSurfaceTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Textures can be appended, retrieved by index, and the last texture removed.
-	 *
-	 * <p>Note: removing a non-final index is a known pre-existing defect in
-	 * {@code AbstractSurface.removeTexture} (its second {@code System.arraycopy}
-	 * uses {@code index + 1} as the destination offset, leaving a null hole), so
-	 * this test only exercises removal of the final texture, which is correct.
+	 * Textures can be appended, retrieved by index, and removed at either the final
+	 * or a non-final index, with the remaining textures compacted toward index 0.
 	 */
 	@Test(timeout = 10000)
 	public void textureAddRemove() {
@@ -134,6 +130,29 @@ public class AbstractSurfaceTest extends TestSuiteBase {
 		p.removeTexture(1);
 		Assert.assertEquals(1, p.getTextures().length);
 		Assert.assertSame(t0, p.getTexture(0));
+	}
+
+	/**
+	 * Removing a non-final texture shifts the surviving textures down to fill the
+	 * gap, leaving no null hole and preserving the tail's order and length.
+	 */
+	@Test(timeout = 10000)
+	public void textureRemoveNonFinalIndex() {
+		Plane p = new Plane();
+		Texture t0 = new ConstantTexture(new RGB(1.0, 0.0, 0.0));
+		Texture t1 = new ConstantTexture(new RGB(0.0, 1.0, 0.0));
+		Texture t2 = new ConstantTexture(new RGB(0.0, 0.0, 1.0));
+		p.addTexture(t0);
+		p.addTexture(t1);
+		p.addTexture(t2);
+
+		p.removeTexture(0);
+
+		Assert.assertEquals(2, p.getTextures().length);
+		Assert.assertSame(t1, p.getTexture(0));
+		Assert.assertSame(t2, p.getTexture(1));
+		Assert.assertNotNull(p.getTextures()[0]);
+		Assert.assertNotNull(p.getTextures()[1]);
 	}
 
 	/** The texture Set view reflects size and membership. */
