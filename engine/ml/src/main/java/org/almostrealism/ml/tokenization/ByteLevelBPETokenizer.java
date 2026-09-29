@@ -103,17 +103,7 @@ public abstract class ByteLevelBPETokenizer {
 
         // Step 2 & 3: For each segment, byte-level encode and apply BPE
         for (String segment : segments) {
-            // Byte-level encode the segment
-            String encoded = ByteLevelEncoder.encode(segment);
-
-            // Convert to list of character tokens
-            List<String> tokens = new ArrayList<>();
-            for (int i = 0; i < encoded.length(); i++) {
-                tokens.add(String.valueOf(encoded.charAt(i)));
-            }
-
-            // Apply BPE merges
-            tokens = applyBPEMerges(tokens);
+            List<String> tokens = applyBPEMerges(toSymbols(segment));
 
             // Convert to token IDs
             for (String token : tokens) {
@@ -140,6 +130,41 @@ public abstract class ByteLevelBPETokenizer {
         }
 
         return result;
+    }
+
+    /**
+     * Converts one pre-tokenized segment into the symbols that BPE merging starts from.
+     *
+     * <p>This is the step where tokenizer families differ. A byte-level tokenizer maps the
+     * segment through {@link ByteLevelEncoder} so that every byte becomes a printable
+     * character, and merges over those characters; a SentencePiece-style tokenizer instead
+     * marks word boundaries and falls back to byte tokens only for characters its vocabulary
+     * does not contain. The merge algorithm itself is identical either way, so a subclass
+     * that overrides this and {@link #fromSymbols(String)} inherits everything else.</p>
+     *
+     * @param segment one segment produced by the pre-tokenizer
+     * @return the initial symbols, in order
+     */
+    protected List<String> toSymbols(String segment) {
+        String encoded = ByteLevelEncoder.encode(segment);
+
+        List<String> symbols = new ArrayList<>();
+        for (int i = 0; i < encoded.length(); i++) {
+            symbols.add(String.valueOf(encoded.charAt(i)));
+        }
+
+        return symbols;
+    }
+
+    /**
+     * Converts the concatenated vocabulary strings of a token sequence back into text,
+     * reversing {@link #toSymbols(String)}.
+     *
+     * @param symbols the concatenated vocabulary strings
+     * @return the decoded text
+     */
+    protected String fromSymbols(String symbols) {
+        return ByteLevelEncoder.decode(symbols);
     }
 
     /**
@@ -221,8 +246,7 @@ public abstract class ByteLevelBPETokenizer {
             }
         }
 
-        // Byte-level decode
-        return ByteLevelEncoder.decode(encoded.toString());
+        return fromSymbols(encoded.toString());
     }
 
     /**

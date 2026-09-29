@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.ml.t5gemma.T5GemmaConfig;
 import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
 import org.almostrealism.model.CompiledModel;
@@ -120,6 +121,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 
 	/** Token ids of the negative prompt used by guidance; empty by default. */
 	private long[] negativePrompt = new long[0];
+
+	/** Turns prompt text into token ids; {@code null} until one is supplied. */
+	private Tokenizer tokenizer;
 
 	/** Whether generation progress is logged. */
 	private boolean verbose = true;
@@ -286,6 +290,34 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	}
 
 	/**
+	 * Supplies the tokenizer that {@link #generate(long, String, double)} and
+	 * {@link #setGuidance(double, String)} use to turn prompt text into token ids. For the
+	 * released model this is the exported T5Gemma tokenizer, read by
+	 * {@link org.almostrealism.ml.tokenization.SentencePieceBPETokenizer}; the prompt encoder
+	 * was trained on that tokenizer's ids, so any other one produces conditioning the model has
+	 * never seen.
+	 *
+	 * @param tokenizer the tokenizer, or {@code null} to accept only token ids
+	 * @return this generator
+	 */
+	public StableAudio3 setTokenizer(Tokenizer tokenizer) {
+		this.tokenizer = tokenizer;
+		return this;
+	}
+
+	/**
+	 * Enables classifier-free guidance against a negative prompt given as text.
+	 *
+	 * @param scale          the guidance scale; must be finite
+	 * @param negativePrompt the negative prompt; empty for the unconditional prompt
+	 * @return this generator
+	 * @throws IllegalStateException if no tokenizer has been supplied
+	 */
+	public StableAudio3 setGuidance(double scale, String negativePrompt) {
+		return setGuidance(scale, encodePrompt(negativePrompt));
+	}
+
+	/**
 	 * Sets whether generation progress is logged.
 	 *
 	 * @param verbose whether to log
@@ -328,6 +360,38 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	public int validFrames(double seconds) {
 		int covered = seconds(seconds + headroomSeconds);
 		return Math.min(latentLen, (int) Math.ceil(covered / (double) downsamplingRatio));
+	}
+
+	/**
+	 * Generates a clip from prompt text, tokenizing it with the tokenizer supplied to
+	 * {@link #setTokenizer(Tokenizer)}.
+	 *
+	 * @param seed    seed of the initial noise and the ping-pong noise injections
+	 * @param prompt  the prompt
+	 * @param seconds the duration in seconds, at most the duration this instance was built for
+	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
+	 * @throws IllegalStateException if no tokenizer has been supplied
+	 */
+	public CollectionProducer generate(long seed, String prompt, double seconds) {
+		return generate(seed, encodePrompt(prompt), seconds);
+	}
+
+	/**
+	 * Tokenizes prompt text.
+	 *
+	 * @param prompt the prompt; {@code null} yields no tokens
+	 * @return the token ids
+	 * @throws IllegalStateException if no tokenizer has been supplied
+	 */
+	protected long[] encodePrompt(String prompt) {
+		if (prompt == null) return new long[0];
+
+		if (tokenizer == null) {
+			throw new IllegalStateException("A prompt given as text requires a tokenizer; " +
+					"supply one with setTokenizer, or pass token ids instead");
+		}
+
+		return tokenizer.encodeAsLong(prompt);
 	}
 
 	/**
