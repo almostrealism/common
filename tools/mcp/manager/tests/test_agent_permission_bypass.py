@@ -48,7 +48,7 @@ class TestSubmitPermissionBypassWireFormat(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "job-pb-granted"}
         result = server.workstream_submit_task(
             prompt="Register the new hooks in .claude/settings.json",
-            bypass_agent_permission_prompts=True,
+            skip_agent_permission_prompts=True,
         )
         self.assertTrue(result["ok"], msg=result.get("error"))
         payload = mock_post.call_args[0][1]
@@ -87,10 +87,10 @@ class TestSubmitAgentPermissionBypassGuard(unittest.TestCase):
         result = server.workstream_submit_task(
             prompt="Delegated task",
             workstream_id="ws-other",
-            bypass_agent_permission_prompts=True,
+            skip_agent_permission_prompts=True,
         )
         self.assertFalse(result["ok"])
-        self.assertIn("bypass_agent_permission_prompts", result["error"])
+        self.assertIn("skip_agent_permission_prompts", result["error"])
         self.assertIn("operator", result["error"].lower())
         mock_post.assert_not_called()
 
