@@ -69,6 +69,18 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 	 * The transformer reproduces the reference output, and the state entering and leaving the
 	 * block stack, within a small fraction of the reference magnitude.
 	 *
+	 * <p>The post-transformer state is compared over the tail of the sequence, because the two
+	 * implementations capture it at structurally different points and only their overlap exists on
+	 * both sides. {@link DiffusionTransformer} applies the output projection to the whole sequence and
+	 * strips the prepended memory and conditioning positions afterwards, so the state it captures
+	 * still carries them. The reference cannot produce that tensor at all: its
+	 * {@code ContinuousTransformer.forward} strips the prepended positions and only then applies
+	 * {@code project_out}, so the dumped reference holds the surviving positions alone. Both strip
+	 * from the front of the sequence and the projection is applied per position, so the reference
+	 * equals the tail of the captured state. That tail is every value either implementation goes on
+	 * to use — the leading positions are discarded on both sides, so parity over them would assert
+	 * nothing about the model.</p>
+	 *
 	 * @throws IOException if a reference file cannot be read
 	 */
 	@Test(timeout = 1800000)
@@ -87,22 +99,59 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 
 		DiffusionTransformerConfig config = StableAudio3.smallTransformer(COND_DIM, COND_SEQ_LEN)
 				.withSequenceLengths(LATENT_LEN, COND_SEQ_LEN);
-		DiffusionTransformer transformer = new DiffusionTransformer(config, new StateDictionary(weightDir.getPath()));
 
-		PackedCollection x = loadShaped(refDir, "dit_x", 1, CHANNELS, LATENT_LEN);
-		PackedCollection t = loadShaped(refDir, "dit_t", 1, 1);
-		PackedCollection context = loadShaped(refDir, "dit_cross_attn_cond", 1, COND_SEQ_LEN, COND_DIM);
-		PackedCollection global = loadShaped(refDir, "dit_global_cond", 1, COND_DIM);
+		StateDictionary weights = null;
+		DiffusionTransformer transformer = null;
+		PackedCollection x = null;
+		PackedCollection t = null;
+		PackedCollection context = null;
+		PackedCollection global = null;
+		PackedCollection postTail = null;
 
-		PackedCollection output = transformer.forward(x, t, context, global);
+		try {
+			weights = new StateDictionary(weightDir.getPath());
+			transformer = new DiffusionTransformer(config, weights);
 
-		float[] refOutput = loadFlat(refDir, "dit_output");
-		float[] refPre = loadFlat(refDir, "dit_pre_transformer");
-		float[] refPost = loadFlat(refDir, "dit_post_transformer");
+			x = loadShaped(refDir, "dit_x", 1, CHANNELS, LATENT_LEN);
+			t = loadShaped(refDir, "dit_t", 1, 1);
+			context = loadShaped(refDir, "dit_cross_attn_cond", 1, COND_SEQ_LEN, COND_DIM);
+			global = loadShaped(refDir, "dit_global_cond", 1, COND_DIM);
 
-		assertWithinRelative("output", output, refOutput, RELATIVE_TOLERANCE);
-		assertWithinRelative("preTransformer", transformer.getPreTransformerState(), refPre, RELATIVE_TOLERANCE);
-		assertWithinRelative("postTransformer", transformer.getPostTransformerState(), refPost, RELATIVE_TOLERANCE);
-		transformer.destroy();
+			PackedCollection output = transformer.forward(x, t, context, global);
+
+			float[] refOutput = loadFlat(refDir, "dit_output");
+			float[] refPre = loadFlat(refDir, "dit_pre_transformer");
+			float[] refPost = loadFlat(refDir, "dit_post_transformer");
+
+			assertWithinRelative("output", output, refOutput, RELATIVE_TOLERANCE);
+			assertWithinRelative("preTransformer", transformer.getPreTransformerState(), refPre, RELATIVE_TOLERANCE);
+
+			PackedCollection postTransformer = transformer.getPostTransformerState();
+			int prependedLength = postTransformer.getShape().length(1) - LATENT_LEN;
+			postTail = eval(cp(postTransformer).subset(shape(1, LATENT_LEN, CHANNELS), 0, prependedLength, 0));
+			assertWithinRelative("postTransformer", postTail, refPost, RELATIVE_TOLERANCE);
+		} finally {
+			if (x != null) {
+				x.destroy();
+			}
+			if (t != null) {
+				t.destroy();
+			}
+			if (context != null) {
+				context.destroy();
+			}
+			if (global != null) {
+				global.destroy();
+			}
+			if (postTail != null) {
+				postTail.destroy();
+			}
+			if (transformer != null) {
+				transformer.destroy();
+			}
+			if (weights != null) {
+				weights.destroy();
+			}
+		}
 	}
 }
