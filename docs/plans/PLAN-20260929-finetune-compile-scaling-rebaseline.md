@@ -184,7 +184,12 @@ Concrete, ordered deliverables:
 
 1. **Reproduce the scaling measurement on current `master`.** Using the harness prepared in
    step 0, run the small-to-mid configurations (embed 8 → 64, at minimum) individually and
-   capture the current numbers alongside the documented Feb-2026 numbers. The like-for-like
+   capture the current numbers alongside the documented Feb-2026 numbers. **Record the exact
+   `master` commit SHA the measurements were taken at**, together with the host and backend (see
+   Open questions): "current `master`" is not a reproducible baseline — it moves, and if the
+   conditional step-6 optimization later lands in this same workstream the before/after numbers
+   would otherwise no longer be tied to the compiler source that produced them. Every reported
+   figure and every before/after comparison names the SHA it was measured at. The like-for-like
    comparison with Feb-2026 is **cold first-step latency** (that is what the old `Backward (ms)`
    column measured); the derived compile estimate (`cold − warm`) is reported next to it, never in
    place of it. Note that `FINE_TUNE_FAIL.md` holds *two* Feb-2026 scaling tables that disagree for
@@ -221,9 +226,16 @@ Concrete, ordered deliverables:
      could feed it a key — `search` (`searchOperations`) and `list_children` (`printChildren`) — each
      return only the 20 nodes with the greatest *total* duration. A node carrying a large accumulated
      stage-detail cost but a modest total duration can therefore be missed entirely. Read the
-     stage-detail totals from `get_timing_breakdown` on the backward-phase operation node(s) whose
-     keys are already known (the backward-only profile's root and its named top-level operations),
-     and treat this as accumulated evidence, not a ranking. Because these entries are non-exclusive
+     stage-detail totals from `get_timing_breakdown` on the named backward-phase operation nodes
+     whose keys are already known — the keyed top-level operations inside the backward-only
+     profile, **not** its root node. The root created for the profile (as the existing method does,
+     `new OperationProfileNode("finetune_embed64")`) carries a **null key** — the
+     `OperationProfileNode(String name)` constructor sets the key to `null` — and
+     `ProfileAnalyzerCLI.printBreakdown` resolves its argument through `findByKey`
+     (`key.equals(node.getKey())`), which a null key can never match, so `get_timing_breakdown`
+     on the root returns "Node not found". Point the lookup at the keyed operation nodes instead
+     (a keyed backward operation can be discovered with `search`/`list_children`), and treat this
+     as accumulated evidence, not a ranking. Because these entries are non-exclusive
      (see Motivation) they are reported as accumulated seconds only, never as a percentage of the run
      or ranked against node-level compile shares. This is the JVM-side expression-construction /
      cache-matching cost that the February profile identified as the *largest* accumulated entry
@@ -283,10 +295,13 @@ Concrete, ordered deliverables:
    "infeasible" verdict is then withdrawn as unsupported rather than replaced by another
    judgement call. See Open questions.
 
-<!-- TODO(review): step 4 says "the revised verdict" unconditionally; align it with step 3's no-threshold case (timings and growth rates only, stale verdict withdrawn). -->
 4. **Rewrite `docs/plans/FINE_TUNE_FAIL.md` to reflect reality.** Replace the stale
    "BLOCKED / infeasible" framing and the Feb-2026 tables with the current measurement, the
-   fresh profile analysis, and the revised verdict. Preserve the historical numbers clearly
+   fresh profile analysis, and — *if the approver fixed a threshold before measurement (step 3)* —
+   the revised feasibility verdict. If no threshold was fixed, the rewrite instead carries the
+   measured timings and fitted growth rates and withdraws the stale "infeasible" verdict as
+   unsupported, assigning no new feasibility label in its place (matching step 3 and the success
+   criteria). Preserve the historical numbers clearly
    labelled as pre-optimization so the improvement is legible. If the old `IndexProjectionProducerComputation.delta()`
    scope-error blocker (`'_..._i' undeclared`) no longer reproduces, record that it is
    resolved; if it still reproduces, capture the exact current failure with
@@ -372,7 +387,8 @@ end-to-end training runs.
 - Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
   or the explicitly labelled `cold − warm` estimate, never raw first-step latency.
 - Current backward-compile numbers for at least embed ∈ {8, 16, 32, 64} on today's `master`,
-  presented next to the Feb-2026 numbers. For any embed-scaling or depth claim, the numbers
+  presented next to the Feb-2026 numbers, each annotated with the exact `master` commit SHA, host,
+  and backend they were measured at (per Scope step 1). For any embed-scaling or depth claim, the numbers
   come from a *controlled* series (embed varied with other dimensions fixed; ≥2 depth points at
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
@@ -388,8 +404,9 @@ end-to-end training runs.
   durations of only the ranked top few, which would normalize them to 100 % and overstate each
   share) rather than the analyzer's
   reported `percentage`, which is a share of total node duration (compile + run). Second, the accumulated stage-detail seconds
-  (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the known
-  backward-phase node(s) — a point lookup, not a ranking, since no analyzer command aggregates or
+  (`expressionCacheMatch`, `kernelSeries`) read from `get_timing_breakdown` on the keyed
+  backward-phase operation node(s) — not the profile's null-keyed root, which `findByKey` cannot
+  resolve — a point lookup, not a ranking, since no analyzer command aggregates or
   ranks stage-detail entries across the profile — each quoted as accumulated
   seconds only, never as a share, and never ranked against the node-level compile shares, since
   `find_slowest_by_category(category="compile")` does not include them.
@@ -449,8 +466,11 @@ Recorded for whoever approves this plan; none of them is resolved by this docume
   the current five-minute JUnit timeout), a large improvement could partly reflect
   measurement differences. Cold first-step latency is the closest like-for-like metric; any
   headline ratio should say which metric it compares.
-- **Machine and backend.** The Feb-2026 numbers do not record the host or the
-  `AR_HARDWARE_DRIVER` backend. Current runs should record both, and cross-machine ratios should
+- **Machine, backend, and commit.** The Feb-2026 numbers do not record the host or the
+  `AR_HARDWARE_DRIVER` backend. Current runs should record both **and the exact `master` commit
+  SHA** they were taken at (per Scope step 1), since "current `master`" moves and any before/after
+  from a step-6 optimization must be tied to the compiler source that produced each number.
+  Cross-machine ratios should
   be treated as indicative only (the `CONVOLUTION_COMPILE_TIME.md` discipline of profile-based
   ratios applies).
 - **Does "feasible" have a threshold?** The plan asks whether the verdict is "slow but feasible"
