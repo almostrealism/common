@@ -93,6 +93,31 @@ class TestSubmitAgentPermissionBypassGuard(unittest.TestCase):
         self.assertIn("skip_agent_permission_prompts", result["error"])
         self.assertIn("operator", result["error"].lower())
         mock_post.assert_not_called()
+        # Workspace-scope resolution refreshes the cleared workspace map
+        # from the controller, so the guard must run before it.
+        mock_get.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_permission_bypass_request_from_agent_rejected_when_controller_unreachable(
+            self, mock_post, mock_get):
+        """The operator-only rejection does not depend on the controller:
+        with the workspace map unavailable the agent still gets the
+        operator-only error, not a scope failure."""
+        mock_get.side_effect = ConnectionError("controller unreachable")
+        result = server.workstream_submit_task(
+            prompt="Delegated task",
+            workstream_id="ws-other",
+            skip_agent_permission_prompts=True,
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("skip_agent_permission_prompts=True", result["error"])
+        self.assertIn("ws-self", result["error"])
+        self.assertEqual(
+            "Leave skip_agent_permission_prompts at its default (False) and re-submit",
+            result["next_steps"][0])
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_controller_post")

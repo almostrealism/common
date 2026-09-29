@@ -117,6 +117,25 @@ class TestSubmitAgentSensitiveFileProtectionGuard(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_controller_post")
+    def test_sensitive_bypass_request_rejected_before_scope_resolution(
+            self, mock_post, mock_get):
+        """The guard runs before workspace-scope resolution, so a rejected
+        request neither refreshes the workspace map from the controller nor
+        surfaces a scope error in place of the operator-only one."""
+        mock_get.side_effect = ConnectionError("controller unreachable")
+        result = server.workstream_submit_task(
+            prompt="Delegated task",
+            workstream_id="ws-other",
+            sensitive_file_protection_enabled=False,
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("sensitive_file_protection_enabled=False", result["error"])
+        self.assertIn("operator", result["error"].lower())
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
     def test_sensitive_bypass_agent_default_passes_through(
             self, mock_post, mock_get):
         """Leaving the flag at its default (True) is harmless: the

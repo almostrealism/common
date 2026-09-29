@@ -563,12 +563,6 @@ def workstream_submit_task(
                 ],
             }
 
-    server._require_workstream_in_scope(workstream_id)
-    server._audit("workstream_submit_task", workstream_id=workstream_id,
-           target_branch=target_branch, repo_url=repo_url,
-           create_workstream_if_missing=create_workstream_if_missing,
-           prompt_len=len(prompt))
-
     # In-flight agent guard for the operator-only flags. When this tool is
     # called from inside a running agent session (the caller has a
     # workstream-bound armt_tmp_ HMAC token), the agent must never be able
@@ -576,8 +570,10 @@ def workstream_submit_task(
     # that, so only a bearer without a workstream binding (an
     # admin/operator) may set them. Their defaults are the safe values, so
     # this is a no-op for callers that leave them alone. The check is placed
-    # BEFORE the payload is built so a rejected call is never forwarded to
-    # the controller at all.
+    # BEFORE workspace-scope resolution (which may refresh the workspace map
+    # from the controller) and before the payload is built, so a rejected
+    # call never contacts the controller at all.
+    # TODO(review): rejected operator-only attempts now return before server._audit, so they leave no audit entry; decide whether to audit them.
     if caller_workstream_id and not sensitive_file_protection_enabled:
         return _operator_only_rejection(
             caller_workstream_id,
@@ -605,6 +601,12 @@ def workstream_submit_task(
             "(.claude/settings.json, .claude/hooks/) that session runs under",
             "Leave skip_agent_permission_prompts at its default (False) and re-submit",
         )
+
+    server._require_workstream_in_scope(workstream_id)
+    server._audit("workstream_submit_task", workstream_id=workstream_id,
+           target_branch=target_branch, repo_url=repo_url,
+           create_workstream_if_missing=create_workstream_if_missing,
+           prompt_len=len(prompt))
 
     if shell_job:
         payload = {"jobType": "shell", "command": command}
