@@ -33,9 +33,10 @@ failed in `compileForTraining()` with an instruction cache collision, and a sing
 ### Measurement conditions
 
 - **Base `master` commit:** `ac76c0e24` (the merge-base of the branch).
-- **Tested worktree:** branch `project/plan-20260929-043714` at `9b4fc5026` plus the changes
-  committed together with this document (the harness change in `AggressiveFineTuningTest`, and the
-  three fixes below). The "final tree" numbers were produced by exactly that tree; the "before"
+- **Tested worktree:** branch `project/plan-20260929-043714` at `207fa7c8d`, the commit that
+  added this document together with the harness change in `AggressiveFineTuningTest` and the
+  three fixes below (parent `9b4fc5026`). The "final tree" numbers were produced by the tree of
+  that commit; the "before"
   columns note which fixes were absent.
 - **Host:** Apple M1 Ultra, 128 GB, macOS 15.7.1, JDK 24 test JVM. **Backend:** automatic selection
   (`AR_HARDWARE_DRIVER` unset), which initialised OpenCL, Metal and the native (JNI) backend;

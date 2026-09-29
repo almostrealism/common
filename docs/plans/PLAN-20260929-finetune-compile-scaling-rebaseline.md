@@ -157,7 +157,7 @@ Concrete, ordered deliverables:
    attempt: `getSkipKnownIssues()` also returns `true` whenever `getSkipLongTests()` does, which
    is the default (`AR_LONG_TESTS` unset and `AR_TEST_DEPTH` at its default of 9). A method
    marked `knownIssue = true` is therefore silently skipped — reported as an assumption failure,
-   not a pass — unless the run sets `AR_LONG_TESTS=true` (or a test depth above 10). Check that
+   not a pass — unless the run sets `AR_LONG_TESTS=enabled` (`SystemUtils` accepts only `enabled` or `disabled`; `true` throws) (or a test depth above 10). Check that
    each measurement actually executed rather than reading a skipped run as a fast one.
 
    The same harness change must also fix three measurement defects in the existing code, or the

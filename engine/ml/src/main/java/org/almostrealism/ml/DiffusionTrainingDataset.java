@@ -244,11 +244,9 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 		 * @return A {@code (batchSize, 1)} {@link PackedCollection} containing the normalized timestep
 		 */
 		private PackedCollection createTimestepTensor(int t, int batchSize) {
-			PackedCollection timestep = new PackedCollection(batchSize, 1);
-			for (int b = 0; b < batchSize; b++) {
-				timestep.setFrom(b, normalizedTimesteps, t, 1);
-			}
-			return timestep;
+			CollectionFeatures features = CollectionFeatures.getInstance();
+			return features.cp(normalizedTimesteps.range(features.shape(1), t))
+					.repeat(batchSize).evaluate();
 		}
 	}
 }
