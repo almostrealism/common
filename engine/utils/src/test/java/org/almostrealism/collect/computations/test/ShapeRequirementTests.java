@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -105,6 +106,38 @@ public class ShapeRequirementTests extends TestSuiteBase {
 		assertShape(shape(2, 3), new CollectionSubsetComputation(shape(2, 3), input,
 				new Expression<?>[] { new IntegerConstant(1), new IntegerConstant(2) }).getShape());
 		assertShape(shape(3, 4, 2), new PackedCollectionEnumerate(shape(4, 2), input).getShape());
+	}
+
+	/** {@link Shape#asShape} returns the very same instance when the value is a {@link Shape}. */
+	@Test(timeout = 30000)
+	public void asShapeReturnsSameInstance() {
+		PackedCollection value = new PackedCollection(shape(4, 6));
+		Assert.assertSame(value, Shape.asShape("Test", value));
+	}
+
+	/** {@link Shape#requireShape} returns the shape of a {@link Shape} value. */
+	@Test(timeout = 30000)
+	public void requireShapeReturnsShapeOfValue() {
+		PackedCollection value = new PackedCollection(shape(4, 6));
+		assertShape(shape(4, 6), Shape.requireShape("Test", value));
+		assertShape(shape(4, 6), Shape.requireShape("Test", cp(value)));
+	}
+
+	/**
+	 * Both {@link Shape#asShape} and {@link Shape#requireShape} reject a value
+	 * that is not a {@link Shape}, including {@code null}, naming the operation
+	 * given as the first argument.
+	 */
+	@Test(timeout = 30000)
+	public void asShapeRejectsNonShapeValues() {
+		assertRejected("Custom cannot be performed without a TraversalPolicy",
+				() -> Shape.asShape("Custom", "not a shape"));
+		assertRejected("Custom cannot be performed without a TraversalPolicy",
+				() -> Shape.requireShape("Custom", shapeless()));
+		assertRejected("Custom cannot be performed without a TraversalPolicy",
+				() -> Shape.asShape("Custom", null));
+		assertRejected("Custom cannot be performed without a TraversalPolicy",
+				() -> Shape.requireShape("Custom", null));
 	}
 
 	/** Asserts that {@code actual} has the same dimensions as {@code expected}. */
