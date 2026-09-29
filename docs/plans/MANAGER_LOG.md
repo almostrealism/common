@@ -58,15 +58,17 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 `FINE_TUNE_FAIL.md` is the platform's authoritative verdict on training feasibility, and it says, in
 bold, that production-scale LoRA fine-tuning is **infeasible** — backward-pass compile time scaling
 super-linearly, projected to "days, not minutes" at embed=1024/depth=16. That measurement is from
-**February 2026**. Its stage-detail profile names `expressionCacheMatch` (~1375.6 s) as the *dominant*
-backward-compile cost, with the kernel-series / `Sum.simplify → getSeries → Expression.sequence`
-analysis a *secondary* consumer (~150 s). Both fronts have since moved, but by *different* work, and
-it is worth keeping them straight: the September `ExplicitExpressionMatrix` cache-bypass and
-on-demand-entry changes attacked the dominant `expressionCacheMatch` cost directly (isolated
-`testSingleAttentionBackward` ~186 s → ~3.6 s on Metal), while the `feature/cl-profile-perf`
-kernel-series rebuild (`convDeltaSmall` 172 s → 1.15 s, ~150×) attacked the secondary one. The
-~150× convolution figure therefore is *not* a prediction for the fine-tuning backward pass; it is
-the smaller of the two levers. Nobody has re-measured the transformer backward pass against either.
+**February 2026**. Its stage-detail profile lists `expressionCacheMatch` (~1375.6 s) as by far
+the largest accumulated entry and the kernel-series / `Sum.simplify → getSeries →
+Expression.sequence` analysis (`kernelSeries`, ~150 s) as a much smaller one. Both are
+non-exclusive `stageDetailTime` accumulations (the first is listed at 268 % of the 512.8 s run),
+so neither is a wall-clock share and they should not be ranked as exact levers. Both fronts have
+since moved, by *different* work, and it is worth keeping them straight: the September
+`ExplicitExpressionMatrix` cache-bypass and on-demand-entry changes attacked `expressionCacheMatch`
+directly (isolated `testSingleAttentionBackward` ~186 s → ~25 s → 3.6 s on Metal across the two
+changes), while the `feature/cl-profile-perf` kernel-series rebuild (`convDeltaSmall`
+172 s → 1.15 s, ~150×) attacked `kernelSeries`. The ~150× convolution figure therefore is *not* a
+prediction for the fine-tuning backward pass. Nobody has re-measured the transformer backward pass against either.
 The verdict that gates the entire proof-of-value trajectory is very likely stale — and stale in the
 pessimistic direction.
 
@@ -95,8 +97,12 @@ what training is now possible so the next cycle can plan against reality.
 
 #### What comes next
 
-1. This plan executes: current scaling numbers, a fresh embed=64 backward-compile profile, a
-   rewritten `FINE_TUNE_FAIL.md`, and a named next lever.
+1. This plan executes: first the additive `AggressiveFineTuningTest` harness change (individually
+   selectable, bounded scaling and profiled methods; separate cold/warm columns; profile written
+   under the module's `results/`), then current scaling numbers, a fresh embed=64 backward-compile
+   profile, a rewritten `FINE_TUNE_FAIL.md`, and a named next lever. Open risk: the profiled run
+   may still hit the `IndexProjectionProducerComputation.delta()` scope error recorded in
+   `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data.
 2. If the verdict flips toward feasible: scope the **minimal end-to-end self-hosted training run** —
    a tiny model trained on the platform's own docs/source via `ModelOptimizer` — the first concrete
    step toward software that studies itself. (This was item 4 of the prior cycle's "what next".)

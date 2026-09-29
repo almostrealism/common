@@ -29,30 +29,42 @@ backward-compile cost to matrix-multiply derivatives (`collectionProductComputat
 gradient accumulation (`collectionAddComputation`), and heavy nested `reshape` wrapping
 around index-arithmetic expressions.
 
-Since then, the compile-time front has moved decisively — and on **two distinct paths**,
-one of which is the very cost that `FINE_TUNE_FAIL.md` names as dominant. It is important
-to keep these separate, because it is easy to overstate how directly the headline
-convolution result predicts the fine-tuning result:
+Since then, the compile-time front has moved decisively — and on **two distinct paths**.
+It is important to keep these separate, and to be careful about how their February sizes are
+compared, because it is easy to overstate how directly the headline convolution result
+predicts the fine-tuning result.
 
-<!-- TODO(review): 1375.6 s is accumulated stage-detail time (268% of the 512.8 s run) and cannot be "the bulk" of it; reconcile with the node-level 28.5%/22.0% collectionProduct/collectionAdd shares cited above. -->
-- **The dominant fine-tuning cost — expression-cache matching.** `FINE_TUNE_FAIL.md`'s own
-  stage-detail breakdown attributes the bulk of the embed=64 backward-compile time to
-  `expressionCacheMatch` (**~1375.6 s**, the single largest entry), with `kernelSeries` a
-  *secondary* consumer (**~150 s**). Its September-2026 updates then record that this
-  dominant cost was attacked directly: `ExplicitExpressionMatrix.populate` was moved under
-  `ExpressionCache.bypass(...)` ("Stop explicit expression matrices from flooding the compile
-  cache") and its entries are now substituted on demand ("Evaluate explicit expression matrix
-  entries on demand"), taking the isolated `testSingleAttentionBackward` from ~186 s to ~3.6 s
-  on Metal. Those changes are the ones most likely to move the fine-tuning numbers, and they
-  are already on `master`.
-- **The secondary cost — kernel-series analysis.** Separately, `docs/plans/CONVOLUTION_COMPILE_TIME.md`
-  records a resolution that landed on `feature/cl-profile-perf` (**2026-09-08**): the
-  kernel-series detection pass was rebuilt around block evaluation with early abort, structural
-  (symbolic) series derivation, and construction-time folds, taking `convDeltaSmall`
-  **172.1 s → 1.15 s** and `upsample` **233 s → 4 s** (~150×). This targets the `Sum.simplify →
-  getSeries → Expression.sequence` path — the ~150 s *secondary* fine-tuning consumer, not the
-  ~1375 s dominant one. It is real leverage, but the ~150× convolution figure should not be
-  read as a ~150× prediction for the fine-tuning backward pass.
+A caveat on the February numbers first. `FINE_TUNE_FAIL.md` §"Detailed Profile Analysis
+(February 2026)" reports `expressionCacheMatch` at **~1375.6 s** and `kernelSeries` at
+**~150 s**, but both are `stageDetailTime` entries: the profile's scope listener was created
+non-exclusive (`OperationProfileNode.getScopeListener(false)` records into
+`getStageDetailTime()`, whose javadoc describes "non-exclusive accumulation of overlapping stage
+timings"). That is why `expressionCacheMatch` alone is listed at "268 %" of the 512.8 s profiled
+run. These figures are accumulated across nested and overlapping timings, so they cannot be read
+as wall-clock shares, and they are not comparable to the node-level 28.5 % / 22.0 %
+`collectionProductComputation` / `collectionAddComputation` shares cited above. What the February
+data *does* support is weaker: `expressionCacheMatch` was by far the largest accumulated
+stage-detail entry (and `FINE_TUNE_FAIL.md` itself calls it "the main performance bottleneck"),
+and `kernelSeries` was a much smaller one. No exclusive measurement establishes how much of the
+~500 s backward pass either one actually consumed.
+
+- **Expression-cache matching — the largest accumulated stage-detail entry.** `FINE_TUNE_FAIL.md`'s
+  September-2026 updates record that this cost was attacked directly, in two steps.
+  `ExplicitExpressionMatrix.populate` was moved under `ExpressionCache.bypass(...)`, taking the
+  isolated `ProductDeltaIsolationTest#testSingleAttentionBackward` from a mean of ~186 s to ~25 s
+  on Metal; its entries were then made to substitute on demand, taking the same test from 26.0 s
+  to 3.6 s on Metal (and 40.4 s → 17.8 s on the native backend). These are the changes most likely
+  to move the fine-tuning numbers, and they are already on `master`. Note they were measured on an
+  isolated attention backward, not on the full `DiffusionTransformer` backward pass this plan
+  targets.
+- **Kernel-series analysis — a smaller accumulated stage-detail entry.** Separately,
+  `docs/plans/CONVOLUTION_COMPILE_TIME.md` records a resolution that landed on
+  `feature/cl-profile-perf` (**2026-09-08**): the kernel-series detection pass was rebuilt around
+  block evaluation with early abort, structural (symbolic) series derivation, and
+  construction-time folds, taking `convDeltaSmall` **172.1 s → 1.15 s** and `upsample`
+  **233 s → 4 s** (~150×). This targets the `Sum.simplify → getSeries → Expression.sequence` path —
+  the ~150 s accumulated `kernelSeries` entry. It is real leverage, but the ~150× convolution figure
+  should not be read as a ~150× prediction for the fine-tuning backward pass.
 
 The combined effect of both fronts on the transformer backward pass is unmeasured, which is
 exactly what this task exists to establish.
@@ -90,6 +102,18 @@ Concrete, ordered deliverables:
    `@TestDepth` past what CI runs). This is a source change (`studio/compose` test sources), so it
    is *not* part of this documentation review; it is the first coding task for whoever implements
    the plan, and every measurement step below depends on it.
+
+   The profiled run needs the same treatment, not just the sweep. `testProfiledFineTuning()` is
+   itself an existing five-minute `@Test`, and the only historical profile of it covered
+   **512.8 s** — well past that limit. Raising the timeout on the existing method is not an option:
+   it would weaken an existing test, and `test-integrity-check`
+   (`tools/ci/agent-protection/detect-test-hiding.sh`, Pattern 9 "Timeout value INCREASED by more
+   than 2x") mechanically rejects a net timeout increase above 2× (5 min → anything over 10 min).
+   Step 0 must therefore also add a **new, independently selectable profiled-measurement method**
+   (embed=64, depth=1, same configuration as `testProfiledFineTuning()`) with its own explicit
+   JUnit timeout sized to the expected run and no larger than the 40-minute runner ceiling. A
+   brand-new method with a larger timeout has no removed counterpart, so it does not trip
+   Pattern 9; the existing method is left exactly as it is.
 
    The same harness change must also fix two measurement defects in the existing code, or the
    numbers it produces will not mean what the rest of this plan needs them to mean:
@@ -132,13 +156,17 @@ Concrete, ordered deliverables:
    `numHeads`, and `globalCondDim` all change together with `embedDim`, and every point is
    `depth=1`, so these configurations measure a combined "model size" axis, not embed alone.
 
-2. **Capture a fresh backward-compile profile.** Run `testProfiledFineTuning()` (embed=64,
-   depth=1), which writes an `OperationProfileNode` XML. Load it with `ar-profile-analyzer`
+2. **Capture a fresh backward-compile profile.** Run the new profiled-measurement method from
+   step 0 (the `testProfiledFineTuning()` configuration: embed=64, depth=1), which writes an
+   `OperationProfileNode` XML. Load it with `ar-profile-analyzer`
    (`load_profile`, `find_slowest`, `get_timing_breakdown`, `get_source`) and identify what
    now dominates backward-pass compilation. Confirm or refute that the Feb-2026 hot spots
    (`collectionProductComputation`, `collectionAddComputation`, nested-`reshape` overhead,
    the 72×-larger `projectDelta` intermediate) are still the top consumers, or whether the
-   dominant cost has shifted to something else after the kernel-series work.
+   dominant cost has shifted to something else after the kernel-series work. Keep the two kinds
+   of timing apart when ranking: node-level shares are comparable with each other, but
+   `stageDetailTime` entries are non-exclusive (see Motivation) and must be reported as accumulated
+   time, never as a percentage of the run or ranked against node shares.
 
 3. **Produce a current scaling curve and feasibility verdict — within the limits of what is
    measured.** Rebuild the table with today's numbers alongside the Feb-2026 numbers. The
@@ -197,10 +225,10 @@ end-to-end training runs.
    explicit runner timeout ≤ 40 min. Never run the whole module or a CI shard. Note the two
    independent limits this must satisfy: the runner-level timeout is a ceiling the harness
    enforces, but each `@Test` also carries its own JUnit `@Test(timeout = 5 * 60000)`, and the
-   runner cannot lengthen that — so once step 0 has split the sweep into per-configuration
-   methods, each such method needs a JUnit timeout sized to its own expected backward-compile
-   time (never lowered below, or removed from, an existing method). Run `testProfiledFineTuning`
-   and each scaling configuration as its own selectable method; prefer the smaller configurations
+   runner cannot lengthen that — so the new per-configuration and profiled methods added in
+   step 0 each need a JUnit timeout sized to their own expected run (at most the 40-minute runner
+   ceiling), while the timeouts on the existing methods stay unchanged. Run the new profiled
+   method and each scaling configuration as its own selectable method; prefer the smaller configurations
    first, and if embed=128/256 do not complete in budget, record that as the current practical
    ceiling rather than forcing it.
 
@@ -218,8 +246,9 @@ end-to-end training runs.
 
 ## Success Criteria
 
-- The additive harness change from Scope step 0 landed (per-configuration, individually
-  selectable, bounded runs) with the existing tests unweakened; it reports cold first-step and
+- The additive harness change from Scope step 0 landed (per-configuration and profiled
+  methods, each individually selectable and bounded) with the existing tests, including their
+  timeouts, unchanged; it reports cold first-step and
   warm second-step latency separately, and the profiled run writes its XML under the module's
   `results/` directory rather than a hard-coded container path.
 - Every reported "backward compile" figure is either a profile-derived compile/stage-detail time
@@ -230,7 +259,8 @@ end-to-end training runs.
   fixed embed); where an axis could not be measured in budget, the conclusion is explicitly
   limited to the measured configurations and the gap is recorded as an open question.
 - A fresh `finetune_profile_embed64` profile captured and analyzed, with the current
-  top-3 backward-compile cost nodes and their time shares named from `ar-profile-analyzer`.
+  top-3 backward-compile cost nodes and their time shares named from `ar-profile-analyzer`
+  (node-level shares; any `stageDetailTime` entry is quoted as accumulated time, not as a share).
 - `docs/plans/FINE_TUNE_FAIL.md` rewritten so its headline verdict matches the current
   measurement, with pre-optimization numbers retained and labelled.
 - A named, evidenced next optimization lever, scoped so it does not collide with the
@@ -245,9 +275,9 @@ end-to-end training runs.
 - None blocking, but one internal prerequisite: the measurement harness
   (`AggressiveFineTuningTest`) exists yet is not individually runnable within a JUnit timeout
   (Scope step 0 must land first). Both optimizations it must be measured against — the
-  `ExplicitExpressionMatrix` cache-bypass / on-demand-entry work that targeted the dominant
-  `expressionCacheMatch` cost, and the kernel-series rebuild that targeted the secondary cost —
-  are already on `master`.
+  `ExplicitExpressionMatrix` cache-bypass / on-demand-entry work that targeted the
+  `expressionCacheMatch` stage-detail entry, and the kernel-series rebuild that targeted the
+  `kernelSeries` entry — are already on `master`.
 - Coordinate-around (not depend-on): the in-flight `feature/lora-gradients` family. This
   task must not modify the sparse-Jacobian projection computations, the `Sum` reordering
   budget, or the memoization gating those branches own.
