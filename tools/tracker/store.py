@@ -280,11 +280,16 @@ class TrackerStore:
 
     def _set_blockers(self, task_id: str, blocker_ids: list) -> None:
         """Replace the set of tasks blocking *task_id*. The caller commits or
-        rolls back."""
+        rolls back.
+
+        Duplicate ids are collapsed here rather than with ``INSERT OR IGNORE``,
+        which would also silently drop a row the CHECK refuses (a task
+        blocking itself) instead of raising.
+        """
         self._conn.execute("DELETE FROM task_blockers WHERE task_id = ?", (task_id,))
         self._conn.executemany(
-            "INSERT OR IGNORE INTO task_blockers (task_id, blocker_id) VALUES (?, ?)",
-            [(task_id, b) for b in blocker_ids],
+            "INSERT INTO task_blockers (task_id, blocker_id) VALUES (?, ?)",
+            [(task_id, b) for b in dict.fromkeys(blocker_ids)],
         )
 
     def _with_blockers(self, tasks: list) -> list:

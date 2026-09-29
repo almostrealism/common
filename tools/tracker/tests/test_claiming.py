@@ -156,6 +156,27 @@ class BlockerTests(_StoreTestBase):
         task = self._task("next")
         self.assertEqual("next", self.store.get_task(task["id"])["title"])
 
+    def test_a_repeated_blocker_is_stored_once(self):
+        a = self._task("a")
+        task = self._task("t", blocked_by=[a["id"], a["id"]])
+        self.assertEqual([a["id"]], task["blocked_by"])
+        task = self.store.update_task(task["id"], blocked_by=[a["id"], a["id"]])
+        self.assertEqual([a["id"]], task["blocked_by"])
+
+    def test_a_task_blocking_itself_is_refused_by_the_database_on_create(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._task("loop", task_id="loop-id", blocked_by=["loop-id"])
+        self.store.create_project("unrelated write")
+        self.assertIsNone(self.store.get_task("loop-id"))
+
+    def test_a_task_blocking_itself_is_refused_by_the_database_on_update(self):
+        a = self._task("a")
+        task = self._task("t", blocked_by=[a["id"]])
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.update_task(task["id"], blocked_by=[a["id"], task["id"]])
+        self.store.create_project("unrelated write")
+        self.assertEqual([a["id"]], self.store.get_task(task["id"])["blocked_by"])
+
 
 class MigrationTests(unittest.TestCase):
     """Tasks that existed before readiness was tracked stay out of the queue."""

@@ -95,7 +95,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 #           'GOALS:x' is refused just as the API refuses it; 'goals:?*'
 #           requires at least one character after the prefix, rejecting a
 #           bare 'goals:'.
-# task_blockers - a task is blocked while any task it names here is open.
+# task_blockers - a task is blocked while any task it names here is open. A
+#           task may not block itself (it could never become claimable); the
+#           CHECK mirrors the API's refusal for direct TrackerStore callers.
 _SCHEMA_V3 = """
 ALTER TABLE tasks ADD COLUMN stage TEXT NOT NULL DEFAULT 'backlog'
     CHECK (stage IN ('backlog', 'ready', 'declined'));
@@ -108,7 +110,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_stage ON tasks(stage);
 CREATE TABLE IF NOT EXISTS task_blockers (
     task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     blocker_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    PRIMARY KEY (task_id, blocker_id)
+    PRIMARY KEY (task_id, blocker_id),
+    CHECK (task_id != blocker_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_blockers_blocker ON task_blockers(blocker_id);

@@ -254,4 +254,5 @@ public class TrackerEndpointTest extends TestSuiteBase {
     /** Resolves a path against the endpoint's port. */
     private URI uri(String path) {
         return URI.create("http://localhost:" + endpoint.getListeningPort() + path);
-    }}
+    }
+}
