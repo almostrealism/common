@@ -823,10 +823,37 @@ public class Workstream {
      *
      * @param factory      the factory to configure
      * @param targetBranch the branch the job will run against; may be {@code null}
+     * @see #applyCapabilities(CodingAgentJobFactory, String, boolean)
      */
     public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch) {
+        applyCapabilities(factory, targetBranch, false);
+    }
+
+    /**
+     * Applies this workstream's agent capabilities to a job factory, adding the
+     * permission-prompt bypass when the submission itself asks for it.
+     *
+     * <p>The per-job grant is for an operator who wants one job to edit the
+     * agent runtime's own tooling ({@code .claude/settings.json},
+     * {@code .claude/hooks/}) without opening that door for every job on the
+     * branch. It can only add to what {@link #permitsAgentPermissionBypass(String)}
+     * grants, never revoke it, and nothing here is stored on the workstream, so
+     * the next job on the branch — including a completion-listener wake-up,
+     * which goes through {@link #applyCapabilities(CodingAgentJobFactory, String)}
+     * — does not inherit the per-job grant. That job may still receive the
+     * bypass independently, when its target branch satisfies
+     * {@link #permitsAgentPermissionBypass(String)}.</p>
+     *
+     * @param factory                the factory to configure
+     * @param targetBranch           the branch the job will run against; may be {@code null}
+     * @param jobGrantsPermissionBypass {@code true} when the submission grants
+     *                               this job the permission-prompt bypass
+     */
+    public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch,
+                                  boolean jobGrantsPermissionBypass) {
         factory.setDispatchCapable(dispatchCapable);
-        factory.setBypassAgentPermissionPrompts(permitsAgentPermissionBypass(targetBranch));
+        factory.setBypassAgentPermissionPrompts(jobGrantsPermissionBypass
+                || permitsAgentPermissionBypass(targetBranch));
     }
 
     /**
