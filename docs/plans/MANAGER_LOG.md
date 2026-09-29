@@ -98,12 +98,15 @@ what training is now possible so the next cycle can plan against reality.
 #### What comes next
 
 1. This plan executes: first the additive `AggressiveFineTuningTest` harness change (individually
-   selectable, bounded scaling and profiled methods; separate cold/warm columns; profile written
-   under the module's `results/`), then current scaling numbers, a fresh embed=64 backward-compile
+   selectable, bounded scaling and profiled methods, each excluded from the CI pipeline profile;
+   separate cold/warm columns; profile written under the module's `results/`), then current scaling
+   numbers, a fresh embed=64 backward-compile
    profile, a rewritten `FINE_TUNE_FAIL.md`, and a named next lever. Open risk: the profiled run
    may still hit the `IndexProjectionProducerComputation.delta()` scope error recorded in
    `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data
    and a partial profile (the new profiled method saves the profile even when the run fails).
+   Before execution, the approver fixes the feasibility threshold (target configuration and
+   compile budget); without one, the plan reports timings and growth rates with no feasibility label.
 2. If the verdict flips toward feasible: scope the **minimal end-to-end self-hosted training run** —
    a tiny model trained on the platform's own docs/source via `ModelOptimizer` — the first concrete
    step toward software that studies itself. (This was item 4 of the prior cycle's "what next".)

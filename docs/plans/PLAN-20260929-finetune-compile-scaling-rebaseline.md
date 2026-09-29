@@ -131,6 +131,26 @@ Concrete, ordered deliverables:
    a step-0 finding to record — the profile-scope success criterion below then falls back to a
    whole-run profile with the limitation stated, not to an unsupported subtree ranking.
 
+   **Every new measurement method must be explicitly excluded from the CI pipeline** with
+   `@TestProperties(excludeProfiles = TestUtils.PIPELINE)`, while staying individually selectable
+   for the measurement runs. CI's test jobs run with `-DAR_TEST_PROFILE=pipeline`, and under that
+   profile neither `@TestDepth` nor `longRunning` keeps a test out: `TestUtils.getTestDepth()`
+   returns `Integer.MAX_VALUE` and `TestUtils.getSkipLongTests()` returns `false` for the pipeline
+   profile (the `TestProperties.excludeProfiles` javadoc says exactly this). The existing methods
+   are kept out of CI today only by `@TestProperties(knownIssue = true)` —
+   `TestUtils.getSkipKnownIssues()` returns `true` under the pipeline profile. That marker is not a
+   safe exclusion for the new methods: step 1 re-validates whether it is still warranted, and if a
+   method is declared (or later corrected) without it, each run of up to 40 minutes would be
+   discovered by routine CI and add hours to the suite. The profile exclusion is independent of
+   the known-issue status, so it stays correct whichever way step 1 comes out.
+
+   Running these methods outside CI also has a precondition worth knowing before the first
+   attempt: `getSkipKnownIssues()` also returns `true` whenever `getSkipLongTests()` does, which
+   is the default (`AR_LONG_TESTS` unset and `AR_TEST_DEPTH` at its default of 9). A method
+   marked `knownIssue = true` is therefore silently skipped — reported as an assumption failure,
+   not a pass — unless the run sets `AR_LONG_TESTS=true` (or a test depth above 10). Check that
+   each measurement actually executed rather than reading a skipped run as a fast one.
+
    The same harness change must also fix three measurement defects in the existing code, or the
    numbers it produces will not mean what the rest of this plan needs them to mean:
 
@@ -252,6 +272,18 @@ Concrete, ordered deliverables:
    whether the growth is still super-quadratic and whether the "infeasible" verdict still holds,
    has softened to "slow but feasible", or is now false.
 
+   **A feasibility label requires a threshold fixed before measurement.** The words "feasible" and
+   "infeasible" are only assigned against an acceptance criterion the approver sets before step 1
+   runs: a named target configuration (for example the proof-of-value configuration, or
+   embed=1024/depth=16) and a maximum acceptable cold first-step latency or derived compile budget
+   for it. The verdict is then a comparison of the measured (or, with the controlled series,
+   extrapolated) figure against that number, with the extrapolation labelled as such. If no
+   threshold has been fixed when the measurements are taken, the deliverable is limited to the
+   measured timings and fitted growth rates, and no feasibility label is assigned — the stale
+   "infeasible" verdict is then withdrawn as unsupported rather than replaced by another
+   judgement call. See Open questions.
+
+<!-- TODO(review): step 4 says "the revised verdict" unconditionally; align it with step 3's no-threshold case (timings and growth rates only, stale verdict withdrawn). -->
 4. **Rewrite `docs/plans/FINE_TUNE_FAIL.md` to reflect reality.** Replace the stale
    "BLOCKED / infeasible" framing and the Feb-2026 tables with the current measurement, the
    fresh profile analysis, and the revised verdict. Preserve the historical numbers clearly
@@ -367,7 +399,13 @@ end-to-end training runs.
   labelled as covering only the work before the failure. The second, if even that profile is
   empty, is a recorded statement that no profile could be captured, with the exact current error.
 - `docs/plans/FINE_TUNE_FAIL.md` rewritten so its headline verdict matches the current
-  measurement, with pre-optimization numbers retained and labelled.
+  measurement, with pre-optimization numbers retained and labelled. The headline states the
+  acceptance threshold it was judged against (target configuration and budget, fixed before
+  measurement per Scope step 3); if none was fixed, the headline reports the measured timings and
+  growth rates without a feasibility label.
+- Every new measurement method from Scope step 0 carries
+  `@TestProperties(excludeProfiles = TestUtils.PIPELINE)`, so it does not run in CI's pipeline
+  profile regardless of its `knownIssue` status.
 - A named next optimization lever, scoped so it does not collide with the in-flight
   `feature/lora-gradients` work. The lever is profile-evidenced when a complete profile exists.
   Otherwise it is explicitly labelled as a hypothesis from wall-clock and partial-profile data.
@@ -419,6 +457,10 @@ Recorded for whoever approves this plan; none of them is resolved by this docume
   or "false" without saying what compile budget counts as feasible for the proof-of-value run.
   Without a number (for example, first-step latency for the proof-of-value configuration under
   some fixed ceiling), the revised verdict risks being as subjective as the one it replaces.
+  Scope step 3 now makes this a precondition: the approver fixes the target configuration and
+  budget before measurement, or the deliverable carries timings and growth rates only, with no
+  feasibility label. The plan deliberately does not propose the number itself; the approver
+  should supply it (and name the proof-of-value configuration it applies to) when approving.
 
 ## Estimated Complexity
 
