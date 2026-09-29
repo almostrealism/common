@@ -62,7 +62,7 @@ public class MeshDataIntersectionTest extends TestSuiteBase {
 		Assert.assertEquals(0.0, result.getB(), 1e-9);
 	}
 
-	/** A ray that misses the triangle yields a non-positive intersection distance. */
+	/** A ray that misses the triangle yields a strictly negative intersection distance. */
 	@Test(timeout = 30000)
 	public void evaluateIntersectionMiss() {
 		MeshData md = planeTriangle().getMeshData();
@@ -72,7 +72,10 @@ public class MeshDataIntersectionTest extends TestSuiteBase {
 		Producer<Ray> ray = (Producer) ray(vector(500.0, 500.0, 1.0), vector(0.0, 0.0, -1.0));
 		Pair result = md.evaluateIntersection(ray.get(), new Object[0]);
 
-		Assert.assertTrue("Missing ray should not report a positive distance", result.getA() <= 0.0);
+		// evaluateIntersection documents a negative distance for no intersection; a
+		// zero result would mean a kernel left its output at the default and must fail.
+		Assert.assertTrue("Missing ray should report a negative distance, was " + result.getA(),
+				result.getA() < 0.0);
 	}
 
 	/** The scalar kernel writes the intersection distance into the destination bank. */

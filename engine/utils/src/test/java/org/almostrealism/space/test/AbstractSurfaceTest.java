@@ -31,6 +31,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Set;
 
 /**
@@ -194,6 +195,38 @@ public class AbstractSurfaceTest extends TestSuiteBase {
 		set.clear();
 		Assert.assertTrue(set.isEmpty());
 		Assert.assertEquals(0, p.getTextures().length);
+	}
+
+	/**
+	 * The texture Set iterator's {@code remove()} deletes the element most recently
+	 * returned by {@code next()} (not the following one) and leaves the remaining
+	 * elements intact so iteration continues without skipping any.
+	 */
+	@Test(timeout = 10000)
+	public void textureSetIteratorRemove() {
+		Plane p = new Plane();
+		Texture t0 = new ConstantTexture(new RGB(1.0, 0.0, 0.0));
+		Texture t1 = new ConstantTexture(new RGB(0.0, 1.0, 0.0));
+		Texture t2 = new ConstantTexture(new RGB(0.0, 0.0, 1.0));
+
+		Set<Texture> set = p.getTextureSet();
+		set.addAll(Arrays.asList(t0, t1, t2));
+
+		Iterator<Texture> itr = set.iterator();
+		Assert.assertSame(t0, itr.next());
+		itr.remove();
+
+		// t0 (the last returned element) must be gone; t1 and t2 must survive in order.
+		Assert.assertEquals(2, set.size());
+		Assert.assertFalse(set.contains(t0));
+		Assert.assertTrue(set.contains(t1));
+		Assert.assertTrue(set.contains(t2));
+		Assert.assertSame(t1, p.getTexture(0));
+		Assert.assertSame(t2, p.getTexture(1));
+
+		// Iteration continues from the shifted position without skipping t1.
+		Assert.assertTrue(itr.hasNext());
+		Assert.assertSame(t1, itr.next());
 	}
 
 	/** setShaders clears the set and addShader grows it. */

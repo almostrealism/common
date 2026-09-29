@@ -335,7 +335,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 
 					@Override
 					public void remove() {
-						removeTexture(this.index);
+						removeTexture(--this.index);
 					}
 				};
 
