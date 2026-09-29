@@ -72,6 +72,31 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that a drum note ({@link MidiNoteEvent#DRUM_INSTRUMENT}) survives a
+	 * tokenize/detokenize round trip. The tokenizer encodes drums as instrument 128,
+	 * so detokenizing must reconstruct a drum-channel event rather than a melodic
+	 * note on GM program 127.
+	 */
+	@Test(timeout = 60000)
+	public void drumInstrumentSurvivesRoundTrip() {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		events.add(new MidiNoteEvent(36, 0, 20, 100, MidiNoteEvent.DRUM_INSTRUMENT));
+		events.add(new MidiNoteEvent(60, 50, 40, 90, 127));
+
+		MidiTokenizer tokenizer = new MidiTokenizer();
+		List<MidiCompoundToken> tokens = tokenizer.tokenize(events);
+		assertEquals("Drum token instrument", MidiNoteEvent.DRUM_INSTRUMENT,
+				tokens.get(1).getInstrument());
+
+		List<MidiNoteEvent> reconstructed = tokenizer.detokenize(tokens);
+		assertEquals("Reconstructed event count", 2, reconstructed.size());
+
+		assertEquals("Drum instrument", MidiNoteEvent.DRUM_INSTRUMENT,
+				reconstructed.get(0).getInstrument());
+		assertEquals("Melodic instrument", 127, reconstructed.get(1).getInstrument());
+	}
+
+	/**
 	 * Verify that compound tokens correctly decompose pitch into
 	 * octave and pitch class, and that onset deltas are computed.
 	 */
