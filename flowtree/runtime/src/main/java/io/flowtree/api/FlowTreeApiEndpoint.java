@@ -1478,32 +1478,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Escapes a string as a JSON string value (with surrounding quotes).
      * Shared by every handler in this package so the JSON shape produced by
-     * one endpoint is identical to the next.
+     * one endpoint is identical to the next; the escaping itself is
+     * {@link JsonFieldExtractor#escapeJson(String)}.
      *
      * @param s the string to escape
      * @return the JSON-escaped quoted string
      */
     static String escapeJsonValue(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"': sb.append("\\\""); break;
-                case '\\': sb.append("\\\\"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                default:
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-            }
-        }
-        sb.append('"');
-        return sb.toString();
+        return "\"" + JsonFieldExtractor.escapeJson(s) + "\"";
     }
 
 

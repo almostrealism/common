@@ -627,6 +627,38 @@ class ApiTests(_StoreTestBase):
         resp = self.client.get("/v1/tasks", params={"stage": "ready"})
         self.assertEqual(["ready"], [t["title"] for t in resp.json()["tasks"]])
 
+    def test_non_object_bodies_are_refused_with_400(self):
+        task = self._task("t")
+        writes = [
+            ("post", "/v1/projects"),
+            ("put", f"/v1/projects/{self.project['id']}"),
+            ("post", "/v1/releases"),
+            ("put", f"/v1/releases/{self.release['id']}"),
+            ("post", "/v1/releases/ensure"),
+            ("post", "/v1/tasks"),
+            ("put", f"/v1/tasks/{task['id']}"),
+            ("post", "/v1/claim"),
+            ("post", "/v1/import"),
+        ]
+        for method, path in writes:
+            for raw in (b"[]", b"null", b"\"text\"", b"42", b"[{\"title\": \"t\"}]"):
+                with self.subTest(method=method, path=path, body=raw):
+                    resp = getattr(self.client, method)(
+                        path, content=raw, headers={"Content-Type": "application/json"})
+                    self.assertEqual(400, resp.status_code)
+                    self.assertEqual(
+                        {"ok": False, "error": "JSON body must be an object"}, resp.json())
+            with self.subTest(method=method, path=path, body="malformed"):
+                resp = getattr(self.client, method)(
+                    path, content=b"{not json", headers={"Content-Type": "application/json"})
+                self.assertEqual(400, resp.status_code)
+                self.assertEqual("Invalid JSON body", resp.json()["error"])
+        # Nothing was written by any of the refused requests.
+        self.assertEqual("Framework", self.client.get(
+            f"/v1/projects/{self.project['id']}").json()["project"]["name"])
+        self.assertEqual("t", self.store.get_task(task["id"])["title"])
+        self.assertEqual(1, len(self.client.get("/v1/tasks").json()["tasks"]))
+
 
 if __name__ == "__main__":
     unittest.main()

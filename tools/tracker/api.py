@@ -146,12 +146,16 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         )
 
     async def _json_body(request: Request):
+        # Every endpoint reads named fields, so a well-formed body that is not
+        # a JSON object ([] or null) is refused here rather than failing with
+        # an AttributeError (500) at the first body.get(...).
         try:
-            return await request.json(), None
+            body = await request.json()
         except (json.JSONDecodeError, ValueError):
-            return None, JSONResponse(
-                {"ok": False, "error": "Invalid JSON body"}, status_code=400
-            )
+            return None, _bad_request("Invalid JSON body")
+        if not isinstance(body, dict):
+            return None, _bad_request("JSON body must be an object")
+        return body, None
 
     # ------------------------------------------------------------------
     # Health
