@@ -607,10 +607,16 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        # TODO(review): non-object projects/releases entries raise in the store (500) instead of a 400.
         projects = body.get("projects") or []
         releases = body.get("releases") or []
         tasks = body.get("tasks") or []
+        for key, entries in (("projects", projects), ("releases", releases), ("tasks", tasks)):
+            if not isinstance(entries, list):
+                return _bad_request(f"{key} must be a list")
+        for key, entries in (("projects", projects), ("releases", releases)):
+            for idx, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    return _bad_request(f"{key}[{idx}] must be an object")
         # Every task is checked before anything is written, with the same
         # rules as a single create or update; a blocker may name any task in
         # this import, since the store links blockers after all are written.

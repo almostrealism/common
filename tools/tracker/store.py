@@ -7,6 +7,7 @@ plus full-text search via SQLite FTS5.
 import sqlite3
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -74,6 +75,24 @@ class TrackerStore:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         run_migrations(self._conn)
+
+    @contextmanager
+    def _write(self):
+        """Run a multi-statement write as one transaction under the store lock.
+
+        The transaction commits when the block completes and rolls back when
+        it raises, so a statement the database refuses part-way through (an
+        unknown blocker id, a CHECK violation) never leaves the earlier
+        statements in the open transaction for an unrelated later write to
+        commit.
+        """
+        with self._lock:
+            try:
+                yield
+            except BaseException:
+                self._conn.rollback()
+                raise
+            self._conn.commit()
 
     def close(self) -> None:
         """Close the underlying SQLite connection.
@@ -237,7 +256,7 @@ class TrackerStore:
         """
         task_id = task_id or str(uuid.uuid4())
         now = created_at or _now()
-        with self._lock:
+        with self._write():
             self._conn.execute(
                 "INSERT INTO tasks "
                 "(id, title, description, status, priority, stage, source, "
@@ -249,7 +268,6 @@ class TrackerStore:
             )
             if blocked_by:
                 self._set_blockers(task_id, blocked_by)
-            self._conn.commit()
         return self.get_task(task_id)
 
     def get_task(self, task_id: str) -> Optional[dict]:
@@ -261,7 +279,8 @@ class TrackerStore:
         return self._with_blockers([dict(row)])[0] if row else None
 
     def _set_blockers(self, task_id: str, blocker_ids: list) -> None:
-        """Replace the set of tasks blocking *task_id*. The caller commits."""
+        """Replace the set of tasks blocking *task_id*. The caller commits or
+        rolls back."""
         self._conn.execute("DELETE FROM task_blockers WHERE task_id = ?", (task_id,))
         self._conn.executemany(
             "INSERT OR IGNORE INTO task_blockers (task_id, blocker_id) VALUES (?, ?)",
@@ -415,7 +434,7 @@ class TrackerStore:
         if only_goal_derived:
             where += " AND substr(source, 1, ?) = ?"
             params.extend([len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX])
-        with self._lock:
+        with self._write():
             cursor = self._conn.execute(
                 f"UPDATE tasks SET {', '.join(updates)} WHERE {where}", params
             )
@@ -423,7 +442,6 @@ class TrackerStore:
                 return None
             if not isinstance(blocked_by, _Unset):
                 self._set_blockers(task_id, blocked_by or [])
-            self._conn.commit()
         return self.get_task(task_id)
 
     # ------------------------------------------------------------------

@@ -132,6 +132,30 @@ class BlockerTests(_StoreTestBase):
         tasks = {t["title"]: t for t in self.store.list_tasks()["tasks"]}
         self.assertEqual([a["id"]], tasks["t"]["blocked_by"])
 
+    def test_an_unknown_blocker_rolls_back_the_created_task(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._task("orphan", task_id="orphan-id", blocked_by=["no-such-task"])
+        self.store.create_project("unrelated write")
+        self.assertIsNone(self.store.get_task("orphan-id"))
+        self.assertEqual(0, self.store.list_tasks()["total"])
+
+    def test_an_unknown_blocker_rolls_back_the_whole_update(self):
+        a = self._task("a")
+        task = self._task("t", blocked_by=[a["id"]])
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.update_task(task["id"], title="renamed",
+                                   blocked_by=["no-such-task"])
+        self.store.create_project("unrelated write")
+        stored = self.store.get_task(task["id"])
+        self.assertEqual("t", stored["title"])
+        self.assertEqual([a["id"]], stored["blocked_by"])
+
+    def test_a_rolled_back_write_leaves_the_store_usable(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._task("orphan", blocked_by=["no-such-task"])
+        task = self._task("next")
+        self.assertEqual("next", self.store.get_task(task["id"])["title"])
+
 
 class MigrationTests(unittest.TestCase):
     """Tasks that existed before readiness was tracked stay out of the queue."""
@@ -367,6 +391,18 @@ class BulkImportTests(_StoreTestBase):
         # error must still leave nothing for a later write to commit.
         with self.assertRaises(AttributeError):
             self.store.bulk_import([{"id": "p-new", "name": "New"}, "not-a-project"], [], [])
+        self.store.create_task(title="later write")
+        self.assertIsNone(self.store.get_project("p-new"))
+
+    def test_malformed_projects_and_releases_are_refused_with_a_bad_request(self):
+        for body, expected in (
+                ({"projects": [{"id": "p-new", "name": "New"}, "x"]}, "projects[1]"),
+                ({"releases": [7]}, "releases[0]"),
+                ({"projects": {"id": "p-new"}}, "projects must be a list"),
+                ({"tasks": "t"}, "tasks must be a list")):
+            resp = self.client.post("/v1/import", json=body)
+            self.assertEqual(400, resp.status_code, body)
+            self.assertIn(expected, resp.json()["error"])
         self.store.create_task(title="later write")
         self.assertIsNone(self.store.get_project("p-new"))
 
