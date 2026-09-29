@@ -47,7 +47,7 @@ These files live in `engine/ml/src/main/resources/pdsl/audio/`.
 | File | What it defines |
 |------|-----------------|
 | `oobleck_residual_block.pdsl` | The Oobleck codec's residual unit — `oobleck_residual_block`: `accum` around Snake → `conv1d` (kernel 7) → Snake → `conv1d` (kernel 1). Loaded by `OobleckCodec.buildResidualBlock`. |
-| `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders, which parse it together with `oobleck_residual_block.pdsl`. |
+| `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders. Because `oobleck_codec.pdsl` imports `oobleck_residual_block.pdsl`, parsing it alone (via `PdslLoader.parseResource`) resolves the residual unit into the same program. |
 | `efx_channel.pdsl` | EFX channel layers — `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix`, the composite `efx_channel` (dry + filtered/scaled/delayed wet via `accum_blocks`), and the `feedback_comb` closed-loop comb. States: `efx_delay_state`, `feedback_comb_state`. |
 | `mixdown_channel.pdsl` | Single-channel mixdown — `mixdown_main` (HP → `scale` → LP) and `mixdown_channel` (full path with wet/delay). State: `mixdown_delay_state`. |
 | `delay_feedback_bank.pdsl` | Multi-channel delay bank — `delay_feedback_bank`: `repeat` → per-channel `delay` → `route` → `sum_channels`. State: `delay_bank_state`. |
@@ -101,8 +101,9 @@ composes the KV-cached attention block from these; `attention()` loads that asse
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
 pre-norm transformer layer from the layers of those two assets — `accum` around an attention
-layer, then `accum` around `swiglu_ffn` — and `transformer()` builds it from the three assets
-parsed into one program with `PdslLoader.parseResources`. A layer called from another layer
+layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
+statements (see [Imports](#imports)), so `transformer()` builds it from
+`PdslLoader.parseResource(TRANSFORMER_ASSET)` alone. A layer called from another layer
 is built, as a built-in is, for the signal at the point where the call is placed — after the
 stages before it, or as the input of the `accum`, `product`, `accum_blocks` or `concat_blocks`
 that holds it — unless it declares a `-> [shape]` annotation, in which case it is built for that
@@ -211,3 +212,48 @@ The caller owns and supplies the backing `PackedCollection`s; they persist acros
 `forward()` calls. State is written inside the primitive's `push()` via `into(...)` — a
 `CollectionProducer` write, never `setMem()`/`toDouble()` — so a stateful PDSL block behaves
 like a `CachedStateCell` from the cell graph's perspective without any adapter code.
+
+## Imports
+
+A `.pdsl` file declares the assets it depends on with `import` statements at the top of the
+file, each naming the classpath resource of another asset — the same absolute path a Java
+caller passes to `PdslLoader.parseResource`:
+
+```pdsl
+import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+layer transformer(/* ... */) {
+    accum { attention(/* ... */) }
+    accum { swiglu_ffn(/* ... */) }
+}
+```
+
+The imported files' layers, `config`, `data` and `state` blocks are all in scope, so a layer
+may call a layer defined in an imported file. Because the dependency lives in the asset rather
+than in the Java caller, `PdslLoader.parseResource(root)` resolves it: the returned program
+holds `root`'s own definitions together with those of every asset it imports, transitively.
+A caller building a layer from `root` names only `root`; adding a call to a new asset inside
+`root` is a one-line `import` in `root`, not a change every caller must repeat. (Comments may
+precede the imports; the imports must come before the first `config`/`data`/`state`/`layer`/`model`
+definition, and each must name an absolute path beginning with `/`; the parser rejects a
+misplaced or relative import with its line and column. Paths are canonicalized before they are
+compared, so `/pdsl/a/../b.pdsl` and `/pdsl/b.pdsl` are one resource.)
+
+Two rules keep resolution unambiguous:
+
+- **Duplicate definitions are an error.** If two *distinct* resources define the same name for
+  the same kind of definition (two `layer swiglu_ffn`, say), resolution fails with a
+  `PdslParseException` naming the offender, because only one of the two could ever be reached.
+  It is the *resources* that are deduplicated, not the definitions: a diamond — `A` imports `B`
+  and `C`, and both import `D` — pulls `D` in exactly once and succeeds. Definitions collide
+  only when they come from two different files.
+- **Import cycles are an error.** If an asset imports itself, directly or through a chain that
+  leads back to it, resolution fails with a `PdslParseException` naming the cycle
+  (`a.pdsl -> b.pdsl -> a.pdsl`), mirroring the interpreter's rejection of a layer that calls
+  itself.
+
+`PdslLoader.parseResources(String...)` remains for assembling genuinely unrelated assets into
+one program in a single call; it follows each argument's imports and applies the same dedup and
+collision rules. Prefer an `import` in the asset that depends on another — the dependency then
+travels with the asset instead of being re-enumerated at every call site.

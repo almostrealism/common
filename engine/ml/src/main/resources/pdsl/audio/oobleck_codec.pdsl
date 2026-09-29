@@ -9,9 +9,9 @@
  * OobleckCodec chains the stages: for each one it reads the stage's weights (resolving each
  * weight-normalized convolution's g and v parameters into its effective weight, exactly as the
  * residual unit's weights are resolved), binds them and builds one layer below.
- * The loader parses this file together with oobleck_residual_block.pdsl into one program, so a
- * stage calls the residual unit by name, and each call is built for the [batch, channels, length]
- * signal at the point where it is placed.
+ * This file imports oobleck_residual_block.pdsl, so parsing it alone resolves the residual unit
+ * into the same program; a stage calls the residual unit by name, and each call is built for the
+ * [batch, channels, length] signal at the point where it is placed.
  *
  * Every stage maps a [batch, channels, length] activation to another. The encoder compresses
  * [batch, 2, samples] stereo audio to [batch, 128, frames]; the decoder expands a
@@ -37,6 +37,8 @@
  * the ratio DiffusionTransformer assumes), and whose residual units dilate their kernel-7
  * convolution by 1, 3 and 9; oobleck_residual_block.pdsl has no dilation.
  */
+
+import "/pdsl/audio/oobleck_residual_block.pdsl"
 
 /**
  * Input projection of either half: [batch, in_channels, length] -> [batch, out_channels, length].

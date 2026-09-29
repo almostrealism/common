@@ -1,0 +1,4 @@
+// Leaf asset for import tests: a base layer other assets import and call.
+layer leaf_identity() -> [1, 4] {
+    identity()
+}

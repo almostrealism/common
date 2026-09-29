@@ -8,8 +8,8 @@ for their respective sub-models: it builds the **real** released small-music mod
 (``stabilityai/stable-audio-3-small-music``) from the reference ``stable_audio_3``
 source and its ``model_config.json``, runs the real conditioner on a fixed prompt,
 calls the diffusion transformer exactly once on a fixed seeded latent, and writes
-the resulting activations with the Block E serializer
-(:func:`safetensors_extractor.save_reference_output`) for a Java parity test to
+the resulting activations as protobuf collection data
+(:func:`safetensors_extractor.dump_reference_activations`) for a Java parity test to
 compare against.
 
 The conditioning config's ``prompt`` entry names the T5Gemma encoder by
@@ -129,10 +129,16 @@ def dit_reference_stages(model, io_channels, latent_len, seed):
     capture the transformer stack's input (after ``project_in`` and the
     memory-token/global-conditioning prepending that happens inside
     ``ContinuousTransformer.forward``) and a forward hook on the
-    ``ContinuousTransformer`` itself to capture its output (after ``project_out``,
-    before the DiT strips the prepended tokens and applies ``postprocess_conv``).
-    Both match the states ``DiffusionTransformer`` captures: the input after its
-    input projection and prepending, and the output after its output projection.
+    ``ContinuousTransformer`` itself to capture its output (before
+    ``postprocess_conv``).
+
+    The captured input matches the state ``DiffusionTransformer`` captures after its
+    input projection and prepending, so it carries the prepended positions on both
+    sides. The captured output does NOT: ``ContinuousTransformer.forward`` strips the
+    prepended positions and only then applies ``project_out``, so this hook can only
+    ever observe the surviving positions, while ``DiffusionTransformer`` projects the
+    whole sequence and strips afterwards. The reference is therefore the tail of the
+    state AR captures, which is what ``StableAudio3TransformerParityTest`` compares.
     """
     device = torch.device("cpu")
 
@@ -234,14 +240,19 @@ def main():
     stages, conditioner_tensors = dit_reference_stages(model, io_channels, args.latent_len, args.seed)
 
     os.makedirs(args.out, exist_ok=True)
-    written = core.dump_reference_activations(stages, args.out)
-    written += core.dump_reference_activations(conditioner_tensors, args.out)
+    # Write the stages and the conditioner tensors as ONE dump: they share the default shard
+    # prefix, and dump_reference_activations clears stale same-prefix shards before writing, so a
+    # second call would delete the first call's shards. Their keys are disjoint (dit_* vs cond_*).
+    combined = dict(stages)
+    combined.update(conditioner_tensors)
+    written = core.dump_reference_activations(combined, args.out)
 
     shapes = {name: list(array.shape) for name, array in stages.items()}
     with open(os.path.join(args.out, "dit_shapes.json"), "w") as f:
         json.dump(shapes, f, indent=2, sort_keys=True)
 
-    print("Wrote %d reference activations to %s" % (len(written), args.out))
+    print("Wrote %d reference activations (%d shard(s)) to %s"
+          % (len(combined), len(written), args.out))
     for name in sorted(stages):
         print("  %-20s %s" % (name, list(stages[name].shape)))
     for name in sorted(conditioner_tensors):

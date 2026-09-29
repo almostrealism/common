@@ -137,6 +137,90 @@ public class CollectionDataReferenceTest {
 	}
 
 	/**
+	 * A collection with a zero-length axis carries no data field on the wire, and it resolves to
+	 * {@code null} rather than to an addressable range: a {@link PackedCollection} cannot have zero
+	 * size, so an empty tensor is a value the reader cannot hold, not a locatable one. This pins the
+	 * deliberate contract — a would-be "fix" that returned a zero-count reference here would make the
+	 * decoder throw while building the collection and drop the whole shard it appears in.
+	 */
+	@Test(timeout = 30000)
+	public void anEmptyCollectionResolvesToNothing() {
+		byte[] encoded = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build()
+				.toByteArray();
+
+		Assert.assertNull(CollectionDataReference.of(message(encoded, 0)));
+	}
+
+	/**
+	 * A collection with a zero-length axis resolves to nothing even when its data field is present
+	 * on the wire with length zero. A canonical protobuf writer omits an empty packed field, but a
+	 * writer that emits it explicitly produces equally valid protobuf; the reference must be decided
+	 * by the shape, or a zero-count reference escapes into the decoder and drops the whole shard.
+	 */
+	@Test(timeout = 30000)
+	public void anEmptyCollectionWithAnExplicitEmptyFieldResolvesToNothing() {
+		byte[] withoutData = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build()
+				.toByteArray();
+
+		byte[] emptyField = {
+				(byte) ((CollectionDataReference.DATA_32_FIELD << 3) | 2), 0
+		};
+
+		byte[] encoded = new byte[withoutData.length + emptyField.length];
+		System.arraycopy(withoutData, 0, encoded, 0, withoutData.length);
+		System.arraycopy(emptyField, 0, encoded, withoutData.length, emptyField.length);
+
+		EncodedMessage message = message(encoded, 0);
+		Assert.assertTrue(message.has(CollectionDataReference.DATA_32_FIELD));
+		Assert.assertEquals(0, message.lengthOf(CollectionDataReference.DATA_32_FIELD));
+		Assert.assertNull(CollectionDataReference.of(message));
+	}
+
+	/**
+	 * The destination overload of {@link CollectionEncoder#decode} resolves a zero-total-size
+	 * collection to {@code null} rather than reaching {@link PackedCollection#range} with a
+	 * zero-size shape. A {@code [1, 0, 1]} shape has three dimensions but zero elements, so the
+	 * old {@code getDimensions() == 0} guard would have let it through; this pins the shape-based
+	 * guard shared with the other {@code decode} overloads and the deferred reader.
+	 */
+	@Test(timeout = 30000)
+	public void decodingAnEmptyCollectionIntoADestinationResolvesToNothing() {
+		Collections.CollectionData empty = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))
+				.build();
+
+		PackedCollection destination = new PackedCollection(4);
+		Assert.assertNull(CollectionEncoder.decode(empty, destination, 0));
+		destination.destroy();
+	}
+
+	/**
+	 * A non-empty collection still decodes into the destination buffer at the requested offset,
+	 * confirming the zero-total-size guard does not disturb the ordinary decode path.
+	 */
+	@Test(timeout = 30000)
+	public void decodingANonEmptyCollectionWritesIntoTheDestination() {
+		PackedCollection destination = new PackedCollection(expected().length + 2);
+		PackedCollection decoded = CollectionEncoder.decode(data(Precision.FP64), destination, 2);
+
+		Assert.assertNotNull(decoded);
+		Assert.assertEquals(expected().length, decoded.getMemLength());
+
+		for (int i = 0; i < expected().length; i++) {
+			Assert.assertEquals(expected()[i], destination.toDouble(i + 2), 0.0);
+		}
+
+		destination.destroy();
+	}
+
+	/**
 	 * Collection data nested inside a larger message is addressable.
 	 *
 	 * <p>This is the shape a library of weights is written in — entries within

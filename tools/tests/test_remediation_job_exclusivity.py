@@ -2,7 +2,7 @@
 
 "Build and Test" has three remediation jobs — ``auto-resolve-python`` (a
 python-tests failure, submitted at once), ``auto-review`` (build failure, code
-policy, quality gates, docs-only verify or the general review, submitted as
+policy, quality gates, docs-only review or the general review, submitted as
 soon as the gates report) and ``auto-resolve`` (long-running test failures,
 staged on attempt 3+ and submitted by "Auto-Resolve Submit" once the flaky-test
 retries are spent). Two of them submitting for the same attempt would put two
@@ -31,6 +31,7 @@ _ANALYSIS = os.path.join(_WORKFLOWS, "analysis.yaml")
 _SUBMIT_WORKFLOW = os.path.join(_WORKFLOWS, "auto-resolve-submit.yaml")
 _RERUN_SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "rerun-flaky-tests.sh")
 _SUBMIT_STAGED = os.path.join(_REPO_ROOT, "tools", "ci", "submit-staged-request.sh")
+_SUBMIT_AGENT_JOB = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh")
 
 _SECRET = "secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET"
 _PYTHON_FAILED = "needs.python-tests.result == 'failure'"
@@ -119,12 +120,92 @@ class RemediationJobConditionTests(unittest.TestCase):
                 self.assertNotIn("auto-resolve-request", _uploaded_artifacts(jobs[producer]))
 
     def test_auto_resolve_does_not_stage_the_early_prompts(self):
-        """auto-review owns the build, policy, quality-gate, verify and review prompts."""
+        """auto-review owns the build, policy, quality-gate and review prompts."""
         runs = " ".join(step.get("run", "") for step in _jobs()["auto-resolve"]["steps"])
         for builder in ("build-review-prompt.sh", "build-verify-prompt.sh",
+                        "build-docs-review-prompt.sh",
                         "build-quality-gate-prompt.sh", "build-policy-violation-prompt.sh"):
             with self.subTest(builder=builder):
                 self.assertNotIn(builder, runs)
+
+    def test_auto_review_never_starts_implementing_a_plan(self):
+        """A plan branch's first commit is docs-only, so whatever auto-review
+        sends a docs-only branch reaches every plan the moment it is proposed.
+        That route once sent the verify-completion prompt, which implements
+        the plan; it must send the docs review, and the implementation prompt
+        must not be reachable from auto-review at all. Implementation is
+        started by hand, from the Verify Completion workflow."""
+        steps = _jobs()["auto-review"]["steps"]
+        runs = " ".join(step.get("run", "") for step in steps)
+        self.assertNotIn("build-verify-prompt.sh", runs)
+        docs = next(s for s in steps if s.get("name") == "Build prompt (docs-only review)")
+        self.assertIn("route == 'docs-review'", docs["if"])
+        self.assertIn("build-docs-review-prompt.sh", docs["run"])
+
+
+class AutoReviewRoutingTests(unittest.TestCase):
+    """Runs the `Select prompt` shell to pin which route each state picks.
+
+    The docs-review prompt only edits under `docs/`, so it must reach a branch
+    only when the branch is genuinely docs-only. A non-code change that is not
+    docs-only — a CI file, a root README, a JSON config — has no code but
+    cannot be reviewed under that constraint, and belongs on the general
+    review, not docs-review.
+    """
+
+    def _select(self, **env):
+        script = next(s for s in _jobs()["auto-review"]["steps"]
+                      if s.get("name") == "Select prompt")["run"]
+        with tempfile.NamedTemporaryFile("r", suffix=".out", delete=False) as out:
+            output = out.name
+        try:
+            full = dict(os.environ, GITHUB_OUTPUT=output,
+                        CODE_CHANGED="", BUILD_RESULT="", CODE_POLICY_PASSED="",
+                        QUALITY_HAS_FAILURES="", DOCS_ONLY="")
+            full.update(env)
+            result = subprocess.run(["bash", "-c", script], env=full,
+                                    capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            with open(output) as f:
+                routes = dict(line.strip().split("=", 1) for line in f if "=" in line)
+            return routes["route"]
+        finally:
+            os.unlink(output)
+
+    def test_a_docs_only_branch_is_reviewed_not_implemented(self):
+        self.assertEqual("docs-review", self._select(CODE_CHANGED="false", DOCS_ONLY="true"))
+
+    def test_a_non_code_non_docs_branch_gets_the_general_review(self):
+        """A CI-only or config-only branch has no code and is not docs-only; the
+        docs-review prompt forbids edits outside docs/, so it cannot serve it."""
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="false"))
+
+    def test_a_docs_only_branch_never_routes_to_build_failure(self):
+        """Its build is skipped, so BUILD_RESULT is not 'success'; docs-review
+        must still win over the build-failure arm."""
+        self.assertEqual("docs-review",
+                         self._select(CODE_CHANGED="false", DOCS_ONLY="true",
+                                      BUILD_RESULT="skipped"))
+
+    def test_a_build_failure_routes_to_build_failure(self):
+        self.assertEqual("build-failure",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="failure"))
+
+    def test_a_code_policy_failure_routes_to_code_policy(self):
+        self.assertEqual("code-policy",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="false"))
+
+    def test_a_quality_gate_failure_routes_to_quality_gates(self):
+        self.assertEqual("quality-gates",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="true"))
+
+    def test_a_clean_code_branch_gets_the_general_review(self):
+        self.assertEqual("general-review",
+                         self._select(CODE_CHANGED="true", BUILD_RESULT="success",
+                                      CODE_POLICY_PASSED="true", QUALITY_HAS_FAILURES="false"))
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -165,7 +246,7 @@ class CredentialIsolationTests(unittest.TestCase):
         steps = _jobs()["auto-review"]["steps"]
         select = next(s for s in steps if s.get("name") == "Select prompt")["run"]
         routes = set(re.findall(r"ROUTE=([a-z-]+)", select))
-        self.assertEqual({"docs-verify", "build-failure", "code-policy", "quality-gates",
+        self.assertEqual({"docs-review", "build-failure", "code-policy", "quality-gates",
                           "general-review"}, routes)
         staged = {m for s in steps if s.get("name", "").startswith("Stage submit request")
                   for m in re.findall(r"route == '([a-z-]+)'", str(s.get("if", "")))}
@@ -210,6 +291,62 @@ class CredentialIsolationTests(unittest.TestCase):
         for name, job in _jobs().items():
             with self.subTest(job=name):
                 self.assertNotIn("environment", job)
+
+    def test_auto_resolve_leaves_the_stale_guard_to_the_submit_workflow(self):
+        """The pipeline's start time predates auto-review's own submission, so a
+        STARTED_AFTER staged from it would have the controller skip the request."""
+        for step in _jobs()["auto-resolve"]["steps"]:
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("STARTED_AFTER", step.get("env") or {})
+
+
+def _submit_step():
+    job = _load(_SUBMIT_WORKFLOW)["jobs"]["submit"]
+    return next(s for s in job["steps"] if s.get("name") == "Submit agent job")
+
+
+class AutoResolveSubmitStepTests(unittest.TestCase):
+    """Runs the submit step of auto-resolve-submit.yaml with a stub submit script."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="auto-resolve-submit-test-")
+        self.captured = os.path.join(self.tmp, "captured")
+        os.makedirs(os.path.join(self.tmp, "tools", "ci"))
+        _write_executable(os.path.join(self.tmp, "tools", "ci", "submit-staged-request.sh"),
+                          """#!/usr/bin/env bash
+{ echo "request=$1"; env; } > "%s"
+""" % self.captured)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, attempt_started_at):
+        env = {k: v for k, v in os.environ.items() if k != "STARTED_AFTER"}
+        env["ATTEMPT_STARTED_AT"] = attempt_started_at
+        return subprocess.run(["bash", "-e", "-c", _submit_step()["run"]], cwd=self.tmp,
+                              env=env, capture_output=True, text=True)
+
+    def _captured_env(self):
+        with open(self.captured) as f:
+            return dict(line.rstrip("\n").split("=", 1) for line in f if "=" in line)
+
+    def test_the_guard_is_scoped_to_the_attempt_that_staged_the_request(self):
+        """run_started_at is the start of the latest attempt, not of the run."""
+        self.assertEqual("${{ github.event.workflow_run.run_started_at }}",
+                         _submit_step()["env"]["ATTEMPT_STARTED_AT"])
+
+    def test_the_attempt_start_is_sent_as_epoch_millis(self):
+        result = self._run("2026-09-28T10:41:56Z")
+        self.assertEqual(0, result.returncode, result.stderr)
+        env = self._captured_env()
+        self.assertEqual("1790592116000", env["STARTED_AFTER"])
+        self.assertEqual("auto-resolve-request", env["request"])
+
+    def test_a_missing_attempt_start_submits_nothing(self):
+        """`date -d ""` is midnight today; it must never stand in for the attempt start."""
+        result = self._run("")
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(os.path.exists(self.captured))
 
 
 def _write_executable(path, text):
@@ -419,6 +556,89 @@ class SubmitStagedRequestTests(unittest.TestCase):
         result = self._run()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertFalse(os.path.exists(self.captured))
+
+
+class SubmitAgentJobSkipTests(unittest.TestCase):
+    """Runs submit-agent-job.sh against stub curl and jq to pin the skip path.
+
+    A controller skip is a 200 response carrying ``skipped: true``. The step
+    must stay green (a skip is a successful response) while making the dropped
+    request visible: a workflow ``::warning::`` and, when running under Actions,
+    a line in the job step summary. The stubs let the test drive the response
+    without a real controller or a system ``jq``.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="submit-agent-job-test-")
+        self.script = os.path.join(self.tmp, "submit-agent-job.sh")
+        shutil.copy(_SUBMIT_AGENT_JOB, self.script)
+        self.prompt = os.path.join(self.tmp, "prompt.txt")
+        with open(self.prompt, "w") as f:
+            f.write("do the thing\n")
+        self.summary = os.path.join(self.tmp, "summary.md")
+        # curl echoes the staged body followed by the HTTP status on its own
+        # line, matching the `-w "\n%{http_code}"` the script parses.
+        _write_executable(os.path.join(self.tmp, "curl"), """#!/usr/bin/env bash
+printf '%s\\n200\\n' "$STUB_BODY"
+""")
+        # jq answers only the field reads the skip path makes; every payload
+        # build or field it does not recognise yields an empty object, which is
+        # all the script needs before it reaches the skip branch.
+        _write_executable(os.path.join(self.tmp, "jq"), """#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    ".skipped // empty") echo "$STUB_SKIPPED"; exit 0 ;;
+    '.reason // "unknown"') echo "$STUB_REASON"; exit 0 ;;
+    "if .automated"*) echo "false"; exit 0 ;;
+    ".jobId // empty") echo "job-123"; exit 0 ;;
+    ".workstreamCreated // empty") echo ""; exit 0 ;;
+  esac
+done
+echo "{}"
+""")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, skipped, reason="", step_summary=True):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("STARTED_AFTER", "REPO_URL", "GITHUB_REPOSITORY",
+                            "DESCRIPTION", "GITHUB_STEP_SUMMARY")}
+        env.update(PATH=self.tmp + os.pathsep + os.environ["PATH"],
+                   BRANCH="feature/x", BASE_BRANCH="master",
+                   STUB_BODY='{"skipped":true}', STUB_SKIPPED=skipped,
+                   STUB_REASON=reason)
+        if step_summary:
+            env["GITHUB_STEP_SUMMARY"] = self.summary
+        return subprocess.run(["bash", self.script, self.prompt], env=env,
+                              capture_output=True, text=True)
+
+    def test_a_controller_skip_is_a_warning_and_leaves_the_step_green(self):
+        result = self._run("true", reason="a newer job exists")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("::warning::Agent job skipped by the controller: a newer job exists",
+                      result.stdout)
+
+    def test_a_controller_skip_records_the_branch_and_reason_in_the_step_summary(self):
+        result = self._run("true", reason="a newer job exists")
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(self.summary) as f:
+            summary = f.read()
+        self.assertIn("feature/x", summary)
+        self.assertIn("a newer job exists", summary)
+
+    def test_a_skip_without_a_step_summary_still_succeeds(self):
+        """Outside Actions GITHUB_STEP_SUMMARY is unset; the skip must not crash."""
+        result = self._run("true", reason="a newer job exists", step_summary=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("::warning::Agent job skipped by the controller", result.stdout)
+
+    def test_a_normal_submission_is_not_reported_as_a_skip(self):
+        """The warning must fire only on a skip, never on an accepted job."""
+        result = self._run("", step_summary=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("skipped by the controller", result.stdout)
+        self.assertIn("job_id=job-123", result.stdout)
 
 
 if __name__ == "__main__":

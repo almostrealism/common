@@ -298,9 +298,10 @@ public abstract class OobleckCodec extends SequentialBlock {
 	}
 
 	/**
-	 * Builds a layer of {@value #CODEC_ASSET}, parsed together with {@value #RESIDUAL_ASSET} into one
-	 * program so that the stages can call the residual unit. {@link PdslLoader#parseResource} caches
-	 * each parsed asset, so building every stage this way parses each asset only once.
+	 * Builds a layer of {@value #CODEC_ASSET}. That asset imports {@value #RESIDUAL_ASSET}, so
+	 * parsing it alone resolves the residual unit into the same program and the stages can call it
+	 * by name. {@link PdslLoader#parseResource} caches each parsed asset, so building every stage
+	 * this way parses each asset only once.
 	 *
 	 * @param layer      the layer name
 	 * @param inputShape the layer's input shape
@@ -309,7 +310,7 @@ public abstract class OobleckCodec extends SequentialBlock {
 	 */
 	private Block buildCodecLayer(String layer, TraversalPolicy inputShape, Map<String, Object> args) {
 		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResources(RESIDUAL_ASSET, CODEC_ASSET), layer, inputShape, args);
+		return loader.buildLayer(loader.parseResource(CODEC_ASSET), layer, inputShape, args);
 	}
 
 	/**

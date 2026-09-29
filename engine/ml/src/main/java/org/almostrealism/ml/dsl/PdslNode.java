@@ -53,29 +53,72 @@ public abstract class PdslNode {
 
 	// ---- Top-level structures ----
 
-	/** A complete PDSL program: a list of definitions. */
+	/** A complete PDSL program: the resources it imports and its own definitions. */
 	public static class Program extends PdslNode {
+		/** Classpath resources this program imports, in source order; empty when it imports none. */
+		private final List<Import> imports;
+
 		/** Top-level definitions (layers, models, configs) that make up this program. */
 		private final List<Definition> definitions;
 
 		/**
-		 * Constructs a program node from a list of top-level definitions.
+		 * Constructs a program node with no imports.
 		 *
-		 * <p>The list is stored as an unmodifiable copy so a parsed program cannot be
+		 * @param definitions Top-level definitions in source order
+		 */
+		public Program(List<Definition> definitions) {
+			this(Collections.emptyList(), definitions);
+		}
+
+		/**
+		 * Constructs a program node from its imports and top-level definitions.
+		 *
+		 * <p>Both lists are stored as unmodifiable copies so a parsed program cannot be
 		 * structurally altered after construction. This is what makes it safe for
 		 * {@link PdslLoader#parseResource(String)} to cache and share one parsed program
 		 * across every build: a caller of {@link #getDefinitions()} cannot corrupt the
 		 * shared instance for later loads.</p>
 		 *
+		 * @param imports     Imported resource references in source order
 		 * @param definitions Top-level definitions in source order
 		 */
-		public Program(List<Definition> definitions) {
+		public Program(List<Import> imports, List<Definition> definitions) {
 			super(1, 1);
+			this.imports = Collections.unmodifiableList(new ArrayList<>(imports));
 			this.definitions = Collections.unmodifiableList(new ArrayList<>(definitions));
 		}
 
+		/** Returns the ordered, unmodifiable list of imported resource references. */
+		public List<Import> getImports() { return imports; }
+
 		/** Returns the ordered, unmodifiable list of top-level definitions. */
 		public List<Definition> getDefinitions() { return definitions; }
+	}
+
+	/**
+	 * An {@code import "resource"} statement declaring that this program depends on the
+	 * definitions of another {@code .pdsl} asset. The resource is the same absolute classpath
+	 * path a Java caller would pass to {@link PdslLoader#parseResource(String)}; the loader
+	 * resolves imports transitively so a caller need only name the asset it builds from.
+	 */
+	public static class Import extends PdslNode {
+		/** Absolute classpath resource path of the imported {@code .pdsl} asset. */
+		private final String resource;
+
+		/**
+		 * Constructs an import node.
+		 *
+		 * @param resource Absolute classpath path of the imported resource
+		 * @param line     Source line number
+		 * @param column   Source column number
+		 */
+		public Import(String resource, int line, int column) {
+			super(line, column);
+			this.resource = resource;
+		}
+
+		/** Returns the absolute classpath resource path of the imported asset. */
+		public String getResource() { return resource; }
 	}
 
 	/** Base class for top-level definitions (layer, model, config). */

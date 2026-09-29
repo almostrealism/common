@@ -337,6 +337,11 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-new-type-placement.py\"",
+            "description": "Placement reminder for every new top-level Java type; BLOCK a new type whose declared name ends in a suffix CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
             "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes \u2014 an API that traffics in an interface must stay correct for every implementation"
           }
@@ -431,6 +436,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-discovery-call.sh",
+            "description": "Record that discovery ran, for warn-new-type-placement.py's escalation"
           }
         ]
       },

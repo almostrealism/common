@@ -7,10 +7,10 @@ round-trip reference for the Block C3 (``SAMEAutoEncoder``) parity test.
 This is the *reference-dump entry point* described in the Phase 1 component plan
 (Block C2 (d), Block E "Reference dumps"). It runs the **real** Stability AI
 ``stable_audio_3`` SAME PyTorch autoencoder on a fixed, seeded input and writes
-per-stage activations using the Block E serializer
-(:func:`safetensors_extractor.save_reference_output`). The Java
-``TransformerResamplingBlock`` parity test loads these ``.bin`` files and asserts
-the AR primitive reproduces each stage within tolerance.
+per-stage activations as protobuf collection data
+(:func:`safetensors_extractor.dump_reference_activations`). The Java
+``TransformerResamplingBlock`` parity test reads these shards through ``StateDictionary``
+and asserts the AR primitive reproduces each stage within tolerance.
 
 In addition to the resampling-block stages, the dump includes a deterministic
 full round trip: ``ae_input`` (the raw stereo input), ``ae_pre_bottleneck`` (the
@@ -386,7 +386,8 @@ def main():
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2, sort_keys=True)
 
-    print("Wrote %d reference activations to %s" % (len(written), args.out))
+    print("Wrote %d reference activations (%d shard(s)) to %s"
+          % (len(stages), len(written), args.out))
     for name in sorted(stages):
         print("  %-20s %s" % (name, list(stages[name].shape)))
 

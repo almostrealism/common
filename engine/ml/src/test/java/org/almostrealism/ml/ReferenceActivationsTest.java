@@ -1,0 +1,405 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.ml;
+
+import io.almostrealism.code.Precision;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.FileMapping;
+import org.almostrealism.persist.assets.CollectionEncoder;
+import org.almostrealism.protobuf.Collections;
+import org.junit.Test;
+
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Tests the reading half of the reference-dump contract against a dump of the same shape the
+ * extraction scripts write: protobuf collection data, named by key, shapes included.
+ *
+ * <p>The parity tests that consume real dumps are gated on assets no runner carries, so they skip
+ * and prove nothing about this path. These do not need a model — a dump is a protobuf shard, and
+ * one written here is the same artifact one written by the scripts is.</p>
+ *
+ * <p>It extends {@link SAMEResamplingTestBase} so the per-directory reference cache the parity
+ * tests read through is exercised here as well.</p>
+ */
+public class ReferenceActivationsTest extends SAMEResamplingTestBase {
+
+	/**
+	 * Writes a reference dump of the given tensors, as the scripts do.
+	 *
+	 * @param tensors the references to write
+	 * @return the directory holding the dump
+	 * @throws IOException if the dump cannot be written
+	 */
+	private File dump(Map<String, PackedCollection> tensors) throws IOException {
+		Path dir = Files.createTempDirectory("references");
+		dir.toFile().deleteOnExit();
+
+		StateDictionary written = new StateDictionary(tensors);
+		written.save(dir.resolve("references"));
+		written.destroy();
+		return dir.toFile();
+	}
+
+	/** A dump holding one three-by-four reference and one flat reference. */
+	private File standardDump() throws IOException {
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		tensors.put("enc_after_mapping", new PackedCollection(shape(3, 4)).fill(1.5));
+		tensors.put("enc_resamp_output", new PackedCollection(shape(6)).fill(-2.25));
+		return dump(tensors);
+	}
+
+	/**
+	 * A reference reads back with the values and the shape the dump recorded, without the caller
+	 * supplying either.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void referenceKeepsItsValuesAndShape() throws IOException {
+		ReferenceActivations references = references(standardDump());
+		PackedCollection mapping = references.collection("enc_after_mapping");
+
+		assertEquals(2, mapping.getShape().getDimensions());
+		assertEquals(3, mapping.getShape().length(0));
+		assertEquals(4, mapping.getShape().length(1));
+		assertEquals(1.5, mapping.toDouble(7));
+	}
+
+	/**
+	 * The shape-checked read accepts the shape the dump recorded and rejects any other, so a
+	 * capture and a test that have drifted apart fail rather than reinterpreting the values.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aShapeDisagreementFails() throws IOException {
+		ReferenceActivations references = references(standardDump());
+		assertEquals(12, references.collection("enc_after_mapping", shape(3, 4))
+				.getShape().getTotalSize());
+
+		try {
+			references.collection("enc_after_mapping", shape(3, 5));
+			throw new AssertionError("a reference of another size must be rejected");
+		} catch (IllegalStateException e) {
+			// expected
+		}
+
+		try {
+			references.collection("enc_after_mapping", shape(4, 3));
+			throw new AssertionError("a transposed reference of the same size must be rejected");
+		} catch (IllegalStateException e) {
+			// expected
+		}
+	}
+
+	/**
+	 * A rank change with the same element count is still shaped, so a flat reference may be read
+	 * into the caller's layout even though a same-rank axis disagreement would fail.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aFlatReferenceIsShaped() throws IOException {
+		ReferenceActivations references = references(standardDump());
+		PackedCollection shaped = references.collection("enc_resamp_output", shape(2, 3));
+
+		assertEquals(2, shaped.getShape().getDimensions());
+		assertEquals(2, shaped.getShape().length(0));
+		assertEquals(3, shaped.getShape().length(1));
+		assertEquals(-2.25, shaped.toDouble(5));
+	}
+
+	/**
+	 * A dump may contain a tensor with a zero-length axis (such as the SA3
+	 * {@code bottleneck.noise_scaling_factor} of shape {@code [1, 0, 1]}): the writer emits it with
+	 * its shape and no data field. A {@link PackedCollection} cannot be zero-size, so the reader
+	 * cannot hold such a tensor; it omits that one key rather than failing, and every full tensor in
+	 * the same shard still loads. This is why a weight directory that includes an empty bottleneck
+	 * buffer is read without disturbing the encoder/decoder weights the parity tests actually use.
+	 * The Python-side round trip is covered by
+	 * {@code test_safetensors_extractor.test_zero_sized_dimension_round_trips}.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aZeroElementTensorDoesNotBreakItsShard() throws IOException {
+		assertZeroElementTensorDoesNotBreakItsShard();
+	}
+
+	/**
+	 * The same guarantee holds on the materialized loading path
+	 * ({@link StateDictionary#enableMaterializeWeights} set to {@code true}): {@code readWeights}
+	 * decodes each entry eagerly through {@link CollectionEncoder#decode(Collections.CollectionData,
+	 * boolean)}, which returns {@code null} for the zero-size bottleneck buffer rather than throwing,
+	 * so the entry is omitted and every full tensor in the same shard still loads. Without the
+	 * zero-size guard the thrown exception would have propagated out of {@code readWeights} and the
+	 * file-level catch in {@code loadWeights} would have dropped the entire shard — losing
+	 * {@code enc_after_mapping} along with the empty key.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aZeroElementTensorDoesNotBreakItsShardWhenMaterializing() throws IOException {
+		boolean previous = StateDictionary.enableMaterializeWeights;
+		StateDictionary.enableMaterializeWeights = true;
+
+		try {
+			assertZeroElementTensorDoesNotBreakItsShard();
+		} finally {
+			StateDictionary.enableMaterializeWeights = previous;
+		}
+	}
+
+	/**
+	 * Writes a shard holding a full tensor beside a zero-length-axis bottleneck buffer, loads it,
+	 * and asserts the full tensor survives while the empty key is omitted — the behavior both the
+	 * deferred and materialized loading paths must share.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	private void assertZeroElementTensorDoesNotBreakItsShard() throws IOException {
+		Path dir = Files.createTempDirectory("references");
+		dir.toFile().deleteOnExit();
+
+		PackedCollection full = new PackedCollection(shape(3, 4)).fill(1.5);
+		Collections.CollectionLibraryData library = Collections.CollectionLibraryData.newBuilder()
+				.addCollections(Collections.CollectionLibraryEntry.newBuilder()
+						.setKey("enc_after_mapping")
+						.setCollection(CollectionEncoder.encode(full, Precision.FP32)))
+				.addCollections(Collections.CollectionLibraryEntry.newBuilder()
+						.setKey("bottleneck.noise_scaling_factor")
+						.setCollection(Collections.CollectionData.newBuilder()
+								.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+										.addDims(1).addDims(0).addDims(1).setTraversalAxis(0))))
+				.build();
+		Files.write(dir.resolve("references"), library.toByteArray());
+		full.destroy();
+
+		StateDictionary references = new StateDictionary(dir.toFile().getPath());
+
+		try {
+			assertTrue(references.containsKey("enc_after_mapping"));
+			assertEquals(12, references.get("enc_after_mapping").getShape().getTotalSize());
+			assertFalse(references.containsKey("bottleneck.noise_scaling_factor"));
+		} finally {
+			references.destroy();
+		}
+	}
+
+	/**
+	 * A reference absent from the dump is named in the failure, rather than surfacing later as a
+	 * null.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void anAbsentReferenceIsNamed() throws IOException {
+		ReferenceActivations references = references(standardDump());
+
+		try {
+			references.collection("never_captured");
+			throw new AssertionError("an absent reference must be rejected");
+		} catch (IllegalStateException e) {
+			assertTrue(e.getMessage().contains("never_captured"));
+		}
+	}
+
+	/**
+	 * A reference reads back flat, in the order it was written.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aReferenceReadsBackFlat() throws IOException {
+		float[] values = references(standardDump()).load("enc_resamp_output");
+
+		assertEquals(6, values.length);
+		assertEquals(-2.25, values[3], 1e-6);
+	}
+
+	/**
+	 * A directory is located by a reference it holds, whether the marker is named as a key or with
+	 * the legacy suffix, and a directory without it is passed over.
+	 *
+	 * @throws IOException if the dump cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void aDirectoryIsLocatedByAReferenceItHolds() throws IOException {
+		File dir = standardDump();
+		Path empty = Files.createTempDirectory("no-references");
+		empty.toFile().deleteOnExit();
+
+		String[] candidates = {null, empty.toString(), dir.getPath()};
+
+		assertEquals(dir, ReferenceActivations.firstExisting(candidates, "enc_after_mapping"));
+		assertEquals(dir, ReferenceActivations.firstExisting(candidates, "enc_after_mapping.bin"));
+		assertTrue(ReferenceActivations.firstExisting(candidates, "not_in_any_dump") == null);
+	}
+
+	/**
+	 * A directory holding only a legacy per-tensor {@code .bin} file — no protobuf shards — can no
+	 * longer be read, so a marker that names the shard key passes it over and resolves to the
+	 * readable protobuf dump, while a marker carrying the legacy suffix matches the raw file by name
+	 * and selects the unreadable directory.
+	 *
+	 * <p>This is why the migrated weight callers gate on the shard key
+	 * ({@code encoder.layers.0.mapping.weight}) rather than the legacy file
+	 * ({@code encoder.layers.0.mapping.weight.bin}): now that weights load only through
+	 * {@link StateDictionary}, a legacy-suffixed marker would select a stale raw dump whose every
+	 * weight lookup then fails, instead of skipping it for a protobuf dump.</p>
+	 *
+	 * @throws IOException if the dump cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void aKeyMarkerPassesOverALegacyRawDump() throws IOException {
+		Path legacy = Files.createTempDirectory("legacy-raw");
+		legacy.toFile().deleteOnExit();
+		Files.write(legacy.resolve("encoder.layers.0.mapping.weight.bin"), new byte[]{1, 2, 3, 4});
+
+		File dump = standardDump();
+		String[] candidates = {legacy.toString(), dump.getPath()};
+
+		assertEquals(legacy.toFile(), ReferenceActivations.firstExisting(candidates,
+				"encoder.layers.0.mapping.weight.bin"));
+		assertEquals(dump, ReferenceActivations.firstExisting(candidates, "enc_after_mapping"));
+		assertTrue(ReferenceActivations.firstExisting(new String[]{legacy.toString()},
+				"enc_after_mapping") == null);
+	}
+
+	/**
+	 * Presence is answered by key, the legacy per-tensor marker names the same key, and a tensor
+	 * the dump never captured is absent rather than an error.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void presenceIsAnsweredByKey() throws IOException {
+		ReferenceActivations references = references(standardDump());
+
+		assertTrue(references.contains("enc_after_mapping"));
+		assertTrue(references.contains("enc_after_mapping.bin"));
+		assertFalse(references.contains("never_captured"));
+		assertFalse(references.contains(""));
+	}
+
+	/**
+	 * A tensor whose key itself ends in the legacy {@code .bin} suffix is read by its exact key
+	 * rather than truncated to the suffix-stripped name and reported absent, while the
+	 * suffix-stripped fallback stays available for a legacy file marker naming a stored key.
+	 *
+	 * @throws IOException if the dump cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void aKeyEndingInTheLegacySuffixIsReadExactly() throws IOException {
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		tensors.put("weights.bin", new PackedCollection(shape(4)).fill(3.5));
+		tensors.put("enc_after_mapping", new PackedCollection(shape(2)).fill(1.0));
+		ReferenceActivations references = references(dump(tensors));
+
+		assertTrue(references.contains("weights.bin"));
+		assertEquals(4, references.collection("weights.bin").getShape().getTotalSize());
+		assertEquals(3.5, references.collection("weights.bin").toDouble(2));
+
+		// The suffix-stripped fallback still resolves a legacy file marker to its stored key.
+		assertTrue(references.contains("enc_after_mapping.bin"));
+		assertEquals(1.0, references.collection("enc_after_mapping.bin").toDouble(1));
+	}
+
+	/**
+	 * The shards are opened once and shared by every read; releasing them is idempotent, and a
+	 * read after the release opens them afresh with the same contents.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void shardsAreOpenedOnceAndReleased() throws IOException {
+		ReferenceActivations references = references(standardDump());
+		references.destroy();
+
+		StateDictionary opened = references.getReferences();
+		assertSame(opened, references.getReferences());
+		assertEquals(1.5, references.collection("enc_after_mapping").toDouble(0));
+
+		references.destroy();
+		references.destroy();
+
+		StateDictionary reopened = references.getReferences();
+		assertNotSame(opened, reopened);
+		assertEquals(-2.25, references.load("enc_resamp_output")[5], 1e-6);
+		references.destroy();
+	}
+
+	/**
+	 * Reading a dump directory through {@link StateDictionary} holds no file mapping once the
+	 * dictionary is destroyed. A real dump carries a {@code .json} shapes sidecar beside its shards;
+	 * that file is not protobuf and fails to parse, and neither the skipped sidecar nor the shards
+	 * may leave a native mapping behind after the dictionary is released.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aReleasedDirectoryHoldsNoMappings() throws IOException {
+		File dir = standardDump();
+		Files.write(dir.toPath().resolve("shapes.json"),
+				"{\"enc_after_mapping\": [3, 4]}".getBytes(StandardCharsets.UTF_8));
+
+		int before = FileMapping.getMappedFileCount();
+
+		StateDictionary references = new StateDictionary(dir.getPath());
+		assertTrue(references.containsKey("enc_after_mapping"));
+		assertFalse(references.containsKey("shapes.json"));
+		references.destroy();
+
+		assertEquals(before, FileMapping.getMappedFileCount());
+	}
+
+	/**
+	 * Every read a parity test makes from one directory shares a single set of opened shards, and
+	 * the set is released and forgotten when the test ends, so the next test opens its own.
+	 *
+	 * @throws IOException if the dump cannot be read
+	 */
+	@Test(timeout = 120000)
+	public void aTestSharesOneSetOfShardsPerDirectory() throws IOException {
+		File dir = standardDump();
+		File other = standardDump();
+
+		ReferenceActivations shared = references(dir);
+		assertSame(shared, references(dir));
+		assertNotSame(shared, references(other));
+
+		StateDictionary opened = shared.getReferences();
+		assertEquals(12, loadShaped(dir, "enc_after_mapping", 3, 4).getShape().getTotalSize());
+		assertEquals(-2.25, loadFlat(dir, "enc_resamp_output")[0], 1e-6);
+		assertSame(opened, shared.getReferences());
+
+		releaseReferences();
+
+		assertNotSame(shared, references(dir));
+		assertEquals(1.5, loadFlat(dir, "enc_after_mapping")[11], 1e-6);
+	}
+}

@@ -178,8 +178,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		this.netTokenPosition = new PackedCollection(1);
 
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
-		PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
 		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netHeadSize, config.maxEventSeqLen);
@@ -191,14 +190,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		log("Building net model (" + config.netLayers + " layers, hiddenSize=" +
 				config.hiddenSize + ", heads=" + config.netHeads + ")");
 		this.netCompiledModel = buildTransformerModel(
-				"net", stateDict, blockProgram, lmHeadProgram,
+				"net", stateDict, program,
 				config.netLayers, config.netHeads, netFreqCis, netPosition, false,
 				config.rmsNormEps, null);
 
 		log("Building net_token model (" + config.netTokenLayers + " layers, hiddenSize=" +
 				config.hiddenSize + ", heads=" + config.netTokenHeads + ")");
 		this.netTokenCompiledModel = buildTransformerModel(
-				"net_token", stateDict, blockProgram, lmHeadProgram,
+				"net_token", stateDict, program,
 				config.netTokenLayers, config.netTokenHeads, netTokenFreqCis, netTokenPosition,
 				true, config.rmsNormEps, lmHeadWeight);
 
@@ -535,12 +534,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * weights from the {@link StateDictionary}.  All neural-network computation
 	 * (attention, RMSNorm, SwiGLU FFN, residual connections) is defined in the
 	 * {@code skytnt_block.pdsl} and {@code skytnt_lm_head.pdsl} PDSL files; this
-	 * method only assembles the block sequence and manages weight loading.</p>
+	 * method only assembles the block sequence and manages weight loading. The single
+	 * {@code program} holds every layer of both files, because {@code skytnt_lm_head.pdsl}
+	 * imports {@code skytnt_block.pdsl}.</p>
 	 *
 	 * @param prefix        weight key prefix ({@code "net"} or {@code "net_token"})
 	 * @param stateDict     weight source
-	 * @param blockProgram  parsed {@code skytnt_block.pdsl}
-	 * @param lmHeadProgram parsed {@code skytnt_lm_head.pdsl}
+	 * @param program       parsed {@code skytnt_lm_head.pdsl}, which imports {@code skytnt_block.pdsl},
+	 *                      so it defines {@code skytnt_block}, {@code skytnt_norm} and {@code skytnt_lm_head}
 	 * @param numLayers     number of LLaMA blocks
 	 * @param numHeads      number of attention heads
 	 * @param freqCis       precomputed RoPE frequency table
@@ -551,8 +552,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @return compiled model ready for inference
 	 */
 	public static CompiledModel buildTransformerModel(String prefix, StateDictionary stateDict,
-											   PdslNode.Program blockProgram,
-											   PdslNode.Program lmHeadProgram,
+											   PdslNode.Program program,
 											   int numLayers, int numHeads,
 											   CollectionProducer freqCis,
 											   PackedCollection position,
@@ -586,7 +586,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			args.put("down_proj", stateDict.get(layerKey + ".mlp.down_proj.weight"));
 			args.put("epsilon", epsilon);
 
-			Block block = loader.buildLayer(blockProgram, "skytnt_block", inputShape, args);
+			Block block = loader.buildLayer(program, "skytnt_block", inputShape, args);
 			model.add(block);
 		}
 
@@ -598,7 +598,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			headArgs.put("lm_head_weight", lmHeadWeight);
 			headArgs.put("epsilon", epsilon);
 
-			Block lmHeadBlock = loader.buildLayer(lmHeadProgram, "skytnt_lm_head",
+			Block lmHeadBlock = loader.buildLayer(program, "skytnt_lm_head",
 					inputShape, headArgs);
 			model.add(lmHeadBlock);
 		} else {
@@ -606,7 +606,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			normArgs.put("norm_weights", normWeight);
 			normArgs.put("epsilon", epsilon);
 
-			Block normBlock = loader.buildLayer(lmHeadProgram, "skytnt_norm",
+			Block normBlock = loader.buildLayer(program, "skytnt_norm",
 					inputShape, normArgs);
 			model.add(normBlock);
 		}

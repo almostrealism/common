@@ -464,13 +464,10 @@ immediately — which is the wrong answer if the consuming device is not yet kno
 
 **Reference.** Implement `Memory` over the source and let the framework migrate
 it when a kernel first requires it. Nothing is materialized on the host and
-nothing reaches a device until something actually reads it. `MappedMemory` and
-its `MappedMemoryProvider` (in `org.almostrealism.hardware.mem`) are the base-layer
-read-only source provider for values still in the file they were written to,
-serving them straight out of a `FileMapping`; only FP32 and FP64 files are mapped,
-and other precisions are rejected. `CollectionDataMemory` and
-`MappedCollectionDataMemory` (in `engine/ml`) are a higher-level worked example
-over the same mechanism. Migration is generic rather than
+nothing reaches a device until something actually reads it. `CollectionDataMemory`
+and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example: they
+serve read-only values still in the file they were written to straight out of a
+`FileMapping`. Migration is generic rather than
 special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
 provider, so any read-only provider participates.
 
@@ -568,6 +565,11 @@ System.gc();    // Eventually: native memory freed automatically
 2. Reference registered with `ReferenceQueue`
 3. Background threads monitor queue for GC'd objects
 4. Native memory freed when reference appears in queue
+
+For the full lifecycle — including the off-heap budget and its enforcement, the exact
+use-after-free race `KernelMemoryGuard` closes (and the ones it does not), and how this
+interacts with kernel dispatch — see
+[docs/internals/native-runtime-lifecycle.md](../../docs/internals/native-runtime-lifecycle.md).
 
 **Leak Detection:**
 
