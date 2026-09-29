@@ -210,10 +210,17 @@ Concrete, ordered deliverables:
    negligible against the signal; if compile has fallen to seconds, `cold − warm` becomes the
    difference of two small, noisy wall-clock samples, and host load, JVM warm-up, and GC can shift
    it enough to change the fitted scaling exponent or a step-6 before/after conclusion. Take
-   several **independent cold starts** per configuration — each in a fresh process (or at least a
-   freshly built model) so lazy backward compilation is not already cached — record the warm step
-   from each, and report the median and the spread (min–max or inter-quartile range) for both cold
-   and derived-compile figures. Any step-6 before/after uses the same repetition protocol on both
+   several **independent cold starts** per configuration — **each in a fresh JVM process** — record
+   the warm step from each, and report the median and the spread (min–max or inter-quartile range)
+   for both cold and derived-compile figures. A freshly built model in the *same* JVM is **not** an
+   independent cold start: with `ScopeSettings.enableInstructionSetReuse` on (the default;
+   `AR_INSTRUCTION_SET_REUSE`), compiled instruction sets are cached by signature in the JVM-wide
+   `instructionsCache` of `DefaultComputer` and shared across `AcceleratedComputationOperation`
+   instances (see that class's "Instruction Set Reuse via Signatures" javadoc). A second model built
+   in the same JVM can therefore reuse kernels compiled for the first and understate cold latency.
+   Repetitions must not be looped inside one test method; run each repetition as its own
+   test-runner invocation, which the one-test-per-invocation protocol (Approach step 2) already
+   makes a separate JVM. Any step-6 before/after uses the same repetition protocol on both
    sides so the comparison is between distributions, not between two single runs. Note that `FINE_TUNE_FAIL.md` holds *two* Feb-2026 scaling tables that disagree for
    the same configurations (§"Current Scaling Data": embed=8 51,988 ms, embed=16 cancelled after
    >300,000 ms; §"Scaling Test Results": embed=8 37,957 ms, embed=16 472,645 ms). Compare against
@@ -466,7 +473,7 @@ end-to-end training runs.
   Otherwise it is explicitly labelled as a hypothesis from wall-clock and partial-profile data.
 - If a clean lever was implemented: a before/after measurement from the same harness showing
   the effect, taken with the same repetition protocol on both sides (median plus spread over
-  several independent cold starts, per Scope step 1) so the change is distinguishable from
+  several independent cold starts, each in a fresh JVM, per Scope step 1) so the change is distinguishable from
   measurement noise; the relevant targeted test(s) pass; and the build validator is clean
   (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`).
 - A `performance`-namespace memory recording the revised feasibility verdict.
@@ -504,7 +511,10 @@ Recorded for whoever approves this plan; none of them is resolved by this docume
   are taken (separate cold/warm columns, per-configuration methods, different timeouts). Since the
   Feb-2026 figures came from a harness configuration that no longer matches `master` (they exceed
   the current five-minute JUnit timeout), a large improvement could partly reflect
-  measurement differences. Cold first-step latency is the closest like-for-like metric; any
+  measurement differences. The effect can also run the other way: `testCompilationScaling()`
+  measures all configurations in one JVM, so a later configuration there may have reused
+  instruction sets compiled for an earlier one, while the fresh-JVM protocol of Scope step 1
+  gives no such benefit. Cold first-step latency is the closest like-for-like metric; any
   headline ratio should say which metric it compares.
 - **Machine, backend, and commit.** The Feb-2026 numbers do not record the host or the
   `AR_HARDWARE_DRIVER` backend. Current runs should record both **and two SHAs — the base `master`
