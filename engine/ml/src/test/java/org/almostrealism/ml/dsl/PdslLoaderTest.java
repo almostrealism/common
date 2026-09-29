@@ -558,6 +558,28 @@ public class PdslLoaderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A diamond whose two branches reach the same leaf resource through different spellings of its
+	 * path — {@code alias_diamond.pdsl} imports {@code single.pdsl} (which imports the canonical
+	 * {@code /pdsl/imports/leaf.pdsl}) and imports the same file through a {@code ../imports} alias —
+	 * resolves the leaf exactly once. Path normalization makes the two spellings one resource key,
+	 * so {@code leaf_identity} is not reported as a duplicate and exactly three layers result.
+	 */
+	@Test(timeout = 60000)
+	public void testAliasedImportPathsDedupToOneResource() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/imports/alias_diamond.pdsl");
+
+		Assert.assertEquals("aliased leaf.pdsl must be merged once, giving three distinct layers",
+				3, program.getDefinitions().size());
+
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		for (String layer : new String[] { "leaf_identity", "single_wrap", "alias_diamond_wrap" }) {
+			Assert.assertTrue("aliased diamond should define '" + layer + "'",
+					interpreter.getLayerNames().contains(layer));
+		}
+	}
+
+	/**
 	 * An import cycle is rejected with a {@link PdslParseException} that names the cycle, mirroring
 	 * the interpreter's rejection of a layer that calls itself.
 	 */

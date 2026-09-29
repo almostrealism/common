@@ -28,7 +28,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -283,7 +285,46 @@ public class PdslLoader {
 	 * @return the resource's own parsed program, imports unresolved
 	 */
 	private PdslNode.Program parseSingleResource(String classpathResource) {
-		return RESOURCE_CACHE.computeIfAbsent(classpathResource, resource -> parse(readResource(resource)));
+		return RESOURCE_CACHE.computeIfAbsent(normalizeResource(classpathResource),
+				resource -> parse(readResource(resource)));
+	}
+
+	/**
+	 * Normalize a classpath resource path to a canonical form so that two spellings of the same
+	 * resource resolve to one key everywhere the loader compares resources — the parse cache, cycle
+	 * detection, the diamond-dedup {@code merged} set, and the {@code definedBy} duplicate check.
+	 * Without this, an absolute alias such as {@code /pdsl/imports/leaf.pdsl} and
+	 * {@code /pdsl/imports/../imports/leaf.pdsl} would be treated as two resources: a diamond using
+	 * both spellings would merge the file twice and report a false duplicate-definition error, and
+	 * the same text would be parsed and cached under two keys.
+	 *
+	 * <p>Collapses empty and {@code .} segments and resolves {@code ..} segments against the
+	 * segments already accumulated, preserving whether the path is absolute. A {@code ..} that would
+	 * climb above an absolute root is dropped, matching how a classpath resource of that shape is
+	 * itself resolved.</p>
+	 *
+	 * @param classpathResource the resource path as written in an {@code import} or passed by a caller
+	 * @return the canonical path, with {@code .} and {@code ..} segments resolved
+	 */
+	private static String normalizeResource(String classpathResource) {
+		boolean absolute = classpathResource.startsWith("/");
+		Deque<String> segments = new ArrayDeque<>();
+		for (String segment : classpathResource.split("/")) {
+			if (segment.isEmpty() || segment.equals(".")) {
+				continue;
+			}
+			if (segment.equals("..")) {
+				if (!segments.isEmpty() && !segments.peekLast().equals("..")) {
+					segments.removeLast();
+				} else if (!absolute) {
+					segments.addLast("..");
+				}
+				continue;
+			}
+			segments.addLast(segment);
+		}
+		String joined = String.join("/", segments);
+		return absolute ? "/" + joined : joined;
 	}
 
 	/**
@@ -320,6 +361,7 @@ public class PdslLoader {
 	 */
 	private void mergeResource(String resource, List<PdslNode.Definition> definitions,
 							   Map<String, String> definedBy, Set<String> merged, List<String> importing) {
+		resource = normalizeResource(resource);
 		if (merged.contains(resource)) {
 			return;
 		}
