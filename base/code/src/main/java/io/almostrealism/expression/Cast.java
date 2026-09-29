@@ -211,14 +211,17 @@ public class Cast<T> extends UnaryExpression<T> {
 	 * </p>
 	 *
 	 * @param indexValues the index values to use for evaluation
-	 * @return the computed value as an Integer for "int" casts, Double otherwise
+	 * @return the computed value as an Integer for "int" casts, a Long for "long"
+	 *         casts (truncated toward zero), Double otherwise
 	 */
 	@Override
 	public Number computeValue(IndexValues indexValues) {
 		double v = getChildren().get(0).value(indexValues).doubleValue();
 
-		if (typeName.equals("int")) {
+		if (typeName.equals(INT_NAME)) {
 			return Integer.valueOf((int) v);
+		} else if (typeName.equals(LONG_NAME)) {
+			return Long.valueOf((long) v);
 		} else {
 			return Double.valueOf(v);
 		}
@@ -240,10 +243,10 @@ public class Cast<T> extends UnaryExpression<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A cast to {@code int} truncates each value, matching the narrowing
-	 * {@link #computeValue(IndexValues)} performs via {@code (int) v}; any other target
-	 * type leaves the values unchanged, since {@link IndexRange} values are already
-	 * {@code double}.</p>
+	 * <p>A cast to {@code int} or {@code long} truncates each value toward zero,
+	 * matching the narrowing {@link #computeValue(IndexValues)} performs via
+	 * {@code (int) v} / {@code (long) v}; any other target type leaves the values
+	 * unchanged, since {@link IndexRange} values are already {@code double}.</p>
 	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
@@ -253,6 +256,10 @@ public class Cast<T> extends UnaryExpression<T> {
 		if (typeName.equals(INT_NAME)) {
 			for (int i = 0; i < out.length; i++) {
 				out[i] = (int) c[i];
+			}
+		} else if (typeName.equals(LONG_NAME)) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = (long) c[i];
 			}
 		} else {
 			System.arraycopy(c, 0, out, 0, out.length);
@@ -268,12 +275,15 @@ public class Cast<T> extends UnaryExpression<T> {
 	 * </p>
 	 *
 	 * @param children the child expression values (expects exactly one)
-	 * @return the converted value as an Integer for "int" casts, Double otherwise
+	 * @return the converted value as an Integer for "int" casts, a Long for "long"
+	 *         casts (truncated toward zero), Double otherwise
 	 */
 	@Override
 	public Number evaluate(Number... children) {
-		if (typeName.equals("int")) {
+		if (typeName.equals(INT_NAME)) {
 			return Integer.valueOf(children[0].intValue());
+		} else if (typeName.equals(LONG_NAME)) {
+			return Long.valueOf(children[0].longValue());
 		} else {
 			return Double.valueOf(children[0].doubleValue());
 		}
