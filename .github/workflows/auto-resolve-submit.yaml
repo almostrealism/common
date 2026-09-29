@@ -131,13 +131,28 @@ jobs:
       # its submit.env is untrusted: submit-staged-request.sh exports only the
       # documented keys rather than appending the file to $GITHUB_ENV, and is a
       # no-op when no request was staged.
+      #
+      # STARTED_AFTER is the controller's stale-submission guard: it skips the
+      # job when anything was submitted on the workstream after that time. The
+      # slow path is attempt-scoped, so the threshold is the start of the
+      # attempt that staged the request (run_started_at moves forward with each
+      # re-run), not the start of the run. Measured from the run's first
+      # attempt, the guard counted auto-review's own attempt-1 submission as
+      # newer work and skipped every auto-resolve that followed one (run
+      # 36380449113). Work that moved the branch on is caught by
+      # retry-flaky-tests' superseded check instead.
       - name: Submit agent job
         env:
           # The target comes from the completed run's event, never from the
           # staged request, which pull request code wrote.
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
+          ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-        run: bash ./tools/ci/submit-staged-request.sh auto-resolve-request
+        run: |
+          : "${ATTEMPT_STARTED_AT:?the workflow_run event carries no run_started_at}"
+          STARTED_AFTER="$(date -u -d "$ATTEMPT_STARTED_AT" +%s)000"
+          export STARTED_AFTER
+          bash ./tools/ci/submit-staged-request.sh auto-resolve-request
