@@ -685,8 +685,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>{@code bypassAgentPermissionPrompts=true} grants this job alone the agent runtime's
      * permission-prompt bypass (see {@link CodingAgentJobFactory#setBypassAgentPermissionPrompts}),
      * in addition to any grant the workstream's branch policy makes. It is never written back to
-     * the workstream, so the next job on the branch starts without it. The ar-manager submit tool
-     * refuses to forward it from an in-flight agent.</p>
+     * the workstream, so the next job on the branch does not inherit it; that job still receives
+     * the bypass independently when its target branch matches the workstream's
+     * {@code agentPermissionBypassBranches} policy. The ar-manager submit tool refuses to forward
+     * it from an in-flight agent.</p>
      *
      * <p>{@code selfNotify} is rejected unless {@code jobType=shell}: a shell command has no
      * agent intelligence to act on its own completion, so a wake-up is the only way that

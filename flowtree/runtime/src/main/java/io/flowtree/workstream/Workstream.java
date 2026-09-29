@@ -825,7 +825,9 @@ public class Workstream {
      * grants, never revoke it, and nothing here is stored on the workstream, so
      * the next job on the branch — including a completion-listener wake-up,
      * which goes through {@link #applyCapabilities(CodingAgentJobFactory, String)}
-     * — starts without it.</p>
+     * — does not inherit the per-job grant. That job may still receive the
+     * bypass independently, when its target branch satisfies
+     * {@link #permitsAgentPermissionBypass(String)}.</p>
      *
      * @param factory                the factory to configure
      * @param targetBranch           the branch the job will run against; may be {@code null}

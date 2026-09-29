@@ -144,6 +144,45 @@ class TestSubmitAgentPermissionBypassGuard(unittest.TestCase):
         mock_get.assert_not_called()
         mock_post.assert_not_called()
 
+    def _assert_rejection_audited_before_validation(self, **kwargs):
+        """Submits with the bypass requested and asserts the operator-only
+        rejection, not the other validation error, is what the agent gets,
+        and that the attempt is audited."""
+        with self.assertLogs("ar-manager.audit", level="INFO") as audit:
+            result = server.workstream_submit_task(
+                skip_agent_permission_prompts=True, **kwargs)
+        self.assertFalse(result["ok"])
+        self.assertIn("skip_agent_permission_prompts=True", result["error"])
+        self.assertIn("operator-only", result["error"])
+        rejected = [line for line in audit.output
+                    if "tool=workstream_submit_task.rejected" in line]
+        self.assertEqual(1, len(rejected), msg=audit.output)
+        self.assertIn("'setting': 'skip_agent_permission_prompts=True'", rejected[0])
+        return rejected[0]
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_permission_bypass_rejection_audited_without_workstream_id(
+            self, mock_post, mock_get):
+        """Omitting workstream_id must not let the attempt be rejected by the
+        self-submission check without an audit record."""
+        rejected = self._assert_rejection_audited_before_validation(
+            prompt="Delegated task")
+        self.assertIn("'workstream_id': ''", rejected)
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_permission_bypass_rejection_audited_with_empty_prompt(
+            self, mock_post, mock_get):
+        """An otherwise-invalid request (no prompt) is still recorded as an
+        escalation attempt rather than silently failing validation."""
+        self._assert_rejection_audited_before_validation(
+            prompt="", workstream_id="ws-other")
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
     @patch.object(server, "_controller_get")
     @patch.object(server, "_controller_post")
     def test_permission_bypass_agent_default_passes_through(
