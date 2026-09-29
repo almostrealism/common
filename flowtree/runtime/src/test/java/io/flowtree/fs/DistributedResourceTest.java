@@ -154,6 +154,30 @@ public class DistributedResourceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The size-carrying constructor must reject a negative byte count rather than
+	 * silently allocating a chunk for it. Before validation was added, the
+	 * ceiling rounding turned a negative size into a one-chunk allocation while
+	 * {@link DistributedResource#getTotalBytes()} still reported the negative
+	 * total, an inconsistent state.
+	 */
+	@Test(timeout = 5000, expected = IllegalArgumentException.class)
+	public void sizeConstructorRejectsNegativeSize() {
+		new DistributedResource("/bad", new Permissions(), -1L);
+	}
+
+	/**
+	 * A zero-byte resource is valid and must allocate no chunks, distinguishing
+	 * the accepted lower bound from the rejected negative case.
+	 */
+	@Test(timeout = 5000)
+	public void sizeConstructorAcceptsZeroSize() {
+		DistributedResource res = new DistributedResource("/empty", new Permissions(), 0L);
+		Assert.assertEquals(0, res.getSize());
+		Assert.assertEquals(0, ((byte[][]) res.getData()).length);
+		Assert.assertEquals(0L, res.getTotalBytes());
+	}
+
+	/**
 	 * Wrapping a {@link Resource} whose data is a single chunk must mark the
 	 * resource fully loaded and report the chunk length as the total byte count.
 	 */

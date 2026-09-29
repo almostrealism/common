@@ -21,6 +21,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
+
 /**
  * Tests for {@link ResourceDistributionTask#getResourceClass(byte[])}, the
  * static header-to-type dispatch used by the distributed file system to select
@@ -84,13 +86,18 @@ public class ResourceDistributionTaskStaticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000)
 	public void registeredParserSelectsItsClass() {
-		Assert.assertEquals(DistributedResource.class,
-				ResourceDistributionTask.getResourceClass((MARKER_HEADER + "/dir").getBytes()));
+		List snapshot = ResourceDistributionTaskState.snapshotRegistry();
+		try {
+			Assert.assertEquals(DistributedResource.class,
+					ResourceDistributionTask.getResourceClass((MARKER_HEADER + "/dir").getBytes()));
 
-		ResourceDistributionTask.addResourceClass(new MarkerHeaderParser());
+			ResourceDistributionTask.addResourceClass(new MarkerHeaderParser());
 
-		Assert.assertEquals(MarkerResource.class,
-				ResourceDistributionTask.getResourceClass((MARKER_HEADER + "/dir").getBytes()));
+			Assert.assertEquals(MarkerResource.class,
+					ResourceDistributionTask.getResourceClass((MARKER_HEADER + "/dir").getBytes()));
+		} finally {
+			ResourceDistributionTaskState.restoreRegistry(snapshot);
+		}
 	}
 
 	/**

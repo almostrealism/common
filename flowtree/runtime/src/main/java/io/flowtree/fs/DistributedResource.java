@@ -158,9 +158,14 @@ public class DistributedResource implements Resource, ConsoleFeatures {
 	 *
 	 * @param uri         the distributed file-system URI for this resource
 	 * @param permissions access-control permissions to associate
-	 * @param size        total number of bytes this resource contains
+	 * @param size        total number of bytes this resource contains; must not
+	 *                    be negative
+	 * @throws IllegalArgumentException if {@code size} is negative
 	 */
 	protected DistributedResource(String uri, Permissions permissions, long size) {
+		if (size < 0)
+			throw new IllegalArgumentException("size must not be negative (was " + size + ")");
+
 		this.uri = processUri(uri);
 
 		this.tot = size;

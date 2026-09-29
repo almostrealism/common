@@ -22,8 +22,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -56,7 +54,7 @@ public class ResourceDistributionTaskTest extends TestSuiteBase {
 	@Before
 	public void snapshotStaticState() {
 		savedCurrent = ResourceDistributionTask.getCurrentTask();
-		savedResourceTypes = new ArrayList(resourceTypeRegistry());
+		savedResourceTypes = ResourceDistributionTaskState.snapshotRegistry();
 	}
 
 	/**
@@ -65,43 +63,8 @@ public class ResourceDistributionTaskTest extends TestSuiteBase {
 	 */
 	@After
 	public void restoreStaticState() {
-		setCurrentTask(savedCurrent);
-		List registry = resourceTypeRegistry();
-		registry.clear();
-		registry.addAll(savedResourceTypes);
-	}
-
-	/**
-	 * Reflectively returns the live JVM-wide parser registry list held by
-	 * {@link ResourceDistributionTask}, which has no public accessor. The raw
-	 * {@link List} type mirrors the field's own declaration.
-	 *
-	 * @return the mutable {@code resourceTypes} list
-	 */
-	private static List resourceTypeRegistry() {
-		try {
-			Field f = ResourceDistributionTask.class.getDeclaredField("resourceTypes");
-			f.setAccessible(true);
-			return (List) f.get(null);
-		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("Unable to access resourceTypes registry", e);
-		}
-	}
-
-	/**
-	 * Reflectively restores the JVM-wide current-task singleton held by
-	 * {@link ResourceDistributionTask}, which has no public setter.
-	 *
-	 * @param task the task to install as the current singleton
-	 */
-	private static void setCurrentTask(ResourceDistributionTask task) {
-		try {
-			Field f = ResourceDistributionTask.class.getDeclaredField("current");
-			f.setAccessible(true);
-			f.set(null, task);
-		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("Unable to restore current task", e);
-		}
+		ResourceDistributionTaskState.setCurrentTask(savedCurrent);
+		ResourceDistributionTaskState.restoreRegistry(savedResourceTypes);
 	}
 
 	/**
