@@ -23,6 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -91,5 +92,52 @@ public class CastLongTruncationTest extends TestSuiteBase implements ExpressionF
 
 		Assert.assertEquals("(long) 1.5 must evaluate to 1, matching the (int) cast",
 				1.0, longCast.evaluate(Double.valueOf(1.5)).doubleValue(), 0.0);
+	}
+
+	/**
+	 * A {@code (long)} cast must truncate each element toward zero in the block
+	 * evaluation path ({@link Expression#values(IndexRange)} /
+	 * {@link io.almostrealism.expression.Cast#computeValues(IndexRange)}), agreeing
+	 * with the per-point {@link Expression#value(IndexValues)} path.
+	 */
+	@Test(timeout = 30000)
+	public void longCastTruncatesInRangePath() {
+		Expression<?> half = Product.of(kernel(), new DoubleConstant(0.5));
+		Expression<?> cast = (Expression<?>) half.toLong();
+
+		int len = 8;
+		IndexRange range = new IndexRange(kernel(), 0, len);
+		double[] values = cast.values(range);
+
+		Assert.assertEquals(len, values.length);
+
+		for (int i = 0; i < len; i++) {
+			Assert.assertEquals("(long) (" + i + " * 0.5) must truncate toward zero",
+					(double) ((long) (i * 0.5)), values[i], 0.0);
+		}
+	}
+
+	/**
+	 * A {@code (long)} cast whose truncated result exceeds {@link IndexRange#MAX_EXACT}
+	 * must refuse the block value via {@link IndexRange.InexactValueException} rather
+	 * than storing a rounded {@code double}, so the caller falls back to exact point
+	 * evaluation. {@code 2^54} is exactly representable as a {@code double} yet exceeds
+	 * {@link IndexRange#MAX_EXACT} ({@code 2^53}), so it is refused rather than silently
+	 * rounded.
+	 */
+	@Test(timeout = 30000)
+	public void longCastBeyondExactRangeRefusesBlockValue() {
+		Expression<?> huge = Product.of(kernel().add(1), new DoubleConstant((double) (1L << 54)));
+		Assert.assertTrue("The dividend expression must be floating-point", huge.isFP());
+
+		Expression<?> cast = (Expression<?>) huge.toLong();
+
+		IndexRange range = new IndexRange(kernel(), 0, 4);
+		try {
+			cast.values(range);
+			Assert.fail("A long cast beyond MAX_EXACT must refuse the block value");
+		} catch (IndexRange.InexactValueException e) {
+			log("Refused: " + e.getMessage());
+		}
 	}
 }

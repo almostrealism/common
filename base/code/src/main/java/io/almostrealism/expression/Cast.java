@@ -246,7 +246,12 @@ public class Cast<T> extends UnaryExpression<T> {
 	 * <p>A cast to {@code int} or {@code long} truncates each value toward zero,
 	 * matching the narrowing {@link #computeValue(IndexValues)} performs via
 	 * {@code (int) v} / {@code (long) v}; any other target type leaves the values
-	 * unchanged, since {@link IndexRange} values are already {@code double}.</p>
+	 * unchanged, since {@link IndexRange} values are already {@code double}.
+	 * A truncated {@code long} is routed through {@link IndexRange#exact(long)},
+	 * so a magnitude beyond {@link IndexRange#MAX_EXACT} raises
+	 * {@link IndexRange.InexactValueException} and the caller falls back to
+	 * point evaluation rather than producing a rounded result; an {@code int}
+	 * always fits and needs no such check.</p>
 	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
@@ -259,7 +264,7 @@ public class Cast<T> extends UnaryExpression<T> {
 			}
 		} else if (typeName.equals(LONG_NAME)) {
 			for (int i = 0; i < out.length; i++) {
-				out[i] = (long) c[i];
+				out[i] = IndexRange.exact((long) c[i]);
 			}
 		} else {
 			System.arraycopy(c, 0, out, 0, out.length);
