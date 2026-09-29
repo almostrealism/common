@@ -135,6 +135,25 @@ public class DistributedResourceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A total size that is not an exact multiple of the chunk size must round the
+	 * chunk count up, so the trailing partial chunk is represented rather than
+	 * dropped. A single-byte resource still needs one chunk, and 1,500,001 bytes
+	 * needs four rather than three.
+	 */
+	@Test(timeout = 5000)
+	public void sizeConstructorRoundsUpPartialChunk() {
+		DistributedResource one = new DistributedResource("/tiny", new Permissions(), 1L);
+		Assert.assertEquals(1, one.getSize());
+		Assert.assertEquals(1, ((byte[][]) one.getData()).length);
+		Assert.assertEquals(1L, one.getTotalBytes());
+
+		DistributedResource partial = new DistributedResource("/partial", new Permissions(), 1_500_001L);
+		Assert.assertEquals(4, partial.getSize());
+		Assert.assertEquals(4, ((byte[][]) partial.getData()).length);
+		Assert.assertEquals(1_500_001L, partial.getTotalBytes());
+	}
+
+	/**
 	 * Wrapping a {@link Resource} whose data is a single chunk must mark the
 	 * resource fully loaded and report the chunk length as the total byte count.
 	 */
@@ -210,6 +229,46 @@ public class DistributedResourceTest extends TestSuiteBase {
 
 		Assert.assertEquals(payload.length, total);
 		Assert.assertArrayEquals(payload, read);
+		Assert.assertEquals(-1, in.read());
+	}
+
+	/**
+	 * A resource whose data spans more than one chunk must have its input stream
+	 * advance from the end of the first (full) chunk into the next, exercising the
+	 * chunk-boundary branch of {@link DistributedResource#getInputStream()}. The
+	 * first chunk is a full {@code chunkSize} block and the second is short.
+	 */
+	@Test(timeout = 5000)
+	public void inputStreamTraversesMultipleChunks() throws IOException {
+		final int chunkSize = 500_000;
+		byte[] first = new byte[chunkSize];
+		for (int i = 0; i < chunkSize; i++) {
+			first[i] = (byte) (i % 256);
+		}
+		byte[] second = { (byte) 10, (byte) 20, (byte) 200 };
+		byte[][] chunks = { first, second };
+
+		DistributedResource res = new DistributedResource(new ChunkResource("/multi", chunks));
+		Assert.assertEquals(2, res.getSize());
+		Assert.assertEquals((long) chunkSize + second.length, res.getTotalBytes());
+
+		InputStream in = res.getInputStream();
+		int index = 0;
+		int lastOfFirst = -1;
+		int firstOfSecond = -1;
+		int lastOfSecond = -1;
+		int b;
+		while ((b = in.read()) >= 0) {
+			if (index == chunkSize - 1) lastOfFirst = b;
+			if (index == chunkSize) firstOfSecond = b;
+			if (index == chunkSize + second.length - 1) lastOfSecond = b;
+			index++;
+		}
+
+		Assert.assertEquals(chunkSize + second.length, index);
+		Assert.assertEquals((chunkSize - 1) % 256, lastOfFirst);
+		Assert.assertEquals(10, firstOfSecond);
+		Assert.assertEquals(200, lastOfSecond);
 		Assert.assertEquals(-1, in.read());
 	}
 

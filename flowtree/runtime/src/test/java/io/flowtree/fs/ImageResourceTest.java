@@ -18,6 +18,7 @@ package io.flowtree.fs;
 
 import io.almostrealism.resource.IOStreams;
 import io.almostrealism.resource.Permissions;
+import io.flowtree.node.Client;
 import org.almostrealism.util.TestSuiteBase;
 import org.apache.commons.lang3.NotImplementedException;
 import org.junit.Assert;
@@ -356,13 +357,21 @@ public class ImageResourceTest extends TestSuiteBase {
 	/**
 	 * {@link ImageResource#loadFromURI()} for a {@code resource://} URI with no
 	 * running client must handle the resulting failure internally and leave the
-	 * resource empty instead of throwing.
+	 * resource empty instead of throwing. The current client is forced to
+	 * {@code null} and restored so the assertion does not depend on whether an
+	 * earlier test installed a client into the JVM-wide {@link Client} singleton.
 	 */
 	@Test(timeout = 5000)
 	public void loadFromResourceUriWithoutClientLeavesNoData() {
-		ImageResource img = new ImageResource();
-		img.setURI("resource://peer/photo.png");
-		img.loadFromURI();
-		Assert.assertNull(img.getData());
+		Client previous = Client.getCurrentClient();
+		try {
+			Client.setCurrentClient(null);
+			ImageResource img = new ImageResource();
+			img.setURI("resource://peer/photo.png");
+			img.loadFromURI();
+			Assert.assertNull(img.getData());
+		} finally {
+			Client.setCurrentClient(previous);
+		}
 	}
 }

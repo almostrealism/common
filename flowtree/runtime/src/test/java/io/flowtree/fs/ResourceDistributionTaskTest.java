@@ -17,9 +17,13 @@
 package io.flowtree.fs;
 
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -29,8 +33,76 @@ import java.util.List;
  * parent resolution, directory detection, and resource lookup. These paths do
  * not touch the local database or peer network, so the database-loading step of
  * construction is stubbed out to keep the test a pure unit test.
+ *
+ * <p>Constructing a {@link ResourceDistributionTask} mutates two pieces of
+ * JVM-wide static state: it assigns itself as the current task singleton and
+ * registers the default resource-type parsers. Both are snapshotted before each
+ * test and restored afterwards so these tests neither depend on nor leak state
+ * into other tests running in the same JVM.
  */
 public class ResourceDistributionTaskTest extends TestSuiteBase {
+
+	/** The current-task singleton captured before each test. */
+	private ResourceDistributionTask savedCurrent;
+
+	/** The parser registry contents captured before each test. */
+	private List savedResourceTypes;
+
+	/**
+	 * Captures the current-task singleton and parser registry so both can be
+	 * restored after the test, keeping the JVM-wide static state unchanged across
+	 * test boundaries.
+	 */
+	@Before
+	public void snapshotStaticState() {
+		savedCurrent = ResourceDistributionTask.getCurrentTask();
+		savedResourceTypes = new ArrayList(resourceTypeRegistry());
+	}
+
+	/**
+	 * Restores the current-task singleton and parser registry captured in
+	 * {@link #snapshotStaticState()}.
+	 */
+	@After
+	public void restoreStaticState() {
+		setCurrentTask(savedCurrent);
+		List registry = resourceTypeRegistry();
+		registry.clear();
+		registry.addAll(savedResourceTypes);
+	}
+
+	/**
+	 * Reflectively returns the live JVM-wide parser registry list held by
+	 * {@link ResourceDistributionTask}, which has no public accessor. The raw
+	 * {@link List} type mirrors the field's own declaration.
+	 *
+	 * @return the mutable {@code resourceTypes} list
+	 */
+	private static List resourceTypeRegistry() {
+		try {
+			Field f = ResourceDistributionTask.class.getDeclaredField("resourceTypes");
+			f.setAccessible(true);
+			return (List) f.get(null);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Unable to access resourceTypes registry", e);
+		}
+	}
+
+	/**
+	 * Reflectively restores the JVM-wide current-task singleton held by
+	 * {@link ResourceDistributionTask}, which has no public setter.
+	 *
+	 * @param task the task to install as the current singleton
+	 */
+	private static void setCurrentTask(ResourceDistributionTask task) {
+		try {
+			Field f = ResourceDistributionTask.class.getDeclaredField("current");
+			f.setAccessible(true);
+			f.set(null, task);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Unable to restore current task", e);
+		}
+	}
 
 	/**
 	 * A {@link ResourceDistributionTask} whose database-backed file-list load is
