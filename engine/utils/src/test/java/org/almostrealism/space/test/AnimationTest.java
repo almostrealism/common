@@ -126,10 +126,7 @@ public class AnimationTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void averageVelocityCountsOnlyRigidBodies() {
-		RigidSphere body = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(0.0, 3.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				1.0, 1.0, 1.0, 4);
+		RigidSphere body = rigidSphere(3.0);
 
 		Animation<ShadableSurface> anim = new Animation<>();
 		anim.add(body);
@@ -144,19 +141,29 @@ public class AnimationTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void averageVelocityIsMeanOfRigidBodySpeeds() {
-		RigidSphere fast = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(4.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				1.0, 1.0, 1.0, 4);
-		RigidSphere slow = new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(2.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
-				1.0, 1.0, 1.0, 4);
+		RigidSphere fast = rigidSphere(4.0);
+		RigidSphere slow = rigidSphere(2.0);
 
 		Animation<ShadableSurface> anim = new Animation<>();
 		anim.add(fast);
 		anim.add(slow);
 
 		Assert.assertEquals(3.0, anim.getAverageLinearVelocity(), 0.0);
+	}
+
+	/**
+	 * Creates a {@link RigidSphere} whose linear velocity is directed along the x-axis with the given
+	 * magnitude and whose remaining rigid-body state (position, forces, torques, angular velocity) is
+	 * zero. Because the velocity lies on a single axis, {@code getLinearVelocity().length()} equals
+	 * {@code speed} exactly in IEEE-754, which is what the average-velocity assertions rely on.
+	 *
+	 * @param speed  the desired linear velocity magnitude.
+	 * @return a rigid sphere with the requested speed.
+	 */
+	private static RigidSphere rigidSphere(double speed) {
+		return new RigidSphere(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(speed, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
+				1.0, 1.0, 1.0, 4);
 	}
 }
