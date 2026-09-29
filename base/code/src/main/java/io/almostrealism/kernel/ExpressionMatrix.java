@@ -26,6 +26,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -225,7 +226,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 	 * @return an index expression, or {@code null}
 	 */
 	public Expression uniqueNonZeroOffset(Index rowIndex) {
-		return uniqueMatchingOffset(rowIndex, e -> e.doubleValue().orElse(-1.0) != 0.0);
+		return uniqueMatchingOffset(rowIndex, this::isNonZero);
 	}
 
 	/**
@@ -237,14 +238,31 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 	 * @return an index expression, or {@code null}
 	 */
 	public Expression uniqueMatchingOffset(Index rowIndex, Predicate<Expression<?>> predicate) {
+		return uniqueMatchingOffset(rowIndex, (i, j) -> {
+			Expression e = valueAt(i, j);
+			return e == null ? null : predicate.test(e);
+		});
+	}
+
+	/**
+	 * Returns an expression that maps each row index to the unique column whose entry
+	 * passes the given test, or {@code null} if any row has more than one passing entry
+	 * or the test reports a missing entry ({@code null}). A row with no passing entry
+	 * maps to column zero.
+	 *
+	 * @param rowIndex the row index expression used to parameterise the result
+	 * @param test     tests the entry at {@code (row, column)}; {@code null} for a missing entry
+	 * @return an index expression, or {@code null}
+	 */
+	protected Expression uniqueMatchingOffset(Index rowIndex, BiFunction<Integer, Integer, Boolean> test) {
 		Number matchingColumns[] = new Number[rowCount];
 
 		for (int i = 0; i < rowCount; i++) {
 			for (int j = 0; j < colCount; j++) {
-				Expression e = valueAt(i, j);
-				if (e == null) return null;
+				Boolean matches = test.apply(i, j);
+				if (matches == null) return null;
 
-				if (predicate.test(e)) {
+				if (matches) {
 					if (matchingColumns[i] != null) return null;
 					matchingColumns[i] = j;
 				}
@@ -255,6 +273,42 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 		IndexSequence seq = ArrayIndexSequence.of(Integer.class, matchingColumns);
 		return seq.getExpression(rowIndex);
+	}
+
+	/**
+	 * Returns whether the entry at {@code (i, j)} is non-zero, counting any entry without
+	 * a known constant value as non-zero, or {@code null} if there is no entry.
+	 *
+	 * <p>This is exactly {@code valueAt(i, j).doubleValue().orElse(-1.0) != 0.0}, but when
+	 * the entry is stored as a raw number ({@link #numberAt(int, int)}) it is answered from
+	 * that number without building a constant expression. The loop-replacement analysis
+	 * asks this for every entry of matrices with hundreds of thousands of entries, where
+	 * constructing an expression per entry only to test it for zero dominated compilation.</p>
+	 *
+	 * @param i the row index
+	 * @param j the column index
+	 * @return whether the entry is non-zero, or {@code null} if there is no entry
+	 */
+	protected Boolean isNonZero(int i, int j) {
+		Number n = numberAt(i, j);
+		if (n != null) return n.doubleValue() != 0.0;
+
+		Expression<T> e = valueAt(i, j);
+		return e == null ? null : e.doubleValue().orElse(-1.0) != 0.0;
+	}
+
+	/**
+	 * Returns the entry at {@code (i, j)} as a raw number when this matrix stores it as an
+	 * {@link Integer}, {@link Long} or {@link Double} (the types {@link io.almostrealism.expression.Constant#of}
+	 * turns into numeric constants), or {@code null} when the entry is only available as an
+	 * {@link Expression} from {@link #valueAt(int, int)}. The default stores no raw numbers.
+	 *
+	 * @param i the row index
+	 * @param j the column index
+	 * @return the raw numeric entry, or {@code null}
+	 */
+	protected Number numberAt(int i, int j) {
+		return null;
 	}
 
 	/** {@inheritDoc} */

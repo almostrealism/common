@@ -204,12 +204,7 @@ public class MemoryRegionList {
 	 *         provider or does not hold {@link MemoryData}
 	 */
 	private static MemoryData providerValue(Object producer) {
-		if (!Computable.provider(producer) || !(producer instanceof Supplier)) return null;
-
-		Object evaluable = ((Supplier<?>) producer).get();
-		if (!(evaluable instanceof Provider)) return null;
-
-		Object value = ((Provider<?>) evaluable).get();
+		Object value = Provider.valueOf(producer);
 		return value instanceof MemoryData ? (MemoryData) value : null;
 	}
 }

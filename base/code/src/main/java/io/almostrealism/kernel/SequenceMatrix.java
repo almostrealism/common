@@ -162,6 +162,27 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Follows the row-duplicate chain exactly as {@link #valueAt(int, int)} does and
+	 * returns the stored number itself, when it is one of the types {@link Constant#of}
+	 * turns into a numeric constant.</p>
+	 */
+	@Override
+	protected Number numberAt(int i, int j) {
+		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
+			throw new UnsupportedOperationException();
+		}
+
+		if (rowDuplicates[i] >= 0) {
+			return numberAt(rowDuplicates[i], j);
+		}
+
+		Number n = sequenceValueAt(i, j);
+		return n instanceof Integer || n instanceof Long || n instanceof Double ? n : null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Returns a column sequence (one value per row) when every column in a given row
 	 * has the same value, or {@code null} if any row has differing columns or the
 	 * sequence exceeds {@link ExpressionMatrix#MAX_SEQUENCE_LENGTH}.</p>

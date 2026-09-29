@@ -16,6 +16,8 @@
 
 package io.almostrealism.relation;
 
+import java.util.function.Supplier;
+
 /**
  * A simple {@link FixedEvaluable} implementation that wraps a constant value.
  *
@@ -80,4 +82,22 @@ public class Provider<T> implements FixedEvaluable<T> {
 	 */
 	@Override
 	public T get() { return value; }
+
+	/**
+	 * Returns the value held by the {@link Provider} that the given producer evaluates to,
+	 * without evaluating anything.
+	 *
+	 * <p>A producer that reports itself as a {@link Computable#provider(Object) provider}
+	 * supplies a {@link Provider} whose value is fixed, so that value is known before any
+	 * kernel is compiled or run. Any other producer yields {@code null}.</p>
+	 *
+	 * @param producer the producer to inspect
+	 * @return the provided value, or {@code null} if {@code producer} is not a provider
+	 */
+	public static Object valueOf(Object producer) {
+		if (!Computable.provider(producer) || !(producer instanceof Supplier)) return null;
+
+		Object evaluable = ((Supplier<?>) producer).get();
+		return evaluable instanceof Provider ? ((Provider<?>) evaluable).get() : null;
+	}
 }

@@ -515,6 +515,29 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
+	 * Returns true if the argument supplied by the given producer would be folded into the
+	 * aggregate argument of a kernel that accepts aggregation. This is the same decision
+	 * {@link #get(Supplier)} makes when the argument is
+	 * mapped: the producer must be a {@link Provider} of {@link MemoryData} whose root memory
+	 * is an {@link #isAggregationTarget(MemoryData) aggregation target}, and must not be
+	 * kernel-owned constant memory ({@link KernelConstantProviderSupplier}).
+	 *
+	 * <p>Because the answer is fixed by the provided memory, it is known before compilation,
+	 * so a computation whose compiled kernel depends on it (for example a size-generic
+	 * assignment, whose signature otherwise omits its destination) can fold it into its
+	 * signature.</p>
+	 *
+	 * @param producer the producer of the argument
+	 * @return true if the argument would be folded into the aggregate
+	 */
+	public static boolean isAggregationTarget(Supplier<?> producer) {
+		if (producer instanceof KernelConstantProviderSupplier) return false;
+
+		Object value = Provider.valueOf(producer);
+		return value instanceof MemoryData && isAggregationTarget(((MemoryData) value).getRootDelegate());
+	}
+
+	/**
 	 * Returns true if the given argument variable is the synthesized aggregate buffer argument
 	 * produced by some {@link MemoryDataArgumentMap}.
 	 *

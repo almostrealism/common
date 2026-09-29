@@ -115,6 +115,34 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The same size-generic assignment applied to destinations on both sides of the
+	 * aggregation size limit must compile into distinct kernels, and each must still be
+	 * reused across destinations of different sizes on its own side of the limit.
+	 *
+	 * <p>{@code Assignment} omits the destination size from its signature so that one kernel
+	 * serves every size. Whether the destination is folded into the aggregate argument,
+	 * however, depends on the size of its root memory, and the fold is baked into the
+	 * kernel. Clearing a 1536-element gradient and then a 576-element one (as a
+	 * {@code BranchBlock} backward pass does) previously matched both to one signature and
+	 * failed the second with an instruction cache collision.</p>
+	 */
+	@Test(timeout = 60000)
+	public void assignmentAcrossAggregationLimitDoesNotCollide() {
+		int limit = MemoryDataArgumentMap.maxAggregateLength;
+		int[] sizes = { limit + 512, limit / 2 + 64, limit * 2, limit / 8 };
+
+		for (int size : sizes) {
+			PackedCollection destination = new PackedCollection(size).fill(1.0);
+			a("clearProbe", p(destination.each()), c(0.0)).get().run();
+
+			double[] values = destination.toArray();
+			for (int i = 0; i < size; i++) {
+				assertEquals(0.0, values[i]);
+			}
+		}
+	}
+
+	/**
 	 * Requesting the aggregate buffer from an argument map that aggregated nothing must
 	 * throw rather than deliver a null buffer to a kernel argument.
 	 */

@@ -1,6 +1,226 @@
 # AggressiveFineTuningTest Scaling Analysis
 
-## 🚫 CURRENT STATUS: BLOCKED (February 2026)
+## Current status (September 2026 re-baseline)
+
+**The February 2026 verdict — "production-scale LoRA fine-tuning is currently infeasible with the
+existing compilation architecture" — is withdrawn as unsupported by current measurements.** No
+acceptance threshold (target configuration plus maximum cold first-step latency or compile budget)
+was fixed before these measurements were taken, so no new feasibility label is assigned. This
+document reports the measured timings and growth rates only.
+
+Headline, on the configurations actually measured (single-block and 2–3-block LoRA
+`DiffusionTransformer`s, `latentLen=2`):
+
+- **Cold first training step is 13.6–20.8 s (medians) across embed 8 → 256**, and it does not grow
+  with embed: the lockstep series *decreases* slightly (20.8 s at embed=8, 15.1 s at embed=256), and
+  the controlled embed-only series decreases too (18.3 s → 13.6 s for embed 16 → 64). The warm
+  second step is 0.35–1.3 s.
+- **Each additional transformer block adds about 1 s** of cold first-step latency (embed=16:
+  18.3 s → 19.1 s → 20.4 s for depth 1 → 2 → 3).
+- February 2026 recorded 38–52 s at embed=8, 7.9 min at embed=16, 26 min at embed=64, 31 min at
+  embed=128 and a timeout beyond 44 min at embed=256 for the same configurations (see the
+  historical tables below). The same configurations now take 14–21 s.
+- The `IndexProjectionProducerComputation.delta()` scope error that blocked the profiled run in
+  February **does not reproduce**: every configuration below compiled, trained and completed its
+  backward pass.
+
+Getting there required three fixes in this re-baseline, the first two of which were outright
+failures, not slowness (see "Defects found and fixed"): fine-tuning through `ModelOptimizer` with
+`DiffusionTrainingDataset` was failing immediately on a shape check, every embed ≥ 64 configuration
+failed in `compileForTraining()` with an instruction cache collision, and a single analysis
+(`ExpressionMatrix.uniqueNonZeroOffset`) accounted for about 80% of the cold backward pass.
+
+### Measurement conditions
+
+- **Base `master` commit:** `ac76c0e24` (the merge-base of the branch).
+- **Tested worktree:** branch `project/plan-20260929-043714` at `9b4fc5026` plus the changes
+  committed together with this document (the harness change in `AggressiveFineTuningTest`, and the
+  three fixes below). The "final tree" numbers were produced by exactly that tree; the "before"
+  columns note which fixes were absent.
+- **Host:** Apple M1 Ultra, 128 GB, macOS 15.7.1, JDK 24 test JVM. **Backend:** automatic selection
+  (`AR_HARDWARE_DRIVER` unset), which initialised OpenCL, Metal and the native (JNI) backend;
+  kernels ran on Metal and JNI.
+- **Harness:** the individually selectable methods of `AggressiveFineTuningTest` (see "Test
+  Structure"). Each figure is one test-runner invocation, i.e. a fresh JVM, so no repetition reuses
+  kernels compiled by another. Three repetitions per configuration; the tables give the median and
+  the min–max range.
+- **Columns:** *Cold* is the wall-clock of the first `optimizer.optimize(1)` (lazy backward compile
+  plus forward, loss, backward and update); *Warm* is the second `optimize(1)`; *Compile est.* is the
+  derived `cold − warm` per run (median shown). *Fwd* is `compileForTraining()`. Cold first-step
+  latency is the like-for-like comparison with February's `Backward (ms)` column.
+
+### Lockstep series (the configurations of `testCompilationScaling`, depth=1)
+
+`ioChannels`, `numHeads` and `globalCondDim` grow together with `embedDim`, so this series measures a
+combined model-size axis.
+
+| Embed | IO | Heads | GC | Fwd (s) | Cold (s), median [range] | Warm (s) | Compile est. (s) | Feb-2026 table A | Feb-2026 table B | Ratio vs B |
+|------:|---:|------:|---:|--------:|-------------------------:|---------:|-----------------:|-----------------:|-----------------:|-----------:|
+| 8 | 4 | 1 | 8 | 14.2 | 20.8 [20.2–21.7] | 0.35 | 20.5 | 52.0 s | 38.0 s | 1.8× |
+| 16 | 8 | 1 | 16 | 11.8 | 18.3 [18.0–27.8] | 0.40 | 17.9 | > 300 s | 472.6 s | 26× |
+| 32 | 16 | 1 | 32 | 10.1 | 17.3 [17.3–17.4] | 0.42 | 16.9 | — | 417.7 s | 24× |
+| 64 | 32 | 2 | 64 | 6.9 | 13.7 [13.6–14.1] | 0.49 | 13.2 | — | 1,555.5 s | 114× |
+| 128 | 64 | 2 | 128 | 6.3 | 15.6 [14.7–16.8] | 0.62 | 15.0 | — | 1,886.5 s | 121× |
+| 256 | 64 | 4 | 256 | 4.7 | 15.1 [14.7–15.1] | 1.29 | 13.8 | — | > 2,640 s (timeout) | > 175× |
+
+Table A is §"Current Scaling Data (February 2026)", table B is §"Scaling Test Results"; they disagree
+for the same configurations, and the ratio column uses table B. The February figures were taken in a
+single JVM looping over all configurations (a later configuration could reuse kernels compiled for
+an earlier one) under a harness whose settings no longer match `master`, and they record no host or
+backend. Treat the ratios as indicative of the order of magnitude, not as a precise speed-up.
+
+### Controlled series (final tree)
+
+**Embed only** — `ioChannels=8`, `numHeads=1`, `globalCondDim=16`, depth=1 (embed=16 is the same
+configuration as the lockstep embed=16 point):
+
+| Embed | Cold (s), median [range] | Warm (s) | Compile est. (s) |
+|------:|-------------------------:|---------:|-----------------:|
+| 16 | 18.3 [18.0–27.8] | 0.40 | 17.9 |
+| 32 | 16.9 [16.9–18.8] | 0.40 | 16.5 |
+| 64 | 13.6 [12.6–15.2] | 0.47 | 13.2 |
+
+**Depth only** — the embed=16 lockstep configuration:
+
+| Depth | Cold (s), median [range] | Warm (s) | Compile est. (s) |
+|------:|-------------------------:|---------:|-----------------:|
+| 1 | 18.3 [18.0–27.8] | 0.40 | 17.9 |
+| 2 | 19.1 [18.7–27.2] | 0.48 | 18.6 |
+| 3 | 20.4 [20.1–22.7] | 0.55 | 19.9 |
+
+**Growth rates.** Over the measured range, cold first-step latency has no positive dependence on
+embed: the log-log slope is about −0.1 for the lockstep series (embed 8 → 256) and about −0.2 for
+the embed-only series (embed 16 → 64). The decrease is consistent with more intermediates exceeding
+the argument-aggregation size limit at larger sizes, but that attribution has not been measured.
+Depth adds about 1.0 s per block (least-squares slope over the three depth medians). The first run
+of a configuration in a batch was occasionally slower (the 27–28 s outliers); the medians are not
+affected.
+
+**What is not measured.** Nothing here was run at embed=1024 or depth=16, cross-attention
+conditioning (`condTokenDim=0` throughout) was not exercised, and all runs use `latentLen=2`. Run
+time, not compile time, may dominate at production sizes. The warm step already grows from 0.35 s
+to 1.3 s between embed 8 and 256. Any statement about the production configuration is an
+extrapolation beyond these data and is left as an open question.
+
+### Backward-pass profile (embed=64, depth=1)
+
+`testProfiledBackwardEmbed64` builds and compiles the model and runs a forward pass *outside* the
+profile, then profiles only the first `CompiledModel.backward(...)` call, so the saved profile
+(`studio/compose/results/finetune_backward_profile_embed64.xml`) is backward-scoped.
+
+| Tree | Cold first backward (s) | Warm backward (s) |
+|------|------------------------:|------------------:|
+| Before the `ExpressionMatrix` fix | 25.4, 24.1 | 0.18, 0.18 |
+| Final tree | 7.9 [7.7–8.7] | 0.15 [0.13–0.18] |
+
+The two timing kinds, from the final-tree profile:
+
+- **Backend compile** (`" compile"` metric entries; whole-profile total **3.18 s** over 144 compiled
+  kernels). Top three, from `ar-profile-analyzer find_slowest_by_category(category="compile")`,
+  with shares of the 3.18 s total: `f_collectionSumComputation_3948` `sum (64, 1)` 269.4 ms (8.5%),
+  `f_collectionSumComputation_4445` `sum (32, 1)` 262.1 ms (8.2%), `f_collectionSumComputation_4305`
+  `sum (18, 1)` 258.6 ms (8.1%). **Thirteen kernels — twelve small `sum` reductions and one
+  `indexOfMax` — account for 3.11 s (97.8%) of the backend compile total**, at 215–269 ms each;
+  the other 131 kernels compile in about 0.07 s together. `get_source` shows the thirteen are native
+  (JNI) C kernels, while, for example, the `multiply (576, 1536)` kernel is a Metal kernel that
+  compiles in milliseconds.
+- **Stage-detail timings** (non-exclusive, accumulated; not comparable with the shares above):
+  `kernelSeries` 0.94 s over 786 entries, `expressionCacheMatch` **0.03 s** over 2,779 entries
+  (February: ~1,375.6 s). A keyed point lookup (`get_timing_breakdown` on node `5693`) shows the
+  stage details attached to an individual operation are negligible (`kernelSeries [1/3, false]`
+  ≈ 1 µs); the totals above were summed over every node of the profile XML, which the analyzer
+  cannot do.
+
+The profile's nodes account for about 5.1 s of the 7.9 s cold backward pass; the remaining JVM-side
+preparation (expression construction and scope preparation that is not recorded against a node) is
+not attributed by the profile.
+
+**February hot spots, re-checked.** `collectionProductComputation` and `collectionAddComputation`
+kernels are no longer compile hot spots (each compiles in milliseconds on Metal).
+`expressionCacheMatch` has fallen from the largest accumulated stage-detail entry to 0.03 s. The
+72× `projectDelta` intermediate is a run-side concern and out of scope here.
+
+### Defects found and fixed
+
+1. **`DiffusionTrainingDataset` timestep shape.** Since the batched-input validation added to
+   `CompiledModel.InputManager` (June 2026), `DiffusionTransformer` declares its timestep input as
+   `(batchSize, 1)`, but the dataset still produced a bare `(1)` tensor, so every `ModelOptimizer` run
+   over a `DiffusionTrainingDataset` failed at once with *"Model input shape mismatch: expected
+   (1, 1) but received (1)"*. `createTimestepTensor` now produces `(batchSize, 1)`. Callers must
+   likewise supply global conditioning as `(batchSize, globalCondDim)`. Test:
+   `DiffusionTrainingDatasetTest` (engine/ml).
+2. **Instruction cache collision in `Assignment`.** `Assignment.signature()` omits the destination
+   so that one kernel serves every size, but whether the destination is folded into the aggregate
+   argument depends on its root size (`MemoryDataArgumentMap.maxAggregateLength`, 1024). The
+   `clearBranchGradient` assignments of a `BranchBlock` backward pass clear a 1536-element and a
+   576-element gradient; both matched one signature, and every embed ≥ 64 configuration failed in
+   `compileForTraining()` with *"Instruction cache collision reusing f_assignment_…"*. The signature
+   now includes whether the destination is an aggregation target
+   (`MemoryDataArgumentMap.isAggregationTarget(Supplier)`). Test:
+   `InstructionCacheCollisionEnforcementTest#assignmentAcrossAggregationLimitDoesNotCollide`
+   (engine/utils), which reproduced the exact exception before the fix.
+3. **Per-entry constant construction in the loop-replacement analysis (the step-6 lever).** A JFR
+   sample of the cold embed=64 backward (242 samples) placed 81% of samples under
+   `AggregatedProducerComputation.prepareScope` → `…uniqueNonZeroOffset` →
+   `ExpressionMatrix.uniqueMatchingOffset`, and 75% in `MaskMatrix.valueAt` / `SequenceMatrix.valueAt`
+   → `Constant.of` / `IntegerConstant.<init>` — a constant expression built for every entry of
+   matrices with up to hundreds of thousands of entries, only to test it for zero (the cost the
+   September update below had already named as the largest remaining one).
+   `ExpressionMatrix.uniqueNonZeroOffset` now tests each entry through `isNonZero`, which a
+   `SequenceMatrix` answers from its stored number and a `MaskMatrix` from its mask's stored number,
+   with results identical to the expression test. Tests: `ExpressionMatrixNonZeroTests` (engine/utils);
+   `SoftmaxTests#logSoftmaxBackwards1`, `ProductDeltaIsolationTest#testSingleAttentionBackward` and
+   `ConvolutionModelTests#convBackwardsMediumBatch` pass unchanged.
+
+**Before / after for fix 3** (same harness, three fresh JVMs each side; "before" includes fixes 1 and
+2):
+
+| Configuration | Cold before, median [range] | Cold after, median [range] |
+|---------------|----------------------------:|---------------------------:|
+| Lockstep embed=64 | 31.5 s [30.0–32.7] | 13.7 s [13.6–14.1] |
+| Lockstep embed=128 | 22.6 s [22.0–23.7] | 15.6 s [14.7–16.8] |
+| Lockstep embed=256 | 34.5 s [33.1–37.1] | 15.1 s [14.7–15.1] |
+| Profiled first backward, embed=64 | 25.4 s, 24.1 s (two runs) | 7.9 s [7.7–8.7] |
+
+For the smaller configurations the "before" runs also predate fix 2 (which only changes signatures
+for small destinations): embed=8 21.4 s → 20.8 s, embed=16 24.8 s → 18.3 s, embed=32 22.1 s → 17.3 s.
+embed=8 is essentially unchanged — its cold step is dominated by fixed costs the fix does not touch.
+
+### Next lever
+
+**Per-kernel native (JNI) compilation of small reductions** (profile-evidenced). In the backward
+pass at embed=64, 13 small `sum`/`indexOfMax` kernels are compiled as native C kernels at about
+250 ms each — 3.11 s, 97.8% of the backend compile total and about 40% of the 7.9 s cold backward.
+Compiling them as one native unit, or letting small reductions run on the GPU backend that already
+compiles the rest of the graph in milliseconds, would remove most of that. This is kernel-routing /
+native-compiler work and does not touch the sparse-Jacobian projections, the `Sum` reordering budget
+or the memoization gating owned by `feature/lora-gradients`. The second target is the roughly 2.8 s of
+the cold backward (and the larger fixed cost of the forward compile, 4.7–14.2 s) that the profile does
+not attribute to any operation.
+
+### Open questions
+
+- **Feasibility threshold.** A target configuration and a maximum cold first-step latency (or compile
+  budget) still need to be fixed before a feasibility label can be assigned.
+- **Production configuration.** embed=1024, depth=16 and cross-attention conditioning were not
+  measured; neither was a latent length beyond 2.
+- **Known-issue markers.** `testCompilationScaling`, `testProfiledFineTuning` and
+  `testAggressiveFineTuning` remain `@TestProperties(knownIssue = true)` with five-minute timeouts.
+  Run with `AR_LONG_TESTS=enabled` (the flag takes `enabled`/`disabled`, not `true`),
+  `testProfiledFineTuning` now passes on the measurement host in about 35 s (8.3 s compile, 23.1 s for
+  three epochs), so its February blocker is gone. The markers were left in place: removing one also
+  admits the test to the CI pipeline, whose Linux runners were not measured, and
+  `testCompilationScaling` runs six configurations in one method. Whether to lift them is a separate
+  decision.
+
+---
+
+# Historical record (February 2026, pre-optimization)
+
+Everything below was written before the optimizations described above. Its numbers are kept for
+comparison; its verdicts ("BLOCKED", "infeasible") are superseded by the September 2026 re-baseline.
+
+## 🚫 HISTORICAL STATUS: BLOCKED (February 2026, superseded)
 
 **The `testProfiledFineTuning` test cannot run due to a native compiler scope error.**
 
@@ -16,7 +236,7 @@
 
 ---
 
-## ⚠️ ISSUE PERSISTS (February 2026)
+## ⚠️ ISSUE PERSISTS (February 2026, superseded)
 
 **The backward pass compilation bottleneck is NOT fully resolved.** While recent commits (gradient support in Cosine/Sine, ProjectionFactory fixes) improved certain configurations, **the underlying exponential scaling persists**.
 
@@ -52,7 +272,7 @@ Something is being lazily compiled during the first backward pass execution. Thi
 
 ---
 
-## Executive Summary
+## Executive Summary (February 2026, superseded)
 
 **The fundamental bottleneck for LoRA fine-tuning of diffusion transformers IS backward pass expression-tree compilation time, which scales dramatically worse than O(n^2) with embedding dimension.**
 
@@ -139,7 +359,7 @@ Given that embed=128 with DEPTH=1 takes 31 minutes for backward compilation:
 - 16 blocks would multiply this by approximately 16x (assuming linear scaling with depth)
 - Production-scale backward compilation would require days, not minutes
 
-**Conclusion: Production-scale LoRA fine-tuning is currently infeasible with the existing compilation architecture.**
+**Conclusion (February 2026, withdrawn in September 2026 — see "Current status"): Production-scale LoRA fine-tuning is currently infeasible with the existing compilation architecture.**
 
 ---
 
@@ -491,13 +711,17 @@ While commits `42f3a03d2` and `be19dac16` fixed the `ProjectionFactory` handling
 
 ### AggressiveFineTuningTest (compose module)
 
-The `AggressiveFineTuningTest` class contains three test methods:
+(Updated September 2026.) The `AggressiveFineTuningTest` class contains:
 
-1. **`testAggressiveFineTuning()`** - Uses production-scale parameters. Currently expected to timeout/fail until compilation performance is improved.
+1. **`testAggressiveFineTuning()`** - Uses production-scale parameters (embed=1024, depth=16). Not re-measured in the September re-baseline.
 
-2. **`testCompilationScaling()`** - Measures compilation time and memory across different embedding dimensions to characterize the scaling behavior.
+2. **`testCompilationScaling()`** - Loops over the six lockstep configurations in one JVM and logs a table with `Fwd`, `Cold1`, `Warm2` and the derived `CompileEst` (`cold − warm`) columns.
 
-3. **`testProfiledFineTuning()`** - Runs a modest fine-tuning configuration (embed=64) with OperationProfileNode instrumentation, saving results to `utils/results/finetune_profile_embed64.xml` for analysis with ar-profile-analyzer MCP tools.
+3. **`testProfiledFineTuning()`** - Profiles model creation, forward execution and three epochs at embed=64, saving `results/finetune_profile_embed64.xml` under the module directory, whether the run succeeds or fails.
+
+4. **Per-configuration measurements** - `testScalingLockstepEmbed{8,16,32,64,128,256}`, `testScalingFixedDimsEmbed{32,64}` and `testScalingDepth{2,3}Embed16`, one configuration each, individually selectable, with a 30-minute JUnit timeout (below the 40-minute test-runner budget) and excluded from the CI pipeline profile (`@TestProperties(excludeProfiles = TestUtils.PIPELINE)`). Each logs a greppable `scalingResult embed=... coldStepMs=... warmStepMs=... compileEstimateMs=...` line.
+
+5. **`testProfiledBackwardEmbed64()`** - Profiles only the first `CompiledModel.backward(...)` call of the embed=64 configuration and saves `results/finetune_backward_profile_embed64.xml` whether the pass succeeds or fails, logging `profiledBackward outcome=... coldBackwardMs=...` and the warm backward latency. Same timeout and CI exclusion as above.
 
 ### AttentionGradientScalingTest (ml module)
 
