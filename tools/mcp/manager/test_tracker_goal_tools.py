@@ -284,6 +284,51 @@ class TestUpsertGoalTask(_GoalToolTestBase):
             self.assertIn("goals:<document>", result["error"])
         mock_post.assert_not_called()
 
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_a_blank_title_ensures_no_release(self, mock_get, mock_post, mock_put):
+        # Ensuring the release is a write, so a task the tracker would refuse
+        # must be refused first; otherwise a new, empty release is left behind.
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        for title in ("", "   ", "\t\n"):
+            for task_id in ("", "t1"):
+                result = server.tracker_upsert_goal_task(
+                    "Framework", "Framework 1.3", title, "goals:docs/PLAN.md",
+                    task_id=task_id)
+                self.assertEqual({"ok": False, "error": "title is required"}, result)
+        mock_post.assert_not_called()
+        mock_put.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_an_out_of_range_priority_ensures_no_release(self, mock_get, mock_post):
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        for priority in (-3, 3, 100, True, "1", 1.0, None):
+            result = server.tracker_upsert_goal_task(
+                "Framework", "Framework 1.3", "t", "goals:docs/PLAN.md",
+                priority=priority)
+            self.assertEqual(
+                {"ok": False, "error": "priority must be an integer in [-2, 2]"},
+                result, repr(priority))
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_controller_get")
+    def test_the_priority_bounds_are_accepted(self, mock_get, mock_post):
+        mock_get.return_value = _as_job("ws-steward", ["steward"])
+        for priority in (-2, 2):
+            mock_post.reset_mock()
+            mock_post.side_effect = [
+                {"ok": True, "release": _RELEASE, "created": False},
+                {"ok": True, "task": {"id": "new"}},
+            ]
+            result = server.tracker_upsert_goal_task(
+                "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md",
+                priority=priority)
+            self.assertTrue(result["ok"])
+            self.assertEqual(priority, mock_post.call_args_list[1][0][1]["priority"])
+
     @patch.object(server, "_tracker_post")
     @patch.object(server, "_controller_get")
     def test_the_source_is_stripped_before_it_is_sent(self, mock_get, mock_post):

@@ -740,6 +740,13 @@ def tracker_upsert_goal_task(
     if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) == len(GOAL_SOURCE_PREFIX):
         return {"ok": False,
                 "error": f"source must be '{GOAL_SOURCE_PREFIX}<document>' (e.g. goals:docs/GOALS.md)"}
+    # Checked here as well as by the tracker because ensuring the release is a
+    # write: a request the tracker would refuse must not leave a new, empty
+    # release behind.
+    if not title.strip():
+        return {"ok": False, "error": "title is required"}
+    if isinstance(priority, bool) or not isinstance(priority, int) or not -2 <= priority <= 2:
+        return {"ok": False, "error": "priority must be an integer in [-2, 2]"}
 
     target = _ensure_release(project, release)
     if not target.get("ok"):

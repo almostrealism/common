@@ -105,6 +105,9 @@ import io.flowtree.slack.SlackTokens;
  */
 public class FlowTreeController implements ConsoleFeatures {
 
+    /** ar-manager URL used by both the Slack and HTTP job paths when {@code AR_MANAGER_URL} is unset or empty. */
+    private static final String DEFAULT_AR_MANAGER_URL = "http://ar-manager:8010";
+
     /**
      * Runtime state for a single Slack workspace connection (tokens, Bolt app,
      * SocketModeApp, notifier). In single-workspace mode only
@@ -344,10 +347,7 @@ public class FlowTreeController implements ConsoleFeatures {
         validateGitHubTokens(config);
 
         // Configure ar-manager URL and shared secret for agent jobs
-        String arManagerUrl = System.getenv("AR_MANAGER_URL");
-        if (arManagerUrl == null || arManagerUrl.isEmpty()) {
-            arManagerUrl = "http://ar-manager:8010";
-        }
+        String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", DEFAULT_AR_MANAGER_URL);
         String arManagerSecret = loadSharedSecret();
         listener.setArManagerUrl(arManagerUrl);
         if (arManagerSecret != null && !arManagerSecret.isEmpty()) {
@@ -1243,7 +1243,7 @@ public class FlowTreeController implements ConsoleFeatures {
             // Sibling services: ar-memory stores messages, ar-manager issues
             // agent tokens, and the tracker answers /api/tracker/claimable.
             String memoryUrl = SystemUtils.getNonEmptyProperty("AR_MEMORY_URL", "http://localhost:8020");
-            String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", "http://ar-manager:8010");
+            String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", DEFAULT_AR_MANAGER_URL);
             String trackerUrl = SystemUtils.getNonEmptyProperty("AR_TRACKER_URL", "http://ar-tracker:8030");
             apiEndpoint.setMemoryServerUrl(memoryUrl);
             apiEndpoint.setArManagerUrl(arManagerUrl);
