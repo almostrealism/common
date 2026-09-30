@@ -191,19 +191,20 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	
 	/**
 	 * Constructs an RGB object with the specified red (r), green (g), and blue (b) channel
-	 * values. If any of the values are less than 0.0, the channel will be set to 0.0.
-	 * If any value is greater than 1.0, the channel is set 1.0.
+	 * values. The values are stored verbatim without clamping to the [0.0, 1.0] range; use
+	 * {@link #setRed(double)}, {@link #setGreen(double)} and {@link #setBlue(double)} if
+	 * clamping is required.
 	 */
 	public RGB(double r, double g, double b) {
 		this(RGB.defaultDepth, r, g, b);
 	}
-	
+
 	/**
 	 * Constructs an RGB object with the specified red (r), green (g), and blue (b) channel
-	 * values. If any of the values are less than 0.0, the channel will be set to 0.0.
-	 * If any value is greater than 1.0, the channel is set 1.0.
+	 * values. The values are stored verbatim without clamping to the [0.0, 1.0] range; use
+	 * {@link #setRed(double)}, {@link #setGreen(double)} and {@link #setBlue(double)} if
+	 * clamping is required.
 	 */
-	// TODO(review): javadoc claims clamping to [0,1], but this constructor writes values verbatim (see line ~223, data.set) with no clamp
 	public RGB(int model, double r, double g, double b) {
 		this(model, r, g, b, true);
 	}
