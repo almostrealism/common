@@ -332,6 +332,23 @@ def test_added_token_matching_option_is_rejected(option):
         exporter.validate_pipeline(spec)
 
 
+@pytest.mark.parametrize("token_id", [-1, None, "2", True])
+def test_added_token_with_invalid_id_is_rejected(token_id):
+    # write_tokenizer indexes the token table by id, so -1 would overwrite the last slot through
+    # Python's negative indexing instead of failing; any non-integer id is equally unwritable.
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": token_id, "content": "<pad>", "special": True}]
+    with pytest.raises(ValueError, match="invalid id"):
+        exporter.validate_pipeline(spec)
+
+
+def test_vocabulary_token_with_negative_id_is_rejected():
+    spec = _supported_spec()
+    spec["model"]["vocab"]["ab"] = -1
+    with pytest.raises(ValueError, match="invalid id"):
+        exporter.validate_pipeline(spec)
+
+
 def test_empty_added_token_is_rejected():
     spec = _supported_spec()
     spec["added_tokens"] = [{"id": 0, "content": "", "special": True}]

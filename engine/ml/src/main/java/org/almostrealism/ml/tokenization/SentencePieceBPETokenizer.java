@@ -436,11 +436,20 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 		return result;
 	}
 
+	/**
+	 * Decodes {@code long} token ids. An id outside the {@code int} range cannot name a vocabulary
+	 * entry, so it is mapped to {@code -1} and ignored by {@link #decode(int[])} like any other
+	 * invalid id, rather than narrowed by a cast that could wrap it onto a real token.
+	 *
+	 * @param tokens the token ids to decode
+	 * @return the decoded text
+	 */
 	@Override
 	public String decodeAsLong(long[] tokens) {
 		int[] ids = new int[tokens.length];
 		for (int i = 0; i < tokens.length; i++) {
-			ids[i] = (int) tokens[i];
+			long id = tokens[i];
+			ids[i] = id < Integer.MIN_VALUE || id > Integer.MAX_VALUE ? -1 : (int) id;
 		}
 
 		return decode(ids);

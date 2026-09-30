@@ -341,6 +341,24 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@code long} id outside the {@code int} range is ignored on decode like any other invalid
+	 * id, rather than narrowed by a cast onto a real vocabulary entry: both {@code 2^32 + 1} and
+	 * {@code 1 - 2^32} wrap to id 1 ({@code "a"}) under a plain {@code (int)} cast.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void longIdOutsideIntRangeIsIgnoredOnDecode() throws IOException {
+		SentencePieceBPETokenizer tokenizer = new SentencePieceTokenizerFixture().tokenizerFor(ADDED_VOCAB);
+
+		long aboveIntRange = (1L << 32) + 1;
+		long belowIntRange = 1 - (1L << 32);
+		assertEquals("a", tokenizer.decodeAsLong(new long[] {1}));
+		assertEquals("b", tokenizer.decodeAsLong(new long[] {aboveIntRange, 2, belowIntRange}));
+		assertEquals("", tokenizer.decodeAsLong(new long[] {Long.MAX_VALUE, Long.MIN_VALUE}));
+	}
+
+	/**
 	 * An added token whose id lies outside the vocabulary is rejected when the tokenizer is read,
 	 * rather than encoding to an id no embedding row exists for.
 	 *

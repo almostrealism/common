@@ -87,6 +87,17 @@ def _pattern_string(component):
     return pattern
 
 
+def _require_token_id(description, index):
+    """Raise ``ValueError`` unless ``index`` is a non-negative integer token id.
+
+    :param description: names the token in the error message.
+    :param index: the id to check.
+    """
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+        raise ValueError("%s has invalid id %r; token ids must be non-negative integers"
+                         % (description, index))
+
+
 def validate_pipeline(spec):
     """Reject a tokenizer whose pipeline the Java ``SentencePieceBPETokenizer`` does not reproduce.
 
@@ -127,6 +138,12 @@ def validate_pipeline(spec):
             "(e.g. %s). HuggingFace enables byte fallback only with all 256 present, so an "
             "incomplete vocabulary cannot reproduce the source tokenizer"
             % (len(missing), ", ".join(missing[:8])))
+
+    # write_tokenizer sizes and indexes the token table by id, so a negative id would silently
+    # overwrite a slot from the end of the table (Python negative indexing) and write a binary the
+    # Java reader then rejects. Every id is checked here, before anything is allocated.
+    for token, index in vocab.items():
+        _require_token_id("vocabulary token %r" % token, index)
 
     # The Java reader applies every merge deterministically, in priority order, to the per-character
     # symbols of the whole text, and does nothing else. BPE-dropout skips merges at random, and
@@ -226,6 +243,7 @@ def validate_pipeline(spec):
     # rejected.
     for added in spec.get("added_tokens") or []:
         content = added.get("content")
+        _require_token_id("added token %r" % content, added.get("id"))
         if not content:
             raise ValueError("unsupported added token %r with empty content" % added.get("id"))
         for option in ("single_word", "lstrip", "rstrip"):
