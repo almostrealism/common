@@ -48,10 +48,21 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
 1. **Full-sequence causal mask for sequence attention (general capability).**
    Add a causal option to the full-sequence attention path so position *i* attends only to keys
    *j ≤ i*. Build the lower-triangular mask as a **producer** (for example by comparing two
-   `integers(...)` index producers with `greaterThan`/`lessThan` and folding it into the existing
-   logit-masking path that `keyMask` already uses), never with a Java loop or `setMem`. The mask
-   should apply wherever the logits are formed, so `sequenceAttention`, `scaledDotProductAttention`
-   and `TransformerBlockFeatures.transformerBlock` can all use it without copies.
+   `integers(...)` index producers with `greaterThan`/`lessThan`), never with a Java loop or
+   `setMem`, and add it to the logits before the softmax over key positions.
+   - **Why the existing `keyMask` input cannot carry it.** In `scaledDotProductAttention`, the
+     `keyMask` argument has shape `(batch, contextSeqLen)`; it is turned into a bias and
+     `broadcast` across the query axis of the `(batch, heads, querySeqLen, contextSeqLen)` logits,
+     so it masks the *same* keys for every query. A causal triangle depends on both the query
+     index *i* and the key index *j*, which a per-key vector cannot represent. The causal mask must
+     therefore be a full query–key logit mask of shape `(querySeqLen, contextSeqLen)` (broadcast
+     over batch and heads), not a reuse of the `keyMask` input.
+   - **How it composes with `keyMask`.** Both are additive logit penalties applied at the same
+     point (before the key-axis softmax). When both are present the plan adds both biases to the
+     logits — the causal query–key mask and the broadcast per-key `keyMask` bias — so a key is
+     attended only when it is both causally allowed and unmasked. The new option should slot into
+     that same additive masking stage so `sequenceAttention`, `scaledDotProductAttention` and
+     `TransformerBlockFeatures.transformerBlock` can all use it without copies.
    - **Placement:** `AttentionFeatures.java` is already 1826 lines, above the 1500-line
      recommendation. The new capability must not grow it. Put the causal-mask construction in a
      focused feature interface in `engine/ml` (or on the existing mask-building code if a better
@@ -75,6 +86,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
    (`docs/plans/LORA_GRADIENTS_REDUCTION.md`), and stay out of its sparse-Jacobian projections,
    `Sum` reordering budget and memoization gating. A fix that needs those is a finding to record,
    not a change to make here.
+   - **The buffering pattern is shared, not unique to `sequenceAttention`.** The same
+     `k.andThen(into(kTensor))` / `v.andThen(into(vTensor))` followed by `cp(k)` / `cp(v)` readback
+     appears at four sites: `sequenceAttention` and `sequenceCrossAttention` in `AttentionFeatures`,
+     `TransformerResamplingFeatures` (K and V into fixed tensors), and `DifferentialAttentionFeatures`
+     (two K buffers and one V buffer). If the gradient test shows the buffering drops K/V gradients,
+     the fix should cover the shared pattern, or explicitly scope itself to `sequenceAttention` and
+     record the other three sites as follow-ups — so the causal LM does not end up with one
+     gradient-correct attention path while its siblings keep the same defect. Only `sequenceAttention`
+     is on this plan's critical path; the others are noted so the fix is not silently narrow.
    **This is the highest-risk item. Do it first**, because if K/V gradients cannot be made to flow
    without core autodiff work, the rest of the plan must scope down (see Open questions).
 
@@ -94,10 +114,19 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
 5. **Text next-token dataset.** A `Dataset<PackedCollection>` that takes a token array and a
    context length and yields `ValueTarget`s of (input window, next-token targets): input
    `(seqLen)` token ids or one-hot `(seqLen, vocab)` rows, depending on step 3's outcome; targets
-   one-hot `(seqLen, vocab)`. It has a deterministic train/held-out split. Build one-hot rows with
-   producers, as `MidiDataset` does, not with element loops. Where it belongs is a placement
-   decision to make before writing (`engine/ml` next to `DiffusionTrainingDataset` is the default).
-   Check `MidiDataset` for logic that should be shared rather than duplicated.
+   one-hot `(seqLen, vocab)`. Build one-hot rows with producers, as `MidiDataset` does, not with
+   element loops. Where it belongs is a placement decision to make before writing (`engine/ml` next
+   to `DiffusionTrainingDataset` is the default). Check `MidiDataset` for logic that should be
+   shared rather than duplicated.
+   - **Split before windowing, to avoid held-out leakage.** The train/held-out split must partition
+     the *source* bytes (or whole files) into disjoint regions **first**, and only then form context
+     windows within each region, so no window ever crosses the split boundary. A deterministic split
+     applied *after* windowing would let a train window and a held-out window share up to `seqLen − 1`
+     bytes (63 of 64 in the target config), leaking most of each held-out target into training and
+     making the bits-per-byte result meaningless. The dataset contract must state this: contiguous
+     source regions per split, windows confined to one region, and — to be strict about the very
+     first predicted position of each held-out window — either drop the windows straddling the seam
+     or accept that only the interior of the held-out region is scored. Record which was chosen.
 
 6. **Tiny causal LM assembly and a first real training run.**
    - Model: byte vocab 256, context 64, embed 64, 4 heads, depth 2, pre-norm RMSNorm, RoPE,
@@ -117,6 +146,13 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      steps, host and backend, and the commit SHA.
    - Save the trained weights with `StateDictionary.save(...)` under the module's `results/`
      directory, then reload them and check that the reloaded model gives the same held-out loss.
+     **Mind the save precision.** The no-argument `StateDictionary.save(Path)` encodes weights as
+     `Precision.FP32` (see the `save(Path, Precision)` overload and `CollectionEncoder.encode`); if
+     training runs at higher precision the reloaded weights are not bit-identical, so the reloaded
+     loss need not match exactly. Either save at the training precision via
+     `save(path, Precision.FP64)` and require exact equality, or keep the FP32 default and assert the
+     reloaded held-out loss matches within a stated tolerance (a small relative tolerance on
+     bits/byte). State which, so a correct checkpoint cannot fail this criterion on rounding alone.
    - Test hygiene: the long training run is its own `@Test` method in a class extending
      `TestSuiteBase`. It has an explicit JUnit timeout strictly below the 40-minute runner budget
      and `@TestProperties(excludeProfiles = TestUtils.PIPELINE)` so CI does not run it. Every
@@ -169,7 +205,9 @@ matters).
   and commit SHA. If the run does not beat unigram, the plan is not complete. The investigation
   into why (from profile and gradient evidence) and the recorded outcome become the deliverable,
   and the success claim is not made.
-- The trained weights round-trip through `StateDictionary` save/load with the same held-out loss.
+- The trained weights round-trip through `StateDictionary` save/load, with the reloaded held-out
+  loss either exactly equal (weights saved at the training precision) or within the stated tolerance
+  (FP32 default save) — see the precision note in step 6.
 - The build validator is clean. No existing test is weakened.
 
 ## Dependencies
