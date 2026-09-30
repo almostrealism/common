@@ -30,7 +30,7 @@ next-token training needs are missing or unverified:
 | Trainable **token embedding** | Missing as a layer. `CollectionFeatures.rows(shape, table, rowIndex)` gathers rows (T5Gemma uses it for inference), but no test shows gradients reaching the table. Qwen3 looks up embeddings on the host, outside the graph. The known workaround is one-hot input into a `dense` layer (`MidiDataset` precedent). |
 | **Byte/char tokenizer** | Missing. Every existing tokenizer loads a pre-trained vocabulary: `SentencePieceTokenizer` (`extern/ml-djl`, the only production class that implements the `org.almostrealism.ml.Tokenizer` interface), `Qwen3Tokenizer` (extends the abstract `ByteLevelBPETokenizer`, which has its own `encode(String, boolean)` / `decode(int[])` and does **not** implement `Tokenizer`, despite that interface's `@see`), the standalone `BPE` class, and the MIDI tokenizers in `studio/compose` (`MidiTokenizer`, `SkyTntTokenizerV2`, neither a `Tokenizer`). `ByteLevelEncoder` only maps bytes to unicode characters for BPE. |
 | **Text next-token `Dataset`** | Missing. `MidiDataset` (studio/compose) is the closest template: token windows, one-hot input, next-token one-hot target. |
-| Cross-entropy loss | Present for single-row outputs; **inconsistent for multi-row outputs**. `logSoftmax` (`ActivationFeatures`, gradient-tested in `SoftmaxTests`) plus `NegativeLogLikelihood` gives cross-entropy. `NegativeLogLikelihood.loss` treats the leading dimension as rows and **averages** them, so a `(seqLen, vocab)` output reports mean per-position NLL. `NegativeLogLikelihood.gradient`, however, returns `-target` with no `1 / rows` factor, which is the gradient of the **summed** NLL. `MeanSquaredError.gradient`, by contrast, does scale by `2 / n`. At `seqLen` 64 the backward pass therefore uses 64× the gradient of the loss it reports. The existing `NegativeLogLikelihood` users (`SyntheticDenseTrainingTest.denseClassification`, `ConvolutionModelTrainingTest` at batch 1) train single-row outputs, where the factor is 1, so nothing has exposed this. Likewise, every `logSoftmax` gradient test in `SoftmaxTests` uses a single row (`(size)` or `(1, size)`); the per-row normalization over a `(seqLen, vocab)` input is not covered. See step 6. |
+| Cross-entropy loss | Present for single-row outputs; **inconsistent for multi-row outputs**. `logSoftmax` (`ActivationFeatures`, gradient-tested in `SoftmaxTests`) plus `NegativeLogLikelihood` gives cross-entropy. `NegativeLogLikelihood.loss` treats the leading dimension as rows and **averages** them, so a `(seqLen, vocab)` output reports mean per-position NLL. `NegativeLogLikelihood.gradient`, however, returns `-target` with no `1 / rows` factor, which is the gradient of the **summed** NLL. `MeanSquaredError.gradient`, by contrast, does scale by `2 / n`. At `seqLen` 64 the backward pass therefore uses 64× the gradient of the loss it reports. The `NegativeLogLikelihood` *gradient* users are `SyntheticConvolutionTrainingTest` and `ConvolutionModelTrainingTest`, both at batch 1 with a single-row `(classes)` output, where the `1 / rows` factor is 1, so nothing has exposed this. (`SyntheticDenseTrainingTest.denseClassification`, despite its name, trains with `MeanSquaredError`, not NLL, and is not a user of this gradient.) Two further callers touch `loss` only, never `gradient`: `MoonbeamFineTuningTest.testNllLossWithCompoundTokenTargets`, and `MidiDataset` (studio/compose), whose javadoc recommends NLL. `MidiDataset`'s targets are single-row but **multi-hot** — one hot position per attribute — and there a second, independent mismatch exists: `loss` scores only the single argmax position of each row while `gradient` would return `-target` over *every* hot position. That disagreement is not the row-count scale factor and the `1 / rows` normalization does not touch it; it is called out as an Open question and a follow-up, since no NLL gradient path on this plan's critical path is multi-hot. Likewise, every `logSoftmax` gradient test in `SoftmaxTests` uses a single row (`(size)` or `(1, size)`); the per-row normalization over a `(seqLen, vocab)` input is not covered. See step 6. |
 | Checkpointing | Present. `StateDictionary(Map)`, `put`, `save(Path)`, reload via `new StateDictionary(dir)`. |
 
 This task is the smallest piece of work that turns "training a transformer is now possible" into
@@ -108,15 +108,30 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
 4. **`ByteTokenizer` implementing `Tokenizer`.** A fixed 256-symbol byte vocabulary, lossless for
    any UTF-8 input, in `engine/ml`'s `org.almostrealism.ml.tokenization` package (the `Tokenizer`
    interface itself lives in `org.almostrealism.ml`). The interface's abstract methods are
-   `encodeAsLong(String)` and `decodeAsLong(long[])`, with `encodeAsInt` / `decodeAsInt` defaults,
-   so the round-trip property to test is `decodeAsInt(encodeAsInt(s)).equals(s)` (and the `long`
-   pair likewise). The interface's `encode(String)` / `decode(PackedCollection)` defaults throw
+   `encodeAsLong(String)` and `decodeAsLong(long[])`, with `encodeAsInt` / `decodeAsInt` defaults.
+   The interface's `encode(String)` / `decode(PackedCollection)` defaults throw
    `UnsupportedOperationException` unless overridden, so they are not the round-trip to test
    unless `ByteTokenizer` chooses to implement them. Token ids are the unsigned
    byte values 0–255, so the implementation must not sign-extend Java's signed `byte`. No
    training and no merges. It is the simplest tokenizer that needs no pre-trained vocabulary, so
-   the model owes nothing to an external artifact. Unit tests: ASCII, multi-byte UTF-8, an empty
-   string, and all 256 byte values.
+   the model owes nothing to an external artifact.
+   - **Two round-trips, at different levels — do not conflate them.** The lossless invariant is at
+     the **byte** level: encoding a `String` to UTF-8 bytes, mapping each byte to its unsigned id,
+     then reversing, recovers the original bytes exactly. The **String** round-trip
+     `decodeAsInt(encodeAsInt(s)).equals(s)` follows from it only for text `s` that is itself valid
+     (any ordinary `String`); test it with ASCII, multi-byte UTF-8, and the empty string. It does
+     **not** hold for an arbitrary id sequence: the ids `0..255` in order are not a valid UTF-8 byte
+     stream (e.g. `0xFF`, or a continuation byte with no lead byte), so `decode` of them is not a
+     `String` round-trip case. Test all 256 values instead as a **byte-level** round-trip — every
+     byte value `b` maps to id `b` and `b` is recovered from the raw bytes, with no sign extension —
+     not as `encodeAsInt(decodeAsInt(ids)).equals(ids)`.
+   - **Specify decode behaviour for token sequences that are not valid UTF-8.** `decodeAsLong` must
+     return a `String`, so the plan must state, and the implementation must test, what a malformed
+     (non-UTF-8) id sequence decodes to: either byte-exact reconstruction via a 1:1 byte↔char
+     mapping (ISO-8859-1), which keeps the byte round-trip lossless for all 256 ids, or standard
+     UTF-8 decoding with Unicode replacement characters (which is then *not* byte-lossless for
+     malformed input). Record which contract was chosen; the all-256-values test checks whichever it
+     is at the byte level.
 
 5. **Text next-token dataset.** A `Dataset<PackedCollection>` that takes a token array and a
    context length and yields `ValueTarget`s of (input window, next-token targets): input
@@ -156,13 +171,23 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      "-1 at the target class". Add a CI-running finite-difference test on a multi-row
      `(rows > 1, classes)` log-probability input, checking `gradient` against the change in `loss`,
      and a multi-row `logSoftmax` backward test (each row normalized independently, no gradient
-     leaking across rows), since `SoftmaxTests` covers only single rows.
-     <!-- TODO(review): NLL user list is incomplete (also MidiDataset/MoonbeamFineTuningTest, SyntheticConvolutionTrainingTest); MidiDataset targets are multi-hot, which loss (argmax) and gradient (-target) already treat differently. -->
-     For single-row outputs the factor is 1, so existing users see no change. With Adam, a constant
+     leaking across rows), since `SoftmaxTests` covers only single rows. With Adam, a constant
      gradient scale largely cancels (except through its epsilon), so the unnormalized gradient would
      not necessarily stop the run from learning. It would still make the reported loss and the
      optimized objective disagree, and it would make any finite-difference check through the loss
      fail by a factor of `seqLen`, so it must be fixed rather than worked around.
+   - **Inventory the callers before changing `NegativeLogLikelihood` globally.** The gradient is
+     used by `SyntheticConvolutionTrainingTest` and `ConvolutionModelTrainingTest`, both single-row
+     `(classes)` at batch 1, so the `1 / rows` factor is 1 and they see no change. `MidiDataset`
+     and `MoonbeamFineTuningTest` call only `loss`, not `gradient`, so the normalization cannot
+     regress them either. What it does **not** address is `MidiDataset`'s **multi-hot** targets: with
+     more than one hot position per row, `loss` (argmax of one position) and `gradient` (`-target`
+     over all hot positions) disagree by construction, independently of any row scaling. That is a
+     pre-existing, separate defect on no path this plan trains through; do not try to fix it here.
+     The implementer should confirm this inventory against source before editing (a grep for
+     `new NegativeLogLikelihood` and its `gradient` callers), and if a multi-hot gradient user has
+     appeared since, stop and treat defining/testing multi-hot NLL semantics as a prerequisite
+     rather than silently scaling it. See Open questions.
    - Measurement: report held-out loss in **bits per byte** at fixed checkpoints, next to two
      baselines computed from the same held-out split: the uniform baseline (8 bits/byte) and the
      **unigram byte-entropy** baseline. Record wall-clock time per step (cold and warm), total
@@ -244,6 +269,16 @@ matters).
 
 ## Open questions
 
+- **Multi-hot NLL semantics are out of scope, but the mismatch is real.** `NegativeLogLikelihood`
+  is used with multi-hot targets today by `MidiDataset` (one hot position per attribute), where
+  `loss` scores only the argmax position while `gradient` returns `-target` over every hot position
+  — a disagreement the `1 / rows` normalization in step 6 does not address, because it is about
+  *which* positions contribute, not their scale. This plan trains only single-hot next-token
+  targets, so it neither depends on nor fixes multi-hot NLL. The decision left to the approver is
+  whether defining and testing multi-hot NLL semantics (or migrating/rejecting that caller) should
+  be a separate follow-up plan; the step-6 gradient change must not silently alter multi-hot
+  behaviour, and the implementer must re-confirm no multi-hot *gradient* user has appeared before
+  landing it.
 - **If K/V gradients need core autodiff changes**, which item would the approver prefer? (a) Scope
   this plan down to steps 1, 3, 4 and 5 plus a training run that exercises attention with fixed
   (non-trainable) K/V projections, stated plainly as such. (b) Split the K/V gradient fix into its
