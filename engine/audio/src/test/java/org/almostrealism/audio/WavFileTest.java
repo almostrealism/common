@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -60,6 +61,93 @@ public class WavFileTest extends TestSuiteBase {
 		File f = File.createTempFile("ar-wavfile-test", ".wav");
 		f.deleteOnExit();
 		return f;
+	}
+
+	/**
+	 * A {@code [channels, frames]} collection is written channel by channel, in the layout the
+	 * {@code double[][]} overload uses, and reads back as the same samples.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripCollectionStereo() throws IOException {
+		File file = tempWav();
+		double[][] out = {
+				{0.0, 0.5, -0.5, 0.999, -0.999},
+				{0.25, -0.25, 0.75, -0.75, 0.1}
+		};
+
+		PackedCollection audio = pack(
+				0.0, 0.5, -0.5, 0.999, -0.999,
+				0.25, -0.25, 0.75, -0.75, 0.1).reshape(2, 5);
+
+		try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(5, wav.writeFrames(audio));
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(2, wav.getNumChannels());
+			Assert.assertEquals(5, wav.getNumFrames());
+
+			double[][] in = new double[2][5];
+			Assert.assertEquals(5, wav.readFrames(in, 5));
+
+			for (int c = 0; c < 2; c++) {
+				for (int f = 0; f < 5; f++) {
+					Assert.assertEquals("channel " + c + " frame " + f,
+							out[c][f], in[c][f], TOL_16);
+				}
+			}
+		}
+
+		audio.destroy();
+	}
+
+	/**
+	 * A one-dimensional collection is written as a single channel.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripCollectionMono() throws IOException {
+		File file = tempWav();
+		PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25);
+
+		try (WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(4, wav.writeFrames(audio));
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(1, wav.getNumChannels());
+
+			double[][] in = new double[1][4];
+			Assert.assertEquals(4, wav.readFrames(in, 4));
+			Assert.assertEquals(0.5, in[0][1], TOL_16);
+			Assert.assertEquals(-0.5, in[0][2], TOL_16);
+		}
+
+		audio.destroy();
+	}
+
+	/**
+	 * A collection whose channel count disagrees with the file's is rejected rather than written
+	 * into the wrong layout.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void collectionChannelMismatchIsRejected() throws IOException {
+		File file = tempWav();
+		PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25).reshape(2, 2);
+
+		try (WavFile wav = WavFile.newWavFile(file, 1, 2, 16, SAMPLE_RATE)) {
+			wav.writeFrames(audio);
+			Assert.fail("a two-channel collection was written to a one-channel file");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("channel"));
+		} finally {
+			audio.destroy();
+		}
 	}
 
 	/**

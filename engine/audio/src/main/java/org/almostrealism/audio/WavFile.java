@@ -8,6 +8,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
@@ -1005,6 +1006,40 @@ public class WavFile implements AutoCloseable {
 	 */
 	public int writeFrames(double[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
+	}
+
+	/**
+	 * Writes an audio collection, shaped {@code [channels, frames]} or {@code [frames]} when there
+	 * is one channel. This is how a collection produced on a device reaches a file: it is read in
+	 * one bulk transfer per channel rather than sample by sample.
+	 *
+	 * @param audio the samples, in the range the file's bit depth can represent
+	 * @return the number of frames written
+	 * @throws IOException              if writing fails
+	 * @throws IllegalArgumentException if the collection's channel count does not match the file's,
+	 *                                  or its shape is neither one- nor two-dimensional
+	 */
+	public int writeFrames(PackedCollection audio) throws IOException {
+		TraversalPolicy shape = audio.getShape();
+
+		if (shape.getDimensions() > 2) {
+			throw new IllegalArgumentException("Audio must be [channels, frames] or [frames], not " + shape);
+		}
+
+		int channels = shape.getDimensions() == 2 ? shape.length(0) : 1;
+		int frames = shape.length(shape.getDimensions() - 1);
+
+		if (channels != getNumChannels()) {
+			throw new IllegalArgumentException("Audio has " + channels + " channel(s) but the file has "
+					+ getNumChannels());
+		}
+
+		double[][] samples = new double[channels][];
+		for (int c = 0; c < channels; c++) {
+			samples[c] = audio.toArray(c * frames, frames);
+		}
+
+		return writeFrames(samples, frames);
 	}
 
 	/**

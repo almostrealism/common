@@ -222,18 +222,38 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	public static StableAudio3 small(StateDictionary transformerWeights, StateDictionary conditionerWeights,
 									 StateDictionary promptEncoderWeights, StateDictionary autoencoderWeights,
 									 double maxSeconds) {
+		T5GemmaConfig config = T5GemmaConfig.baseUl2();
+
+		return new StableAudio3(smallTransformer(config.getHiddenSize(), config.getMaxLength() + 1),
+				transformerWeights, smallConditioner(conditionerWeights, promptEncoderWeights),
+				SAMEAutoEncoder.small(autoencoderWeights),
+				SAMPLE_RATE, maxSeconds, HEADROOM_SECONDS);
+	}
+
+	/**
+	 * The released conditioner: the T5Gemma prompt encoder, the learned embedding substituted at
+	 * padded prompt positions, and the exponential Fourier duration embedder, which together produce
+	 * the cross-attention context and the global conditioning the transformer reads.
+	 *
+	 * <p>Separate from {@link #small} so the conditioner can be built, and compared against a
+	 * reference, without also loading the transformer and the autoencoder.</p>
+	 *
+	 * @param conditionerWeights   the conditioner weights, as extracted with the
+	 *                             {@code conditioner} target
+	 * @param promptEncoderWeights the T5Gemma encoder weights
+	 * @return the conditioner
+	 */
+	public static StableAudio3Conditioner smallConditioner(StateDictionary conditionerWeights,
+														   StateDictionary promptEncoderWeights) {
 		T5GemmaEncoder encoder = new T5GemmaEncoder(T5GemmaConfig.baseUl2(), promptEncoderWeights);
 		int hidden = encoder.getConfig().getHiddenSize();
 		NumberConditioner duration = NumberConditioner.expo(0.0, MAX_CONDITIONED_SECONDS, hidden,
 				DURATION_FOURIER_DIM, DURATION_MIN_FREQ, DURATION_MAX_FREQ,
 				conditionerWeights.get("conditioner.conditioners.seconds_total.embedder.embedding.1.weight"),
 				conditionerWeights.get("conditioner.conditioners.seconds_total.embedder.embedding.1.bias"));
-		StableAudio3Conditioner conditioner = new StableAudio3Conditioner(encoder,
-				conditionerWeights.get("conditioner.conditioners.prompt.padding_embedding"), duration);
 
-		return new StableAudio3(smallTransformer(hidden, encoder.getConfig().getMaxLength() + 1),
-				transformerWeights, conditioner, SAMEAutoEncoder.small(autoencoderWeights),
-				SAMPLE_RATE, maxSeconds, HEADROOM_SECONDS);
+		return new StableAudio3Conditioner(encoder,
+				conditionerWeights.get("conditioner.conditioners.prompt.padding_embedding"), duration);
 	}
 
 	/**
