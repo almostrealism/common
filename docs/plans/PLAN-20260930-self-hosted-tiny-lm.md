@@ -63,6 +63,17 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      attended only when it is both causally allowed and unmasked. The new option should slot into
      that same additive masking stage so `sequenceAttention`, `scaledDotProductAttention` and
      `TransformerBlockFeatures.transformerBlock` can all use it without copies.
+   - **How it reaches `transformerBlock`.** `transformerBlock` does not call `sequenceAttention`
+     directly. Its fully specified overload builds self-attention through
+     `AttentionFeatures.selfAttention`, the attention-variant seam. For `AttentionVariant.STANDARD`,
+     `selfAttention` delegates to `sequenceAttention` and passes no `keyMask`, and no `transformerBlock`
+     overload exposes one today. The causal option therefore has to be threaded through both
+     fully specified overloads, `transformerBlock` and `selfAttention`. `DifferentialAttentionFeatures`
+     overrides that `selfAttention` overload, so changing its signature must update the override in the
+     same change. Otherwise the override stops compiling, or, if the new parameter is added only as
+     a new overload, the differential variant silently builds non-causal attention. The implementer
+     either makes the differential variant honour the flag or has it reject `causal = true`
+     explicitly. Silently ignoring the flag is not acceptable.
    - **Placement:** `AttentionFeatures.java` is already 1826 lines, above the 1500-line
      recommendation. The new capability must not grow it. Put the causal-mask construction in a
      focused feature interface in `engine/ml` (or on the existing mask-building code if a better
@@ -182,6 +193,17 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      Batch 1 (`scaledDotProductAttention` rejects `batchSize != 1`). A 64-position window already
      gives 64 predictions per step. All computation is `CollectionProducer` composition, following
      the project's fundamental rule.
+   - **Reuse the existing block rather than assembling one.** Most of the block already exists in the
+     fully specified `TransformerBlockFeatures.transformerBlock` overload:
+     - `NormalizationType.RMS` gives the pre-norm RMSNorm, with null norm biases.
+     - The feed-forward is `gatedLinearFeedForward(..., silu(), ...)`, which is the SiLU/GLU above.
+     - `invFreq` supplies RoPE, which `sequenceAttention` applies to Q and K.
+
+     Build each block with `crossAttend = false`, `AttentionVariant.STANDARD`, null `modulation`,
+     `localAddition` and `paddingMask`, and the step-1 causal option on. The plan must also say
+     whether the query/key norm inside attention is used. Passing a null `qNormWeight` skips it.
+     State the initialization scheme for every weight collection handed to the block, the embedding
+     and the output projection, so the run is reproducible from the test alone.
    - **Output shape contract: the model's final output is two-dimensional, `(seqLen, vocab)` =
      `(64, 256)`.** The transformer blocks work on `(batchSize, seqLen, dim)` (`sequenceAttention`
      and `transformerBlock` build `shape(batchSize, seqLen, dim)`), so the output projection
@@ -203,7 +225,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      file list goes in the test so the run is reproducible. It is read at the test boundary.
    - Training: `ModelOptimizer` with `NegativeLogLikelihood` and Adam. `ModelOptimizer` owns the
      loop; no epoch loop outside it. It should use the patience/convergence helpers in
-     `ModelTestFeatures` where they fit.
+     `ModelTestFeatures` where they fit. They do not all fit here. `trainWithPatience` and the older
+     `train(name, model, data, epochs, steps, lossTarget, minLoss)` wrap `ModelOptimizer` in a retry
+     loop of up to six attempts. Each attempt recompiles the model and trains again from the start, so
+     the worst case is six cold compiles plus six full training runs, which cannot fit the budget
+     sized below. Their "fresh random weights on retry" behaviour also assumes the model reinitializes
+     its weights on `compile()`, and that is not established for weight collections the test supplies
+     itself. Drive `ModelOptimizer` directly for the budgeted run. `assertTrainingConvergence` and
+     `isLossTrendDeclining`, which only inspect a `TrainingResult` or loss history, remain usable.
+     <!-- TODO(review): trainWithPatience runs a seventh compile+optimize after six failed attempts, so its worst case is seven, not six; conclusion unchanged. -->
    - **Define the training quantities in `ModelOptimizer`'s terms.** `ModelOptimizer.optimize(n)`
      runs up to `n` **epochs**; each epoch is one full pass over the training `Dataset`, doing one
      forward, one backward and one parameter update **per `ValueTarget`** (per window). This plan
@@ -316,12 +346,20 @@ matters).
 
 - A causal option for full-sequence attention exists, is built from producers, is covered by a
   CI-running forward test proving no future-position leakage, and does not grow `AttentionFeatures`.
+  It can be switched on through `transformerBlock` (via `selfAttention`), and
+  `DifferentialAttentionFeatures`' override either honours it or rejects it explicitly.
 - A CI-running gradient test shows that `sequenceAttention` delivers correct gradients (within a
   stated finite-difference tolerance) to the Q, K **and** V slices of `toQkvWeight`, with any fix
   needed to get there. The existing `sequenceAttention` tests still pass.
 - A trainable token embedding is in use, either `rows()`-based with a passing gradient test or
   one-hot → `dense`, and the choice is recorded with evidence.
-- `ByteTokenizer` and the text next-token dataset exist, with CI-running unit tests.
+- `ByteTokenizer` and the text next-token dataset exist, with CI-running unit tests. The tokenizer
+  tests cover the all-256 byte-level round-trip, the `String` round-trip on valid text, and the
+  rejection of ids outside `0..255`. The dataset tests show that no window crosses the
+  train/held-out boundary.
+- A CI-running unit test shows the assembled model's output shape is `(seqLen, vocab)`, and that
+  `NegativeLogLikelihood.loss` on one window is the mean over its `seqLen` positions (step 6,
+  "Output shape contract").
 - `NegativeLogLikelihood.gradient` matches the gradient of its averaged `loss` for multi-row
   outputs, shown by a CI-running finite-difference test with `rows > 1`; a CI-running multi-row
   `logSoftmax` backward test passes.
@@ -358,6 +396,13 @@ matters).
   this plan down to steps 1, 3, 4 and 5 plus a training run that exercises attention with fixed
   (non-trainable) K/V projections, stated plainly as such. (b) Split the K/V gradient fix into its
   own plan first. This plan recommends (b) if the fix touches `delta()` machinery.
+- **How the causal flag enters the block API.** The fully specified `transformerBlock` overload
+  already takes more than thirty positional parameters, and `selfAttention` is an override seam
+  for attention variants. Adding one more positional `boolean causal` to both is the smallest
+  change, but it makes the long overload chains longer still. The approver may prefer another
+  shape: a small attention-options value carrying `causal`, `keyMask` and `logitSoftcap` together,
+  for example. Pick one before implementation, because it decides how much of the
+  `sequenceAttention` / `selfAttention` / `transformerBlock` overload families step 1 touches.
 - **Corpus size versus budget.** The full `docs/internals` corpus may be larger than a
   40-minute run can use. The implementer picks a fixed subset that gives a meaningful held-out
   split, and records the choice. Beating unigram is the bar, not converging on the whole corpus.
