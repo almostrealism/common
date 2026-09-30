@@ -103,6 +103,50 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@code [channels, frames]} collection whose logical order is a permutation of its backing
+	 * memory is written in logical channel/frame order, not backing-memory order. The samples are
+	 * laid out frame-major (a {@code [frames, channels]} memory buffer) and then presented as
+	 * {@code [channels, frames]} by permuting the shape, so a raw contiguous read would interleave
+	 * the channels; only routing each element through the shape's index mapping reproduces the
+	 * documented layout.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripPermutedCollectionRespectsLogicalOrder() throws IOException {
+		File file = tempWav();
+		double[][] out = {
+				{0.0, 0.1, 0.2, 0.3, 0.4},
+				{-0.1, -0.2, -0.3, -0.4, -0.5}
+		};
+
+		try (PackedCollection frameMajor = pack(
+				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2)) {
+			PackedCollection audio = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
+			Assert.assertFalse("permuted shape should be irregular", audio.getShape().isRegular());
+
+			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+				Assert.assertEquals(5, wav.writeFrames(audio));
+			}
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(2, wav.getNumChannels());
+			Assert.assertEquals(5, wav.getNumFrames());
+
+			double[][] in = new double[2][5];
+			Assert.assertEquals(5, wav.readFrames(in, 5));
+
+			for (int c = 0; c < 2; c++) {
+				for (int f = 0; f < 5; f++) {
+					Assert.assertEquals("channel " + c + " frame " + f,
+							out[c][f], in[c][f], TOL_16);
+				}
+			}
+		}
+	}
+
+	/**
 	 * A one-dimensional collection is written as a single channel.
 	 *
 	 * @throws IOException if the file cannot be written or read

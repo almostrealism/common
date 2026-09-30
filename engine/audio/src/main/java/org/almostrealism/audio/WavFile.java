@@ -1024,8 +1024,11 @@ public class WavFile implements AutoCloseable {
 
 	/**
 	 * Writes an audio collection, shaped {@code [channels, frames]} or {@code [frames]} when there
-	 * is one channel. This is how a collection produced on a device reaches a file: it is read in
-	 * one bulk transfer per channel rather than sample by sample.
+	 * is one channel. This is how a collection produced on a device reaches a file: each channel is
+	 * read in logical {@code [channels, frames]} order rather than sample by sample, staying a
+	 * single bulk transfer for a regular shape while mapping a permuted or otherwise reordered shape
+	 * through its {@link TraversalPolicy} so the file receives channel/frame order, not backing
+	 * memory order.
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
 	 * @return the number of frames written
@@ -1053,7 +1056,7 @@ public class WavFile implements AutoCloseable {
 
 		double[][] samples = new double[channels][];
 		for (int c = 0; c < channels; c++) {
-			samples[c] = audio.toArray(c * frames, frames);
+			samples[c] = audio.doubleStream(c * frames, frames).toArray();
 		}
 
 		return writeFrames(samples, frames);
