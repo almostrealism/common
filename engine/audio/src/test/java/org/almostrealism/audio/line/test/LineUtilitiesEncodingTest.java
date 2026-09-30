@@ -66,8 +66,10 @@ public class LineUtilitiesEncodingTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Full-scale positive and negative samples encode to the signed 16-bit
-	 * extremes, and out-of-range samples are clamped to {@code [-1, 1]} first.
+	 * Full-scale positive and negative samples encode to the symmetric signed
+	 * 16-bit values {@code +32767} and {@code -32767} (the encoding scales by
+	 * {@code (1 << 15) - 1}, so it never reaches the {@code -32768} minimum), and
+	 * out-of-range samples are clamped to {@code [-1, 1]} first.
 	 */
 	@Test(timeout = 30000)
 	public void toBytesEncodesSigned16BitFullScaleAndClamps() {
@@ -120,10 +122,11 @@ public class LineUtilitiesEncodingTest extends TestSuiteBase {
 	public void toFrameDuplicatesMonoToStereo() {
 		AudioFormat format = signed(16, 2, false);
 
-		PackedCollection samples = new PackedCollection(3);
-		samples.fill(1.0, 0.5, -1.0);
-
-		byte[] bytes = LineUtilities.toFrame(samples, format);
+		byte[] bytes;
+		try (PackedCollection samples = new PackedCollection(3)) {
+			samples.fill(1.0, 0.5, -1.0);
+			bytes = LineUtilities.toFrame(samples, format);
+		}
 		ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
 
 		assertEquals(32767, buf.getShort(0));
@@ -147,9 +150,11 @@ public class LineUtilitiesEncodingTest extends TestSuiteBase {
 
 		byte[] fromBytes = LineUtilities.toBytes(frames, format);
 
-		PackedCollection samples = new PackedCollection(2, 3);
-		samples.fill(0.25, -0.5, 0.75, -0.25, 1.0, -1.0);
-		byte[] fromFrame = LineUtilities.toFrame(samples, format);
+		byte[] fromFrame;
+		try (PackedCollection samples = new PackedCollection(2, 3)) {
+			samples.fill(0.25, -0.5, 0.75, -0.25, 1.0, -1.0);
+			fromFrame = LineUtilities.toFrame(samples, format);
+		}
 
 		assertArrayEquals(fromBytes, fromFrame);
 	}
