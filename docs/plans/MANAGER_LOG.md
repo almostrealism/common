@@ -75,10 +75,11 @@ up on the host). There is **no byte tokenizer**: the text tokenizers need an ext
 vocabulary (SentencePiece, Qwen3 BPE, or arrays passed to `BPE`), and the fixed-mapping MIDI
 tokenizers do not handle text. There is also **no text dataset**. Cross-entropy (`logSoftmax` +
 `NegativeLogLikelihood`) is **not quite ready** for a `(seqLen, vocab)` output:
-`NegativeLogLikelihood.loss` averages over rows but its `gradient` is the unnormalized `-target`, so backpropagation would follow the summed loss (64× the
-reported loss's gradient at context 64). Existing users train single-row outputs, where this does
-not show; the plan adds the `1 / rows` normalization and a multi-row gradient test as a
-prerequisite of the training run. `StateDictionary` checkpointing is ready.
+`NegativeLogLikelihood.loss` averages over rows but its `gradient` is the unnormalized `-target`,
+so backpropagation would follow the summed loss (64× the reported loss's gradient at context 64).
+Existing users train single-row outputs, where this does not show; the plan adds the `1 / rows`
+normalization and a multi-row gradient test as a prerequisite of the training run.
+`StateDictionary` checkpointing is ready.
 
 #### Why this task
 
