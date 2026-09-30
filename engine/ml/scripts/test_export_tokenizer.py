@@ -86,6 +86,7 @@ def test_missing_byte_fallback_is_rejected():
 @pytest.mark.parametrize("option, value", [
     ("dropout", 0.1),
     ("ignore_merges", True),
+    ("fuse_unk", True),
     ("continuing_subword_prefix", "##"),
     ("end_of_word_suffix", "</w>"),
 ])
@@ -102,6 +103,8 @@ def test_non_default_bpe_option_is_rejected(option, value):
     ("dropout", None),
     ("dropout", 0.0),
     ("ignore_merges", False),
+    ("fuse_unk", None),
+    ("fuse_unk", False),
     ("continuing_subword_prefix", None),
     ("continuing_subword_prefix", ""),
     ("end_of_word_suffix", None),
@@ -271,6 +274,26 @@ def test_special_token_post_processor_is_rejected():
     }
     with pytest.raises(ValueError, match="post-processor"):
         exporter.validate_pipeline(spec)
+
+
+def test_non_special_added_token_is_rejected():
+    # A non-special added token is ordinary content matched atomically before the BPE model; the
+    # Java reader would instead split it into its BPE pieces, so it must not export.
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": 4, "content": "ab", "special": False}]
+    with pytest.raises(ValueError, match="added token"):
+        exporter.validate_pipeline(spec)
+
+
+def test_special_added_tokens_are_accepted():
+    # Released tokenizers register their control tokens (BOS/EOS/PAD/UNK) in added_tokens with
+    # special=true; encodeAsLong adds no special tokens, so these are out of scope and still export.
+    spec = _supported_spec()
+    spec["added_tokens"] = [
+        {"id": 0, "content": "<pad>", "special": True},
+        {"id": 1, "content": "<eos>", "special": True},
+    ]
+    exporter.validate_pipeline(spec)
 
 
 # ---------------------------------------------------------------------------

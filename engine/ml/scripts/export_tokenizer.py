@@ -117,6 +117,10 @@ def validate_pipeline(spec):
         raise ValueError(
             "unsupported BPE ignore_merges; the Java reader always applies the merges rather than "
             "first matching a whole segment against the vocabulary")
+    if model.get("fuse_unk"):
+        raise ValueError(
+            "unsupported BPE fuse_unk; it collapses a run of unknown characters into one token, "
+            "while the Java reader emits one fallback token per symbol")
     for option in ("continuing_subword_prefix", "end_of_word_suffix"):
         if model.get(option):
             raise ValueError(
@@ -187,6 +191,22 @@ def validate_pipeline(spec):
             "unsupported post-processor %r; the Java reader adds no special tokens and emits each "
             "input id once, so a post-processor that adds BOS/EOS or repeats the sequence would "
             "make the exported tokenizer disagree with the source" % kind)
+
+    # An added token is matched against the raw input before the BPE model runs, so its whole content
+    # becomes one id wherever it appears in the text. The exported binary carries only the vocabulary
+    # and merges, and the Java reader treats the whole text as BPE symbols with no added-token
+    # matching, so it would instead split that content into its BPE pieces. A special (control) added
+    # token -- BOS/EOS/PAD/UNK and the like -- is out of scope by design: encodeAsLong adds no
+    # special tokens and prompt text is not expected to carry their literal strings, the same
+    # limitation the sequence-only post-processor already imposes. A non-special added token is
+    # ordinary content that can appear in prompt text, so its atomic matching would silently change
+    # the ids and it is rejected.
+    for added in spec.get("added_tokens") or []:
+        if not added.get("special"):
+            raise ValueError(
+                "unsupported non-special added token %r; it is matched atomically before the BPE "
+                "model, while the Java reader splits it into its BPE pieces, so the exported "
+                "tokenizer would disagree with the source" % added.get("content"))
 
 
 def read_tokenizer(tokenizer_dir):

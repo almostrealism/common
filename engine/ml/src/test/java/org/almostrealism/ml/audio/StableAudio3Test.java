@@ -163,6 +163,52 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A {@code null} token-id prompt selects the unconditional prompt: {@link StableAudio3#generate}
+	 * normalizes it to an empty array rather than passing {@code null} into the conditioner, where the
+	 * prompt encoder would dereference it. The clip has the requested shape and its samples are finite
+	 * and within the clamp, so the unconditional path runs end to end.
+	 */
+	@Test(timeout = 240000)
+	public void nullTokenPromptSelectsUnconditional() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try {
+			try (PackedCollection audio = model.generate(7, (long[]) null, 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+				for (int i = 0; i < audio.getShape().getTotalSize(); i++) {
+					double value = audio.toDouble(i);
+					assertTrue("sample " + i + " is " + value, Double.isFinite(value));
+					assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * An empty text prompt selects the unconditional prompt and is not tokenized, so
+	 * {@link StableAudio3#generateFromText(long, String, double)} accepts it on a model that was never
+	 * given a tokenizer -- the same contract {@link #nullPromptNeedsNoTokenizer()} pins for a
+	 * {@code null} prompt, and the contrast with {@link #textWithoutATokenizerIsRejected()}. The clip
+	 * has the requested shape, so the empty branch runs end to end without a tokenizer.
+	 */
+	@Test(timeout = 240000)
+	public void emptyTextPromptNeedsNoTokenizer() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try {
+			try (PackedCollection audio = model.generateFromText(7, "", 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * {@link StableAudio3#validFrames(double)} covers the frames of the combined duration and
 	 * headroom sample count, not the sum of each truncated to samples separately: at 33Hz the
 	 * headroom spans 3.3 samples and the requested duration spans 17.8, so truncating each before

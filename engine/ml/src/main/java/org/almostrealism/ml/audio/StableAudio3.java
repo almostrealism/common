@@ -407,12 +407,13 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	/**
 	 * Tokenizes prompt text.
 	 *
-	 * @param prompt the prompt; {@code null} yields no tokens
+	 * @param prompt the prompt; {@code null} or empty yields no tokens
 	 * @return the token ids
-	 * @throws IllegalStateException if no tokenizer has been supplied
+	 * @throws IllegalStateException if the prompt is non-null and non-empty and no tokenizer has
+	 *                               been supplied
 	 */
 	protected long[] encodePrompt(String prompt) {
-		if (prompt == null) return new long[0];
+		if (prompt == null || prompt.isEmpty()) return new long[0];
 
 		if (tokenizer == null) {
 			throw new IllegalStateException("A prompt given as text requires a tokenizer; " +
@@ -430,7 +431,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * must be evaluated before the next generation.</p>
 	 *
 	 * @param seed    seed of the initial noise and the ping-pong noise injections
-	 * @param prompt  token ids of the prompt
+	 * @param prompt  token ids of the prompt; {@code null} or empty selects the unconditional prompt
 	 * @param seconds the duration in seconds, at most the duration this instance was built for and
 	 *                spanning at least one sample at {@link #getSampleRate()}
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
@@ -439,6 +440,8 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		if (!Double.isFinite(seconds) || seconds <= 0.0 || seconds > maxSeconds) {
 			throw new IllegalArgumentException("Duration " + seconds + " is outside (0, " + maxSeconds + "]");
 		}
+
+		long[] promptIds = prompt == null ? new long[0] : prompt;
 
 		if (seconds(seconds) < 1) {
 			throw new IllegalArgumentException("Duration " + seconds + " at " + sampleRate +
@@ -466,7 +469,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		try {
 			// getCrossAttentionMask() is intentionally not read here; see the constructor's
 			// @param conditioner javadoc for why this generator does not need it.
-			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(prompt, seconds);
+			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(promptIds, seconds);
 			context = positive.getCrossAttentionInput().clone();
 			global = positive.getGlobalCond().clone();
 
