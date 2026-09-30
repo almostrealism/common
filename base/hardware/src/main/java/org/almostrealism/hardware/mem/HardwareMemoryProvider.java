@@ -31,6 +31,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -528,15 +529,48 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private record DeferredRelease<R extends RAM>(NativeRef<R> ref, long deferredAt) { }
 
 	/**
+	 * Total prevented double-free attempts across all providers, used to cap how many are
+	 * reported in full. A prevented double free is functionally harmless — the second
+	 * release is skipped, not carried out — but under heavy allocation churn (for example a
+	 * long real-time render that caches and evicts many note buffers) it can recur in the
+	 * millions, and each full report captures and prints the current thread's whole stack
+	 * trace. Left unbounded, that reporting alone dominates run time; capping it keeps the
+	 * diagnostic without letting it starve the workload.
+	 */
+	private static final AtomicLong doubleFreeAttempts = new AtomicLong();
+
+	/** Number of prevented double frees reported in full before falling back to a periodic count. */
+	private static final long DOUBLE_FREE_DETAIL_LIMIT = 64;
+
+	/** Interval, in prevented double frees past the detail limit, between compact running-total lines. */
+	private static final long DOUBLE_FREE_SUMMARY_INTERVAL = 100_000;
+
+	/**
 	 * Logs a warning that a double-free of the given reference was prevented, including
 	 * the allocation stack trace and (when available) the stack trace of the first
 	 * successful release. Skips the warning during provider destruction, where extra
 	 * deallocation attempts are routine and not bug indicators.
 	 *
+	 * <p>The full report — which captures and prints the current stack trace — is emitted
+	 * only for the first {@link #DOUBLE_FREE_DETAIL_LIMIT} prevented double frees. Beyond
+	 * that a compact running total is emitted every {@link #DOUBLE_FREE_SUMMARY_INTERVAL}
+	 * attempts, so a workload that legitimately churns many buffers is not throttled by the
+	 * cost of the diagnostic itself while the signal that double frees are occurring is
+	 * retained.</p>
+	 *
 	 * @param ref The native reference whose second free was suppressed
 	 */
 	private void warnDoubleFree(NativeRef<T> ref) {
 		if (destroying || !RAM.enableWarnings) return;
+
+		long attempt = doubleFreeAttempts.incrementAndGet();
+		if (attempt > DOUBLE_FREE_DETAIL_LIMIT) {
+			if (attempt % DOUBLE_FREE_SUMMARY_INTERVAL == 0) {
+				warn("Skipping double deallocate (" + attempt + " prevented so far; per-attempt"
+						+ " detail suppressed after the first " + DOUBLE_FREE_DETAIL_LIMIT + ")");
+			}
+			return;
+		}
 
 		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
 		StackTraceElement[] alloc = ref.getAllocationStackTrace();
