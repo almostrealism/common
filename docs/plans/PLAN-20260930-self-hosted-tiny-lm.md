@@ -227,13 +227,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      loop; no epoch loop outside it. It should use the patience/convergence helpers in
      `ModelTestFeatures` where they fit. They do not all fit here. `trainWithPatience` and the older
      `train(name, model, data, epochs, steps, lossTarget, minLoss)` wrap `ModelOptimizer` in a retry
-     loop of up to six attempts. Each attempt recompiles the model and trains again from the start, so
-     the worst case is six cold compiles plus six full training runs, which cannot fit the budget
-     sized below. Their "fresh random weights on retry" behaviour also assumes the model reinitializes
+     loop of six attempts, and each attempt recompiles the model and trains again from the start.
+     `trainWithPatience` then compiles and optimizes a **seventh** time, unconditionally, once all six
+     attempts have made no progress, so its worst case is seven cold compiles plus seven full training
+     runs. The older `train` stops at six attempts, but each attempt may call `optimize` twice (the
+     second time with `minLoss` as the target). Either worst case is several times the budget sized
+     below. Their "fresh random weights on retry" behaviour also assumes the model reinitializes
      its weights on `compile()`, and that is not established for weight collections the test supplies
      itself. Drive `ModelOptimizer` directly for the budgeted run. `assertTrainingConvergence` and
      `isLossTrendDeclining`, which only inspect a `TrainingResult` or loss history, remain usable.
-     <!-- TODO(review): trainWithPatience runs a seventh compile+optimize after six failed attempts, so its worst case is seven, not six; conclusion unchanged. -->
    - **Define the training quantities in `ModelOptimizer`'s terms.** `ModelOptimizer.optimize(n)`
      runs up to `n` **epochs**; each epoch is one full pass over the training `Dataset`, doing one
      forward, one backward and one parameter update **per `ValueTarget`** (per window). This plan
@@ -288,10 +290,19 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      divided by `ln 2`), next to two baselines computed from the same held-out split: the uniform
      baseline (8 bits/byte) and the **unigram byte-entropy** baseline. Record wall-clock time per
      step (cold first step and warm), stride, windows per epoch, epochs run, total steps, host and
-     backend, and the commit SHA. Note that `ModelOptimizer` (in both the training loop and
-     `evaluate`) silently skips any window whose loss is `NaN`, so a partly-`NaN` run can still
-     report a finite mean; the report must confirm no windows were skipped (for example by checking
-     the held-out loss independently at the test boundary on the final weights).
+     backend, and the commit SHA.
+   - **Fail fast on `NaN`, in both phases.** `ModelOptimizer` silently drops any window whose loss
+     is `NaN`: `optimize` `continue`s past it (skipping its backward pass as well), and `evaluate`
+     leaves it out of the validation mean. A partly-`NaN` run can therefore report a finite
+     training loss and finite per-epoch validation losses. A check on the final weights alone cannot
+     rule this out, because a window can be `NaN` at an earlier epoch and finite at the end. Both
+     phases read the loss through the same `loss` function that `setLossFunction(LossProvider)`
+     installs, so the test should install a `LossProvider` that delegates to `NegativeLogLikelihood`
+     and **throws** as soon as `loss` returns `NaN`. That makes every skipped window a test failure
+     in training and validation alike, and every reported checkpoint then covers all of its windows.
+     This lives entirely at the test boundary and changes no shared training code. (A skip counter
+     exposed by `ModelOptimizer` would be the alternative, but it changes shared infrastructure and
+     is not needed here.)
    - Save the trained weights with `StateDictionary.save(...)` under the module's `results/`
      directory, then reload them and check that the reloaded model gives the same held-out loss.
      **Mind the save precision.** The no-argument `StateDictionary.save(Path)` encodes weights as
@@ -366,9 +377,10 @@ matters).
 - One end-to-end training run of the tiny causal LM on the listed documentation corpus completes
   inside the runner budget, and its held-out loss ends **below the unigram byte-entropy baseline**
   for that split. The report gives the measured curve, both baselines, step timings, host, backend
-  and commit SHA. If the run does not beat unigram, the plan is not complete. The investigation
-  into why (from profile and gradient evidence) and the recorded outcome become the deliverable,
-  and the success claim is not made.
+  and commit SHA. The run uses the fail-fast `NaN` loss wrapper from step 6, so no training or
+  validation window was skipped. If the run does not beat unigram, the plan is not complete. The
+  investigation into why (from profile and gradient evidence) and the recorded outcome become the
+  deliverable, and the success claim is not made.
 - The trained weights round-trip through `StateDictionary` save/load, with the reloaded held-out
   loss either exactly equal (weights saved at the training precision) or within the stated tolerance
   (FP32 default save) — see the precision note in step 6.
