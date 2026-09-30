@@ -31,6 +31,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -317,11 +318,15 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	/**
 	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing details.
 	 *
-	 * <p>The note's cache identity is {@code (element, details)}: the element is
-	 * compared by instance (stable across buffer ticks) and the voicing details by
-	 * value (voicing, target pitch, position), so coincident chord tones sharing a
-	 * frame offset stay distinct while the same note stays equal across ticks. This
-	 * keeps {@link NoteAudioCache} from conflating them.</p>
+	 * <p>The note's cache identity is {@code (element, details, stereoChannel)}: the
+	 * element is compared by instance (stable across buffer ticks) and the voicing
+	 * details by value (voicing, target pitch, position), so coincident chord tones
+	 * sharing a frame offset stay distinct while the same note stays equal across
+	 * ticks. The stereo channel is included explicitly because
+	 * {@link ElementVoicingDetails#equals} ignores it, while the rendered audio reads
+	 * the channel-specific sample data and a single {@link NoteAudioCache} serves
+	 * both channels of a {@link PatternLayerManager}. This keeps the cache from
+	 * conflating coincident notes or the LEFT and RIGHT renders of one note.</p>
 	 *
 	 * @param element         the pattern element
 	 * @param details         the voicing details for this note
@@ -343,7 +348,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				context.getTimeForDuration());
 		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
 		RenderedNoteAudio note = new RenderedNoteAudio(frameOffset, expectedFrameCount);
-		note.setCacheIdentity(List.of(element, details));
+		note.setCacheIdentity(Arrays.asList(element, details, details.getStereoChannel()));
 		PackedCollection offsetArg = new PackedCollection(1);
 		note.setOffsetArg(offsetArg);
 		note.setProducerFactory((frameCount) ->
