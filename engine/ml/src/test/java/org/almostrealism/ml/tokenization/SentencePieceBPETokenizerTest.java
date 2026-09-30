@@ -358,6 +358,39 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A control token id that is neither {@code -1} nor an index into the vocabulary is rejected when
+	 * the tokenizer is read, for each of the four control slots, rather than loading and later making
+	 * {@code encode(text, true)} emit an id no embedding row exists for. The boundary ids {@code -1}
+	 * and {@code vocab.length - 1} are accepted.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void controlIdOutsideVocabularyIsRejected() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		int last = ADDED_VOCAB.length - 1;
+
+		for (int slot = 0; slot < 4; slot++) {
+			for (int invalid : new int[] {ADDED_VOCAB.length, -2}) {
+				int[] specials = {-1, -1, -1, -1};
+				specials[slot] = invalid;
+
+				try {
+					fixture.tokenizerFor(ADDED_VOCAB, specials);
+					Assert.fail("control id " + invalid + " in slot " + slot + " was read");
+				} catch (IOException expected) {
+					assertTrue("message names the id: " + expected.getMessage(),
+							expected.getMessage().contains("token id " + invalid));
+				}
+			}
+		}
+
+		SentencePieceBPETokenizer tokenizer =
+				fixture.tokenizerFor(ADDED_VOCAB, new int[] {last, -1, -1, -1});
+		assertEquals(last, tokenizer.encode("a", true)[0]);
+	}
+
+	/**
 	 * A corrupt serialized count -- a file with the correct magic but a negative or implausibly large
 	 * vocabulary size -- is rejected with a controlled {@link IOException} rather than allocating a
 	 * negative array or an enormous one. {@code -1} exercises the lower bound and

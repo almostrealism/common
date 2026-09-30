@@ -511,6 +511,21 @@ def test_config_json_does_not_override_resolved_ids(tmp_path):
     assert specials == {"bos": 2, "eos": 1, "pad": 0, "unk": 3}
 
 
+@pytest.mark.parametrize("token_id", [999, -2])
+def test_config_json_id_outside_vocabulary_is_rejected(tmp_path, token_id):
+    # An integer id copied from config.json that names no exported token must not be written.
+    vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+    vocab.update(_byte_tokens(5))
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "config.json").write_text(json.dumps({"bos_token_id": token_id}))
+
+    with pytest.raises(ValueError, match="bos token id %d" % token_id):
+        exporter.read_tokenizer(str(tokenizer_dir))
+
+
 def test_export_rejects_incompatible_tokenizer(tmp_path):
     # read_tokenizer must refuse an incompatible pipeline rather than write a misleading binary.
     spec = _supported_spec()

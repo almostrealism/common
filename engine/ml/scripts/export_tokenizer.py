@@ -90,12 +90,12 @@ def _pattern_string(component):
 def validate_pipeline(spec):
     """Reject a tokenizer whose pipeline the Java ``SentencePieceBPETokenizer`` does not reproduce.
 
-    The Java reader treats the whole text as one segment, replaces an ASCII space with the
-    SentencePiece boundary marker, falls back to one ``<0xNN>`` token per UTF-8 byte for characters
-    outside the vocabulary, and reverses exactly that on decode. The exported binary carries only
-    the vocabulary, merges, special ids and added tokens -- none of the normalizer, pre-tokenizer, decoder or
-    post-processor configuration -- so a tokenizer that normalizes, pre-tokenizes, decodes or adds
-    special tokens differently would
+    The Java reader splits out added tokens atomically, treats each remaining span of text as one
+    segment, replaces an ASCII space with the SentencePiece boundary marker, falls back to one
+    ``<0xNN>`` token per UTF-8 byte for characters outside the vocabulary, and reverses exactly that
+    on decode. The exported binary carries only the vocabulary, merges, special ids and added
+    tokens -- none of the normalizer, pre-tokenizer, decoder or post-processor configuration -- so
+    a tokenizer that normalizes, pre-tokenizes, decodes or adds special tokens differently would
     export without complaint and then silently produce token ids other than the source
     tokenizer's. Rather than allow that, the unsupported pipeline is rejected here.
 
@@ -294,6 +294,13 @@ def read_tokenizer(tokenizer_dir):
                     token_id = model_config.get("%s_token_id" % key)
                     if isinstance(token_id, int) and not isinstance(token_id, bool):
                         specials[key] = token_id
+
+    # config.json ids are copied as integers, so one naming no exported token would otherwise be
+    # written and make encode(..., add_special=True) emit an index no embedding row exists for.
+    known = set(ids.values())
+    for key, value in specials.items():
+        if value != -1 and value not in known:
+            raise ValueError("%s token id %d is not in the vocabulary" % (key, value))
 
     return vocab, merges, specials, added
 

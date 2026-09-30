@@ -136,10 +136,10 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			readVocabulary(in);
 			readMerges(in);
 
-			this.bosToken = in.readInt();
-			this.eosToken = in.readInt();
-			this.padToken = in.readInt();
-			this.unkToken = in.readInt();
+			this.bosToken = readControlId("beginning-of-sequence", in);
+			this.eosToken = readControlId("end-of-sequence", in);
+			this.padToken = readControlId("padding", in);
+			this.unkToken = readControlId("unknown", in);
 
 			readAddedTokens(in);
 		}
@@ -180,6 +180,26 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			bpeMerges.put(pair, left + right);
 			mergePriority.putIfAbsent(pair, i);
 		}
+	}
+
+	/**
+	 * Reads one control token id, which must be {@code -1} (the tokenizer has none) or an index into
+	 * the vocabulary. An out-of-range id would otherwise load successfully and make
+	 * {@link #encode(String, boolean)} emit an index no embedding row exists for, while decode
+	 * silently skipped it.
+	 *
+	 * @param description which control token the id names, for the error message
+	 * @param in          the stream positioned at the id
+	 * @return the id, or {@code -1} when the tokenizer has none
+	 * @throws IOException if the stream ends early or the id is outside the vocabulary
+	 */
+	protected int readControlId(String description, DataInputStream in) throws IOException {
+		int id = in.readInt();
+		if (id < -1 || id >= vocab.length) {
+			throw new IOException("Invalid " + description + " token id " + id
+					+ " in exported tokenizer; expected -1 or 0.." + (vocab.length - 1));
+		}
+		return id;
 	}
 
 	/**
