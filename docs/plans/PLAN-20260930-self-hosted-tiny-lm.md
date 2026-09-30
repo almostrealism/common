@@ -141,6 +141,19 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      hold through the `String` API, so the all-256 check must not go through `decodeAsLong`. (If a
      byte-exact reconstruction of an arbitrary id sequence is ever needed, it is a separate,
      non-`String`-round-trip decoder, and out of scope here.)
+   - **Expose a testable byte↔id mapping, and validate id bounds before narrowing.** The previous
+     bullet's all-256 check needs a boundary it can call, but `Tokenizer` exposes only the `String`
+     methods `encodeAsLong` / `decodeAsLong` (the `PackedCollection` `encode` / `decode` defaults
+     throw), and an invalid UTF-8 id such as `0xFF` cannot round-trip through them. So the byte↔id
+     mapping must be a directly callable pair — a package-visible `byte → id` and `id → byte` helper
+     (or the equivalent) that `encodeAsLong` / `decodeAsLong` themselves delegate to — so a
+     same-package unit test can drive the all-256 byte-level round-trip without going through a
+     `String`. On the decode side every entry point that turns an id back into a byte — the `id →
+     byte` helper, reached through both `decodeAsLong(long[])` and the `decodeAsInt(int[])` default
+     that widens to it — must **reject any id outside `0..255`** before narrowing it to a byte,
+     rather than silently masking it: without the bounds check, `256` narrows to byte `0` (and `-1`
+     to `0xFF`), aliasing a distinct id onto a valid byte. Make the rejection an explicit
+     `IllegalArgumentException` (or equivalent) and give it its own unit test.
 
 5. **Text next-token dataset.** A `Dataset<PackedCollection>` that takes a token array and a
    context length and yields `ValueTarget`s of (input window, next-token targets): input
@@ -212,8 +225,13 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      bits/byte). State which, so a correct checkpoint cannot fail this criterion on rounding alone.
    - Test hygiene: the long training run is its own `@Test` method in a class extending
      `TestSuiteBase`. It has an explicit JUnit timeout strictly below the 40-minute runner budget
-     and `@TestProperties(excludeProfiles = TestUtils.PIPELINE)` so CI does not run it. Every
-     primitive in steps 1–5 gets fast unit tests that **do** run in CI.
+     and is marked `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`.
+     Both flags are needed and they cover different runs: `excludeProfiles = TestUtils.PIPELINE`
+     keeps it out of the CI pipeline profile (which forces `testDepth` to `Integer.MAX_VALUE` and
+     does **not** skip long tests, so the profile exclusion is the only thing that stops CI running
+     it), while `longRunning = true` makes it skip in ordinary local runs unless long tests are
+     enabled (`TestSettings.skipLongTests`) — without it the run stays enabled in every non-pipeline
+     invocation. Every primitive in steps 1–5 gets fast unit tests that **do** run in CI.
 
 7. **Record the result.** Add a short section on training a model from scratch to
    `docs/internals/training-loop-examples.md`, or a new internals page if it does not fit. It
