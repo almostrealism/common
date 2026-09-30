@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -151,6 +152,53 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 		});
 
 		assertEquals("€", tokenizer.decodeAsLong(new long[] {0, 1, 2}));
+	}
+
+	/**
+	 * A character that falls back to a byte token the vocabulary does not contain is rejected during
+	 * encoding when the tokenizer has no unknown token, rather than being emitted as id {@code -1}.
+	 *
+	 * <p>Without the fix the inherited {@code encode} substitutes {@code getUNKToken() == -1} for the
+	 * missing byte token, returning a negative id that is not a valid embedding index and fails only
+	 * later, during generation. Here the vocabulary lacks the {@code <0xNN>} tokens for
+	 * {@link SentencePieceTokenizerFixture#UNKNOWN} and there is no unknown token, so encoding throws.</p>
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void unencodableByteWithoutUnknownTokenIsRejected() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(new String[] {"a", "▁"});
+
+		try {
+			tokenizer.encodeAsLong(SentencePieceTokenizerFixture.UNKNOWN);
+			Assert.fail("a byte with no vocabulary token and no unknown token was encoded");
+		} catch (IllegalArgumentException expected) {
+			assertTrue("message names the missing byte token: " + expected.getMessage(),
+					expected.getMessage().contains("<0xE2>"));
+		}
+	}
+
+	/**
+	 * When a character falls back to a byte token the vocabulary does not contain but the tokenizer
+	 * has an unknown token, encoding substitutes that unknown token -- a valid id -- for each missing
+	 * byte, rather than throwing or emitting {@code -1}.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void unencodableByteFallsBackToUnknownToken() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(
+				new String[] {"a", "<unk>"}, new int[] {-1, -1, -1, 1});
+
+		long[] encoded = tokenizer.encodeAsLong(SentencePieceTokenizerFixture.UNKNOWN);
+
+		assertEquals(SentencePieceTokenizerFixture.UNKNOWN.getBytes(
+				StandardCharsets.UTF_8).length, encoded.length);
+		for (int i = 0; i < encoded.length; i++) {
+			assertEquals("byte " + i + " substituted by the unknown token", 1L, encoded[i]);
+		}
 	}
 
 	/**

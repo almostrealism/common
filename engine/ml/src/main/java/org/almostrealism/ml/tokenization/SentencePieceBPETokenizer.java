@@ -205,8 +205,17 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	/**
 	 * Marks word boundaries and expands anything outside the vocabulary into byte tokens.
 	 *
+	 * <p>Byte fallback is only valid when every {@code <0xNN>} token it emits exists in the
+	 * vocabulary, or when the tokenizer has an unknown token the inherited {@code encode} can
+	 * substitute for one that does not. A byte token absent from a tokenizer with no unknown token
+	 * ({@code unkToken == -1}) would otherwise reach {@code encode} as a missing symbol and be
+	 * emitted as id {@code -1}, which is not a valid embedding index; this rejects that byte here
+	 * rather than returning an id that fails later during generation.</p>
+	 *
 	 * @param segment one segment produced by the pre-tokenizer
 	 * @return the initial symbols, in order
+	 * @throws IllegalArgumentException if a character falls back to a byte token the vocabulary does
+	 *         not contain and the tokenizer has no unknown token to substitute
 	 */
 	@Override
 	protected List<String> toSymbols(String segment) {
@@ -222,9 +231,15 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			if (vocabMap.containsKey(character)) {
 				symbols.add(character);
 			} else {
-				// TODO(review): a missing <0xNN> token with unkToken == -1 makes encode() emit id -1; validate or reject at load.
 				for (byte value : character.getBytes(StandardCharsets.UTF_8)) {
-					symbols.add(byteToken(value));
+					String token = byteToken(value);
+					if (!vocabMap.containsKey(token) && getUNKToken() < 0) {
+						throw new IllegalArgumentException(String.format(
+								"Cannot encode U+%04X: byte token %s is not in the vocabulary "
+										+ "and the tokenizer has no unknown token to substitute",
+								codePoint, token));
+					}
+					symbols.add(token);
 				}
 			}
 		}

@@ -199,9 +199,23 @@ public class SentencePieceTokenizerFixture {
 	 * @throws IOException if the file cannot be written or read
 	 */
 	public SentencePieceBPETokenizer tokenizerFor(String[] vocab) throws IOException {
+		return tokenizerFor(vocab, new int[] {-1, -1, -1, -1});
+	}
+
+	/**
+	 * A tokenizer over an arbitrary vocabulary with no merges and the given special ids, for
+	 * exercising the byte-fallback contract: a byte token the vocabulary does not contain is either
+	 * substituted by the unknown token or, when there is none, rejected during encoding.
+	 *
+	 * @param vocab    the vocabulary, in token-id order
+	 * @param specials the special ids in {@code {bos, eos, pad, unk}} order, each {@code -1} for none
+	 * @return the tokenizer
+	 * @throws IOException if the file cannot be written or read
+	 */
+	public SentencePieceBPETokenizer tokenizerFor(String[] vocab, int[] specials) throws IOException {
 		File file = File.createTempFile("ar-tokenizer-fixture", ".bin");
 		file.deleteOnExit();
-		write(file, 0x4152544B, 1, vocab, new String[0][], new int[] {-1, -1, -1, -1});
+		write(file, 0x4152544B, 1, vocab, new String[0][], specials);
 		return new SentencePieceBPETokenizer(file.getPath());
 	}
 
