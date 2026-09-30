@@ -84,14 +84,16 @@ public class DefaultVertexDataTest extends TestSuiteBase {
 	public void colorAccessors() {
 		DefaultVertexData data = triangleData();
 
+		// Colors round-trip through backend-dependent precision (FP32 on some
+		// hardware, FP64 on others), so compare at float precision.
 		RGB c0 = data.getColor(0);
-		Assert.assertEquals(0.1, c0.getRed(), 1e-9);
-		Assert.assertEquals(0.2, c0.getGreen(), 1e-9);
-		Assert.assertEquals(0.3, c0.getBlue(), 1e-9);
+		Assert.assertEquals(0.1f, (float) c0.getRed(), 1e-9);
+		Assert.assertEquals(0.2f, (float) c0.getGreen(), 1e-9);
+		Assert.assertEquals(0.3f, (float) c0.getBlue(), 1e-9);
 
-		Assert.assertEquals(0.4, data.getRed(1), 1e-9);
-		Assert.assertEquals(0.5, data.getGreen(1), 1e-9);
-		Assert.assertEquals(0.6, data.getBlue(1), 1e-9);
+		Assert.assertEquals(0.4f, (float) data.getRed(1), 1e-9);
+		Assert.assertEquals(0.5f, (float) data.getGreen(1), 1e-9);
+		Assert.assertEquals(0.6f, (float) data.getBlue(1), 1e-9);
 	}
 
 	/** Texture coordinates round-trip through both the pair accessor and the component accessors. */

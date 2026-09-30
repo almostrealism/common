@@ -49,7 +49,9 @@ public class PlaneGeometryTest extends TestSuiteBase {
 	public void colorConstructor() {
 		Plane p = new Plane(Plane.YZ, new RGB(0.1, 0.2, 0.3));
 		Assert.assertEquals(Plane.YZ, p.getType());
-		Assert.assertEquals(0.2, p.getColor().getGreen(), 1e-12);
+		// RGB channels round-trip through backend-dependent precision (FP32 on
+		// some hardware, FP64 on others), so compare at float precision.
+		Assert.assertEquals(0.2f, (float) p.getColor().getGreen(), 1e-12);
 	}
 
 	/** setType rejects codes that are not one of the three plane orientations. */

@@ -65,15 +65,17 @@ public class VertexTest extends TestSuiteBase {
 		Vertex v = new Vertex();
 		v.setColor(new RGB(0.2, 0.4, 0.6));
 
+		// RGB channels round-trip through backend-dependent precision (FP32 on
+		// some hardware, FP64 on others), so compare at float precision.
 		RGB c = v.getColor();
-		Assert.assertEquals(0.2, c.getRed(), 1e-12);
-		Assert.assertEquals(0.4, c.getGreen(), 1e-12);
-		Assert.assertEquals(0.6, c.getBlue(), 1e-12);
+		Assert.assertEquals(0.2f, (float) c.getRed(), 1e-12);
+		Assert.assertEquals(0.4f, (float) c.getGreen(), 1e-12);
+		Assert.assertEquals(0.6f, (float) c.getBlue(), 1e-12);
 
 		RGB scaled = v.getColor(0.5);
-		Assert.assertEquals(0.1, scaled.getRed(), 1e-12);
-		Assert.assertEquals(0.2, scaled.getGreen(), 1e-12);
-		Assert.assertEquals(0.3, scaled.getBlue(), 1e-12);
+		Assert.assertEquals(0.1f, (float) scaled.getRed(), 1e-12);
+		Assert.assertEquals(0.2f, (float) scaled.getGreen(), 1e-12);
+		Assert.assertEquals(0.3f, (float) scaled.getBlue(), 1e-12);
 	}
 
 	/** Setting a normal replaces the stored value and the scaled accessor multiplies it. */
