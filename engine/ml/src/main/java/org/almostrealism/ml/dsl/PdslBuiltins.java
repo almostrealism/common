@@ -43,7 +43,8 @@ import java.util.function.Supplier;
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
- * (dense, conv1d, rmsnorm, softmax, the activations including snake, slice, lerp, reshape, identity,
+ * (dense, conv1d, conv_transpose1d, rmsnorm, softmax, the activations including snake, slice, lerp,
+ * reshape, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
  * causal_mask, weighted_values, sqrt, attention,
@@ -76,6 +77,7 @@ final class PdslBuiltins {
 		switch (name) {
 			case "dense": return callDense(args);
 			case "conv1d": return callConv1d(args);
+			case "conv_transpose1d": return callConvTranspose1d(args);
 			case "rmsnorm": return callRmsnorm(args);
 			case "softmax": return callSoftmax(args);
 			case "silu": return callActivation("silu");
@@ -354,49 +356,142 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convolution1d
 	 */
 	private static Function<TraversalPolicy, Block> callConv1d(List<Object> args) {
-		PackedCollection weights;
-		PackedCollection bias;
-		int stride;
-		int padding;
-		if (args.size() == 4) {
-			weights = (PackedCollection) args.get(0);
-			bias = (PackedCollection) args.get(1);
-			stride = toInt(args.get(2));
-			padding = toInt(args.get(3));
-		} else if (args.size() == 3) {
-			weights = (PackedCollection) args.get(0);
-			bias = null;
-			stride = toInt(args.get(1));
-			padding = toInt(args.get(2));
-		} else {
-			throw new PdslParseException("conv1d() expects (weight, bias, stride, padding) or "
-					+ "(weight, stride, padding), got " + args.size());
-		}
-
-		TraversalPolicy weightShape = weights.getShape();
-		if (weightShape.getDimensions() != 3) {
-			throw new PdslParseException("conv1d() weight must be [out_channels, in_channels, "
-					+ "kernel], got " + weightShape);
-		}
-		int outChannels = weightShape.length(0);
-		int weightInChannels = weightShape.length(1);
-		int kernelSize = weightShape.length(2);
-
+		ConvolutionArguments conv = new ConvolutionArguments("conv1d", args,
+				"[out_channels, in_channels, kernel]", "stride", "padding");
+		int outChannels = conv.weightLength(0);
+		int inChannels = conv.weightLength(1);
+		int kernelSize = conv.weightLength(2);
 		return inputShape -> {
+			conv.checkInput(inputShape, inChannels);
+			return FEATURES.convolution1d(inputShape.length(0), inChannels, outChannels,
+					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
+					conv.weights, conv.bias);
+		};
+	}
+
+	/**
+	 * Builds a 1-D transposed convolution block factory — the upsampling counterpart of
+	 * {@code conv1d} — from a weight tensor, an optional bias, and the stride, padding and output
+	 * padding of the convolution. Every input sample adds its value times the kernel into a
+	 * {@code kernel}-long window of the output, the windows {@code stride} apart; {@code padding}
+	 * samples are then trimmed from each end and {@code output_padding} samples added to the
+	 * right, so the output is {@code (length - 1) * stride - 2 * padding + kernel + output_padding}
+	 * long. The channel counts and kernel size are read from the weight's
+	 * {@code [in_channels, out_channels, kernel]} shape (the layout of a PyTorch
+	 * {@code ConvTranspose1d} weight) and the batch and length from the stage's
+	 * {@code [batch, in_channels, length]} input shape, so the call names only what the shapes
+	 * cannot.
+	 *
+	 * @param args {@code (weight, bias, stride, padding, output_padding)} or
+	 *             {@code (weight, stride, padding, output_padding)} when the convolution has no bias
+	 * @return a factory that creates the transposed convolution for a 3-D
+	 *         {@code [batch, channels, length]} input shape
+	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convTranspose1d
+	 */
+	private static Function<TraversalPolicy, Block> callConvTranspose1d(List<Object> args) {
+		ConvolutionArguments conv = new ConvolutionArguments("conv_transpose1d", args,
+				"[in_channels, out_channels, kernel]", "stride", "padding", "output_padding");
+		int inChannels = conv.weightLength(0);
+		int outChannels = conv.weightLength(1);
+		int kernelSize = conv.weightLength(2);
+		return inputShape -> {
+			conv.checkInput(inputShape, inChannels);
+			return FEATURES.convTranspose1d(inputShape.length(0), inChannels, outChannels,
+					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
+					conv.setting(2), conv.weights, conv.bias);
+		};
+	}
+
+	/**
+	 * The evaluated arguments of a 1-D convolution built-in: the three-axis weight, the bias,
+	 * which a call may leave out, and the integer settings that follow them — the stride and
+	 * padding, and for a transposed convolution its output padding. A call carries the bias
+	 * exactly when it has one argument more than the weight and the settings alone.
+	 */
+	private static final class ConvolutionArguments {
+		/** The built-in name, for error messages. */
+		private final String name;
+
+		/** The weight, whose three axes give the channel counts and the kernel size. */
+		private final PackedCollection weights;
+
+		/** The bias, or {@code null} for a convolution without one. */
+		private final PackedCollection bias;
+
+		/** The integer settings, in call order. */
+		private final int[] settings;
+
+		/**
+		 * Reads a convolution call's arguments.
+		 *
+		 * @param name         the built-in name, for error messages
+		 * @param args         the evaluated arguments
+		 * @param weightLayout the weight's axes, for error messages
+		 * @param settingNames the integer settings that follow the weight and the bias, in order
+		 * @throws PdslParseException if the argument count fits neither form, or the weight does
+		 *                            not have three axes
+		 */
+		private ConvolutionArguments(String name, List<Object> args, String weightLayout,
+									 String... settingNames) {
+			String settingList = String.join(", ", settingNames);
+			if (args.size() != settingNames.length + 1 && args.size() != settingNames.length + 2) {
+				throw new PdslParseException(name + "() expects (weight, bias, " + settingList
+						+ ") or (weight, " + settingList + "), got " + args.size());
+			}
+
+			this.name = name;
+			this.weights = (PackedCollection) args.get(0);
+			this.bias = args.size() == settingNames.length + 2 ? (PackedCollection) args.get(1) : null;
+			this.settings = new int[settingNames.length];
+			int first = args.size() - settingNames.length;
+			for (int i = 0; i < settings.length; i++) {
+				settings[i] = toInt(args.get(first + i));
+			}
+
+			if (weights.getShape().getDimensions() != 3) {
+				throw new PdslParseException(name + "() weight must be " + weightLayout
+						+ ", got " + weights.getShape());
+			}
+		}
+
+		/**
+		 * Returns the weight's length along one axis.
+		 *
+		 * @param axis the axis
+		 * @return the weight's length along {@code axis}
+		 */
+		private int weightLength(int axis) {
+			return weights.getShape().length(axis);
+		}
+
+		/**
+		 * Returns one of the integer settings.
+		 *
+		 * @param index the setting's position among the settings, in call order
+		 * @return the setting
+		 */
+		private int setting(int index) {
+			return settings[index];
+		}
+
+		/**
+		 * Checks a stage's input shape: {@code [batch, channels, length]}, with as many channels as
+		 * the weight takes.
+		 *
+		 * @param inputShape the stage's input shape
+		 * @param channels   the number of input channels the weight takes
+		 * @throws PdslParseException if the shape does not have three axes or its channel count differs
+		 */
+		private void checkInput(TraversalPolicy inputShape, int channels) {
 			if (inputShape.getDimensions() != 3) {
-				throw new PdslParseException("conv1d() expects a [batch, channels, length] input "
+				throw new PdslParseException(name + "() expects a [batch, channels, length] input "
 						+ "shape, got " + inputShape);
 			}
-			int batchSize = inputShape.length(0);
-			int inChannels = inputShape.length(1);
-			int seqLength = inputShape.length(2);
-			if (inChannels != weightInChannels) {
-				throw new PdslParseException("conv1d() weight expects " + weightInChannels
-						+ " input channels but the input shape " + inputShape + " has " + inChannels);
+			if (inputShape.length(1) != channels) {
+				throw new PdslParseException(name + "() weight expects " + channels
+						+ " input channels but the input shape " + inputShape + " has " + inputShape.length(1));
 			}
-			return FEATURES.convolution1d(batchSize, inChannels, outChannels, seqLength,
-					kernelSize, stride, padding, weights, bias);
-		};
+		}
 	}
 
 	/**

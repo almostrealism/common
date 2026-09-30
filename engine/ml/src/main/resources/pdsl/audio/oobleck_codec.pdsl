@@ -1,0 +1,171 @@
+/**
+ * Oobleck (Stable Audio Open / Descript) codec stages: everything the encoder and the decoder
+ * are assembled from, around the residual unit of /pdsl/audio/oobleck_residual_block.pdsl.
+ *
+ * This file replaces the Java assembly that used to live in OobleckEncoder (buildEncoder and
+ * buildEncoderBlock) and OobleckDecoder (buildDecoder and buildDecoderBlock), which built each
+ * stage as a SequentialBlock of Snake activations, weight-normalized convolutions and residual
+ * units. OobleckEncoder and OobleckDecoder now only supply every stage's width and stride, and
+ * OobleckCodec chains the stages: for each one it reads the stage's weights (resolving each
+ * weight-normalized convolution's g and v parameters into its effective weight, exactly as the
+ * residual unit's weights are resolved), binds them and builds one layer below.
+ * This file imports oobleck_residual_block.pdsl, so parsing it alone resolves the residual unit
+ * into the same program; a stage calls the residual unit by name, and each call is built for the
+ * [batch, channels, length] signal at the point where it is placed.
+ *
+ * Every stage maps a [batch, channels, length] activation to another. The encoder compresses
+ * [batch, 2, samples] stereo audio to [batch, 128, frames]; the decoder expands a
+ * [batch, 64, frames] latent back to [batch, 2, samples]:
+ *
+ *   encoder                                          decoder
+ *   [batch, 2, L]                                    [batch, 64, L]
+ *   oobleck_input_projection    -> [batch, 128, L]   oobleck_input_projection    -> [batch, 2048, L]
+ *   oobleck_encoder_block  x 5  -> L / stride        oobleck_decoder_block  x 5  -> L * stride + 1
+ *     strides 4, 8, 8, 16, 16                          strides 16, 16, 8, 8, 4
+ *     channels 128 -> 128 -> 256 -> 512                channels 2048 -> 1024 -> 512 -> 256
+ *              -> 1024 -> 2048                                  -> 128 -> 128
+ *   oobleck_encoder_output      -> [batch, 128, L]   oobleck_decoder_output      -> [batch, 2, L]
+ *
+ * The encoder's 128 output channels are the mean and scale halves that the VAE bottleneck
+ * splits; the decoder reads the 64-channel mean.
+ *
+ * Every down- and up-sampling convolution is bound with a kernel one stride long, and the
+ * paddings below follow from that. The strides, kernels and paddings are those of the Java
+ * implementation this file replaced and of engine/ml/scripts/extract_stable_audio_autoencoder.py.
+ * They do not match the upstream stable-audio-tools Oobleck, whose stages use a kernel of two
+ * strides with half-stride padding over strides 2, 4, 4, 8, 8 (a 2048x downsampling ratio,
+ * the ratio DiffusionTransformer assumes), and whose residual units dilate their kernel-7
+ * convolution by 1, 3 and 9; oobleck_residual_block.pdsl has no dilation.
+ */
+
+import "/pdsl/audio/oobleck_residual_block.pdsl"
+
+/**
+ * Input projection of either half: [batch, in_channels, length] -> [batch, out_channels, length].
+ * A length-preserving kernel-7 convolution from the input's channels (2 audio channels, or 64
+ * latent channels) to the width of the first stage.
+ *
+ *   conv1d(conv_weight, conv_bias, stride 1, pad 3)     [batch, out_channels, length]
+ */
+layer oobleck_input_projection(conv_weight: weight, conv_bias: weight) {
+    conv1d(conv_weight, conv_bias, 1, 3)
+}
+
+/**
+ * One encoder stage: [batch, channels, length] -> [batch, out_channels, length / stride].
+ * Three residual units refine the signal at the stage's input rate; a Snake activation and a
+ * strided convolution then downsample it by `stride` and widen it to out_channels.
+ *
+ *   oobleck_residual_block (unit 0)                        [batch, channels, length]
+ *   oobleck_residual_block (unit 1)                        [batch, channels, length]
+ *   oobleck_residual_block (unit 2)                        [batch, channels, length]
+ *   snake(snake_alpha, snake_beta)                         [batch, channels, length]
+ *   conv1d(down_weight, down_bias, stride, pad)            [batch, out_channels, length / stride]
+ *
+ * The downsampling kernel spans one stride and is padded by (stride - 1) / 2 on each side. An
+ * integer argument is truncated, so the padding is floor((stride - 1) / 2): 1 for stride 4, 3
+ * for stride 8 and 7 for stride 16, and a length that is a multiple of the stride is divided by
+ * it exactly.
+ */
+layer oobleck_encoder_block(
+    unit0_snake0_alpha: weight, unit0_snake0_beta: weight,
+    unit0_conv1_weight: weight, unit0_conv1_bias: weight,
+    unit0_snake2_alpha: weight, unit0_snake2_beta: weight,
+    unit0_conv3_weight: weight, unit0_conv3_bias: weight,
+    unit1_snake0_alpha: weight, unit1_snake0_beta: weight,
+    unit1_conv1_weight: weight, unit1_conv1_bias: weight,
+    unit1_snake2_alpha: weight, unit1_snake2_beta: weight,
+    unit1_conv3_weight: weight, unit1_conv3_bias: weight,
+    unit2_snake0_alpha: weight, unit2_snake0_beta: weight,
+    unit2_conv1_weight: weight, unit2_conv1_bias: weight,
+    unit2_snake2_alpha: weight, unit2_snake2_beta: weight,
+    unit2_conv3_weight: weight, unit2_conv3_bias: weight,
+    snake_alpha: weight, snake_beta: weight,
+    down_weight: weight, down_bias: weight,
+    stride: int
+) {
+    // Three residual units at the stage's input width and rate.
+    oobleck_residual_block(unit0_snake0_alpha, unit0_snake0_beta, unit0_conv1_weight, unit0_conv1_bias,
+                           unit0_snake2_alpha, unit0_snake2_beta, unit0_conv3_weight, unit0_conv3_bias)
+    oobleck_residual_block(unit1_snake0_alpha, unit1_snake0_beta, unit1_conv1_weight, unit1_conv1_bias,
+                           unit1_snake2_alpha, unit1_snake2_beta, unit1_conv3_weight, unit1_conv3_bias)
+    oobleck_residual_block(unit2_snake0_alpha, unit2_snake0_beta, unit2_conv1_weight, unit2_conv1_bias,
+                           unit2_snake2_alpha, unit2_snake2_beta, unit2_conv3_weight, unit2_conv3_bias)
+
+    // Downsample: periodic activation, then a strided convolution that also widens the channels.
+    snake(snake_alpha, snake_beta)
+    conv1d(down_weight, down_bias, stride, (stride - 1) / 2)
+}
+
+/**
+ * Output of the encoder: [batch, channels, length] -> [batch, out_channels, length]. A final
+ * Snake activation, then a length-preserving kernel-3 convolution down to the latent width.
+ *
+ *   snake(snake_alpha, snake_beta)                      [batch, channels, length]
+ *   conv1d(conv_weight, conv_bias, stride 1, pad 1)     [batch, out_channels, length]
+ */
+layer oobleck_encoder_output(snake_alpha: weight, snake_beta: weight,
+                             conv_weight: weight, conv_bias: weight) {
+    snake(snake_alpha, snake_beta)
+    conv1d(conv_weight, conv_bias, 1, 1)
+}
+
+/**
+ * One decoder stage: [batch, channels, length] -> [batch, out_channels, length * stride + 1].
+ * A Snake activation and a transposed convolution upsample the signal by `stride` and narrow it
+ * to out_channels; three residual units then refine it at the new rate.
+ *
+ *   snake(snake_alpha, snake_beta)                          [batch, channels, length]
+ *   conv_transpose1d(up_weight, up_bias, stride,
+ *                    pad, output pad)                       [batch, out_channels, length * stride + 1]
+ *   oobleck_residual_block (unit 0)                         [batch, out_channels, length * stride + 1]
+ *   oobleck_residual_block (unit 1)                         [batch, out_channels, length * stride + 1]
+ *   oobleck_residual_block (unit 2)                         [batch, out_channels, length * stride + 1]
+ *
+ * The upsampling kernel spans one stride. The transposed convolution trims
+ * floor((stride - 1) / 2) samples from each end and extends the right end by stride - 1, so its
+ * output is (length - 1) * stride - 2 * pad + stride + (stride - 1) long: length * stride + 1 for
+ * every even stride.
+ */
+layer oobleck_decoder_block(
+    snake_alpha: weight, snake_beta: weight,
+    up_weight: weight, up_bias: weight,
+    stride: int,
+    unit0_snake0_alpha: weight, unit0_snake0_beta: weight,
+    unit0_conv1_weight: weight, unit0_conv1_bias: weight,
+    unit0_snake2_alpha: weight, unit0_snake2_beta: weight,
+    unit0_conv3_weight: weight, unit0_conv3_bias: weight,
+    unit1_snake0_alpha: weight, unit1_snake0_beta: weight,
+    unit1_conv1_weight: weight, unit1_conv1_bias: weight,
+    unit1_snake2_alpha: weight, unit1_snake2_beta: weight,
+    unit1_conv3_weight: weight, unit1_conv3_bias: weight,
+    unit2_snake0_alpha: weight, unit2_snake0_beta: weight,
+    unit2_conv1_weight: weight, unit2_conv1_bias: weight,
+    unit2_snake2_alpha: weight, unit2_snake2_beta: weight,
+    unit2_conv3_weight: weight, unit2_conv3_bias: weight
+) {
+    // Upsample: periodic activation, then a transposed convolution that also narrows the channels.
+    snake(snake_alpha, snake_beta)
+    conv_transpose1d(up_weight, up_bias, stride, (stride - 1) / 2, stride - 1)
+
+    // Three residual units at the stage's output width and rate.
+    oobleck_residual_block(unit0_snake0_alpha, unit0_snake0_beta, unit0_conv1_weight, unit0_conv1_bias,
+                           unit0_snake2_alpha, unit0_snake2_beta, unit0_conv3_weight, unit0_conv3_bias)
+    oobleck_residual_block(unit1_snake0_alpha, unit1_snake0_beta, unit1_conv1_weight, unit1_conv1_bias,
+                           unit1_snake2_alpha, unit1_snake2_beta, unit1_conv3_weight, unit1_conv3_bias)
+    oobleck_residual_block(unit2_snake0_alpha, unit2_snake0_beta, unit2_conv1_weight, unit2_conv1_bias,
+                           unit2_snake2_alpha, unit2_snake2_beta, unit2_conv3_weight, unit2_conv3_bias)
+}
+
+/**
+ * Output of the decoder: [batch, channels, length] -> [batch, out_channels, length]. A final
+ * Snake activation, then a length-preserving kernel-7 convolution down to the audio channels.
+ * The checkpoint stores no bias for this convolution.
+ *
+ *   snake(snake_alpha, snake_beta)                      [batch, channels, length]
+ *   conv1d(conv_weight, stride 1, pad 3)                [batch, out_channels, length]
+ */
+layer oobleck_decoder_output(snake_alpha: weight, snake_beta: weight, conv_weight: weight) {
+    snake(snake_alpha, snake_beta)
+    conv1d(conv_weight, 1, 3)
+}
