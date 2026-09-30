@@ -217,9 +217,17 @@ jobs:
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
           SETTINGS_FILE: ${{ steps.plan_settings.outputs.settings_file }}
           REQUIRED_LABELS: ${{ steps.plan_settings.outputs.required_labels }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          # This step runs even when an earlier one failed; only a successful
+          # job registered the workstream and applied the plan's settings.
+          if [ "$JOB_STATUS" != "success" ]; then
+            echo "Registration of the FlowTree workstream for branch \`$BRANCH\` **failed** ($JOB_STATUS)," >> "$GITHUB_STEP_SUMMARY"
+            echo "so the implementation was not submitted. See the failed step's log." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           echo "Registered a FlowTree workstream for branch \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
           echo "with planning document \`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$SETTINGS_FILE" ]; then

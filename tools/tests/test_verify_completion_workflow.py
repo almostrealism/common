@@ -212,6 +212,21 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         self.assertNotIn("refs/heads/", resolve["run"])
         self.assertIn("exit 1", resolve["run"])
 
+    def test_the_registration_summary_reports_a_failure_as_a_failure(self):
+        """The summary step runs even after a failed registration, when the
+        plan's settings have already been resolved. Reporting them as applied
+        would tell the operator the implementation is routed as the plan
+        asked when it was never submitted at all."""
+        steps = self.jobs["register-workstream"]["steps"]
+        summary = next(s for s in steps if s.get("name") == "Summary")
+        self.assertEqual("always()", summary.get("if"))
+        self.assertEqual("${{ job.status }}", summary["env"]["JOB_STATUS"])
+        run = summary["run"]
+        gate = run.index('if [ "$JOB_STATUS" != "success" ]')
+        self.assertLess(gate, run.index("Registered a FlowTree workstream"))
+        self.assertLess(gate, run.index("Applied"))
+        self.assertIn("exit 0", run[gate:run.index("Registered a FlowTree workstream")])
+
     def test_the_operator_documentation_describes_every_job(self):
         """ci-integration.md is where an operator learns what this workflow
         does. It once kept describing a three-job pipeline that submitted

@@ -44,6 +44,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import Hashable
 
 import yaml
 
@@ -54,6 +55,28 @@ ALLOWED_KEYS = ("requiredLabels",)
 
 class InvalidConfig(Exception):
     """The applicable workstream file cannot be applied as written."""
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """A ``SafeLoader`` that refuses a mapping which repeats a key.
+
+    ``yaml.safe_load`` keeps the last of two equal keys, so a file declaring
+    ``requiredLabels`` twice, or one label twice, would route the
+    implementation by whichever came last without saying so.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, Hashable):
+                continue  # the base constructor reports an unhashable key
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping", node.start_mark,
+                    f"found duplicate key {key!r}", key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 def matching_file(branch, plans_dir):
@@ -86,19 +109,19 @@ def parse(path):
         The settings it declares, keyed as in ``ALLOWED_KEYS``.
 
     Raises:
-        InvalidConfig: when the file is not valid YAML, is not a mapping, or
-            declares a key or value this script does not accept.
+        InvalidConfig: when the file is not valid YAML, repeats a key, is not
+            a mapping, or declares a key or value this script does not accept.
     """
     try:
         with open(path) as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=_UniqueKeyLoader)
     except yaml.YAMLError as e:
         raise InvalidConfig(f"{path} is not valid YAML: {e}")
     if data is None:
         return {}
     if not isinstance(data, dict):
         raise InvalidConfig(f"{path} must be a mapping of settings")
-    unknown = sorted(set(data) - set(ALLOWED_KEYS))
+    unknown = sorted(set(data) - set(ALLOWED_KEYS), key=repr)
     if unknown:
         raise InvalidConfig(
             f"{path} declares unsupported setting(s) {unknown}; allowed: {list(ALLOWED_KEYS)}")

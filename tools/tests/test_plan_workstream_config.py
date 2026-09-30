@@ -107,6 +107,12 @@ class ParsingTests(_PlansDirTest):
         with self.assertRaises(config.InvalidConfig):
             self.parse("requiredLabels:\n  platform: macos\ndispatchCapable: true\n")
 
+    def test_unknown_keys_of_mixed_types_are_refused_by_name(self):
+        # YAML keys need not be strings; listing a number beside a string
+        # must still report the file rather than fail to sort them.
+        with self.assertRaisesRegex(config.InvalidConfig, "unsupported setting"):
+            self.parse("1: a\nfoo: b\n")
+
     def test_badly_shaped_labels_are_refused(self):
         for text in ("requiredLabels: macos\n",
                      "requiredLabels: {}\n",
@@ -117,6 +123,22 @@ class ParsingTests(_PlansDirTest):
             with self.subTest(text=text):
                 with self.assertRaises(config.InvalidConfig):
                     self.parse(text)
+
+    def test_a_repeated_key_is_refused(self):
+        # A plain YAML load keeps the last of two equal keys, which would
+        # route the implementation by a value the reader may not have seen.
+        for text in ("requiredLabels:\n  platform: macos\n"
+                     "requiredLabels:\n  platform: linux\n",
+                     "requiredLabels:\n  platform: macos\n  platform: linux\n",
+                     "requiredLabels: {platform: macos, platform: linux}\n"):
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(config.InvalidConfig, "duplicate key 'platform'|"
+                                            "duplicate key 'requiredLabels'"):
+                    self.parse(text)
+
+    def test_distinct_keys_in_separate_mappings_are_accepted(self):
+        self.assertEqual({"requiredLabels": {"platform": "macos", "gpu": "metal"}},
+                         self.parse("requiredLabels:\n  platform: macos\n  gpu: metal\n"))
 
 
 class CommandLineTests(_PlansDirTest):
