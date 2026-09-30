@@ -172,6 +172,16 @@ class RegistrationLabelTests(unittest.TestCase):
         self._register(stub, "")
         self.assertNotIn("requiredLabels", stub.seen[0][4])
 
+    def test_a_failed_label_update_fails_the_registration(self):
+        # An implementation submitted without the labels the plan declared
+        # runs on the wrong machine — one without the Metal the plan needs,
+        # for instance — so a dropped label update must fail the step rather
+        # than warn and exit 0, exactly as a dropped capability update does.
+        stub = _ControllerStub(existing=True, update=(503, {"ok": False}))
+        code, _, log = self._register(stub, '{"platform":"macos"}')
+        self.assertEqual(1, code, log)
+        self.assertEqual(2, len(stub.seen))
+
 
 if __name__ == "__main__":
     unittest.main()
