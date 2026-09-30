@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.dsl.PdslLoader;
@@ -28,6 +29,8 @@ import org.almostrealism.studio.midi.SkyTntConfig;
 import org.almostrealism.studio.midi.SkyTntMidi;
 import org.almostrealism.studio.midi.SkyTntTokenizerV2;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -56,7 +59,7 @@ import java.util.Set;
  * @see SkyTntMidi
  * @see SkyTntConfig
  */
-public class SkyTntMidiTest extends TestSuiteBase {
+public class SkyTntMidiTest extends TestSuiteBase implements AttentionFeatures {
 
 	/** Reduced hidden size for test speed (must be divisible by both HEADS and HEADS_TOKEN). */
 	private static final int DIM = 32;
@@ -78,6 +81,15 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 	/** Number of layers for the test model (1 each for speed). */
 	private static final int NET_LAYERS = 1;
+
+	/** Number of layers for the multi-layer cache-binding tests (needs more than one). */
+	private static final int NET_LAYERS_TWO = 2;
+
+	/** Forward passes advanced through successive positions in the cache-binding tests. */
+	private static final int CACHE_STEPS = 3;
+
+	/** Element-wise tolerance between the loader model and the independently-cached reference. */
+	private static final double CACHE_TOLERANCE = 1e-5;
 
 	/** Number of token-transformer layers for the test model. */
 	private static final int NET_TOKEN_LAYERS = 1;
@@ -129,6 +141,198 @@ public class SkyTntMidiTest extends TestSuiteBase {
 				config.netTokenLayers, config.netTokenHeads,
 				tokenFreqCis, tokenPos, true, EPSILON, lmHeadWeight);
 		Assert.assertNotNull("net_token CompiledModel should not be null", netTokenModel);
+	}
+
+	/**
+	 * Verifies that {@link SkyTntMidi#buildTransformerModel} binds an independent key/value cache
+	 * to every transformer layer.
+	 *
+	 * <p>A two-layer {@code net} model built through the loader is compared, across
+	 * {@link #CACHE_STEPS} successive positions, against a reference assembled directly from the
+	 * decomposed primitives: two residual {@code attention() + feedForward()} stages capped by the
+	 * same final RMSNorm. The reference's 8-argument {@link AttentionFeatures#attention} overload
+	 * allocates a fresh cache internally for each stage, so the two stages are independently cached
+	 * by construction. If the loader shared one cache across its layers (for example by hoisting the
+	 * allocation out of its per-layer loop), the second layer would overwrite the first layer's
+	 * cache rows and the two paths would diverge; the loader reproducing the reference element for
+	 * element at every position is what pins the per-layer binding.</p>
+	 */
+	@Test(timeout = 120000)
+	public void loaderBindsIndependentCachePerLayer() {
+		SkyTntConfig config = new SkyTntConfig(VOCAB, DIM, EPSILON, 10000.0,
+				NET_LAYERS_TWO, HEADS, FFN, SEQ_LEN,
+				NET_TOKEN_LAYERS, HEADS_TOKEN, FFN_TOKEN);
+
+		StateDictionary stateDict = createRealisticWeights(config, new Random(7));
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+
+		int netHeadSize = DIM / HEADS;
+		PackedCollection position = new PackedCollection(1);
+		CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, netHeadSize, SEQ_LEN);
+
+		CompiledModel model = SkyTntMidi.buildTransformerModel(
+				"net", stateDict, program,
+				config.netLayers, config.netHeads,
+				freqCis, position, false, EPSILON, null);
+
+		CompiledModel reference = buildIndependentlyCachedReference(
+				"net", stateDict, config.netLayers, freqCis, position);
+
+		for (int step = 0; step < CACHE_STEPS; step++) {
+			position.fill(step);
+			double[] modelOut = model.forward(cacheStepInput(step)).toArray();
+			position.fill(step);
+			double[] referenceOut = reference.forward(cacheStepInput(step)).toArray();
+
+			Assert.assertEquals("output length at position " + step,
+					referenceOut.length, modelOut.length);
+			for (int i = 0; i < referenceOut.length; i++) {
+				Assert.assertEquals(
+						"loader vs independently-cached reference at position " + step + ", element " + i,
+						referenceOut[i], modelOut[i], CACHE_TOLERANCE);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that attention at a later position reads the key/value entries written by earlier
+	 * positions, through a two-layer model built by {@link SkyTntMidi#buildTransformerModel}.
+	 *
+	 * <p>Two identical two-layer models are run over three positions. They receive the same inputs
+	 * at positions 1 and 2 but different inputs at position 0. Because each forward pass writes the
+	 * current token's key and value to cache row {@code position} and the causal attention at
+	 * position 2 reads every row up to and including 2, the position-2 output must differ between
+	 * the two runs. If the caches did not persist across forward passes — or a later position did
+	 * not read the earlier rows — the position-2 outputs would be identical.</p>
+	 */
+	@Test(timeout = 120000)
+	public void laterPositionsReadEarlierCachedEntries() {
+		SkyTntConfig config = new SkyTntConfig(VOCAB, DIM, EPSILON, 10000.0,
+				NET_LAYERS_TWO, HEADS, FFN, SEQ_LEN,
+				NET_TOKEN_LAYERS, HEADS_TOKEN, FFN_TOKEN);
+
+		StateDictionary stateDict = createRealisticWeights(config, new Random(19));
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+
+		int netHeadSize = DIM / HEADS;
+		CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, netHeadSize, SEQ_LEN);
+
+		double[] outputA = runThreePositions(stateDict, program, config, freqCis, cacheStepInput(0));
+		double[] control = runThreePositions(stateDict, program, config, freqCis, cacheStepInput(0));
+		double[] outputB = runThreePositions(stateDict, program, config, freqCis, cacheStepInput(5));
+
+		Assert.assertEquals("position-2 output length", outputA.length, outputB.length);
+
+		// A repeated identical run pins determinism, so the divergence below is caused only by the perturbation.
+		double controlDiff = maxAbsDiff(outputA, control);
+		Assert.assertEquals("identical inputs must reproduce the position-2 output exactly",
+				0.0, controlDiff, 1e-9);
+
+		double diff = maxAbsDiff(outputA, outputB);
+		log("position-2 output divergence from perturbing position 0 = " + diff);
+		Assert.assertTrue("changing the position-0 input must change the position-2 output, because "
+				+ "attention at position 2 reads the cache row written at position 0 (max abs diff was "
+				+ diff + ")", diff > 1e-3);
+	}
+
+	/**
+	 * Runs a freshly built two-layer {@code net} model over positions 0, 1 and 2, using
+	 * {@code positionZeroInput} at position 0 and the fixed generator's inputs at positions 1 and 2,
+	 * and returns the position-2 output.
+	 *
+	 * @param stateDict shared synthetic weights
+	 * @param program   the parsed loader program
+	 * @param config    the two-layer configuration
+	 * @param freqCis   the shared rotary table
+	 * @param positionZeroInput the token vector fed at position 0
+	 * @return the position-2 output vector
+	 */
+	private double[] runThreePositions(StateDictionary stateDict, PdslNode.Program program,
+									   SkyTntConfig config, CollectionProducer freqCis,
+									   PackedCollection positionZeroInput) {
+		PackedCollection position = new PackedCollection(1);
+		CompiledModel model = SkyTntMidi.buildTransformerModel(
+				"net", stateDict, program,
+				config.netLayers, config.netHeads,
+				freqCis, position, false, EPSILON, null);
+
+		double[] output = null;
+		for (int step = 0; step < CACHE_STEPS; step++) {
+			position.fill(step);
+			PackedCollection input = step == 0 ? positionZeroInput : cacheStepInput(step);
+			output = model.forward(input).toArray();
+		}
+		return output;
+	}
+
+	/**
+	 * Builds a reference model equivalent to the two-layer {@code net} loader model, but assembled
+	 * directly from the decomposed {@link AttentionFeatures#attention} and
+	 * {@link AttentionFeatures#feedForward} primitives so that each layer is independently cached.
+	 * Both stages of each layer are residual, matching {@code skytnt_block}, and a final RMSNorm
+	 * matches {@code skytnt_norm}.
+	 *
+	 * @param prefix    the weight key prefix ({@code "net"})
+	 * @param stateDict the shared synthetic weights
+	 * @param numLayers the number of transformer layers
+	 * @param freqCis   the shared rotary table
+	 * @param position  the shared position reference bound to every layer
+	 * @return the compiled reference model
+	 */
+	private CompiledModel buildIndependentlyCachedReference(String prefix, StateDictionary stateDict,
+														   int numLayers, CollectionProducer freqCis,
+														   PackedCollection position) {
+		Model model = new Model(new TraversalPolicy(1, DIM));
+		for (int i = 0; i < numLayers; i++) {
+			String layerKey = prefix + ".layers." + i;
+			SequentialBlock layer = new SequentialBlock(new TraversalPolicy(1, DIM));
+			layer.accum(attention(HEADS,
+					stateDict.get(layerKey + ".input_layernorm.weight"),
+					stateDict.get(layerKey + ".self_attn.k_proj.weight"),
+					stateDict.get(layerKey + ".self_attn.v_proj.weight"),
+					stateDict.get(layerKey + ".self_attn.q_proj.weight"),
+					stateDict.get(layerKey + ".self_attn.o_proj.weight"),
+					freqCis, p(position)));
+			layer.accum(feedForward(
+					stateDict.get(layerKey + ".post_attention_layernorm.weight"),
+					stateDict.get(layerKey + ".mlp.gate_proj.weight"),
+					stateDict.get(layerKey + ".mlp.down_proj.weight"),
+					stateDict.get(layerKey + ".mlp.up_proj.weight"),
+					EPSILON));
+			model.add(layer);
+		}
+		model.add(rmsnorm(stateDict.get(prefix + ".norm.weight"), EPSILON));
+		return model.compile(false);
+	}
+
+	/**
+	 * A deterministic, position-dependent token vector for the cache-binding tests: element
+	 * {@code i} is {@code (1 + i / 4) cos(0.9 i + 0.3 + 1.7 step)}, so later elements carry larger
+	 * values and the mean square stays near unity, which keeps the RMSNorm epsilon observable.
+	 *
+	 * @param step the pass index
+	 * @return the token vector, shape {@code [1, DIM]}
+	 */
+	private PackedCollection cacheStepInput(int step) {
+		CollectionProducer index = integers(0, DIM);
+		return cos(index.multiply(0.9).add(0.3 + 1.7 * step))
+				.multiply(index.multiply(0.25).add(1.0))
+				.reshape(shape(1, DIM)).evaluate();
+	}
+
+	/** The largest absolute element-wise difference between two equally sized vectors. */
+	private static double maxAbsDiff(double[] a, double[] b) {
+		double max = 0.0;
+		for (int i = 0; i < a.length; i++) {
+			max = Math.max(max, Math.abs(a[i] - b[i]));
+		}
+		return max;
 	}
 
 	/**
@@ -574,51 +778,98 @@ public class SkyTntMidiTest extends TestSuiteBase {
 
 
 	/**
+	 * Samples one weight tensor of the given dimensions from a random number generator. The
+	 * fixtures below differ only in the sampler they use for the RMSNorm scales and for every
+	 * other (projection, embedding and head) weight.
+	 */
+	@FunctionalInterface
+	interface WeightSampler {
+		/**
+		 * Samples a weight tensor.
+		 *
+		 * @param rng  random number generator
+		 * @param dims tensor dimensions
+		 * @return the sampled tensor
+		 */
+		PackedCollection sample(Random rng, int... dims);
+	}
+
+	/**
 	 * Create a {@link StateDictionary} populated with random synthetic weights that
-	 * match the shapes expected by {@link SkyTntMidi.buildTransformerModel}.
+	 * match the shapes expected by {@link SkyTntMidi#buildTransformerModel}. Every weight,
+	 * including the RMSNorm scales, is small ({@code [-0.05, 0.05)}).
 	 *
 	 * @param config the model configuration
 	 * @param rng    random number generator
 	 * @return populated StateDictionary
 	 */
 	static StateDictionary createSyntheticWeights(SkyTntConfig config, Random rng) {
+		return createWeights(config, rng, SkyTntMidiTest::rand, SkyTntMidiTest::rand);
+	}
+
+	/**
+	 * Create a {@link StateDictionary} at realistic weight scales — RMSNorm scales near unity
+	 * ({@code [0.6, 1.4)}) and projections in {@code [-0.4, 0.4)} — so the attention stage
+	 * contributes observably to the output. The tiny scales of {@link #createSyntheticWeights}
+	 * suppress the attention output to the {@code 1e-5} level, which is too small to distinguish a
+	 * genuine cross-position cache read from numerical noise.
+	 *
+	 * @param config the model configuration
+	 * @param rng    random number generator
+	 * @return populated StateDictionary
+	 */
+	static StateDictionary createRealisticWeights(SkyTntConfig config, Random rng) {
+		return createWeights(config, rng,
+				(r, dims) -> rand(r, 0.6, 1.4, dims),
+				(r, dims) -> rand(r, -0.4, 0.4, dims));
+	}
+
+	/**
+	 * Create a {@link StateDictionary} holding every weight key {@link SkyTntMidi#buildTransformerModel}
+	 * reads, using HuggingFace key names to match the extractor output. This is the single
+	 * description of the SkyTNT weight layout shared by all fixtures; only the value distributions
+	 * are supplied by the caller.
+	 *
+	 * @param config  the model configuration
+	 * @param rng     random number generator
+	 * @param norm    sampler for the RMSNorm scales
+	 * @param weight  sampler for the projection, embedding and head weights
+	 * @return populated StateDictionary
+	 */
+	static StateDictionary createWeights(SkyTntConfig config, Random rng,
+										 WeightSampler norm, WeightSampler weight) {
 		Map<String, PackedCollection> weights = new HashMap<>();
 
-		// LM head (shared) — uses HuggingFace key name to match extractor output
-		weights.put("lm_head.weight", rand(rng, config.vocabSize, config.hiddenSize));
+		weights.put("lm_head.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
+		weights.put("net.embed_tokens.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
+		weights.put("net_token.embed_tokens.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
 
-		// Embedding tables — uses HuggingFace key names to match extractor output
-		weights.put("net.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
-		weights.put("net_token.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
-
-		// net layers
 		addLayerWeights(weights, "net", config.netLayers, config.hiddenSize,
-				config.netIntermediateSize, rng);
-		weights.put("net.norm.weight", rand(rng, config.hiddenSize));
+				config.netIntermediateSize, rng, norm, weight);
+		weights.put("net.norm.weight", norm.sample(rng, config.hiddenSize));
 
-		// net_token layers
 		addLayerWeights(weights, "net_token", config.netTokenLayers, config.hiddenSize,
-				config.netTokenIntermediateSize, rng);
-		weights.put("net_token.norm.weight", rand(rng, config.hiddenSize));
+				config.netTokenIntermediateSize, rng, norm, weight);
+		weights.put("net_token.norm.weight", norm.sample(rng, config.hiddenSize));
 
 		return new StateDictionary(weights);
 	}
 
 	/** Add per-layer weights for one transformer to the weight map. */
 	static void addLayerWeights(Map<String, PackedCollection> weights,
-										String prefix, int numLayers,
-										int hiddenSize, int ffnSize, Random rng) {
+								String prefix, int numLayers, int hiddenSize, int ffnSize,
+								Random rng, WeightSampler norm, WeightSampler weight) {
 		for (int i = 0; i < numLayers; i++) {
 			String key = prefix + ".layers." + i;
-			weights.put(key + ".input_layernorm.weight", rand(rng, hiddenSize));
-			weights.put(key + ".post_attention_layernorm.weight", rand(rng, hiddenSize));
-			weights.put(key + ".self_attn.q_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.k_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.v_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.o_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".mlp.gate_proj.weight", rand(rng, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.up_proj.weight", rand(rng, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.down_proj.weight", rand(rng, hiddenSize, ffnSize));
+			weights.put(key + ".input_layernorm.weight", norm.sample(rng, hiddenSize));
+			weights.put(key + ".post_attention_layernorm.weight", norm.sample(rng, hiddenSize));
+			weights.put(key + ".self_attn.q_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.k_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.v_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.o_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".mlp.gate_proj.weight", weight.sample(rng, ffnSize, hiddenSize));
+			weights.put(key + ".mlp.up_proj.weight", weight.sample(rng, ffnSize, hiddenSize));
+			weights.put(key + ".mlp.down_proj.weight", weight.sample(rng, hiddenSize, ffnSize));
 		}
 	}
 
@@ -627,6 +878,15 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection c = new PackedCollection(shape);
 		Ops.o().rand(shape, rng).add(-0.5).multiply(0.1)
+				.into(c.traverseEach()).evaluate();
+		return c;
+	}
+
+	/** Create a PackedCollection filled with values drawn uniformly from {@code [lo, hi)}. */
+	static PackedCollection rand(Random rng, double lo, double hi, int... dims) {
+		TraversalPolicy shape = new TraversalPolicy(dims);
+		PackedCollection c = new PackedCollection(shape);
+		Ops.o().rand(shape, rng).multiply(hi - lo).add(lo)
 				.into(c.traverseEach()).evaluate();
 		return c;
 	}
