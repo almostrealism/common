@@ -131,9 +131,13 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      ISO-8859-1 is *not* an alternative here: it does not reverse UTF-8 encoding, so it would break
      the round-trip (`"é"` encodes to the UTF-8 bytes `C3 A9`; decoding those two ids as ISO-8859-1
      yields `"Ã©"`, not `"é"`). The remaining choice is only what a *malformed* (non-UTF-8) id
-     sequence decodes to, and the natural contract is standard UTF-8 decoding, which substitutes the
-     Unicode replacement character `U+FFFD` for each ill-formed byte
-     (`new String(bytes, StandardCharsets.UTF_8)`). That is deliberately *not* byte-lossless for
+     sequence decodes to, and the natural contract is standard UTF-8 decoding
+     (`new String(bytes, StandardCharsets.UTF_8)`), which substitutes one Unicode replacement
+     character `U+FFFD` for each **malformed input sequence** the decoder reports — not one per byte.
+     A malformed sequence can span several bytes (a truncated multi-byte sequence such as `E2 82`
+     followed by ASCII decodes to a single `U+FFFD` and then the ASCII character), so tests of this
+     contract must assert the decoder's actual output for chosen inputs rather than a count of
+     `U+FFFD` equal to the number of bad bytes. That is deliberately *not* byte-lossless for
      malformed input — an unavoidable consequence of returning a `String`, and acceptable because the
      model only ever decodes id sequences it produced from real UTF-8 bytes. Record this contract.
      Byte-level losslessness for all 256 ids is therefore a property of the **byte↔id mapping**,
@@ -178,16 +182,55 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      Batch 1 (`scaledDotProductAttention` rejects `batchSize != 1`). A 64-position window already
      gives 64 predictions per step. All computation is `CollectionProducer` composition, following
      the project's fundamental rule.
+   - **Output shape contract: the model's final output is two-dimensional, `(seqLen, vocab)` =
+     `(64, 256)`.** The transformer blocks work on `(batchSize, seqLen, dim)` (`sequenceAttention`
+     and `transformerBlock` build `shape(batchSize, seqLen, dim)`), so the output projection
+     naturally yields `(1, 64, 256)`. That shape must not reach the loss. `NegativeLogLikelihood.loss`
+     only pads to *at least* two dimensions (`padDimensions(shape, 2)`) and treats the leading axis
+     as rows, so a `(1, 64, 256)` output against the dataset's `(64, 256)` target throws
+     `"Batch size mismatch"` (1 vs 64); and giving the target a matching `(1, 64, 256)` shape instead
+     would be worse, because `loss` would then take a single `argmax` over the whole flattened
+     window and score one position out of 64. The model must therefore end with an explicit reshape
+     to `(seqLen, vocab)` (before or after `logSoftmax`, which must normalize over the vocab axis
+     either way), so `model.getOutputShape()` — which `ModelOptimizer.setLossFunction` uses to build
+     the gradient producer — is `(64, 256)`. The same 2-D shape is what the step-6 `1 / rows`
+     normalization derives `rows` from, and what the held-out bits-per-byte measurement below scores;
+     a 3-D output would silently make `rows` equal 1. Add a fast unit test that the assembled model's
+     output shape is `(seqLen, vocab)` and that `loss` on one window returns the mean over 64
+     positions.
    - Corpus: a **fixed, listed** set of the platform's own documentation, for example the
      `docs/internals/*.md` pages (about 11k lines) or a named subset if throughput calls for it. The
      file list goes in the test so the run is reproducible. It is read at the test boundary.
    - Training: `ModelOptimizer` with `NegativeLogLikelihood` and Adam. `ModelOptimizer` owns the
      loop; no epoch loop outside it. It should use the patience/convergence helpers in
      `ModelTestFeatures` where they fit.
+   - **Define the training quantities in `ModelOptimizer`'s terms.** `ModelOptimizer.optimize(n)`
+     runs up to `n` **epochs**; each epoch is one full pass over the training `Dataset`, doing one
+     forward, one backward and one parameter update **per `ValueTarget`** (per window). This plan
+     uses the words that way: a **step** is one window update, an **epoch** is one pass over the
+     training windows, and total steps = windows per epoch × epochs run. The test must fix, and the
+     report must state: the window **stride** (default: non-overlapping, stride = `seqLen` = 64),
+     the resulting **windows per epoch** (capped at a stated number if the training region yields
+     more), and the **epoch count** passed to `optimize`. **Checkpoints are epoch boundaries**: pass
+     the held-out windows to `setValidationDataset`, which `ModelOptimizer` evaluates after every
+     epoch, and read the per-epoch numbers from `setProgressCallback` / the returned
+     `TrainingResult`. Size one epoch from the measured warm step time so that the cold first step
+     plus all epochs (and their validation passes) fit well inside the runner budget — an uncapped,
+     corpus-sized epoch can exceed the budget before the first checkpoint is ever reached. Record the
+     chosen numbers with the timings so the run is reproducible.
+   - **Mind `ModelOptimizer`'s first-sample guard.** On the first `ValueTarget` of **every** epoch,
+     `optimize` re-runs the forward pass after the update and throws
+     `RuntimeException("Loss increased from ...")` if that window's loss went up. On a single noisy
+     window with Adam momentum from earlier epochs, a small increase is possible in a healthy run,
+     so this guard can abort training that is actually learning. The implementer should expect it,
+     keep the learning rate conservative, and, if it trips on a run whose held-out loss is still
+     falling, record the evidence rather than work around it outside `ModelOptimizer` — see Open
+     questions.
    - **Normalize the `NegativeLogLikelihood` gradient first.** Before the training run, make
      `NegativeLogLikelihood.gradient` the gradient of the mean loss that `loss` reports: `-target / rows`,
      with `rows` being the leading dimension that `loss` averages over (the output's row count after
-     the same `padDimensions(shape, 2)` reshaping). `gradient` receives only producers, so either derive
+     the same `padDimensions(shape, 2)` reshaping — which is `seqLen` only because the model's output
+     is the 2-D `(seqLen, vocab)` fixed above). `gradient` receives only producers, so either derive
      the row count from the output producer's shape or take the output shape in a constructor, as
      `MeanSquaredError` does. Update the class javadoc, which currently documents the gradient as
      "-1 at the target class". Add a CI-running finite-difference test on a multi-row
@@ -210,10 +253,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      `new NegativeLogLikelihood` and its `gradient` callers), and if a multi-hot gradient user has
      appeared since, stop and treat defining/testing multi-hot NLL semantics as a prerequisite
      rather than silently scaling it. See Open questions.
-   - Measurement: report held-out loss in **bits per byte** at fixed checkpoints, next to two
-     baselines computed from the same held-out split: the uniform baseline (8 bits/byte) and the
-     **unigram byte-entropy** baseline. Record wall-clock time per step (cold and warm), total
-     steps, host and backend, and the commit SHA.
+   - Measurement: report held-out loss in **bits per byte** at each epoch-boundary checkpoint (the
+     per-epoch validation loss above, a mean natural-log NLL over held-out `(64, 256)` windows,
+     divided by `ln 2`), next to two baselines computed from the same held-out split: the uniform
+     baseline (8 bits/byte) and the **unigram byte-entropy** baseline. Record wall-clock time per
+     step (cold first step and warm), stride, windows per epoch, epochs run, total steps, host and
+     backend, and the commit SHA. Note that `ModelOptimizer` (in both the training loop and
+     `evaluate`) silently skips any window whose loss is `NaN`, so a partly-`NaN` run can still
+     report a finite mean; the report must confirm no windows were skipped (for example by checking
+     the held-out loss independently at the test boundary on the final weights).
    - Save the trained weights with `StateDictionary.save(...)` under the module's `results/`
      directory, then reload them and check that the reloaded model gives the same held-out loss.
      **Mind the save precision.** The no-argument `StateDictionary.save(Path)` encodes weights as
@@ -313,6 +361,13 @@ matters).
 - **Corpus size versus budget.** The full `docs/internals` corpus may be larger than a
   40-minute run can use. The implementer picks a fixed subset that gives a meaningful held-out
   split, and records the choice. Beating unigram is the bar, not converging on the whole corpus.
+- **`ModelOptimizer`'s "Loss increased" guard versus stochastic LM training.** `optimize` throws
+  if the first window of any epoch has a higher loss after its own update. That check was written
+  for small deterministic regression/classification tests; for next-token training on real text it
+  can abort a run that is learning. This plan does not change it. If it trips, the approver decides
+  whether a follow-up makes the guard configurable on `ModelOptimizer` (the class that owns the
+  loop) — a change to shared training infrastructure that every existing `ModelOptimizer` test
+  depends on, so it is not something to slip into this plan's run.
 - **Numerical stability of `logSoftmax`.** `ActivationFeatures.logSoftmax` computes
   `x − log(Σ exp(x))` without subtracting the max. At vocab 256 and small initial weights this
   should be fine. If NaNs appear, a max-subtracted variant is an in-scope fix, because it is
