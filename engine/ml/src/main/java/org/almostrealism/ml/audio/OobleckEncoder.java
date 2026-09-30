@@ -17,10 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
-import org.almostrealism.model.SequentialBlock;
 
 /**
  * Oobleck Encoder implementation using the AR HPC framework.
@@ -52,6 +49,11 @@ import org.almostrealism.model.SequentialBlock;
  * Output: (B, 128, L/65536) latent
  * </pre>
  *
+ * <p>The structure of every stage lives in the {@value #CODEC_ASSET} asset (the input projection,
+ * the {@code oobleck_encoder_block} stage and the encoder's output projection). This class only
+ * supplies the stages' widths and strides above; {@link OobleckCodec#addEncoderStages} chains the
+ * stages, each built from the asset with its weights.</p>
+ *
  * @see OobleckDecoder
  * @see OobleckAutoEncoder
  */
@@ -68,9 +70,6 @@ public class OobleckEncoder extends OobleckCodec {
 
 	/** Channel count at the encoder output (before the final projection). */
 	private static final int LATENT_DIM = 128;
-
-	/** Number of residual blocks within each encoder block. */
-	private static final int NUM_RES_BLOCKS = 3;
 
 	/** Batch size this encoder was configured for. */
 	private final int batchSize;
@@ -89,108 +88,8 @@ public class OobleckEncoder extends OobleckCodec {
 	public OobleckEncoder(StateDictionary stateDict, int batchSize, int seqLength) {
 		super(new TraversalPolicy(batchSize, 2, seqLength), stateDict);
 		this.batchSize = batchSize;
-		this.outputLength = computeOutputLength(seqLength);
-		buildEncoder(batchSize, seqLength);
-	}
-
-	/**
-	 * Computes the output latent sequence length from a given audio sequence length
-	 * by applying each encoder stride in order.
-	 *
-	 * @param seqLength Input audio sequence length
-	 * @return Corresponding output latent sequence length
-	 */
-	private static int computeOutputLength(int seqLength) {
-		int length = seqLength;
-		for (int stride : STRIDES) {
-			int kernel = stride;
-			int padding = (kernel - 1) / 2;
-			length = (length + 2 * padding - kernel) / stride + 1;
-		}
-		return length;
-	}
-
-	/**
-	 * Assembles the full encoder model from input projection through five encoder blocks
-	 * and final output projection, using weights from {@link #stateDict}.
-	 *
-	 * @param batchSize Batch size for all layer shapes
-	 * @param seqLength Input audio sequence length
-	 */
-	private void buildEncoder(int batchSize, int seqLength) {
-		String l0 = "encoder.layers.0";
-		PackedCollection l0_g = stateDict.get(l0 + ".weight_g");
-		PackedCollection l0_v = stateDict.get(l0 + ".weight_v");
-		PackedCollection l0_b = stateDict.get(l0 + ".bias");
-		add(wnConv1d(batchSize, 2, BASE_CHANNELS, seqLength, 7, 1, 3, l0_g, l0_v, l0_b));
-
-		int inChannels = BASE_CHANNELS;
-		int currentLength = seqLength;
-
-		for (int blockIdx = 0; blockIdx < 5; blockIdx++) {
-			int outChannels = OUT_CHANNELS[blockIdx];
-			int stride = STRIDES[blockIdx];
-			int layerIdx = blockIdx + 1;
-
-			add(buildEncoderBlock(batchSize, inChannels, outChannels,
-					currentLength, stride, layerIdx));
-
-			int kernel = stride;
-			int padding = (kernel - 1) / 2;
-			currentLength = (currentLength + 2 * padding - kernel) / stride + 1;
-			inChannels = outChannels;
-		}
-
-		String l6 = "encoder.layers.6";
-		PackedCollection l6_alpha = stateDict.get(l6 + ".alpha");
-		PackedCollection l6_beta = stateDict.get(l6 + ".beta");
-		add(snake(shape(batchSize, inChannels, currentLength), l6_alpha, l6_beta));
-
-		String l7 = "encoder.layers.7";
-		PackedCollection l7_g = stateDict.get(l7 + ".weight_g");
-		PackedCollection l7_v = stateDict.get(l7 + ".weight_v");
-		PackedCollection l7_b = stateDict.get(l7 + ".bias");
-		add(wnConv1d(batchSize, inChannels, LATENT_DIM, currentLength, 3, 1, 1, l7_g, l7_v, l7_b));
-	}
-
-	/**
-	 * Builds one encoder block: {@value #NUM_RES_BLOCKS} residual blocks, then a Snake
-	 * activation, then a strided Conv1d for downsampling.
-	 *
-	 * @param batchSize   Batch size
-	 * @param inChannels  Number of input channels
-	 * @param outChannels Number of output channels after the strided convolution
-	 * @param seqLength   Input sequence length before downsampling
-	 * @param stride      Downsampling stride (also the kernel size)
-	 * @param layerIdx    Index into the {@code encoder.layers} naming scheme
-	 * @return Assembled encoder block
-	 */
-	private Block buildEncoderBlock(int batchSize, int inChannels, int outChannels,
-									int seqLength, int stride, int layerIdx) {
-		String prefix = String.format("encoder.layers.%d", layerIdx);
-		SequentialBlock block = new SequentialBlock(shape(batchSize, inChannels, seqLength));
-
-		for (int resIdx = 0; resIdx < NUM_RES_BLOCKS; resIdx++) {
-			block.add(buildResidualBlock(batchSize, inChannels, seqLength,
-					prefix + ".layers." + resIdx));
-		}
-
-		String snakePrefix = prefix + ".layers.3";
-		PackedCollection snakeAlpha = stateDict.get(snakePrefix + ".alpha");
-		PackedCollection snakeBeta = stateDict.get(snakePrefix + ".beta");
-		block.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
-
-		String convPrefix = prefix + ".layers.4";
-		PackedCollection conv_g = stateDict.get(convPrefix + ".weight_g");
-		PackedCollection conv_v = stateDict.get(convPrefix + ".weight_v");
-		PackedCollection conv_b = stateDict.get(convPrefix + ".bias");
-
-		int kernel = stride;
-		int padding = (kernel - 1) / 2;
-		block.add(wnConv1d(batchSize, inChannels, outChannels, seqLength,
-				kernel, stride, padding, conv_g, conv_v, conv_b));
-
-		return block;
+		addEncoderStages("encoder", BASE_CHANNELS, OUT_CHANNELS, STRIDES, LATENT_DIM);
+		this.outputLength = getOutputShape().length(2);
 	}
 
 	/**

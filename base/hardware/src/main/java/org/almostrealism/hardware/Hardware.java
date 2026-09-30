@@ -35,6 +35,7 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.cl.CLDataContext;
+import org.almostrealism.hardware.cuda.CudaDataContext;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.ctx.ContextListener;
@@ -57,6 +58,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Central configuration and initialization point for the Almost Realism hardware acceleration system.
@@ -149,9 +151,9 @@ import java.util.stream.Collectors;
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
  * <p><strong>Purpose:</strong> Per-provider tracked memory ceiling (total live bytes, not the size of any single
  * allocation) = precision.bytes() * 2^MEMORY_SCALE * 64MB (default 4, ~4GB with FP32). The {@code MEMORY_SCALE} field holds the pre-precision element scale.</p>
- * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider} and {@code NativeMemoryProvider}
- * each reject an allocation for which {@code memoryUsed + requested > memoryMax} with a {@code HardwareException}
- * (message {@code "Memory Max Reached"} from the two GPU providers, {@code "Memory max reached"} from
+ * <p><strong>Enforcement:</strong> {@code MetalMemoryProvider}, {@code CLMemoryProvider}, {@code CudaMemoryProvider}
+ * and {@code NativeMemoryProvider} each reject an allocation for which {@code memoryUsed + requested > memoryMax}
+ * with a {@code HardwareException} (message {@code "Memory Max Reached"} from the three GPU providers, {@code "Memory max reached"} from
  * {@code NativeMemoryProvider}); the tracked-ceiling rejection throws rather than returning a zero pointer, though a raw OS calloc failure below the ceiling can still yield one (caught at dispatch). See the internals doc.</p>
  * <pre>export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB max (FP32)</pre>
  *
@@ -491,6 +493,10 @@ public final class Hardware implements ConsoleFeatures {
 	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
 	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
 
+	/** Accelerator data context types, most preferred first, for {@link #getDataContext(boolean, boolean, ComputeRequirement...)}. */
+	private static final List<Class<?>> ACCELERATOR_PREFERENCE =
+			List.of(MetalDataContext.class, CudaDataContext.class, CLDataContext.class);
+
 	/** Memory scale factor: {@code MEMORY_SCALE=N} sets the base element reservation to {@code 2^N * 64M}; the per-provider byte ceiling is {@code precision.bytes() * 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
@@ -713,6 +719,8 @@ public final class Hardware implements ConsoleFeatures {
 			return ctx;
 		} else if (type == ComputeRequirement.MTL) {
 			return new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
+		} else if (type == ComputeRequirement.CUDA) {
+			return new CudaDataContext("CUDA", this.maxReservation, getOffHeapSize(type));
 		}
 
 		return new NativeDataContext("JNI", precision, this.maxReservation, false, nativeDirectBuffers);
@@ -804,7 +812,8 @@ public final class Hardware implements ConsoleFeatures {
 				boolean started = cl != null && type == ComputeRequirement.CL;
 				DataContext ctx = started ? cl : createContext(type, precision);
 
-				if (type == ComputeRequirement.CL || type == ComputeRequirement.MTL) {
+				if (type == ComputeRequirement.CL || type == ComputeRequirement.MTL ||
+						type == ComputeRequirement.CUDA) {
 					kernelFriendly = true;
 				}
 
@@ -824,10 +833,9 @@ public final class Hardware implements ConsoleFeatures {
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
 						ctx.getPrecision().name() + ")");
 
-				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
-					if (!(ctx instanceof NativeDataContext)) {
-						sharedMemoryCtx = ctx;
-					}
+				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null &&
+						(ctx instanceof MetalDataContext || ctx instanceof CLDataContext)) {
+					sharedMemoryCtx = ctx;
 				}
 
 				contexts.add(ctx);
@@ -1126,15 +1134,12 @@ public final class Hardware implements ConsoleFeatures {
 
 		DataContext<MemoryData> dc = getDataContext();
 
-		if (dc instanceof CLDataContext) {
-			next = createContext(ComputeRequirement.CL, dc.getPrecision());
-		} else if (dc instanceof MetalDataContext) {
-			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
-		} else if (dc instanceof NativeDataContext) {
-			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation, false, nativeDirectBuffers);
-		} else {
-			return null;
-		}
+		ComputeRequirement type = Stream.of(ComputeRequirement.CL, ComputeRequirement.MTL,
+						ComputeRequirement.CUDA, ComputeRequirement.JNI)
+				.filter(r -> supported(dc, r)).findFirst().orElse(null);
+		if (type == null) return null;
+
+		next = createContext(type, dc.getPrecision());
 
 		String dcName = next.toString();
 		if (dcName.contains(".")) {
@@ -1383,17 +1388,9 @@ public final class Hardware implements ConsoleFeatures {
 		if (filtered.isEmpty()) return null;
 
 		if (accelerator) {
-			// Favor metal
-			for (DataContext<MemoryData> c : filtered) {
-				if (c instanceof MetalDataContext) {
-					return c;
-				}
-			}
-
-			// Fallback to CL
-			for (DataContext<MemoryData> c : filtered) {
-				if (c instanceof CLDataContext) {
-					return c;
+			for (Class<?> preferred : ACCELERATOR_PREFERENCE) {
+				for (DataContext<MemoryData> c : filtered) {
+					if (preferred.isInstance(c)) return c;
 				}
 			}
 		}
@@ -1587,6 +1584,8 @@ public final class Hardware implements ConsoleFeatures {
 				return context instanceof CLDataContext;
 			case MTL:
 				return context instanceof MetalDataContext;
+			case CUDA:
+				return context instanceof CudaDataContext;
 			case JNI:
 				return context instanceof NativeDataContext;
 			case EXTERNAL:

@@ -294,8 +294,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		Texture[] newTextures = new Texture[this.textures.length - 1];
 
 		if (index >= 0) System.arraycopy(this.textures, 0, newTextures, 0, index);
-		if (newTextures.length - (index + 1) >= 0)
-			System.arraycopy(this.textures, index + 1, newTextures, index + 1, newTextures.length - (index + 1));
+		if (newTextures.length - index > 0)
+			System.arraycopy(this.textures, index + 1, newTextures, index, newTextures.length - index);
 		
 		this.textures = newTextures;
 	}
@@ -320,6 +320,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			public Iterator<Texture> iterator() {
 				Iterator<Texture> itr = new Iterator<Texture>() {
 					int index = 0;
+					boolean removable = false;
 
 					@Override
 					public boolean hasNext() {
@@ -330,12 +331,17 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 					public Texture next() throws NoSuchElementException {
 						if (this.index >= textures.length)
 							throw new NoSuchElementException("No element at " + this.index);
+						this.removable = true;
 						return textures[this.index++];
 					}
 
 					@Override
 					public void remove() {
-						removeTexture(this.index);
+						if (!this.removable)
+							throw new IllegalStateException(
+									"next() must be called before remove(), and remove() may be called only once per next()");
+						removeTexture(--this.index);
+						this.removable = false;
 					}
 				};
 

@@ -22,6 +22,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.Set;
@@ -268,6 +269,25 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	@Override
 	public T getDataContext() { return dc; }
+
+	/**
+	 * Returns the key under which a context caches the instruction set compiled for a scope.
+	 *
+	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is
+	 * available, the signature is the key, so that structurally identical scopes share one
+	 * compiled program. Otherwise the scope name is the key.</p>
+	 *
+	 * @param name      the scope name, used when there is no usable signature
+	 * @param signature the scope's structural signature, or null
+	 * @return the cache key
+	 */
+	protected static String instructionSetKey(String name, String signature) {
+		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+			return signature;
+		}
+
+		return name;
+	}
 
 	/**
 	 * Records a compilation event if a timing listener is registered.

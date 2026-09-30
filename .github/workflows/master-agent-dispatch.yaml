@@ -48,6 +48,7 @@ on:
         options:
           - "all"
           - "project-manager"
+          - "task-planning"
           - "quality-assurance"
           - "defect-hunt"
           - "coverage"
@@ -136,20 +137,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE: ${{ github.event.inputs.force }}
         run: |
-          OPEN_PR_COUNT=$(gh pr list --base master --state open --limit 1000 --json number --jq 'length')
-          echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
-          echo "max_open_prs=$MAX_OPEN_PRS" >> "$GITHUB_OUTPUT"
-
-          if [ "$FORCE" = "true" ]; then
-            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Force mode — creating new planning branch regardless of the backlog"
-          elif [ "$OPEN_PR_COUNT" -le "$MAX_OPEN_PRS" ]; then
-            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::No planning round open and $OPEN_PR_COUNT open PRs (limit $MAX_OPEN_PRS) — creating new planning branch"
-          else
-            echo "needs_new_branch=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::$OPEN_PR_COUNT open PRs exceeds the limit of $MAX_OPEN_PRS — not starting a planning round"
-          fi
+          chmod +x ./tools/ci/open-pr-backlog.sh
+          ./tools/ci/open-pr-backlog.sh
 
       # The timestamp stays in the name even when a title is given: two
       # dispatches of the same title on the same day would otherwise collide on
@@ -269,6 +258,176 @@ jobs:
           else
             echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+
+  # ── Task Planning ────────────────────────────────────────────────────
+  # Plans the next ready tracker task of the release this repository's
+  # master is building. It runs beside the free-form Project Manager round
+  # above, not instead of it: that round decides for itself what the
+  # repository needs next, while this one works through the tasks a person
+  # has already approved in the release's goal documents in the tracker.
+  #
+  # The round is gated three ways, in order: no task-planning round already
+  # in progress (the shared cadence gate on project/task- branches), room in
+  # the open-PR backlog (the same MAX_OPEN_PRS as the Project Manager, since
+  # both kinds of plan compete for one reviewer), and a claimable task in
+  # the release (GET /api/tracker/claimable on the controller, which CI can
+  # reach and the tracker cannot be reached from). With no claimable task
+  # nothing is created: no branch, no workstream, no agent job. `force`
+  # bypasses the first two gates but never the third, since without a task
+  # there is nothing to plan.
+  #
+  # The workstream is registered with the tracker "planner" role, which is
+  # what lets its agent call tracker_claim_next_task. The agent claims the
+  # task itself, so a claim is atomic even if a later change lets several
+  # rounds run at once. Unlike the Project Manager it never writes
+  # docs/plans/MANAGER_LOG.md.
+  plan-release-task:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'task-planning'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: task-planning
+      cancel-in-progress: false
+
+    env:
+      # The tracker project this repository's tasks belong to; the release is
+      # "<project> <root pom.xml version>".
+      TRACKER_PROJECT: "Common"
+      # Kept equal to the Project Manager's; see the note on that job.
+      MAX_OPEN_PRS: "6"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The release is the one master is building: the root pom.xml version.
+      # A task filed against a later release waits until master's version
+      # reaches it.
+      - name: Resolve the release
+        id: release
+        run: |
+          VERSION=$(python3 -c "import xml.etree.ElementTree as ET; ns={'m': 'http://maven.apache.org/POM/4.0.0'}; print(ET.parse('pom.xml').getroot().find('m:version', ns).text.strip())")
+          echo "release=${TRACKER_PROJECT} ${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Planning tasks of release '${TRACKER_PROJECT} ${VERSION}'"
+
+      # BRANCH_PREFIX is set on this step rather than the job so the QA-job
+      # checks in tools/tests/test_master_agent_dispatch.py do not claim it.
+      - name: Check for a task-planning round in progress
+        id: decide
+        env:
+          BRANCH_PREFIX: "project/task-"
+          MIN_INTERVAL_DAYS: "0"
+          PR_GRACE_HOURS: "24"
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      - name: Check the open PR backlog
+        id: backlog
+        if: steps.decide.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          chmod +x ./tools/ci/open-pr-backlog.sh
+          ./tools/ci/open-pr-backlog.sh
+
+      - name: Check for a claimable task
+        id: claimable
+        if: steps.backlog.outputs.needs_new_branch == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+        run: |
+          chmod +x ./tools/ci/tracker-claimable.sh
+          ./tools/ci/tracker-claimable.sh
+
+      - name: Create task-planning branch
+        if: steps.claimable.outputs.run == 'true'
+        id: new_branch
+        run: |
+          BRANCH_NAME="project/task-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.claimable.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          TRACKER_CAPABILITIES: "planner"
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build task-planning prompt
+        if: steps.claimable.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+        run: |
+          ./tools/ci/prompts/build-task-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit task-planning agent job
+        if: steps.claimable.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Plan the next release task"
+          AUTO_CREATE_PR: "true"
+          PROTECT_TEST_FILES: "false"
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASE: ${{ steps.release.outputs.release }}
+          DECIDE: ${{ steps.decide.outputs.reason }}
+          OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
+          CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+        run: |
+          {
+            echo "## Task Planning"
+            echo ""
+            echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Round in progress check:** ${DECIDE:-not run}"
+            echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
+            echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
+            echo ""
+            if [ -n "$BRANCH" ]; then
+              echo "Created \`$BRANCH\` and submitted an agent job to claim and plan the next task."
+            else
+              echo "No task-planning round started."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Quality Assurance — Documentation ────────────────────────────────
   # Submits a FlowTree coding-agent job that reviews the documentation for
