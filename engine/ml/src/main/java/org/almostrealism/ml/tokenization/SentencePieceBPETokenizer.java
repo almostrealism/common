@@ -222,6 +222,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			if (vocabMap.containsKey(character)) {
 				symbols.add(character);
 			} else {
+				// TODO(review): a missing <0xNN> token with unkToken == -1 makes encode() emit id -1; validate or reject at load.
 				for (byte value : character.getBytes(StandardCharsets.UTF_8)) {
 					symbols.add(byteToken(value));
 				}

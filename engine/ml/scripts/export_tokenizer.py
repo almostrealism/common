@@ -105,6 +105,24 @@ def validate_pipeline(spec):
             "model.byte_fallback, so the Java reader's <0xNN> handling of characters outside the "
             "vocabulary would not match the source tokenizer")
 
+    # The Java reader applies every merge deterministically, in priority order, to the per-character
+    # symbols of the whole text, and does nothing else. BPE-dropout skips merges at random, and
+    # ignore_merges looks a whole word up in the vocabulary before merging; a continuing-subword
+    # prefix or end-of-word suffix decorates the symbols. Each changes the ids the source produces.
+    if model.get("dropout"):
+        raise ValueError(
+            "unsupported BPE dropout %r; the Java reader applies every merge deterministically"
+            % model.get("dropout"))
+    if model.get("ignore_merges"):
+        raise ValueError(
+            "unsupported BPE ignore_merges; the Java reader always applies the merges rather than "
+            "first matching a whole segment against the vocabulary")
+    for option in ("continuing_subword_prefix", "end_of_word_suffix"):
+        if model.get(option):
+            raise ValueError(
+                "unsupported BPE %s %r; the Java reader does not decorate symbols"
+                % (option, model.get(option)))
+
     saw_boundary_replace = False
     for component in _flatten(spec.get("normalizer"), "normalizers"):
         kind = component.get("type")
@@ -126,8 +144,11 @@ def validate_pipeline(spec):
         kind = component.get("type")
         # After the normalizer has turned every space into the boundary marker, a Split on a
         # literal space matches nothing and is a no-op, which is the only pre-tokenization the
-        # whole-text Java reader reproduces. A ByteLevel or Metaspace pre-tokenizer is not.
-        if kind == "Split" and _pattern_string(component) == " ":
+        # whole-text Java reader reproduces. An inverted Split is not a no-op: with no match, the
+        # whole text becomes the "match" and the configured behavior applies to it (Removed drops
+        # it). A ByteLevel or Metaspace pre-tokenizer is not reproduced either.
+        if kind == "Split" and _pattern_string(component) == " " \
+                and not component.get("invert"):
             continue
         raise ValueError(
             "unsupported pre-tokenizer step %r; the Java reader does not split the input, so a "

@@ -83,6 +83,53 @@ def test_missing_byte_fallback_is_rejected():
         exporter.validate_pipeline(spec)
 
 
+@pytest.mark.parametrize("option, value", [
+    ("dropout", 0.1),
+    ("ignore_merges", True),
+    ("continuing_subword_prefix", "##"),
+    ("end_of_word_suffix", "</w>"),
+])
+def test_non_default_bpe_option_is_rejected(option, value):
+    # The Java reader applies every merge deterministically to undecorated symbols, so a model
+    # option that makes the source skip, bypass or decorate merges must not export.
+    spec = _supported_spec()
+    spec["model"][option] = value
+    with pytest.raises(ValueError, match=option):
+        exporter.validate_pipeline(spec)
+
+
+@pytest.mark.parametrize("option, value", [
+    ("dropout", None),
+    ("dropout", 0.0),
+    ("ignore_merges", False),
+    ("continuing_subword_prefix", None),
+    ("continuing_subword_prefix", ""),
+    ("end_of_word_suffix", None),
+    ("end_of_word_suffix", ""),
+])
+def test_default_bpe_option_is_accepted(option, value):
+    # tokenizer.json serializes the defaults explicitly as null / 0 / false / ""; those must pass.
+    spec = _supported_spec()
+    spec["model"][option] = value
+    exporter.validate_pipeline(spec)
+
+
+def test_inverted_split_pre_tokenizer_is_rejected():
+    # An inverted Split on a space is not a no-op once no space remains: the whole text becomes the
+    # match and the behavior (e.g. Removed) applies to it.
+    spec = _supported_spec()
+    spec["pre_tokenizer"]["invert"] = True
+    spec["pre_tokenizer"]["behavior"] = "Removed"
+    with pytest.raises(ValueError, match="pre-tokenizer"):
+        exporter.validate_pipeline(spec)
+
+
+def test_non_inverted_split_pre_tokenizer_is_accepted():
+    spec = _supported_spec()
+    spec["pre_tokenizer"]["invert"] = False
+    exporter.validate_pipeline(spec)
+
+
 def test_byte_level_pre_tokenizer_is_rejected():
     # A byte-level BPE (GPT-2/Qwen family) remaps bytes to printable characters; the Java reader
     # does not, so accepting it would silently produce different ids.
