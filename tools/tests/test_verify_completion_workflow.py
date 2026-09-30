@@ -171,6 +171,34 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         self.assertIn("needs.register-workstream.result == 'skipped'", condition)
         self.assertNotIn("!= 'failure'", condition)
 
+    def test_registration_runs_on_every_dispatch(self):
+        """The plan's workstream settings are applied during registration, so
+        registration cannot be limited to a newly added plan document: a
+        dispatch naming an existing plan file would otherwise skip it and
+        implement on whatever machine the workstream last targeted."""
+        self.assertNotIn("if", self.jobs["register-workstream"])
+
+    def test_the_plan_settings_are_read_as_data_by_trusted_code(self):
+        """The settings file comes from the dispatched branch, and the job that
+        applies it holds the controller token. So the branch's files are
+        fetched with `git archive`, never checked out, and are read by the
+        default branch's resolver; the only checkout in the job is the trusted
+        one."""
+        steps = self.jobs["register-workstream"]["steps"]
+        checkouts = [s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")]
+        self.assertEqual(1, len(checkouts))
+        self.assertIn(_TRUSTED_REF, str(checkouts[0].get("with", {}).get("ref", "")))
+
+        resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
+        self.assertIn("git archive FETCH_HEAD docs/plans", resolve["run"])
+        self.assertIn("./tools/ci/plan_workstream_config.py", resolve["run"])
+        self.assertNotIn("CF_ACCESS_CLIENT_SECRET", resolve.get("env", {}))
+
+        register = next(s for s in steps if "register-workstream.sh" in s.get("run", ""))
+        self.assertIn("steps.plan_settings.outputs.required_labels",
+                      register["env"]["REQUIRED_LABELS_JSON"])
+        self.assertLess(steps.index(resolve), steps.index(register))
+
     def test_the_operator_documentation_describes_every_job(self):
         """ci-integration.md is where an operator learns what this workflow
         does. It once kept describing a three-job pipeline that submitted

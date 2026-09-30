@@ -339,6 +339,33 @@ class MasterAgentDispatchTests(unittest.TestCase):
         prompt = next(s for s in steps if "build-task-planning-prompt.sh" in s.get("run", ""))
         self.assertIn("steps.release.outputs.release", prompt["env"]["TRACKER_RELEASE"])
 
+    def test_planning_rounds_retire_their_previous_workstreams(self):
+        """Each planning round registers a workstream, and a finished round's
+        workstream otherwise stays live forever; for the free-form round every
+        one of them also edits the Manager Log. Each job archives its own
+        prefix only, only once the gate has found no round of that prefix in
+        progress, never on a forced run (which skips that check and could
+        archive a plan still being implemented), and before it creates the
+        next round's branch."""
+        for name, prefix in (("plan-next-task", "project/plan-"),
+                             ("plan-release-task", "project/task-")):
+            steps = self.jobs[name]["steps"]
+            with self.subTest(job=name):
+                gate = next(i for i, s in enumerate(steps)
+                            if "qa-cadence.sh" in s.get("run", ""))
+                archive = next(i for i, s in enumerate(steps)
+                               if "archive-stale-workstreams.sh" in s.get("run", ""))
+                branch = next(i for i, s in enumerate(steps)
+                              if "git checkout -b" in s.get("run", ""))
+                self.assertLess(gate, archive)
+                self.assertLess(archive, branch)
+                self.assertEqual(prefix, steps[gate]["env"]["BRANCH_PREFIX"])
+                self.assertEqual(prefix, steps[archive]["env"]["BRANCH_PREFIX"])
+                condition = steps[archive]["if"]
+                self.assertIn("steps.decide.outputs.run == 'true'", condition)
+                self.assertIn("steps.decide.outputs.reason != 'forced'", condition)
+                self.assertIn("github.repository", steps[archive]["env"]["REPO_URL"])
+
     def test_both_planning_rounds_share_one_backlog_limit(self):
         """Free-form plans and task plans compete for the same reviewer, so
         both rounds apply the same open-PR limit through the same script."""
