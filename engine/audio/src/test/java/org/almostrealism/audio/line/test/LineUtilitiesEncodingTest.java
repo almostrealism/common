@@ -158,4 +158,58 @@ public class LineUtilitiesEncodingTest extends TestSuiteBase {
 
 		assertArrayEquals(fromBytes, fromFrame);
 	}
+
+	/**
+	 * Signed 32-bit PCM scales by {@code (1 << 31) - 1} and writes each sample as a
+	 * four-byte integer in the format's byte order, truncating toward zero.
+	 */
+	@Test(timeout = 30000)
+	public void toBytesEncodesSigned32BitBigEndian() {
+		byte[] bytes = LineUtilities.toBytes(new double[][] {{1.0, -0.5}}, signed(32, 1, true));
+		ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN);
+
+		assertEquals(Integer.MAX_VALUE, buf.getInt(0));
+		assertEquals(-1073741823, buf.getInt(4));
+		assertArrayEquals(new byte[] {(byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
+				(byte) 0xC0, (byte) 0x00, (byte) 0x00, (byte) 0x01}, bytes);
+	}
+
+	/**
+	 * The collection-based {@link LineUtilities#toFrame(PackedCollection, AudioFormat)}
+	 * path writes 24-bit samples high-byte first for a big-endian format.
+	 */
+	@Test(timeout = 30000)
+	public void toFrameEncodes24BitBigEndian() {
+		byte[] bytes;
+		try (PackedCollection samples = new PackedCollection(2)) {
+			samples.fill(1.0, -1.0);
+			bytes = LineUtilities.toFrame(samples, signed(24, 1, true));
+		}
+
+		assertArrayEquals(new byte[] {(byte) 0x7F, (byte) 0xFF, (byte) 0xFF,
+				(byte) 0x80, (byte) 0x00, (byte) 0x01}, bytes);
+	}
+
+	/**
+	 * An encoding other than signed or unsigned PCM is rejected rather than
+	 * silently encoded with the wrong scale.
+	 */
+	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
+	public void toBytesRejectsFloatEncoding() {
+		AudioFormat format = new AudioFormat(AudioFormat.Encoding.PCM_FLOAT, 44100f, 32,
+				1, 4, 44100f, false);
+		LineUtilities.toBytes(new double[][] {{0.5}}, format);
+	}
+
+	/**
+	 * A sample width outside one to four bytes is rejected by the shared
+	 * per-sample writer in the collection-based path as well.
+	 */
+	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
+	public void toFrameRejectsFiveByteSamples() {
+		try (PackedCollection samples = new PackedCollection(1)) {
+			samples.fill(0.5);
+			LineUtilities.toFrame(samples, signed(40, 1, false));
+		}
+	}
 }
