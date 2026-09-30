@@ -17,11 +17,13 @@
 package org.almostrealism.ml.tokenization;
 
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Verifies {@link SentencePieceBPETokenizer} against the token ids the reference
@@ -52,6 +54,87 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	private static final long[] EXPECTED = {
 			235250, 8056, 16335, 72896, 7174, 675, 6080, 7194, 123832
 	};
+
+	/**
+	 * Merges are applied in priority order, and a word boundary participates in them: the two
+	 * single characters merge first, then the result merges with the boundary before it. Decoding
+	 * restores the text, spaces included.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void mergesApplyInPriorityOrder() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizer();
+
+		long[] encoded = tokenizer.encodeAsLong(SentencePieceTokenizerFixture.PROMPT);
+
+		log("fixture encoded " + Arrays.toString(encoded));
+		assertEquals(SentencePieceTokenizerFixture.EXPECTED.length, encoded.length);
+
+		for (int i = 0; i < encoded.length; i++) {
+			assertEquals("token " + i, SentencePieceTokenizerFixture.EXPECTED[i], encoded[i]);
+		}
+
+		assertEquals(SentencePieceTokenizerFixture.PROMPT, tokenizer.decodeAsLong(encoded));
+	}
+
+	/**
+	 * A character the vocabulary does not contain becomes one token per UTF-8 byte, and decoding
+	 * folds those tokens back into the character.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void unknownCharacterBecomesByteTokens() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizer();
+
+		long[] encoded = tokenizer.encodeAsLong(SentencePieceTokenizerFixture.UNKNOWN);
+		List<Integer> expected = fixture.unknownBytes();
+
+		assertEquals(expected.size(), encoded.length);
+		for (int i = 0; i < encoded.length; i++) {
+			assertEquals("byte token " + i, (long) expected.get(i), encoded[i]);
+		}
+
+		assertEquals(SentencePieceTokenizerFixture.UNKNOWN, tokenizer.decodeAsLong(encoded));
+	}
+
+	/**
+	 * A file that is not an exported tokenizer is rejected rather than read as one.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void fileThatIsNotATokenizerIsRejected() throws IOException {
+		File wrong = new SentencePieceTokenizerFixture().writeWithHeader(0x00000000, 1);
+
+		try {
+			new SentencePieceBPETokenizer(wrong.getPath());
+			Assert.fail("a file without the tokenizer magic was read as a tokenizer");
+		} catch (IOException expected) {
+			assertTrue(expected.getMessage().contains("not an exported tokenizer"));
+		}
+	}
+
+	/**
+	 * A tokenizer written by a later version of the exporter is rejected, naming the version, rather
+	 * than being misread field by field.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void unsupportedVersionIsRejected() throws IOException {
+		File future = new SentencePieceTokenizerFixture().writeWithHeader(0x4152544B, 2);
+
+		try {
+			new SentencePieceBPETokenizer(future.getPath());
+			Assert.fail("a tokenizer of an unsupported version was read");
+		} catch (IOException expected) {
+			assertTrue(expected.getMessage().contains("version 2"));
+		}
+	}
 
 	/**
 	 * The first existing candidate tokenizer, or {@code null} when none is present.
