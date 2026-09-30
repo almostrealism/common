@@ -140,6 +140,19 @@ class ParsingTests(_PlansDirTest):
         self.assertEqual({"requiredLabels": {"platform": "macos", "gpu": "metal"}},
                          self.parse("requiredLabels:\n  platform: macos\n  gpu: metal\n"))
 
+    def test_a_symlinked_settings_file_is_refused(self):
+        # The plans directory is unpacked from the branch's own commit, so a
+        # branch could name a symlink `<prefix>-workstream.yaml` pointing at a
+        # file outside the tree; following it would leak that file's contents
+        # through the parser's diagnostics. A symlink must be refused, not read.
+        secret = os.path.join(self.plans, "secret.txt")
+        with open(secret, "w") as f:
+            f.write("requiredLabels:\n  platform: macos\n")
+        link = os.path.join(self.plans, "plan-1-workstream.yaml")
+        os.symlink(secret, link)
+        with self.assertRaisesRegex(config.InvalidConfig, "symbolic link"):
+            config.parse(link)
+
 
 class CommandLineTests(_PlansDirTest):
 

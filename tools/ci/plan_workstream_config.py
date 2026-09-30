@@ -109,9 +109,19 @@ def parse(path):
         The settings it declares, keyed as in ``ALLOWED_KEYS``.
 
     Raises:
-        InvalidConfig: when the file is not valid YAML, repeats a key, is not
-            a mapping, or declares a key or value this script does not accept.
+        InvalidConfig: when the file is not a regular file, is not valid YAML,
+            repeats a key, is not a mapping, or declares a key or value this
+            script does not accept.
     """
+    # The plans directory is unpacked from the branch's own commit (git archive
+    # preserves symlinks), so a branch could name a symlink `<prefix>-workstream.yaml`
+    # pointing outside the tree. Opening it would follow the link and let parser
+    # diagnostics echo the target's contents into the workflow log. Read only a
+    # regular file, keeping the data-only trust boundary this resolver relies on.
+    if os.path.islink(path):
+        raise InvalidConfig(f"{path} is a symbolic link; plan settings must be a regular file")
+    if not os.path.isfile(path):
+        raise InvalidConfig(f"{path} is not a regular file")
     try:
         with open(path) as f:
             data = yaml.load(f, Loader=_UniqueKeyLoader)
