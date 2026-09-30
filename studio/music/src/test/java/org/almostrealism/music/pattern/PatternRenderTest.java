@@ -282,6 +282,8 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 * More coincident notes than the largest batch bucket holds are split across
 	 * several dispatches rather than overrunning the bucket: every note is
 	 * rendered, so the result is the single-hit render scaled by the note count.
+	 * Because each chunk is a separate kernel dispatch, the oversized render also
+	 * records more dispatches than the single-hit render of the same arrangement.
 	 */
 	@Test(timeout = 600000)
 	@TestDepth(2)
@@ -291,12 +293,19 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 
 		try {
 			int hits = BatchedPatternLayerRenderer.maxBucket() + 88;
+
+			BatchedPatternLayerRenderer.resetCounters();
 			double[] single = renderAtOnce(system());
+			long singleDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+			Assert.assertTrue("the single-hit render must dispatch", singleDispatches > 0);
 
 			BatchedPatternLayerRenderer.resetCounters();
 			double[] many = renderAtOnce(system(hits));
-			Assert.assertTrue("the batched renderer must dispatch",
-					BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0);
+			long manyDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+			Assert.assertTrue("the batched renderer must dispatch", manyDispatches > 0);
+			Assert.assertTrue("an oversized batch records multiple dispatches", manyDispatches >= 2);
+			Assert.assertTrue("chunking the oversized batch adds dispatches",
+					manyDispatches > singleDispatches);
 			Assert.assertEquals("no note falls back to the per-note path",
 					0, BatchedPatternLayerRenderer.fallbackCount.get());
 

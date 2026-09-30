@@ -77,6 +77,15 @@ public class RenderedNoteAudio {
 	private BatchedNoteInputs batchedInputs;
 
 	/**
+	 * Stable identity distinguishing this note from other notes that begin at the
+	 * same {@link #offset}. Used by {@link NoteAudioCache} so coincident notes
+	 * (chords, layered voices) do not share a cache entry. Must be equal across
+	 * buffer ticks for the same note and distinct between coincident notes; may be
+	 * {@code null}, in which case the offset alone identifies the cache entry.
+	 */
+	private Object cacheIdentity;
+
+	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
 	 *
 	 * <p>The {@code expectedFrameCount} enables overlap checks before the expensive
@@ -189,5 +198,25 @@ public class RenderedNoteAudio {
 	 */
 	public void setBatchedInputs(BatchedNoteInputs batchedInputs) {
 		this.batchedInputs = batchedInputs;
+	}
+
+	/**
+	 * Returns the stable per-note identity used to key this note in a
+	 * {@link NoteAudioCache}, or {@code null} if none was set.
+	 *
+	 * @return the cache identity, or {@code null}
+	 */
+	public Object getCacheIdentity() {
+		return cacheIdentity;
+	}
+
+	/**
+	 * Sets the stable per-note identity used to distinguish coincident notes in a
+	 * {@link NoteAudioCache}.
+	 *
+	 * @param cacheIdentity the cache identity, or {@code null}
+	 */
+	public void setCacheIdentity(Object cacheIdentity) {
+		this.cacheIdentity = cacheIdentity;
 	}
 }

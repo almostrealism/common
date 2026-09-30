@@ -142,6 +142,44 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Coincident chord tones share a frame offset but must carry distinct cache
+	 * identities, so the note-audio cache does not conflate them during buffered
+	 * per-note rendering.
+	 */
+	@Test(timeout = 120000)
+	public void coincidentChordTonesHaveDistinctCacheIdentities() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+
+			List<RenderedNoteAudio> destinations = element.getNoteDestinations(
+					true, 0.0, context(scale), audioContext(element.getNote(ChannelInfo.Voicing.MAIN)));
+
+			Assert.assertEquals(3, destinations.size());
+
+			int offset = destinations.get(0).getOffset();
+			for (RenderedNoteAudio note : destinations) {
+				Assert.assertEquals("chord tones are coincident", offset, note.getOffset());
+				Assert.assertNotNull("each chord tone carries a cache identity", note.getCacheIdentity());
+			}
+
+			Assert.assertNotEquals(destinations.get(0).getCacheIdentity(),
+					destinations.get(1).getCacheIdentity());
+			Assert.assertNotEquals(destinations.get(0).getCacheIdentity(),
+					destinations.get(2).getCacheIdentity());
+			Assert.assertNotEquals(destinations.get(1).getCacheIdentity(),
+					destinations.get(2).getCacheIdentity());
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
 	 * A sequence step whose scale position is exactly {@code 1.0} must select the
 	 * final key of the scale rather than an index one past the end.
 	 */

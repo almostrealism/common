@@ -34,6 +34,7 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		Assert.assertEquals(512, note.getExpectedFrameCount());
 		Assert.assertNull(note.getOffsetArg());
 		Assert.assertNull(note.getBatchedInputs());
+		Assert.assertNull("cache identity defaults to null", note.getCacheIdentity());
 
 		try {
 			note.getProducer(64);
@@ -57,5 +58,9 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		Assert.assertEquals(256, note.getOffset());
 		Assert.assertEquals(32, note.getExpectedFrameCount());
 		Assert.assertSame(audio, note.getOffsetArg());
+
+		Object identity = new Object();
+		note.setCacheIdentity(identity);
+		Assert.assertSame(identity, note.getCacheIdentity());
 	}
 }

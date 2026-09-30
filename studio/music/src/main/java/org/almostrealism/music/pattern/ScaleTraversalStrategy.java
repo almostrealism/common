@@ -317,6 +317,12 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	/**
 	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing details.
 	 *
+	 * <p>The note's cache identity is {@code (element, details)}: the element is
+	 * compared by instance (stable across buffer ticks) and the voicing details by
+	 * value (voicing, target pitch, position), so coincident chord tones sharing a
+	 * frame offset stay distinct while the same note stays equal across ticks. This
+	 * keeps {@link NoteAudioCache} from conflating them.</p>
+	 *
 	 * @param element         the pattern element
 	 * @param details         the voicing details for this note
 	 * @param automationLevel the automation level factor
@@ -337,6 +343,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				context.getTimeForDuration());
 		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
 		RenderedNoteAudio note = new RenderedNoteAudio(frameOffset, expectedFrameCount);
+		note.setCacheIdentity(List.of(element, details));
 		PackedCollection offsetArg = new PackedCollection(1);
 		note.setOffsetArg(offsetArg);
 		note.setProducerFactory((frameCount) ->

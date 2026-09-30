@@ -278,7 +278,8 @@ public interface PatternFeatures extends CodeFeatures {
 					}
 
 					// Check cache first (fastest path for real-time rendering)
-					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
+					PackedCollection audio = (cache != null)
+							? cache.get(noteStart, note.getCacheIdentity()) : null;
 
 					if (audio != null) {
 						// Cache hit: sum cached audio to destination
@@ -314,7 +315,7 @@ public interface PatternFeatures extends CodeFeatures {
 									// of a double free between the cache and the Heap stage.
 									fullResult[0] = new PackedCollection(evaluated.getShape());
 									fullResult[0].setFrom(0, evaluated);
-									cache.put(noteStart, fullResult[0]);
+									cache.put(noteStart, note.getCacheIdentity(), fullResult[0]);
 									sumToDestination(destination, fullResult[0], noteStart,
 											startFrame, endFrame, frameCount);
 								}

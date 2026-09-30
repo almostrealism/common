@@ -40,20 +40,41 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 		return new PackedCollection(shape(frames).traverseEach());
 	}
 
-	/** Entries are keyed by note start frame. */
+	/** Entries are keyed by note start frame together with the note identity. */
 	@Test(timeout = 10000)
 	public void entriesAreKeyedByOffset() {
 		NoteAudioCache cache = new NoteAudioCache();
 		PackedCollection a = audio(16);
 		PackedCollection b = audio(16);
 
-		cache.put(0, a);
-		cache.put(100, b);
+		cache.put(0, null, a);
+		cache.put(100, null, b);
 
 		Assert.assertEquals(2, cache.size());
-		Assert.assertSame(a, cache.get(0));
-		Assert.assertSame(b, cache.get(100));
-		Assert.assertNull(cache.get(50));
+		Assert.assertSame(a, cache.get(0, null));
+		Assert.assertSame(b, cache.get(100, null));
+		Assert.assertNull(cache.get(50, null));
+	}
+
+	/**
+	 * Coincident notes that share a start frame but carry distinct identities keep
+	 * separate entries; a get with one identity never returns the other's audio.
+	 */
+	@Test(timeout = 10000)
+	public void coincidentNotesKeepDistinctEntries() {
+		NoteAudioCache cache = new NoteAudioCache();
+		PackedCollection lower = audio(16);
+		PackedCollection upper = audio(16);
+
+		cache.put(0, "lower", lower);
+		cache.put(0, "upper", upper);
+
+		Assert.assertEquals(2, cache.size());
+		Assert.assertSame(lower, cache.get(0, "lower"));
+		Assert.assertSame(upper, cache.get(0, "upper"));
+		Assert.assertFalse("the first coincident note must not be displaced", lower.isDestroyed());
+		Assert.assertFalse(upper.isDestroyed());
+		Assert.assertNull("an unknown identity at the same offset misses", cache.get(0, "other"));
 	}
 
 	/** Replacing an entry releases the displaced audio but not a re-inserted identical entry. */
@@ -63,14 +84,14 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 		PackedCollection first = audio(16);
 		PackedCollection second = audio(16);
 
-		cache.put(10, first);
-		cache.put(10, first);
+		cache.put(10, null, first);
+		cache.put(10, null, first);
 		Assert.assertFalse("re-inserting the same audio must not release it", first.isDestroyed());
 
-		cache.put(10, second);
+		cache.put(10, null, second);
 		Assert.assertTrue(first.isDestroyed());
 		Assert.assertFalse(second.isDestroyed());
-		Assert.assertSame(second, cache.get(10));
+		Assert.assertSame(second, cache.get(10, null));
 		Assert.assertEquals(1, cache.size());
 	}
 
@@ -86,21 +107,21 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 		PackedCollection endsAt101 = audio(61);
 		PackedCollection later = audio(10);
 
-		cache.put(0, early);
-		cache.put(40, endsAt101);
-		cache.put(1040, later);
+		cache.put(0, null, early);
+		cache.put(40, null, endsAt101);
+		cache.put(1040, null, later);
 
 		cache.evictBefore(100);
 		Assert.assertEquals(2, cache.size());
-		Assert.assertNull(cache.get(0));
+		Assert.assertNull(cache.get(0, null));
 		Assert.assertTrue(early.isDestroyed());
-		Assert.assertSame("a note still sounding at the start frame is kept", endsAt101, cache.get(40));
+		Assert.assertSame("a note still sounding at the start frame is kept", endsAt101, cache.get(40, null));
 		Assert.assertFalse(endsAt101.isDestroyed());
 
 		cache.evictBefore(101);
 		Assert.assertEquals(1, cache.size());
 		Assert.assertTrue("a note ending exactly at the start frame is evicted", endsAt101.isDestroyed());
-		Assert.assertSame(later, cache.get(1040));
+		Assert.assertSame(later, cache.get(1040, null));
 		Assert.assertFalse(later.isDestroyed());
 	}
 
@@ -110,14 +131,14 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 		NoteAudioCache cache = new NoteAudioCache();
 		PackedCollection a = audio(8);
 		PackedCollection b = audio(8);
-		cache.put(1, a);
-		cache.put(2, b);
+		cache.put(1, null, a);
+		cache.put(2, null, b);
 
 		cache.clear();
 
 		Assert.assertEquals(0, cache.size());
 		Assert.assertTrue(a.isDestroyed());
 		Assert.assertTrue(b.isDestroyed());
-		Assert.assertNull(cache.get(1));
+		Assert.assertNull(cache.get(1, null));
 	}
 }

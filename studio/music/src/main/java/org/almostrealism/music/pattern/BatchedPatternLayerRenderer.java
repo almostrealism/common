@@ -345,7 +345,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 		if (!batchNow.isEmpty()) {
 			dispatchBatched(batchNow, startFrame, frameCount, destination);
-			batchedDispatchCount.incrementAndGet();
 		}
 		if (!perNote.isEmpty()) {
 			fallbackCount.incrementAndGet();
@@ -400,6 +399,12 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * fused melodic-SSS kernel sized to this window, and accumulates the placed,
 	 * summed output into {@code destination} starting at {@code destBaseOffset}.
 	 *
+	 * <p>Each invocation runs exactly one fused kernel and is therefore one
+	 * batched dispatch, so {@link #batchedDispatchCount} is incremented here.
+	 * A single {@link #dispatchBatched} call can drive several invocations — one
+	 * per sub-window, and one per chunk when a sub-window exceeds
+	 * {@link #maxBucket()} notes — and each is counted independently.</p>
+	 *
 	 * @param notes         the notes overlapping this sub-window (size {@code >= 1})
 	 * @param windowStart   the sub-window's absolute start frame
 	 * @param windowWidth   the sub-window's frame count (per-note row length)
@@ -408,6 +413,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 */
 	private void dispatchWindow(List<RenderedNoteAudio> notes, int windowStart,
 								int windowWidth, PackedCollection destination, int destBaseOffset) {
+		batchedDispatchCount.incrementAndGet();
+
 		// A channel is homogeneous (all melodic OR all percussion), so the first note's
 		// kind classifies the whole window; percussion takes the strict-subset path.
 		if (!notes.get(0).getBatchedInputs().isMelodic()) {
