@@ -66,6 +66,21 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	/** The format version this reader understands. */
 	private static final int VERSION = 1;
 
+	/**
+	 * The largest vocabulary or merge count an exported tokenizer may declare. A serialized count
+	 * beyond this is treated as a corrupt file rather than allocated, since every entry consumes at
+	 * least four bytes on disk and the largest tokenizers this reader targets have a few hundred
+	 * thousand entries.
+	 */
+	private static final int MAX_ENTRIES = 1 << 24;
+
+	/**
+	 * The largest length, in bytes, a single serialized string may declare. Vocabulary tokens are
+	 * short even when they are runs of newlines or boundary markers; a length beyond this is treated
+	 * as a corrupt file rather than allocated.
+	 */
+	private static final int MAX_STRING_BYTES = 1 << 20;
+
 	/** Merge pair ("left right") to its priority, lower being applied first. */
 	private final Map<String, Integer> mergePriority;
 
@@ -122,7 +137,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	 * @throws IOException if the stream ends early
 	 */
 	protected void readVocabulary(DataInputStream in) throws IOException {
-		int size = in.readInt();
+		int size = readCount("vocabulary size", in, MAX_ENTRIES);
 
 		this.vocab = new String[size];
 		this.vocabMap = new HashMap<>(size);
@@ -140,7 +155,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	 * @throws IOException if the stream ends early
 	 */
 	protected void readMerges(DataInputStream in) throws IOException {
-		int count = in.readInt();
+		int count = readCount("merge count", in, MAX_ENTRIES);
 
 		for (int i = 0; i < count; i++) {
 			String left = readString(in);
@@ -160,9 +175,31 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	 * @throws IOException if the stream ends early
 	 */
 	protected String readString(DataInputStream in) throws IOException {
-		byte[] bytes = new byte[in.readInt()];
+		byte[] bytes = new byte[readCount("string length", in, MAX_STRING_BYTES)];
 		in.readFully(bytes);
 		return new String(bytes, StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Reads one non-negative count or length and checks it against a format-appropriate bound before
+	 * it is used to size an allocation. A file with the correct magic but a corrupt body can declare
+	 * a negative or enormous count; rejecting it here yields a controlled {@link IOException} rather
+	 * than a {@link NegativeArraySizeException} or {@link OutOfMemoryError}.
+	 *
+	 * @param description what the count measures, for the error message
+	 * @param in          the stream positioned at the count
+	 * @param limit       the largest value the format allows
+	 * @return the count
+	 * @throws IOException if the value is negative or exceeds {@code limit}
+	 */
+	protected static int readCount(String description, DataInputStream in, int limit)
+			throws IOException {
+		int value = in.readInt();
+		if (value < 0 || value > limit) {
+			throw new IOException("Invalid " + description + " " + value
+					+ " in exported tokenizer; expected 0.." + limit);
+		}
+		return value;
 	}
 
 	/**

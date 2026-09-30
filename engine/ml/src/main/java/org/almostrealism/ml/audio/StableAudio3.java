@@ -333,7 +333,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param scale          the guidance scale; must be finite
 	 * @param negativePrompt the negative prompt; empty or {@code null} for the unconditional prompt
 	 * @return this generator
-	 * @throws IllegalStateException if no tokenizer has been supplied
+	 * @throws IllegalStateException if {@code negativePrompt} is non-null and no tokenizer has been
+	 *                               supplied; a {@code null} prompt selects the unconditional prompt
+	 *                               without needing one
 	 */
 	public StableAudio3 setTextGuidance(double scale, String negativePrompt) {
 		return setGuidance(scale, encodePrompt(negativePrompt));
@@ -394,7 +396,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @param prompt  the prompt
 	 * @param seconds the duration in seconds, at most the duration this instance was built for
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
-	 * @throws IllegalStateException if no tokenizer has been supplied
+	 * @throws IllegalStateException if {@code prompt} is non-null and no tokenizer has been supplied;
+	 *                               a {@code null} prompt selects the unconditional prompt without
+	 *                               needing one
 	 */
 	public CollectionProducer generateFromText(long seed, String prompt, double seconds) {
 		return generate(seed, encodePrompt(prompt), seconds);

@@ -189,6 +189,31 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A corrupt serialized count -- a file with the correct magic but a negative or implausibly large
+	 * vocabulary size -- is rejected with a controlled {@link IOException} rather than allocating a
+	 * negative array or an enormous one. {@code -1} exercises the lower bound and
+	 * {@link Integer#MAX_VALUE} the upper bound.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void corruptVocabularyCountIsRejected() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+
+		for (int count : new int[] {-1, Integer.MAX_VALUE}) {
+			File corrupt = fixture.writeWithVocabCount(count);
+
+			try {
+				new SentencePieceBPETokenizer(corrupt.getPath());
+				Assert.fail("a corrupt vocabulary count " + count + " was read as a tokenizer");
+			} catch (IOException expected) {
+				assertTrue("message names the field: " + expected.getMessage(),
+						expected.getMessage().contains("vocabulary size"));
+			}
+		}
+	}
+
+	/**
 	 * The first existing candidate tokenizer, or {@code null} when none is present.
 	 *
 	 * @return the exported tokenizer, or {@code null}

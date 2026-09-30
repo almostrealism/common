@@ -145,6 +145,24 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A {@code null} text prompt selects the unconditional prompt and is not tokenized, so
+	 * {@link StableAudio3#setTextGuidance(double, String)} accepts it on a model that was never given
+	 * a tokenizer -- the contrast with {@link #textWithoutATokenizerIsRejected()}, where a non-null
+	 * prompt on the same tokenizer-less model is refused. This pins the documented contract that the
+	 * null branch is taken before the tokenizer is consulted.
+	 */
+	@Test(timeout = 240000)
+	public void nullPromptNeedsNoTokenizer() {
+		StableAudio3 model = smallModel().setVerbose(false);
+
+		try {
+			Assert.assertSame(model, model.setTextGuidance(3.0, null));
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * {@link StableAudio3#validFrames(double)} covers the frames of the combined duration and
 	 * headroom sample count, not the sum of each truncated to samples separately: at 33Hz the
 	 * headroom spans 3.3 samples and the requested duration spans 17.8, so truncating each before

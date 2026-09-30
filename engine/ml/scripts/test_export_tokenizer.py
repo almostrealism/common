@@ -279,6 +279,48 @@ def test_read_and_write_round_trip(tmp_path):
         assert (bos, eos, pad, unk) == (-1, 1, 0, 2)
 
 
+def test_special_ids_fall_back_to_config_json(tmp_path):
+    # A snapshot may carry the ids only as integer *_token_id fields in config.json, with no
+    # tokenizer_config.json. Those must be read; otherwise every id exports as -1 and changes
+    # encode(..., add_special=True) and special-token decoding.
+    vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "config.json").write_text(json.dumps({
+        "bos_token_id": 2,
+        "eos_token_id": 1,
+        "pad_token_id": 0,
+        "unk_token_id": 3,
+    }))
+
+    _, _, specials = exporter.read_tokenizer(str(tokenizer_dir))
+    assert specials == {"bos": 2, "eos": 1, "pad": 0, "unk": 3}
+
+
+def test_config_json_does_not_override_resolved_ids(tmp_path):
+    # tokenizer_config.json is the primary source; config.json fills only the ids it left
+    # unresolved, and never overrides one already resolved from the token strings.
+    vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "tokenizer_config.json").write_text(json.dumps({
+        "eos_token": "<eos>",
+        "pad_token": "<pad>",
+    }))
+    (tokenizer_dir / "config.json").write_text(json.dumps({
+        "bos_token_id": 2,
+        "eos_token_id": 999,   # ignored: tokenizer_config.json already resolved eos
+        "unk_token_id": 3,
+    }))
+
+    _, _, specials = exporter.read_tokenizer(str(tokenizer_dir))
+    assert specials == {"bos": 2, "eos": 1, "pad": 0, "unk": 3}
+
+
 def test_export_rejects_incompatible_tokenizer(tmp_path):
     # read_tokenizer must refuse an incompatible pipeline rather than write a misleading binary.
     spec = _supported_spec()

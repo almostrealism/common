@@ -183,7 +183,8 @@ def read_tokenizer(tokenizer_dir):
     vocab = model.get("vocab") or {}
     merges = model.get("merges") or []
 
-    specials = {}
+    specials = {key: -1 for key in ("bos", "eos", "pad", "unk")}
+
     config_path = os.path.join(tokenizer_dir, "tokenizer_config.json")
     if os.path.exists(config_path):
         with open(config_path) as handle:
@@ -193,10 +194,23 @@ def read_tokenizer(tokenizer_dir):
             token = config.get(name)
             if isinstance(token, dict):
                 token = token.get("content")
-            specials[key] = vocab.get(token, -1) if token is not None else -1
-    else:
-        for key in ("bos", "eos", "pad", "unk"):
-            specials[key] = -1
+            if token is not None:
+                specials[key] = vocab.get(token, -1)
+
+    # config.json is the documented fallback for any special id tokenizer_config.json did not
+    # resolve. A model config commonly names the ids directly as integer ``*_token_id`` fields
+    # rather than as token strings, so a snapshot carrying only those would otherwise export every
+    # id as -1 and change encode(..., add_special=True) and special-token decoding.
+    if any(value < 0 for value in specials.values()):
+        model_config_path = os.path.join(tokenizer_dir, "config.json")
+        if os.path.exists(model_config_path):
+            with open(model_config_path) as handle:
+                model_config = json.load(handle)
+            for key in ("bos", "eos", "pad", "unk"):
+                if specials[key] < 0:
+                    token_id = model_config.get("%s_token_id" % key)
+                    if isinstance(token_id, int) and not isinstance(token_id, bool):
+                        specials[key] = token_id
 
     return vocab, merges, specials
 

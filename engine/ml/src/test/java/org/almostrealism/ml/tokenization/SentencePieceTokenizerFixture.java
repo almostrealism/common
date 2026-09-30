@@ -156,6 +156,30 @@ public class SentencePieceTokenizerFixture {
 	}
 
 	/**
+	 * Writes a file with a valid header but the given raw vocabulary count, so a reader's rejection
+	 * of a corrupt count -- negative, which would otherwise be a {@link NegativeArraySizeException},
+	 * or implausibly large, which would otherwise be an {@link OutOfMemoryError} -- can be exercised.
+	 * Nothing follows the count, because a reader that validates it rejects the file before reading
+	 * any vocabulary entry.
+	 *
+	 * @param vocabCount the vocabulary count to declare
+	 * @return the written file
+	 * @throws IOException if the file cannot be written
+	 */
+	public File writeWithVocabCount(int vocabCount) throws IOException {
+		File file = File.createTempFile("ar-tokenizer-fixture", ".bin");
+		file.deleteOnExit();
+
+		try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
+			out.writeInt(0x4152544B);
+			out.writeInt(1);
+			out.writeInt(vocabCount);
+		}
+
+		return file;
+	}
+
+	/**
 	 * The fixture tokenizer, read from a freshly written file.
 	 *
 	 * @return the tokenizer
