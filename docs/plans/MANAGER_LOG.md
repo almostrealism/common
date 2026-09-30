@@ -85,11 +85,11 @@ normalization and a multi-row gradient test as a prerequisite of the training ru
 
 It turns "training is feasible" into "the platform trained a language model on itself," which is
 the first concrete artifact of the self-understanding goal. It puts the risky gradient checks
-(K/V slices, embedding table) first, so the plan either proceeds or stops early at a precise,
-evidenced finding. The primitives it adds (causal sequence attention, trainable embedding, byte
-tokenizer, text dataset) are general, and every later LM-training step reuses them. The bar is
-modest and falsifiable: held-out bits-per-byte below the unigram baseline, weights round-tripped
-through `StateDictionary`.
+(K/V slices, embedding table) first, so the plan either proceeds or pauses early at a precise,
+evidenced finding that goes back for a revised plan. The primitives it adds (causal sequence
+attention, trainable embedding, byte tokenizer, text dataset) are general, and every later
+LM-training step reuses them. The bar is modest and falsifiable: held-out bits-per-byte below the
+unigram baseline, weights round-tripped through `StateDictionary`.
 
 #### Balance across categories
 

@@ -518,10 +518,14 @@ matters).
 
 ## Estimated Complexity
 
-**Large**, but in stages with early exits. Steps 2–3 (gradient verification) are small and decide
-the rest. Steps 1, 4 and 5 are small to medium, self-contained primitives. Step 6 is the
-integration run. If step 2 finds a deep autodiff problem, the plan stops at a well-evidenced
-finding plus the independent primitives. That is still a complete, valuable outcome.
+**Large**, but in stages with early decision points. Steps 2–3 (gradient verification) are small
+and decide the rest. Steps 1, 4 and 5 are small to medium, self-contained primitives. Step 6 is the
+integration run. If step 2 finds a deep autodiff problem, implementation pauses at a
+well-evidenced finding plus the independent primitives. That is a useful checkpoint, but it does
+**not** complete this plan: the training-run success criteria are unmet, so no success claim is
+made. The finding goes back to the approver, who chooses between the options in "Open questions"
+(scope this plan down, or split the K/V gradient fix into its own plan first). Either choice is a
+revised plan with its own approval, not a completion of this one.
 
 ## What comes after
 
