@@ -339,15 +339,40 @@ def read_tokenizer(tokenizer_dir):
     return vocab, merges, specials, added
 
 
+def _place_token(tokens, index, content, description):
+    """Store ``content`` at ``index`` in ``tokens``, rejecting a conflicting collision.
+
+    Two vocabulary entries, or a vocabulary entry and an added token, can name the same id. When
+    they carry the same content the assignment is idempotent -- the ordinary case, since an added
+    token repeats the vocabulary string already at its id. When they differ, the binary holds only
+    one string per id, so the last write silently wins and the exported tokenizer would encode or
+    decode that id differently from the source; that conflict is rejected here rather than resolved
+    by writing order.
+
+    :param tokens: the token table being filled, indexed by id.
+    :param index: the id to store at.
+    :param content: the token string to store.
+    :param description: names the token being placed, for the error message.
+    :raises ValueError: if a different string already occupies ``index``.
+    """
+    existing = tokens[index]
+    if existing is not None and existing != content:
+        raise ValueError(
+            "conflicting content at token id %d: %r and %r; the exported vocabulary holds one "
+            "string per id, so a collision with different content cannot reproduce the source "
+            "tokenizer (%s)" % (index, existing, content, description))
+    tokens[index] = content
+
+
 def write_tokenizer(path, vocab, merges, specials, added=()):
     """Write the binary described in the module docstring, returning its size."""
     ids = list(vocab.values()) + [index for index, _, _, _ in added]
     size = max(ids) + 1 if ids else 0
     tokens = [None] * size
     for token, index in vocab.items():
-        tokens[index] = token
+        _place_token(tokens, index, token, "vocabulary token %r" % token)
     for index, content, _, _ in added:
-        tokens[index] = content
+        _place_token(tokens, index, content, "added token %r" % content)
 
     with open(path, "wb") as out:
         out.write(MAGIC)

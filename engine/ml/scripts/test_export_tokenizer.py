@@ -509,6 +509,42 @@ def test_added_tokens_round_trip(tmp_path):
         assert handle.read() == b""
 
 
+def test_conflicting_added_token_content_is_rejected(tmp_path):
+    # A vocabulary entry and an added token that name the same id with different content cannot both
+    # be written -- the binary holds one string per id -- so the conflict is rejected before writing
+    # rather than resolved by which loop runs last.
+    vocab = {"<pad>": 0, "a": 1}
+    added = [(0, "<PAD>", False, True)]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="conflicting content at token id 0"):
+        exporter.write_tokenizer(str(out), vocab, [], {}, added)
+
+
+def test_matching_added_token_content_is_accepted(tmp_path):
+    # The ordinary case: an added token repeats the vocabulary string already at its id. The
+    # idempotent collision must be accepted and write that single string at the shared id.
+    vocab = {"<pad>": 0, "a": 1}
+    added = [(0, "<pad>", False, True)]
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), vocab, [], {}, added)
+
+    with open(str(out), "rb") as handle:
+        handle.read(8)
+        (vocab_size,) = struct.unpack(">i", handle.read(4))
+        assert vocab_size == 2
+        tokens = [_read_string(handle) for _ in range(vocab_size)]
+        assert tokens == ["<pad>", "a"]
+
+
+def test_conflicting_vocabulary_ids_are_rejected(tmp_path):
+    # Two vocabulary entries mapping to the same id carry different content (dict keys are unique),
+    # so they always conflict; the exported table can keep only one and the export is rejected.
+    vocab = {"a": 0, "b": 0, "c": 1}
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="conflicting content at token id 0"):
+        exporter.write_tokenizer(str(out), vocab, [], {}, [])
+
+
 def test_special_ids_fall_back_to_config_json(tmp_path):
     # A snapshot may carry the ids only as integer *_token_id fields in config.json, with no
     # tokenizer_config.json. Those must be read; otherwise every id exports as -1 and changes
