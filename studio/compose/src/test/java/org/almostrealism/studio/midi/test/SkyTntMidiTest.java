@@ -778,51 +778,98 @@ public class SkyTntMidiTest extends TestSuiteBase implements AttentionFeatures {
 
 
 	/**
+	 * Samples one weight tensor of the given dimensions from a random number generator. The
+	 * fixtures below differ only in the sampler they use for the RMSNorm scales and for every
+	 * other (projection, embedding and head) weight.
+	 */
+	@FunctionalInterface
+	interface WeightSampler {
+		/**
+		 * Samples a weight tensor.
+		 *
+		 * @param rng  random number generator
+		 * @param dims tensor dimensions
+		 * @return the sampled tensor
+		 */
+		PackedCollection sample(Random rng, int... dims);
+	}
+
+	/**
 	 * Create a {@link StateDictionary} populated with random synthetic weights that
-	 * match the shapes expected by {@link SkyTntMidi.buildTransformerModel}.
+	 * match the shapes expected by {@link SkyTntMidi#buildTransformerModel}. Every weight,
+	 * including the RMSNorm scales, is small ({@code [-0.05, 0.05)}).
 	 *
 	 * @param config the model configuration
 	 * @param rng    random number generator
 	 * @return populated StateDictionary
 	 */
 	static StateDictionary createSyntheticWeights(SkyTntConfig config, Random rng) {
+		return createWeights(config, rng, SkyTntMidiTest::rand, SkyTntMidiTest::rand);
+	}
+
+	/**
+	 * Create a {@link StateDictionary} at realistic weight scales — RMSNorm scales near unity
+	 * ({@code [0.6, 1.4)}) and projections in {@code [-0.4, 0.4)} — so the attention stage
+	 * contributes observably to the output. The tiny scales of {@link #createSyntheticWeights}
+	 * suppress the attention output to the {@code 1e-5} level, which is too small to distinguish a
+	 * genuine cross-position cache read from numerical noise.
+	 *
+	 * @param config the model configuration
+	 * @param rng    random number generator
+	 * @return populated StateDictionary
+	 */
+	static StateDictionary createRealisticWeights(SkyTntConfig config, Random rng) {
+		return createWeights(config, rng,
+				(r, dims) -> rand(r, 0.6, 1.4, dims),
+				(r, dims) -> rand(r, -0.4, 0.4, dims));
+	}
+
+	/**
+	 * Create a {@link StateDictionary} holding every weight key {@link SkyTntMidi#buildTransformerModel}
+	 * reads, using HuggingFace key names to match the extractor output. This is the single
+	 * description of the SkyTNT weight layout shared by all fixtures; only the value distributions
+	 * are supplied by the caller.
+	 *
+	 * @param config  the model configuration
+	 * @param rng     random number generator
+	 * @param norm    sampler for the RMSNorm scales
+	 * @param weight  sampler for the projection, embedding and head weights
+	 * @return populated StateDictionary
+	 */
+	static StateDictionary createWeights(SkyTntConfig config, Random rng,
+										 WeightSampler norm, WeightSampler weight) {
 		Map<String, PackedCollection> weights = new HashMap<>();
 
-		// LM head (shared) — uses HuggingFace key name to match extractor output
-		weights.put("lm_head.weight", rand(rng, config.vocabSize, config.hiddenSize));
+		weights.put("lm_head.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
+		weights.put("net.embed_tokens.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
+		weights.put("net_token.embed_tokens.weight", weight.sample(rng, config.vocabSize, config.hiddenSize));
 
-		// Embedding tables — uses HuggingFace key names to match extractor output
-		weights.put("net.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
-		weights.put("net_token.embed_tokens.weight", rand(rng, config.vocabSize, config.hiddenSize));
-
-		// net layers
 		addLayerWeights(weights, "net", config.netLayers, config.hiddenSize,
-				config.netIntermediateSize, rng);
-		weights.put("net.norm.weight", rand(rng, config.hiddenSize));
+				config.netIntermediateSize, rng, norm, weight);
+		weights.put("net.norm.weight", norm.sample(rng, config.hiddenSize));
 
-		// net_token layers
 		addLayerWeights(weights, "net_token", config.netTokenLayers, config.hiddenSize,
-				config.netTokenIntermediateSize, rng);
-		weights.put("net_token.norm.weight", rand(rng, config.hiddenSize));
+				config.netTokenIntermediateSize, rng, norm, weight);
+		weights.put("net_token.norm.weight", norm.sample(rng, config.hiddenSize));
 
 		return new StateDictionary(weights);
 	}
 
 	/** Add per-layer weights for one transformer to the weight map. */
 	static void addLayerWeights(Map<String, PackedCollection> weights,
-										String prefix, int numLayers,
-										int hiddenSize, int ffnSize, Random rng) {
+								String prefix, int numLayers, int hiddenSize, int ffnSize,
+								Random rng, WeightSampler norm, WeightSampler weight) {
 		for (int i = 0; i < numLayers; i++) {
 			String key = prefix + ".layers." + i;
-			weights.put(key + ".input_layernorm.weight", rand(rng, hiddenSize));
-			weights.put(key + ".post_attention_layernorm.weight", rand(rng, hiddenSize));
-			weights.put(key + ".self_attn.q_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.k_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.v_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.o_proj.weight", rand(rng, hiddenSize, hiddenSize));
-			weights.put(key + ".mlp.gate_proj.weight", rand(rng, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.up_proj.weight", rand(rng, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.down_proj.weight", rand(rng, hiddenSize, ffnSize));
+			weights.put(key + ".input_layernorm.weight", norm.sample(rng, hiddenSize));
+			weights.put(key + ".post_attention_layernorm.weight", norm.sample(rng, hiddenSize));
+			weights.put(key + ".self_attn.q_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.k_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.v_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".self_attn.o_proj.weight", weight.sample(rng, hiddenSize, hiddenSize));
+			weights.put(key + ".mlp.gate_proj.weight", weight.sample(rng, ffnSize, hiddenSize));
+			weights.put(key + ".mlp.up_proj.weight", weight.sample(rng, ffnSize, hiddenSize));
+			weights.put(key + ".mlp.down_proj.weight", weight.sample(rng, hiddenSize, ffnSize));
 		}
 	}
 
@@ -842,53 +889,6 @@ public class SkyTntMidiTest extends TestSuiteBase implements AttentionFeatures {
 		Ops.o().rand(shape, rng).multiply(hi - lo).add(lo)
 				.into(c.traverseEach()).evaluate();
 		return c;
-	}
-
-	/**
-	 * Create a {@link StateDictionary} at realistic weight scales — RMSNorm scales near unity
-	 * ({@code [0.6, 1.4)}) and projections in {@code [-0.4, 0.4)} — so the attention stage
-	 * contributes observably to the output. The tiny scales of {@link #createSyntheticWeights}
-	 * suppress the attention output to the {@code 1e-5} level, which is too small to distinguish a
-	 * genuine cross-position cache read from numerical noise.
-	 *
-	 * @param config the model configuration
-	 * @param rng    random number generator
-	 * @return populated StateDictionary
-	 */
-	static StateDictionary createRealisticWeights(SkyTntConfig config, Random rng) {
-		Map<String, PackedCollection> weights = new HashMap<>();
-
-		weights.put("lm_head.weight", rand(rng, -0.4, 0.4, config.vocabSize, config.hiddenSize));
-		weights.put("net.embed_tokens.weight", rand(rng, -0.4, 0.4, config.vocabSize, config.hiddenSize));
-		weights.put("net_token.embed_tokens.weight", rand(rng, -0.4, 0.4, config.vocabSize, config.hiddenSize));
-
-		addRealisticLayerWeights(weights, "net", config.netLayers, config.hiddenSize,
-				config.netIntermediateSize, rng);
-		weights.put("net.norm.weight", rand(rng, 0.6, 1.4, config.hiddenSize));
-
-		addRealisticLayerWeights(weights, "net_token", config.netTokenLayers, config.hiddenSize,
-				config.netTokenIntermediateSize, rng);
-		weights.put("net_token.norm.weight", rand(rng, 0.6, 1.4, config.hiddenSize));
-
-		return new StateDictionary(weights);
-	}
-
-	/** Add per-layer weights at realistic scales for one transformer to the weight map. */
-	static void addRealisticLayerWeights(Map<String, PackedCollection> weights,
-										 String prefix, int numLayers,
-										 int hiddenSize, int ffnSize, Random rng) {
-		for (int i = 0; i < numLayers; i++) {
-			String key = prefix + ".layers." + i;
-			weights.put(key + ".input_layernorm.weight", rand(rng, 0.6, 1.4, hiddenSize));
-			weights.put(key + ".post_attention_layernorm.weight", rand(rng, 0.6, 1.4, hiddenSize));
-			weights.put(key + ".self_attn.q_proj.weight", rand(rng, -0.4, 0.4, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.k_proj.weight", rand(rng, -0.4, 0.4, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.v_proj.weight", rand(rng, -0.4, 0.4, hiddenSize, hiddenSize));
-			weights.put(key + ".self_attn.o_proj.weight", rand(rng, -0.4, 0.4, hiddenSize, hiddenSize));
-			weights.put(key + ".mlp.gate_proj.weight", rand(rng, -0.4, 0.4, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.up_proj.weight", rand(rng, -0.4, 0.4, ffnSize, hiddenSize));
-			weights.put(key + ".mlp.down_proj.weight", rand(rng, -0.4, 0.4, hiddenSize, ffnSize));
-		}
 	}
 
 }
