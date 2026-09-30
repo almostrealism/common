@@ -155,51 +155,14 @@ public class LineUtilities {
 			buf.order(ByteOrder.LITTLE_ENDIAN);
 		}
 
-		int bitRate = format.getSampleSizeInBits();
-		double floatOffset;
-		double floatScale;
-
-		if (format.getEncoding() == AudioFormat.Encoding.PCM_SIGNED) {
-			floatOffset = 0;
-			floatScale = (1L << (bitRate - 1)) - 1; // e.g., 32767 for 16-bit
-		} else if (format.getEncoding() == AudioFormat.Encoding.PCM_UNSIGNED) {
-			floatOffset = 1;
-			floatScale = 0.5 * ((1L << bitRate) - 1);
-		} else {
-			throw new UnsupportedOperationException("Encoding " + format.getEncoding() + " is not supported");
-		}
+		double[] scaleOffset = pcmScaleOffset(format);
 
 		// Interleave channels: for each frame, write all channels
 		for (int s = 0; s < sampleCount; s++) {
 			for (int c = 0; c < format.getChannels(); c++) {
 				// Use channel data if available, otherwise use last available channel (or 0)
 				double sample = (c < channels) ? frames[c][s] : (channels > 0 ? frames[channels - 1][s] : 0.0);
-				// Clamp to [-1.0, 1.0] range
-				sample = Math.max(-1.0, Math.min(1.0, sample));
-
-				long val = (long) (floatScale * (floatOffset + sample));
-
-				// Write the sample in the appropriate format
-				if (bytesPerSample == 1) {
-					buf.put((byte) val);
-				} else if (bytesPerSample == 2) {
-					buf.putShort((short) val);
-				} else if (bytesPerSample == 3) {
-					// 24-bit audio
-					if (format.isBigEndian()) {
-						buf.put((byte) ((val >> 16) & 0xFF));
-						buf.put((byte) ((val >> 8) & 0xFF));
-						buf.put((byte) (val & 0xFF));
-					} else {
-						buf.put((byte) (val & 0xFF));
-						buf.put((byte) ((val >> 8) & 0xFF));
-						buf.put((byte) ((val >> 16) & 0xFF));
-					}
-				} else if (bytesPerSample == 4) {
-					buf.putInt((int) val);
-				} else {
-					throw new UnsupportedOperationException("Sample size " + bytesPerSample + " bytes is not supported");
-				}
+				putSample(buf, sample, scaleOffset[0], scaleOffset[1], bytesPerSample, format.isBigEndian());
 			}
 		}
 
@@ -247,19 +210,7 @@ public class LineUtilities {
 			buf.order(ByteOrder.LITTLE_ENDIAN);
 		}
 
-		int bitRate = format.getSampleSizeInBits();
-		double floatOffset;
-		double floatScale;
-
-		if (format.getEncoding() == AudioFormat.Encoding.PCM_SIGNED) {
-			floatOffset = 0;
-			floatScale = (1L << (bitRate - 1)) - 1; // e.g., 32767 for 16-bit
-		} else if (format.getEncoding() == AudioFormat.Encoding.PCM_UNSIGNED) {
-			floatOffset = 1;
-			floatScale = 0.5 * ((1L << bitRate) - 1);
-		} else {
-			throw new UnsupportedOperationException("Encoding " + format.getEncoding() + " is not supported");
-		}
+		double[] scaleOffset = pcmScaleOffset(format);
 
 		// Write frames
 		for (int frame = 0; frame < frameCount; frame++) {
@@ -278,36 +229,78 @@ public class LineUtilities {
 					sample = samples.toDouble(flatIndex);
 				}
 
-				// Clamp to [-1.0, 1.0] range
-				sample = Math.max(-1.0, Math.min(1.0, sample));
-
-				long value = (long) (floatScale * (floatOffset + sample));
-
-				// Write the sample in the appropriate format
-				if (bytesPerSample == 1) {
-					buf.put((byte) value);
-				} else if (bytesPerSample == 2) {
-					buf.putShort((short) value);
-				} else if (bytesPerSample == 3) {
-					// 24-bit audio (3 bytes per sample)
-					if (format.isBigEndian()) {
-						buf.put((byte) ((value >> 16) & 0xFF));
-						buf.put((byte) ((value >> 8) & 0xFF));
-						buf.put((byte) (value & 0xFF));
-					} else {
-						buf.put((byte) (value & 0xFF));
-						buf.put((byte) ((value >> 8) & 0xFF));
-						buf.put((byte) ((value >> 16) & 0xFF));
-					}
-				} else if (bytesPerSample == 4) {
-					buf.putInt((int) value);
-				} else {
-					throw new UnsupportedOperationException("Sample size " + bytesPerSample + " bytes is not supported");
-				}
+				putSample(buf, sample, scaleOffset[0], scaleOffset[1], bytesPerSample, format.isBigEndian());
 			}
 		}
 
 		return frameBytes;
+	}
+
+	/**
+	 * Computes the {@code scale} and {@code offset} used to map a normalized sample in
+	 * {@code [-1, 1]} to an integer PCM value for the given format's encoding. This is the
+	 * shared encoding parameterization used by both {@link #toBytes(double[][], AudioFormat)}
+	 * and {@link #toFrame(PackedCollection, AudioFormat)}.
+	 *
+	 * @param format the target audio format
+	 * @return a two-element array holding the scale factor at index {@code 0} and the offset
+	 *         at index {@code 1}
+	 * @throws UnsupportedOperationException if the encoding is neither signed nor unsigned PCM
+	 */
+	private static double[] pcmScaleOffset(AudioFormat format) {
+		int bitRate = format.getSampleSizeInBits();
+
+		if (format.getEncoding() == AudioFormat.Encoding.PCM_SIGNED) {
+			return new double[] {(1L << (bitRate - 1)) - 1, 0}; // e.g., 32767 for 16-bit
+		} else if (format.getEncoding() == AudioFormat.Encoding.PCM_UNSIGNED) {
+			return new double[] {0.5 * ((1L << bitRate) - 1), 1};
+		} else {
+			throw new UnsupportedOperationException("Encoding " + format.getEncoding() + " is not supported");
+		}
+	}
+
+	/**
+	 * Writes a single normalized sample to the buffer in the given PCM layout. The sample is
+	 * clamped to {@code [-1, 1]}, scaled to an integer value using the {@code scale}/{@code offset}
+	 * from {@link #pcmScaleOffset(AudioFormat)}, and written as 1, 2, 3 (24-bit, honoring
+	 * {@code bigEndian}) or 4 bytes. This is the shared per-sample encoding used by both
+	 * {@link #toBytes(double[][], AudioFormat)} and {@link #toFrame(PackedCollection, AudioFormat)}.
+	 *
+	 * @param buf            the destination buffer, positioned at the sample to write
+	 * @param sample         the normalized sample value
+	 * @param floatScale     the scale factor from {@link #pcmScaleOffset(AudioFormat)}
+	 * @param floatOffset    the offset from {@link #pcmScaleOffset(AudioFormat)}
+	 * @param bytesPerSample the number of bytes per sample (1-4)
+	 * @param bigEndian      whether 24-bit samples are written high-byte first
+	 * @throws UnsupportedOperationException if {@code bytesPerSample} is not in {@code [1, 4]}
+	 */
+	private static void putSample(ByteBuffer buf, double sample, double floatScale,
+								  double floatOffset, int bytesPerSample, boolean bigEndian) {
+		// Clamp to [-1.0, 1.0] range
+		double clamped = Math.max(-1.0, Math.min(1.0, sample));
+		long val = (long) (floatScale * (floatOffset + clamped));
+
+		// Write the sample in the appropriate format
+		if (bytesPerSample == 1) {
+			buf.put((byte) val);
+		} else if (bytesPerSample == 2) {
+			buf.putShort((short) val);
+		} else if (bytesPerSample == 3) {
+			// 24-bit audio (3 bytes per sample)
+			if (bigEndian) {
+				buf.put((byte) ((val >> 16) & 0xFF));
+				buf.put((byte) ((val >> 8) & 0xFF));
+				buf.put((byte) (val & 0xFF));
+			} else {
+				buf.put((byte) (val & 0xFF));
+				buf.put((byte) ((val >> 8) & 0xFF));
+				buf.put((byte) ((val >> 16) & 0xFF));
+			}
+		} else if (bytesPerSample == 4) {
+			buf.putInt((int) val);
+		} else {
+			throw new UnsupportedOperationException("Sample size " + bytesPerSample + " bytes is not supported");
+		}
 	}
 	
 	/**
