@@ -212,18 +212,45 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 			sharedRam = getSharedMemoryProvider();
 		}
 
-		IntFunction<MemoryProvider<?>> currentProvider = memoryProvider.get();
-		IntFunction<MemoryProvider<?>> nextProvider = s -> sharedRam;
+		return withMemoryProvider(s -> sharedRam,
+				() -> ((HardwareMemoryProvider<?>) sharedRam).sharedMemory(name, exec));
+	}
+
+	/**
+	 * Runs {@code exec} with the calling thread's memory provider supply replaced by
+	 * {@code supply}, restoring the previous supply afterwards.
+	 *
+	 * @param supply chooses the provider for each allocation, by size
+	 * @param exec   the operation to run
+	 * @param <T>    the result type
+	 * @return the result of {@code exec}
+	 * @throws RuntimeException wrapping any checked exception {@code exec} throws
+	 */
+	protected <T> T withMemoryProvider(IntFunction<MemoryProvider<?>> supply, Callable<T> exec) {
+		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
 
 		try {
-			memoryProvider.set(nextProvider);
-			return ((HardwareMemoryProvider<?>) sharedRam).sharedMemory(name, exec);
+			memoryProvider.set(supply);
+			return call(exec);
+		} finally {
+			memoryProvider.set(current);
+		}
+	}
+
+	/**
+	 * Runs {@code exec}, rethrowing a checked exception as a {@link RuntimeException}.
+	 *
+	 * @param exec the operation to run
+	 * @param <T>  the result type
+	 * @return the result of {@code exec}
+	 */
+	protected static <T> T call(Callable<T> exec) {
+		try {
+			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
-		} finally {
-			memoryProvider.set(currentProvider);
 		}
 	}
 
