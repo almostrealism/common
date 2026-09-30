@@ -119,26 +119,24 @@ jobs:
           echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Detected plan file: $PLAN"
 
-  # ── Phase 2: Register workstream and apply the plan's settings ────
-  # Runs on every dispatch: registration is idempotent, and an existing
-  # workstream is updated with the plan document and the plan's settings.
-  register-workstream:
-    needs: detect-plan
+  # ── Phase 2a: Resolve the plan's workstream settings (token-free) ──
+  # Reading the settings means installing PyYAML from the network, and code a
+  # package runs on install or import can rewrite the checked-out scripts or
+  # append to $GITHUB_ENV/$GITHUB_PATH, both of which persist into later steps
+  # of the same job. So the settings are resolved here, in a job that never
+  # holds the controller token, and only the validated JSON crosses into
+  # register-workstream, as job outputs read through `env:`.
+  resolve-plan-settings:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      settings_file: ${{ steps.plan_settings.outputs.settings_file }}
+      required_labels: ${{ steps.plan_settings.outputs.required_labels }}
 
     steps:
-      # This workflow is dispatched by hand on a branch, so its checkout would
-      # otherwise be the branch's own tree — including its copy of
-      # register-workstream.sh, which runs below with the Cloudflare Access
-      # service token in its environment. Manual dispatch is not a code-integrity
-      # boundary: a branch author who edited that script could exfiltrate the
-      # token. Check out the trusted default-branch copy instead, the same way
-      # the auto-review/auto-resolve submit jobs in analysis.yaml do, so the
-      # secret only ever runs against reviewed code. This job needs nothing from
-      # the branch — register-workstream.sh takes its target from the environment
-      # (BRANCH/BASE_BRANCH/PLAN_FILE), not from the working tree.
+      # The resolver is the default branch's copy, never the dispatched
+      # branch's, so a branch cannot change how its own settings are validated.
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
         with:
@@ -187,6 +185,31 @@ jobs:
           echo "settings_file=$(echo "$SETTINGS" | jq -r '.file // empty')" >> "$GITHUB_OUTPUT"
           echo "required_labels=$(echo "$SETTINGS" | jq -c '.requiredLabels // empty')" >> "$GITHUB_OUTPUT"
 
+  # ── Phase 2b: Register workstream and apply the plan's settings ────
+  # Runs on every dispatch: registration is idempotent, and an existing
+  # workstream is updated with the plan document and the plan's settings.
+  register-workstream:
+    needs: [detect-plan, resolve-plan-settings]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # This workflow is dispatched by hand on a branch, so its checkout would
+      # otherwise be the branch's own tree — including its copy of
+      # register-workstream.sh, which runs below with the Cloudflare Access
+      # service token in its environment. Manual dispatch is not a code-integrity
+      # boundary: a branch author who edited that script could exfiltrate the
+      # token. Check out the trusted default-branch copy instead, the same way
+      # the auto-review/auto-resolve submit jobs in analysis.yaml do, so the
+      # secret only ever runs against reviewed code. This job needs nothing from
+      # the branch — register-workstream.sh takes its target from the environment
+      # (BRANCH/BASE_BRANCH/PLAN_FILE), not from the working tree.
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       - name: Register workstream
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -196,7 +219,7 @@ jobs:
           BASE_BRANCH: master
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
           REPO_URL: git@github.com:${{ github.repository }}.git
-          REQUIRED_LABELS_JSON: ${{ steps.plan_settings.outputs.required_labels }}
+          REQUIRED_LABELS_JSON: ${{ needs.resolve-plan-settings.outputs.required_labels }}
         run: |
           # The script is read from the default branch, which lacks it until the
           # change that added it has merged; register nothing rather than fail.
@@ -215,8 +238,8 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
-          SETTINGS_FILE: ${{ steps.plan_settings.outputs.settings_file }}
-          REQUIRED_LABELS: ${{ steps.plan_settings.outputs.required_labels }}
+          SETTINGS_FILE: ${{ needs.resolve-plan-settings.outputs.settings_file }}
+          REQUIRED_LABELS: ${{ needs.resolve-plan-settings.outputs.required_labels }}
           JOB_STATUS: ${{ job.status }}
         run: |
           echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
@@ -241,17 +264,22 @@ jobs:
   # reach it. The prompt is staged as an artifact for the trusted submit job
   # below, the same way auto-review stages its request in analysis.yaml.
   build-prompt:
-    needs: [detect-plan, register-workstream]
+    needs: [detect-plan, resolve-plan-settings, register-workstream]
     # Run after detect-plan succeeds, and only if registration succeeded (or was
-    # skipped) — not if it failed, which includes an invalid plan settings file,
-    # and not if the run was cancelled.
+    # skipped) — not if it failed, and not if the run was cancelled.
     # `!cancelled()` (not `always()`) so a cancelled run stops here instead of
     # building and submitting the implementation anyway; register-workstream is
     # allowed only when it succeeded or was skipped, so its `cancelled` result
     # blocks this job rather than passing a `!= 'failure'` test.
+    # resolve-plan-settings must itself have succeeded: when it fails (an
+    # invalid plan settings file, an unreadable dispatched commit) the
+    # register-workstream job that needs it is *skipped*, not failed, and the
+    # skipped-registration allowance above would otherwise submit the
+    # implementation without the labels the plan declared.
     if: |
       !cancelled()
       && needs.detect-plan.result == 'success'
+      && needs.resolve-plan-settings.result == 'success'
       && (needs.register-workstream.result == 'success'
           || needs.register-workstream.result == 'skipped')
     runs-on: ubuntu-latest

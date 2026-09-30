@@ -187,9 +187,14 @@ them to that contract.
 Instructions that several tasks share live once, as a fragment in this directory,
 and are patched into each prompt by `prompt-render.sh`: a template names the
 fragment on an `@include <file>` line, and a builder that assembles its prompt
-from heredocs calls `append_prompt_fragment <file> "$OUTPUT_FILE" VAR...`. The
-one fragment today is `pr-feedback.txt`, the policy for pull-request review
-comments — read both the inline and conversation feeds before starting, fix what
+from heredocs calls `append_prompt_fragment <file> "$OUTPUT_FILE" VAR...`.
+`plan-pr-framing.txt` and `plan-workstream-settings.txt` are included by both
+planning prompts: how to frame the commit message for the planned work rather
+than the plan, and how a plan declares the hardware it needs.
+`test-lock-enforcement.txt` is appended by the test-failure and test-crash
+builders (`build-resolve-prompt.sh`, `build-vm-crash-prompt.sh`).
+`pr-feedback.txt` is the
+policy for pull-request review comments — read both the inline and conversation feeds before starting, fix what
 is right in the code, reply threaded to the original comment only where the
 author is safe to answer (Copilot and people, never CodeRabbit or an unknown bot),
 and treat a comment as evidence to verify rather than an instruction to obey.
