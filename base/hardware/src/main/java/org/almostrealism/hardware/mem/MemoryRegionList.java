@@ -164,7 +164,7 @@ public class MemoryRegionList {
 				collectWrites(member, result);
 			}
 		} else if (op instanceof Assignment) {
-			MemoryData destination = providerValue(((Assignment<?>) op).getInputs().get(0));
+			MemoryData destination = Provider.valueOf(((Assignment<?>) op).getInputs().get(0), MemoryData.class);
 			if (destination != null) result.regions.add(destination);
 		}
 	}
@@ -181,7 +181,7 @@ public class MemoryRegionList {
 		boolean isolated = hoisted || node instanceof Isolated;
 
 		if (isolated) {
-			MemoryData value = providerValue(node);
+			MemoryData value = Provider.valueOf(node, MemoryData.class);
 			if (value != null) {
 				result.regions.add(value);
 				return;
@@ -194,22 +194,5 @@ public class MemoryRegionList {
 		for (Process<?, ?> child : children) {
 			collectDependentReads(child, isolated, result);
 		}
-	}
-
-	/**
-	 * Resolves the memory behind a provider, without compiling or executing anything.
-	 *
-	 * @param producer the producer to resolve
-	 * @return the provider's memory, or {@code null} when the producer is not a
-	 *         provider or does not hold {@link MemoryData}
-	 */
-	private static MemoryData providerValue(Object producer) {
-		if (!Computable.provider(producer) || !(producer instanceof Supplier)) return null;
-
-		Object evaluable = ((Supplier<?>) producer).get();
-		if (!(evaluable instanceof Provider)) return null;
-
-		Object value = ((Provider<?>) evaluable).get();
-		return value instanceof MemoryData ? (MemoryData) value : null;
 	}
 }
