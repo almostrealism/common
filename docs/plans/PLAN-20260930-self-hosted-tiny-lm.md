@@ -28,9 +28,9 @@ next-token training needs are missing or unverified:
 | Full-sequence **causal** self-attention | Missing. `AttentionFeatures.causalMask(shape, position)` masks relative to one scalar position, for KV-cache inference. `sequenceAttention` / `scaledDotProductAttention` are bidirectional and accept only a per-key `keyMask` and a `paddingMask`. |
 | Gradients into **K and V** in `sequenceAttention` | Unverified and at risk. `sequenceAttention` writes K and V into fixed buffers (`k.andThen(into(kTensor))`, `v.andThen(into(vTensor))`), and `scaledDotProductAttention` reads them back as constants (`cp(k)`, `cp(v)`). The gradient may reach the fused QKV weight only through the Q slice. Existing training through attention (`AggressiveFineTuningTest`, LoRA) does not show otherwise, because it checks timing or MSE convergence, not per-slice gradients. |
 | Trainable **token embedding** | Missing as a layer. `CollectionFeatures.rows(shape, table, rowIndex)` gathers rows (T5Gemma uses it for inference), but no test shows gradients reaching the table. Qwen3 looks up embeddings on the host, outside the graph. The known workaround is one-hot input into a `dense` layer (`MidiDataset` precedent). |
-| **Byte/char tokenizer** | Missing. Every `Tokenizer` implementation (`Qwen3Tokenizer`, `BPE`, `SentencePieceTokenizer`, MIDI tokenizers) loads a pre-trained vocabulary. `ByteLevelEncoder` only maps bytes to unicode characters for BPE. |
+| **Byte/char tokenizer** | Missing. Every existing tokenizer loads a pre-trained vocabulary: `SentencePieceTokenizer` (`extern/ml-djl`, the only production class that implements the `org.almostrealism.ml.Tokenizer` interface), `Qwen3Tokenizer` (extends the abstract `ByteLevelBPETokenizer`, which has its own `encode(String, boolean)` / `decode(int[])` and does **not** implement `Tokenizer`, despite that interface's `@see`), the standalone `BPE` class, and the MIDI tokenizers in `studio/compose` (`MidiTokenizer`, `SkyTntTokenizerV2`, neither a `Tokenizer`). `ByteLevelEncoder` only maps bytes to unicode characters for BPE. |
 | **Text next-token `Dataset`** | Missing. `MidiDataset` (studio/compose) is the closest template: token windows, one-hot input, next-token one-hot target. |
-| Cross-entropy loss | Present. `logSoftmax` (`ActivationFeatures`, gradient-tested in `SoftmaxTests`) plus `NegativeLogLikelihood` gives cross-entropy. `NegativeLogLikelihood.loss` treats the leading dimension as a batch and averages per row, so a `(seqLen, vocab)` output gives mean per-position NLL. |
+| Cross-entropy loss | Present for single-row outputs; **inconsistent for multi-row outputs**. `logSoftmax` (`ActivationFeatures`, gradient-tested in `SoftmaxTests`) plus `NegativeLogLikelihood` gives cross-entropy. `NegativeLogLikelihood.loss` treats the leading dimension as rows and **averages** them, so a `(seqLen, vocab)` output reports mean per-position NLL. `NegativeLogLikelihood.gradient`, however, returns `-target` with no `1 / rows` factor, which is the gradient of the **summed** NLL. `MeanSquaredError.gradient`, by contrast, does scale by `2 / n`. At `seqLen` 64 the backward pass therefore uses 64× the gradient of the loss it reports. The existing `NegativeLogLikelihood` users (`SyntheticDenseTrainingTest.denseClassification`, `ConvolutionModelTrainingTest` at batch 1) train single-row outputs, where the factor is 1, so nothing has exposed this. Likewise, every `logSoftmax` gradient test in `SoftmaxTests` uses a single row (`(size)` or `(1, size)`); the per-row normalization over a `(seqLen, vocab)` input is not covered. See step 6. |
 | Checkpointing | Present. `StateDictionary(Map)`, `put`, `save(Path)`, reload via `new StateDictionary(dir)`. |
 
 This task is the smallest piece of work that turns "training a transformer is now possible" into
@@ -106,7 +106,14 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
    path was taken and why, and store the `rows()` gradient result as a memory either way.
 
 4. **`ByteTokenizer` implementing `Tokenizer`.** A fixed 256-symbol byte vocabulary, lossless for
-   any UTF-8 input (`decode(encode(s)).equals(s)`), in `engine/ml`'s `tokenization` package. No
+   any UTF-8 input, in `engine/ml`'s `org.almostrealism.ml.tokenization` package (the `Tokenizer`
+   interface itself lives in `org.almostrealism.ml`). The interface's abstract methods are
+   `encodeAsLong(String)` and `decodeAsLong(long[])`, with `encodeAsInt` / `decodeAsInt` defaults,
+   so the round-trip property to test is `decodeAsInt(encodeAsInt(s)).equals(s)` (and the `long`
+   pair likewise). The interface's `encode(String)` / `decode(PackedCollection)` defaults throw
+   `UnsupportedOperationException` unless overridden, so they are not the round-trip to test
+   unless `ByteTokenizer` chooses to implement them. Token ids are the unsigned
+   byte values 0–255, so the implementation must not sign-extend Java's signed `byte`. No
    training and no merges. It is the simplest tokenizer that needs no pre-trained vocabulary, so
    the model owes nothing to an external artifact. Unit tests: ASCII, multi-byte UTF-8, an empty
    string, and all 256 byte values.
@@ -140,6 +147,22 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
    - Training: `ModelOptimizer` with `NegativeLogLikelihood` and Adam. `ModelOptimizer` owns the
      loop; no epoch loop outside it. It should use the patience/convergence helpers in
      `ModelTestFeatures` where they fit.
+   - **Normalize the `NegativeLogLikelihood` gradient first.** Before the training run, make
+     `NegativeLogLikelihood.gradient` the gradient of the mean loss that `loss` reports: `-target / rows`,
+     with `rows` being the leading dimension that `loss` averages over (the output's row count after
+     the same `padDimensions(shape, 2)` reshaping). `gradient` receives only producers, so either derive
+     the row count from the output producer's shape or take the output shape in a constructor, as
+     `MeanSquaredError` does. Update the class javadoc, which currently documents the gradient as
+     "-1 at the target class". Add a CI-running finite-difference test on a multi-row
+     `(rows > 1, classes)` log-probability input, checking `gradient` against the change in `loss`,
+     and a multi-row `logSoftmax` backward test (each row normalized independently, no gradient
+     leaking across rows), since `SoftmaxTests` covers only single rows.
+     <!-- TODO(review): NLL user list is incomplete (also MidiDataset/MoonbeamFineTuningTest, SyntheticConvolutionTrainingTest); MidiDataset targets are multi-hot, which loss (argmax) and gradient (-target) already treat differently. -->
+     For single-row outputs the factor is 1, so existing users see no change. With Adam, a constant
+     gradient scale largely cancels (except through its epsilon), so the unnormalized gradient would
+     not necessarily stop the run from learning. It would still make the reported loss and the
+     optimized objective disagree, and it would make any finite-difference check through the loss
+     fail by a factor of `seqLen`, so it must be fixed rather than worked around.
    - Measurement: report held-out loss in **bits per byte** at fixed checkpoints, next to two
      baselines computed from the same held-out split: the uniform baseline (8 bits/byte) and the
      **unigram byte-entropy** baseline. Record wall-clock time per step (cold and warm), total
@@ -199,6 +222,9 @@ matters).
 - A trainable token embedding is in use, either `rows()`-based with a passing gradient test or
   one-hot → `dense`, and the choice is recorded with evidence.
 - `ByteTokenizer` and the text next-token dataset exist, with CI-running unit tests.
+- `NegativeLogLikelihood.gradient` matches the gradient of its averaged `loss` for multi-row
+  outputs, shown by a CI-running finite-difference test with `rows > 1`; a CI-running multi-row
+  `logSoftmax` backward test passes.
 - One end-to-end training run of the tiny causal LM on the listed documentation corpus completes
   inside the runner budget, and its held-out loss ends **below the unigram byte-entropy baseline**
   for that split. The report gives the measured curve, both baselines, step timings, host, backend
