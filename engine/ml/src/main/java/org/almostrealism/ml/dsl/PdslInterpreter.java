@@ -54,9 +54,12 @@ import java.util.function.Function;
  * <p>Built-in primitive operations:
  * <ul>
  *   <li>{@code dense(weights)} / {@code dense(weights, biases)}</li>
+ *   <li>{@code conv1d(weight[, bias], stride, padding)},
+ *       {@code conv_transpose1d(weight[, bias], stride, padding, output_padding)} - 1-D
+ *       convolutions over a {@code [batch, channels, length]} signal</li>
  *   <li>{@code rmsnorm(weights, epsilon)}</li>
  *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
- *       {@code sigmoid()}, {@code tanh_act()}</li>
+ *       {@code sigmoid()}, {@code tanh_act()}, {@code snake(alpha, beta)}</li>
  *   <li>{@code slice(offset, size)} - extract a 1-D sub-range</li>
  *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
  *   <li>{@code reshape(shape)}</li>
@@ -1074,10 +1077,19 @@ public class PdslInterpreter {
 	 * program's {@code data} and {@code state} entries exactly as it would if it were built
 	 * directly, and it does not see the caller's parameters or local names.
 	 *
+	 * <p>A layer that declares its input shape with a {@code -> [shape]} annotation is built for
+	 * that shape. A layer that declares none is built for the signal at the point where the call
+	 * is placed — after the stages before it in a body, or as the input of the {@code accum},
+	 * {@code product}, {@code accum_blocks} or {@code concat_blocks} that holds it — so the call
+	 * yields a factory of that shape, as a built-in does, and a layer over
+	 * {@code [batch, channels, length]} signals nests as readily as one over a {@code [1, dim]}
+	 * vector.</p>
+	 *
 	 * @param name          Name of the layer definition to call
 	 * @param evaluatedArgs Already-evaluated argument values
 	 * @param callerEnv     The environment of the call site
-	 * @return The result of the layer body (typically a {@link Block})
+	 * @return the layer ({@link Block}) when it declares its input shape, otherwise a factory
+	 *         ({@code Function<TraversalPolicy, Block>}) that builds it for the shape where it is placed
 	 */
 	private Object callUserLayer(String name, List<Object> evaluatedArgs, Environment callerEnv) {
 		PdslNode.LayerDef def = layerDefs.get(name);
@@ -1095,48 +1107,29 @@ public class PdslInterpreter {
 		}
 
 		Environment programScope = callerEnv.root();
-		TraversalPolicy inputShape = inferInputShape(def, args, programScope);
-		return buildLayer(def, inputShape, args, programScope);
+		if (def.getReturnShape() == null) {
+			return (Function<TraversalPolicy, Block>) inputShape -> buildLayer(def, inputShape, args, programScope);
+		}
+		return buildLayer(def, declaredInputShape(def, args, programScope), args, programScope);
 	}
 
 	/**
-	 * Infers the input shape for a user-defined layer from its return-shape annotation
-	 * or from the shape of the first weight parameter.
+	 * Evaluates the input shape a layer declares with its {@code -> [shape]} annotation, with the
+	 * call's arguments and the program's {@code data} and {@code state} entries in scope.
 	 *
-	 * @param def          The layer definition
+	 * @param def          The layer definition, which carries the annotation
 	 * @param args         Bound argument values keyed by parameter name
 	 * @param programScope The program scope the annotation may also refer to
-	 * @return The inferred input {@link TraversalPolicy}
-	 * @throws PdslParseException If the shape cannot be determined
+	 * @return The declared input {@link TraversalPolicy}
 	 */
-	private TraversalPolicy inferInputShape(PdslNode.LayerDef def,
-											Map<String, Object> args,
-											Environment programScope) {
-		// Try return shape annotation
-		if (def.getReturnShape() != null) {
-			Environment tempEnv = new Environment(programScope);
-			for (Map.Entry<String, Object> entry : args.entrySet()) {
-				tempEnv.set(entry.getKey(), entry.getValue());
-			}
-			return evaluateShape((PdslNode.ShapeLiteral) def.getReturnShape(), tempEnv);
+	private TraversalPolicy declaredInputShape(PdslNode.LayerDef def,
+											   Map<String, Object> args,
+											   Environment programScope) {
+		Environment tempEnv = new Environment(programScope);
+		for (Map.Entry<String, Object> entry : args.entrySet()) {
+			tempEnv.set(entry.getKey(), entry.getValue());
 		}
-
-		// Infer from first weight parameter
-		for (PdslNode.Parameter param : def.getParameters()) {
-			if ("weight".equals(param.getTypeName())) {
-				Object value = args.get(param.getName());
-				if (value instanceof PackedCollection) {
-					PackedCollection weight = (PackedCollection) value;
-					int dim = weight.getShape().length(
-							weight.getShape().getDimensions() - 1);
-					return FEATURES.shape(1, dim);
-				}
-			}
-		}
-
-		throw new PdslParseException(
-				"Cannot infer input shape for layer '" + def.getName()
-						+ "'. Add a return shape annotation: -> [1, dim]");
+		return evaluateShape((PdslNode.ShapeLiteral) def.getReturnShape(), tempEnv);
 	}
 
 	// ---- Block construction helpers ----

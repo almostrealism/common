@@ -258,7 +258,11 @@ public abstract class PdslNode {
 		/** Formal parameters accepted by this layer. */
 		private final List<Parameter> parameters;
 
-		/** Declared output shape expression, or {@code null} if omitted. */
+		/**
+		 * The {@code -> [shape]} annotation, or {@code null} if omitted: the input shape the layer
+		 * is built for when another layer calls it. A layer without one is built for the shape of
+		 * the signal where the call is placed.
+		 */
 		private final Expression returnShape;
 
 		/** Statements that build the layer's computation graph. */
@@ -269,7 +273,7 @@ public abstract class PdslNode {
 		 *
 		 * @param name        Layer name
 		 * @param parameters  Formal parameter declarations
-		 * @param returnShape Declared output shape, or {@code null}
+		 * @param returnShape The {@code -> [shape]} annotation, or {@code null}
 		 * @param body        Statements forming the layer body
 		 * @param line        Source line number
 		 * @param column      Source column number
@@ -286,7 +290,7 @@ public abstract class PdslNode {
 		/** Returns the formal parameter list. */
 		public List<Parameter> getParameters() { return parameters; }
 
-		/** The declared return shape, or null if omitted. */
+		/** The {@code -> [shape]} annotation (the input shape of a call from another layer), or null if omitted. */
 		public Expression getReturnShape() { return returnShape; }
 
 		/** Returns the statements that form the layer body. */
