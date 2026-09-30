@@ -436,6 +436,31 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A merge whose concatenated result is not in the vocabulary is rejected when the tokenizer is
+	 * read, rather than loading and later making {@code applyBPEMerges} produce a symbol the vocabulary
+	 * lookup resolves to the unknown token -- {@code -1} when there is none -- an id no embedding row
+	 * exists for. {@code export_tokenizer.py} keeps every merge result in the vocabulary, so this only
+	 * guards a corrupt or hand-crafted binary.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void mergeResultMissingFromVocabularyIsRejected() throws IOException {
+		File file = new SentencePieceTokenizerFixture().writeWith(
+				new String[] {"a", "b"}, new String[][] {{"a", "b"}});
+
+		try {
+			new SentencePieceBPETokenizer(file.getPath());
+			Assert.fail("a merge whose result is absent from the vocabulary was read");
+		} catch (IOException expected) {
+			assertTrue("message names the missing result: " + expected.getMessage(),
+					expected.getMessage().contains("produces \"ab\""));
+			assertTrue("message explains the rejection: " + expected.getMessage(),
+					expected.getMessage().contains("not in the vocabulary"));
+		}
+	}
+
+	/**
 	 * A corrupt serialized count -- a file with the correct magic but a negative or implausibly large
 	 * vocabulary size -- is rejected with a controlled {@link IOException} rather than allocating a
 	 * negative array or an enormous one. {@code -1} exercises the lower bound and

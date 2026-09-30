@@ -450,6 +450,31 @@ def _require_within_reader_limits(tokens, merges, added):
             _require_string_length("merge element %r" % part, part)
 
 
+def _require_merge_results_present(tokens, merges):
+    """Reject a merge whose concatenated result is absent from the vocabulary.
+
+    The Java reader applies every merge to the per-symbol text and looks the merged symbol up in the
+    vocabulary; a result with no vocabulary id would make it emit the unknown token (``-1`` when the
+    tokenizer has none) instead of a valid id, so the reader rejects such a binary while reading the
+    merge table. HuggingFace BPE only ever learns a merge whose result is itself a vocabulary token,
+    so an absent result means a corrupt or hand-crafted source; it is rejected here, before the binary
+    is written, to keep every export the reader would load.
+
+    :param tokens: the filled token table, indexed by id, holding vocabulary and added-token strings.
+    :param merges: the merge list, each entry a list or a space-separated string.
+    :raises ValueError: if a merge result is not a populated vocabulary token.
+    """
+    known = {token for token in tokens if token is not None}
+    for merge in merges:
+        left, right = _merge_parts(merge)
+        result = left + right
+        if result not in known:
+            raise ValueError(
+                "merge %r + %r produces %r, which is not in the vocabulary; applying it during "
+                "encoding would emit the unknown token instead of a valid id, and the Java reader "
+                "rejects such a binary" % (left, right, result))
+
+
 def _require_special_ids(specials, tokens):
     """Reject a special id the Java reader would refuse or that names no exported token.
 
@@ -499,6 +524,7 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
 
     _require_special_ids(specials, tokens)
     _require_within_reader_limits(tokens, merges, added)
+    _require_merge_results_present(tokens, merges)
 
     with open(path, "wb") as out:
         out.write(MAGIC)

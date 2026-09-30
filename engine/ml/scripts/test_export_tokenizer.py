@@ -638,6 +638,48 @@ def test_oversized_merge_element_is_rejected(tmp_path):
     assert not out.exists()
 
 
+def test_merge_result_missing_from_vocabulary_is_rejected(tmp_path):
+    # A merge whose concatenated result is not a vocabulary token would make the Java reader emit the
+    # unknown token (-1 when there is none) for that symbol instead of a valid id, so the reader
+    # rejects such a binary; catch it here before writing rather than exporting an unloadable file.
+    vocab = {"a": 0, "b": 1}
+    merges = ["a b"]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="produces 'ab', which is not in the vocabulary"):
+        exporter.write_tokenizer(str(out), vocab, merges, {}, [])
+    assert not out.exists()
+
+
+def test_merge_result_present_in_vocabulary_is_accepted(tmp_path):
+    # The boundary complement: the same merge exports once its result is a vocabulary token, and the
+    # merge elements land verbatim in the merge block.
+    vocab = {"a": 0, "b": 1, "ab": 2}
+    merges = ["a b"]
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), vocab, merges, {}, [])
+
+    with open(str(out), "rb") as handle:
+        handle.read(8)
+        (vocab_size,) = struct.unpack(">i", handle.read(4))
+        for _ in range(vocab_size):
+            _read_string(handle)
+        (merge_count,) = struct.unpack(">i", handle.read(4))
+        assert merge_count == 1
+        assert _read_string(handle) == "a"
+        assert _read_string(handle) == "b"
+
+
+def test_merge_result_from_added_token_is_accepted(tmp_path):
+    # A merge result placed in the token table only by an added token is still present, so the export
+    # is accepted -- the check honors the whole id-indexed table the reader's vocabulary mirrors.
+    vocab = {"a": 0, "b": 1}
+    added = [(2, "ab", False, False)]
+    merges = ["a b"]
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), vocab, merges, {}, added)
+    assert out.exists()
+
+
 def test_vocabulary_size_above_reader_limit_is_rejected(tmp_path, monkeypatch):
     # write_tokenizer sizes the token table as max(id) + 1, so a vocabulary larger than the reader's
     # entry limit necessarily carries an id at or above it; the per-id bound rejects that id before the

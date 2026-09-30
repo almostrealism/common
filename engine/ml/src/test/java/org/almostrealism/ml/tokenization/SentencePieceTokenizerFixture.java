@@ -255,6 +255,23 @@ public class SentencePieceTokenizerFixture {
 	}
 
 	/**
+	 * Writes a tokenizer over the given vocabulary and merges, with no special ids, at a temporary
+	 * location, so a reader's rejection of a merge whose result is absent from the vocabulary can be
+	 * exercised without disturbing the parity vocabulary.
+	 *
+	 * @param vocab  the vocabulary, in token-id order
+	 * @param merges the merges, in priority order
+	 * @return the written file
+	 * @throws IOException if the file cannot be written
+	 */
+	public File writeWith(String[] vocab, String[][] merges) throws IOException {
+		File file = File.createTempFile("ar-tokenizer-fixture", ".bin");
+		file.deleteOnExit();
+		write(file, MAGIC, VERSION, vocab, merges, new int[] {-1, -1, -1, -1});
+		return file;
+	}
+
+	/**
 	 * The fixture tokenizer, read from a freshly written file.
 	 *
 	 * @return the tokenizer

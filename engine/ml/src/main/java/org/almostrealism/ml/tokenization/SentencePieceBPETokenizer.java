@@ -166,8 +166,16 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	/**
 	 * Reads the merge list, which is stored best merge first.
 	 *
+	 * <p>A merge's result must itself be a vocabulary token. {@link #applyBPEMerges(List)} rewrites a
+	 * matched pair to the concatenation {@code left + right} and the inherited lookup then resolves
+	 * that symbol to its id; a result absent from the vocabulary would instead resolve to
+	 * {@link #getUNKToken()} -- {@code -1} when the tokenizer has no unknown token -- emitting an id
+	 * no embedding row exists for. HuggingFace BPE only ever learns a merge whose result is a
+	 * vocabulary token, and {@code export_tokenizer.py} rejects a merge whose result is missing before
+	 * it is written, so an absent result means a corrupt or hand-crafted binary and is rejected here.</p>
+	 *
 	 * @param in the stream positioned at the merge list
-	 * @throws IOException if the stream ends early
+	 * @throws IOException if the stream ends early or a merge result is not in the vocabulary
 	 */
 	protected void readMerges(DataInputStream in) throws IOException {
 		int count = readCount("merge count", in, MAX_ENTRIES);
@@ -176,8 +184,15 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			String left = readString(in);
 			String right = readString(in);
 			String pair = left + " " + right;
+			String result = left + right;
 
-			bpeMerges.put(pair, left + right);
+			if (!vocabMap.containsKey(result)) {
+				throw new IOException("Merge \"" + left + "\" + \"" + right + "\" produces \""
+						+ result + "\", which is not in the vocabulary; applying it during encoding "
+						+ "would emit the unknown token instead of a valid id");
+			}
+
+			bpeMerges.put(pair, result);
 			mergePriority.putIfAbsent(pair, i);
 		}
 	}
