@@ -376,6 +376,33 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An added token whose content differs from the vocabulary string at its id is rejected when the
+	 * tokenizer is read, whether matched raw or after normalization, rather than encoding
+	 * {@code "<pad>"} to an id that decodes as {@code "a"} and breaking the encode/decode round trip.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void addedTokenContentMismatchingVocabularyIsRejected() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		Map<String, Integer> mismatched = Collections.singletonMap("<pad>", 1);
+
+		for (boolean normalized : new boolean[] {false, true}) {
+			try {
+				fixture.tokenizerFor(ADDED_VOCAB, new int[] {-1, -1, -1, -1},
+						normalized ? Collections.emptyMap() : mismatched,
+						normalized ? mismatched : Collections.emptyMap());
+				Assert.fail("an added token whose content differs from the vocabulary was read"
+						+ " (normalized=" + normalized + ")");
+			} catch (IOException expected) {
+				assertTrue(expected.getMessage(),
+						expected.getMessage().contains("Added token 1 has content \"<pad>\""));
+				assertTrue(expected.getMessage(), expected.getMessage().contains("holds \"a\""));
+			}
+		}
+	}
+
+	/**
 	 * A control token id that is neither {@code -1} nor an index into the vocabulary is rejected when
 	 * the tokenizer is read, for each of the four control slots, rather than loading and later making
 	 * {@code encode(text, true)} emit an id no embedding row exists for. The boundary ids {@code -1}

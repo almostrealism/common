@@ -209,9 +209,14 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	 * one id as it does in the source tokenizer, rather than being split into BPE pieces. A special
 	 * added token is additionally recorded so {@link #isSpecialToken(int)} skips it on decode.
 	 *
+	 * <p>The exported format requires an added token's content to equal the vocabulary string at its
+	 * id, which {@code export_tokenizer.py} guarantees when it places both in one id-indexed table. A
+	 * record that breaks this would encode the content to an id that decodes as a different string,
+	 * so it is rejected.</p>
+	 *
 	 * @param in the stream positioned at the added tokens
-	 * @throws IOException if the stream ends early, or an added token has empty content or an id
-	 *                     outside the vocabulary
+	 * @throws IOException if the stream ends early, or an added token has empty content, an id
+	 *                     outside the vocabulary, or content differing from the vocabulary at its id
 	 */
 	protected void readAddedTokens(DataInputStream in) throws IOException {
 		int count = readCount("added token count", in, MAX_ENTRIES);
@@ -229,6 +234,11 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 
 			if (content.isEmpty()) {
 				throw new IOException("Added token " + id + " has empty content");
+			}
+
+			if (!content.equals(vocab[id])) {
+				throw new IOException("Added token " + id + " has content \"" + content
+						+ "\" but the vocabulary holds \"" + vocab[id] + "\" at that id");
 			}
 
 			(normalized ? normalizedAddedTokens : addedTokens).put(content, id);
