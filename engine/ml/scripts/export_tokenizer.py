@@ -59,10 +59,17 @@ VERSION = 2
 BOUNDARY = "▁"
 
 # The largest vocabulary the Java reader accepts: SentencePieceBPETokenizer.readCount rejects a
-# vocabulary or merge count above MAX_ENTRIES (1 << 24) before allocating. write_tokenizer sizes the
-# token table as max(id) + 1, so the largest usable id is MAX_ENTRIES - 1: a single id at or above
-# MAX_ENTRIES would allocate a table that large here and then emit a binary the reader refuses.
+# vocabulary, merge or added-token count above MAX_ENTRIES (1 << 24) before allocating.
+# write_tokenizer sizes the token table as max(id) + 1, so the largest usable id is MAX_ENTRIES - 1:
+# a single id at or above MAX_ENTRIES would allocate a table that large here and then emit a binary
+# the reader refuses.
 MAX_ENTRIES = 1 << 24
+
+# The largest length, in bytes, of any single serialized string the Java reader accepts:
+# SentencePieceBPETokenizer.readString rejects a length above MAX_STRING_BYTES (1 << 20) before
+# allocating. A vocabulary token, merge element or added-token content whose UTF-8 encoding is longer
+# would be written here and then refused by the reader, so it is rejected before the binary is opened.
+MAX_STRING_BYTES = 1 << 20
 
 
 def _flatten(node, sequence_key):
@@ -112,6 +119,39 @@ def _require_token_id(description, index):
             "%s has id %d at or above the %d-token limit the Java reader accepts; the exported "
             "table is sized by the largest id, so a larger id would allocate an oversized table and "
             "produce a binary the reader rejects" % (description, index, MAX_ENTRIES))
+
+
+def _merge_parts(merge):
+    """The ``(left, right)`` elements of one merge, in either representation ``tokenizer.json`` uses.
+
+    A merge is stored either as a two-element list or as a single space-separated string, depending on
+    the version of ``tokenizers`` that wrote the file.
+
+    :param merge: one entry of ``model.merges``.
+    :return: the left and right elements as a tuple.
+    """
+    if isinstance(merge, str):
+        left, right = merge.split(" ", 1)
+        return left, right
+    return merge[0], merge[1]
+
+
+def _require_string_length(description, content):
+    """Raise ``ValueError`` unless ``content`` fits the Java reader's per-string byte limit.
+
+    The reader rejects any serialized string whose declared length exceeds :data:`MAX_STRING_BYTES`
+    before allocating for it, so a longer token, merge element or added-token content would export
+    without complaint and then fail to load. It is rejected here instead.
+
+    :param description: names the string in the error message.
+    :param content: the string whose UTF-8 encoding is measured.
+    """
+    length = len(content.encode("utf-8"))
+    if length > MAX_STRING_BYTES:
+        raise ValueError(
+            "%s is %d bytes, above the %d-byte per-string byte limit the Java reader accepts; the reader "
+            "rejects a longer string before allocating, so the exported binary would not load"
+            % (description, length, MAX_STRING_BYTES))
 
 
 def validate_pipeline(spec):
@@ -364,6 +404,35 @@ def _place_token(tokens, index, content, description):
     tokens[index] = content
 
 
+def _require_within_reader_limits(size, tokens, merges, added):
+    """Reject an export the Java reader would refuse to load, before any bytes are written.
+
+    :func:`validate_pipeline` bounds each token id, but the reader also caps the vocabulary, merge and
+    added-token counts at :data:`MAX_ENTRIES` and every serialized string at :data:`MAX_STRING_BYTES`.
+    Those bounds are mirrored here so that every export :func:`write_tokenizer` completes is loadable.
+
+    :param size: the vocabulary size, i.e. the length of ``tokens``.
+    :param tokens: the token table, indexed by id, holding vocabulary and added-token strings.
+    :param merges: the merge list, each entry a list or a space-separated string.
+    :param added: the added tokens, as ``(id, content, normalized, special)`` tuples.
+    :raises ValueError: if a count or string length exceeds what the reader accepts.
+    """
+    for name, count in (("vocabulary", size), ("merge", len(merges)),
+                        ("added-token", len(added))):
+        if count > MAX_ENTRIES:
+            raise ValueError(
+                "%s count %d is above the %d-entry limit the Java reader accepts; the reader rejects "
+                "a larger count before allocating, so the exported binary would not load"
+                % (name, count, MAX_ENTRIES))
+
+    for index, token in enumerate(tokens):
+        if token is not None:
+            _require_string_length("token id %d content %r" % (index, token), token)
+    for merge in merges:
+        for part in _merge_parts(merge):
+            _require_string_length("merge element %r" % part, part)
+
+
 def write_tokenizer(path, vocab, merges, specials, added=()):
     """Write the binary described in the module docstring, returning its size."""
     ids = list(vocab.values()) + [index for index, _, _, _ in added]
@@ -373,6 +442,8 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
         _place_token(tokens, index, token, "vocabulary token %r" % token)
     for index, content, _, _ in added:
         _place_token(tokens, index, content, "added token %r" % content)
+
+    _require_within_reader_limits(size, tokens, merges, added)
 
     with open(path, "wb") as out:
         out.write(MAGIC)
@@ -386,13 +457,7 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
 
         out.write(struct.pack(">i", len(merges)))
         for merge in merges:
-            # tokenizer.json holds a merge either as a two-element list or as a
-            # single space-separated string, depending on the version that wrote it.
-            if isinstance(merge, str):
-                left, right = merge.split(" ", 1)
-            else:
-                left, right = merge[0], merge[1]
-            for part in (left, right):
+            for part in _merge_parts(merge):
                 encoded = part.encode("utf-8")
                 out.write(struct.pack(">i", len(encoded)))
                 out.write(encoded)

@@ -545,6 +545,71 @@ def test_conflicting_vocabulary_ids_are_rejected(tmp_path):
         exporter.write_tokenizer(str(out), vocab, [], {}, [])
 
 
+def test_oversized_token_content_is_rejected(tmp_path):
+    # The Java reader rejects any serialized string above MAX_STRING_BYTES before allocating, so a
+    # vocabulary token whose UTF-8 encoding is longer would export and then fail to load; reject it.
+    vocab = {"a" * (exporter.MAX_STRING_BYTES + 1): 0}
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="per-string byte limit"):
+        exporter.write_tokenizer(str(out), vocab, [], {}, [])
+    assert not out.exists()
+
+
+def test_token_content_at_string_limit_is_accepted(tmp_path):
+    # The boundary complement: a token of exactly MAX_STRING_BYTES bytes is the largest the reader
+    # accepts, so it must export. This pins the rejection above at one byte past the limit.
+    vocab = {"a" * exporter.MAX_STRING_BYTES: 0}
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), vocab, [], {}, [])
+    assert out.exists()
+
+
+def test_oversized_merge_element_is_rejected(tmp_path):
+    # A merge element is a serialized string too, so one longer than MAX_STRING_BYTES is rejected
+    # before writing, matching the reader that would refuse the resulting binary.
+    vocab = {"a": 0, "b": 1}
+    merges = ["a " + "b" * (exporter.MAX_STRING_BYTES + 1)]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="per-string byte limit"):
+        exporter.write_tokenizer(str(out), vocab, merges, {}, [])
+    assert not out.exists()
+
+
+def test_vocabulary_count_above_reader_limit_is_rejected(tmp_path, monkeypatch):
+    # write_tokenizer sizes the token table by the largest id; a table above the reader's entry limit
+    # is refused by readCount, so it is rejected before writing. The limit is lowered here to avoid
+    # allocating a real MAX_ENTRIES-sized table.
+    monkeypatch.setattr(exporter, "MAX_ENTRIES", 2)
+    vocab = {"a": 0, "b": 1, "c": 2}
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="vocabulary count"):
+        exporter.write_tokenizer(str(out), vocab, [], {}, [])
+    assert not out.exists()
+
+
+def test_merge_count_above_reader_limit_is_rejected(tmp_path, monkeypatch):
+    # readCount caps the merge count at MAX_ENTRIES; a longer list would export and then fail to load.
+    monkeypatch.setattr(exporter, "MAX_ENTRIES", 2)
+    vocab = {"a": 0, "b": 1}
+    merges = ["a b", "b a", "a a"]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="merge count"):
+        exporter.write_tokenizer(str(out), vocab, merges, {}, [])
+    assert not out.exists()
+
+
+def test_added_token_count_above_reader_limit_is_rejected(tmp_path, monkeypatch):
+    # readCount caps the added-token count at MAX_ENTRIES; a longer list would export and then fail
+    # to load. All ids stay within the lowered table so the count is what trips the limit.
+    monkeypatch.setattr(exporter, "MAX_ENTRIES", 2)
+    vocab = {"<a>": 0, "<b>": 1}
+    added = [(0, "<a>", False, True), (1, "<b>", False, True), (0, "<a>", False, True)]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="added-token count"):
+        exporter.write_tokenizer(str(out), vocab, [], {}, added)
+    assert not out.exists()
+
+
 def test_special_ids_fall_back_to_config_json(tmp_path):
     # A snapshot may carry the ids only as integer *_token_id fields in config.json, with no
     # tokenizer_config.json. Those must be read; otherwise every id exports as -1 and changes
