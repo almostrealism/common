@@ -545,6 +545,69 @@ def test_conflicting_vocabulary_ids_are_rejected(tmp_path):
         exporter.write_tokenizer(str(out), vocab, [], {}, [])
 
 
+@pytest.mark.parametrize("token_id", [-1, -3, None, "0", True])
+def test_write_tokenizer_invalid_vocabulary_id_is_rejected(tmp_path, token_id):
+    # write_tokenizer is a public entry point its own callers may reach without read_tokenizer, so it
+    # re-validates every id. A negative id would otherwise wrap through Python's negative indexing and
+    # place the token at the wrong slot; a non-integer id is unwritable.
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="invalid id"):
+        exporter.write_tokenizer(str(out), {"a": token_id}, [], {}, [])
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("token_id", [-1, -3, None, "0", True])
+def test_write_tokenizer_invalid_added_id_is_rejected(tmp_path, token_id):
+    # The same guard applies to added-token ids, which index the token table just as vocabulary ids do.
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="invalid id"):
+        exporter.write_tokenizer(str(out), {"a": 0}, [], {}, [(token_id, "<pad>", False, True)])
+    assert not out.exists()
+
+
+def test_write_tokenizer_special_id_out_of_range_is_rejected(tmp_path):
+    # A special id beyond the vocabulary is what readControlId rejects on load; catch it before writing.
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="bos token id 5 names no exported token"):
+        exporter.write_tokenizer(str(out), {"a": 0}, [], {"bos": 5}, [])
+    assert not out.exists()
+
+
+def test_write_tokenizer_negative_special_id_is_rejected(tmp_path):
+    # -1 marks an absent control token; any other negative value is an invalid id, not "none".
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="invalid id"):
+        exporter.write_tokenizer(str(out), {"a": 0}, [], {"eos": -2}, [])
+    assert not out.exists()
+
+
+def test_write_tokenizer_special_id_naming_empty_slot_is_rejected(tmp_path):
+    # A sparse vocabulary leaves a zero-length gap slot; a control id pointing at it would decode to an
+    # empty token, so it is rejected even though it is within range.
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="pad token id 1 names no exported token"):
+        exporter.write_tokenizer(str(out), {"a": 0, "b": 2}, [], {"pad": 1}, [])
+    assert not out.exists()
+
+
+def test_write_tokenizer_valid_special_ids_are_written(tmp_path):
+    # The boundary complement: -1 (absent) and an in-range id naming a populated slot both write, and
+    # the ids land verbatim in the special-id block.
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), {"<pad>": 0, "a": 1}, [], {"pad": 0}, [])
+
+    with open(str(out), "rb") as handle:
+        handle.read(8)
+        (vocab_size,) = struct.unpack(">i", handle.read(4))
+        for _ in range(vocab_size):
+            _read_string(handle)
+        (merge_count,) = struct.unpack(">i", handle.read(4))
+        for _ in range(2 * merge_count):
+            _read_string(handle)
+        bos, eos, pad, unk = struct.unpack(">iiii", handle.read(16))
+        assert (bos, eos, pad, unk) == (-1, -1, 0, -1)
+
+
 def test_oversized_token_content_is_rejected(tmp_path):
     # The Java reader rejects any serialized string above MAX_STRING_BYTES before allocating, so a
     # vocabulary token whose UTF-8 encoding is longer would export and then fail to load; reject it.
@@ -575,14 +638,14 @@ def test_oversized_merge_element_is_rejected(tmp_path):
     assert not out.exists()
 
 
-def test_vocabulary_count_above_reader_limit_is_rejected(tmp_path, monkeypatch):
-    # write_tokenizer sizes the token table by the largest id; a table above the reader's entry limit
-    # is refused by readCount, so it is rejected before writing. The limit is lowered here to avoid
-    # allocating a real MAX_ENTRIES-sized table.
+def test_vocabulary_size_above_reader_limit_is_rejected(tmp_path, monkeypatch):
+    # write_tokenizer sizes the token table as max(id) + 1, so a vocabulary larger than the reader's
+    # entry limit necessarily carries an id at or above it; the per-id bound rejects that id before the
+    # oversized table is allocated. The limit is lowered here to avoid allocating a real one.
     monkeypatch.setattr(exporter, "MAX_ENTRIES", 2)
     vocab = {"a": 0, "b": 1, "c": 2}
     out = tmp_path / "tokenizer.bin"
-    with pytest.raises(ValueError, match="vocabulary count"):
+    with pytest.raises(ValueError, match="limit the Java reader accepts"):
         exporter.write_tokenizer(str(out), vocab, [], {}, [])
     assert not out.exists()
 

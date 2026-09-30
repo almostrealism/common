@@ -404,21 +404,21 @@ def _place_token(tokens, index, content, description):
     tokens[index] = content
 
 
-def _require_within_reader_limits(size, tokens, merges, added):
+def _require_within_reader_limits(tokens, merges, added):
     """Reject an export the Java reader would refuse to load, before any bytes are written.
 
-    :func:`validate_pipeline` bounds each token id, but the reader also caps the vocabulary, merge and
-    added-token counts at :data:`MAX_ENTRIES` and every serialized string at :data:`MAX_STRING_BYTES`.
-    Those bounds are mirrored here so that every export :func:`write_tokenizer` completes is loadable.
+    :func:`write_tokenizer` bounds each token id below :data:`MAX_ENTRIES`, so the vocabulary size --
+    ``max(id) + 1`` -- is already within the reader's vocabulary cap and is not re-checked here. The
+    reader also caps the merge and added-token counts at :data:`MAX_ENTRIES` and every serialized
+    string at :data:`MAX_STRING_BYTES`; those bounds, which the id check does not imply, are mirrored
+    here so that every export :func:`write_tokenizer` completes is loadable.
 
-    :param size: the vocabulary size, i.e. the length of ``tokens``.
     :param tokens: the token table, indexed by id, holding vocabulary and added-token strings.
     :param merges: the merge list, each entry a list or a space-separated string.
     :param added: the added tokens, as ``(id, content, normalized, special)`` tuples.
     :raises ValueError: if a count or string length exceeds what the reader accepts.
     """
-    for name, count in (("vocabulary", size), ("merge", len(merges)),
-                        ("added-token", len(added))):
+    for name, count in (("merge", len(merges)), ("added-token", len(added))):
         if count > MAX_ENTRIES:
             raise ValueError(
                 "%s count %d is above the %d-entry limit the Java reader accepts; the reader rejects "
@@ -433,8 +433,45 @@ def _require_within_reader_limits(size, tokens, merges, added):
             _require_string_length("merge element %r" % part, part)
 
 
+def _require_special_ids(specials, tokens):
+    """Reject a special id the Java reader would refuse or that names no exported token.
+
+    Each of ``bos``/``eos``/``pad``/``unk`` is either ``-1`` (the tokenizer has none) or an index
+    into the vocabulary. The reader's :code:`readControlId` accepts only ``-1`` or ``0..size-1`` and
+    :func:`read_tokenizer` further requires the id to name an actual token, so a value outside that
+    range, or one pointing at an unfilled (zero-length) slot, would either be rejected on load or
+    decode to an empty string. Both are rejected here, before the binary is opened.
+
+    :param specials: the ``{"bos": id, "eos": id, "pad": id, "unk": id}`` mapping to be written.
+    :param tokens: the filled token table, indexed by id.
+    :raises ValueError: if a non-``-1`` special id is invalid, out of range, or names an empty slot.
+    """
+    for key in ("bos", "eos", "pad", "unk"):
+        value = specials.get(key, -1)
+        if value == -1:
+            continue
+        _require_token_id("%s token" % key, value)
+        if value >= len(tokens) or tokens[value] is None:
+            raise ValueError(
+                "%s token id %d names no exported token; a special id must be -1 or index a "
+                "populated vocabulary slot, or the Java reader rejects the binary or decodes it to "
+                "an empty token" % (key, value))
+
+
 def write_tokenizer(path, vocab, merges, specials, added=()):
-    """Write the binary described in the module docstring, returning its size."""
+    """Write the binary described in the module docstring, returning its size.
+
+    ``read_tokenizer`` has already validated every id, but this is a public entry point its own tests
+    call directly, so it re-checks each id it indexes the token table by rather than trusting the
+    caller. A negative id would otherwise wrap through Python's negative indexing and silently place a
+    token at the wrong slot, and an out-of-range or dangling special id would write a binary the Java
+    reader refuses to load; both are rejected here before any bytes are written.
+    """
+    for token, index in vocab.items():
+        _require_token_id("vocabulary token %r" % token, index)
+    for index, content, _, _ in added:
+        _require_token_id("added token %r" % content, index)
+
     ids = list(vocab.values()) + [index for index, _, _, _ in added]
     size = max(ids) + 1 if ids else 0
     tokens = [None] * size
@@ -443,7 +480,8 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
     for index, content, _, _ in added:
         _place_token(tokens, index, content, "added token %r" % content)
 
-    _require_within_reader_limits(size, tokens, merges, added)
+    _require_special_ids(specials, tokens)
+    _require_within_reader_limits(tokens, merges, added)
 
     with open(path, "wb") as out:
         out.write(MAGIC)
