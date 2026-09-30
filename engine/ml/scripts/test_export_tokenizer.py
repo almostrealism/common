@@ -772,6 +772,31 @@ def test_null_configured_special_token_exports_as_absent(tmp_path):
     assert specials == {"bos": -1, "eos": 1, "pad": 0, "unk": -1}
 
 
+def test_null_configured_special_token_is_not_restored_from_config_json(tmp_path):
+    # An explicit null in tokenizer_config.json declares the token absent, so config.json must not
+    # re-enable it even when it names an integer *_token_id for the same key. Only a key that
+    # tokenizer_config.json omits entirely falls back to config.json.
+    vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+    vocab.update(_byte_tokens(5))
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "tokenizer_config.json").write_text(json.dumps({
+        "bos_token": None,     # declared absent: config.json must not restore it
+        "eos_token": "<eos>",
+        "pad_token": "<pad>",
+        # unk_token omitted entirely: eligible for the config.json fallback
+    }))
+    (tokenizer_dir / "config.json").write_text(json.dumps({
+        "bos_token_id": 2,     # ignored: tokenizer_config.json declared bos absent
+        "unk_token_id": 3,     # applied: tokenizer_config.json omitted unk
+    }))
+
+    _, _, specials, _ = exporter.read_tokenizer(str(tokenizer_dir))
+    assert specials == {"bos": -1, "eos": 1, "pad": 0, "unk": 3}
+
+
 def test_export_rejects_incompatible_tokenizer(tmp_path):
     # read_tokenizer must refuse an incompatible pipeline rather than write a misleading binary.
     spec = _supported_spec()
