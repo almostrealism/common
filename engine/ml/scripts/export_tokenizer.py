@@ -58,6 +58,12 @@ VERSION = 2
 # The SentencePiece boundary marker (U+2581). The Java reader replaces an ASCII space with it.
 BOUNDARY = "▁"
 
+# The largest vocabulary the Java reader accepts: SentencePieceBPETokenizer.readCount rejects a
+# vocabulary or merge count above MAX_ENTRIES (1 << 24) before allocating. write_tokenizer sizes the
+# token table as max(id) + 1, so the largest usable id is MAX_ENTRIES - 1: a single id at or above
+# MAX_ENTRIES would allocate a table that large here and then emit a binary the reader refuses.
+MAX_ENTRIES = 1 << 24
+
 
 def _flatten(node, sequence_key):
     """Flatten one pipeline node.
@@ -88,7 +94,12 @@ def _pattern_string(component):
 
 
 def _require_token_id(description, index):
-    """Raise ``ValueError`` unless ``index`` is a non-negative integer token id.
+    """Raise ``ValueError`` unless ``index`` is a token id the Java reader can hold.
+
+    A valid id is a non-negative integer below :data:`MAX_ENTRIES`. The upper bound matches the
+    Java reader, which sizes its vocabulary at ``max(id) + 1`` and rejects a vocabulary above
+    ``MAX_ENTRIES``; enforcing it here stops a sparse or malformed id from allocating an oversized
+    table in :func:`write_tokenizer` and emitting a binary the reader would then refuse.
 
     :param description: names the token in the error message.
     :param index: the id to check.
@@ -96,6 +107,11 @@ def _require_token_id(description, index):
     if not isinstance(index, int) or isinstance(index, bool) or index < 0:
         raise ValueError("%s has invalid id %r; token ids must be non-negative integers"
                          % (description, index))
+    if index >= MAX_ENTRIES:
+        raise ValueError(
+            "%s has id %d at or above the %d-token limit the Java reader accepts; the exported "
+            "table is sized by the largest id, so a larger id would allocate an oversized table and "
+            "produce a binary the reader rejects" % (description, index, MAX_ENTRIES))
 
 
 def validate_pipeline(spec):

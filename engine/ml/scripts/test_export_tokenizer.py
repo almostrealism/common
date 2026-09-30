@@ -349,6 +349,31 @@ def test_vocabulary_token_with_negative_id_is_rejected():
         exporter.validate_pipeline(spec)
 
 
+def test_vocabulary_token_id_at_or_above_reader_limit_is_rejected():
+    # write_tokenizer sizes the token table as max(id) + 1, so a single sparse id at the reader's
+    # MAX_ENTRIES bound would allocate a MAX_ENTRIES + 1 table and emit a binary the Java reader,
+    # which caps the vocabulary at MAX_ENTRIES, then refuses. Reject it before allocating.
+    spec = _supported_spec()
+    spec["model"]["vocab"]["ab"] = exporter.MAX_ENTRIES
+    with pytest.raises(ValueError, match="limit the Java reader accepts"):
+        exporter.validate_pipeline(spec)
+
+
+def test_added_token_id_at_or_above_reader_limit_is_rejected():
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": exporter.MAX_ENTRIES, "content": "<pad>", "special": True}]
+    with pytest.raises(ValueError, match="limit the Java reader accepts"):
+        exporter.validate_pipeline(spec)
+
+
+def test_vocabulary_token_id_just_below_reader_limit_is_accepted():
+    # The largest usable id is MAX_ENTRIES - 1: it sizes the table at exactly MAX_ENTRIES, which the
+    # reader accepts. This is the boundary the rejection above sits one past.
+    spec = _supported_spec()
+    spec["model"]["vocab"]["ab"] = exporter.MAX_ENTRIES - 1
+    exporter.validate_pipeline(spec)
+
+
 def test_empty_added_token_is_rejected():
     spec = _supported_spec()
     spec["added_tokens"] = [{"id": 0, "content": "", "special": True}]
