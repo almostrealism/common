@@ -193,6 +193,17 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      source regions per split, windows confined to one region, and — to be strict about the very
      first predicted position of each held-out window — either drop the windows straddling the seam
      or accept that only the interior of the held-out region is scored. Record which was chosen.
+   - **Targets are shifted by exactly one token.** A window starting at source offset `s` takes its
+     input from tokens `[s, s + seqLen)` and its targets from tokens `[s + 1, s + seqLen + 1)`, so
+     target row `t` is the one-hot of token `s + t + 1`. A window therefore needs `seqLen + 1`
+     source tokens inside its region, and the last window of a region is the last one for which
+     `s + seqLen + 1` does not pass the region's end. An off-by-one here is not a small error: if
+     each input token were used as its own target, a causal model could learn to copy its input
+     and beat the unigram baseline without learning next-token prediction at all, so the success
+     criterion would pass on a broken dataset. The dataset tests must pin both ends of a window on
+     a small known token array: target row 0 is the one-hot of token `s + 1`, target row
+     `seqLen − 1` is the one-hot of token `s + seqLen`, and no window's target reaches past its
+     region's end.
 
 6. **Tiny causal LM assembly and a first real training run.**
    - Model: byte vocab 256, context 64, embed 64, 4 heads, depth 2, pre-norm RMSNorm, RoPE,
@@ -208,6 +219,28 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
 
      Build each block with `crossAttend = false`, `AttentionVariant.STANDARD`, null `modulation`,
      `localAddition` and `paddingMask`, and the step-1 causal option on.
+   - **Feed-forward width: `ffDim = 256` (4 × embed).** Projection weights follow the `(out, in)`
+     convention of the existing block tests (`TransformerBlockFeaturesTest` passes a `(2 · DIM, DIM)`
+     GLU input weight), so `w1` is `(2 · ffDim, embed)` = `(512, 64)`, split by
+     `gatedLinearFeedForward` into two `(ffDim)` halves, and `w2` is `(embed, ffDim)` = `(64, 256)`.
+     With `selfQkv` `(3 · 64, 64)` and `selfWo` `(64, 64)` that is about 65.5k weights per block,
+     about 131k for depth 2, plus 16k for the embedding and 16k for the output projection: about
+     164k in total, well under the 1M ceiling in "Out of scope". If the measured warm step time
+     does not fit the budget, `ffDim = 128` is the first reduction to make, and the report must
+     say it was made.
+   - **RoPE: full rotary, base 10000.** With embed 64 and 4 heads the head dimension is 16.
+     `applyRotaryPositionEmbedding` rotates the first `rotaryDim = 2 · invFreq.length` dimensions
+     of each head and passes the rest through, and `computeRotaryFreqs` duplicates the angles
+     (`concat(product, product)`, the rotate-half layout). So `invFreq` has length
+     `dimHead / 2 = 8` for full rotary, with `invFreq[i] = 10000^(−2i / dimHead)`, `i = 0..7`.
+     Build it as a producer, as `RotationFeatures.computeRopeFreqs` does internally
+     (`exp(integers(0, 8).multiply(−2 · ln 10000 / 16))`), and evaluate it once at the test
+     boundary. There is no public helper for this today: the `RotationFeatures` class javadoc
+     shows a `computeInvFreq(dimHead, theta)` call, but no such method exists, and the existing
+     `sequenceAttention` callers either load `invFreq` from checkpoint weights
+     (`DiffusionTransformer`, partial rotary with length `dimHead / 4`) or fill a constant in
+     tests. Whether to add that helper to `RotationFeatures` is a placement decision for the
+     implementer (see Approach, "Discovery before new types"); the values above are fixed either way.
    - **Query/key norm: off.** Pass a null `qNormWeight`, which skips both the Q and K norms. At
      embed 64 and depth 2 the extra normalization is not needed for stability, and leaving it out
      keeps the number of weight collections, and the gradient paths step 2 has to verify, as small as
@@ -263,6 +296,14 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      its weights on `compile()`, and that is not established for weight collections the test supplies
      itself. Drive `ModelOptimizer` directly for the budgeted run. `assertTrainingConvergence` and
      `isLossTrendDeclining`, which only inspect a `TrainingResult` or loss history, remain usable.
+   - **Select Adam explicitly.** `ModelOptimizer` does not choose the optimizer; the parameter
+     update lives on the `Model`. `new Model(shape)` defaults to
+     `ParameterUpdate.scaled(c(1e-5))`, plain scaled SGD, so a test that only says "Adam" in prose
+     would silently train with SGD. The test must call
+     `model.setParameterUpdate(new AdamOptimizer(learningRate, beta1, beta2))` (or pass the
+     `AdamOptimizer` to the `Model(TraversalPolicy, ParameterUpdate)` constructor) before
+     `compile()`. Starting values: learning rate `3e-4` (conservative, because of the first-sample
+     guard below), `beta1 = 0.9`, `beta2 = 0.999`. The report records the values actually used.
    - **Define the training quantities in `ModelOptimizer`'s terms.** `ModelOptimizer.optimize(n)`
      runs up to `n` **epochs**; each epoch is one full pass over the training `Dataset`, doing one
      forward, one backward and one parameter update **per `ValueTarget`** (per window). This plan
@@ -318,15 +359,20 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      baseline (8 bits/byte) and the **unigram byte-entropy** baseline. Record wall-clock time per
      step (cold first step and warm), stride, windows per epoch, epochs run, total steps, host and
      backend, and the commit SHA.
-   - **Fail fast on `NaN`, in both phases.** `ModelOptimizer` silently drops any window whose loss
-     is `NaN`: `optimize` `continue`s past it (skipping its backward pass as well), and `evaluate`
-     leaves it out of the validation mean. A partly-`NaN` run can therefore report a finite
-     training loss and finite per-epoch validation losses. A check on the final weights alone cannot
-     rule this out, because a window can be `NaN` at an earlier epoch and finite at the end. Both
+   - **Fail fast on any non-finite loss, in both phases.** `ModelOptimizer` silently drops any
+     window whose loss is `NaN`: `optimize` `continue`s past it (skipping its backward pass as
+     well), and `evaluate` leaves it out of the validation mean. A partly-`NaN` run can therefore
+     report a finite training loss and finite per-epoch validation losses. A check on the final
+     weights alone cannot rule this out, because a window can be `NaN` at an earlier epoch and
+     finite at the end. Infinite losses are the opposite problem: `ModelOptimizer` checks only
+     `Double.isNaN`, so an infinite loss is **not** skipped and its update is applied. One can
+     arise here, because `logSoftmax` computes `x − log(Σ exp(x))` with no max subtraction (see Open
+     questions): if `Σ exp(x)` overflows, the log-probabilities become `−∞` and the NLL `+∞`. Both
      phases read the loss through the same `loss` function that `setLossFunction(LossProvider)`
      installs, so the test should install a `LossProvider` that delegates to `NegativeLogLikelihood`
-     and **throws** as soon as `loss` returns `NaN`. That makes every skipped window a test failure
-     in training and validation alike, and every reported checkpoint then covers all of its windows.
+     and **throws** as soon as `loss` returns a value for which `Double.isFinite` is false. That
+     makes every skipped or corrupting window a test failure in training and validation alike, and
+     every reported checkpoint then covers all of its windows with finite losses.
      This lives entirely at the test boundary and changes no shared training code. (A skip counter
      exposed by `ModelOptimizer` would be the alternative, but it changes shared infrastructure and
      is not needed here.)
@@ -373,7 +419,7 @@ matters).
 3. **Producers everywhere in the model.** `.evaluate()` appears only in tests and at the dataset
    and step boundaries. The corpus file read and the bits-per-byte arithmetic on reported scalar
    losses happen at the test boundary.
-4. **Use `ar-profile-analyzer` for wrong values.** If the loss is NaN, stays flat, or a gradient
+4. **Use `ar-profile-analyzer` for wrong values.** If the loss is non-finite, stays flat, or a gradient
    test fails, inspect the generated kernel source and argument bindings before adding `log()`
    probes.
 5. **One test per invocation** through `mcp__ar-test-runner__start_test_run`, each with a timeout
@@ -395,7 +441,7 @@ matters).
   tests cover the all-256 byte-level round-trip, the `String` round-trip on well-formed UTF-16
   text (no unpaired surrogates), the documented replacement for a lone surrogate, and the
   rejection of ids outside `0..255`. The dataset tests show that no window crosses the
-  train/held-out boundary.
+  train/held-out boundary and pin the one-token target shift at both ends of a window.
 - A CI-running unit test shows the assembled model's output shape is `(seqLen, vocab)`, and that
   `NegativeLogLikelihood.loss` on one window is the mean over its `seqLen` positions (step 6,
   "Output shape contract").
@@ -405,10 +451,12 @@ matters).
 - One end-to-end training run of the tiny causal LM on the listed documentation corpus completes
   inside the runner budget, and its held-out loss ends **below the unigram byte-entropy baseline**
   for that split. The report gives the measured curve, both baselines, step timings, host, backend
-  and commit SHA. The run uses the fail-fast `NaN` loss wrapper from step 6, so no training or
-  validation window was skipped. If the run does not beat unigram, the plan is not complete. The
-  investigation into why (from profile and gradient evidence) and the recorded outcome become the
-  deliverable, and the success claim is not made.
+  and commit SHA. The run uses the fail-fast non-finite loss wrapper from step 6, so no training or
+  validation window was skipped or had an infinite loss. It uses `AdamOptimizer`, set on the
+  `Model` with the recorded hyperparameters, and the `ffDim` and RoPE settings fixed in step 6.
+  If the run does not beat unigram, the plan is not complete. The investigation into why (from
+  profile and gradient evidence) and the recorded outcome become the deliverable, and the success
+  claim is not made.
 - The trained weights round-trip through `StateDictionary` save/load, with the reloaded held-out
   loss either exactly equal (weights saved at the training precision) or within the stated tolerance
   (FP32 default save) — see the precision note in step 6.
@@ -443,12 +491,15 @@ matters).
   shape: a small attention-options value carrying `causal`, `keyMask` and `logitSoftcap` together,
   for example. Pick one before implementation, because it decides how much of the
   `sequenceAttention` / `selfAttention` / `transformerBlock` overload families step 1 touches.
-- **Model defaults: query/key norm off, seeded normal(0, 0.02) initialization.** Step 6 fixes
-  these so the run is reproducible from the test alone. They are conventional small-transformer
-  settings, chosen for this plan rather than taken from an existing training test (the platform
-  has never trained a transformer language model from scratch, so there is no precedent to copy).
-  The approver may prefer the query/key norm on, since Qwen3-style blocks use it, at the cost of two more weight collections per block and
-  more gradient paths to verify in step 2.
+- **Model and optimizer defaults.** Step 6 fixes query/key norm off, seeded normal(0, 0.02)
+  initialization, `ffDim = 256`, full-rotary RoPE with base 10000, and Adam at learning rate
+  `3e-4` with betas `0.9` / `0.999`, so the run is reproducible from the test alone. They are
+  conventional small-transformer settings, chosen for this plan rather than taken from an existing
+  training test (the platform has never trained a transformer language model from scratch, so
+  there is no precedent to copy). The approver may prefer the query/key norm on, since
+  Qwen3-style blocks use it, at the cost of two more weight collections per block and more
+  gradient paths to verify in step 2; or a smaller `ffDim` (for example the common `8/3 · embed`
+  GLU sizing, rounded) if the step budget is tight.
 - **Corpus size versus budget.** The full `docs/internals` corpus may be larger than a
   40-minute run can use. The implementer picks a fixed subset that gives a meaningful held-out
   split, and records the choice. Beating unigram is the bar, not converging on the whole corpus.
@@ -461,8 +512,9 @@ matters).
   depends on, so it is not something to slip into this plan's run.
 - **Numerical stability of `logSoftmax`.** `ActivationFeatures.logSoftmax` computes
   `x − log(Σ exp(x))` without subtracting the max. At vocab 256 and small initial weights this
-  should be fine. If NaNs appear, a max-subtracted variant is an in-scope fix, because it is
-  generic and belongs in `ActivationFeatures`.
+  should be fine. If a `NaN` or infinite loss appears (overflow of `Σ exp(x)` gives `−∞`
+  log-probabilities, and `ModelOptimizer` does not skip infinite losses), a max-subtracted variant
+  is an in-scope fix, because it is generic and belongs in `ActivationFeatures`.
 
 ## Estimated Complexity
 
