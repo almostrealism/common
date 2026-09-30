@@ -151,18 +151,21 @@ def validate_pipeline(spec):
             "ByteFallback[, optional trailing Fuse] decoder" % kinds)
 
     # The binary carries no post-processor and the Java reader adds no special tokens, so a
-    # post-processor is accepted only when it adds none either: a TemplateProcessing whose
-    # single-sequence template is the sequence alone.
+    # post-processor is accepted only when it adds none either. The single-sequence template must be
+    # exactly one Sequence carrying the input ids (id "A"): a template that adds a special token, or
+    # one that repeats the sequence (e.g. [$A, $A], which duplicates every input id), would change
+    # the ids the Java reader never reproduces.
     for component in _flatten(spec.get("post_processor"), "processors"):
         kind = component.get("type")
         single = component.get("single") or []
-        if kind == "TemplateProcessing" and single \
-                and all("Sequence" in piece for piece in single):
+        if kind == "TemplateProcessing" and len(single) == 1 \
+                and "Sequence" in single[0] \
+                and single[0]["Sequence"].get("id") == "A":
             continue
         raise ValueError(
-            "unsupported post-processor %r; the Java reader adds no special tokens, so a "
-            "post-processor that adds BOS/EOS or otherwise changes the ids would make the exported "
-            "tokenizer disagree with the source" % kind)
+            "unsupported post-processor %r; the Java reader adds no special tokens and emits each "
+            "input id once, so a post-processor that adds BOS/EOS or repeats the sequence would "
+            "make the exported tokenizer disagree with the source" % kind)
 
 
 def read_tokenizer(tokenizer_dir):

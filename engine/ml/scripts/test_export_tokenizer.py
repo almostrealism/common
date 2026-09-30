@@ -186,6 +186,33 @@ def test_sequence_only_post_processor_is_accepted():
     exporter.validate_pipeline(spec)
 
 
+def test_repeated_sequence_post_processor_is_rejected():
+    # A template that repeats the sequence ([$A, $A]) duplicates every input id; the Java reader
+    # emits each id once, so it must be rejected even though every piece is a Sequence.
+    spec = _supported_spec()
+    spec["post_processor"] = {
+        "type": "TemplateProcessing",
+        "single": [{"Sequence": {"id": "A", "type_id": 0}},
+                   {"Sequence": {"id": "A", "type_id": 0}}],
+        "special_tokens": {},
+    }
+    with pytest.raises(ValueError, match="post-processor"):
+        exporter.validate_pipeline(spec)
+
+
+def test_non_a_sequence_post_processor_is_rejected():
+    # The single template must carry the input ids (id "A"); any other id is not the no-op the
+    # Java reader reproduces.
+    spec = _supported_spec()
+    spec["post_processor"] = {
+        "type": "TemplateProcessing",
+        "single": [{"Sequence": {"id": "B", "type_id": 0}}],
+        "special_tokens": {},
+    }
+    with pytest.raises(ValueError, match="post-processor"):
+        exporter.validate_pipeline(spec)
+
+
 def test_special_token_post_processor_is_rejected():
     # The Java reader adds no BOS/EOS, so a template that adds one would change the ids.
     spec = _supported_spec()

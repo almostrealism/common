@@ -102,6 +102,58 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A byte is folded only from a whole {@code <0xNN>} token, matching the reference ByteFallback
+	 * decoder. An ordinary token that merely contains that substring, and two neighbours that only
+	 * form it once concatenated, must survive decoding untouched rather than being misread as a byte.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void byteFoldingRespectsTokenBoundaries() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(new String[] {
+				"<0x4", "1>", "x<0x41>y"
+		});
+
+		assertEquals("<0x41>", tokenizer.decodeAsLong(new long[] {0, 1}));
+		assertEquals("x<0x41>y", tokenizer.decodeAsLong(new long[] {2}));
+	}
+
+	/**
+	 * An invalid UTF-8 run of byte tokens becomes one replacement character per byte, matching the
+	 * reference ByteFallback decoder, rather than collapsing the whole malformed run into one.
+	 *
+	 * <p>{@code 0xE5} leads a three-byte sequence but only one continuation byte follows, so the run
+	 * is invalid UTF-8 and the reference decoder emits one {@code U+FFFD} per byte token: two here.</p>
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void invalidByteRunBecomesOneReplacementPerByte() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(new String[] {
+				"<0xE5>", "<0x8F>"
+		});
+
+		assertEquals("��", tokenizer.decodeAsLong(new long[] {0, 1}));
+	}
+
+	/**
+	 * A valid multi-byte UTF-8 run of byte tokens folds back into the single character it encodes.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void validByteRunFoldsIntoOneCharacter() throws IOException {
+		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
+		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(new String[] {
+				"<0xE2>", "<0x82>", "<0xAC>"
+		});
+
+		assertEquals("€", tokenizer.decodeAsLong(new long[] {0, 1, 2}));
+	}
+
+	/**
 	 * A file that is not an exported tokenizer is rejected rather than read as one.
 	 *
 	 * @throws IOException if the fixture cannot be written

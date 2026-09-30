@@ -22,6 +22,10 @@ import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -193,26 +197,28 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	/**
 	 * Restores spaces and folds runs of byte tokens back into the characters they encode.
 	 *
-	 * @param symbols the concatenated vocabulary strings
+	 * <p>The reference decoder ({@code Replace(boundary -> space)}, then {@code ByteFallback}, then
+	 * {@code Fuse}) runs before the tokens are concatenated, so a byte is recovered only when a
+	 * whole token is exactly {@code <0xNN>}. Decoding token by token here matches that: an ordinary
+	 * token that merely contains that substring, or two neighbours that only form it once joined,
+	 * is left untouched, and its boundary marker is turned into a space in isolation.</p>
+	 *
+	 * @param tokens the vocabulary strings of the token sequence, in order
 	 * @return the decoded text
 	 */
 	@Override
-	protected String fromSymbols(String symbols) {
+	protected String fromSymbols(List<String> tokens) {
 		StringBuilder text = new StringBuilder();
 		List<Byte> pending = new ArrayList<>();
 
-		int i = 0;
-		while (i < symbols.length()) {
-			int value = byteTokenAt(symbols, i);
+		for (String token : tokens) {
+			int value = byteValue(token);
 
 			if (value >= 0) {
 				pending.add((byte) value);
-				i += 6;
 			} else {
 				flushBytes(pending, text);
-				char c = symbols.charAt(i);
-				text.append(c == BOUNDARY ? ' ' : c);
-				i++;
+				text.append(token.replace(BOUNDARY, ' '));
 			}
 		}
 
@@ -231,21 +237,24 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	}
 
 	/**
-	 * Reads a {@code <0xNN>} byte token at the given offset.
+	 * The byte a {@code <0xNN>} token encodes, or {@code -1} when the token is not a byte token.
 	 *
-	 * @param symbols the concatenated vocabulary strings
-	 * @param offset  where to look
-	 * @return the byte value, or {@code -1} if no byte token starts here
+	 * <p>A byte is recognized only when the whole token is exactly {@code <0xNN>}, matching the
+	 * reference {@code ByteFallback} decoder, so an ordinary token that merely contains that
+	 * substring is not misread as a byte.</p>
+	 *
+	 * @param token one vocabulary string
+	 * @return the byte value, or {@code -1} if the token is not a byte token
 	 */
-	protected int byteTokenAt(String symbols, int offset) {
-		if (offset + 6 > symbols.length()) return -1;
-		if (symbols.charAt(offset) != '<' || symbols.charAt(offset + 1) != '0'
-				|| symbols.charAt(offset + 2) != 'x' || symbols.charAt(offset + 5) != '>') {
+	protected int byteValue(String token) {
+		if (token.length() != 6) return -1;
+		if (token.charAt(0) != '<' || token.charAt(1) != '0'
+				|| token.charAt(2) != 'x' || token.charAt(5) != '>') {
 			return -1;
 		}
 
-		int high = Character.digit(symbols.charAt(offset + 3), 16);
-		int low = Character.digit(symbols.charAt(offset + 4), 16);
+		int high = Character.digit(token.charAt(3), 16);
+		int low = Character.digit(token.charAt(4), 16);
 		if (high < 0 || low < 0) return -1;
 
 		return (high << 4) | low;
@@ -253,6 +262,13 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 
 	/**
 	 * Appends any accumulated bytes as UTF-8 text and clears them.
+	 *
+	 * <p>When the run is not valid UTF-8 the reference {@code ByteFallback} decoder emits one
+	 * replacement character per byte token, not one per malformed subsequence, so a truncated
+	 * sequence such as {@code <0xE5>, <0x8F>} produces two replacement characters. This matches
+	 * that by decoding the run strictly and, on failure, appending one {@code U+FFFD} per pending
+	 * byte -- rather than delegating to {@link String#String(byte[], java.nio.charset.Charset)},
+	 * whose substitution collapses a malformed run into a single replacement character.</p>
 	 *
 	 * @param pending the accumulated bytes
 	 * @param text    the destination
@@ -265,7 +281,17 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			bytes[i] = pending.get(i);
 		}
 
-		text.append(new String(bytes, StandardCharsets.UTF_8));
+		CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+				.onMalformedInput(CodingErrorAction.REPORT)
+				.onUnmappableCharacter(CodingErrorAction.REPORT);
+		try {
+			text.append(decoder.decode(ByteBuffer.wrap(bytes)));
+		} catch (CharacterCodingException invalid) {
+			for (int i = 0; i < bytes.length; i++) {
+				text.append('�');
+			}
+		}
+
 		pending.clear();
 	}
 

@@ -102,25 +102,41 @@ public class SentencePieceTokenizerFixture {
 	 * @throws IOException if the file cannot be written
 	 */
 	public void write(File file, int magic, int version) throws IOException {
+		write(file, magic, version, VOCAB, MERGES, new int[] {BOS, EOS, PAD, UNK});
+	}
+
+	/**
+	 * Writes a tokenizer over the given vocabulary, merges and special ids, so a decode test can
+	 * craft the exact token strings it needs without disturbing the parity vocabulary.
+	 *
+	 * @param file     where to write
+	 * @param magic    the magic value to write
+	 * @param version  the version to write
+	 * @param vocab    the vocabulary, in token-id order
+	 * @param merges   the merges, in priority order
+	 * @param specials the special ids in {@code {bos, eos, pad, unk}} order, each {@code -1} for none
+	 * @throws IOException if the file cannot be written
+	 */
+	protected void write(File file, int magic, int version, String[] vocab, String[][] merges,
+			int[] specials) throws IOException {
 		try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
 			out.writeInt(magic);
 			out.writeInt(version);
 
-			out.writeInt(VOCAB.length);
-			for (String token : VOCAB) {
+			out.writeInt(vocab.length);
+			for (String token : vocab) {
 				writeString(out, token);
 			}
 
-			out.writeInt(MERGES.length);
-			for (String[] merge : MERGES) {
+			out.writeInt(merges.length);
+			for (String[] merge : merges) {
 				writeString(out, merge[0]);
 				writeString(out, merge[1]);
 			}
 
-			out.writeInt(BOS);
-			out.writeInt(EOS);
-			out.writeInt(PAD);
-			out.writeInt(UNK);
+			for (int special : specials) {
+				out.writeInt(special);
+			}
 		}
 	}
 
@@ -147,6 +163,22 @@ public class SentencePieceTokenizerFixture {
 	 */
 	public SentencePieceBPETokenizer tokenizer() throws IOException {
 		return new SentencePieceBPETokenizer(write().getPath());
+	}
+
+	/**
+	 * A tokenizer over an arbitrary vocabulary with no merges, for exercising decode behaviours that
+	 * depend on the exact token strings -- byte-token boundaries and invalid UTF-8 folding -- rather
+	 * than on the merge algorithm.
+	 *
+	 * @param vocab the vocabulary, in token-id order
+	 * @return the tokenizer
+	 * @throws IOException if the file cannot be written or read
+	 */
+	public SentencePieceBPETokenizer tokenizerFor(String[] vocab) throws IOException {
+		File file = File.createTempFile("ar-tokenizer-fixture", ".bin");
+		file.deleteOnExit();
+		write(file, 0x4152544B, 1, vocab, new String[0][], new int[] {-1, -1, -1, -1});
+		return new SentencePieceBPETokenizer(file.getPath());
 	}
 
 	/**

@@ -140,7 +140,7 @@ public abstract class ByteLevelBPETokenizer {
      * character, and merges over those characters; a SentencePiece-style tokenizer instead
      * marks word boundaries and falls back to byte tokens only for characters its vocabulary
      * does not contain. The merge algorithm itself is identical either way, so a subclass
-     * that overrides this and {@link #fromSymbols(String)} inherits everything else.</p>
+     * that overrides this and {@link #fromSymbols(List)} inherits everything else.</p>
      *
      * @param segment one segment produced by the pre-tokenizer
      * @return the initial symbols, in order
@@ -157,14 +157,25 @@ public abstract class ByteLevelBPETokenizer {
     }
 
     /**
-     * Converts the concatenated vocabulary strings of a token sequence back into text,
-     * reversing {@link #toSymbols(String)}.
+     * Converts the vocabulary strings of a token sequence back into text, reversing
+     * {@link #toSymbols(String)}.
      *
-     * @param symbols the concatenated vocabulary strings
+     * <p>The tokens are passed individually rather than pre-concatenated so a subclass whose
+     * decoding depends on where one token ends and the next begins -- a SentencePiece-style
+     * tokenizer folds a run of {@code <0xNN>} tokens only when each is a whole byte token -- can
+     * honor those boundaries. The byte-level default has no such dependency and concatenates
+     * them.</p>
+     *
+     * @param tokens the vocabulary strings of the token sequence, in order
      * @return the decoded text
      */
-    protected String fromSymbols(String symbols) {
-        return ByteLevelEncoder.decode(symbols);
+    protected String fromSymbols(List<String> tokens) {
+        StringBuilder encoded = new StringBuilder();
+        for (String token : tokens) {
+            encoded.append(token);
+        }
+
+        return ByteLevelEncoder.decode(encoded.toString());
     }
 
     /**
@@ -233,7 +244,7 @@ public abstract class ByteLevelBPETokenizer {
      * @return Decoded text
      */
     public String decode(int[] tokenIds) {
-        StringBuilder encoded = new StringBuilder();
+        List<String> tokens = new ArrayList<>();
 
         for (int tokenId : tokenIds) {
             // Skip special tokens
@@ -242,11 +253,11 @@ public abstract class ByteLevelBPETokenizer {
             }
 
             if (tokenId >= 0 && tokenId < vocab.length) {
-                encoded.append(vocab[tokenId]);
+                tokens.add(vocab[tokenId]);
             }
         }
 
-        return fromSymbols(encoded.toString());
+        return fromSymbols(tokens);
     }
 
     /**
