@@ -1025,10 +1025,10 @@ public class WavFile implements AutoCloseable {
 	/**
 	 * Writes an audio collection, shaped {@code [channels, frames]} or {@code [frames]} when there
 	 * is one channel. This is how a collection produced on a device reaches a file: each channel is
-	 * read in logical {@code [channels, frames]} order rather than sample by sample, staying a
-	 * single bulk transfer for a regular shape while mapping a permuted or otherwise reordered shape
-	 * through its {@link TraversalPolicy} so the file receives channel/frame order, not backing
-	 * memory order. Only the leading frames that still fit in the file are copied off the device;
+	 * read in logical {@code [channels, frames]} order with one bulk transfer rather than sample by
+	 * sample. A permuted or otherwise reordered shape is mapped through its {@link TraversalPolicy}
+	 * (see {@link PackedCollection#doubleStream(int, int)}) so the file receives channel/frame order,
+	 * not backing memory order. Only the leading frames that still fit in the file are copied off the device;
 	 * frames beyond {@link #getFramesRemaining()} are neither transferred nor written.
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent

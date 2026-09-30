@@ -732,6 +732,46 @@ def test_config_json_id_outside_vocabulary_is_rejected(tmp_path, token_id):
         exporter.read_tokenizer(str(tokenizer_dir))
 
 
+@pytest.mark.parametrize("configured", ["<bos>", {"content": "<bos>"}])
+def test_configured_special_token_missing_from_vocabulary_is_rejected(tmp_path, configured):
+    # A token named by tokenizer_config.json that tokenizer.json does not contain must not export
+    # as -1, which would mean "no such token" and silently drop the configured behavior -- even
+    # when config.json names a valid integer id for the same key.
+    vocab = {"<pad>": 0, "<eos>": 1, "a": 2}
+    vocab.update(_byte_tokens(3))
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "tokenizer_config.json").write_text(json.dumps({
+        "bos_token": configured,
+        "eos_token": "<eos>",
+    }))
+    (tokenizer_dir / "config.json").write_text(json.dumps({"bos_token_id": 0}))
+
+    with pytest.raises(ValueError, match="bos token '<bos>' is not in the vocabulary"):
+        exporter.read_tokenizer(str(tokenizer_dir))
+
+
+def test_null_configured_special_token_exports_as_absent(tmp_path):
+    # An explicit null in tokenizer_config.json declares the token absent, which is still -1.
+    vocab = {"<pad>": 0, "<eos>": 1, "a": 2}
+    vocab.update(_byte_tokens(3))
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(_supported_spec(vocab=vocab)))
+    (tokenizer_dir / "tokenizer_config.json").write_text(json.dumps({
+        "bos_token": None,
+        "eos_token": "<eos>",
+        "pad_token": "<pad>",
+        "unk_token": None,
+    }))
+
+    _, _, specials, _ = exporter.read_tokenizer(str(tokenizer_dir))
+    assert specials == {"bos": -1, "eos": 1, "pad": 0, "unk": -1}
+
+
 def test_export_rejects_incompatible_tokenizer(tmp_path):
     # read_tokenizer must refuse an incompatible pipeline rather than write a misleading binary.
     spec = _supported_spec()

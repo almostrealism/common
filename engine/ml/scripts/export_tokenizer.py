@@ -321,6 +321,9 @@ def read_tokenizer(tokenizer_dir):
 
     The special ids are read from ``tokenizer_config.json`` / ``config.json``
     when present, since ``tokenizer.json`` itself does not name them.
+
+    :raises ValueError: if a special token named by ``tokenizer_config.json``, or an id named by
+        ``config.json``, is not in the exported vocabulary.
     """
     with open(os.path.join(tokenizer_dir, "tokenizer.json")) as handle:
         spec = json.load(handle)
@@ -351,8 +354,12 @@ def read_tokenizer(tokenizer_dir):
             token = config.get(name)
             if isinstance(token, dict):
                 token = token.get("content")
+            # A configured token absent from tokenizer.json would otherwise export as -1, which
+            # means "this tokenizer has no such token" and silently drops its special behavior.
             if token is not None:
-                specials[key] = ids.get(token, -1)
+                if token not in ids:
+                    raise ValueError("%s token %r is not in the vocabulary" % (key, token))
+                specials[key] = ids[token]
 
     # config.json is the documented fallback for any special id tokenizer_config.json did not
     # resolve. A model config commonly names the ids directly as integer ``*_token_id`` fields

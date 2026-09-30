@@ -54,6 +54,47 @@ public class PackedCollectionTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that doubleStream over a permuted (irregular) shape yields elements in logical order,
+	 * for the whole collection, for a range starting and ending mid-row, and for an empty range,
+	 * and that every element agrees with {@link PackedCollection#toDouble(int)}.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamPermutedFollowsLogicalOrder() {
+		// Memory is [3, 4] row-major; the permuted view is [4, 3], so logical (i, j) is memory (j, i)
+		PackedCollection rowMajor = pack(
+				0.0, 1.0, 2.0, 3.0,
+				10.0, 11.0, 12.0, 13.0,
+				20.0, 21.0, 22.0, 23.0).reshape(3, 4);
+		PackedCollection permuted = rowMajor.reshape(rowMajor.getShape().permute(1, 0));
+		assertFalse(permuted.getShape().isRegular());
+
+		double[] expected = {
+				0.0, 10.0, 20.0,
+				1.0, 11.0, 21.0,
+				2.0, 12.0, 22.0,
+				3.0, 13.0, 23.0};
+
+		double[] all = permuted.doubleStream().toArray();
+		assertEquals(expected.length, all.length);
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], all[i]);
+			assertEquals(permuted.toDouble(i), all[i]);
+		}
+
+		double[] middle = permuted.doubleStream(4, 5).toArray();
+		assertEquals(5, middle.length);
+		for (int i = 0; i < middle.length; i++) {
+			assertEquals(expected[4 + i], middle[i]);
+		}
+
+		double[] last = permuted.doubleStream(11, 1).toArray();
+		assertEquals(1, last.length);
+		assertEquals(23.0, last[0]);
+
+		assertEquals(0, permuted.doubleStream(3, 0).count());
+	}
+
+	/**
 	 * Tests that clear zeros out all elements in a collection.
 	 */
 	@Test(timeout = 10000)

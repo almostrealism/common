@@ -442,7 +442,11 @@ public class PackedCollection extends MemoryDataAdapter
 
 	/**
 	 * Returns a {@link DoubleStream} over a range of elements in this collection.
-	 * Uses a direct array read for regular (non-reordered) shapes for efficiency.
+	 * Elements are streamed in the logical order of this collection's shape. A regular shape is a
+	 * single direct read. An irregular shape (permuted, or otherwise mapped through its
+	 * {@link TraversalPolicy}) is also a single read, of the span of backing memory the requested
+	 * elements occupy, with each element then picked out of that span on the host; only a
+	 * collection whose memory carries a {@link TraversalOrdering} is read element by element.
 	 *
 	 * @param offset the starting element index
 	 * @param length the number of elements to stream
@@ -450,11 +454,20 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getMemOrdering() == null && getShape().isRegular()) {
-			return DoubleStream.of(toArray(offset, length));
-		} else {
+		if (getMemOrdering() != null) {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
+		} else if (getShape().isRegular()) {
+			return DoubleStream.of(toArray(offset, length));
+		} else if (length == 0) {
+			return DoubleStream.empty();
 		}
+
+		int[] source = IntStream.range(offset, offset + length).map(getShape()::inputIndex).toArray();
+		// A negative input index lies outside the backing memory and reads as 0.0, as toDouble does
+		int start = IntStream.of(source).filter(i -> i >= 0).min().orElse(0);
+		int end = IntStream.of(source).max().orElse(-1) + 1;
+		double[] span = end > start ? toArray(start, end - start) : new double[0];
+		return IntStream.of(source).mapToDouble(i -> i < 0 ? 0.0 : span[i - start]);
 	}
 
 	/**
