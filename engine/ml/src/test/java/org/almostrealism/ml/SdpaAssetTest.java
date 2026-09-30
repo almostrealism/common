@@ -37,13 +37,14 @@ import static org.junit.Assert.assertEquals;
  * (full-sequence) attention core — as it is migrated from a Java {@code SequentialBlock} assembly
  * to the {@code /pdsl/sdpa.pdsl} asset.
  *
- * <p>Three tests compare {@code scaledDotProductAttention} against an independent host-side
+ * <p>Four tests compare {@code scaledDotProductAttention} against an independent host-side
  * reference ({@code softmax(mask(softcap(Q Kᵀ / sqrt(d)))) V} computed directly in double
- * precision) for the plain, soft-capped and key-masked configurations. The reference does not use
- * any framework block, so these tests pin the numerical contract whether the computation is the
- * former Java assembly or the migrated asset. A fourth test builds the asset directly through
- * {@link PdslLoader} and asserts it agrees with {@code scaledDotProductAttention} to a tight
- * tolerance, so the loader glue that chains the asset's two halves is exercised on its own.</p>
+ * precision) for the plain, soft-capped, key-masked, and soft-capped-plus-key-masked
+ * configurations. The reference does not use any framework block, so these tests pin the numerical
+ * contract whether the computation is the former Java assembly or the migrated asset. A fifth test
+ * builds the asset directly through {@link PdslLoader} and asserts it agrees with
+ * {@code scaledDotProductAttention} to a tight tolerance, so the loader glue that chains the
+ * asset's two halves is exercised on its own.</p>
  */
 public class SdpaAssetTest extends TestSuiteBase implements AttentionFeatures {
 

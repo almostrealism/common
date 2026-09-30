@@ -737,6 +737,10 @@ final class PdslBuiltins {
 	 * single-query autoregressive attention; here the masked positions are named by a data-driven
 	 * validity mask instead.</p>
 	 *
+	 * <p>The mask's shape is checked against the score shape when the layer is built: it must be
+	 * {@code [batch, keys]} with batch and key extents equal to the score shape's axes 0 and 3, so a
+	 * mismatched mask is rejected rather than silently reshaped by the broadcast.</p>
+	 *
 	 * @param args one argument: the {@code [batch, keys]} validity mask (a bound tensor or a producer)
 	 * @return a factory that creates the key-mask layer for a {@code [batch, heads, queries, keys]}
 	 *         score shape
@@ -748,13 +752,20 @@ final class PdslBuiltins {
 					"key_mask() expects 1 argument (mask), got " + args.size());
 		}
 		CollectionProducer mask = PdslInterpreter.normalizeToProducer(args.get(0), null, "key_mask() mask");
-		// bias = (mask - 1) * penalty: zero where a key is valid (mask == 1), -penalty where it is
-		// masked (mask == 0), so a masked key's softmax weight underflows to zero.
+		TraversalPolicy maskShape = FEATURES.shape(mask);
+		// bias = (mask - 1) * penalty: zero where a key is valid (mask == 1), -penalty where masked.
 		CollectionProducer bias = mask.add(-1.0).multiply(AttentionFeatures.MASKED_LOGIT_PENALTY);
 		return scoresShape -> {
 			if (scoresShape.getDimensions() != 4) {
 				throw new PdslParseException(
 						"key_mask() expects a [batch, heads, queries, keys] score shape, got " + scoresShape);
+			}
+			// Reject a mask the broadcast below would otherwise silently reshape.
+			if (maskShape.getDimensions() != 2
+					|| maskShape.length(0) != scoresShape.length(0)
+					|| maskShape.length(1) != scoresShape.length(3)) {
+				throw new PdslParseException("key_mask() expects a [batch, keys] mask matching the "
+						+ "[batch, heads, queries, keys] score shape " + scoresShape + ", got " + maskShape);
 			}
 			return FEATURES.layer("keyMask", scoresShape, scoresShape,
 					logits -> FEATURES.add(FEATURES.c(logits), FEATURES.broadcast(scoresShape, 3, bias)));
@@ -797,6 +808,14 @@ final class PdslBuiltins {
 			if (inputShape.getDimensions() != 4) {
 				throw new PdslParseException(
 						"scaled_dot_product() expects a [batch, heads, seq, dim] input shape, got " + inputShape);
+			}
+			// Batch/head axes and the contracted axis must agree rather than being reinterpreted.
+			int contracted = transpose ? otherShape.length(3) : otherShape.length(2);
+			if (inputShape.length(0) != otherShape.length(0)
+					|| inputShape.length(1) != otherShape.length(1)
+					|| inputShape.length(3) != contracted) {
+				throw new PdslParseException("scaled_dot_product() input " + inputShape
+						+ " is incompatible with other " + otherShape + " for transpose=" + transpose);
 			}
 			TraversalPolicy outputShape = FEATURES.shape(inputShape.length(0), inputShape.length(1),
 					inputShape.length(2), cols);

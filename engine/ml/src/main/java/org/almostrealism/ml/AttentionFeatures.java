@@ -27,6 +27,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -1804,10 +1805,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 			scoresLayer = "sdpa_scores";
 		}
 
-		// TODO(review): parse SDPA_ASSET once and reuse the Program for both buildLayer calls (parsed twice here)
 		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource(SDPA_ASSET);
 		SequentialBlock attention = new SequentialBlock(inputShape);
-		attention.add(loader.buildLayer(loader.parseResource(SDPA_ASSET), scoresLayer, inputShape, scoresArgs));
+		attention.add(loader.buildLayer(program, scoresLayer, inputShape, scoresArgs));
 
 		// Tap the attention weights to the receptor between the score and context halves.
 		if (attentionScores != null) {
@@ -1816,7 +1817,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 
 		Map<String, Object> contextArgs = new HashMap<>();
 		contextArgs.put("v", v);
-		attention.add(loader.buildLayer(loader.parseResource(SDPA_ASSET), "sdpa_context",
+		attention.add(loader.buildLayer(program, "sdpa_context",
 				attention.getOutputShape(), contextArgs));
 
 		return attention;

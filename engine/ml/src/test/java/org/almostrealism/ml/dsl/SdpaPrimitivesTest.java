@@ -22,6 +22,7 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -175,5 +176,81 @@ public class SdpaPrimitivesTest extends TestSuiteBase implements AttentionFeatur
 			double tolerance = Math.max(1e-3, Math.abs(expected[idx]) * 1e-5);
 			assertEquals("key_mask element " + idx, expected[idx], actual[idx], tolerance);
 		}
+	}
+
+	/**
+	 * {@code key_mask(mask)} rejects a mask whose shape does not match the score shape's batch and
+	 * key extents rather than letting the broadcast silently reshape it: a rank other than two, a
+	 * mismatched batch, and a mismatched key count are each rejected.
+	 */
+	@Test(timeout = 60000)
+	public void keyMaskRejectsMismatchedMaskShape() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource(FIXTURE);
+		TraversalPolicy scoresShape = shape(BATCH, HEADS, QUERIES, KEYS);
+
+		try {
+			loader.buildLayer(program, "km", scoresShape,
+					argMap("mask", new PackedCollection(shape(BATCH, KEYS, 1))));
+			Assert.fail("key_mask should reject a mask that is not [batch, keys]");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+
+		try {
+			loader.buildLayer(program, "km", scoresShape,
+					argMap("mask", new PackedCollection(shape(BATCH + 1, KEYS))));
+			Assert.fail("key_mask should reject a mask whose batch does not match the score shape");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+
+		try {
+			loader.buildLayer(program, "km", scoresShape,
+					argMap("mask", new PackedCollection(shape(BATCH, KEYS + 1))));
+			Assert.fail("key_mask should reject a mask whose key count does not match the score shape");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * {@code scaled_dot_product(other, transpose)} rejects an operand whose batch, head, or
+	 * contracted extent is incompatible with the input rather than reinterpreting it: a mismatched
+	 * head count (transpose) and a mismatched contracted key count (plain) are each rejected.
+	 */
+	@Test(timeout = 60000)
+	public void scaledDotProductRejectsIncompatibleOperand() {
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource(FIXTURE);
+
+		try {
+			loader.buildLayer(program, "sdp_transpose", shape(BATCH, HEADS, QUERIES, DIM),
+					argMap("other", new PackedCollection(shape(BATCH, HEADS + 1, KEYS, DIM))));
+			Assert.fail("scaled_dot_product(true) should reject an operand with a mismatched head count");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+
+		try {
+			loader.buildLayer(program, "sdp_plain", shape(BATCH, HEADS, QUERIES, KEYS),
+					argMap("other", new PackedCollection(shape(BATCH, HEADS, KEYS + 1, DIM))));
+			Assert.fail("scaled_dot_product(false) should reject an operand with a mismatched key count");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * Builds a single-entry argument map for a fixture layer.
+	 *
+	 * @param name  the layer's parameter name
+	 * @param value the bound argument
+	 * @return the argument map
+	 */
+	private static Map<String, Object> argMap(String name, PackedCollection value) {
+		Map<String, Object> args = new HashMap<>();
+		args.put(name, value);
+		return args;
 	}
 }
