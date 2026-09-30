@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
@@ -42,9 +43,11 @@ import static org.junit.Assert.assertEquals;
  * precision) for the plain, soft-capped, key-masked, and soft-capped-plus-key-masked
  * configurations. The reference does not use any framework block, so these tests pin the numerical
  * contract whether the computation is the former Java assembly or the migrated asset. A fifth test
- * builds the asset directly through {@link PdslLoader} and asserts it agrees with
- * {@code scaledDotProductAttention} to a tight tolerance, so the loader glue that chains the
- * asset's two halves is exercised on its own.</p>
+ * passes a non-null {@code attentionScores} receptor and asserts it receives the post-mask,
+ * post-softmax attention weights while the main output still reaches the context half, covering the
+ * receptor tap between the two halves. A sixth test builds the asset directly through
+ * {@link PdslLoader} and asserts it agrees with {@code scaledDotProductAttention} to a tight
+ * tolerance, so the loader glue that chains the asset's two halves is exercised on its own.</p>
  */
 public class SdpaAssetTest extends TestSuiteBase implements AttentionFeatures {
 
@@ -86,8 +89,36 @@ public class SdpaAssetTest extends TestSuiteBase implements AttentionFeatures {
 	 * @return the expected output, row-major {@code [HEADS, SEQ, DIM_HEAD]}
 	 */
 	private double[] oracle(double[] q, double[] k, double[] v, double softcap, double[] mask) {
-		double invSqrt = 1.0 / Math.sqrt(DIM_HEAD);
+		double[] weights = oracleWeights(q, k, softcap, mask);
 		double[] out = new double[HEADS * SEQ * DIM_HEAD];
+		for (int h = 0; h < HEADS; h++) {
+			for (int i = 0; i < SEQ; i++) {
+				for (int d = 0; d < DIM_HEAD; d++) {
+					double o = 0;
+					for (int j = 0; j < SEQ; j++) {
+						o += weights[(h * SEQ + i) * SEQ + j] * v[(h * SEQ + j) * DIM_HEAD + d];
+					}
+					out[(h * SEQ + i) * DIM_HEAD + d] = o;
+				}
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Host reference for the post-mask, post-softmax attention weights — the tensor the score half
+	 * of the asset produces and the receptor observes between the two halves:
+	 * {@code softmax_j(mask_j(softcap(sum_d q[h,i,d] k[h,j,d] / sqrt(d))))}.
+	 *
+	 * @param q       query values, row-major {@code [HEADS, SEQ, DIM_HEAD]}
+	 * @param k       key values, same layout
+	 * @param softcap the logit soft-cap, or {@code 0} for none
+	 * @param mask    per-key validity of length {@code SEQ} (one valid, zero masked), or {@code null}
+	 * @return the expected attention weights, row-major {@code [HEADS, SEQ, SEQ]}
+	 */
+	private double[] oracleWeights(double[] q, double[] k, double softcap, double[] mask) {
+		double invSqrt = 1.0 / Math.sqrt(DIM_HEAD);
+		double[] weights = new double[HEADS * SEQ * SEQ];
 		for (int h = 0; h < HEADS; h++) {
 			for (int i = 0; i < SEQ; i++) {
 				double[] score = new double[SEQ];
@@ -114,16 +145,12 @@ public class SdpaAssetTest extends TestSuiteBase implements AttentionFeatures {
 					score[j] = Math.exp(score[j] - max);
 					sum += score[j];
 				}
-				for (int d = 0; d < DIM_HEAD; d++) {
-					double o = 0;
-					for (int j = 0; j < SEQ; j++) {
-						o += (score[j] / sum) * v[(h * SEQ + j) * DIM_HEAD + d];
-					}
-					out[(h * SEQ + i) * DIM_HEAD + d] = o;
+				for (int j = 0; j < SEQ; j++) {
+					weights[(h * SEQ + i) * SEQ + j] = score[j] / sum;
 				}
 			}
 		}
-		return out;
+		return weights;
 	}
 
 	/**
@@ -197,6 +224,56 @@ public class SdpaAssetTest extends TestSuiteBase implements AttentionFeatures {
 		lessThan(integers(0, SEQ), c((double) validKeys), c(1.0), c(0.0))
 				.into(mask.traverseEach()).evaluate();
 		assertMatchesOracle(30.0, mask, "sdpa softcap+key-mask");
+	}
+
+	/**
+	 * A non-null {@code attentionScores} receptor receives the post-mask, post-softmax attention
+	 * weights the score half produces, while the main output still flows through to the context
+	 * half. A key mask is applied so the captured weights are non-trivial (every query attends only
+	 * to the first three keys), exercising the receptor tap between the two halves that no other test
+	 * covers. The captured weights are checked against the host reference and the main output against
+	 * the full-attention host reference, so a wiring regression in either path fails the assertion.
+	 */
+	@Test(timeout = 120000)
+	public void sdpaReceptorReceivesAttentionWeights() {
+		PackedCollection q = randnInput();
+		PackedCollection k = randnInput();
+		PackedCollection v = randnInput();
+
+		int validKeys = 3;
+		PackedCollection mask = new PackedCollection(shape(BATCH, SEQ));
+		lessThan(integers(0, SEQ), c((double) validKeys), c(1.0), c(0.0))
+				.into(mask.traverseEach()).evaluate();
+
+		PackedCollection captured = new PackedCollection(shape(BATCH, HEADS, SEQ, SEQ));
+		CollectionReceptor receptor = new CollectionReceptor(captured);
+
+		Model model = new Model(shape(BATCH, HEADS, SEQ, DIM_HEAD));
+		model.add(scaledDotProductAttention(BATCH, SEQ, SEQ, HEADS, DIM_HEAD, k, v, receptor,
+				0.0, cp(mask)));
+		CompiledModel compiled = model.compile(false);
+		PackedCollection output = compiled.forward(q);
+
+		double[] qh = q.doubleStream().toArray();
+		double[] kh = k.doubleStream().toArray();
+		double[] vh = v.doubleStream().toArray();
+		double[] maskh = mask.doubleStream().toArray();
+
+		// The receptor received the post-mask, post-softmax attention weights.
+		double[] expectedWeights = oracleWeights(qh, kh, 0.0, maskh);
+		double[] actualWeights = captured.doubleStream().toArray();
+		assertEquals("captured weights size", expectedWeights.length, actualWeights.length);
+		for (int i = 0; i < expectedWeights.length; i++) {
+			assertEquals("captured weight " + i, expectedWeights[i], actualWeights[i], 1e-4);
+		}
+
+		// The main output still reaches the context half.
+		double[] expectedOutput = oracle(qh, kh, vh, 0.0, maskh);
+		double[] actualOutput = output.doubleStream().toArray();
+		assertEquals("output size", expectedOutput.length, actualOutput.length);
+		for (int i = 0; i < expectedOutput.length; i++) {
+			assertEquals("output element " + i, expectedOutput[i], actualOutput[i], 1e-4);
+		}
 	}
 
 	/**

@@ -804,10 +804,15 @@ final class PdslBuiltins {
 					"scaled_dot_product() other must be [batch, heads, seq, dim], got " + otherShape);
 		}
 		int cols = transpose ? otherShape.length(2) : otherShape.length(3);
+		// The input's last axis is the extent contracted against other: dim for a Q Kᵀ product
+		// (transpose true) and keys for an A V product (transpose false).
+		String expectedInput = transpose
+				? "[batch, heads, queries, dim]"
+				: "[batch, heads, queries, keys]";
 		return inputShape -> {
 			if (inputShape.getDimensions() != 4) {
-				throw new PdslParseException(
-						"scaled_dot_product() expects a [batch, heads, seq, dim] input shape, got " + inputShape);
+				throw new PdslParseException("scaled_dot_product() expects a " + expectedInput
+						+ " input shape, got " + inputShape);
 			}
 			// Batch/head axes and the contracted axis must agree rather than being reinterpreted.
 			int contracted = transpose ? otherShape.length(3) : otherShape.length(2);
