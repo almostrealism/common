@@ -92,8 +92,12 @@ public class ElementVoicingDetailsTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The stereo channel is deliberately excluded from identity, so both channels
-	 * of a note share cached audio.
+	 * The stereo channel is deliberately excluded from {@link ElementVoicingDetails}
+	 * equality and hash code. The LEFT and RIGHT renders of a note are kept distinct
+	 * in {@link org.almostrealism.music.pattern.NoteAudioCache} not by these details
+	 * but by the cache identity, which {@code ScaleTraversalStrategy.createRenderedNote}
+	 * builds as {@code (element, details, stereoChannel)} — the channel is listed
+	 * there separately precisely because it does not participate in this equality.
 	 */
 	@Test(timeout = 10000)
 	public void stereoChannelDoesNotAffectIdentity() {
