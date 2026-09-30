@@ -1028,10 +1028,12 @@ public class WavFile implements AutoCloseable {
 	 * read in logical {@code [channels, frames]} order rather than sample by sample, staying a
 	 * single bulk transfer for a regular shape while mapping a permuted or otherwise reordered shape
 	 * through its {@link TraversalPolicy} so the file receives channel/frame order, not backing
-	 * memory order.
+	 * memory order. Only the leading frames that still fit in the file are copied off the device;
+	 * frames beyond {@link #getFramesRemaining()} are neither transferred nor written.
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
-	 * @return the number of frames written
+	 * @return the number of frames written, which is less than the collection's frame count when
+	 *         the file has fewer frames remaining
 	 * @throws IOException              if this file is not open for writing, or writing fails; the
 	 *                                  state is checked before any sample is copied off the device
 	 * @throws IllegalArgumentException if the collection's channel count does not match the file's,
@@ -1054,12 +1056,14 @@ public class WavFile implements AutoCloseable {
 					+ getNumChannels());
 		}
 
+		int writable = (int) Math.min(frames, getFramesRemaining());
+
 		double[][] samples = new double[channels][];
 		for (int c = 0; c < channels; c++) {
-			samples[c] = audio.doubleStream(c * frames, frames).toArray();
+			samples[c] = audio.doubleStream(c * frames, writable).toArray();
 		}
 
-		return writeFrames(samples, frames);
+		return writeFrames(samples, writable);
 	}
 
 	/**

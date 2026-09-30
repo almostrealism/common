@@ -191,6 +191,42 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A collection with more frames than the file has remaining writes only the leading frames that
+	 * fit, taking each channel's frames from that channel's own row rather than from a row boundary
+	 * computed from the truncated length; once the file is full a further write writes nothing.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void oversizedCollectionWritesOnlyRemainingFrames() throws IOException {
+		File file = tempWav();
+
+		try (PackedCollection audio = pack(
+				0.1, 0.2, 0.3, 0.4, 0.5,
+				-0.1, -0.2, -0.3, -0.4, -0.5).reshape(2, 5);
+			 WavFile wav = WavFile.newWavFile(file, 2, 3, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(3, wav.writeFrames(audio));
+			Assert.assertEquals(0, wav.getFramesRemaining());
+			Assert.assertEquals(0, wav.writeFrames(audio));
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(3, wav.getNumFrames());
+
+			double[][] in = new double[2][3];
+			Assert.assertEquals(3, wav.readFrames(in, 3));
+
+			double[][] expected = {{0.1, 0.2, 0.3}, {-0.1, -0.2, -0.3}};
+			for (int c = 0; c < 2; c++) {
+				for (int f = 0; f < 3; f++) {
+					Assert.assertEquals("channel " + c + " frame " + f,
+							expected[c][f], in[c][f], TOL_16);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Writing a collection to a file opened for reading is rejected by the writer-state check before
 	 * anything about the collection is examined or copied: a collection whose channel count also
 	 * disagrees with the file's still fails with the state error, not the channel error.
