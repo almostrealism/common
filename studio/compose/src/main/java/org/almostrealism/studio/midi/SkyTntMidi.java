@@ -536,7 +536,16 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * {@code skytnt_block.pdsl} and {@code skytnt_lm_head.pdsl} PDSL files; this
 	 * method only assembles the block sequence and manages weight loading. The single
 	 * {@code program} holds every layer of both files, because {@code skytnt_lm_head.pdsl}
-	 * imports {@code skytnt_block.pdsl}.</p>
+	 * imports {@code skytnt_block.pdsl}, which in turn imports {@code /pdsl/attention.pdsl}
+	 * for its decomposed {@code attention} stage.</p>
+	 *
+	 * <p>That decomposed stage reads its key and value caches from the
+	 * {@code attention_cache} state block of {@code attention.pdsl}, so this method allocates
+	 * one cleared {@code [seqLen, hiddenSize]} pair per layer and binds them as
+	 * {@code key_cache} and {@code value_cache}. They are caller-owned state that persists
+	 * across forward passes — row {@code position} is rewritten on every pass and every row up
+	 * to {@code position} is read — replacing the caches the {@code attention} built-in used to
+	 * allocate internally.</p>
 	 *
 	 * @param prefix        weight key prefix ({@code "net"} or {@code "net_token"})
 	 * @param stateDict     weight source
@@ -561,6 +570,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 											   PackedCollection lmHeadWeight) {
 		PdslLoader loader = new PdslLoader();
 		int hiddenSize = freqCis.getShape().length(1) * 2 * numHeads;
+		int headSize = hiddenSize / numHeads;
+		int seqLen = freqCis.getShape().length(0);
 		TraversalPolicy inputShape = new TraversalPolicy(1, hiddenSize);
 		// NOTE: Model is intentionally not closed via try-with-resources here.
 		// CompiledModel.forward() depends on the blocks added to this Model;
@@ -571,8 +582,15 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		for (int i = 0; i < numLayers; i++) {
 			String layerKey = prefix + ".layers." + i;
 
+			// One cleared [seqLen, hiddenSize] key/value cache pair per layer (see method javadoc).
+			PackedCollection keyCache = new PackedCollection(new TraversalPolicy(seqLen, hiddenSize));
+			PackedCollection valueCache = new PackedCollection(new TraversalPolicy(seqLen, hiddenSize));
+			keyCache.clear();
+			valueCache.clear();
+
 			Map<String, Object> args = new HashMap<>();
 			args.put("heads", numHeads);
+			args.put("head_size", headSize);
 			args.put("rms_att_weight", stateDict.get(layerKey + ".input_layernorm.weight"));
 			args.put("wq", stateDict.get(layerKey + ".self_attn.q_proj.weight"));
 			args.put("wk", stateDict.get(layerKey + ".self_attn.k_proj.weight"));
@@ -580,6 +598,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			args.put("wo", stateDict.get(layerKey + ".self_attn.o_proj.weight"));
 			args.put("freq_cis", freqCis);
 			args.put("position", position);
+			args.put("key_cache", keyCache);
+			args.put("value_cache", valueCache);
 			args.put("rms_ffn_weight", stateDict.get(layerKey + ".post_attention_layernorm.weight"));
 			args.put("gate_proj", stateDict.get(layerKey + ".mlp.gate_proj.weight"));
 			args.put("up_proj", stateDict.get(layerKey + ".mlp.up_proj.weight"));
