@@ -78,7 +78,7 @@ public class StripeTexture implements Texture {
 	@Override
 	public RGB operate(Vector t) {
 		PackedCollection result = this.getColorAt(new Object[0]).evaluate(t);
-		return result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
+		return RGB.of(result);
 	}
 
 	/**
