@@ -310,7 +310,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	}
 
 	/**
-	 * Supplies the tokenizer that {@link #generate(long, String, double)} and
+	 * Supplies the tokenizer that {@link #generateFromText(long, String, double)} and
 	 * {@link #setTextGuidance(double, String)} use to turn prompt text into token ids. For the
 	 * released model this is the exported T5Gemma tokenizer, read by
 	 * {@link org.almostrealism.ml.tokenization.SentencePieceBPETokenizer}; the prompt encoder
@@ -386,7 +386,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 
 	/**
 	 * Generates a clip from prompt text, tokenizing it with the tokenizer supplied to
-	 * {@link #setTokenizer(Tokenizer)}.
+	 * {@link #setTokenizer(Tokenizer)}. This is named apart from {@link #generate(long, long[], double)}
+	 * so that {@code generate(seed, null, seconds)} keeps selecting the unconditional prompt
+	 * unambiguously rather than becoming an ambiguous call between {@code String} and {@code long[]}.
 	 *
 	 * @param seed    seed of the initial noise and the ping-pong noise injections
 	 * @param prompt  the prompt
@@ -394,7 +396,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
 	 * @throws IllegalStateException if no tokenizer has been supplied
 	 */
-	public CollectionProducer generate(long seed, String prompt, double seconds) {
+	public CollectionProducer generateFromText(long seed, String prompt, double seconds) {
 		return generate(seed, encodePrompt(prompt), seconds);
 	}
 

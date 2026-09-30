@@ -151,6 +151,30 @@ def test_reordered_decoder_is_rejected():
         exporter.validate_pipeline(spec)
 
 
+def test_leading_fuse_decoder_is_rejected():
+    # Fuse ahead of the Replace and ByteFallback concatenates the tokens first, destroying the
+    # per-token boundaries the Java reader replaces and folds; only a trailing Fuse is a no-op.
+    spec = _supported_spec()
+    spec["decoder"]["decoders"] = [
+        {"type": "Fuse"},
+        {"type": "Replace", "pattern": {"String": BOUNDARY}, "content": " "},
+        {"type": "ByteFallback"},
+    ]
+    with pytest.raises(ValueError, match="decoder"):
+        exporter.validate_pipeline(spec)
+
+
+def test_decoder_without_trailing_fuse_is_accepted():
+    # The trailing Fuse is optional; a Replace(boundary -> space), ByteFallback decoder is exactly
+    # what the Java reader implements and must validate on its own.
+    spec = _supported_spec()
+    spec["decoder"]["decoders"] = [
+        {"type": "Replace", "pattern": {"String": BOUNDARY}, "content": " "},
+        {"type": "ByteFallback"},
+    ]
+    exporter.validate_pipeline(spec)
+
+
 def test_sequence_only_post_processor_is_accepted():
     spec = _supported_spec()
     spec["post_processor"] = {

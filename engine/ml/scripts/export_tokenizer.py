@@ -134,17 +134,21 @@ def validate_pipeline(spec):
             "byte-level or metaspace pre-tokenizer would change the tokenization" % kind)
 
     # The Java decoder restores spaces from the boundary marker on vocabulary tokens and then folds
-    # byte tokens, in that order, and does nothing else. Fuse only concatenates the decoded pieces,
-    # which the decode already does, so it is ignored; every other step must be exactly these two.
-    steps = [component for component in _flatten(spec.get("decoder"), "decoders")
-             if component.get("type") != "Fuse"]
+    # byte tokens, in that order, and does nothing else. A trailing Fuse only concatenates the
+    # already-decoded pieces, which the decode has effectively done, so it is accepted as the
+    # optional final step. A Fuse anywhere earlier runs before the boundary replacement and byte
+    # folding and destroys the per-token boundaries those steps rely on, so it is rejected along
+    # with every other step and ordering.
+    steps = _flatten(spec.get("decoder"), "decoders")
+    if steps and steps[-1].get("type") == "Fuse":
+        steps = steps[:-1]
     kinds = [component.get("type") for component in steps]
     if kinds != ["Replace", "ByteFallback"] or _pattern_string(steps[0]) != BOUNDARY \
             or steps[0].get("content") != " ":
         raise ValueError(
             "unsupported decoder %r; the Java reader decodes by replacing the boundary marker with "
             "a space and then folding byte tokens, matching only a Replace(boundary -> space), "
-            "ByteFallback[, Fuse] decoder" % kinds)
+            "ByteFallback[, optional trailing Fuse] decoder" % kinds)
 
     # The binary carries no post-processor and the Java reader adds no special tokens, so a
     # post-processor is accepted only when it adds none either: a TemplateProcessing whose

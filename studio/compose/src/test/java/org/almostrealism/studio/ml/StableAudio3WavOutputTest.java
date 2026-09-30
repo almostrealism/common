@@ -129,7 +129,7 @@ public class StableAudio3WavOutputTest extends TestSuiteBase {
 			model.setTokenizer(new SentencePieceBPETokenizer(tokenizerFile.getPath()));
 
 			log("generating from " + PROMPT);
-			audio = model.generate(7, PROMPT, SECONDS).evaluate();
+			audio = model.generateFromText(7, PROMPT, SECONDS).evaluate();
 
 			int channels = audio.getShape().length(0);
 			int frames = audio.getShape().length(1);

@@ -127,7 +127,7 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 		withModel(model -> {
 			model.setTokenizer(tokenizer);
 			log("generating from " + PROMPT);
-			assertGeneratedAudio(model.generate(7, PROMPT, SECONDS).evaluate());
+			assertGeneratedAudio(model.generateFromText(7, PROMPT, SECONDS).evaluate());
 		});
 	}
 

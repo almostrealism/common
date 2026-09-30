@@ -110,7 +110,7 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 			model.setTokenizer(new SentencePieceTokenizerFixture().tokenizer());
 
 			try (PackedCollection audio =
-						model.generate(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
+						model.generateFromText(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
 				assertEquals(2, audio.getShape().getDimensions());
 				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
 				assertEquals(15, audio.getShape().length(1));
@@ -135,7 +135,7 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 		StableAudio3 model = smallModel().setVerbose(false);
 
 		try {
-			model.generate(7, "a prompt", 0.15);
+			model.generateFromText(7, "a prompt", 0.15);
 			Assert.fail("text was accepted without a tokenizer");
 		} catch (IllegalStateException expected) {
 			assertTrue(expected.getMessage().contains("setTokenizer"));
