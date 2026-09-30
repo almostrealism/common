@@ -120,6 +120,61 @@ def test_byte_level_decoder_is_rejected():
         exporter.validate_pipeline(spec)
 
 
+def test_missing_decoder_is_rejected():
+    spec = _supported_spec()
+    spec["decoder"] = None
+    with pytest.raises(ValueError, match="decoder"):
+        exporter.validate_pipeline(spec)
+
+
+def test_other_replace_decoder_is_rejected():
+    # The Java reader only turns the boundary marker into a space; any other Replace would diverge.
+    spec = _supported_spec()
+    spec["decoder"]["decoders"][0] = {"type": "Replace", "pattern": {"String": "x"}, "content": "y"}
+    with pytest.raises(ValueError, match="decoder"):
+        exporter.validate_pipeline(spec)
+
+
+def test_strip_decoder_is_rejected():
+    # A Strip (Llama) removes a leading space the Java reader keeps.
+    spec = _supported_spec()
+    spec["decoder"]["decoders"].append({"type": "Strip", "content": " ", "start": 1, "stop": 0})
+    with pytest.raises(ValueError, match="decoder"):
+        exporter.validate_pipeline(spec)
+
+
+def test_reordered_decoder_is_rejected():
+    spec = _supported_spec()
+    decoders = spec["decoder"]["decoders"]
+    decoders[0], decoders[1] = decoders[1], decoders[0]
+    with pytest.raises(ValueError, match="decoder"):
+        exporter.validate_pipeline(spec)
+
+
+def test_sequence_only_post_processor_is_accepted():
+    spec = _supported_spec()
+    spec["post_processor"] = {
+        "type": "TemplateProcessing",
+        "single": [{"Sequence": {"id": "A", "type_id": 0}}],
+        "pair": [{"Sequence": {"id": "A", "type_id": 0}}, {"Sequence": {"id": "B", "type_id": 1}}],
+        "special_tokens": {},
+    }
+    exporter.validate_pipeline(spec)
+
+
+def test_special_token_post_processor_is_rejected():
+    # The Java reader adds no BOS/EOS, so a template that adds one would change the ids.
+    spec = _supported_spec()
+    spec["post_processor"] = {
+        "type": "TemplateProcessing",
+        "single": [{"SpecialToken": {"id": "<bos>", "type_id": 0}},
+                   {"Sequence": {"id": "A", "type_id": 0}}],
+        "special_tokens": {"<bos>": {"id": "<bos>", "ids": [2], "tokens": ["<bos>"]}},
+    }
+    with pytest.raises(ValueError, match="post-processor"):
+        exporter.validate_pipeline(spec)
+
+
 # ---------------------------------------------------------------------------
 # read_tokenizer / write_tokenizer round trip
 # ---------------------------------------------------------------------------

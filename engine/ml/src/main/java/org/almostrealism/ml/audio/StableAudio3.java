@@ -311,7 +311,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 
 	/**
 	 * Supplies the tokenizer that {@link #generate(long, String, double)} and
-	 * {@link #setGuidance(double, String)} use to turn prompt text into token ids. For the
+	 * {@link #setTextGuidance(double, String)} use to turn prompt text into token ids. For the
 	 * released model this is the exported T5Gemma tokenizer, read by
 	 * {@link org.almostrealism.ml.tokenization.SentencePieceBPETokenizer}; the prompt encoder
 	 * was trained on that tokenizer's ids, so any other one produces conditioning the model has
@@ -326,14 +326,16 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	}
 
 	/**
-	 * Enables classifier-free guidance against a negative prompt given as text.
+	 * Enables classifier-free guidance against a negative prompt given as text. This is named
+	 * apart from {@link #setGuidance(double, long[])} so that {@code setGuidance(scale, null)}
+	 * keeps selecting the unconditional prompt unambiguously.
 	 *
 	 * @param scale          the guidance scale; must be finite
-	 * @param negativePrompt the negative prompt; empty for the unconditional prompt
+	 * @param negativePrompt the negative prompt; empty or {@code null} for the unconditional prompt
 	 * @return this generator
 	 * @throws IllegalStateException if no tokenizer has been supplied
 	 */
-	public StableAudio3 setGuidance(double scale, String negativePrompt) {
+	public StableAudio3 setTextGuidance(double scale, String negativePrompt) {
 		return setGuidance(scale, encodePrompt(negativePrompt));
 	}
 

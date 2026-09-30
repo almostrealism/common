@@ -78,12 +78,12 @@ public class WavFileTest extends TestSuiteBase {
 				{0.25, -0.25, 0.75, -0.75, 0.1}
 		};
 
-		PackedCollection audio = pack(
+		try (PackedCollection audio = pack(
 				0.0, 0.5, -0.5, 0.999, -0.999,
-				0.25, -0.25, 0.75, -0.75, 0.1).reshape(2, 5);
-
-		try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
-			Assert.assertEquals(5, wav.writeFrames(audio));
+				0.25, -0.25, 0.75, -0.75, 0.1).reshape(2, 5)) {
+			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+				Assert.assertEquals(5, wav.writeFrames(audio));
+			}
 		}
 
 		try (WavFile wav = WavFile.openWavFile(file)) {
@@ -100,8 +100,6 @@ public class WavFileTest extends TestSuiteBase {
 				}
 			}
 		}
-
-		audio.destroy();
 	}
 
 	/**
@@ -112,9 +110,8 @@ public class WavFileTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void roundTripCollectionMono() throws IOException {
 		File file = tempWav();
-		PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25);
-
-		try (WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
+		try (PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25);
+			 WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
 			Assert.assertEquals(4, wav.writeFrames(audio));
 		}
 
@@ -126,8 +123,6 @@ public class WavFileTest extends TestSuiteBase {
 			Assert.assertEquals(0.5, in[0][1], TOL_16);
 			Assert.assertEquals(-0.5, in[0][2], TOL_16);
 		}
-
-		audio.destroy();
 	}
 
 	/**
@@ -152,23 +147,33 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Returns a one-element collection that reports a shape with no dimensions. A backing
+	 * {@link PackedCollection} cannot hold a zero-dimensional shape (its size would be zero), so
+	 * the shape is reported by overriding {@link PackedCollection#getShape()}.
+	 *
+	 * @return a collection whose shape has no dimensions
+	 */
+	private static PackedCollection shapelessCollection() {
+		return new PackedCollection(1) {
+			@Override
+			public TraversalPolicy getShape() {
+				return new TraversalPolicy(true);
+			}
+		};
+	}
+
+	/**
 	 * A collection whose shape has no dimensions is neither {@code [channels, frames]} nor
 	 * {@code [frames]}, so it is rejected with the documented shape error rather than reaching a
-	 * {@code length(-1)} lookup on an empty shape. A backing {@link PackedCollection} cannot hold a
-	 * zero-dimensional shape (its size would be zero), so the shape is reported by a one-element
-	 * collection overriding {@link PackedCollection#getShape()} — enough to drive the guard.
+	 * {@code length(-1)} lookup on an empty shape. The collection comes from
+	 * {@link #shapelessCollection()}, which is enough to drive the guard.
 	 *
 	 * @throws IOException if the file cannot be created
 	 */
 	@Test(timeout = 60000)
 	public void collectionWithoutDimensionsIsRejected() throws IOException {
 		File file = tempWav();
-		PackedCollection audio = new PackedCollection(1) {
-			@Override
-			public TraversalPolicy getShape() {
-				return new TraversalPolicy(true);
-			}
-		};
+		PackedCollection audio = shapelessCollection();
 
 		try (WavFile wav = WavFile.newWavFile(file, 1, 1, 16, SAMPLE_RATE)) {
 			wav.writeFrames(audio);

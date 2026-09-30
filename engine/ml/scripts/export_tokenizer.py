@@ -86,8 +86,9 @@ def validate_pipeline(spec):
     The Java reader treats the whole text as one segment, replaces an ASCII space with the
     SentencePiece boundary marker, falls back to one ``<0xNN>`` token per UTF-8 byte for characters
     outside the vocabulary, and reverses exactly that on decode. The exported binary carries only
-    the vocabulary, merges and special ids -- none of the normalizer, pre-tokenizer or decoder
-    configuration -- so a tokenizer that normalizes, pre-tokenizes or decodes differently would
+    the vocabulary, merges and special ids -- none of the normalizer, pre-tokenizer, decoder or
+    post-processor configuration -- so a tokenizer that normalizes, pre-tokenizes, decodes or adds
+    special tokens differently would
     export without complaint and then silently produce token ids other than the source
     tokenizer's. Rather than allow that, the unsupported pipeline is rejected here.
 
@@ -132,13 +133,32 @@ def validate_pipeline(spec):
             "unsupported pre-tokenizer step %r; the Java reader does not split the input, so a "
             "byte-level or metaspace pre-tokenizer would change the tokenization" % kind)
 
-    for component in _flatten(spec.get("decoder"), "decoders"):
+    # The Java decoder restores spaces from the boundary marker on vocabulary tokens and then folds
+    # byte tokens, in that order, and does nothing else. Fuse only concatenates the decoded pieces,
+    # which the decode already does, so it is ignored; every other step must be exactly these two.
+    steps = [component for component in _flatten(spec.get("decoder"), "decoders")
+             if component.get("type") != "Fuse"]
+    kinds = [component.get("type") for component in steps]
+    if kinds != ["Replace", "ByteFallback"] or _pattern_string(steps[0]) != BOUNDARY \
+            or steps[0].get("content") != " ":
+        raise ValueError(
+            "unsupported decoder %r; the Java reader decodes by replacing the boundary marker with "
+            "a space and then folding byte tokens, matching only a Replace(boundary -> space), "
+            "ByteFallback[, Fuse] decoder" % kinds)
+
+    # The binary carries no post-processor and the Java reader adds no special tokens, so a
+    # post-processor is accepted only when it adds none either: a TemplateProcessing whose
+    # single-sequence template is the sequence alone.
+    for component in _flatten(spec.get("post_processor"), "processors"):
         kind = component.get("type")
-        if kind in ("Replace", "ByteFallback", "Fuse", "Strip"):
+        single = component.get("single") or []
+        if kind == "TemplateProcessing" and single \
+                and all("Sequence" in piece for piece in single):
             continue
         raise ValueError(
-            "unsupported decoder step %r; the Java reader restores spaces from the boundary marker "
-            "and folds byte tokens, matching only a Replace/ByteFallback/Fuse decoder" % kind)
+            "unsupported post-processor %r; the Java reader adds no special tokens, so a "
+            "post-processor that adds BOS/EOS or otherwise changes the ids would make the exported "
+            "tokenizer disagree with the source" % kind)
 
 
 def read_tokenizer(tokenizer_dir):

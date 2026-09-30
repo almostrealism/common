@@ -104,19 +104,22 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	 */
 	@Test(timeout = 240000)
 	public void generatesFromTextWhenGivenATokenizer() throws IOException {
-		StableAudio3 model = smallModel().setSteps(2).setVerbose(false)
-				.setTokenizer(new SentencePieceTokenizerFixture().tokenizer());
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
 
-		try (PackedCollection audio =
-					model.generate(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
-			assertEquals(2, audio.getShape().getDimensions());
-			assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
-			assertEquals(15, audio.getShape().length(1));
+		try {
+			model.setTokenizer(new SentencePieceTokenizerFixture().tokenizer());
 
-			for (int i = 0; i < audio.getShape().getTotalSize(); i++) {
-				double value = audio.toDouble(i);
-				assertTrue("sample " + i + " is " + value, Double.isFinite(value));
-				assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+			try (PackedCollection audio =
+						model.generate(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+
+				for (int i = 0; i < audio.getShape().getTotalSize(); i++) {
+					double value = audio.toDouble(i);
+					assertTrue("sample " + i + " is " + value, Double.isFinite(value));
+					assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+				}
 			}
 		} finally {
 			model.destroy();
