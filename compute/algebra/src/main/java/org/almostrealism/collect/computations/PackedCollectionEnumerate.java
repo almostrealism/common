@@ -175,7 +175,7 @@ public class PackedCollectionEnumerate
 	 * @param collection the input collection to enumerate
 	 */
 	public PackedCollectionEnumerate(TraversalPolicy shape, Producer<?> collection) {
-		this(shape, computeStride(shape, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0), collection);
+		this(shape, computeStride(shape, collection, enableDetectTraversalDepth ? Shape.requireShape("Enumerate", collection).getTraversalAxis() : 0), collection);
 	}
 
 	/**
@@ -186,7 +186,7 @@ public class PackedCollectionEnumerate
 	 * @param collection the input collection to enumerate
 	 */
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		this(shape, stride, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0);
+		this(shape, stride, collection, enableDetectTraversalDepth ? Shape.requireShape("Enumerate", collection).getTraversalAxis() : 0);
 	}
 
 	/**
@@ -200,7 +200,7 @@ public class PackedCollectionEnumerate
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride,
 									 Producer<?> collection, int traversalDepth) {
 		super("enumerate", computeShape(shape, stride, collection, traversalDepth), null, collection);
-		this.inputShape = shape(collection).traverse(traversalDepth).item();
+		this.inputShape = Shape.requireShape("Enumerate", collection).traverse(traversalDepth).item();
 		this.traversalDepth = traversalDepth;
 		this.subsetShape = shape;
 		this.strideShape = stride;
@@ -466,22 +466,6 @@ public class PackedCollectionEnumerate
 	}
 
 	/**
-	 * Extracts the {@link TraversalPolicy} shape from a producer.
-	 * This helper method ensures that the producer implements the {@link Shape}
-	 * interface and can provide traversal policy information needed for enumeration.
-	 * 
-	 * @param collection the producer to extract shape from
-	 * @return the {@link TraversalPolicy} representing the collection's shape
-	 * @throws IllegalArgumentException if the producer doesn't implement {@link Shape}
-	 */
-	private static TraversalPolicy shape(Producer<?> collection) {
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Enumerate cannot be performed without a TraversalPolicy");
-
-		return ((Shape) collection).getShape();
-	}
-
-	/**
 	 * Computes the output shape for the enumeration operation.
 	 * This determines the dimensions of the resulting collection based on
 	 * the input shape, subset shape, stride, and traversal depth.
@@ -510,7 +494,7 @@ public class PackedCollectionEnumerate
 	 */
 	public static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
 												Producer<?> collection, int traversalDepth) {
-		TraversalPolicy superShape = shape(collection);
+		TraversalPolicy superShape = Shape.requireShape("Enumerate", collection);
 		TraversalPolicy itemShape = superShape.traverse(traversalDepth).item();
 		if (itemShape.getDimensions() <= 0) {
 			throw new IllegalArgumentException("Invalid traversal depth");
@@ -566,7 +550,7 @@ public class PackedCollectionEnumerate
 	 * }</pre>
 	 */
 	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection, int traversalDepth) {
-		TraversalPolicy superShape = shape(collection);
+		TraversalPolicy superShape = Shape.requireShape("Enumerate", collection);
 
 		int[] dims = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {

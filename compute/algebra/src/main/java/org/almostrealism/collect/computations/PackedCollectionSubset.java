@@ -169,8 +169,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
 		super("subset", shape, null, collection);
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+		Shape.requireShape("Subset", collection);
 
 		this.pos = pos;
 		init();
@@ -202,8 +201,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
 		super("subset", shape, null, collection, pos);
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+		Shape.requireShape("Subset", collection);
 
 		if (!shape(pos).equalsIgnoreAxis(shape(shape.getDimensions()))) {
 			throw new IllegalArgumentException();
