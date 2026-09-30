@@ -40,8 +40,11 @@ import java.util.function.IntFunction;
  *
  * <p>In {@link PatternFeatures#render}, each {@code RenderedNoteAudio} is processed by setting
  * the start frame in {@link #getOffsetArg()}, then calling {@link #getProducer(int)} with the
- * desired frame count. The resulting audio is cached by note offset for reuse across buffer
- * ticks, and the overlap region is summed to the destination buffer.</p>
+ * desired frame count. The resulting audio is cached in a {@link NoteAudioCache} keyed by the
+ * composite of the note offset and this note's {@link #getCacheIdentity() cacheIdentity} for
+ * reuse across buffer ticks; the identity is what keeps coincident notes (chords, layered
+ * voices, stereo channels) at the same offset from sharing a cache entry. The overlap region
+ * is then summed to the destination buffer.</p>
  *
  * <h2>Signature Independence</h2>
  *
