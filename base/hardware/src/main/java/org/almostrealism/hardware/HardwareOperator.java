@@ -25,6 +25,7 @@ import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.kernel.KernelWork;
@@ -33,6 +34,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -228,6 +232,9 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 	/** Counter used to assign unique identifiers to each {@link HardwareOperator} instance. */
 	protected static long idCount;
+
+	/** Counter used to name the files written by {@link #recordInstructionSet(String, String, String)}. */
+	private static int monitorOutputCount;
 
 	/** Number of parallel work items for the next kernel dispatch. */
 	private volatile long globalWorkSize = 1;
@@ -522,6 +529,36 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 */
 	@Override
 	public Console console() { return Hardware.console; }
+
+	/**
+	 * Writes the generated source of an instruction set to {@link #instructionSetOutputDir}
+	 * for instruction-set monitoring, as {@code <prefix>_instruction_set_<N>.<extension>}
+	 * where {@code N} is unique within the JVM.
+	 *
+	 * @param prefix    identifies the backend, such as {@code mtl} or {@code cuda}
+	 * @param extension the file extension for the source language
+	 * @param source    the generated source
+	 * @return the path of the file written
+	 */
+	public static String recordInstructionSet(String prefix, String extension, String source) {
+		int index;
+		synchronized (HardwareOperator.class) {
+			index = monitorOutputCount++;
+		}
+
+		Path file = Path.of(instructionSetOutputDir)
+				.resolve(prefix + "_instruction_set_" + index + "." + extension);
+
+		try {
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, source);
+		} catch (IOException ex) {
+			throw new RuntimeException(ex);
+		}
+
+		ScopeSettings.printStats();
+		return file.toString();
+	}
 
 	/**
 	 * Records a compilation event for global statistics tracking.

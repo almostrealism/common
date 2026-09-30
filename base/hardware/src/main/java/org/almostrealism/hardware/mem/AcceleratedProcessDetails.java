@@ -20,6 +20,7 @@ import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -219,6 +220,14 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 */
 	private Semaphore semaphore;
 
+	/**
+	 * The failure raised by a {@link #whenReady(Runnable)} listener, if any. When listeners run
+	 * on an {@link Executor} thread, the failure would otherwise be lost there while the
+	 * {@link #readyLatch} still fires; {@link #awaitReady()} rethrows it on the waiting thread
+	 * so the caller never proceeds to read an output whose dispatch failed.
+	 */
+	private volatile Throwable listenerFailure;
+
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
 
@@ -297,9 +306,17 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * operation's completion; {@code apply} waits on it before returning so the completion from
 	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
 	 * the one it depends on.
+	 *
+	 * @throws HardwareException if a {@link #whenReady(Runnable)} listener failed, with that
+	 *                           failure as its cause
 	 */
 	public void awaitReady() {
 		if (readyLatch != null) readyLatch.waitFor();
+
+		Throwable failure = listenerFailure;
+		if (failure != null) {
+			throw new HardwareException("Dispatch failed before completion", failure);
+		}
 	}
 
 	/**
@@ -443,6 +460,9 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		pending.forEach(r -> {
 			try {
 				r.run();
+			} catch (RuntimeException | Error e) {
+				listenerFailure = e;
+				throw e;
 			} finally {
 				if (readyLatch != null) {
 					readyLatch.countDown();

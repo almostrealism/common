@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import org.almostrealism.hardware.ctx.AcceleratorDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.junit.Assert;
 import org.junit.Test;
@@ -99,7 +100,7 @@ public class MetalDataContextLifecycleTest {
 	public void destroyFromWithinScopeFailsFast() throws Exception {
 		MetalDataContext context = newContext();
 
-		Field lockField = MetalDataContext.class.getDeclaredField("lifecycleLock");
+		Field lockField = AcceleratorDataContext.class.getDeclaredField("lifecycleLock");
 		lockField.setAccessible(true);
 		ReentrantReadWriteLock lock = (ReentrantReadWriteLock) lockField.get(context);
 
