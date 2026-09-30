@@ -198,16 +198,25 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	}
 
 	/**
-	 * Returns the smallest bucket N {@code >=} the given note count, or the
-	 * largest bucket when the count exceeds {@link #BUCKETS}.
+	 * Returns the smallest bucket N {@code >=} the given note count. A dispatch
+	 * sizes its per-note rows by this bucket, so a count larger than
+	 * {@link #maxBucket()} cannot be dispatched at once and is rejected; callers
+	 * split such batches into chunks of at most {@link #maxBucket()} notes.
 	 *
-	 * @param n raw note count for the current tick
+	 * @param n raw note count for the current dispatch
 	 * @return the chosen bucket N
+	 * @throws IllegalArgumentException if {@code n} exceeds {@link #maxBucket()}
 	 */
 	public static int bucketFor(int n) {
 		for (int b : BUCKETS) {
 			if (b >= n) return b;
 		}
+		throw new IllegalArgumentException("Note count " + n
+				+ " exceeds the largest batch bucket " + maxBucket());
+	}
+
+	/** Returns the largest note count a single batched dispatch can hold. */
+	public static int maxBucket() {
 		return BUCKETS[BUCKETS.length - 1];
 	}
 
@@ -217,7 +226,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * the construction parameters beyond the shape — sample rate and filter order — are
 	 * part of the cache key so differently-configured dispatch sites never share.
 	 *
-	 * @param bucket       the bucket-N (one of {@link #BUCKETS}, or larger if oversized)
+	 * @param bucket       the bucket-N (one of {@link #BUCKETS})
 	 * @param sourceLength per-note source buffer length (already source-bucketed)
 	 * @param targetLength per-note row length (the render window width)
 	 * @return the renderer compiled for that shape
@@ -376,8 +385,11 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 				}
 				sub.add(note);
 			}
-			if (!sub.isEmpty()) {
-				dispatchWindow(sub, subStart, subWidth, destination, ws);
+			// Each dispatch holds at most maxBucket() notes; a denser sub-window is
+			// split into chunks whose outputs accumulate into the same slice.
+			for (int from = 0; from < sub.size(); from += maxBucket()) {
+				int to = Math.min(sub.size(), from + maxBucket());
+				dispatchWindow(sub.subList(from, to), subStart, subWidth, destination, ws);
 			}
 		}
 	}

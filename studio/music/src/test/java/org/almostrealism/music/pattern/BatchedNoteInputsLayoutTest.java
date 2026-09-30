@@ -34,12 +34,37 @@ public class BatchedNoteInputsLayoutTest extends TestSuiteBase {
 		Assert.assertEquals(64, BatchedPatternLayerRenderer.bucketFor(64));
 		Assert.assertEquals(128, BatchedPatternLayerRenderer.bucketFor(65));
 		Assert.assertEquals(512, BatchedPatternLayerRenderer.bucketFor(300));
-		Assert.assertEquals("oversized counts use the largest bucket",
-				512, BatchedPatternLayerRenderer.bucketFor(10000));
+		Assert.assertEquals(512, BatchedPatternLayerRenderer.bucketFor(512));
+		Assert.assertEquals(512, BatchedPatternLayerRenderer.maxBucket());
 
 		BatchedPatternLayerRenderer renderer = new BatchedPatternLayerRenderer(44100, 3);
 		Assert.assertEquals(44100, renderer.getSampleRate());
 		Assert.assertEquals(3, renderer.getFilterOrder());
+	}
+
+	/**
+	 * A note count larger than the largest bucket cannot be sized by a single
+	 * dispatch, so it is rejected rather than silently given an undersized bucket.
+	 */
+	@Test(timeout = 10000)
+	public void oversizedBucketIsRejected() {
+		int max = BatchedPatternLayerRenderer.maxBucket();
+		assertBucketRejected(max + 1);
+		assertBucketRejected(10000);
+	}
+
+	/**
+	 * Asserts that {@link BatchedPatternLayerRenderer#bucketFor} rejects a note count.
+	 *
+	 * @param count the oversized note count
+	 */
+	private static void assertBucketRejected(int count) {
+		try {
+			BatchedPatternLayerRenderer.bucketFor(count);
+			Assert.fail("bucketFor(" + count + ") must be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains(String.valueOf(count)));
+		}
 	}
 
 	/** Batched scalar columns are laid out as nine per layer followed by the filter and volume envelopes. */

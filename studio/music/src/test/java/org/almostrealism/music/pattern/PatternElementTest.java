@@ -137,10 +137,15 @@ public class PatternElementTest extends TestSuiteBase {
 		Assert.assertEquals("NO_OVERLAP extends to the next position", 1.5,
 				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
 						0.5, 1.25, 3.0, 0.25), 1e-12);
-		// TODO(review): this pins a negative note length that NoteDurationStrategy only warns about; revisit if production clamps it
-		Assert.assertEquals("NO_OVERLAP without a next position yields a negative span", -1.0,
+		Assert.assertEquals("NO_OVERLAP without a next position keeps the original duration", 3.0,
 				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
 						0.5, 0.0, 3.0, 0.25), 1e-12);
+		Assert.assertEquals("NO_OVERLAP with a next position before the note keeps the original duration", 3.0,
+				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
+						0.5, 0.25, 3.0, 0.25), 1e-12);
+		Assert.assertEquals("NO_OVERLAP with a next position at the note keeps the original duration", 3.0,
+				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
+						0.5, 0.5, 3.0, 0.25), 1e-12);
 	}
 
 	/** {@link PatternElement#getNoteDuration} delegates to its strategy using its own selection. */

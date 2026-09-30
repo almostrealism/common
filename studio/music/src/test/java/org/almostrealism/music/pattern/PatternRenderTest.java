@@ -27,10 +27,12 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -69,6 +71,17 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 * @return the pattern system
 	 */
 	private PatternSystemManager system() {
+		return system(1);
+	}
+
+	/**
+	 * Creates a pattern system with one percussive one-measure pattern on channel 0
+	 * holding {@code hits} identical, coincident hits at a quarter measure.
+	 *
+	 * @param hits the number of coincident hits
+	 * @return the pattern system
+	 */
+	private PatternSystemManager system(int hits) {
 		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
 				new FileNoteSource(getNamedTestWavPath("render_hit.wav", 330.0, SAMPLE_SECONDS, true),
 						WesternChromatic.C1), 0, 9, false);
@@ -77,8 +90,12 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		PatternSystemManager psm = new PatternSystemManager(List.of(choice),
 				PatternSystemManagerTest.chromosomes(1));
 		psm.init();
-		psm.addPattern(0, 1.0, false).setExplicitElements(choice,
-				List.of(new PatternElement(new PatternNote(0.1, 0.5, 0.9), 0.25)));
+		List<PatternElement> elements = new ArrayList<>();
+		for (int i = 0; i < hits; i++) {
+			elements.add(new PatternElement(new PatternNote(0.1, 0.5, 0.9), 0.25));
+		}
+
+		psm.addPattern(0, 1.0, false).setExplicitElements(choice, elements);
 		return psm;
 	}
 
@@ -188,6 +205,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 
 	/** The per-note render path places each repetition of the hit at its onset. */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void perNoteRenderPlacesHits() {
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
@@ -205,6 +223,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 * pattern system volume scales the result.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void bufferedRenderMatchesSingleRender() {
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
@@ -233,6 +252,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 * independent of how the arrangement is divided into buffers.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void batchedRenderMatchesAcrossBuffers() {
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
@@ -246,9 +266,44 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 							+ BatchedPatternLayerRenderer.fallbackCount.get() + ")",
 					BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0);
 
+			long dispatchesBefore = BatchedPatternLayerRenderer.batchedDispatchCount.get();
 			double[] buffered = renderInBuffers(psm);
+			Assert.assertTrue("the buffered render must also dispatch the batched renderer",
+					BatchedPatternLayerRenderer.batchedDispatchCount.get() > dispatchesBefore);
 			for (int i = 0; i < TOTAL_FRAMES; i++) {
 				Assert.assertEquals("frame " + i, whole[i], buffered[i], 1e-6);
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * More coincident notes than the largest batch bucket holds are split across
+	 * several dispatches rather than overrunning the bucket: every note is
+	 * rendered, so the result is the single-hit render scaled by the note count.
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void batchedRenderSplitsOversizedBatches() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		try {
+			int hits = BatchedPatternLayerRenderer.maxBucket() + 88;
+			double[] single = renderAtOnce(system());
+
+			BatchedPatternLayerRenderer.resetCounters();
+			double[] many = renderAtOnce(system(hits));
+			Assert.assertTrue("the batched renderer must dispatch",
+					BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0);
+			Assert.assertEquals("no note falls back to the per-note path",
+					0, BatchedPatternLayerRenderer.fallbackCount.get());
+
+			double scale = peak(single, 0, TOTAL_FRAMES) * hits;
+			Assert.assertTrue("the hits sound", scale > 0.0);
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, hits * single[i], many[i], 1e-4 * scale);
 			}
 		} finally {
 			PatternLayerManager.enableBatched = batched;
@@ -280,6 +335,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 * resetting a buffer clears whatever it held.
 	 */
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void warmNoteCacheEvaluatesEveryNote() {
 		PatternSystemManager psm = system();
 		psm.setVolume(0.5);
