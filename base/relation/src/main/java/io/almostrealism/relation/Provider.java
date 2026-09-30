@@ -85,19 +85,26 @@ public class Provider<T> implements FixedEvaluable<T> {
 
 	/**
 	 * Returns the value held by the {@link Provider} that the given producer evaluates to,
-	 * without evaluating anything.
+	 * without evaluating anything, if that value is an instance of the requested type.
 	 *
 	 * <p>A producer that reports itself as a {@link Computable#provider(Object) provider}
 	 * supplies a {@link Provider} whose value is fixed, so that value is known before any
-	 * kernel is compiled or run. Any other producer yields {@code null}.</p>
+	 * kernel is compiled or run. Any other producer, or a provided value that is not an
+	 * instance of {@code type}, yields {@code null}.</p>
 	 *
-	 * @param producer the producer to inspect
+	 * @param producer the producer to inspect, which may be {@code null}
+	 * @param type     the type the provided value is expected to have
+	 * @param <V>      the expected type of the provided value
 	 * @return the provided value, or {@code null} if {@code producer} is not a provider
+	 *         or its value is not an instance of {@code type}
 	 */
-	public static Object valueOf(Object producer) {
-		if (!Computable.provider(producer) || !(producer instanceof Supplier)) return null;
+	public static <V> V valueOf(Supplier<?> producer, Class<V> type) {
+		if (!Computable.provider(producer)) return null;
 
-		Object evaluable = ((Supplier<?>) producer).get();
-		return evaluable instanceof Provider ? ((Provider<?>) evaluable).get() : null;
+		Object evaluable = producer.get();
+		if (!(evaluable instanceof Provider)) return null;
+
+		Object value = ((Provider<?>) evaluable).get();
+		return type.isInstance(value) ? type.cast(value) : null;
 	}
 }

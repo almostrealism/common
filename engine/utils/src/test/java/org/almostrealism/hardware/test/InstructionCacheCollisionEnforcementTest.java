@@ -24,10 +24,12 @@ import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.hardware.mem.KernelConstantProviderSupplier;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.mem.MemoryRegionList;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -191,7 +193,7 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 	 * aggregation size limit is reported as an aggregation target. The root decides, not
 	 * the view: a small view of a large root is not folded, and a view of a small root is.
 	 * Computed producers and kernel-owned constant memory are never targets, and
-	 * {@link Provider#valueOf(Object)} yields nothing for them.
+	 * {@link Provider#valueOf(Supplier, Class)} yields nothing for them.
 	 */
 	@Test(timeout = 60000)
 	public void aggregationTargetOfProducerBeforeCompilation() {
@@ -208,12 +210,41 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 
 		CollectionProducer computed = cp(small).multiply(2.0);
 		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(computed));
-		Assert.assertNull(Provider.valueOf(computed));
-		Assert.assertNull(Provider.valueOf(null));
-		Assert.assertSame(small, Provider.valueOf(p(small)));
+		Assert.assertNull(Provider.valueOf(computed, MemoryData.class));
+		Assert.assertNull(Provider.valueOf(null, MemoryData.class));
+		Assert.assertSame(small, Provider.valueOf(p(small), MemoryData.class));
+		Assert.assertSame(small, Provider.valueOf(p(small), PackedCollection.class));
+		Assert.assertNull(Provider.valueOf(p(small), String.class));
 
 		Assert.assertFalse(MemoryDataArgumentMap.isAggregationTarget(
 				new KernelConstantProviderSupplier(small)));
+	}
+
+	/**
+	 * The regions an assignment writes are resolved from its provider destination before
+	 * compilation, so assignments into overlapping views of the same memory overlap and
+	 * assignments into disjoint views do not. An assignment whose destination is computed
+	 * rather than provided has no statically known write region.
+	 */
+	@Test(timeout = 60000)
+	public void assignmentWriteRegionsResolveProviderDestination() {
+		PackedCollection root = new PackedCollection(8);
+		PackedCollection source = new PackedCollection(4);
+
+		MemoryRegionList low = MemoryRegionList.writes(
+				a("low", p(root.range(shape(4), 0).each()), cp(source.each())));
+		MemoryRegionList middle = MemoryRegionList.writes(
+				a("middle", p(root.range(shape(4), 2).each()), cp(source.each())));
+		MemoryRegionList high = MemoryRegionList.writes(
+				a("high", p(root.range(shape(4), 4).each()), cp(source.each())));
+		MemoryRegionList computed = MemoryRegionList.writes(
+				a("computed", cp(root.range(shape(4), 0).each()).multiply(2.0), cp(source.each())));
+
+		Assert.assertFalse(low.isEmpty());
+		Assert.assertTrue(low.overlaps(middle));
+		Assert.assertTrue(middle.overlaps(high));
+		Assert.assertFalse(low.overlaps(high));
+		Assert.assertTrue(computed.isEmpty());
 	}
 
 	/**

@@ -525,7 +525,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * <p>Unlike {@link #get(Supplier)}, which is called during compilation and may obtain the
 	 * evaluable of any supplier, this method only inspects producers that declare themselves
 	 * {@link io.almostrealism.relation.Computable#provider(Object) providers}
-	 * (see {@link Provider#valueOf(Object)}); any other producer yields {@code false}. It is
+	 * (see {@link Provider#valueOf(Supplier, Class)}); any other producer yields {@code false}. It is
 	 * meant to be called before compilation, for example from a signature, where obtaining the
 	 * evaluable of an arbitrary producer could compile it. A supplier that returns a
 	 * {@link Provider} without declaring itself one (such as a lambda) has no signature, so a
@@ -543,8 +543,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	public static boolean isAggregationTarget(Supplier<?> producer) {
 		if (producer instanceof KernelConstantProviderSupplier) return false;
 
-		Object value = Provider.valueOf(producer);
-		return value instanceof MemoryData && isAggregationTarget(((MemoryData) value).getRootDelegate());
+		MemoryData value = Provider.valueOf(producer, MemoryData.class);
+		return value != null && isAggregationTarget(value.getRootDelegate());
 	}
 
 	/**
