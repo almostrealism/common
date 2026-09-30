@@ -29,8 +29,10 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A SentencePiece-style BPE tokenizer: the scheme shared by Gemma, Llama and Mistral, in which
@@ -99,6 +101,13 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 
 	/** Unknown token id, or {@code -1} when the tokenizer has none. */
 	private final int unkToken;
+
+	/**
+	 * Ids of added tokens the source marks special. The reference decoder drops every special token
+	 * from clean text, so these are skipped on decode alongside the four standard control ids, even
+	 * when their id lies outside {@code {bos, eos, pad, unk}}.
+	 */
+	private final Set<Integer> specialTokens = new HashSet<>();
 
 	/**
 	 * Reads an exported tokenizer.
@@ -174,10 +183,11 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	}
 
 	/**
-	 * Reads the added tokens, each an id, whether it is matched after normalization, and its
-	 * content. An added token is matched atomically in the input before BPE runs, so an occurrence
-	 * of its content -- a control token such as {@code <pad>} included -- encodes to its one id as
-	 * it does in the source tokenizer, rather than being split into BPE pieces.
+	 * Reads the added tokens, each an id, whether it is matched after normalization, whether it is
+	 * special, and its content. An added token is matched atomically in the input before BPE runs, so
+	 * an occurrence of its content -- a control token such as {@code <pad>} included -- encodes to its
+	 * one id as it does in the source tokenizer, rather than being split into BPE pieces. A special
+	 * added token is additionally recorded so {@link #isSpecialToken(int)} skips it on decode.
 	 *
 	 * @param in the stream positioned at the added tokens
 	 * @throws IOException if the stream ends early, or an added token has empty content or an id
@@ -189,6 +199,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 		for (int i = 0; i < count; i++) {
 			int id = in.readInt();
 			boolean normalized = in.readBoolean();
+			boolean special = in.readBoolean();
 			String content = readString(in);
 
 			if (id < 0 || id >= vocab.length) {
@@ -201,6 +212,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			}
 
 			(normalized ? normalizedAddedTokens : addedTokens).put(content, id);
+			if (special) specialTokens.add(id);
 		}
 	}
 
@@ -412,6 +424,19 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 		}
 
 		return decode(ids);
+	}
+
+	/**
+	 * Whether {@code tokenId} is skipped on decode. Beyond the four standard control ids the
+	 * superclass recognizes, this includes every added token the source marks special, so a clean
+	 * decode drops a control token such as {@code <start_of_turn>} the same way the reference does.
+	 *
+	 * @param tokenId the token id to check
+	 * @return true if the token is skipped on decode
+	 */
+	@Override
+	protected boolean isSpecialToken(int tokenId) {
+		return super.isSpecialToken(tokenId) || specialTokens.contains(tokenId);
 	}
 
 	@Override

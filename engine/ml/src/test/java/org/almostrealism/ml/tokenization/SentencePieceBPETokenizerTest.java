@@ -319,6 +319,28 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A special added token is skipped on decode as the four standard control ids are, while a
+	 * non-special added token is rendered. The source marks its control tokens special so a clean
+	 * decode drops them, and the exported binary carries that flag for the reader to reproduce, even
+	 * for an id outside {@code {bos, eos, pad, unk}}.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void specialAddedTokenIsSkippedOnDecode() throws IOException {
+		SentencePieceBPETokenizer tokenizer = new SentencePieceTokenizerFixture().tokenizerFor(
+				ADDED_VOCAB, new int[] {-1, -1, -1, -1},
+				Collections.singletonMap("<pad>", 0), Collections.emptyMap(),
+				Collections.singleton(0));
+
+		long[] encoded = tokenizer.encodeAsLong("a<pad>b");
+		assertEquals(Arrays.toString(new long[] {1, 0, 2}), Arrays.toString(encoded));
+		assertEquals("ab", tokenizer.decodeAsLong(encoded));
+
+		assertEquals("ad>", tokenizer.decodeAsLong(new long[] {6}));
+	}
+
+	/**
 	 * An added token whose id lies outside the vocabulary is rejected when the tokenizer is read,
 	 * rather than encoding to an id no embedding row exists for.
 	 *

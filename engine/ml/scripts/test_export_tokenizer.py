@@ -436,7 +436,8 @@ def test_added_tokens_round_trip(tmp_path):
     }))
 
     read_vocab, read_merges, specials, added = exporter.read_tokenizer(str(tokenizer_dir))
-    assert added == [(0, "<pad>", False), (261, "<start_of_turn>", False), (262, "<ab>", True)]
+    assert added == [(0, "<pad>", False, True), (261, "<start_of_turn>", False, True),
+                     (262, "<ab>", True, False)]
     assert specials == {"bos": 261, "eos": -1, "pad": 0, "unk": -1}
 
     out = tmp_path / "tokenizer.bin"
@@ -460,8 +461,8 @@ def test_added_tokens_round_trip(tmp_path):
         assert added_count == 3
         entries = []
         for _ in range(added_count):
-            index, normalized = struct.unpack(">ib", handle.read(5))
-            entries.append((index, _read_string(handle), bool(normalized)))
+            index, normalized, special = struct.unpack(">ibb", handle.read(6))
+            entries.append((index, _read_string(handle), bool(normalized), bool(special)))
         assert entries == added
         assert handle.read() == b""
 

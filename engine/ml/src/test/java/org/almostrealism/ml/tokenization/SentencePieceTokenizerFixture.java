@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Writes a tiny tokenizer in the format {@code engine/ml/scripts/export_tokenizer.py} produces, so
@@ -147,6 +148,28 @@ public class SentencePieceTokenizerFixture {
 	protected void write(File file, int magic, int version, String[] vocab, String[][] merges,
 			int[] specials, Map<String, Integer> raw, Map<String, Integer> normalized)
 			throws IOException {
+		write(file, magic, version, vocab, merges, specials, raw, normalized,
+				Collections.emptySet());
+	}
+
+	/**
+	 * Writes a tokenizer over the given vocabulary, merges, special ids and added tokens, marking the
+	 * added tokens whose id is in {@code specialIds} as special so a reader skips them on decode.
+	 *
+	 * @param file       where to write
+	 * @param magic      the magic value to write
+	 * @param version    the version to write
+	 * @param vocab      the vocabulary, in token-id order
+	 * @param merges     the merges, in priority order
+	 * @param specials   the special ids in {@code {bos, eos, pad, unk}} order, each {@code -1} for none
+	 * @param raw        added tokens matched before normalization, content to id
+	 * @param normalized added tokens matched after normalization, content to id
+	 * @param specialIds ids of the added tokens the source marks special
+	 * @throws IOException if the file cannot be written
+	 */
+	protected void write(File file, int magic, int version, String[] vocab, String[][] merges,
+			int[] specials, Map<String, Integer> raw, Map<String, Integer> normalized,
+			Set<Integer> specialIds) throws IOException {
 		try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
 			out.writeInt(magic);
 			out.writeInt(version);
@@ -167,24 +190,27 @@ public class SentencePieceTokenizerFixture {
 			}
 
 			out.writeInt(raw.size() + normalized.size());
-			writeAddedTokens(out, raw, false);
-			writeAddedTokens(out, normalized, true);
+			writeAddedTokens(out, raw, false, specialIds);
+			writeAddedTokens(out, normalized, true, specialIds);
 		}
 	}
 
 	/**
-	 * Writes added-token entries: id, whether matched after normalization, then content.
+	 * Writes added-token entries: id, whether matched after normalization, whether special, then
+	 * content.
 	 *
 	 * @param out        the destination
 	 * @param tokens     content to id
 	 * @param normalized whether these tokens are matched after normalization
+	 * @param specialIds ids of the added tokens the source marks special
 	 * @throws IOException if writing fails
 	 */
 	protected void writeAddedTokens(DataOutputStream out, Map<String, Integer> tokens,
-			boolean normalized) throws IOException {
+			boolean normalized, Set<Integer> specialIds) throws IOException {
 		for (Map.Entry<String, Integer> token : tokens.entrySet()) {
 			out.writeInt(token.getValue());
 			out.writeBoolean(normalized);
+			out.writeBoolean(specialIds.contains(token.getValue()));
 			writeString(out, token.getKey());
 		}
 	}
@@ -280,9 +306,28 @@ public class SentencePieceTokenizerFixture {
 	 */
 	public SentencePieceBPETokenizer tokenizerFor(String[] vocab, int[] specials,
 			Map<String, Integer> raw, Map<String, Integer> normalized) throws IOException {
+		return tokenizerFor(vocab, specials, raw, normalized, Collections.emptySet());
+	}
+
+	/**
+	 * A tokenizer over an arbitrary vocabulary with no merges, the given special ids and the given
+	 * added tokens, marking the added tokens whose id is in {@code specialIds} as special, for
+	 * exercising that a special added token is skipped on decode while a non-special one is rendered.
+	 *
+	 * @param vocab      the vocabulary, in token-id order
+	 * @param specials   the special ids in {@code {bos, eos, pad, unk}} order, each {@code -1} for none
+	 * @param raw        added tokens matched before normalization, content to id
+	 * @param normalized added tokens matched after normalization, content to id
+	 * @param specialIds ids of the added tokens the source marks special
+	 * @return the tokenizer
+	 * @throws IOException if the file cannot be written or read
+	 */
+	public SentencePieceBPETokenizer tokenizerFor(String[] vocab, int[] specials,
+			Map<String, Integer> raw, Map<String, Integer> normalized, Set<Integer> specialIds)
+			throws IOException {
 		File file = File.createTempFile("ar-tokenizer-fixture", ".bin");
 		file.deleteOnExit();
-		write(file, MAGIC, VERSION, vocab, new String[0][], specials, raw, normalized);
+		write(file, MAGIC, VERSION, vocab, new String[0][], specials, raw, normalized, specialIds);
 		return new SentencePieceBPETokenizer(file.getPath());
 	}
 

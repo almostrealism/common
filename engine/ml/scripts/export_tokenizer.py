@@ -34,6 +34,7 @@ All integers are big-endian, matching ``DataInputStream``::
                 addedCount entries, one per added token:
                     int32 id,
                     int8 1 when matched after normalization, else 0,
+                    int8 1 when special (skipped on decode), else 0,
                     int32 length + UTF-8 bytes for the content
 
 A token id absent from the vocabulary (ids are dense in practice, but a gap is
@@ -242,7 +243,7 @@ def validate_pipeline(spec):
 def read_tokenizer(tokenizer_dir):
     """Load ``tokenizer.json`` and return its vocabulary, merges, special ids and added tokens.
 
-    The added tokens are ``(id, content, normalized)`` triples, in ``tokenizer.json`` order.
+    The added tokens are ``(id, content, normalized, special)`` tuples, in ``tokenizer.json`` order.
 
     The special ids are read from ``tokenizer_config.json`` / ``config.json``
     when present, since ``tokenizer.json`` itself does not name them.
@@ -256,13 +257,14 @@ def read_tokenizer(tokenizer_dir):
     vocab = model.get("vocab") or {}
     merges = model.get("merges") or []
 
-    added = [(token["id"], token["content"], bool(token.get("normalized")))
+    added = [(token["id"], token["content"], bool(token.get("normalized")),
+              bool(token.get("special")))
              for token in spec.get("added_tokens") or []]
 
     # A special token named by tokenizer_config.json may live only in the added vocabulary, so its
     # id is looked up there as well as in the model vocabulary.
     ids = dict(vocab)
-    ids.update((content, index) for index, content, _ in added)
+    ids.update((content, index) for index, content, _, _ in added)
 
     specials = {key: -1 for key in ("bos", "eos", "pad", "unk")}
 
@@ -298,12 +300,12 @@ def read_tokenizer(tokenizer_dir):
 
 def write_tokenizer(path, vocab, merges, specials, added=()):
     """Write the binary described in the module docstring, returning its size."""
-    ids = list(vocab.values()) + [index for index, _, _ in added]
+    ids = list(vocab.values()) + [index for index, _, _, _ in added]
     size = max(ids) + 1 if ids else 0
     tokens = [None] * size
     for token, index in vocab.items():
         tokens[index] = token
-    for index, content, _ in added:
+    for index, content, _, _ in added:
         tokens[index] = content
 
     with open(path, "wb") as out:
@@ -333,9 +335,9 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
             out.write(struct.pack(">i", specials.get(key, -1)))
 
         out.write(struct.pack(">i", len(added)))
-        for index, content, normalized in added:
+        for index, content, normalized, special in added:
             encoded = content.encode("utf-8")
-            out.write(struct.pack(">ib", index, 1 if normalized else 0))
+            out.write(struct.pack(">ibb", index, 1 if normalized else 0, 1 if special else 0))
             out.write(struct.pack(">i", len(encoded)))
             out.write(encoded)
 
