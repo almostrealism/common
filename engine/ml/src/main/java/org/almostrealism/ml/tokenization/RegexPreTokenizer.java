@@ -85,9 +85,13 @@ public class RegexPreTokenizer implements PreTokenizer {
      * - \s*[\r\n]+                    : Whitespace + newlines
      * - \s+(?!\S)                     : Trailing whitespace
      * - \s+                           : Other whitespace
+     *
+     * The reference regex engine treats \s as Unicode whitespace, so the pattern is
+     * compiled with UNICODE_CHARACTER_CLASS; Java's default \s is ASCII-only and would
+     * let characters such as U+00A0 and U+3000 join punctuation runs.
      */
     private static Pattern createGPT2Pattern() {
-        String patternStr = "'s|'t|'re|'ve|'m|'ll|'d" +  // Contractions
+        String patternStr = "(?i:'s|'t|'re|'ve|'m|'ll|'d)" +  // Contractions
                             "|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+" +  // Letters with optional prefix
                             "|\\p{N}" +  // Numbers
                             "| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*" +  // Punctuation
@@ -95,7 +99,7 @@ public class RegexPreTokenizer implements PreTokenizer {
                             "|\\s+(?!\\S)" +  // Trailing space
                             "|\\s+";  // Other space
 
-        return Pattern.compile(patternStr);
+        return Pattern.compile(patternStr, Pattern.UNICODE_CHARACTER_CLASS);
     }
 
     @Override
