@@ -42,8 +42,8 @@ import java.util.Random;
  * allocated the key/value caches in Java and hid the attention structure; now
  * {@code skytnt_block.pdsl} imports {@code attention.pdsl} and calls its decomposed {@code attention}
  * layer, and the caller allocates the caches. The reference here is the pre-migration Java path
- * itself — a residual {@link AttentionFeatures#attention} (the public 8-argument overload the
- * built-in dispatched to) plus a residual
+ * itself — a residual {@link AttentionFeatures#attention} (the configurable-epsilon overload, built
+ * at {@code 1e-5} to reproduce the built-in the block used to dispatch to) plus a residual
  * {@link org.almostrealism.ml.FeedForwardFeatures#feedForward}, assembled with {@code accum} — which
  * the attention and feed-forward assets are separately pinned against by
  * {@link org.almostrealism.ml.AttentionAssetTest} and {@link org.almostrealism.ml.FeedForwardAssetTest}:</p>
@@ -90,7 +90,7 @@ public class SkytntBlockAssetTest extends TestSuiteBase implements AttentionFeat
 	@Test(timeout = 300000)
 	public void skytntBlockMatchesMonolithReference() {
 		for (BlockWeights w : configurations()) {
-			double[][] reference = run(reference(w, SHIPPED_EPSILON), w);
+			double[][] reference = run(reference(w, SHIPPED_EPSILON, SHIPPED_EPSILON), w);
 			double[][] migrated = run(migrated(w, SHIPPED_EPSILON), w);
 			for (int step = 0; step < STEPS; step++) {
 				assertClose(w.label + " skytnt_block vs pre-migration Java path, position " + step,
@@ -101,26 +101,41 @@ public class SkytntBlockAssetTest extends TestSuiteBase implements AttentionFeat
 
 	/**
 	 * The migrated block applies its {@code epsilon} argument to the attention RMSNorm, which the
-	 * built-in path ignored (it hardcoded {@code 1e-5}). At the shipped epsilon the two paths agree;
-	 * at an unusual epsilon they diverge, and only the attention stage can be responsible because
-	 * both use the same epsilon for the feed-forward stage.
+	 * built-in path ignored (it hardcoded {@code 1e-5}).
+	 *
+	 * <p>At the shipped epsilon the migrated block agrees with the monolith path (whose attention
+	 * hardcodes {@code 1e-5}). At an unusual epsilon it must instead reproduce, element for element,
+	 * a reference whose attention stage is built with that same unusual epsilon through the
+	 * configurable-epsilon {@link AttentionFeatures#attention} overload — this pins the exact value
+	 * the block forwards to attention, not merely that <em>some</em> difference appears. As a control
+	 * it must simultaneously diverge from the monolith path that still uses {@code 1e-5} for
+	 * attention; only the attention stage can be responsible because both references use the same
+	 * unusual epsilon for the feed-forward stage.</p>
 	 */
 	@Test(timeout = 300000)
 	public void skytntBlockAppliesEpsilonToAttention() {
 		BlockWeights w = configurations()[0];
 		double unusual = 3.0;
 
-		double[][] referenceShipped = run(reference(w, SHIPPED_EPSILON), w);
+		double[][] referenceShipped = run(reference(w, SHIPPED_EPSILON, SHIPPED_EPSILON), w);
 		double[][] migratedShipped = run(migrated(w, SHIPPED_EPSILON), w);
 		for (int step = 0; step < STEPS; step++) {
 			assertClose("shipped-epsilon parity, position " + step,
 					referenceShipped[step], migratedShipped[step]);
 		}
 
-		double[][] referenceUnusual = run(reference(w, unusual), w);
 		double[][] migratedUnusual = run(migrated(w, unusual), w);
-		double diff = maxAbsDiff(referenceUnusual[0], migratedUnusual[0]);
-		log("attention-epsilon divergence at position 0 = " + diff);
+
+		// Pins the exact epsilon forwarded to attention, not merely that a difference appears.
+		double[][] referenceUnusualForwarded = run(reference(w, unusual, unusual), w);
+		for (int step = 0; step < STEPS; step++) {
+			assertClose("epsilon forwarded to attention at epsilon=" + unusual + ", position " + step,
+					referenceUnusualForwarded[step], migratedUnusual[step]);
+		}
+
+		double[][] referenceUnusualMonolith = run(reference(w, SHIPPED_EPSILON, unusual), w);
+		double diff = maxAbsDiff(referenceUnusualMonolith[0], migratedUnusual[0]);
+		log("attention-epsilon divergence from the monolith path at position 0 = " + diff);
 		Assert.assertTrue("the migrated block must apply epsilon to the attention RMSNorm; the "
 				+ "monolith path ignores it, so the two must diverge at epsilon=" + unusual
 				+ " (max abs diff was " + diff + ")", diff > 1e-3);
@@ -158,22 +173,28 @@ public class SkytntBlockAssetTest extends TestSuiteBase implements AttentionFeat
 	}
 
 	/**
-	 * Builds the reference block the way the SkyTNT block behaved before the migration: a residual
-	 * {@link AttentionFeatures#attention} stage (the public 8-argument overload — the one the
-	 * {@code attention} built-in dispatched to, which hardcodes the attention RMSNorm epsilon to
-	 * {@code 1e-5}) and a residual {@link org.almostrealism.ml.FeedForwardFeatures#feedForward}
-	 * stage (the {@code swiglu_ffn} asset the SkyTNT feed-forward is structurally identical to).
-	 * {@code w1}/{@code w2}/{@code w3} are the SkyTNT gate/down/up projections.
+	 * Builds a residual attention plus residual feed-forward reference block with independently
+	 * chosen RMSNorm epsilons for the two stages, so a caller can model either the pre-migration
+	 * Java path or the correctly epsilon-forwarding path.
 	 *
-	 * @param w       the seeded weights
-	 * @param epsilon the RMSNorm epsilon of the feed-forward stage (the attention stage uses
-	 *                {@code 1e-5} regardless, as this test demonstrates)
+	 * <p>The attention stage is the configurable-epsilon
+	 * {@link AttentionFeatures#attention} overload; passing {@code attentionEpsilon == 1e-5}
+	 * reproduces the pre-migration path exactly, because the built-in the SkyTNT block used to
+	 * dispatch to hardcodes the attention RMSNorm epsilon to {@code 1e-5}. The feed-forward stage is
+	 * the {@link org.almostrealism.ml.FeedForwardFeatures#feedForward} the {@code swiglu_ffn} asset is
+	 * structurally identical to. {@code w1}/{@code w2}/{@code w3} are the SkyTNT gate/down/up
+	 * projections.</p>
+	 *
+	 * @param w                the seeded weights
+	 * @param attentionEpsilon the RMSNorm epsilon of the attention stage
+	 * @param ffnEpsilon       the RMSNorm epsilon of the feed-forward stage
 	 * @return the constructed block
 	 */
-	private Block reference(BlockWeights w, double epsilon) {
+	private Block reference(BlockWeights w, double attentionEpsilon, double ffnEpsilon) {
 		SequentialBlock block = new SequentialBlock(shape(1, DIM));
-		block.accum(attention(w.heads, w.rmsAtt, w.wk, w.wv, w.wq, w.wo, cp(w.freqCis), p(w.position)));
-		block.accum(feedForward(w.rmsFfn, w.w1, w.w2, w.w3, epsilon));
+		block.accum(attention(w.heads, w.heads, w.rmsAtt, w.wk, w.wv, w.wq, w.wo,
+				null, null, null, null, null, cp(w.freqCis), p(w.position), attentionEpsilon));
+		block.accum(feedForward(w.rmsFfn, w.w1, w.w2, w.w3, ffnEpsilon));
 		return block;
 	}
 

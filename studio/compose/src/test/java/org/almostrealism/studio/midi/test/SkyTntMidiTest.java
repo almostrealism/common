@@ -28,7 +28,6 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.studio.midi.SkyTntConfig;
 import org.almostrealism.studio.midi.SkyTntMidi;
 import org.almostrealism.studio.midi.SkyTntTokenizerV2;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -164,7 +163,7 @@ public class SkyTntMidiTest extends TestSuiteBase implements AttentionFeatures {
 				NET_LAYERS_TWO, HEADS, FFN, SEQ_LEN,
 				NET_TOKEN_LAYERS, HEADS_TOKEN, FFN_TOKEN);
 
-		StateDictionary stateDict = createSyntheticWeights(config, new Random(7));
+		StateDictionary stateDict = createRealisticWeights(config, new Random(7));
 
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
