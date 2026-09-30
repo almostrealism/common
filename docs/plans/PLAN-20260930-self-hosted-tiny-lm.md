@@ -125,13 +125,22 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      `String` round-trip case. Test all 256 values instead as a **byte-level** round-trip — every
      byte value `b` maps to id `b` and `b` is recovered from the raw bytes, with no sign extension —
      not as `encodeAsInt(decodeAsInt(ids)).equals(ids)`.
-   - **Specify decode behaviour for token sequences that are not valid UTF-8.** `decodeAsLong` must
-     return a `String`, so the plan must state, and the implementation must test, what a malformed
-     (non-UTF-8) id sequence decodes to: either byte-exact reconstruction via a 1:1 byte↔char
-     mapping (ISO-8859-1), which keeps the byte round-trip lossless for all 256 ids, or standard
-     UTF-8 decoding with Unicode replacement characters (which is then *not* byte-lossless for
-     malformed input). Record which contract was chosen; the all-256-values test checks whichever it
-     is at the byte level.
+   - **Decode valid streams as UTF-8; specify decode behaviour for token sequences that are not
+     valid UTF-8.** `decodeAsLong` must return a `String`, and for the multi-byte `String` round-trip
+     above to hold, valid id streams must be decoded as **UTF-8**. A 1:1 byte↔char mapping such as
+     ISO-8859-1 is *not* an alternative here: it does not reverse UTF-8 encoding, so it would break
+     the round-trip (`"é"` encodes to the UTF-8 bytes `C3 A9`; decoding those two ids as ISO-8859-1
+     yields `"Ã©"`, not `"é"`). The remaining choice is only what a *malformed* (non-UTF-8) id
+     sequence decodes to, and the natural contract is standard UTF-8 decoding, which substitutes the
+     Unicode replacement character `U+FFFD` for each ill-formed byte
+     (`new String(bytes, StandardCharsets.UTF_8)`). That is deliberately *not* byte-lossless for
+     malformed input — an unavoidable consequence of returning a `String`, and acceptable because the
+     model only ever decodes id sequences it produced from real UTF-8 bytes. Record this contract.
+     Byte-level losslessness for all 256 ids is therefore a property of the **byte↔id mapping**,
+     checked at that boundary as in the previous bullet — *not* of `decodeAsLong`; the two cannot both
+     hold through the `String` API, so the all-256 check must not go through `decodeAsLong`. (If a
+     byte-exact reconstruction of an arbitrary id sequence is ever needed, it is a separate,
+     non-`String`-round-trip decoder, and out of scope here.)
 
 5. **Text next-token dataset.** A `Dataset<PackedCollection>` that takes a token array and a
    context length and yields `ValueTarget`s of (input window, next-token targets): input
