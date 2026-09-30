@@ -49,6 +49,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.List;
 import java.util.Optional;
@@ -486,12 +487,30 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	/**
 	 * Returns a unique signature for this assignment operation.
 	 *
-	 * <p>Format: {@code "assign{memLength}{requirements}->{valueSignature}"}. The
+	 * <p>Format: {@code "assign{memLength}{requirements}{aggregation}->{valueSignature}"}. The
 	 * {@link #getComputeRequirements() compute requirements} are folded in (as other
 	 * {@link io.almostrealism.code.ProducerComputationBase#signature() computations} do) so that a copy
 	 * compiled for one backend is never reused, via the signature-keyed instruction cache, to feed a
 	 * kernel on another: a Metal copy ({@code [MTL]}) and a copy with no requirements have distinct
 	 * signatures and therefore distinct compiled kernels.</p>
+	 *
+	 * <p>The destination's size is deliberately left out, so that one compiled kernel serves
+	 * destinations of every size. Whether the destination is folded into the aggregate argument,
+	 * however, is baked into the kernel, and that depends on the size of the destination's root
+	 * memory ({@link MemoryDataArgumentMap#isAggregationTarget(Supplier)}). The {@code aggregation}
+	 * part ({@code "&aggregateDestination"} when the destination is folded, empty otherwise)
+	 * keeps a kernel that reads its destination from the aggregate distinct from one that
+	 * receives it as its own argument; without it, clearing a destination on each side of the
+	 * aggregation size limit matched both to one signature and failed as an instruction cache
+	 * collision.</p>
+	 *
+	 * <p>The length of an aggregated destination's root is not needed. Aggregated roots are laid
+	 * out in the order they are mapped, and a provider destination is mapped last: preparing the
+	 * inputs maps the value's arguments (a provider maps nothing), and only then are this
+	 * assignment's own arguments, the destination among them, assigned. So the destination's
+	 * root length shifts no other argument's position, and the positions of the value's
+	 * aggregated arguments are fixed by the value's signature. Reuse compares the aggregate
+	 * positions regardless, and fails loudly if they ever differ.</p>
 	 *
 	 * @return the signature string, or null if destination or value lacks a signature
 	 */
@@ -512,7 +531,11 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 						.distinct().sorted().collect(Collectors.toList()).toString())
 				.orElse("");
 
-		return "assign" + memLength + requirements + "->" + signature;
+		String aggregation = isArgumentAggregationSupported()
+				&& MemoryDataArgumentMap.isAggregationTarget(getInputs().get(0))
+				? "&aggregateDestination" : "";
+
+		return "assign" + memLength + requirements + aggregation + "->" + signature;
 	}
 
 	/**

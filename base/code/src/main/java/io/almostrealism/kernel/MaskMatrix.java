@@ -87,4 +87,24 @@ public class MaskMatrix<T> extends ExpressionMatrix<T> {
 
 		return Mask.of(m, expression.valueAt(i, j));
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the mask entry is a raw integer it is an {@link IntegerConstant} or
+	 * {@link io.almostrealism.expression.LongConstant} to {@link #valueAt(int, int)}, whose
+	 * boolean value is {@code value != 0}: a non-zero mask selects the data entry and a zero
+	 * mask yields the constant {@code 0}. That decision is made here from the numbers alone;
+	 * any other mask entry is resolved through {@link #valueAt(int, int)}.</p>
+	 */
+	@Override
+	protected Boolean isNonZero(int i, int j) {
+		Number m = mask.numberAt(i, j);
+
+		if (m instanceof Integer || m instanceof Long) {
+			return m.longValue() != 0 ? expression.isNonZero(i, j) : Boolean.FALSE;
+		}
+
+		return super.isNonZero(i, j);
+	}
 }
