@@ -187,7 +187,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public synchronized InstructionSet deliver(Scope scope) {
-		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
+		if (instructionSets.containsKey(instructionSetKey(scope.getName(), scope.signature()))) {
 			if (ScopeSettings.enableInstructionSetReuse) {
 				warn("Compiling instruction set " + scope.getName() +
 						" with duplicate signature");
@@ -195,7 +195,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 				warn("Recompiling instruction set " + scope.getName());
 			}
 
-			instructionSets.get(key(scope.getName(), scope.signature())).destroy();
+			instructionSets.get(instructionSetKey(scope.getName(), scope.signature())).destroy();
 		}
 
 		long start = System.nanoTime();
@@ -209,7 +209,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			buf.append(enc.apply(scope));
 
 			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-			instructionSets.put(key(scope.getName(), scope.signature()), instSet);
+			instructionSets.put(instructionSetKey(scope.getName(), scope.signature()), instSet);
 			return instSet;
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
@@ -290,7 +290,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	protected synchronized void destroyed(String name, String signature) {
 		if (instructionSets != null) {
-			String key = key(name, signature);
+			String key = instructionSetKey(name, signature);
 
 			if (instructionSets.remove(key) == null) {
 				throw new IllegalArgumentException("No instruction set found for " + key);
@@ -327,23 +327,4 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public Console console() { return Hardware.console; }
-
-	/**
-	 * Returns the cache key for an instruction set, using the signature when reuse is enabled.
-	 *
-	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is available,
-	 * the signature is used as the key so that structurally identical scopes share compiled programs.
-	 * Otherwise the scope name is used.</p>
-	 *
-	 * @param name Scope name used as fallback key
-	 * @param signature Optional structural signature for deduplication
-	 * @return Cache key for the instruction set map
-	 */
-	protected static String key(String name, String signature) {
-		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
-			return signature;
-		}
-
-		return name;
-	}
 }

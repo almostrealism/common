@@ -17,13 +17,19 @@ set -euo pipefail
 #     whatever the creating account's umask
 #   - git's core.sharedRepository is set to "group", so objects and refs it
 #     writes are group-writable too
+#   - the repository is added to both accounts' safe.directory list, since
+#     git refuses to operate on a repository owned by another account
+#
+# Every directory above each repository that the group cannot already enter
+# (such as the agent's 0750 home directory) is given a group ACL allowing it
+# to be traversed, but not listed, so that the repository can be reached.
 #
 # The group is created if it does not exist, and both accounts are added to
 # it. Group membership takes effect at the next login of each account.
 #
 # Run as root:
 #
-#   share-checkouts.sh --owner michael --agent agent0 /home/agent0
+#   share-checkouts.sh --owner michael --agent agent0 /home/agent0/Projects
 #
 # Options:
 #   --owner USER    The developer account (required)
@@ -33,7 +39,7 @@ set -euo pipefail
 #   --dry-run       Print what would be done without changing anything
 #   -h, --help      Show this help
 #
-# Requires: groupadd, usermod, setfacl (the acl package), git.
+# Requires: groupadd, usermod, setfacl (the acl package), sudo, git.
 
 GROUP=ar-dev
 OWNER=
@@ -109,15 +115,48 @@ for account in "$OWNER" "$AGENT"; do
 	fi
 done
 
+# Lets the group enter every directory above $1 that other accounts cannot
+# enter. Only the execute bit is granted, so the directories can be traversed
+# but not listed.
+allow_traversal() {
+	local dir
+	dir="$(dirname "$1")"
+
+	while [ "$dir" != "/" ]; do
+		if [ -z "$(find "$dir" -maxdepth 0 -perm -o+x)" ]; then
+			echo "Allowing $GROUP to traverse $dir"
+			run setfacl -m "g:$GROUP:--x" "$dir"
+		fi
+		dir="$(dirname "$dir")"
+	done
+}
+
+# Adds $2 to the global safe.directory list of account $1, unless present.
+trust_repository() {
+	local account="$1" repo="$2"
+
+	if [ "$DRY_RUN" -eq 0 ] &&
+			sudo -u "$account" -H git config --global --get-all safe.directory 2>/dev/null |
+			grep -qxF "$repo"; then
+		return
+	fi
+
+	run sudo -u "$account" -H git config --global --add safe.directory "$repo"
+}
+
 share_repository() {
 	local repo="$1"
 	echo "Sharing $repo"
+	allow_traversal "$repo"
 	run chgrp -R "$GROUP" "$repo"
 	run chmod -R g+rwX "$repo"
 	run find "$repo" -type d -exec chmod g+s {} +
 	run setfacl -R -m "g:$GROUP:rwX" "$repo"
 	run setfacl -R -d -m "g:$GROUP:rwX" "$repo"
-	run git -C "$repo" config core.sharedRepository group
+	# root does not own the repository, so git would reject it as unsafe
+	run git -c safe.directory="$repo" -C "$repo" config core.sharedRepository group
+	trust_repository "$OWNER" "$repo"
+	trust_repository "$AGENT" "$repo"
 }
 
 count=0

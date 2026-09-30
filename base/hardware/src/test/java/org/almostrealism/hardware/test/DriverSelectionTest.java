@@ -176,4 +176,27 @@ public class DriverSelectionTest {
 			// the selection is a value, and reporting it must not expose it to change
 		}
 	}
+
+	/** {@code cuda} names the CUDA backend and commits to it, alone or alongside another. */
+	@Test(timeout = 30000)
+	public void cudaIsANamedDriver() {
+		DriverSelection alone = DriverSelection.parse("cuda", false, true);
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.CUDA), alone.getRequirements());
+		Assert.assertTrue(alone.isRequired(ComputeRequirement.CUDA));
+
+		DriverSelection paired = DriverSelection.parse("native,CUDA", false, true);
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.JNI, ComputeRequirement.CUDA),
+				paired.getRequirements());
+		Assert.assertTrue(paired.isRequired(ComputeRequirement.JNI));
+		Assert.assertTrue(paired.isRequired(ComputeRequirement.CUDA));
+	}
+
+	/** The wildcard does not yet offer CUDA, so existing wildcard selections are unchanged. */
+	@Test(timeout = 30000)
+	public void wildcardDoesNotOfferCuda() {
+		Assert.assertFalse(DriverSelection.parse("*", false, true)
+				.getRequirements().contains(ComputeRequirement.CUDA));
+		Assert.assertFalse(DriverSelection.parse("*", false, false)
+				.getRequirements().contains(ComputeRequirement.CUDA));
+	}
 }
