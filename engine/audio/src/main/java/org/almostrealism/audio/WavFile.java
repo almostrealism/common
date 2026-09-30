@@ -1029,11 +1029,14 @@ public class WavFile implements AutoCloseable {
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
 	 * @return the number of frames written
-	 * @throws IOException              if writing fails
+	 * @throws IOException              if this file is not open for writing, or writing fails; the
+	 *                                  state is checked before any sample is copied off the device
 	 * @throws IllegalArgumentException if the collection's channel count does not match the file's,
 	 *                                  or its shape is neither one- nor two-dimensional
 	 */
 	public int writeFrames(PackedCollection audio) throws IOException {
+		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
+
 		TraversalPolicy shape = audio.getShape();
 
 		if (shape.getDimensions() < 1 || shape.getDimensions() > 2) {

@@ -49,6 +49,10 @@ import java.util.Map;
  * can read directly. Length prefixes rather than delimiters are required because the
  * vocabulary contains tokens that are runs of newlines and runs of {@code U+2581}.</p>
  *
+ * <p>Added tokens -- the control tokens and any other entries of the source tokenizer's added
+ * vocabulary -- are carried in the binary and matched atomically before BPE runs, so text that
+ * contains one encodes to its single id, as the reference does.</p>
+ *
  * <p>Special tokens are not added by {@link #encodeAsLong(String)}. The exported tokenizers
  * carry an empty template post-processor, so the reference implementation adds neither a
  * beginning- nor an end-of-sequence token, and a prompt encoder fed an extra leading token
@@ -64,7 +68,7 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	private static final int MAGIC = 0x4152544B;
 
 	/** The format version this reader understands. */
-	private static final int VERSION = 1;
+	private static final int VERSION = 2;
 
 	/**
 	 * The largest vocabulary or merge count an exported tokenizer may declare. A serialized count
@@ -127,6 +131,8 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			this.eosToken = in.readInt();
 			this.padToken = in.readInt();
 			this.unkToken = in.readInt();
+
+			readAddedTokens(in);
 		}
 	}
 
@@ -164,6 +170,37 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 
 			bpeMerges.put(pair, left + right);
 			mergePriority.putIfAbsent(pair, i);
+		}
+	}
+
+	/**
+	 * Reads the added tokens, each an id, whether it is matched after normalization, and its
+	 * content. An added token is matched atomically in the input before BPE runs, so an occurrence
+	 * of its content -- a control token such as {@code <pad>} included -- encodes to its one id as
+	 * it does in the source tokenizer, rather than being split into BPE pieces.
+	 *
+	 * @param in the stream positioned at the added tokens
+	 * @throws IOException if the stream ends early, or an added token has empty content or an id
+	 *                     outside the vocabulary
+	 */
+	protected void readAddedTokens(DataInputStream in) throws IOException {
+		int count = readCount("added token count", in, MAX_ENTRIES);
+
+		for (int i = 0; i < count; i++) {
+			int id = in.readInt();
+			boolean normalized = in.readBoolean();
+			String content = readString(in);
+
+			if (id < 0 || id >= vocab.length) {
+				throw new IOException("Added token id " + id + " is outside the vocabulary of "
+						+ vocab.length + " tokens");
+			}
+
+			if (content.isEmpty()) {
+				throw new IOException("Added token " + id + " has empty content");
+			}
+
+			(normalized ? normalizedAddedTokens : addedTokens).put(content, id);
 		}
 	}
 

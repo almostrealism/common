@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Abstract base class for byte-level BPE (Byte Pair Encoding) tokenizers.
@@ -67,6 +68,22 @@ public abstract class ByteLevelBPETokenizer {
     protected Map<String, String> bpeMerges;
 
     /**
+     * Added tokens matched against the raw input, content to id. Each occurrence of an added
+     * token's content becomes that one id before pre-tokenization and BPE run, exactly as the
+     * HuggingFace added vocabulary matches a token that is not normalized. Empty unless a
+     * subclass populates it.
+     */
+    protected Map<String, Integer> addedTokens;
+
+    /**
+     * Added tokens matched only in the text that remains once {@link #addedTokens} have been
+     * split out, content to id: the HuggingFace added vocabulary matches a normalized token in a
+     * second pass. A subclass may populate this only with contents its normalization leaves
+     * unchanged, since the match is made against the text before normalization.
+     */
+    protected Map<String, Integer> normalizedAddedTokens;
+
+    /**
      * Creates a byte-level BPE tokenizer with the given pre-tokenization strategy.
      *
      * <p>The tokenizer is initialized with empty vocabulary and merge maps.
@@ -79,6 +96,8 @@ public abstract class ByteLevelBPETokenizer {
         this.vocabMap = new HashMap<>();
         this.vocab = new String[0];
         this.bpeMerges = new HashMap<>();
+        this.addedTokens = new HashMap<>();
+        this.normalizedAddedTokens = new HashMap<>();
     }
 
     /**
@@ -98,6 +117,34 @@ public abstract class ByteLevelBPETokenizer {
             }
         }
 
+        // Step 0: Split out added tokens, raw ones first and then normalized ones
+        splitAddedTokens(text, addedTokens, tokenIds,
+                piece -> splitAddedTokens(piece, normalizedAddedTokens, tokenIds,
+                        rest -> encodeText(rest, tokenIds)));
+
+        if (addSpecialTokens) {
+            int eosToken = getEOSToken();
+            if (eosToken >= 0) {
+                tokenIds.add(eosToken);
+            }
+        }
+
+        // Convert to array
+        int[] result = new int[tokenIds.size()];
+        for (int i = 0; i < tokenIds.size(); i++) {
+            result[i] = tokenIds.get(i);
+        }
+
+        return result;
+    }
+
+    /**
+     * Pre-tokenizes and BPE-encodes text that contains no added token, appending its ids.
+     *
+     * @param text     the text
+     * @param tokenIds the destination
+     */
+    protected void encodeText(String text, List<Integer> tokenIds) {
         // Step 1: Pre-tokenize
         List<String> segments = preTokenizer.preTokenize(text);
 
@@ -115,21 +162,55 @@ public abstract class ByteLevelBPETokenizer {
                 tokenIds.add(tokenId);
             }
         }
+    }
 
-        if (addSpecialTokens) {
-            int eosToken = getEOSToken();
-            if (eosToken >= 0) {
-                tokenIds.add(eosToken);
+    /**
+     * Splits text around occurrences of added tokens. Scanning left to right, the longest added
+     * token starting at the earliest position is taken -- the leftmost-longest rule the
+     * HuggingFace added vocabulary uses -- and its id is appended; each non-empty stretch between
+     * matches is handed to {@code remainder}. With no added tokens the whole text is handed on
+     * unchanged.
+     *
+     * @param text      the text to split
+     * @param tokens    added-token content to id; contents must be non-empty
+     * @param tokenIds  the destination for matched ids, shared with {@code remainder}
+     * @param remainder encodes a stretch that contains none of {@code tokens}
+     */
+    protected static void splitAddedTokens(String text, Map<String, Integer> tokens,
+                                           List<Integer> tokenIds, Consumer<String> remainder) {
+        if (tokens.isEmpty()) {
+            remainder.accept(text);
+            return;
+        }
+
+        int longest = 0;
+        for (String content : tokens.keySet()) {
+            longest = Math.max(longest, content.length());
+        }
+
+        int start = 0;
+        int i = 0;
+        while (i < text.length()) {
+            int length = Math.min(longest, text.length() - i);
+            Integer id = null;
+
+            while (length > 0 && id == null) {
+                id = tokens.get(text.substring(i, i + length));
+                if (id == null) length--;
             }
+
+            if (id == null) {
+                i++;
+                continue;
+            }
+
+            if (i > start) remainder.accept(text.substring(start, i));
+            tokenIds.add(id);
+            i += length;
+            start = i;
         }
 
-        // Convert to array
-        int[] result = new int[tokenIds.size()];
-        for (int i = 0; i < tokenIds.size(); i++) {
-            result[i] = tokenIds.get(i);
-        }
-
-        return result;
+        if (start < text.length()) remainder.accept(text.substring(start));
     }
 
     /**

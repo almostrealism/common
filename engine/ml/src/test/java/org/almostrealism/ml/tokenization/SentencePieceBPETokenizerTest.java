@@ -23,7 +23,10 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Verifies {@link SentencePieceBPETokenizer} against the token ids the reference
@@ -45,6 +48,11 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	private static final String[] TOKENIZER_PATHS = {
 			System.getProperty("AR_T5GEMMA_TOKENIZER", System.getenv("AR_T5GEMMA_TOKENIZER")),
 			"/workspace/t5gemma-tokenizer.bin"
+	};
+
+	/** A vocabulary for the added-token tests, with no byte tokens and no merges. */
+	private static final String[] ADDED_VOCAB = {
+			"<pad>", "a", "b", "▁", "<", "p", "ad>", "<pa"
 	};
 
 	/** The prompt the reference dump tokenizes. */
@@ -214,7 +222,8 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void fileThatIsNotATokenizerIsRejected() throws IOException {
-		File wrong = new SentencePieceTokenizerFixture().writeWithHeader(0x00000000, 1);
+		File wrong = new SentencePieceTokenizerFixture().writeWithHeader(0x00000000,
+				SentencePieceTokenizerFixture.VERSION);
 
 		try {
 			new SentencePieceBPETokenizer(wrong.getPath());
@@ -232,13 +241,97 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void unsupportedVersionIsRejected() throws IOException {
-		File future = new SentencePieceTokenizerFixture().writeWithHeader(0x4152544B, 2);
+		int future = SentencePieceTokenizerFixture.VERSION + 1;
+		File file = new SentencePieceTokenizerFixture().writeWithHeader(
+				SentencePieceTokenizerFixture.MAGIC, future);
 
 		try {
-			new SentencePieceBPETokenizer(future.getPath());
+			new SentencePieceBPETokenizer(file.getPath());
 			Assert.fail("a tokenizer of an unsupported version was read");
 		} catch (IOException expected) {
-			assertTrue(expected.getMessage().contains("version 2"));
+			assertTrue(expected.getMessage().contains("version " + future));
+		}
+	}
+
+	/**
+	 * A tokenizer written before added tokens were carried is rejected rather than read: it would
+	 * split a control token such as {@code <pad>} into BPE pieces where the source tokenizer emits
+	 * its one id, so it must be exported again.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void tokenizerWithoutAddedTokensIsRejected() throws IOException {
+		File file = new SentencePieceTokenizerFixture().writeWithHeader(
+				SentencePieceTokenizerFixture.MAGIC, 1);
+
+		try {
+			new SentencePieceBPETokenizer(file.getPath());
+			Assert.fail("a tokenizer of the format without added tokens was read");
+		} catch (IOException expected) {
+			assertTrue(expected.getMessage().contains("version 1"));
+		}
+	}
+
+	/**
+	 * An added token is matched atomically before BPE runs, so its content encodes to its one id
+	 * wherever it appears, while the text around it is encoded as usual. Where two added tokens
+	 * start at the same position the longer is taken, as the reference added vocabulary does, and
+	 * decoding restores the content.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void addedTokenIsMatchedAtomically() throws IOException {
+		Map<String, Integer> raw = new LinkedHashMap<>();
+		raw.put("<pad>", 0);
+		raw.put("<pa", 7);
+
+		SentencePieceBPETokenizer tokenizer = new SentencePieceTokenizerFixture().tokenizerFor(
+				ADDED_VOCAB, new int[] {-1, -1, -1, -1}, raw, Collections.emptyMap());
+
+		long[] encoded = tokenizer.encodeAsLong("ab<pad> a<pa");
+		assertEquals(Arrays.toString(new long[] {1, 2, 0, 3, 1, 7}), Arrays.toString(encoded));
+		assertEquals("ab<pad> a<pa", tokenizer.decodeAsLong(encoded));
+
+		assertEquals(Arrays.toString(new long[] {0, 0}),
+				Arrays.toString(tokenizer.encodeAsLong("<pad><pad>")));
+	}
+
+	/**
+	 * Raw added tokens are split out before normalized ones, so a normalized token that would
+	 * overlap a raw match is not taken even when it starts earlier: {@code "<pad>"} splits into
+	 * the raw {@code "ad>"} and a remainder {@code "<p"} encoded by BPE, never the normalized
+	 * {@code "<pa"}. Normalized tokens still match in text free of raw ones.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	@Test(timeout = 120000)
+	public void rawAddedTokensAreMatchedBeforeNormalizedOnes() throws IOException {
+		SentencePieceBPETokenizer tokenizer = new SentencePieceTokenizerFixture().tokenizerFor(
+				ADDED_VOCAB, new int[] {-1, -1, -1, -1},
+				Collections.singletonMap("ad>", 6), Collections.singletonMap("<pa", 7));
+
+		assertEquals(Arrays.toString(new long[] {4, 5, 6}),
+				Arrays.toString(tokenizer.encodeAsLong("<pad>")));
+		assertEquals(Arrays.toString(new long[] {7, 1}),
+				Arrays.toString(tokenizer.encodeAsLong("<paa")));
+	}
+
+	/**
+	 * An added token whose id lies outside the vocabulary is rejected when the tokenizer is read,
+	 * rather than encoding to an id no embedding row exists for.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(timeout = 120000)
+	public void addedTokenOutsideVocabularyIsRejected() throws IOException {
+		try {
+			new SentencePieceTokenizerFixture().tokenizerFor(ADDED_VOCAB, new int[] {-1, -1, -1, -1},
+					Collections.singletonMap("<pad>", ADDED_VOCAB.length), Collections.emptyMap());
+			Assert.fail("an added token outside the vocabulary was read");
+		} catch (IOException expected) {
+			assertTrue(expected.getMessage().contains("outside the vocabulary"));
 		}
 	}
 

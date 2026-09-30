@@ -18,7 +18,7 @@ corrupts part of the vocabulary.
 All integers are big-endian, matching ``DataInputStream``::
 
     magic       4 bytes, "ARTK"
-    version     int32, currently 1
+    version     int32, currently 2
     vocabSize   int32
                 vocabSize entries, in token-id order:
                     int32 length, then that many UTF-8 bytes
@@ -30,9 +30,15 @@ All integers are big-endian, matching ``DataInputStream``::
     eosId       int32, -1 when the tokenizer has none
     padId       int32, -1 when the tokenizer has none
     unkId       int32, -1 when the tokenizer has none
+    addedCount  int32
+                addedCount entries, one per added token:
+                    int32 id,
+                    int8 1 when matched after normalization, else 0,
+                    int32 length + UTF-8 bytes for the content
 
 A token id absent from the vocabulary (ids are dense in practice, but a gap is
-possible) is written as a zero-length entry.
+possible) is written as a zero-length entry. An added token's content is written
+at its id in the vocabulary, since the source tokenizer resolves that id to it.
 
 Usage::
 
@@ -46,7 +52,7 @@ import os
 import struct
 
 MAGIC = b"ARTK"
-VERSION = 1
+VERSION = 2
 
 # The SentencePiece boundary marker (U+2581). The Java reader replaces an ASCII space with it.
 BOUNDARY = "▁"
@@ -86,7 +92,7 @@ def validate_pipeline(spec):
     The Java reader treats the whole text as one segment, replaces an ASCII space with the
     SentencePiece boundary marker, falls back to one ``<0xNN>`` token per UTF-8 byte for characters
     outside the vocabulary, and reverses exactly that on decode. The exported binary carries only
-    the vocabulary, merges and special ids -- none of the normalizer, pre-tokenizer, decoder or
+    the vocabulary, merges, special ids and added tokens -- none of the normalizer, pre-tokenizer, decoder or
     post-processor configuration -- so a tokenizer that normalizes, pre-tokenizes, decodes or adds
     special tokens differently would
     export without complaint and then silently produce token ids other than the source
@@ -208,25 +214,35 @@ def validate_pipeline(spec):
             "input id once, so a post-processor that adds BOS/EOS or repeats the sequence would "
             "make the exported tokenizer disagree with the source" % kind)
 
-    # An added token is matched against the raw input before the BPE model runs, so its whole content
-    # becomes one id wherever it appears in the text. The exported binary carries only the vocabulary
-    # and merges, and the Java reader treats the whole text as BPE symbols with no added-token
-    # matching, so it would instead split that content into its BPE pieces. A special (control) added
-    # token -- BOS/EOS/PAD/UNK and the like -- is out of scope by design: encodeAsLong adds no
-    # special tokens and prompt text is not expected to carry their literal strings, the same
-    # limitation the sequence-only post-processor already imposes. A non-special added token is
-    # ordinary content that can appear in prompt text, so its atomic matching would silently change
-    # the ids and it is rejected.
+    # An added token is matched against the input before the BPE model runs, so its whole content
+    # becomes one id wherever it appears in the text -- a special (control) token such as <pad> as
+    # much as any other, since "special" only affects decoding and post-processing, not matching.
+    # The Java reader reproduces that matching for the added tokens carried in the binary, with the
+    # leftmost-longest rule, raw tokens before normalized ones. It does not implement the
+    # whitespace-stripping or whole-word options, and it matches a normalized token against the
+    # text before normalization, which is the same only when the content holds neither a space nor
+    # the boundary marker (the one pair of characters the normalizer changes); anything else is
+    # rejected.
     for added in spec.get("added_tokens") or []:
-        if not added.get("special"):
+        content = added.get("content")
+        if not content:
+            raise ValueError("unsupported added token %r with empty content" % added.get("id"))
+        for option in ("single_word", "lstrip", "rstrip"):
+            if added.get(option):
+                raise ValueError(
+                    "unsupported added token %r with %s; the Java reader matches added tokens "
+                    "exactly and does not reproduce that option" % (content, option))
+        if added.get("normalized") and (" " in content or BOUNDARY in content):
             raise ValueError(
-                "unsupported non-special added token %r; it is matched atomically before the BPE "
-                "model, while the Java reader splits it into its BPE pieces, so the exported "
-                "tokenizer would disagree with the source" % added.get("content"))
+                "unsupported normalized added token %r; the Java reader matches it before "
+                "normalization, which differs from the source when the content contains a space "
+                "or the boundary marker" % content)
 
 
 def read_tokenizer(tokenizer_dir):
-    """Load ``tokenizer.json`` and return its vocabulary, merges and special ids.
+    """Load ``tokenizer.json`` and return its vocabulary, merges, special ids and added tokens.
+
+    The added tokens are ``(id, content, normalized)`` triples, in ``tokenizer.json`` order.
 
     The special ids are read from ``tokenizer_config.json`` / ``config.json``
     when present, since ``tokenizer.json`` itself does not name them.
@@ -240,6 +256,14 @@ def read_tokenizer(tokenizer_dir):
     vocab = model.get("vocab") or {}
     merges = model.get("merges") or []
 
+    added = [(token["id"], token["content"], bool(token.get("normalized")))
+             for token in spec.get("added_tokens") or []]
+
+    # A special token named by tokenizer_config.json may live only in the added vocabulary, so its
+    # id is looked up there as well as in the model vocabulary.
+    ids = dict(vocab)
+    ids.update((content, index) for index, content, _ in added)
+
     specials = {key: -1 for key in ("bos", "eos", "pad", "unk")}
 
     config_path = os.path.join(tokenizer_dir, "tokenizer_config.json")
@@ -252,7 +276,7 @@ def read_tokenizer(tokenizer_dir):
             if isinstance(token, dict):
                 token = token.get("content")
             if token is not None:
-                specials[key] = vocab.get(token, -1)
+                specials[key] = ids.get(token, -1)
 
     # config.json is the documented fallback for any special id tokenizer_config.json did not
     # resolve. A model config commonly names the ids directly as integer ``*_token_id`` fields
@@ -269,15 +293,18 @@ def read_tokenizer(tokenizer_dir):
                     if isinstance(token_id, int) and not isinstance(token_id, bool):
                         specials[key] = token_id
 
-    return vocab, merges, specials
+    return vocab, merges, specials, added
 
 
-def write_tokenizer(path, vocab, merges, specials):
+def write_tokenizer(path, vocab, merges, specials, added=()):
     """Write the binary described in the module docstring, returning its size."""
-    size = max(vocab.values()) + 1 if vocab else 0
+    ids = list(vocab.values()) + [index for index, _, _ in added]
+    size = max(ids) + 1 if ids else 0
     tokens = [None] * size
     for token, index in vocab.items():
         tokens[index] = token
+    for index, content, _ in added:
+        tokens[index] = content
 
     with open(path, "wb") as out:
         out.write(MAGIC)
@@ -305,6 +332,13 @@ def write_tokenizer(path, vocab, merges, specials):
         for key in ("bos", "eos", "pad", "unk"):
             out.write(struct.pack(">i", specials.get(key, -1)))
 
+        out.write(struct.pack(">i", len(added)))
+        for index, content, normalized in added:
+            encoded = content.encode("utf-8")
+            out.write(struct.pack(">ib", index, 1 if normalized else 0))
+            out.write(struct.pack(">i", len(encoded)))
+            out.write(encoded)
+
     return os.path.getsize(path)
 
 
@@ -316,12 +350,13 @@ def main():
     parser.add_argument("--out", required=True, help="Path of the binary to write")
     args = parser.parse_args()
 
-    vocab, merges, specials = read_tokenizer(args.tokenizer_dir)
-    size = write_tokenizer(args.out, vocab, merges, specials)
+    vocab, merges, specials, added = read_tokenizer(args.tokenizer_dir)
+    size = write_tokenizer(args.out, vocab, merges, specials, added)
 
     print("wrote %s" % args.out)
     print("  vocabulary %d tokens, %d merges, %.1f MB" % (
         len(vocab), len(merges), size / (1024.0 * 1024.0)))
+    print("  %d added tokens" % len(added))
     print("  bos=%(bos)d eos=%(eos)d pad=%(pad)d unk=%(unk)d" % specials)
 
 

@@ -303,23 +303,55 @@ def test_special_token_post_processor_is_rejected():
         exporter.validate_pipeline(spec)
 
 
-def test_non_special_added_token_is_rejected():
-    # A non-special added token is ordinary content matched atomically before the BPE model; the
-    # Java reader would instead split it into its BPE pieces, so it must not export.
+def test_non_special_added_token_is_accepted():
+    # A non-special added token is matched atomically before the BPE model, and the Java reader
+    # reproduces that matching from the added tokens carried in the binary.
     spec = _supported_spec()
-    spec["added_tokens"] = [{"id": 4, "content": "ab", "special": False}]
-    with pytest.raises(ValueError, match="added token"):
-        exporter.validate_pipeline(spec)
+    spec["added_tokens"] = [{"id": 2, "content": "ab", "special": False}]
+    exporter.validate_pipeline(spec)
 
 
 def test_special_added_tokens_are_accepted():
     # Released tokenizers register their control tokens (BOS/EOS/PAD/UNK) in added_tokens with
-    # special=true; encodeAsLong adds no special tokens, so these are out of scope and still export.
+    # special=true; they are matched like any other added token and still export.
     spec = _supported_spec()
     spec["added_tokens"] = [
         {"id": 0, "content": "<pad>", "special": True},
         {"id": 1, "content": "<eos>", "special": True},
     ]
+    exporter.validate_pipeline(spec)
+
+
+@pytest.mark.parametrize("option", ["single_word", "lstrip", "rstrip"])
+def test_added_token_matching_option_is_rejected(option):
+    # The Java reader matches added tokens exactly, so an option that widens or narrows the match
+    # would make it disagree with the source.
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": 0, "content": "<pad>", "special": True, option: True}]
+    with pytest.raises(ValueError, match=option):
+        exporter.validate_pipeline(spec)
+
+
+def test_empty_added_token_is_rejected():
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": 0, "content": "", "special": True}]
+    with pytest.raises(ValueError, match="empty content"):
+        exporter.validate_pipeline(spec)
+
+
+@pytest.mark.parametrize("content", ["a b", BOUNDARY + "ab"])
+def test_normalized_added_token_changed_by_normalization_is_rejected(content):
+    # A normalized added token is matched against normalized text; the Java reader matches it
+    # before normalization, which differs when the content holds a space or the boundary marker.
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": 2, "content": content, "special": False, "normalized": True}]
+    with pytest.raises(ValueError, match="normalized added token"):
+        exporter.validate_pipeline(spec)
+
+
+def test_normalized_added_token_unchanged_by_normalization_is_accepted():
+    spec = _supported_spec()
+    spec["added_tokens"] = [{"id": 2, "content": "<ab>", "special": False, "normalized": True}]
     exporter.validate_pipeline(spec)
 
 
@@ -347,13 +379,14 @@ def test_read_and_write_round_trip(tmp_path):
         "unk_token": {"content": "<unk>"},
     }))
 
-    read_vocab, read_merges, specials = exporter.read_tokenizer(str(tokenizer_dir))
+    read_vocab, read_merges, specials, added = exporter.read_tokenizer(str(tokenizer_dir))
     assert read_vocab == vocab
     assert read_merges == merges
     assert specials == {"bos": -1, "eos": 1, "pad": 0, "unk": 2}
+    assert added == []
 
     out = tmp_path / "tokenizer.bin"
-    size = exporter.write_tokenizer(str(out), read_vocab, read_merges, specials)
+    size = exporter.write_tokenizer(str(out), read_vocab, read_merges, specials, added)
     assert size == os.path.getsize(str(out))
 
     with open(str(out), "rb") as handle:
@@ -376,6 +409,62 @@ def test_read_and_write_round_trip(tmp_path):
         bos, eos, pad, unk = struct.unpack(">iiii", handle.read(16))
         assert (bos, eos, pad, unk) == (-1, 1, 0, 2)
 
+        (added_count,) = struct.unpack(">i", handle.read(4))
+        assert added_count == 0
+        assert handle.read() == b""
+
+
+def test_added_tokens_round_trip(tmp_path):
+    # Added tokens are written after the special ids, and one whose id lies beyond the model
+    # vocabulary extends the token table so the id resolves to its content. A special token that
+    # lives only in the added vocabulary still resolves from tokenizer_config.json.
+    vocab = {"<pad>": 0, "a": 1, "b": 2, "ab": 3, BOUNDARY: 4}
+    vocab.update(_byte_tokens(5))
+    spec = _supported_spec(vocab=vocab)
+    spec["added_tokens"] = [
+        {"id": 0, "content": "<pad>", "special": True, "normalized": False},
+        {"id": 261, "content": "<start_of_turn>", "special": True, "normalized": False},
+        {"id": 262, "content": "<ab>", "special": False, "normalized": True},
+    ]
+
+    tokenizer_dir = tmp_path / "tok"
+    tokenizer_dir.mkdir()
+    (tokenizer_dir / "tokenizer.json").write_text(json.dumps(spec))
+    (tokenizer_dir / "tokenizer_config.json").write_text(json.dumps({
+        "pad_token": "<pad>",
+        "bos_token": "<start_of_turn>",
+    }))
+
+    read_vocab, read_merges, specials, added = exporter.read_tokenizer(str(tokenizer_dir))
+    assert added == [(0, "<pad>", False), (261, "<start_of_turn>", False), (262, "<ab>", True)]
+    assert specials == {"bos": 261, "eos": -1, "pad": 0, "unk": -1}
+
+    out = tmp_path / "tokenizer.bin"
+    exporter.write_tokenizer(str(out), read_vocab, read_merges, specials, added)
+
+    with open(str(out), "rb") as handle:
+        handle.read(8)
+        (vocab_size,) = struct.unpack(">i", handle.read(4))
+        assert vocab_size == 263
+        tokens = [_read_string(handle) for _ in range(vocab_size)]
+        assert tokens[0] == "<pad>"
+        assert tokens[261] == "<start_of_turn>"
+        assert tokens[262] == "<ab>"
+
+        (merge_count,) = struct.unpack(">i", handle.read(4))
+        for _ in range(2 * merge_count):
+            _read_string(handle)
+        handle.read(16)
+
+        (added_count,) = struct.unpack(">i", handle.read(4))
+        assert added_count == 3
+        entries = []
+        for _ in range(added_count):
+            index, normalized = struct.unpack(">ib", handle.read(5))
+            entries.append((index, _read_string(handle), bool(normalized)))
+        assert entries == added
+        assert handle.read() == b""
+
 
 def test_special_ids_fall_back_to_config_json(tmp_path):
     # A snapshot may carry the ids only as integer *_token_id fields in config.json, with no
@@ -394,7 +483,7 @@ def test_special_ids_fall_back_to_config_json(tmp_path):
         "unk_token_id": 3,
     }))
 
-    _, _, specials = exporter.read_tokenizer(str(tokenizer_dir))
+    _, _, specials, _ = exporter.read_tokenizer(str(tokenizer_dir))
     assert specials == {"bos": 2, "eos": 1, "pad": 0, "unk": 3}
 
 
@@ -417,7 +506,7 @@ def test_config_json_does_not_override_resolved_ids(tmp_path):
         "unk_token_id": 3,
     }))
 
-    _, _, specials = exporter.read_tokenizer(str(tokenizer_dir))
+    _, _, specials, _ = exporter.read_tokenizer(str(tokenizer_dir))
     assert specials == {"bos": 2, "eos": 1, "pad": 0, "unk": 3}
 
 

@@ -147,6 +147,33 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Writing a collection to a file opened for reading is rejected by the writer-state check before
+	 * anything about the collection is examined or copied: a collection whose channel count also
+	 * disagrees with the file's still fails with the state error, not the channel error.
+	 *
+	 * @throws IOException if the file cannot be created or opened
+	 */
+	@Test(timeout = 60000)
+	public void collectionWriteToReaderIsRejected() throws IOException {
+		File file = tempWav();
+		try (PackedCollection mono = pack(0.0, 0.5);
+			 WavFile wav = WavFile.newWavFile(file, 1, 2, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(2, wav.writeFrames(mono));
+		}
+
+		PackedCollection stereo = pack(0.0, 0.5, -0.5, 0.25).reshape(2, 2);
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			wav.writeFrames(stereo);
+			Assert.fail("a collection was written to a file opened for reading");
+		} catch (IOException expected) {
+			Assert.assertTrue(expected.getMessage().contains("Cannot write"));
+		} finally {
+			stereo.destroy();
+		}
+	}
+
+	/**
 	 * Returns a one-element collection that reports a shape with no dimensions. A backing
 	 * {@link PackedCollection} cannot hold a zero-dimensional shape (its size would be zero), so
 	 * the shape is reported by overriding {@link PackedCollection#getShape()}.
