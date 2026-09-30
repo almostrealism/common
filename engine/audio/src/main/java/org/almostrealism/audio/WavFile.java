@@ -488,6 +488,20 @@ public class WavFile implements AutoCloseable {
 	}
 
 	/**
+	 * Converts a normalized sample to its integer PCM value, saturating values
+	 * outside {@code [-1.0, 1.0]} at full scale. Without the clamp, an
+	 * out-of-range value exceeds the sample's byte width and {@link #writeSample}
+	 * keeps only its low bytes, which wraps it to a sample of the opposite sign.
+	 *
+	 * @param value the normalized sample
+	 * @return the integer sample value to write
+	 */
+	private long toSample(double value) {
+		double clamped = Math.max(-1.0, Math.min(1.0, value));
+		return (long) (floatScale * (floatOffset + clamped));
+	}
+
+	/**
 	 * Reads a single sample value from the input buffer, refilling from the stream as needed.
 	 *
 	 * @return the raw sample value as a long
@@ -974,7 +988,7 @@ public class WavFile implements AutoCloseable {
 			if (frameCounter == numFrames) return f;
 
 			for (int c = 0; c < numChannels; c++) {
-				writeSample((long) (floatScale * (floatOffset + sampleBuffer[offset])));
+				writeSample(toSample(sampleBuffer[offset]));
 				offset++;
 			}
 
@@ -1023,7 +1037,7 @@ public class WavFile implements AutoCloseable {
 			if (frameCounter == numFrames) return f;
 
 			for (int c = 0; c < numChannels; c++) {
-				writeSample((long) (floatScale * (floatOffset + sampleBuffer[c][offset])));
+				writeSample(toSample(sampleBuffer[c][offset]));
 			}
 
 			offset++;
