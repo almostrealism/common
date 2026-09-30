@@ -28,7 +28,7 @@ next-token training needs are missing or unverified:
 | Full-sequence **causal** self-attention | Missing. `AttentionFeatures.causalMask(shape, position)` masks relative to one scalar position, for KV-cache inference. `sequenceAttention` / `scaledDotProductAttention` are bidirectional and accept only a per-key `keyMask` and a `paddingMask`. |
 | Gradients into **K and V** in `sequenceAttention` | Unverified and at risk. `sequenceAttention` writes K and V into fixed buffers (`k.andThen(into(kTensor))`, `v.andThen(into(vTensor))`), and `scaledDotProductAttention` reads them back as constants (`cp(k)`, `cp(v)`). The gradient may reach the fused QKV weight only through the Q slice. Existing training through attention (`AggressiveFineTuningTest`, LoRA) does not show otherwise, because it checks timing or MSE convergence, not per-slice gradients. |
 | Trainable **token embedding** | Missing as a layer. `CollectionFeatures.rows(shape, table, rowIndex)` gathers rows (T5Gemma uses it for inference), but no test shows gradients reaching the table. Qwen3 looks up embeddings on the host, outside the graph. The known workaround is one-hot input into a `dense` layer (`MidiDataset` precedent). |
-| **Byte/char tokenizer** | Missing. Every existing tokenizer loads a pre-trained vocabulary: `SentencePieceTokenizer` (`extern/ml-djl`, the only production class that implements the `org.almostrealism.ml.Tokenizer` interface), `Qwen3Tokenizer` (extends the abstract `ByteLevelBPETokenizer`, which has its own `encode(String, boolean)` / `decode(int[])` and does **not** implement `Tokenizer`, despite that interface's `@see`), the standalone `BPE` class, and the MIDI tokenizers in `studio/compose` (`MidiTokenizer`, `SkyTntTokenizerV2`, neither a `Tokenizer`). `ByteLevelEncoder` only maps bytes to unicode characters for BPE. |
+| **Byte/char tokenizer** | Missing. The existing text tokenizers all need a vocabulary from outside the platform. `SentencePieceTokenizer` (`extern/ml-djl`, the only production class that implements the `org.almostrealism.ml.Tokenizer` interface) loads a SentencePiece model. `Qwen3Tokenizer` loads a model's vocabulary and merges; it extends the abstract `ByteLevelBPETokenizer`, which has its own `encode(String, boolean)` / `decode(int[])` and does **not** implement `Tokenizer`, despite that interface's `@see`. The standalone `BPE` class is a set of static helpers that take vocabulary and score arrays from the caller. The MIDI tokenizers in `studio/compose` (`MidiTokenizer`, `SkyTntTokenizerV2`) do use fixed, built-in mappings, but they map note events, not text, and neither is a `Tokenizer`. `ByteLevelEncoder` only maps bytes to unicode characters for BPE. No class maps text to a fixed byte vocabulary. |
 | **Text next-token `Dataset`** | Missing. `MidiDataset` (studio/compose) is the closest template: token windows, one-hot input, next-token one-hot target. |
 | Cross-entropy loss | Present for single-row outputs; **inconsistent for multi-row outputs**. `logSoftmax` (`ActivationFeatures`, gradient-tested in `SoftmaxTests`) plus `NegativeLogLikelihood` gives cross-entropy. `NegativeLogLikelihood.loss` treats the leading dimension as rows and **averages** them, so a `(seqLen, vocab)` output reports mean per-position NLL. `NegativeLogLikelihood.gradient`, however, returns `-target` with no `1 / rows` factor, which is the gradient of the **summed** NLL. `MeanSquaredError.gradient`, by contrast, does scale by `2 / n`. At `seqLen` 64 the backward pass therefore uses 64× the gradient of the loss it reports. The `NegativeLogLikelihood` *gradient* users are `SyntheticConvolutionTrainingTest` and `ConvolutionModelTrainingTest`, both at batch 1 with a single-row `(classes)` output, where the `1 / rows` factor is 1, so nothing has exposed this. (`SyntheticDenseTrainingTest.denseClassification`, despite its name, trains with `MeanSquaredError`, not NLL, and is not a user of this gradient.) Two further callers touch `loss` only, never `gradient`: `MoonbeamFineTuningTest.testNllLossWithCompoundTokenTargets`, and `MidiDataset` (studio/compose), whose javadoc recommends NLL. `MidiDataset`'s targets are single-row but **multi-hot** — one hot position per attribute — and there a second, independent mismatch exists: `loss` scores only the single argmax position of each row while `gradient` would return `-target` over *every* hot position. That disagreement is not the row-count scale factor and the `1 / rows` normalization does not touch it; it is called out as an Open question and a follow-up, since no NLL gradient path on this plan's critical path is multi-hot. Likewise, every `logSoftmax` gradient test in `SoftmaxTests` uses a single row (`(size)` or `(1, size)`); the per-row normalization over a `(seqLen, vocab)` input is not covered. See step 6. |
 | Checkpointing | Present. `StateDictionary(Map)`, `put`, `save(Path)`, reload via `new StateDictionary(dir)`. |
@@ -129,9 +129,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
    - **Two round-trips, at different levels — do not conflate them.** The lossless invariant is at
      the **byte** level: encoding a `String` to UTF-8 bytes, mapping each byte to its unsigned id,
      then reversing, recovers the original bytes exactly. The **String** round-trip
-     `decodeAsInt(encodeAsInt(s)).equals(s)` follows from it only for text `s` that is itself valid
-     <!-- TODO(review): a Java String with an unpaired surrogate is not "valid" here; UTF-8 encoding replaces it with '?', so the String round-trip fails for it. -->
-     (any ordinary `String`); test it with ASCII, multi-byte UTF-8, and the empty string. It does
+     `decodeAsInt(encodeAsInt(s)).equals(s)` follows from it only when `s` is **well-formed UTF-16**,
+     that is, it contains no unpaired surrogate. A Java `String` can hold an unpaired surrogate, and
+     `s.getBytes(StandardCharsets.UTF_8)` replaces it with `'?'` (`0x3F`), so for such an `s` the
+     round-trip returns a different string. That is the contract: `encodeAsLong` uses standard
+     UTF-8 encoding with its replacement behaviour, and the `String` round-trip is promised only for
+     well-formed input. A corpus read from UTF-8 files cannot contain an unpaired surrogate, so the
+     training path never hits this case. Test the round-trip with ASCII, multi-byte UTF-8 (including
+     a supplementary character written as a surrogate pair, such as an emoji), and the empty string,
+     and add one test that pins the documented replacement for a lone surrogate. It does
      **not** hold for an arbitrary id sequence: the ids `0..255` in order are not a valid UTF-8 byte
      stream (e.g. `0xFF`, or a continuation byte with no lead byte), so `decode` of them is not a
      `String` round-trip case. Test all 256 values instead as a **byte-level** round-trip — every
@@ -201,10 +207,30 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      - `invFreq` supplies RoPE, which `sequenceAttention` applies to Q and K.
 
      Build each block with `crossAttend = false`, `AttentionVariant.STANDARD`, null `modulation`,
-     `localAddition` and `paddingMask`, and the step-1 causal option on. The plan must also say
-     whether the query/key norm inside attention is used. Passing a null `qNormWeight` skips it.
-     State the initialization scheme for every weight collection handed to the block, the embedding
-     and the output projection, so the run is reproducible from the test alone.
+     `localAddition` and `paddingMask`, and the step-1 causal option on.
+   - **Query/key norm: off.** Pass a null `qNormWeight`, which skips both the Q and K norms. At
+     embed 64 and depth 2 the extra normalization is not needed for stability, and leaving it out
+     keeps the number of weight collections, and the gradient paths step 2 has to verify, as small as
+     possible. If the run shows attention-logit blow-up (NaN or saturated softmax), turning the norm
+     on is the first thing to try, and the report must say it was changed.
+   - **Initialization, all seeded.** The test creates one `java.util.Random` with a fixed seed that
+     is recorded in the report, and fills every weight collection from it with the seeded
+     `randn(shape, mean, std, source)` producer in `CollectionCreationFeatures`, evaluated once at
+     the test boundary:
+     - every projection matrix and the embedding table (or the one-hot → `dense` weight from step 3):
+       normal, mean 0, std 0.02. The projection matrices are the block's `selfQkv` and `selfWo`,
+       the feed-forward `w1` and `w2` (`w1` is the fused GLU input projection, which
+       `gatedLinearFeedForward` splits in two into the value and gate halves), and the output
+       projection to 256;
+     - RMSNorm weights (`preNormWeight`, `ffnNormWeight`): all ones;
+     - biases: null wherever the block accepts null (norm biases under `NormalizationType.RMS`,
+       `w1Bias` / `w2Bias`), otherwise zeros.
+
+     These are the usual GPT-2-style defaults. If the implementer changes any of them, for example
+     to scale the residual output projections by `1 / sqrt(2 · depth)`, the test and the report
+     must state the scheme actually used. The run must not rely on whatever a `Model` or layer does
+     to weight collections the test supplies itself, since that is not established (see the
+     Training bullet below).
    - **Output shape contract: the model's final output is two-dimensional, `(seqLen, vocab)` =
      `(64, 256)`.** The transformer blocks work on `(batchSize, seqLen, dim)` (`sequenceAttention`
      and `transformerBlock` build `shape(batchSize, seqLen, dim)`), so the output projection
@@ -366,7 +392,8 @@ matters).
 - A trainable token embedding is in use, either `rows()`-based with a passing gradient test or
   one-hot → `dense`, and the choice is recorded with evidence.
 - `ByteTokenizer` and the text next-token dataset exist, with CI-running unit tests. The tokenizer
-  tests cover the all-256 byte-level round-trip, the `String` round-trip on valid text, and the
+  tests cover the all-256 byte-level round-trip, the `String` round-trip on well-formed UTF-16
+  text (no unpaired surrogates), the documented replacement for a lone surrogate, and the
   rejection of ids outside `0..255`. The dataset tests show that no window crosses the
   train/held-out boundary.
 - A CI-running unit test shows the assembled model's output shape is `(seqLen, vocab)`, and that
@@ -416,6 +443,12 @@ matters).
   shape: a small attention-options value carrying `causal`, `keyMask` and `logitSoftcap` together,
   for example. Pick one before implementation, because it decides how much of the
   `sequenceAttention` / `selfAttention` / `transformerBlock` overload families step 1 touches.
+- **Model defaults: query/key norm off, seeded normal(0, 0.02) initialization.** Step 6 fixes
+  these so the run is reproducible from the test alone. They are conventional small-transformer
+  settings, chosen for this plan rather than taken from an existing training test (the platform
+  has never trained a transformer language model from scratch, so there is no precedent to copy).
+  The approver may prefer the query/key norm on, since Qwen3-style blocks use it, at the cost of two more weight collections per block and
+  more gradient paths to verify in step 2.
 - **Corpus size versus budget.** The full `docs/internals` corpus may be larger than a
   40-minute run can use. The implementer picks a fixed subset that gives a meaningful held-out
   split, and records the choice. Beating unigram is the bar, not converging on the whole corpus.
