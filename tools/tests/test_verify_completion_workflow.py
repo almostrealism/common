@@ -199,6 +199,19 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
                       register["env"]["REQUIRED_LABELS_JSON"])
         self.assertLess(steps.index(resolve), steps.index(register))
 
+    def test_the_plan_settings_come_from_the_dispatched_commit(self):
+        """The approved plan is the dispatched commit, and every other job in
+        the run reads `github.sha`. Fetching the branch head instead would let a
+        push made after approval replace the settings, routing the
+        implementation with labels nobody approved. A fetch failure must stop
+        the run rather than submit the implementation without the labels."""
+        steps = self.jobs["register-workstream"]["steps"]
+        resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
+        self.assertEqual("${{ github.sha }}", resolve["env"]["DISPATCHED_SHA"])
+        self.assertIn('origin "$DISPATCHED_SHA"', resolve["run"])
+        self.assertNotIn("refs/heads/", resolve["run"])
+        self.assertIn("exit 1", resolve["run"])
+
     def test_the_operator_documentation_describes_every_job(self):
         """ci-integration.md is where an operator learns what this workflow
         does. It once kept describing a three-job pipeline that submitted

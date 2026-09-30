@@ -151,24 +151,36 @@ jobs:
 
       # The branch's docs/plans files are fetched as data — `git archive`, not a
       # checkout — and read by the default branch's resolver, so nothing the
-      # branch controls runs in this job. An invalid settings file fails the
-      # job, which stops the implementation from being submitted.
+      # branch controls runs in this job. They are read from the dispatched
+      # commit, the one every other job in this run uses, so a push made after
+      # the plan was approved cannot change the settings the implementation
+      # runs with; the branch name is used only to match the settings file.
+      # An invalid settings file, or a commit that cannot be read, fails the
+      # job, which stops the implementation from being submitted on a machine
+      # the plan did not ask for.
       - name: Resolve the plan's workstream settings
         id: plan_settings
         env:
           BRANCH: ${{ github.ref_name }}
+          DISPATCHED_SHA: ${{ github.sha }}
         run: |
+          set -eo pipefail
           if [ ! -f ./tools/ci/plan_workstream_config.py ]; then
             echo "::warning::The default branch has no tools/ci/plan_workstream_config.py yet — no plan settings are applied"
             exit 0
           fi
           python3 -m pip install --quiet pyyaml
           mkdir -p branch-plans
-          if git fetch --quiet --no-tags --depth 1 origin "refs/heads/${BRANCH}" \
-              && git archive FETCH_HEAD docs/plans | tar -x -C branch-plans; then
-            SETTINGS=$(python3 ./tools/ci/plan_workstream_config.py "$BRANCH" branch-plans/docs/plans)
+          if ! git fetch --quiet --no-tags --depth 1 origin "$DISPATCHED_SHA"; then
+            echo "::error::Could not fetch the dispatched commit ${DISPATCHED_SHA} — the plan's settings cannot be read"
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:docs/plans 2>/dev/null; then
+            git archive FETCH_HEAD docs/plans | tar -x -C branch-plans
+            SETTINGS=$(python3 ./tools/ci/plan_workstream_config.py "$BRANCH" branch-plans/docs/plans) \
+              || { echo "$SETTINGS"; exit 1; }
           else
-            echo "::warning::Could not read docs/plans from ${BRANCH} — no plan settings are applied"
+            echo "The dispatched commit has no docs/plans — no plan settings are applied"
             SETTINGS='{}'
           fi
           echo "Plan workstream settings: $SETTINGS"
