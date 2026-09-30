@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -145,6 +146,35 @@ public class WavFileTest extends TestSuiteBase {
 			Assert.fail("a two-channel collection was written to a one-channel file");
 		} catch (IllegalArgumentException expected) {
 			Assert.assertTrue(expected.getMessage().contains("channel"));
+		} finally {
+			audio.destroy();
+		}
+	}
+
+	/**
+	 * A collection whose shape has no dimensions is neither {@code [channels, frames]} nor
+	 * {@code [frames]}, so it is rejected with the documented shape error rather than reaching a
+	 * {@code length(-1)} lookup on an empty shape. A backing {@link PackedCollection} cannot hold a
+	 * zero-dimensional shape (its size would be zero), so the shape is reported by a one-element
+	 * collection overriding {@link PackedCollection#getShape()} — enough to drive the guard.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void collectionWithoutDimensionsIsRejected() throws IOException {
+		File file = tempWav();
+		PackedCollection audio = new PackedCollection(1) {
+			@Override
+			public TraversalPolicy getShape() {
+				return new TraversalPolicy(true);
+			}
+		};
+
+		try (WavFile wav = WavFile.newWavFile(file, 1, 1, 16, SAMPLE_RATE)) {
+			wav.writeFrames(audio);
+			Assert.fail("a zero-dimensional collection was accepted");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("[channels, frames] or [frames]"));
 		} finally {
 			audio.destroy();
 		}

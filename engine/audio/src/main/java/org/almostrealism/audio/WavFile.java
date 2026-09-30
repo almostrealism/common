@@ -1036,7 +1036,7 @@ public class WavFile implements AutoCloseable {
 	public int writeFrames(PackedCollection audio) throws IOException {
 		TraversalPolicy shape = audio.getShape();
 
-		if (shape.getDimensions() > 2) {
+		if (shape.getDimensions() < 1 || shape.getDimensions() > 2) {
 			throw new IllegalArgumentException("Audio must be [channels, frames] or [frames], not " + shape);
 		}
 

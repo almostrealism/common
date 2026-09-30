@@ -47,8 +47,13 @@ public class SentencePieceTokenizerFixture {
 	/** The ids {@link #PROMPT} encodes to: {@code "ab"} then {@code "▁ab"}. */
 	public static final long[] EXPECTED = {7, 8};
 
-	/** A character absent from the vocabulary, encoded through byte fallback. */
-	public static final String UNKNOWN = "z";
+	/**
+	 * A character absent from the vocabulary, encoded through byte fallback. It is deliberately
+	 * multi-byte in UTF-8 ({@code U+20AC} is three bytes) so encoding exercises the expansion into
+	 * several {@code <0xNN>} tokens and decoding exercises accumulating those bytes back into one
+	 * character in {@link SentencePieceBPETokenizer#flushBytes}.
+	 */
+	public static final String UNKNOWN = "€";
 
 	/** Padding token id. */
 	public static final int PAD = 0;
@@ -65,7 +70,7 @@ public class SentencePieceTokenizerFixture {
 	/** The vocabulary, in token-id order. */
 	private static final String[] VOCAB = {
 			"<pad>", "<eos>", "<bos>", "<unk>",
-			"a", "b", "▁", "ab", "▁ab", "<0x7A>"
+			"a", "b", "▁", "ab", "▁ab", "<0xE2>", "<0x82>", "<0xAC>"
 	};
 
 	/** The merges, in priority order: {@code a + b}, then the boundary with the result. */

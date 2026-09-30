@@ -107,10 +107,8 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 		StableAudio3 model = smallModel().setSteps(2).setVerbose(false)
 				.setTokenizer(new SentencePieceTokenizerFixture().tokenizer());
 
-		try {
-			PackedCollection audio =
-					model.generate(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate();
-
+		try (PackedCollection audio =
+					model.generate(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
 			assertEquals(2, audio.getShape().getDimensions());
 			assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
 			assertEquals(15, audio.getShape().length(1));

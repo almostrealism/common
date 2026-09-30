@@ -48,6 +48,98 @@ import struct
 MAGIC = b"ARTK"
 VERSION = 1
 
+# The SentencePiece boundary marker (U+2581). The Java reader replaces an ASCII space with it.
+BOUNDARY = "▁"
+
+
+def _flatten(node, sequence_key):
+    """Flatten one pipeline node.
+
+    A ``Sequence`` node yields each of its children (recursively); any other node yields
+    itself. An absent node yields nothing.
+    """
+    if not node:
+        return []
+    if node.get("type") == "Sequence":
+        result = []
+        for child in node.get(sequence_key) or []:
+            result.extend(_flatten(child, sequence_key))
+        return result
+    return [node]
+
+
+def _pattern_string(component):
+    """The literal string a ``Replace``/``Split`` component matches, or ``None``.
+
+    ``tokenizer.json`` wraps a literal pattern as ``{"String": " "}`` and a regex pattern as
+    ``{"Regex": "..."}``; only the literal form is unwrapped here.
+    """
+    pattern = component.get("pattern")
+    if isinstance(pattern, dict):
+        return pattern.get("String")
+    return pattern
+
+
+def validate_pipeline(spec):
+    """Reject a tokenizer whose pipeline the Java ``SentencePieceBPETokenizer`` does not reproduce.
+
+    The Java reader treats the whole text as one segment, replaces an ASCII space with the
+    SentencePiece boundary marker, falls back to one ``<0xNN>`` token per UTF-8 byte for characters
+    outside the vocabulary, and reverses exactly that on decode. The exported binary carries only
+    the vocabulary, merges and special ids -- none of the normalizer, pre-tokenizer or decoder
+    configuration -- so a tokenizer that normalizes, pre-tokenizes or decodes differently would
+    export without complaint and then silently produce token ids other than the source
+    tokenizer's. Rather than allow that, the unsupported pipeline is rejected here.
+
+    :param spec: the parsed ``tokenizer.json`` document.
+    :raises ValueError: if any stage is one the Java reader does not implement.
+    """
+    model = spec.get("model") or {}
+    if model.get("type") != "BPE":
+        raise ValueError(
+            "only a BPE tokenizer can be exported; this one is %r" % model.get("type"))
+    if not model.get("byte_fallback"):
+        raise ValueError(
+            "only a byte-fallback tokenizer can be exported; this one does not set "
+            "model.byte_fallback, so the Java reader's <0xNN> handling of characters outside the "
+            "vocabulary would not match the source tokenizer")
+
+    saw_boundary_replace = False
+    for component in _flatten(spec.get("normalizer"), "normalizers"):
+        kind = component.get("type")
+        if kind == "Replace" and _pattern_string(component) == " " \
+                and component.get("content") == BOUNDARY:
+            saw_boundary_replace = True
+            continue
+        raise ValueError(
+            "unsupported normalizer step %r; the Java reader applies no normalization beyond "
+            "replacing a space with the boundary marker, so a step such as Prepend, NFKC or a "
+            "different Replace would change the tokenization" % kind)
+
+    if not saw_boundary_replace:
+        raise ValueError(
+            "the tokenizer's normalizer does not replace spaces with the boundary marker; the "
+            "Java reader relies on that substitution being the whole of normalization")
+
+    for component in _flatten(spec.get("pre_tokenizer"), "pretokenizers"):
+        kind = component.get("type")
+        # After the normalizer has turned every space into the boundary marker, a Split on a
+        # literal space matches nothing and is a no-op, which is the only pre-tokenization the
+        # whole-text Java reader reproduces. A ByteLevel or Metaspace pre-tokenizer is not.
+        if kind == "Split" and _pattern_string(component) == " ":
+            continue
+        raise ValueError(
+            "unsupported pre-tokenizer step %r; the Java reader does not split the input, so a "
+            "byte-level or metaspace pre-tokenizer would change the tokenization" % kind)
+
+    for component in _flatten(spec.get("decoder"), "decoders"):
+        kind = component.get("type")
+        if kind in ("Replace", "ByteFallback", "Fuse", "Strip"):
+            continue
+        raise ValueError(
+            "unsupported decoder step %r; the Java reader restores spaces from the boundary marker "
+            "and folds byte tokens, matching only a Replace/ByteFallback/Fuse decoder" % kind)
+
 
 def read_tokenizer(tokenizer_dir):
     """Load ``tokenizer.json`` and return its vocabulary, merges and special ids.
@@ -58,11 +150,9 @@ def read_tokenizer(tokenizer_dir):
     with open(os.path.join(tokenizer_dir, "tokenizer.json")) as handle:
         spec = json.load(handle)
 
-    model = spec.get("model") or {}
-    if model.get("type") != "BPE":
-        raise ValueError(
-            "only a BPE tokenizer can be exported; this one is %r" % model.get("type"))
+    validate_pipeline(spec)
 
+    model = spec.get("model") or {}
     vocab = model.get("vocab") or {}
     merges = model.get("merges") or []
 
