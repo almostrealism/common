@@ -211,8 +211,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		for (int b : BUCKETS) {
 			if (b >= n) return b;
 		}
-		throw new IllegalArgumentException("Note count " + n
-				+ " exceeds the largest batch bucket " + maxBucket());
+		throw new IllegalArgumentException("Note count exceeds the largest batch bucket");
 	}
 
 	/** Returns the largest note count a single batched dispatch can hold. */

@@ -63,7 +63,7 @@ public class BatchedNoteInputsLayoutTest extends TestSuiteBase {
 			BatchedPatternLayerRenderer.bucketFor(count);
 			Assert.fail("bucketFor(" + count + ") must be rejected");
 		} catch (IllegalArgumentException expected) {
-			Assert.assertTrue(expected.getMessage().contains(String.valueOf(count)));
+			Assert.assertEquals("Note count exceeds the largest batch bucket", expected.getMessage());
 		}
 	}
 

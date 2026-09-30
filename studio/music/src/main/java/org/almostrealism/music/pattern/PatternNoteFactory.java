@@ -106,8 +106,7 @@ public class PatternNoteFactory {
 	 */
 	public PatternNote apply(ParameterSet params, ChannelInfo.Voicing voicing, boolean blend, double... choices) {
 		if (choices.length != getLayerCount()) {
-			throw new IllegalArgumentException("Expected one selection per layer ("
-					+ getLayerCount() + ") but received " + choices.length);
+			throw new IllegalArgumentException("Exactly one selection is required per layer");
 		}
 
 		List<PatternNoteAudio> layers = new ArrayList<>();

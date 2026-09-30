@@ -311,6 +311,7 @@ public class PatternElementFactoryTest extends TestSuiteBase {
 			notes.apply(PARAMS, ChannelInfo.Voicing.MAIN, false, 0.1);
 			Assert.fail("one selection is required per layer");
 		} catch (IllegalArgumentException expected) {
+			Assert.assertEquals("Exactly one selection is required per layer", expected.getMessage());
 			Assert.assertEquals(3, notes.getLayerCount());
 		}
 
@@ -318,6 +319,7 @@ public class PatternElementFactoryTest extends TestSuiteBase {
 			notes.apply(PARAMS, ChannelInfo.Voicing.MAIN, false, 0.1, 0.5, 0.9, 0.3);
 			Assert.fail("extra selections are rejected");
 		} catch (IllegalArgumentException expected) {
+			Assert.assertEquals("Exactly one selection is required per layer", expected.getMessage());
 			Assert.assertEquals(3, notes.getLayerCount());
 		}
 
