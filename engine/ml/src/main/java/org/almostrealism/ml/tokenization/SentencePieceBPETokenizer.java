@@ -206,16 +206,17 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	 * Marks word boundaries and expands anything outside the vocabulary into byte tokens.
 	 *
 	 * <p>Byte fallback is only valid when every {@code <0xNN>} token it emits exists in the
-	 * vocabulary, or when the tokenizer has an unknown token the inherited {@code encode} can
-	 * substitute for one that does not. A byte token absent from a tokenizer with no unknown token
-	 * ({@code unkToken == -1}) would otherwise reach {@code encode} as a missing symbol and be
-	 * emitted as id {@code -1}, which is not a valid embedding index; this rejects that byte here
-	 * rather than returning an id that fails later during generation.</p>
+	 * vocabulary. HuggingFace BPE enables byte fallback only when all 256 byte atoms are present, so
+	 * a complete vocabulary never reaches a missing one, and {@code export_tokenizer.py} rejects an
+	 * incomplete byte-fallback vocabulary before it is written. A missing byte token therefore means
+	 * a corrupt or incomplete binary; rather than substitute the unknown token per byte -- a
+	 * different fallback than the source tokenizer's one unknown token per unknown character -- this
+	 * rejects the byte, since reproducing the source ids is impossible either way.</p>
 	 *
 	 * @param segment one segment produced by the pre-tokenizer
 	 * @return the initial symbols, in order
 	 * @throws IllegalArgumentException if a character falls back to a byte token the vocabulary does
-	 *         not contain and the tokenizer has no unknown token to substitute
+	 *         not contain
 	 */
 	@Override
 	protected List<String> toSymbols(String segment) {
@@ -233,10 +234,11 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 			} else {
 				for (byte value : character.getBytes(StandardCharsets.UTF_8)) {
 					String token = byteToken(value);
-					if (!vocabMap.containsKey(token) && getUNKToken() < 0) {
+					if (!vocabMap.containsKey(token)) {
 						throw new IllegalArgumentException(String.format(
-								"Cannot encode U+%04X: byte token %s is not in the vocabulary "
-										+ "and the tokenizer has no unknown token to substitute",
+								"Cannot encode U+%04X: byte token %s is not in the vocabulary; "
+										+ "a byte-fallback tokenizer must contain all 256 <0xNN> "
+										+ "tokens to reproduce the source tokenizer",
 								codePoint, token));
 					}
 					symbols.add(token);

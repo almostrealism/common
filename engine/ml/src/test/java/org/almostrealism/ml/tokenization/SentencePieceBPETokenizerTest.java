@@ -22,7 +22,6 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -158,7 +157,7 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	 * A character that falls back to a byte token the vocabulary does not contain is rejected during
 	 * encoding when the tokenizer has no unknown token, rather than being emitted as id {@code -1}.
 	 *
-	 * <p>Without the fix the inherited {@code encode} substitutes {@code getUNKToken() == -1} for the
+	 * <p>The inherited {@code encode} would otherwise substitute {@code getUNKToken() == -1} for the
 	 * missing byte token, returning a negative id that is not a valid embedding index and fails only
 	 * later, during generation. Here the vocabulary lacks the {@code <0xNN>} tokens for
 	 * {@link SentencePieceTokenizerFixture#UNKNOWN} and there is no unknown token, so encoding throws.</p>
@@ -180,24 +179,31 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	}
 
 	/**
-	 * When a character falls back to a byte token the vocabulary does not contain but the tokenizer
-	 * has an unknown token, encoding substitutes that unknown token -- a valid id -- for each missing
-	 * byte, rather than throwing or emitting {@code -1}.
+	 * An incomplete byte-fallback vocabulary is rejected during encoding even when the tokenizer has
+	 * an unknown token.
+	 *
+	 * <p>HuggingFace BPE enables byte fallback only when all 256 {@code <0xNN>} atoms are present; with
+	 * one missing it substitutes a single unknown token for the whole unknown character. The reader
+	 * does not reproduce that -- substituting the unknown token once per byte, as an earlier revision
+	 * did, is a different id sequence than the source -- so a missing byte token is rejected rather
+	 * than papered over with a fallback the source tokenizer never uses. {@code export_tokenizer.py}
+	 * rejects an incomplete byte-fallback vocabulary before it is written, so this only guards a
+	 * corrupt or hand-crafted binary.</p>
 	 *
 	 * @throws IOException if the fixture cannot be written or read
 	 */
 	@Test(timeout = 120000)
-	public void unencodableByteFallsBackToUnknownToken() throws IOException {
+	public void incompleteByteVocabularyIsRejectedEvenWithUnknownToken() throws IOException {
 		SentencePieceTokenizerFixture fixture = new SentencePieceTokenizerFixture();
 		SentencePieceBPETokenizer tokenizer = fixture.tokenizerFor(
 				new String[] {"a", "<unk>"}, new int[] {-1, -1, -1, 1});
 
-		long[] encoded = tokenizer.encodeAsLong(SentencePieceTokenizerFixture.UNKNOWN);
-
-		assertEquals(SentencePieceTokenizerFixture.UNKNOWN.getBytes(
-				StandardCharsets.UTF_8).length, encoded.length);
-		for (int i = 0; i < encoded.length; i++) {
-			assertEquals("byte " + i + " substituted by the unknown token", 1L, encoded[i]);
+		try {
+			tokenizer.encodeAsLong(SentencePieceTokenizerFixture.UNKNOWN);
+			Assert.fail("an incomplete byte-fallback vocabulary was accepted during encoding");
+		} catch (IllegalArgumentException expected) {
+			assertTrue("message names the missing byte token: " + expected.getMessage(),
+					expected.getMessage().contains("<0xE2>"));
 		}
 	}
 

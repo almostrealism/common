@@ -25,13 +25,22 @@ import export_tokenizer as exporter
 BOUNDARY = "▁"
 
 
+def _byte_tokens(start):
+    """The 256 ``<0xNN>`` atoms a byte-fallback vocabulary must contain, mapped to consecutive ids
+    from ``start``. A byte-fallback tokenizer is only exportable with the complete set present."""
+    return {"<0x%02X>" % value: start + value for value in range(256)}
+
+
 def _supported_spec(vocab=None, merges=None):
     """A ``tokenizer.json`` document matching the pipeline the Java reader implements."""
+    if vocab is None:
+        vocab = {"a": 0, "b": 1, "ab": 2, BOUNDARY: 3}
+        vocab.update(_byte_tokens(4))
     return {
         "model": {
             "type": "BPE",
             "byte_fallback": True,
-            "vocab": vocab if vocab is not None else {"a": 0, "b": 1, "ab": 2, BOUNDARY: 3},
+            "vocab": vocab,
             "merges": merges if merges is not None else ["a b"],
         },
         "normalizer": {"type": "Replace", "pattern": {"String": " "}, "content": BOUNDARY},
@@ -81,6 +90,24 @@ def test_missing_byte_fallback_is_rejected():
     spec["model"]["byte_fallback"] = False
     with pytest.raises(ValueError, match="byte-fallback"):
         exporter.validate_pipeline(spec)
+
+
+def test_incomplete_byte_fallback_vocabulary_is_rejected():
+    # HuggingFace enables byte fallback only when all 256 <0xNN> atoms are present; with one missing
+    # the source falls back to an unknown token neither the binary nor the Java reader reproduces, so
+    # the export must be rejected rather than silently diverging from the source tokenizer.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x41>"]
+    with pytest.raises(ValueError, match="incomplete byte-fallback"):
+        exporter.validate_pipeline(spec)
+
+
+def test_complete_byte_fallback_vocabulary_is_accepted():
+    # A vocabulary carrying every one of the 256 byte atoms validates; the assertion pins that the
+    # accepted default fixture is in fact complete, so this is the true complement of the rejection.
+    spec = _supported_spec()
+    assert all(("<0x%02X>" % value) in spec["model"]["vocab"] for value in range(256))
+    exporter.validate_pipeline(spec)
 
 
 @pytest.mark.parametrize("option, value", [
@@ -307,6 +334,7 @@ def _read_string(handle):
 
 def test_read_and_write_round_trip(tmp_path):
     vocab = {"<pad>": 0, "<eos>": 1, "<unk>": 2, "a": 3, "b": 4, "ab": 5, BOUNDARY: 6}
+    vocab.update(_byte_tokens(7))
     merges = ["a b"]
 
     tokenizer_dir = tmp_path / "tok"
@@ -354,6 +382,7 @@ def test_special_ids_fall_back_to_config_json(tmp_path):
     # tokenizer_config.json. Those must be read; otherwise every id exports as -1 and changes
     # encode(..., add_special=True) and special-token decoding.
     vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+    vocab.update(_byte_tokens(5))
 
     tokenizer_dir = tmp_path / "tok"
     tokenizer_dir.mkdir()
@@ -373,6 +402,7 @@ def test_config_json_does_not_override_resolved_ids(tmp_path):
     # tokenizer_config.json is the primary source; config.json fills only the ids it left
     # unresolved, and never overrides one already resolved from the token strings.
     vocab = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3, "a": 4}
+    vocab.update(_byte_tokens(5))
 
     tokenizer_dir = tmp_path / "tok"
     tokenizer_dir.mkdir()

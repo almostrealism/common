@@ -105,6 +105,22 @@ def validate_pipeline(spec):
             "model.byte_fallback, so the Java reader's <0xNN> handling of characters outside the "
             "vocabulary would not match the source tokenizer")
 
+    # HuggingFace BPE enables byte fallback only when the vocabulary contains all 256 <0xNN> atoms.
+    # With an incomplete set the source tokenizer falls back to one unknown token per unknown
+    # character, which neither the exported binary (it carries no unknown-fallback rule) nor the
+    # Java reader reproduces -- the reader rejects a character whose byte token is missing. So an
+    # incomplete byte-fallback vocabulary cannot match the source and is rejected here, where the
+    # whole vocabulary is available, rather than surfacing later as an encode-time failure.
+    vocab = model.get("vocab") or {}
+    missing = ["<0x%02X>" % value for value in range(256)
+               if ("<0x%02X>" % value) not in vocab]
+    if missing:
+        raise ValueError(
+            "incomplete byte-fallback vocabulary; %d of 256 <0xNN> byte tokens are missing "
+            "(e.g. %s). HuggingFace enables byte fallback only with all 256 present, so an "
+            "incomplete vocabulary cannot reproduce the source tokenizer"
+            % (len(missing), ", ".join(missing[:8])))
+
     # The Java reader applies every merge deterministically, in priority order, to the per-character
     # symbols of the whole text, and does nothing else. BPE-dropout skips merges at random, and
     # ignore_merges looks a whole word up in the vocabulary before merging; a continuing-subword

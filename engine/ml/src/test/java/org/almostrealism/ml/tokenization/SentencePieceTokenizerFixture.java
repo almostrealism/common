@@ -204,8 +204,10 @@ public class SentencePieceTokenizerFixture {
 
 	/**
 	 * A tokenizer over an arbitrary vocabulary with no merges and the given special ids, for
-	 * exercising the byte-fallback contract: a byte token the vocabulary does not contain is either
-	 * substituted by the unknown token or, when there is none, rejected during encoding.
+	 * exercising the byte-fallback contract: a character whose {@code <0xNN>} byte token the
+	 * vocabulary does not contain is rejected during encoding -- whether or not the tokenizer has an
+	 * unknown token -- because an incomplete byte-fallback vocabulary cannot reproduce the source
+	 * tokenizer's ids.
 	 *
 	 * @param vocab    the vocabulary, in token-id order
 	 * @param specials the special ids in {@code {bos, eos, pad, unk}} order, each {@code -1} for none
