@@ -130,6 +130,7 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      the **byte** level: encoding a `String` to UTF-8 bytes, mapping each byte to its unsigned id,
      then reversing, recovers the original bytes exactly. The **String** round-trip
      `decodeAsInt(encodeAsInt(s)).equals(s)` follows from it only for text `s` that is itself valid
+     <!-- TODO(review): a Java String with an unpaired surrogate is not "valid" here; UTF-8 encoding replaces it with '?', so the String round-trip fails for it. -->
      (any ordinary `String`); test it with ASCII, multi-byte UTF-8, and the empty string. It does
      **not** hold for an arbitrary id sequence: the ids `0..255` in order are not a valid UTF-8 byte
      stream (e.g. `0xFF`, or a continuation byte with no lead byte), so `decode` of them is not a
