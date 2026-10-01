@@ -31,6 +31,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -197,6 +198,15 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/** How often deferred releases are reconsidered. */
 	private static final long DEFERRED_SWEEP_INTERVAL_MS = 100;
 
+	/**
+	 * How many garbage collections {@link #reclaim(BooleanSupplier)} requests before an
+	 * allocation that would exceed the memory ceiling is rejected.
+	 */
+	public static int reclaimAttempts = 10;
+
+	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
+	public static long reclaimWaitMs = 100;
+
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 
@@ -275,6 +285,38 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		deallocationSubmit.start();
 		deallocationProcess.start();
+	}
+
+	/**
+	 * Tries to make room for an allocation that would otherwise exceed this provider's memory
+	 * ceiling. Native memory is released only after the garbage collector has found its
+	 * {@link RAM} unreachable and the reference has been dequeued, but the Java objects that hold
+	 * large native blocks are themselves small, so heap pressure alone may not trigger a
+	 * collection before the native ceiling is reached; a workload that discards gigabytes of
+	 * temporary device memory per iteration would then fail although almost all of that memory is
+	 * garbage. This method requests a collection and waits briefly for the resulting releases,
+	 * repeating up to {@link #reclaimAttempts} times, until {@code fits} reports that the
+	 * allocation fits.
+	 *
+	 * <p>It must be called without holding this provider's monitor, which the deallocation path
+	 * may need.</p>
+	 *
+	 * @param fits reports whether the pending allocation now fits under the ceiling
+	 * @return whether the allocation fits after reclaiming
+	 */
+	protected boolean reclaim(BooleanSupplier fits) {
+		for (int i = 0; i < reclaimAttempts && !fits.getAsBoolean(); i++) {
+			System.gc();
+
+			try {
+				Thread.sleep(reclaimWaitMs);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				break;
+			}
+		}
+
+		return fits.getAsBoolean();
 	}
 
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */

@@ -160,7 +160,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	private final long memoryMax;
 
 	/** The total amount of memory currently allocated in bytes. */
-	private long memoryUsed;
+	private volatile long memoryUsed;
 
 	/**
 	 * Creates a new OpenCL memory provider.
@@ -281,7 +281,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			throw new UnsupportedOperationException("It is not possible to allocate " + sizeOf + " bytes of memory at once");
 		}
 
-		if (memoryUsed + sizeOf > memoryMax) {
+		if (memoryUsed + sizeOf > memoryMax && !reclaim(() -> memoryUsed + sizeOf <= memoryMax)) {
 			throw new HardwareException("Memory Max Reached");
 		}
 

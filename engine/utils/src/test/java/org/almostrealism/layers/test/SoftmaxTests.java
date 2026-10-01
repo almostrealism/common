@@ -314,6 +314,48 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 	}
 
 	/**
+	 * Tests the log softmax backward pass over a multi-row {@code (rows, size)} input: each row
+	 * is normalized independently, so a gradient arriving in one row produces the log-softmax
+	 * input gradient {@code g - softmax(x) * sum(g)} in that row and exactly zero in every other
+	 * row.
+	 */
+	@Test(timeout = 60000)
+	public void logSoftmaxBackwardsMultiRow() {
+		int rows = 3;
+		int size = 6;
+		int active = 1;
+
+		PackedCollection input = new PackedCollection(shape(rows, size));
+		integers(0, rows * size).multiply(0.37).subtract(2.0).into(input.traverseEach()).evaluate();
+
+		PackedCollection gradient = new PackedCollection(shape(rows, size));
+		gradient.setMem(active * size + 2, -1.0);
+		gradient.setMem(active * size + 4, 0.5);
+
+		Model model = new Model(shape(rows, size));
+		model.add(logSoftmax(shape(rows, size)));
+		CompiledModel compiled = model.compile(true, true);
+		compiled.forward(input);
+		PackedCollection result = compiled.backward(gradient);
+
+		for (int r = 0; r < rows; r++) {
+			double total = 0.0;
+			double gradientSum = 0.0;
+			for (int i = 0; i < size; i++) {
+				total += Math.exp(input.valueAt(r, i));
+				gradientSum += gradient.valueAt(r, i);
+			}
+
+			for (int i = 0; i < size; i++) {
+				double softmax = Math.exp(input.valueAt(r, i)) / total;
+				double expected = gradient.valueAt(r, i) - softmax * gradientSum;
+				Assert.assertEquals("row " + r + " column " + i, expected,
+						result.toDouble(r * size + i), 1e-5);
+			}
+		}
+	}
+
+	/**
 	 * Tests log softmax as part of a model.
 	 */
 	@Test(timeout = 60000)

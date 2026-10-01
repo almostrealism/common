@@ -73,8 +73,9 @@ import java.util.function.Function;
  *
  * <h2>Usage Example (Full Sequence)</h2>
  * <pre>{@code
- * // Precompute inverse frequencies
- * PackedCollection invFreq = computeInvFreq(dimHead, theta);
+ * // Precompute inverse frequencies once
+ * PackedCollection invFreq = new PackedCollection(shape(dimHead / 2));
+ * a(cp(invFreq.each()), computeInvFreq(dimHead, theta).each()).get().run();
  *
  * // Apply to full sequence
  * queries.add(applyRotaryPositionEmbedding(shape(batch, heads, seqLen, dimHead), invFreq));
@@ -193,11 +194,8 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		// and preventing kernel fusion. Every time this has been reverted to Java math it must be
 		// corrected. The CollectionProducer graph below is the ONLY acceptable implementation.
 		int freqDim = headDim / 2;
-		double logTheta = Math.log(theta);
 		RotationFeatures rf = new RotationFeatures() {};
-		// invFreq[f] = theta^(-2f/headDim) = exp(-logTheta * 2*f / headDim)
-		CollectionProducer invFreq = rf.exp(
-				rf.integers(0, freqDim).multiply(-2.0 * logTheta / headDim));
+		CollectionProducer invFreq = rf.computeInvFreq(headDim, theta);
 		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
 		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
 		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
@@ -205,6 +203,21 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
 		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
 		return rf.concat(2, cosVals, sinVals);
+	}
+
+	/**
+	 * Computes the RoPE inverse frequencies for full rotary embedding of a head:
+	 * {@code invFreq[i] = theta^(-2i / dimHead)} for {@code i} in {@code [0, dimHead / 2)},
+	 * evaluated as {@code exp(-2i * ln(theta) / dimHead)}. Passed to
+	 * {@link #applyRotaryPositionEmbedding}, these rotate all {@code dimHead} dimensions of each
+	 * head (a shorter array rotates only a leading part of each head).
+	 *
+	 * @param dimHead per-head dimension
+	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
+	 * @return the inverse frequencies, shape {@code (dimHead / 2)}
+	 */
+	default CollectionProducer computeInvFreq(int dimHead, double theta) {
+		return exp(integers(0, dimHead / 2).multiply(-2.0 * Math.log(theta) / dimHead));
 	}
 
 	/**

@@ -98,7 +98,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	/** True if Metal shared storage mode is used; false for managed (private GPU) storage. */
 	private final boolean shared;
 	/** Cumulative bytes currently allocated and not yet released. */
-	private long memoryUsed;
+	private volatile long memoryUsed;
 
 	/**
 	 * Creates a Metal memory provider with shared storage mode.
@@ -253,7 +253,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	protected MTLBuffer buffer(int len) {
 		long sizeOf = (long) len * getNumberSize();
 
-		if (memoryUsed + sizeOf > memoryMax) {
+		// TODO(review): volatile does not make memoryUsed += / -= atomic; concurrent allocate/release can lose updates (same in CLMemoryProvider)
+		if (memoryUsed + sizeOf > memoryMax && !reclaim(() -> memoryUsed + sizeOf <= memoryMax)) {
 			throw new HardwareException("Memory Max Reached");
 		}
 

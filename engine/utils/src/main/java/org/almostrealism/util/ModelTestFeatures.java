@@ -21,6 +21,7 @@ import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.Dataset;
@@ -100,6 +101,24 @@ public interface ModelTestFeatures extends TestFeatures {
 		return data;
 	}
 
+	/**
+	 * Returns a {@link ParameterUpdate} that leaves every weight unchanged and instead records
+	 * the gradient it receives. On each backward pass, the gradient for a weight is copied into a
+	 * collection of that weight's shape; one such collection is appended to {@code recorded} for
+	 * every weight the update is applied to, in the order the model wires its layers. This makes
+	 * the analytic gradient of a model available for comparison against finite differences.
+	 *
+	 * @param recorded the list receiving one gradient collection per weight
+	 * @return a parameter update that records gradients rather than applying them
+	 */
+	default ParameterUpdate<PackedCollection> gradientRecorder(List<PackedCollection> recorded) {
+		return (name, weights, gradient) -> {
+			PackedCollection buffer = new PackedCollection(shape(weights));
+			recorded.add(buffer);
+			return a(name + " (recorded gradient)", p(buffer.each()),
+					c(gradient).reshape(buffer.getShape()).each());
+		};
+	}
 
 	/**
 	 * Trains a model with automatic dataset generation and profiling.
