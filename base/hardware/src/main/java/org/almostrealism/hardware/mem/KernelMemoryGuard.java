@@ -207,8 +207,19 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * {@link HardwareMemoryProvider} never force-expires it. It covers the
 	 * scheduling-to-execution window of a deferred dispatch or copy, which waits on a foreign
 	 * dependency and so may legitimately outlast the deferred-release backstop that a
-	 * millisecond-scale kernel execution never reaches. Pair it with
-	 * {@link #release(Reservation)} once the deferred work has settled.</p>
+	 * millisecond-scale kernel execution never reaches.</p>
+	 *
+	 * <p>Pair it with {@link #release(Reservation)} at whichever of two points ends that
+	 * window, so the lease is never retained across the execution it was meant to precede:</p>
+	 * <ul>
+	 *   <li>once the deferred work has taken its own execution reservation, if it does
+	 *   &mdash; a deferred kernel dispatch releases its lease the moment the dispatch has
+	 *   acquired an {@link #acquire(MemoryData...) execution guard}, handing the memory to that
+	 *   guard (and its backstop) rather than exempting it for a possibly-unbounded kernel run;</li>
+	 *   <li>otherwise once the deferred work has settled &mdash; a scheduled copy, which has no
+	 *   separate execution reservation, and the dependency-failure path of a deferred dispatch,
+	 *   where the work never runs, both release through {@link io.almostrealism.streams.Semaphore#whenSettled}.</li>
+	 * </ul>
 	 *
 	 * @param args the memory arguments (may contain nulls)
 	 * @return what was taken, to be handed to {@link #release(Reservation)}

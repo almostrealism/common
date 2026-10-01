@@ -270,12 +270,24 @@ dispatch was bracketed — check whether the timeout fired.
 One count is exempt from the backstop: a **scheduling lease**
 (`KernelMemoryGuard.acquireScheduled`, consulted through `isScheduled`). A deferred dispatch
 (`CLOperator.accept`) or fallback copy (`AbstractComputeContext.copy`) that waits on a foreign
-completion before it runs holds a lease over its memory for the whole scheduling-to-execution window,
+completion before it runs holds a lease over its memory for the scheduling-to-execution window,
 which — unlike a kernel execution — may legitimately last longer than 30 s. `sweepDeferred()` keeps
 holding a leased block back past the timeout instead of force-freeing it, because the lease is given
-back deterministically when the deferred work settles (both the success and failure paths of
-`Semaphore.whenSettled`), not left to a timer. The backstop still force-expires a leaked
+back deterministically, not left to a timer. The backstop still force-expires a leaked
 kernel-execution guard exactly as before.
+
+The two deferred operations end that window differently, and the lease is released at whichever
+point ends it — never retained across the execution it precedes:
+
+- The deferred **dispatch** hands off to an execution guard. On the success path `CLOperator.accept`
+  releases the lease as soon as `dispatch()` has returned, by which point `dispatch()` has taken its
+  own execution reservation (subject to the backstop like any non-deferred dispatch); holding the
+  non-expiring lease through the kernel run would instead exempt a possibly-unbounded run from the
+  backstop. Only the dependency-failure path, where the work never runs and so no execution guard is
+  ever taken, releases the lease on settlement through `Semaphore.whenSettled`.
+- The fallback **copy** has no separate execution reservation — it reads and writes the memory itself
+  — so `AbstractComputeContext.copy` holds its lease for the whole window and releases it on
+  settlement (both the success and failure paths of `Semaphore.whenSettled`).
 
 A lease keeps the *memory* alive, but destroying a `MemoryData` still clears that object's
 reference to it (`MemoryDataAdapter.destroy()` nulls its `mem`). Deferred work therefore never
