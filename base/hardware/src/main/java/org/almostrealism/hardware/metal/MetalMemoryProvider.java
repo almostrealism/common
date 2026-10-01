@@ -258,11 +258,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			throw new HardwareException("Shared memory must be " + Precision.FP32.name());
 		}
 
-		if (!reserve(memoryUsed, memoryMax, sizeOf)) {
-			throw new HardwareException("Memory Max Reached");
-		}
-
-		try {
+		return allocateReserved(memoryUsed, memoryMax, sizeOf, () -> {
 			if (shared) {
 				return getContext().getDevice().newSharedBuffer32(getMemoryName().apply(len), len);
 			}
@@ -270,10 +266,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			return getContext().getPrecision() == Precision.FP16 ?
 					getContext().getDevice().newBuffer16(len) :
 					getContext().getDevice().newBuffer32(len);
-		} catch (RuntimeException e) {
-			memoryUsed.addAndGet(-sizeOf);
-			throw e;
-		}
+		});
 	}
 
 	/**

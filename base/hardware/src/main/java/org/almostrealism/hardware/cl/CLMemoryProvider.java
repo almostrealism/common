@@ -282,17 +282,9 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			throw new UnsupportedOperationException("It is not possible to allocate " + sizeOf + " bytes of memory at once");
 		}
 
-		if (!reserve(memoryUsed, memoryMax, sizeOf)) {
-			throw new HardwareException("Memory Max Reached");
-		}
-
-		try {
-			return CL.clCreateBuffer(getContext().getClContext(),
-					CL.CL_MEM_READ_WRITE, sizeOf, null, null);
-		} catch (RuntimeException e) {
-			memoryUsed.addAndGet(-sizeOf);
-			throw e;
-		}
+		return allocateReserved(memoryUsed, memoryMax, sizeOf, () ->
+				CL.clCreateBuffer(getContext().getClContext(),
+						CL.CL_MEM_READ_WRITE, sizeOf, null, null));
 	}
 
 	/** {@inheritDoc} */

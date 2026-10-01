@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -24,6 +25,7 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -36,8 +38,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Tests that a GPU memory provider reclaims unreachable allocations when an allocation would
@@ -127,6 +132,79 @@ public class MemoryReclaimTest extends TestSuiteBase {
 	public void oversizedClAllocationRejectedWithoutReclaim() {
 		CLMemoryProvider provider = clProvider();
 		assertOversizedRejected(provider::allocate, provider::getAllocatedMemory);
+	}
+
+	/**
+	 * A backend allocation that fails with an {@link Error} returns its reservation, so the
+	 * bytes that were never allocated are not left charged against the ceiling, and an
+	 * allocation of the whole ceiling still fits afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void allocationErrorReleasesReservation() {
+		assertFailureReleasesReservation(new OutOfMemoryError("simulated backend failure"));
+	}
+
+	/**
+	 * A backend allocation that fails with a {@link RuntimeException} returns its reservation,
+	 * and an allocation of the whole ceiling still fits afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void allocationExceptionReleasesReservation() {
+		assertFailureReleasesReservation(new IllegalStateException("simulated backend failure"));
+	}
+
+	/**
+	 * A reservation that does not fit under the ceiling is rejected with a
+	 * {@link HardwareException} before the backend allocation is attempted, and reserves nothing.
+	 */
+	@Test(timeout = 60000)
+	public void allocationBeyondCeilingSkipsBackend() {
+		ReservingProvider provider = new ReservingProvider();
+		AtomicLong used = new AtomicLong(CEILING - BLOCK_BYTES + 1);
+		AtomicBoolean called = new AtomicBoolean();
+		long waitMs = HardwareMemoryProvider.reclaimWaitMs;
+		HardwareMemoryProvider.reclaimWaitMs = 1;
+
+		try {
+			provider.allocate(used, BLOCK_BYTES, () -> {
+				called.set(true);
+				return BLOCK_BYTES;
+			});
+			Assert.fail("an allocation beyond the ceiling was accepted");
+		} catch (HardwareException expected) {
+			Assert.assertEquals("Memory Max Reached", expected.getMessage());
+		} finally {
+			HardwareMemoryProvider.reclaimWaitMs = waitMs;
+		}
+
+		Assert.assertFalse(called.get());
+		Assert.assertEquals(CEILING - BLOCK_BYTES + 1, used.get());
+	}
+
+	/**
+	 * Makes a block-sized backend allocation fail with the given throwable and checks that the
+	 * same throwable reaches the caller, the usage counter is restored to zero, and a following
+	 * allocation of the whole ceiling succeeds and is charged in full.
+	 *
+	 * @param failure the throwable the backend allocation fails with
+	 */
+	private void assertFailureReleasesReservation(Throwable failure) {
+		ReservingProvider provider = new ReservingProvider();
+		AtomicLong used = new AtomicLong();
+
+		try {
+			provider.allocate(used, BLOCK_BYTES, () -> {
+				if (failure instanceof Error) throw (Error) failure;
+				throw (RuntimeException) failure;
+			});
+			Assert.fail("the backend failure was not propagated");
+		} catch (RuntimeException | Error e) {
+			Assert.assertSame(failure, e);
+		}
+
+		Assert.assertEquals(0, used.get());
+		Assert.assertEquals(Long.valueOf(CEILING), provider.allocate(used, CEILING, () -> CEILING));
+		Assert.assertEquals(CEILING, used.get());
 	}
 
 	/**
@@ -251,6 +329,31 @@ public class MemoryReclaimTest extends TestSuiteBase {
 					.findFirst().orElse(null);
 		} catch (RuntimeException e) {
 			return null;
+		}
+	}
+
+	/**
+	 * A provider with the test ceiling that exposes
+	 * {@link HardwareMemoryProvider#allocateReserved(AtomicLong, long, long, Supplier)} against a
+	 * caller-supplied usage counter, so its reservation accounting can be checked on any machine.
+	 */
+	private static class ReservingProvider extends NativeMemoryProvider {
+		/** Creates a direct-buffer provider with the test ceiling. */
+		ReservingProvider() {
+			super(Precision.FP32, CEILING, false, null, true);
+		}
+
+		/**
+		 * Reserves {@code size} bytes against {@code used} and runs {@code allocation}.
+		 *
+		 * @param used       the usage counter
+		 * @param size       the bytes to reserve
+		 * @param allocation the simulated backend allocation
+		 * @param <B>        the type the allocation produces
+		 * @return the value produced by {@code allocation}
+		 */
+		<B> B allocate(AtomicLong used, long size, Supplier<B> allocation) {
+			return allocateReserved(used, CEILING, size, allocation);
 		}
 	}
 }

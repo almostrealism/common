@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -34,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -356,6 +358,35 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		};
 
 		return tryReserve.getAsBoolean() || reclaim(tryReserve);
+	}
+
+	/**
+	 * {@link #reserve(AtomicLong, long, long) Reserves} {@code size} bytes against {@code used}
+	 * and then runs the backend allocation the reservation was made for. When the backend call
+	 * fails, with either a {@link RuntimeException} or an {@link Error} such as
+	 * {@link OutOfMemoryError}, the reservation is returned to {@code used} before the failure is
+	 * rethrown, so bytes that were never allocated do not stay charged against the ceiling and
+	 * cause later allocations to be rejected.
+	 *
+	 * @param used       the bytes currently allocated by the provider
+	 * @param max        the provider's memory ceiling in bytes
+	 * @param size       the bytes the backend call allocates
+	 * @param allocation the backend allocation call
+	 * @param <B>        the type of the backend buffer
+	 * @return the buffer produced by {@code allocation}
+	 * @throws HardwareException if the reservation does not fit under {@code max}
+	 */
+	protected <B> B allocateReserved(AtomicLong used, long max, long size, Supplier<B> allocation) {
+		if (!reserve(used, max, size)) {
+			throw new HardwareException("Memory Max Reached");
+		}
+
+		try {
+			return allocation.get();
+		} catch (RuntimeException | Error e) {
+			used.addAndGet(-size);
+			throw e;
+		}
 	}
 
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */
