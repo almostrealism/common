@@ -333,7 +333,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * reservation does not fit, unreachable allocations are first {@link #reclaim(BooleanSupplier)
 	 * reclaimed} and the reservation is retried after each collection. A successful reservation
 	 * must be returned to {@code used} (by subtracting {@code size}) when the memory is released or
-	 * when the native allocation it was made for fails.
+	 * when the native allocation it was made for fails. A {@code size} larger than {@code max}
+	 * can never fit, so it is rejected at once without reclaiming anything.
 	 *
 	 * @param used the bytes currently allocated by the provider
 	 * @param max  the provider's memory ceiling in bytes
@@ -341,6 +342,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return whether the bytes were reserved
 	 */
 	protected boolean reserve(AtomicLong used, long max, long size) {
+		if (size > max) return false;
+
 		BooleanSupplier tryReserve = () -> {
 			long current = used.get();
 

@@ -24,6 +24,7 @@ import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Model;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -107,13 +108,15 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 */
 	public CausalLanguageModel(int vocabSize, int seqLen, int dim, int heads, int depth, int ffDim,
 							   double ropeBase, Random random) {
-		this(vocabSize, seqLen, dim, heads, depth, ffDim, new StateDictionary(new HashMap<>()));
+		this(new StateDictionary(new HashMap<>()), vocabSize, seqLen, dim, heads, depth, ffDim);
 		initialize(ropeBase, random);
 	}
 
 	/**
 	 * Creates a model over existing weights, such as weights loaded from a saved
-	 * {@link StateDictionary}.
+	 * {@link StateDictionary}. Every weight the configuration needs must be present under its key
+	 * with the shape given by {@link #getWeightShapes()}, so that an incompatible checkpoint is
+	 * rejected here rather than when the model is built or run.
 	 *
 	 * @param vocabSize number of tokens in the vocabulary
 	 * @param seqLen    number of positions per window
@@ -125,11 +128,41 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * @throws IllegalArgumentException if {@code vocabSize}, {@code seqLen}, {@code dim},
 	 *                                  {@code heads} or {@code ffDim} is not positive, if
 	 *                                  {@code depth} is negative, if {@code heads} does not divide
-	 *                                  {@code dim} or leaves an odd head dimension, or if
-	 *                                  {@code weights} is null
+	 *                                  {@code dim} or leaves an odd head dimension, if
+	 *                                  {@code weights} is null, or if a weight is missing or has
+	 *                                  the wrong shape
 	 */
 	public CausalLanguageModel(int vocabSize, int seqLen, int dim, int heads, int depth, int ffDim,
 							   StateDictionary weights) {
+		this(weights, vocabSize, seqLen, dim, heads, depth, ffDim);
+
+		getWeightShapes().forEach((key, expected) -> {
+			PackedCollection weight = weights.get(key);
+			if (weight == null) {
+				throw new IllegalArgumentException("Missing weight " + key);
+			}
+
+			if (!Arrays.equals(expected.extent(), weight.getShape().extent())) {
+				throw new IllegalArgumentException("Weight " + key + " has shape " + weight.getShape() +
+						", not " + expected);
+			}
+		});
+	}
+
+	/**
+	 * Validates the configuration and stores it with {@code weights}, without checking the
+	 * weights themselves, which the fresh-weights constructor has yet to create.
+	 *
+	 * @param weights   the weights, under this class's keys
+	 * @param vocabSize number of tokens in the vocabulary
+	 * @param seqLen    number of positions per window
+	 * @param dim       model dimension
+	 * @param heads     number of attention heads
+	 * @param depth     number of transformer blocks
+	 * @param ffDim     hidden width of the gated feed-forward
+	 */
+	private CausalLanguageModel(StateDictionary weights, int vocabSize, int seqLen, int dim, int heads,
+								int depth, int ffDim) {
 		if (vocabSize <= 0 || seqLen <= 0 || dim <= 0 || heads <= 0 || ffDim <= 0) {
 			throw new IllegalArgumentException("vocabSize, seqLen, dim, heads and ffDim must be positive, not " +
 					vocabSize + ", " + seqLen + ", " + dim + ", " + heads + ", " + ffDim);
@@ -171,6 +204,57 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 */
 	public String layerKey(int layer, String name) {
 		return "layers." + layer + "." + name;
+	}
+
+	/**
+	 * Returns the shape of every weight of this configuration, by key: the trainable weights
+	 * and the rotary inverse frequencies.
+	 *
+	 * @return the weight shapes, by key
+	 */
+	public Map<String, TraversalPolicy> getWeightShapes() {
+		Map<String, TraversalPolicy> shapes = new HashMap<>(getRandomWeightShapes());
+		shapes.putAll(getScaleWeightShapes());
+		shapes.put(INV_FREQ_KEY, shape(dim / heads / 2));
+		return shapes;
+	}
+
+	/**
+	 * Returns the shapes of the embedding and projection weights, which are initialized from a
+	 * normal distribution.
+	 *
+	 * @return the shapes, by key
+	 */
+	private Map<String, TraversalPolicy> getRandomWeightShapes() {
+		Map<String, TraversalPolicy> shapes = new HashMap<>();
+		shapes.put(EMBEDDING_KEY, shape(vocabSize, dim));
+		shapes.put(OUTPUT_KEY, shape(vocabSize, dim));
+
+		for (int i = 0; i < depth; i++) {
+			shapes.put(layerKey(i, "qkv"), shape(3 * dim, dim));
+			shapes.put(layerKey(i, "wo"), shape(dim, dim));
+			shapes.put(layerKey(i, "w1"), shape(2 * ffDim, dim));
+			shapes.put(layerKey(i, "w2"), shape(dim, ffDim));
+		}
+
+		return shapes;
+	}
+
+	/**
+	 * Returns the shapes of the normalization scales, which are initialized to ones.
+	 *
+	 * @return the shapes, by key
+	 */
+	private Map<String, TraversalPolicy> getScaleWeightShapes() {
+		Map<String, TraversalPolicy> shapes = new HashMap<>();
+		shapes.put(FINAL_NORM_KEY, shape(dim));
+
+		for (int i = 0; i < depth; i++) {
+			shapes.put(layerKey(i, "attention_norm"), shape(dim));
+			shapes.put(layerKey(i, "ffn_norm"), shape(dim));
+		}
+
+		return shapes;
 	}
 
 	/**
@@ -250,31 +334,16 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 		int dimHead = dim / heads;
 		CollectionProducer invFreqValues = computeInvFreq(dimHead, ropeBase);
 
-		Map<String, TraversalPolicy> normal = new HashMap<>();
-		normal.put(EMBEDDING_KEY, shape(vocabSize, dim));
-		normal.put(OUTPUT_KEY, shape(vocabSize, dim));
-
-		Map<String, TraversalPolicy> ones = new HashMap<>();
-		ones.put(FINAL_NORM_KEY, shape(dim));
-
-		for (int i = 0; i < depth; i++) {
-			normal.put(layerKey(i, "qkv"), shape(3 * dim, dim));
-			normal.put(layerKey(i, "wo"), shape(dim, dim));
-			normal.put(layerKey(i, "w1"), shape(2 * ffDim, dim));
-			normal.put(layerKey(i, "w2"), shape(dim, ffDim));
-			ones.put(layerKey(i, "attention_norm"), shape(dim));
-			ones.put(layerKey(i, "ffn_norm"), shape(dim));
-		}
-
+		Map<String, TraversalPolicy> normal = getRandomWeightShapes();
 		normal.keySet().stream().sorted().forEach(key -> {
 			PackedCollection weight = new PackedCollection(normal.get(key));
 			a(cp(weight.each()), randn(weight.getShape(), 0.0, INIT_STD, random).each()).get().run();
 			weights.put(key, weight);
 		});
 
-		ones.forEach((key, shape) -> weights.put(key, new PackedCollection(shape).fill(1.0)));
+		getScaleWeightShapes().forEach((key, shape) -> weights.put(key, new PackedCollection(shape).fill(1.0)));
 
-		PackedCollection invFreq = new PackedCollection(shape(dimHead / 2));
+		PackedCollection invFreq = new PackedCollection(getWeightShapes().get(INV_FREQ_KEY));
 		a(cp(invFreq.each()), invFreqValues.each()).get().run();
 		weights.put(INV_FREQ_KEY, invFreq);
 	}

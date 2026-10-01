@@ -46,6 +46,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -138,9 +139,54 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, 3, DEPTH, FF_DIM, weights));
 		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, 12, 4, DEPTH, FF_DIM, weights));
 
-		CausalLanguageModel minimal = new CausalLanguageModel(1, 1, 2, 1, 0, 1, weights);
+		StateDictionary minimalWeights = new CausalLanguageModel(1, 1, 2, 1, 0, 1, ROPE_BASE, new Random(SEED))
+				.getWeights();
+		CausalLanguageModel minimal = new CausalLanguageModel(1, 1, 2, 1, 0, 1, minimalWeights);
 		Assert.assertEquals(shape(1, 1), minimal.getOutputShape());
-		Assert.assertSame(weights, minimal.getWeights());
+		Assert.assertSame(minimalWeights, minimal.getWeights());
+	}
+
+	/**
+	 * The existing-weights constructor accepts exactly the weights the configuration needs, and
+	 * rejects a dictionary that lacks one of them (including one saved for fewer blocks) or holds
+	 * one with the wrong shape, instead of failing later when the model is built or run.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsIncompatibleWeights() {
+		CausalLanguageModel fresh = newModel();
+		Map<String, TraversalPolicy> shapes = fresh.getWeightShapes();
+		int perBlockKeys = 6;
+		int sharedKeys = 4;
+		Assert.assertEquals(sharedKeys + perBlockKeys * DEPTH, shapes.size());
+		Assert.assertEquals(shapes.keySet(), fresh.getWeights().keySet());
+		Assert.assertArrayEquals(new int[] { 3 * DIM, DIM }, shapes.get(fresh.layerKey(0, "qkv")).extent());
+		Assert.assertArrayEquals(new int[] { DIM / HEADS / 2 },
+				shapes.get(CausalLanguageModel.INV_FREQ_KEY).extent());
+
+		CausalLanguageModel reused = new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+				fresh.getWeights());
+		Assert.assertSame(fresh.getWeights(), reused.getWeights());
+
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+				new StateDictionary(new HashMap<>())));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH + 1, FF_DIM,
+				fresh.getWeights()));
+		assertRejected(() -> new CausalLanguageModel(VOCAB + 1, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+				fresh.getWeights()));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, 2 * FF_DIM,
+				fresh.getWeights()));
+
+		for (String key : shapes.keySet()) {
+			Map<String, PackedCollection> missing = new HashMap<>(fresh.getWeights().getAllWeights());
+			missing.remove(key);
+			assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+					new StateDictionary(missing)));
+		}
+
+		Map<String, PackedCollection> transposed = new HashMap<>(fresh.getWeights().getAllWeights());
+		transposed.put(fresh.layerKey(0, "w2"), new PackedCollection(shape(FF_DIM, DIM)));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+				new StateDictionary(transposed)));
 	}
 
 	/**

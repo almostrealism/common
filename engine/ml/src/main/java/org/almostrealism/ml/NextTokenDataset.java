@@ -108,7 +108,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	}
 
 	/**
-	 * Creates a dataset over the region {@code [start, end)} of the token sequence.
+	 * Creates a dataset over the region {@code [start, end)} of the token sequence. The tokens
+	 * are copied once they have been validated, so later changes to {@code tokens} do not affect
+	 * the dataset.
 	 *
 	 * @param tokens     the token ids, each in {@code 0..vocabSize-1}
 	 * @param start      the first token of the region
@@ -139,7 +141,7 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 			}
 		}
 
-		this.tokens = tokens;
+		this.tokens = tokens.clone();
 		this.start = start;
 		this.end = end;
 		this.vocabSize = vocabSize;

@@ -532,6 +532,38 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 	}
 
 	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a head dimension that is not
+	 * positive and even — zero would divide by zero, and an odd dimension would leave the last
+	 * dimension of each head unrotated — both directly and through
+	 * {@link RotationFeatures#computeRopeFreqs}, while the smallest valid dimension, two, yields
+	 * the single frequency one.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsInvalidHeadDimension() {
+		int[] invalid = { 0, -2, -1, 1, 7 };
+
+		for (int dimHead : invalid) {
+			try {
+				computeInvFreq(dimHead, 10000.0);
+				Assert.fail("Expected IllegalArgumentException for dimHead=" + dimHead);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().endsWith(" " + dimHead));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(10000.0, dimHead, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for dimHead=" + dimHead);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().endsWith(" " + dimHead));
+			}
+		}
+
+		PackedCollection invFreq = computeInvFreq(2, 10000.0).evaluate();
+		assertEquals(1, invFreq.getShape().getTotalSize());
+		assertEquals(1.0, invFreq.toDouble(0), 1e-6);
+	}
+
+	/**
 	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces numerically correct
 	 * cos/sin values matching the expected RoPE formula.
 	 *

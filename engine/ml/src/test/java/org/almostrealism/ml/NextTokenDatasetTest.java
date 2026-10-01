@@ -183,6 +183,27 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The dataset keeps its own copy of the validated tokens: overwriting the caller's array
+	 * afterwards, even with ids outside the vocabulary, changes neither the windows nor the
+	 * entropies.
+	 */
+	@Test(timeout = 60000)
+	public void copiesTokensOnCreation() {
+		int[] tokens = { 0, 1, 1, 0, 1, 0 };
+		NextTokenDataset data = new NextTokenDataset(tokens, VOCAB, 2, 1, 0);
+		Arrays.fill(tokens, VOCAB + 5);
+
+		Assert.assertEquals(1.0, data.unigramEntropyBits(), 1e-12);
+		Assert.assertEquals(4, data.getWindowCount());
+
+		ValueTarget<PackedCollection> first = data.iterator().next();
+		Assert.assertEquals(0, (int) first.getInput().toDouble(0));
+		Assert.assertEquals(1, (int) first.getInput().toDouble(1));
+		Assert.assertEquals(1, hotIndex(first.getExpectedOutput(), 0));
+		Assert.assertEquals(1, hotIndex(first.getExpectedOutput(), 1));
+	}
+
+	/**
 	 * Asserts that creating a dataset over the given tokens fails with an
 	 * {@link IllegalArgumentException}.
 	 *

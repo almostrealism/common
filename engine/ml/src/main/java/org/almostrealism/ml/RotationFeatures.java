@@ -186,6 +186,8 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @param headDim per-head dimension
 	 * @param seqLen  maximum sequence length to precompute
 	 * @return frequency tensor of shape (seqLen, headDim/2, 2) with [cos, sin] pairs
+	 * @throws IllegalArgumentException for any {@code headDim} or {@code theta} that
+	 *                                  {@link #computeInvFreq(int, double)} rejects
 	 */
 	static CollectionProducer computeRopeFreqs(double theta, int headDim, int seqLen) {
 		// CRITICAL: This method MUST use CollectionProducer computations, NOT Java loops + setMem.
@@ -215,10 +217,17 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @param dimHead per-head dimension
 	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
 	 * @return the inverse frequencies, shape {@code (dimHead / 2)}
-	 * @throws IllegalArgumentException if {@code theta} is not a finite positive number, for
-	 *                                  which the inverse frequencies would be {@code NaN}
+	 * @throws IllegalArgumentException if {@code dimHead} is not positive and even, so that the
+	 *                                  frequencies could not rotate the whole head, or if
+	 *                                  {@code theta} is not a finite positive number, for which
+	 *                                  the inverse frequencies would be {@code NaN}
 	 */
 	default CollectionProducer computeInvFreq(int dimHead, double theta) {
+		if (dimHead <= 0 || dimHead % 2 != 0) {
+			throw new IllegalArgumentException("Full rotary embedding needs a positive even head dimension, not " +
+					dimHead);
+		}
+
 		if (!(theta > 0) || Double.isInfinite(theta)) {
 			throw new IllegalArgumentException("RoPE base must be finite and positive, not " + theta);
 		}

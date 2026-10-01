@@ -21,6 +21,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
@@ -103,6 +104,61 @@ public class MemoryReclaimTest extends TestSuiteBase {
 	public void concurrentClAllocationsRespectCeiling() throws InterruptedException {
 		CLMemoryProvider provider = clProvider();
 		assertConcurrentCeiling(provider::allocate, provider::getAllocatedMemory);
+	}
+
+	/**
+	 * A Metal allocation larger than the whole ceiling is rejected at once, without the
+	 * collections and waits of reclaiming, which could never make it fit.
+	 */
+	@Test(timeout = 120000)
+	public void oversizedAllocationRejectedWithoutReclaim() {
+		MetalDataContext context = dataContext(ComputeRequirement.MTL, MetalDataContext.class);
+		Assume.assumeTrue("requires the Metal backend", context != null);
+
+		MetalMemoryProvider provider = new MetalMemoryProvider(context, 4, CEILING);
+		assertOversizedRejected(provider::allocate, provider::getAllocatedMemory);
+	}
+
+	/**
+	 * An OpenCL allocation larger than the whole ceiling is rejected at once, without the
+	 * collections and waits of reclaiming, which could never make it fit.
+	 */
+	@Test(timeout = 120000)
+	public void oversizedClAllocationRejectedWithoutReclaim() {
+		CLMemoryProvider provider = clProvider();
+		assertOversizedRejected(provider::allocate, provider::getAllocatedMemory);
+	}
+
+	/**
+	 * Requests one element more than the ceiling holds while each reclaim attempt is made to
+	 * wait longer than the allowed time, and checks that the request is rejected within that
+	 * time and reserves nothing. An allocation of exactly the ceiling still succeeds afterwards.
+	 *
+	 * @param allocate  allocates a block of the given number of elements
+	 * @param allocated the provider's current usage in bytes
+	 */
+	private void assertOversizedRejected(IntFunction<?> allocate, LongSupplier allocated) {
+		int ceilingElements = (int) (CEILING / 4);
+		long waitMs = HardwareMemoryProvider.reclaimWaitMs;
+		HardwareMemoryProvider.reclaimWaitMs = 10000;
+
+		try {
+			long start = System.currentTimeMillis();
+			try {
+				allocate.apply(ceilingElements + 1);
+				Assert.fail("an allocation larger than the ceiling was accepted");
+			} catch (HardwareException expected) {
+				long elapsed = System.currentTimeMillis() - start;
+				Assert.assertTrue("rejection took " + elapsed + "ms", elapsed < 5000);
+			}
+
+			Assert.assertEquals(0, allocated.getAsLong());
+		} finally {
+			HardwareMemoryProvider.reclaimWaitMs = waitMs;
+		}
+
+		Assert.assertNotNull(allocate.apply(ceilingElements));
+		Assert.assertEquals(CEILING, allocated.getAsLong());
 	}
 
 	/**
