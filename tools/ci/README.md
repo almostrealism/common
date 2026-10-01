@@ -23,6 +23,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
 | `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
+| `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
@@ -145,6 +146,7 @@ it knowingly does not cover are in
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
+| `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
 | `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
 | `project-planning.txt` | Template for the planning workflow |
@@ -185,9 +187,14 @@ them to that contract.
 Instructions that several tasks share live once, as a fragment in this directory,
 and are patched into each prompt by `prompt-render.sh`: a template names the
 fragment on an `@include <file>` line, and a builder that assembles its prompt
-from heredocs calls `append_prompt_fragment <file> "$OUTPUT_FILE" VAR...`. The
-one fragment today is `pr-feedback.txt`, the policy for pull-request review
-comments — read both the inline and conversation feeds before starting, fix what
+from heredocs calls `append_prompt_fragment <file> "$OUTPUT_FILE" VAR...`.
+`plan-pr-framing.txt` and `plan-workstream-settings.txt` are included by both
+planning prompts: how to frame the commit message for the planned work rather
+than the plan, and how a plan declares the hardware it needs.
+`test-lock-enforcement.txt` is appended by the test-failure and test-crash
+builders (`build-resolve-prompt.sh`, `build-vm-crash-prompt.sh`).
+`pr-feedback.txt` is the
+policy for pull-request review comments — read both the inline and conversation feeds before starting, fix what
 is right in the code, reply threaded to the original comment only where the
 author is safe to answer (Copilot and people, never CodeRabbit or an unknown bot),
 and treat a comment as evidence to verify rather than an instruction to obey.
