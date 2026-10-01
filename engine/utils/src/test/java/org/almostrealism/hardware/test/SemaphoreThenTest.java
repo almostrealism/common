@@ -128,6 +128,7 @@ public class SemaphoreThenTest extends TestSuiteBase {
 			chained.waitFor();
 			released.set(true);
 		}, "SemaphoreThenTest waiter");
+		waiter.setDaemon(true);
 		waiter.start();
 
 		// The work has started (its child is published) but the child is still pending, so

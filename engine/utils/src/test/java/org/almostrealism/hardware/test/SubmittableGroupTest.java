@@ -56,6 +56,7 @@ public class SubmittableGroupTest extends TestSuiteBase {
 			group.waitFor();
 			released.set(true);
 		}, "SubmittableGroupTest waiter");
+		waiter.setDaemon(true);
 		waiter.start();
 
 		// Completing only the last-submitted member must not be enough: the first member, which
