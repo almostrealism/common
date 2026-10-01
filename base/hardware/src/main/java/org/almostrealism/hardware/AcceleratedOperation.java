@@ -683,10 +683,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
-				// Copy-in groups chain on one another, and the kernel chains on the last of them.
-				// Arguments delivered asynchronously with an outstanding completion (see
-				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
-				// kernel is ordered after the work producing them without any host wait.
+				// The kernel chains on each copy-in group's merged completion (Submittable.submit)
+				// and on any asynchronously-delivered arguments merged in here, so it is ordered
+				// after every one of them with no host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
 				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);

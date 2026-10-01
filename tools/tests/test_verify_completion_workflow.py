@@ -171,6 +171,101 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         self.assertIn("needs.register-workstream.result == 'skipped'", condition)
         self.assertNotIn("!= 'failure'", condition)
 
+    def test_registration_runs_on_every_dispatch(self):
+        """The plan's workstream settings are applied during registration, so
+        registration cannot be limited to a newly added plan document: a
+        dispatch naming an existing plan file would otherwise skip it and
+        implement on whatever machine the workstream last targeted."""
+        self.assertNotIn("if", self.jobs["register-workstream"])
+        self.assertNotIn("if", self.jobs["resolve-plan-settings"])
+
+    def test_the_plan_settings_are_read_as_data_by_trusted_code(self):
+        """The settings file comes from the dispatched branch. Its files are
+        fetched with `git archive`, never checked out, and are read by the
+        default branch's resolver; the only checkout in the resolving job is
+        the trusted one."""
+        steps = self.jobs["resolve-plan-settings"]["steps"]
+        checkouts = [s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")]
+        self.assertEqual(1, len(checkouts))
+        self.assertIn(_TRUSTED_REF, str(checkouts[0].get("with", {}).get("ref", "")))
+
+        resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
+        self.assertIn("git archive FETCH_HEAD docs/plans", resolve["run"])
+        self.assertIn("./tools/ci/plan_workstream_config.py", resolve["run"])
+        self.assertEqual("plan_settings", resolve.get("id"))
+
+        outputs = self.jobs["resolve-plan-settings"]["outputs"]
+        self.assertEqual("${{ steps.plan_settings.outputs.required_labels }}",
+                         outputs["required_labels"])
+        self.assertEqual("${{ steps.plan_settings.outputs.settings_file }}",
+                         outputs["settings_file"])
+
+    def test_the_plan_settings_are_resolved_in_a_token_free_job(self):
+        """Resolving the settings installs PyYAML from the network, and a
+        package's install or import code can rewrite the checked-out scripts or
+        append to $GITHUB_ENV/$GITHUB_PATH, which persist into later steps of
+        the same job. So the resolver must run in a job that never holds the
+        controller token, the token-bearing registration job must install and
+        run nothing of the kind, and only the resolved JSON may cross between
+        them — as job outputs read through `env:`."""
+        resolving = self.jobs["resolve-plan-settings"]
+        self.assertNotIn("CF_ACCESS_CLIENT_SECRET", str(resolving))
+        self.assertNotIn("secrets.", str(resolving))
+
+        register_job = self.jobs["register-workstream"]
+        self.assertIn("resolve-plan-settings", register_job["needs"])
+        for step in register_job["steps"]:
+            with self.subTest(step=step.get("name")):
+                run = step.get("run", "")
+                self.assertNotIn("pip install", run)
+                self.assertNotIn("plan_workstream_config.py", run)
+                self.assertNotIn("outputs.required_labels", run)
+                self.assertNotIn("outputs.settings_file", run)
+                self.assertFalse(str(step.get("uses", "")).startswith("actions/setup-python"))
+
+        register = next(s for s in register_job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        self.assertEqual("${{ needs.resolve-plan-settings.outputs.required_labels }}",
+                         register["env"]["REQUIRED_LABELS_JSON"])
+
+    def test_a_failed_settings_resolution_does_not_submit_the_implementation(self):
+        """When resolve-plan-settings fails (an invalid settings file, an
+        unreadable dispatched commit), register-workstream, which needs it, is
+        skipped rather than failed. build-prompt tolerates a skipped
+        registration, so without its own check on the resolving job it would
+        submit the implementation without the labels the plan declared."""
+        job = self.jobs["build-prompt"]
+        self.assertIn("resolve-plan-settings", job["needs"])
+        self.assertIn("needs.resolve-plan-settings.result == 'success'", job["if"])
+
+    def test_the_plan_settings_come_from_the_dispatched_commit(self):
+        """The approved plan is the dispatched commit, and every other job in
+        the run reads `github.sha`. Fetching the branch head instead would let a
+        push made after approval replace the settings, routing the
+        implementation with labels nobody approved. A fetch failure must stop
+        the run rather than submit the implementation without the labels."""
+        steps = self.jobs["resolve-plan-settings"]["steps"]
+        resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
+        self.assertEqual("${{ github.sha }}", resolve["env"]["DISPATCHED_SHA"])
+        self.assertIn('origin "$DISPATCHED_SHA"', resolve["run"])
+        self.assertNotIn("refs/heads/", resolve["run"])
+        self.assertIn("exit 1", resolve["run"])
+
+    def test_the_registration_summary_reports_a_failure_as_a_failure(self):
+        """The summary step runs even after a failed registration, when the
+        plan's settings have already been resolved. Reporting them as applied
+        would tell the operator the implementation is routed as the plan
+        asked when it was never submitted at all."""
+        steps = self.jobs["register-workstream"]["steps"]
+        summary = next(s for s in steps if s.get("name") == "Summary")
+        self.assertEqual("always()", summary.get("if"))
+        self.assertEqual("${{ job.status }}", summary["env"]["JOB_STATUS"])
+        run = summary["run"]
+        gate = run.index('if [ "$JOB_STATUS" != "success" ]')
+        self.assertLess(gate, run.index("Registered a FlowTree workstream"))
+        self.assertLess(gate, run.index("Applied"))
+        self.assertIn("exit 0", run[gate:run.index("Registered a FlowTree workstream")])
+
     def test_the_operator_documentation_describes_every_job(self):
         """ci-integration.md is where an operator learns what this workflow
         does. It once kept describing a three-job pipeline that submitted

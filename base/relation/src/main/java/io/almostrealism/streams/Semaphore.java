@@ -17,12 +17,10 @@
 package io.almostrealism.streams;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * A synchronization primitive used to coordinate completion of asynchronous hardware
@@ -172,20 +170,50 @@ public interface Semaphore {
 	 * remaining semaphore is returned directly, so the combiner is only invoked when there
 	 * is genuinely more than one completion to merge.</p>
 	 *
+	 * <p>Every member is settled rather than merely awaited: a member whose {@link #waitFor()}
+	 * throws still counts the composite down, so a single failure can never pin the latch and
+	 * leave a waiter blocked forever. The first such failure is retained and rethrown from the
+	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
+	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
+	 *
 	 * @param semaphores the completions to merge; may contain nulls
 	 * @param combiner   produces the composite latch for a given number of members
 	 * @return a semaphore completing after all of the given semaphores, or {@code null}
 	 *         when there is nothing to wait for
 	 */
 	static Semaphore all(List<Semaphore> semaphores, IntFunction<? extends LatchSemaphore> combiner) {
-		List<Semaphore> pending = semaphores == null ? List.of() :
-				semaphores.stream().filter(Objects::nonNull).collect(Collectors.toList());
+		if (semaphores == null) return null;
 
-		if (pending.isEmpty()) return null;
-		if (pending.size() == 1) return pending.get(0);
+		// A single pass avoids the stream and intermediate list this per-dispatch merge would
+		// otherwise allocate for its common zero- or one-member outcome.
+		int count = 0;
+		Semaphore single = null;
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s != null) {
+				count++;
+				single = s;
+			}
+		}
 
-		LatchSemaphore combined = combiner.apply(pending.size());
-		pending.forEach(s -> s.onComplete(combined::countDown));
+		if (count == 0) return null;
+		if (count == 1) return single;
+
+		LatchSemaphore combined = combiner.apply(count);
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s == null) continue;
+
+			CALLBACK_EXECUTOR.execute(() -> {
+				try {
+					s.waitFor();
+				} catch (Throwable t) {
+					combined.fail(t);
+				} finally {
+					combined.countDown();
+				}
+			});
+		}
 		return combined;
 	}
 }

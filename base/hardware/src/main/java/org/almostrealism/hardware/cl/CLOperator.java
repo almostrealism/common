@@ -36,6 +36,7 @@ import java.lang.ref.Reference;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * {@link HardwareOperator} that executes compiled OpenCL kernels.
@@ -202,6 +203,21 @@ public class CLOperator extends HardwareOperator {
 	 * the dependency may still be writing that input, so preparing early would be as wrong as
 	 * enqueueing early. The caller is not held up either way.</p>
 	 *
+	 * <p>The deferred dispatch does not prepare or enqueue its arguments until the dependency
+	 * has completed, so &mdash; exactly as the fallback copy guards its regions across its own
+	 * deferral &mdash; a {@link KernelMemoryGuard} scheduling lease is held over the argument
+	 * memory from the moment this returns until the deferred dispatch has settled. Without it an
+	 * argument freed while the dependency is still pending would be prepared or enqueued against
+	 * released memory. A lease (rather than a plain execution reservation) is used because the
+	 * dependency may remain pending longer than the deferred-release backstop, which a lease is
+	 * exempt from. {@link #dispatch} acquires its own reservation once it runs; this one only
+	 * covers the scheduling-to-execution window that reservation cannot. The lease keeps the
+	 * memory alive, but destroying an argument still clears that object's reference to it, so
+	 * the deferred dispatch receives its arguments through {@link #deferredArguments}: an
+	 * argument destroyed in the meantime is dispatched against the memory it described when the
+	 * dispatch was scheduled, exactly as it would have been had the dispatch been enqueued
+	 * then.</p>
+	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
 	 * @return the dispatch's completion semaphore
@@ -209,7 +225,11 @@ public class CLOperator extends HardwareOperator {
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
-			return dependsOn.then(() -> dispatch(args, null));
+			KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireScheduledFor(argumentData(args));
+			Supplier<Object[]> deferred = deferredArguments(args);
+			Semaphore dispatched = dependsOn.then(() -> dispatch(deferred.get(), null));
+			dispatched.whenSettled(() -> KernelMemoryGuard.releaseFor(guard));
+			return dispatched;
 		}
 
 		return dispatch(args, (CLSemaphore) dependsOn);

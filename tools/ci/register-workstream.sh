@@ -37,6 +37,10 @@
 #   TRACKER_CAPABILITIES - comma-separated tracker roles granted to agents
 #                       on the workstream (e.g. "planner"). Applied on
 #                       registration, and to an existing workstream too.
+#   REQUIRED_LABELS_JSON - JSON object of node labels every job on the
+#                       workstream must match by default, e.g.
+#                       {"platform":"macos"}. Applied on registration, and to
+#                       an existing workstream too.
 #   REPO_URL          - repository clone URL. Sent as repoUrl: it identifies
 #                       the workstream alongside the branch, and a workstream
 #                       is cloned from it — hence the SSH form, matching
@@ -116,6 +120,10 @@ if [ -n "${TRACKER_CAPABILITIES:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
 fi
 
+if [ -n "${REQUIRED_LABELS_JSON:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson labels "$REQUIRED_LABELS_JSON" '. + {requiredLabels: $labels}')
+fi
+
 RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
@@ -145,17 +153,24 @@ fi
 if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
     UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
 fi
+if [ -n "${REQUIRED_LABELS_JSON:-}" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson labels "$REQUIRED_LABELS_JSON" '. + {requiredLabels: $labels}')
+fi
 if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREAM_ID" ]; then
     echo "Workstream already exists ($WORKSTREAM_ID) — updating it"
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
 
-    # An update that carries tracker capabilities must succeed: a task-planning
-    # agent submitted without its "planner" role cannot call
-    # tracker_claim_next_task, so a silently-dropped update would produce a
-    # round that can do nothing. A plan-only update stays best-effort — the
-    # planning document is not load-bearing for the agent's ability to work.
+    # An update that carries tracker capabilities or required labels must
+    # succeed. A task-planning agent submitted without its "planner" role
+    # cannot call tracker_claim_next_task, and an implementation submitted
+    # without the labels the plan declared runs on the wrong machine — one
+    # without the Metal the plan needs, for instance. Either way a
+    # silently-dropped update would produce a round that cannot do its job,
+    # so it fails the step rather than warning. A plan-only update stays
+    # best-effort — the planning document is not load-bearing for the
+    # agent's ability to work.
     REQUIRE_UPDATE=false
-    if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
+    if [ -n "$TRACKER_CAPABILITIES_JSON" ] || [ -n "${REQUIRED_LABELS_JSON:-}" ]; then
         REQUIRE_UPDATE=true
     fi
 
@@ -178,7 +193,7 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
     if [ "$UPDATE_OK" = "true" ]; then
         echo "Updated workstream $WORKSTREAM_ID: $UPDATE_PAYLOAD"
     elif [ "$REQUIRE_UPDATE" = "true" ]; then
-        echo "::error::${UPDATE_MESSAGE} — tracker capabilities could not be applied"
+        echo "::error::${UPDATE_MESSAGE} — required workstream settings could not be applied"
         exit 1
     else
         echo "::warning::${UPDATE_MESSAGE}"

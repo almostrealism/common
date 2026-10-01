@@ -237,6 +237,104 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A scheduling lease blocks deallocation the same way an execution guard does, and
+	 * {@link KernelMemoryGuard#isScheduled(long)} distinguishes it: it is reported as scheduled
+	 * only while the lease is held, and releasing the lease clears both verdicts.
+	 */
+	@Test(timeout = 10_000)
+	public void scheduledLeaseBlocksDeallocationAndIsDistinguished() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MemoryData data = stubMemoryData(1100L);
+
+		Assert.assertTrue("Should be deallocatable before lease", guard.canDeallocate(1100L));
+		Assert.assertFalse("Should not be scheduled before lease", guard.isScheduled(1100L));
+
+		KernelMemoryGuard.Reservation lease = guard.acquireScheduled(data);
+		Assert.assertFalse("A lease must block deallocation", guard.canDeallocate(1100L));
+		Assert.assertTrue("A lease must be reported as scheduled", guard.isScheduled(1100L));
+
+		guard.release(lease);
+		Assert.assertTrue("Releasing the lease must allow deallocation", guard.canDeallocate(1100L));
+		Assert.assertFalse("Releasing the lease must clear the scheduled verdict",
+				guard.isScheduled(1100L));
+	}
+
+	/**
+	 * An execution guard blocks deallocation but is not reported as a scheduling lease, so the
+	 * deferred-release backstop can distinguish a leaked millisecond-scale kernel guard (which it
+	 * force-expires) from an intentionally long-lived lease (which it never expires).
+	 */
+	@Test(timeout = 10_000)
+	public void executionGuardIsNotReportedAsScheduled() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MemoryData data = stubMemoryData(1200L);
+
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
+		Assert.assertFalse("An execution guard must block deallocation", guard.canDeallocate(1200L));
+		Assert.assertFalse("An execution guard must not be reported as scheduled",
+				guard.isScheduled(1200L));
+
+		guard.release(held);
+		Assert.assertTrue("Should be deallocatable after release", guard.canDeallocate(1200L));
+	}
+
+	/**
+	 * A lease and an execution guard on the same address are counted independently: releasing
+	 * either one alone leaves the block held, and only releasing both allows deallocation.
+	 */
+	@Test(timeout = 10_000)
+	public void leaseAndGuardOnSameAddressRequireBothReleases() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MemoryData data = stubMemoryData(1300L);
+
+		KernelMemoryGuard.Reservation lease = guard.acquireScheduled(data);
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
+
+		guard.release(held);
+		Assert.assertFalse("Lease must still hold the block after the guard is released",
+				guard.canDeallocate(1300L));
+		Assert.assertTrue("Lease is still active", guard.isScheduled(1300L));
+
+		guard.release(lease);
+		Assert.assertTrue("Both released: the block must be deallocatable",
+				guard.canDeallocate(1300L));
+		Assert.assertFalse("No lease remains", guard.isScheduled(1300L));
+	}
+
+	/**
+	 * A provider asks the guard about an allocation by its container pointer (the address its
+	 * native reference records), which for some backends &mdash; a Metal buffer object versus the
+	 * bytes it holds &mdash; differs from the content pointer. Both an execution guard and a
+	 * scheduling lease must therefore be counted against the container pointer, or the
+	 * provider's query never matches and the memory is released while still in use.
+	 */
+	@Test(timeout = 10_000)
+	public void countsAreKeyedByContainerPointer() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MemoryData data = new StubMemoryData(new StubRAM(1400L) {
+			@Override
+			public long getContainerPointer() { return 1401L; }
+		});
+
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
+		Assert.assertFalse("An execution guard must block the container address",
+				guard.canDeallocate(1401L));
+		Assert.assertTrue("The content address is not what a provider asks about",
+				guard.canDeallocate(1400L));
+		guard.release(held);
+		Assert.assertTrue(guard.canDeallocate(1401L));
+
+		KernelMemoryGuard.Reservation lease = guard.acquireScheduled(data);
+		Assert.assertFalse("A lease must block the container address", guard.canDeallocate(1401L));
+		Assert.assertTrue("A lease must be reported against the container address",
+				guard.isScheduled(1401L));
+		Assert.assertFalse(guard.isScheduled(1400L));
+		guard.release(lease);
+		Assert.assertTrue(guard.canDeallocate(1401L));
+		Assert.assertFalse(guard.isScheduled(1401L));
+	}
+
+	/**
 	 * Verifies that the static {@link KernelMemoryGuard#acquireFor} returns
 	 * null when no Hardware is available, and that
 	 * {@link KernelMemoryGuard#releaseFor} handles null guard gracefully.
