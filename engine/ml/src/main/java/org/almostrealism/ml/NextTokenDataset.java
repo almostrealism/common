@@ -55,8 +55,8 @@ import java.util.stream.IntStream;
  * stays short while successive epochs see different text. Datasets used for evaluation should not
  * rotate, so that every evaluation scores the same windows.</p>
  *
- * <p>The one-hot targets are built by an assignment compiled once per position within a pass and
- * re-run, over that window's ids, for every window the position later holds. Window collections
+ * <p>The one-hot targets are built by a single assignment, compiled once for the dataset and re-run
+ * over each window's ids, whose result is copied into that window's target. Window collections
  * are allocated per position within a pass, when first needed, and reused by every later pass,
  * so the dataset never holds more than {@link #getWindowCount()} windows. A
  * dataset that does not rotate yields the same windows on every pass and builds each only once; a
@@ -104,14 +104,17 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	/** Index of the window whose contents each slot currently holds. */
 	private int[] slotWindows;
 
-	/**
-	 * The shifted ids of the window being written, shared by every slot: the input of each
-	 * slot's compiled one-hot assignment.
-	 */
+	/** The shifted ids of the window being written: the input of the one-hot assignment. */
 	private PackedCollection shifted;
 
-	/** The one-hot assignment of each slot, compiled when the slot is first written. */
-	private List<Runnable> slotTargets;
+	/** The one-hot rows of the window being written: the output of the one-hot assignment. */
+	private PackedCollection oneHot;
+
+	/**
+	 * The one-hot assignment from {@link #shifted} to {@link #oneHot}, compiled once, when the
+	 * first window is written, and re-run for every window written after it.
+	 */
+	private Runnable oneHotTarget;
 
 	/**
 	 * Creates a dataset over the whole token sequence.
@@ -354,10 +357,11 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	/**
 	 * Returns the collections of the given position within a pass, holding the window with the
 	 * given index. The position's collections are allocated the first time it is reached and
-	 * rewritten only when the position last held a different window. Each target is written by the
-	 * one-hot assignment of its slot, compiled the first time the slot is written and re-run for
-	 * every later window: the window's shifted ids are copied into the shared {@link #shifted}
-	 * buffer the assignment reads, so rotating through windows compiles nothing.
+	 * rewritten only when the position last held a different window. Every target is written by
+	 * the same one-hot assignment, compiled when the first window is written: the window's shifted
+	 * ids are copied into {@link #shifted}, the assignment is run, and its {@link #oneHot} result
+	 * is copied into the position's target, so neither later positions nor rotating passes
+	 * compile anything.
 	 *
 	 * @param position the position within the pass, in {@code 0..getWindowCount()-1}
 	 * @param index    the window index, in {@code 0..getAvailableWindowCount()-1}
@@ -366,9 +370,10 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	private ValueTarget<PackedCollection> window(int position, int index) {
 		if (slots == null) {
 			slots = new ArrayList<>(Collections.nCopies(getWindowCount(), null));
-			slotTargets = new ArrayList<>(Collections.nCopies(getWindowCount(), null));
 			slotWindows = new int[getWindowCount()];
 			shifted = new PackedCollection(shape(seqLen));
+			oneHot = new PackedCollection(shape(seqLen, vocabSize));
+			oneHotTarget = a(cp(oneHot.each()), oneHotRows(vocabSize, cp(shifted)).each()).get();
 		}
 
 		ValueTarget<PackedCollection> slot = slots.get(position);
@@ -376,8 +381,6 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 			slot = ValueTarget.of(new PackedCollection(shape(seqLen)),
 					new PackedCollection(shape(seqLen, vocabSize)));
 			slots.set(position, slot);
-			slotTargets.set(position, a(cp(slot.getExpectedOutput().each()),
-					oneHotRows(vocabSize, cp(shifted)).each()).get());
 		} else if (slotWindows[position] == index) {
 			return slot;
 		}
@@ -385,7 +388,8 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 		int offset = getWindowStart(index) - start;
 		slot.getInput().setFrom(0, regionTokens(), offset, seqLen);
 		shifted.setFrom(0, regionTokens(), offset + 1, seqLen);
-		slotTargets.get(position).run();
+		oneHotTarget.run();
+		slot.getExpectedOutput().setFrom(0, oneHot);
 
 		slotWindows[position] = index;
 		return slot;

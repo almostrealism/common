@@ -201,8 +201,9 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Every rewrite of a position re-runs that position's one-hot assignment over the new
-	 * window's ids. With four positions over six windows the rotation wraps unevenly, so across
+	 * Every rewrite of a position re-runs the dataset's shared one-hot assignment over the new
+	 * window's ids and copies the result into that position's target, which must not alias the
+	 * shared result. With four positions over six windows the rotation wraps unevenly, so across
 	 * seven passes each position holds several different windows, and each must be exact after
 	 * every rewrite, including when every other position has been written since. A rotating
 	 * dataset whose pass covers every window never rewrites a position.
