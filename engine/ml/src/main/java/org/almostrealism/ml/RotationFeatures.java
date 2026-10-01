@@ -215,8 +215,14 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @param dimHead per-head dimension
 	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
 	 * @return the inverse frequencies, shape {@code (dimHead / 2)}
+	 * @throws IllegalArgumentException if {@code theta} is not a finite positive number, for
+	 *                                  which the inverse frequencies would be {@code NaN}
 	 */
 	default CollectionProducer computeInvFreq(int dimHead, double theta) {
+		if (!(theta > 0) || Double.isInfinite(theta)) {
+			throw new IllegalArgumentException("RoPE base must be finite and positive, not " + theta);
+		}
+
 		return exp(integers(0, dimHead / 2).multiply(-2.0 * Math.log(theta) / dimHead));
 	}
 

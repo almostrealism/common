@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ParameterUpdate;
@@ -101,6 +102,8 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * @param ffDim     hidden width of the gated feed-forward
 	 * @param ropeBase  rotary embedding base frequency
 	 * @param random    the source of the initial weights
+	 * @throws IllegalArgumentException for any configuration the weights constructor rejects, or
+	 *                                  if {@code ropeBase} is not a finite positive number
 	 */
 	public CausalLanguageModel(int vocabSize, int seqLen, int dim, int heads, int depth, int ffDim,
 							   double ropeBase, Random random) {
@@ -244,6 +247,9 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * @param random   the source of the initial weights
 	 */
 	private void initialize(double ropeBase, Random random) {
+		int dimHead = dim / heads;
+		CollectionProducer invFreqValues = computeInvFreq(dimHead, ropeBase);
+
 		Map<String, TraversalPolicy> normal = new HashMap<>();
 		normal.put(EMBEDDING_KEY, shape(vocabSize, dim));
 		normal.put(OUTPUT_KEY, shape(vocabSize, dim));
@@ -268,9 +274,8 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 
 		ones.forEach((key, shape) -> weights.put(key, new PackedCollection(shape).fill(1.0)));
 
-		int dimHead = dim / heads;
 		PackedCollection invFreq = new PackedCollection(shape(dimHead / 2));
-		a(cp(invFreq.each()), computeInvFreq(dimHead, ropeBase).each()).get().run();
+		a(cp(invFreq.each()), invFreqValues.each()).get().run();
 		weights.put(INV_FREQ_KEY, invFreq);
 	}
 }

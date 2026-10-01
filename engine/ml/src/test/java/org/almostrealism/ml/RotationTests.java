@@ -27,6 +27,7 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -494,6 +495,40 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
 		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
 		assertEquals("Shape dim 2 (cos/sin pair)", 2, freqCis.getShape().length(2));
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a base for which the inverse
+	 * frequencies would be {@code NaN} — zero, negative, infinite or {@code NaN} — both directly
+	 * and through {@link RotationFeatures#computeRopeFreqs}, while a valid base below one still
+	 * yields {@code theta^(-2i / dimHead)}.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsInvalidBase() {
+		double[] invalid = { 0.0, -1.0, -10000.0, Double.POSITIVE_INFINITY,
+				Double.NEGATIVE_INFINITY, Double.NaN };
+
+		for (double theta : invalid) {
+			try {
+				computeInvFreq(8, theta);
+				Assert.fail("Expected IllegalArgumentException for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(theta, 8, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+		}
+
+		PackedCollection invFreq = computeInvFreq(8, 0.5).evaluate();
+		assertEquals(4, invFreq.getShape().getTotalSize());
+		for (int i = 0; i < 4; i++) {
+			assertEquals("invFreq[" + i + "]", Math.pow(0.5, -2.0 * i / 8), invFreq.toDouble(i), 1e-6);
+		}
 	}
 
 	/**

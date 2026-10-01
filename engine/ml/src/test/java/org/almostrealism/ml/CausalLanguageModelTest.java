@@ -144,6 +144,27 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
+	 * The fresh-weights constructor rejects a rotary base for which the inverse frequencies would
+	 * be {@code NaN} (zero, negative, infinite or {@code NaN}), instead of creating a model with
+	 * invalid rotary weights; a valid base produces {@code theta^(-2i / dimHead)}.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInvalidRopeBase() {
+		Random random = new Random(SEED);
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM, 0.0, random));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM, -ROPE_BASE, random));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+				Double.POSITIVE_INFINITY, random));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM, Double.NaN, random));
+
+		CausalLanguageModel lm = new CausalLanguageModel(2, 2, 4, 1, 0, 1, ROPE_BASE, random);
+		PackedCollection invFreq = lm.getWeights().get(CausalLanguageModel.INV_FREQ_KEY);
+		Assert.assertEquals(2, invFreq.getShape().getTotalSize());
+		Assert.assertEquals(1.0, invFreq.toDouble(0), 1e-6);
+		Assert.assertEquals(Math.pow(ROPE_BASE, -0.5), invFreq.toDouble(1), 1e-6);
+	}
+
+	/**
 	 * Asserts that constructing a model throws {@link IllegalArgumentException}.
 	 *
 	 * @param construction the constructor call
