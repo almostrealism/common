@@ -111,9 +111,9 @@ public class WavFileTest extends TestSuiteBase {
 	 * accepts.
 	 *
 	 * <p>The reordering is applied to the regular source, not to a permuted view of it. Wrapping a
-	 * view in a producer and evaluating it into a destination copies the view's backing memory in
-	 * its own order and silently loses the reordering, so the permutation belongs in the
-	 * computation.</p>
+	 * view in a provider and copying it into a destination is refused by {@code CollectionProvider.into},
+	 * because a flat copy would move the view's backing memory in its own order and discard the
+	 * reordering, so the permutation belongs in the computation.</p>
 	 *
 	 * @throws IOException if the file cannot be written or read
 	 */

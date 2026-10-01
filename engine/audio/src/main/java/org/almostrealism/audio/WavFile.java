@@ -1038,8 +1038,11 @@ public class WavFile implements AutoCloseable {
 	 * memory ordering} inherited from a delegate even when its outer shape is regular — is likewise
 	 * rejected. Rearranging it here would mean walking the mapping on the host, one element at a
 	 * time, to assemble an order the device can produce in a single pass, defeating this overload's
-	 * bulk-transfer guarantee. The caller evaluates the view into a collection of its own shape
-	 * first, which does the rearranging in a kernel, and hands the result here.</p>
+	 * bulk-transfer guarantee. The caller applies the reordering as a computation that writes a
+	 * collection of its own shape, which does the rearranging in a kernel, and hands the result
+	 * here. Wrapping the view in a provider and copying it into a destination does not work for
+	 * this: {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} refuses
+	 * a flat copy of a view for the same reason this method does.</p>
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
 	 * @return the number of frames written, which is every frame of the collection
@@ -1073,8 +1076,8 @@ public class WavFile implements AutoCloseable {
 		}
 
 		if (!shape.isRegular() || audio.getMemOrdering() != null) {
-			throw new IllegalArgumentException("Audio " + shape + " is a view of other memory; evaluate it " +
-					"into a collection of its own shape before writing it");
+			throw new IllegalArgumentException("Audio " + shape + " is a view of other memory; apply the " +
+					"reordering as a computation that writes a collection of its own shape, then write that");
 		}
 
 		double[][] samples = new double[channels][];
