@@ -25,6 +25,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -135,6 +136,36 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 		NextTokenDataset uneven = new NextTokenDataset(positions(30), VOCAB, 4, 5, 4).setRotating(true);
 		Assert.assertEquals(List.of(0, 5, 10, 15), passStarts(uneven));
 		Assert.assertEquals(List.of(20, 25, 0, 5), passStarts(uneven));
+	}
+
+	/**
+	 * A pass builds each window only when the iterator reaches it. This region has 100,000
+	 * windows whose one-hot targets would take hundreds of gigabytes if a pass built them all
+	 * up front; consuming the first two windows must build only those two, with correct
+	 * contents, and a rotating pass still advances by the full window count.
+	 */
+	@Test(timeout = 120000)
+	public void iteratorBuildsWindowsLazily() {
+		int vocab = 4096;
+		int seqLen = 64;
+		int windows = 100000;
+		int[] tokens = IntStream.range(0, windows + seqLen).map(i -> i % vocab).toArray();
+		NextTokenDataset data = new NextTokenDataset(tokens, vocab, seqLen, 1, 0).setRotating(true);
+		Assert.assertEquals(windows, data.getWindowCount());
+
+		Iterator<ValueTarget<PackedCollection>> pass = data.iterator();
+		for (int s = 0; s < 2; s++) {
+			Assert.assertTrue(pass.hasNext());
+			ValueTarget<PackedCollection> window = pass.next();
+			Assert.assertEquals(seqLen * vocab, window.getExpectedOutput().getShape().getTotalSize());
+			Assert.assertEquals(s, (int) window.getInput().toDouble(0));
+			Assert.assertEquals(s + seqLen - 1, (int) window.getInput().toDouble(seqLen - 1));
+			Assert.assertEquals(1.0, window.getExpectedOutput().toDouble(s + 1), 0.0);
+			Assert.assertEquals(1.0,
+					window.getExpectedOutput().toDouble((seqLen - 1) * vocab + s + seqLen), 0.0);
+		}
+
+		Assert.assertEquals(0, (int) data.iterator().next().getInput().toDouble(0));
 	}
 
 	/**

@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * Next-token prediction windows over a contiguous region of a token sequence, for training
@@ -92,6 +93,7 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	private PackedCollection regionTokens;
 
 	/** Lazily built windows by index, reused across passes. */
+	// TODO(review): cached windows are never released, so a full rotating run still retains every window's one-hot target
 	private List<ValueTarget<PackedCollection>> windows;
 
 	/**
@@ -313,7 +315,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	/**
 	 * Returns the windows of the next pass: the first {@link #getWindowCount()} windows, or for
 	 * a rotating dataset the next {@link #getWindowCount()} windows after those of the previous
-	 * pass.
+	 * pass. Each window is built only when the iterator reaches it, so starting a pass over a
+	 * large region allocates nothing beyond the windows actually consumed. The rotation advances
+	 * when the iterator is created.
 	 *
 	 * @return an iterator over the windows of this pass
 	 */
@@ -323,16 +327,11 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 		int count = getWindowCount();
 		int first = rotating && available > 0 ? nextWindow % available : 0;
 
-		List<ValueTarget<PackedCollection>> pass = new ArrayList<>();
-		for (int i = 0; i < count; i++) {
-			pass.add(window((first + i) % available));
-		}
-
 		if (rotating && available > 0) {
 			nextWindow = (first + count) % available;
 		}
 
-		return pass.iterator();
+		return IntStream.range(0, count).mapToObj(i -> window((first + i) % available)).iterator();
 	}
 
 	/**
