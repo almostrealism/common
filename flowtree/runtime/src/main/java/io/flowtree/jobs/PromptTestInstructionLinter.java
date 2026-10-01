@@ -223,9 +223,9 @@ public class PromptTestInstructionLinter {
 		rules.add(new LineRule(line -> AR_TEST_GROUP.matcher(line).find(),
 				"AR_TEST_GROUP/AR_TEST_GROUPS reference"));
 		rules.add(new LineRule(PromptTestInstructionLinter::mvnSegmentWithoutSelector,
-				"\"mvn test/verify/install/package/deploy\" without a Class#method -Dtest selector"));
+				"\"mvn test/verify/install/package/deploy\" without a bounded -Dtest selector"));
 		rules.add(new LineRule(PromptTestInstructionLinter::dtestBroadValue,
-				"-Dtest=<value> not naming exactly one Class#method entry"));
+				"-Dtest=<value> not naming a bounded set of classes or methods"));
 		rules.add(new LineRule(PromptTestInstructionLinter::unittestDiscovery,
 				"\"python -m unittest discover\" (or a unittest invocation naming no single "
 						+ "module.Class.method id)"));

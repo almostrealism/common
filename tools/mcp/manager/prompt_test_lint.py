@@ -160,14 +160,15 @@ class _MvnTestSegmentMatcher:
 
     @staticmethod
     def _has_bounding_selector(fragment: str) -> bool:
-        """Whether ``fragment`` names exactly one ``-Dtest`` property whose
-        value bounds the run. Asks ``_dtest_is_narrow`` rather than looking for
-        a ``#`` so a bare class or a bounded multi-class list exempts the
-        mention, agreeing with ``_DTestBroadValueMatcher`` and the command
-        validator. More than one ``-Dtest`` property is not bounding: Maven
-        uses only the last, so the earlier values are dead."""
+        """Whether every ``-Dtest`` property in ``fragment`` bounds the run.
+        Asks ``_dtest_is_narrow`` rather than looking for a ``#`` so a bare
+        class or a bounded multi-class list exempts the mention, agreeing with
+        ``_DTestBroadValueMatcher`` and the command validator. A repeated
+        property is judged value by value, as the command validator does:
+        Maven uses only the last, so a fragment is bounded when no value it
+        could resolve to is broad."""
         values = _DTestBroadValueMatcher._VALUE_PATTERN.findall(fragment)
-        return len(values) == 1 and _dtest_is_narrow(values[0])
+        return bool(values) and all(_dtest_is_narrow(value) for value in values)
 
     def search(self, line: str):
         for fragment in self._CHAIN_SPLIT_PATTERN.split(line):
@@ -186,26 +187,22 @@ class _MvnTestSegmentMatcher:
 
 _TEST_LINT_PATTERNS.append(
     (_MvnTestSegmentMatcher(),
-     '"mvn test/verify/install/package/deploy" without a Class#method -Dtest selector'))
+     '"mvn test/verify/install/package/deploy" without a bounded -Dtest selector'))
 
 
 class _DTestBroadValueMatcher:
-    """Flags a ``-Dtest=<value>`` mention that does not name exactly one
-    ``Class#method`` entry.
+    """Flags a ``-Dtest=<value>`` mention that does not name a bounded set of
+    classes or methods.
 
-    A single regex with a negative lookahead for ``#`` cannot express this: a
-    mixed value like ``-Dtest=Foo,Bar#baz`` (where ``Foo`` alone is broad)
-    satisfies a lookahead that only checks whether a ``#`` appears somewhere
-    later in the string, because it finds the one in ``Bar#baz``. Requiring
-    exactly one entry also catches ``-Dtest=Foo#bar,Baz#qux``, where every
-    individual entry names a method but Maven still runs both in the same
-    invocation -- matching ``_dtest_is_narrow``'s "at most ONE test per
-    invocation" rule in the command validator. Also matches
-    ``_dtest_is_narrow`` in requiring non-empty, wildcard-free class and
-    method names: Surefire treats ``*``/``?`` as wildcards, so
-    ``-Dtest=FooTest#test*`` still runs several methods despite naming one
-    entry with a ``#`` in it. Exposes the same ``search(line)`` interface as
-    a compiled pattern so it drops into ``_TEST_LINT_PATTERNS`` unchanged.
+    Every ``-Dtest=`` occurrence on the line is judged by ``_dtest_is_narrow``,
+    the command validator's own rule: at most ``_MAX_TEST_CLASSES`` classes and
+    ``_MAX_TEST_METHODS`` methods, with non-empty, wildcard-free class and
+    method names. A single regex cannot express this -- a mixed value like
+    ``-Dtest=Foo#bar,Baz*`` holds one unbounded entry beside a narrow one, and
+    Surefire treats ``*``/``?`` as wildcards, so ``-Dtest=FooTest#test*`` still
+    runs several methods despite naming one entry with a ``#`` in it. Exposes
+    the same ``search(line)`` interface as a compiled pattern so it drops into
+    ``_TEST_LINT_PATTERNS`` unchanged.
     """
 
     # Quotation marks, closing brackets and sentence punctuation after the
@@ -226,7 +223,7 @@ class _DTestBroadValueMatcher:
 
 
 _TEST_LINT_PATTERNS.append(
-    (_DTestBroadValueMatcher(), "-Dtest=<value> not naming exactly one Class#method entry"))
+    (_DTestBroadValueMatcher(), "-Dtest=<value> not naming a bounded set of classes or methods"))
 
 
 class _UnittestDiscoveryMatcher:

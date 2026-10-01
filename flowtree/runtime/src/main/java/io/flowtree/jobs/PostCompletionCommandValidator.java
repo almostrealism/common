@@ -898,7 +898,8 @@ public class PostCompletionCommandValidator {
 		if (dtestValues.isEmpty()) {
 			return "Maven command runs a test-executing phase (" + String.join(", ", phasesPresent)
 					+ ") with no -Dtest selector: \"" + rendered + "\". This runs the module's "
-					+ "whole test suite. Pass -Dtest=Class#method for each test, or add "
+					+ "whole test suite. Pass -Dtest naming at most " + MAX_TEST_CLASSES
+					+ " classes or " + MAX_TEST_METHODS + " Class#method tests, or add "
 					+ "-DskipTests if this command is only meant to build.";
 		}
 		for (String value : dtestValues) {

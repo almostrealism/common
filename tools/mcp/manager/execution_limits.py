@@ -1033,9 +1033,10 @@ def _maven_segment_violation(tokens: list) -> str:
         return (
             "Maven command runs a test-executing phase ({}) with no -Dtest "
             "selector: \"{}\". This runs the module's whole test suite. Pass "
-            "-Dtest=Class#method for each test, or add -DskipTests if this "
-            "command is only meant to build.".format(
-                ", ".join(phases_present) or "install/verify/package/deploy", rendered))
+            "-Dtest naming at most {} classes or {} Class#method tests, or add "
+            "-DskipTests if this command is only meant to build.".format(
+                ", ".join(phases_present) or "install/verify/package/deploy", rendered,
+                _MAX_TEST_CLASSES, _MAX_TEST_METHODS))
     for value in dtest_values:
         if not _dtest_is_narrow(value):
             return (
