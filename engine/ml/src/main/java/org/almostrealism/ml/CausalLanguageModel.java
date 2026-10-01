@@ -119,13 +119,25 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * @param depth     number of transformer blocks
 	 * @param ffDim     hidden width of the gated feed-forward
 	 * @param weights   the weights, under this class's keys
-	 * @throws IllegalArgumentException if {@code heads} is not positive, does not divide
-	 *                                  {@code dim}, or leaves an odd head dimension
+	 * @throws IllegalArgumentException if {@code vocabSize}, {@code seqLen}, {@code dim},
+	 *                                  {@code heads} or {@code ffDim} is not positive, if
+	 *                                  {@code depth} is negative, if {@code heads} does not divide
+	 *                                  {@code dim} or leaves an odd head dimension, or if
+	 *                                  {@code weights} is null
 	 */
 	public CausalLanguageModel(int vocabSize, int seqLen, int dim, int heads, int depth, int ffDim,
 							   StateDictionary weights) {
-		if (heads <= 0) {
-			throw new IllegalArgumentException("heads must be positive, not " + heads);
+		if (vocabSize <= 0 || seqLen <= 0 || dim <= 0 || heads <= 0 || ffDim <= 0) {
+			throw new IllegalArgumentException("vocabSize, seqLen, dim, heads and ffDim must be positive, not " +
+					vocabSize + ", " + seqLen + ", " + dim + ", " + heads + ", " + ffDim);
+		}
+
+		if (depth < 0) {
+			throw new IllegalArgumentException("depth must not be negative, not " + depth);
+		}
+
+		if (weights == null) {
+			throw new IllegalArgumentException("weights must not be null");
 		}
 
 		if (dim % heads != 0) {

@@ -31,6 +31,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
@@ -298,6 +299,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * repeating up to {@link #reclaimAttempts} times, until {@code fits} reports that the
 	 * allocation fits.
 	 *
+	 * <p>{@code fits} is evaluated exactly once after each collection, and never again once it
+	 * has returned {@code true}, so it may claim the room it finds (as
+	 * {@link #reserve(AtomicLong, long, long)} does) rather than only test for it. The caller is
+	 * expected to have tried {@code fits} itself before calling this method.</p>
+	 *
 	 * <p>It must be called without holding this provider's monitor, which the deallocation path
 	 * may need.</p>
 	 *
@@ -305,18 +311,48 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return whether the allocation fits after reclaiming
 	 */
 	protected boolean reclaim(BooleanSupplier fits) {
-		for (int i = 0; i < reclaimAttempts && !fits.getAsBoolean(); i++) {
+		for (int i = 0; i < reclaimAttempts; i++) {
 			System.gc();
 
 			try {
 				Thread.sleep(reclaimWaitMs);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				break;
+				return false;
 			}
+
+			if (fits.getAsBoolean()) return true;
 		}
 
-		return fits.getAsBoolean();
+		return false;
+	}
+
+	/**
+	 * Atomically reserves {@code size} bytes against a usage counter, so that concurrent
+	 * allocations can neither exceed {@code max} together nor lose each other's updates. When the
+	 * reservation does not fit, unreachable allocations are first {@link #reclaim(BooleanSupplier)
+	 * reclaimed} and the reservation is retried after each collection. A successful reservation
+	 * must be returned to {@code used} (by subtracting {@code size}) when the memory is released or
+	 * when the native allocation it was made for fails.
+	 *
+	 * @param used the bytes currently allocated by the provider
+	 * @param max  the provider's memory ceiling in bytes
+	 * @param size the bytes to reserve
+	 * @return whether the bytes were reserved
+	 */
+	protected boolean reserve(AtomicLong used, long max, long size) {
+		BooleanSupplier tryReserve = () -> {
+			long current = used.get();
+
+			while (current + size <= max) {
+				if (used.compareAndSet(current, current + size)) return true;
+				current = used.get();
+			}
+
+			return false;
+		};
+
+		return tryReserve.getAsBoolean() || reclaim(tryReserve);
 	}
 
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */

@@ -40,7 +40,9 @@ gigabytes of temporary device memory per step. Device buffers are released only 
 objects that own them are garbage collected, and those objects are small, so heap pressure alone
 does not trigger collection before the device ceiling is reached. `HardwareMemoryProvider.reclaim`
 handles this: when an allocation would exceed the ceiling, the Metal and OpenCL providers request a
-collection and wait briefly for releases before rejecting the allocation. `AdamOptimizer` also
+collection and wait briefly for releases before rejecting the allocation. Both providers reserve
+room against the ceiling atomically (`HardwareMemoryProvider.reserve`), so concurrent allocations
+can neither overshoot it together nor lose each other's updates. `AdamOptimizer` also
 stores the gradient once per step instead of evaluating it separately for momentum and velocity.
 
 The gated feed-forward input projection dominates this memory (its Jacobian grows with the square

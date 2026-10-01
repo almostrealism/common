@@ -44,6 +44,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 
@@ -117,6 +118,44 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			"docs/internals/state-dictionary.md",
 			"docs/internals/end-to-end-computation.md"
 	};
+
+	/**
+	 * A structurally invalid configuration is rejected at construction, before any weight is
+	 * created, while the smallest valid configuration (one head of dimension two, no blocks) is
+	 * accepted.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInvalidConfiguration() {
+		StateDictionary weights = new StateDictionary(new HashMap<>());
+		assertRejected(() -> new CausalLanguageModel(0, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, 0, DIM, HEADS, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, -DIM, HEADS, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, 0, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, -HEADS, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, -1, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, 0, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM, null));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, 3, DEPTH, FF_DIM, weights));
+		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, 12, 4, DEPTH, FF_DIM, weights));
+
+		CausalLanguageModel minimal = new CausalLanguageModel(1, 1, 2, 1, 0, 1, weights);
+		Assert.assertEquals(shape(1, 1), minimal.getOutputShape());
+		Assert.assertSame(weights, minimal.getWeights());
+	}
+
+	/**
+	 * Asserts that constructing a model throws {@link IllegalArgumentException}.
+	 *
+	 * @param construction the constructor call
+	 */
+	private void assertRejected(Runnable construction) {
+		try {
+			construction.run();
+			Assert.fail("Expected IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertNotNull(expected.getMessage());
+		}
+	}
 
 	/**
 	 * The assembled model's output is two-dimensional, {@code (seqLen, vocab)}, each row is a
@@ -238,7 +277,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * baseline of the held-out targets it is scored on
 	 * ({@link NextTokenDataset#scoredTargetEntropyBits()}). Every training and validation loss passes through a
 	 * fail-fast wrapper that rejects non-finite values, so no window is silently skipped. The
-	 * trained weights are saved, reloaded, and must reproduce the held-out loss.
+	 * trained weights are saved, reloaded, and must reproduce the held-out loss; that check runs
+	 * before the baseline check, so a run that misses the baseline still verifies its checkpoint.
 	 *
 	 * @throws IOException if the corpus cannot be read or the weights cannot be saved
 	 */
@@ -306,10 +346,6 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		log("totalSteps=" + result.getEpochsCompleted() * trainWindows.getWindowCount() +
 				" epochsRun=" + result.getEpochsCompleted() +
 				" finalHeldOutBitsPerByte=" + finalBits + " unigramBitsPerByte=" + unigramBits);
-		// TODO(review): the documented configuration (4.691 vs scored baseline 4.600) fails this assertion; configuration/training needs revisiting
-		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
-				unigramBits, finalBits < unigramBits);
-
 		Path weightsDir = Path.of("results", "causal-language-model");
 		Files.createDirectories(weightsDir);
 		lm.getWeights().save(weightsDir.resolve("weights.pb"));
@@ -323,6 +359,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		double trainedBits = optimizer.evaluate(heldOut) / Math.log(2);
 		log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
 		Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
+
+		// TODO(review): the documented configuration (4.691 vs scored baseline 4.600) fails this assertion; configuration/training needs revisiting
+		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
+				unigramBits, finalBits < unigramBits);
 	}
 
 	/**
