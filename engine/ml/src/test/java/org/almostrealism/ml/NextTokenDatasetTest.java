@@ -201,6 +201,40 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Every rewrite of a position re-runs that position's one-hot assignment over the new
+	 * window's ids. With four positions over six windows the rotation wraps unevenly, so across
+	 * seven passes each position holds several different windows, and each must be exact after
+	 * every rewrite, including when every other position has been written since. A rotating
+	 * dataset whose pass covers every window never rewrites a position.
+	 */
+	@Test(timeout = 60000)
+	public void rewrittenPositionsRerunTheirAssignment() {
+		NextTokenDataset uneven = new NextTokenDataset(positions(30), VOCAB, 4, 5, 4).setRotating(true);
+		List<ValueTarget<PackedCollection>> first = pass(uneven);
+		for (int p = 0; p < 4; p++) {
+			assertWindow(first.get(p), 5 * p);
+		}
+
+		for (int n = 1; n < 7; n++) {
+			List<ValueTarget<PackedCollection>> next = pass(uneven);
+			for (int p = 0; p < 4; p++) {
+				Assert.assertSame(first.get(p), next.get(p));
+				assertWindow(next.get(p), 5 * ((4 * n + p) % 6));
+			}
+		}
+
+		NextTokenDataset full = new NextTokenDataset(positions(30), VOCAB, 4, 5, 6).setRotating(true);
+		List<ValueTarget<PackedCollection>> fullFirst = pass(full);
+		for (int n = 0; n < 3; n++) {
+			List<ValueTarget<PackedCollection>> next = pass(full);
+			for (int p = 0; p < 6; p++) {
+				Assert.assertSame(fullFirst.get(p), next.get(p));
+				assertWindow(next.get(p), 5 * p);
+			}
+		}
+	}
+
+	/**
 	 * Returns the windows of one pass, in order.
 	 *
 	 * @param data the dataset

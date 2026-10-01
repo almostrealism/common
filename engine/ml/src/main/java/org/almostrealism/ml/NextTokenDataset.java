@@ -55,9 +55,10 @@ import java.util.stream.IntStream;
  * stays short while successive epochs see different text. Datasets used for evaluation should not
  * rotate, so that every evaluation scores the same windows.</p>
  *
- * <p>The one-hot targets are built by a computation with the same structure for every window.
- * Window collections are allocated per position within a pass, when first needed, and reused by
- * every later pass, so the dataset never holds more than {@link #getWindowCount()} windows. A
+ * <p>The one-hot targets are built by an assignment compiled once per position within a pass and
+ * re-run, over that window's ids, for every window the position later holds. Window collections
+ * are allocated per position within a pass, when first needed, and reused by every later pass,
+ * so the dataset never holds more than {@link #getWindowCount()} windows. A
  * dataset that does not rotate yields the same windows on every pass and builds each only once; a
  * rotating dataset rewrites a position's collections in place when that position moves on to a
  * different window. A window therefore stays valid only until the same position of a later pass
@@ -102,6 +103,15 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 
 	/** Index of the window whose contents each slot currently holds. */
 	private int[] slotWindows;
+
+	/**
+	 * The shifted ids of the window being written, shared by every slot: the input of each
+	 * slot's compiled one-hot assignment.
+	 */
+	private PackedCollection shifted;
+
+	/** The one-hot assignment of each slot, compiled when the slot is first written. */
+	private List<Runnable> slotTargets;
 
 	/**
 	 * Creates a dataset over the whole token sequence.
@@ -345,8 +355,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	 * Returns the collections of the given position within a pass, holding the window with the
 	 * given index. The position's collections are allocated the first time it is reached and
 	 * rewritten only when the position last held a different window. Each target is written by the
-	 * same one-hot computation over the window's shifted ids, which enter as provider data so the
-	 * computation has the same structure for every window.
+	 * one-hot assignment of its slot, compiled the first time the slot is written and re-run for
+	 * every later window: the window's shifted ids are copied into the shared {@link #shifted}
+	 * buffer the assignment reads, so rotating through windows compiles nothing.
 	 *
 	 * @param position the position within the pass, in {@code 0..getWindowCount()-1}
 	 * @param index    the window index, in {@code 0..getAvailableWindowCount()-1}
@@ -355,7 +366,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	private ValueTarget<PackedCollection> window(int position, int index) {
 		if (slots == null) {
 			slots = new ArrayList<>(Collections.nCopies(getWindowCount(), null));
+			slotTargets = new ArrayList<>(Collections.nCopies(getWindowCount(), null));
 			slotWindows = new int[getWindowCount()];
+			shifted = new PackedCollection(shape(seqLen));
 		}
 
 		ValueTarget<PackedCollection> slot = slots.get(position);
@@ -363,32 +376,19 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 			slot = ValueTarget.of(new PackedCollection(shape(seqLen)),
 					new PackedCollection(shape(seqLen, vocabSize)));
 			slots.set(position, slot);
+			slotTargets.set(position, a(cp(slot.getExpectedOutput().each()),
+					oneHotRows(vocabSize, cp(shifted)).each()).get());
 		} else if (slotWindows[position] == index) {
 			return slot;
 		}
 
-		int s = getWindowStart(index);
-		slot.getInput().setFrom(0, regionTokens(), s - start, seqLen);
-
-		try (PackedCollection shifted = ids(s + 1)) {
-			a(cp(slot.getExpectedOutput().each()), oneHotRows(vocabSize, cp(shifted)).each()).get().run();
-		}
+		int offset = getWindowStart(index) - start;
+		slot.getInput().setFrom(0, regionTokens(), offset, seqLen);
+		shifted.setFrom(0, regionTokens(), offset + 1, seqLen);
+		slotTargets.get(position).run();
 
 		slotWindows[position] = index;
 		return slot;
-	}
-
-	/**
-	 * Copies {@code seqLen} token ids starting at the given source offset out of the region's
-	 * tokens.
-	 *
-	 * @param offset the source offset of the first id
-	 * @return the ids, shape {@code (seqLen)}
-	 */
-	private PackedCollection ids(int offset) {
-		PackedCollection ids = new PackedCollection(shape(seqLen));
-		ids.setFrom(0, regionTokens(), offset - start, seqLen);
-		return ids;
 	}
 
 	/**
