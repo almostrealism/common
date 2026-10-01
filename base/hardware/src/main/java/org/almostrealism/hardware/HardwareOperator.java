@@ -37,6 +37,7 @@ import org.almostrealism.io.TimingMetric;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -413,6 +414,26 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 		prepareArgumentsMetric.addEntry(System.nanoTime() - start);
 		return data;
+	}
+
+	/**
+	 * Collects the {@link MemoryData} arguments from a raw argument array, without the
+	 * validation or provider migration that {@link #prepareArguments} performs. This is for a
+	 * caller that must reference the argument memory <em>before</em> the operation runs &mdash;
+	 * for example to guard it across a dispatch deferred behind a dependency &mdash; where
+	 * preparing the arguments early would be incorrect because a dependency may still be
+	 * writing them. {@code null} and non-{@link MemoryData} entries are omitted.
+	 *
+	 * @param args the raw arguments, or {@code null}
+	 * @return the {@link MemoryData} arguments among them
+	 */
+	protected static MemoryData[] argumentData(Object[] args) {
+		if (args == null) return new MemoryData[0];
+
+		return Arrays.stream(args)
+				.filter(MemoryData.class::isInstance)
+				.map(MemoryData.class::cast)
+				.toArray(MemoryData[]::new);
 	}
 
 	/**

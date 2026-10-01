@@ -18,6 +18,7 @@ package io.almostrealism.concurrent;
 
 import io.almostrealism.streams.Semaphore;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -56,27 +57,33 @@ public interface Submittable {
 
 	/**
 	 * Submits a group of independent operations that share a single upstream dependency, returning
-	 * the completion of the last one.
+	 * the merged completion of all of them.
 	 *
 	 * <p>Every operation is submitted with the same {@code dependsOn}: the group members do not
 	 * depend on one another, only on the work {@code dependsOn} represents. A provider that batches
 	 * dispatches is therefore free to group them (they carry no ordering constraint between
-	 * themselves), while their shared dependency is still honored. On a serial provider the returned
-	 * completion stands in for the whole group &mdash; waiting on it waits on every earlier
-	 * submission &mdash; so a caller can treat it as the group's completion.</p>
+	 * themselves), while their shared dependency is still honored.</p>
+	 *
+	 * <p>The returned completion covers the whole group, built with {@link Semaphore#all(List)}:
+	 * waiting on it waits for <em>every</em> submission. The completion of the last one alone would
+	 * not, now that a submission may complete asynchronously &mdash; group members submitted with
+	 * the same dependency run concurrently rather than in sequence, so the last to be submitted is
+	 * not necessarily the last to finish. When a single submission remains, {@code all} returns its
+	 * completion directly, so the common one-member case keeps the provider's own completion handle
+	 * and costs nothing.</p>
 	 *
 	 * @param operations the operations to submit, in order
 	 * @param dependsOn  the completion the whole group depends on, or {@code null} to begin a chain
-	 * @return the completion of the last submitted operation, or {@code null} when {@code operations}
-	 *         is empty (or every submission published no completion handle)
+	 * @return the merged completion of the submitted operations, or {@code null} when
+	 *         {@code operations} is empty (or every submission published no completion handle)
 	 */
 	static Semaphore submit(List<Submittable> operations, Semaphore dependsOn) {
-		Semaphore last = null;
+		List<Semaphore> completions = new ArrayList<>(operations.size());
 
 		for (Submittable operation : operations) {
-			last = operation.submit(dependsOn);
+			completions.add(operation.submit(dependsOn));
 		}
 
-		return last;
+		return Semaphore.all(completions);
 	}
 }
