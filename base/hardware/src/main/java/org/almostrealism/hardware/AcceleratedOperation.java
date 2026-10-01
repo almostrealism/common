@@ -736,13 +736,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (process.hasResources()) {
-					// Release leases and replacement temporaries at the end of the full chain,
-					// passively — an actively waiting callback (onComplete) forces a
-					// per-invocation commit on Metal.
+					// whenSettled also fires on the failure path, so a failed dispatch still frees
+					// its leases and temporaries; MetalSemaphore overrides it to attach passively.
 					if (completion == null) {
 						process.releaseResources();
 					} else {
-						completion.whenComplete(process::releaseResources);
+						completion.whenSettled(process::releaseResources);
 					}
 				}
 			} finally {
