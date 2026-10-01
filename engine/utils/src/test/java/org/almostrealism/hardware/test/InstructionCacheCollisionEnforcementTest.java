@@ -294,6 +294,33 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Resolving an unpositioned argument whose producer has been released must throw a
+	 * {@link HardwareException} naming the argument, rather than hand a null evaluable to the
+	 * kernel; before the release the same argument resolves to its memory.
+	 */
+	@Test(timeout = 60000)
+	public void releasedArgumentProducerFailsResolution() {
+		PackedCollection input = new PackedCollection(32);
+		MemoryDataArgumentMap argumentMap = MemoryDataArgumentMap.create(null, null);
+		ArrayVariable<?> inputRoot = (ArrayVariable<?>) argumentMap.get(p(input)).getRootDelegate();
+
+		Process<?, ?> process = (Process<?, ?>) c(1.0).add(c(2.0));
+		ProcessArgumentMap map = new ProcessArgumentMap(process, List.of(inputRoot));
+		Assert.assertFalse(map.getPositionsForArguments().containsKey(inputRoot));
+		Assert.assertSame(input, map.getEvaluable(inputRoot).evaluate());
+
+		argumentMap.destroy();
+
+		try {
+			map.getEvaluable(inputRoot);
+			Assert.fail("An argument whose producer was released must not resolve");
+		} catch (HardwareException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(inputRoot.getName()));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("No evaluable available"));
+		}
+	}
+
+	/**
 	 * Requesting the aggregate buffer from an argument map that aggregated nothing must
 	 * throw rather than deliver a null buffer to a kernel argument.
 	 */
