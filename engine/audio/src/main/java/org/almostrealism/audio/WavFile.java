@@ -1033,10 +1033,12 @@ public class WavFile implements AutoCloseable {
 	 * by being told than by a short file; the {@code double[][]} overloads stop at capacity and
 	 * report how far they got, and a caller who wants that can use them.</p>
 	 *
-	 * <p>A collection whose {@link TraversalPolicy} is not regular — a permuted or otherwise
-	 * reordered view of other memory — is likewise rejected. Rearranging it here would mean walking
-	 * the index mapping on the host, one element at a time, to assemble an order the device can
-	 * produce in a single pass. The caller evaluates the view into a collection of its own shape
+	 * <p>A collection that reads its memory through a mapping — a permuted or otherwise reordered
+	 * {@link TraversalPolicy}, or a {@link org.almostrealism.hardware.MemoryData#getMemOrdering()
+	 * memory ordering} inherited from a delegate even when its outer shape is regular — is likewise
+	 * rejected. Rearranging it here would mean walking the mapping on the host, one element at a
+	 * time, to assemble an order the device can produce in a single pass, defeating this overload's
+	 * bulk-transfer guarantee. The caller evaluates the view into a collection of its own shape
 	 * first, which does the rearranging in a kernel, and hands the result here.</p>
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
@@ -1070,7 +1072,7 @@ public class WavFile implements AutoCloseable {
 					+ getFramesRemaining());
 		}
 
-		if (!shape.isRegular()) {
+		if (!shape.isRegular() || audio.getMemOrdering() != null) {
 			throw new IllegalArgumentException("Audio " + shape + " is a view of other memory; evaluate it " +
 					"into a collection of its own shape before writing it");
 		}

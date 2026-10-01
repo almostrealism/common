@@ -151,25 +151,60 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void orderedSourceIntoPlainDestinationIsRefused() {
-		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
-		PackedCollection indices = pack(2, 0, 3, 1);
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destination = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
 
-		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
-		PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
-		PackedCollection destination = new PackedCollection(shape(4));
+			assertFalse("the ordered shape should be irregular", ordered.getShape().isRegular());
+			assertTrue("the destination should be regular", destination.getShape().isRegular());
+			assertTrue("equals should ignore the ordering, reporting the policies equal",
+					ordered.getShape().equals(destination.getShape()));
 
-		assertFalse("the ordered shape should be irregular", ordered.getShape().isRegular());
-		assertTrue("the destination should be regular", destination.getShape().isRegular());
-		assertTrue("equals should ignore the ordering, reporting the policies equal",
-				ordered.getShape().equals(destination.getShape()));
-
-		try {
-			cp(ordered).get().into(destination).evaluate();
-			throw new AssertionError("an ordered source was copied into a plain destination");
-		} catch (IllegalArgumentException expected) {
-			assertTrue(expected.getMessage().contains("views other memory"));
+			try {
+				cp(ordered).get().into(destination).evaluate();
+				throw new AssertionError("an ordered source was copied into a plain destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
 		}
+	}
 
-		destination.destroy();
+	/**
+	 * A provider over a collection whose outer {@link io.almostrealism.collect.TraversalPolicy} is
+	 * regular, but which inherits a {@link ExplicitIndexTraversalOrdering} from its delegate, is
+	 * refused by
+	 * {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} just as an
+	 * explicitly ordered shape is, rather than flat-copying the backing memory and silently dropping
+	 * the ordering.
+	 *
+	 * <p>Here {@link org.almostrealism.collect.PackedCollection#getShape()} reports a regular shape —
+	 * so {@link io.almostrealism.collect.TraversalPolicy#isRegular()} is {@code true} and the shape
+	 * alone would admit the flat copy — while
+	 * {@link org.almostrealism.hardware.MemoryData#getMemOrdering()} composes the delegate's ordering,
+	 * so logical reads still apply it. The guard must inspect the memory ordering, not only the
+	 * shape.</p>
+	 */
+	@Test(timeout = 10000)
+	public void inheritedOrderingIntoPlainDestinationIsRefused() {
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destination = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection view = new PackedCollection(shape(4), 0, ordered, 0);
+
+			assertTrue("the view's outer shape should be regular", view.getShape().isRegular());
+			assertNotNull("the view should inherit the delegate's memory ordering", view.getMemOrdering());
+			assertTrue("the destination should be regular", destination.getShape().isRegular());
+
+			try {
+				cp(view).get().into(destination).evaluate();
+				throw new AssertionError("a view inheriting a delegate ordering was copied into a plain destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
+		}
 	}
 }

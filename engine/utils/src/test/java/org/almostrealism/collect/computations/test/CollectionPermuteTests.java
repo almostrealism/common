@@ -46,31 +46,31 @@ public class CollectionPermuteTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void permuteIntoRegularDestinationRestructuresMemory() {
-		PackedCollection input = pack(
+		try (PackedCollection input = pack(
 				0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
 				12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0)
 				.reshape(2, 3, 4);
-		PackedCollection destination = new PackedCollection(shape(4, 3, 2));
+				PackedCollection destination = new PackedCollection(shape(4, 3, 2))) {
+			assertTrue("the destination should start with a regular shape",
+					destination.getShape().isRegular());
 
-		assertTrue("the destination should start with a regular shape",
-				destination.getShape().isRegular());
+			cp(input).permute(2, 1, 0).get().into(destination).evaluate();
 
-		cp(input).permute(2, 1, 0).get().into(destination).evaluate();
+			assertTrue("the destination's shape was replaced with a view-adjusting policy",
+					destination.getShape().isRegular());
 
-		assertTrue("the destination's shape was replaced with a view-adjusting policy",
-				destination.getShape().isRegular());
+			log("destination memory " + Arrays.toString(destination.toArray(0, 24)));
 
-		log("destination memory " + Arrays.toString(destination.toArray(0, 24)));
+			for (int a = 0; a < 4; a++) {
+				for (int b = 0; b < 3; b++) {
+					for (int c = 0; c < 2; c++) {
+						// The destination's own layout, and the input value that belongs at [a][b][c]
+						int physical = (a * 3 + b) * 2 + c;
+						double expected = (c * 3 + b) * 4 + a;
 
-		for (int a = 0; a < 4; a++) {
-			for (int b = 0; b < 3; b++) {
-				for (int c = 0; c < 2; c++) {
-					// The destination's own layout, and the input value that belongs at [a][b][c]
-					int physical = (a * 3 + b) * 2 + c;
-					double expected = (c * 3 + b) * 4 + a;
-
-					assertEquals("destination[" + a + "][" + b + "][" + c + "] at " + physical,
-							expected, destination.toDouble(physical));
+						assertEquals("destination[" + a + "][" + b + "][" + c + "] at " + physical,
+								expected, destination.toDouble(physical));
+					}
 				}
 			}
 		}
@@ -86,25 +86,25 @@ public class CollectionPermuteTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void bulkReadOfAPermutedResultAgreesWithElementAccess() {
-		PackedCollection input = pack(
+		try (PackedCollection input = pack(
 				0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
 				12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0)
 				.reshape(2, 3, 4);
-		PackedCollection out = cp(input).permute(2, 1, 0).evaluate();
+				PackedCollection out = cp(input).permute(2, 1, 0).evaluate()) {
+			log("result shape " + out.getShape() + " regular=" + out.getShape().isRegular());
+			log("result bulk read " + Arrays.toString(out.toArray(0, 24)));
 
-		log("result shape " + out.getShape() + " regular=" + out.getShape().isRegular());
-		log("result bulk read " + Arrays.toString(out.toArray(0, 24)));
+			double[] bulk = out.toArray(0, 24);
+			double[] streamed = out.doubleStream(0, 24).toArray();
 
-		double[] bulk = out.toArray(0, 24);
-		double[] streamed = out.doubleStream(0, 24).toArray();
+			for (int a = 0; a < 4; a++) {
+				for (int b = 0; b < 3; b++) {
+					for (int c = 0; c < 2; c++) {
+						int index = (a * 3 + b) * 2 + c;
 
-		for (int a = 0; a < 4; a++) {
-			for (int b = 0; b < 3; b++) {
-				for (int c = 0; c < 2; c++) {
-					int index = (a * 3 + b) * 2 + c;
-
-					assertEquals("bulk read at " + index, out.valueAt(a, b, c), bulk[index]);
-					assertEquals("stream at " + index, out.valueAt(a, b, c), streamed[index]);
+						assertEquals("bulk read at " + index, out.valueAt(a, b, c), bulk[index]);
+						assertEquals("stream at " + index, out.valueAt(a, b, c), streamed[index]);
+					}
 				}
 			}
 		}
@@ -123,22 +123,21 @@ public class CollectionPermuteTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void referencingAViewIntoAnotherLayoutIsRefused() {
-		PackedCollection frameMajor = pack(0.0, -0.1, 0.1, -0.2, 0.2, -0.3).reshape(3, 2);
-		PackedCollection view = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
-		PackedCollection destination = new PackedCollection(shape(2, 3));
+		try (PackedCollection frameMajor = pack(0.0, -0.1, 0.1, -0.2, 0.2, -0.3).reshape(3, 2);
+				PackedCollection destination = new PackedCollection(shape(2, 3))) {
+			PackedCollection view = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
 
-		assertFalse("the view should be irregular", view.getShape().isRegular());
-		assertTrue("the destination should be regular", destination.getShape().isRegular());
+			assertFalse("the view should be irregular", view.getShape().isRegular());
+			assertTrue("the destination should be regular", destination.getShape().isRegular());
 
-		try {
-			cp(view).get().into(destination).evaluate();
-			throw new AssertionError("a view was copied into a destination of another layout");
-		} catch (IllegalArgumentException expected) {
-			log("refused: " + expected.getMessage());
-			assertTrue(expected.getMessage().contains("views other memory"));
+			try {
+				cp(view).get().into(destination).evaluate();
+				throw new AssertionError("a view was copied into a destination of another layout");
+			} catch (IllegalArgumentException expected) {
+				log("refused: " + expected.getMessage());
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
 		}
-
-		destination.destroy();
 	}
 
 	/**

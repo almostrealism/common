@@ -17,6 +17,7 @@
 package org.almostrealism.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -242,6 +243,39 @@ public class WavFileTest extends TestSuiteBase {
 			try {
 				wav.writeFrames(view);
 				Assert.fail("a view of other memory was written");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("view of other memory"));
+			}
+		}
+	}
+
+	/**
+	 * A collection whose outer shape is regular but which reads its memory through a
+	 * {@link org.almostrealism.hardware.MemoryData#getMemOrdering() memory ordering} inherited from a
+	 * delegate is rejected, just as an irregularly shaped view is. Checking only
+	 * {@link TraversalPolicy#isRegular()} would admit it and then fall back to one device read per
+	 * sample while writing backing-memory order, so the memory ordering is inspected as well.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void inheritedMemoryOrderingIsRejected() throws IOException {
+		File file = tempWav();
+
+		try (PackedCollection values = pack(0.0, 0.1, 0.2, 0.3);
+			 PackedCollection indices = pack(2, 0, 3, 1);
+			 WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection view = new PackedCollection(shape(4), 0, ordered, 0);
+
+			Assert.assertTrue("the view's outer shape should be regular", view.getShape().isRegular());
+			Assert.assertNotNull("the view should inherit the delegate's memory ordering",
+					view.getMemOrdering());
+
+			try {
+				wav.writeFrames(view);
+				Assert.fail("a collection with an inherited memory ordering was written");
 			} catch (IllegalArgumentException expected) {
 				Assert.assertTrue(expected.getMessage().contains("view of other memory"));
 			}
