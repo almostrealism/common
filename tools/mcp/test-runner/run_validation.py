@@ -61,9 +61,11 @@ def _reject_inexact_name(value: str, pattern, field_description: str) -> None:
         raise ValidationError(
             "{} \"{}\" is not an exact Java name. Surefire reads other "
             "characters as selector syntax (e.g. '!' negation or a "
-            "%regex[...] pattern) that can run more than one test in a "
-            "single -Dtest invocation. Name exactly one test class and "
-            "method.".format(field_description, value)
+            "%regex[...] pattern) that can run an unbounded number of tests "
+            "in a single -Dtest invocation. Name each entry as an exact class "
+            "or Class#method; pass several entries up to the {}-class / "
+            "{}-method caps.".format(
+                field_description, value, _MAX_TEST_CLASSES, _MAX_TEST_METHODS)
         )
 
 
@@ -71,19 +73,19 @@ def _reject_wildcard(value: str, field_description: str) -> None:
     """Raises ValidationError when ``value`` contains a Surefire wildcard.
 
     Surefire treats ``*`` and ``?`` in a ``-Dtest`` pattern as wildcards, so
-    a selector such as ``FooTest#test*`` or ``Foo*#bar`` can match and run
-    several methods/classes in a single invocation even though it passes
-    the "exactly one selector" and "has a #" checks -- exactly the
-    multi-test bypass the one-test-per-invocation rule exists to prevent.
+    a single entry such as ``FooTest#test*`` or ``Foo*#bar`` can match and run
+    an unbounded number of methods/classes in one invocation. A wildcard entry
+    has no ceiling, so it evades the per-entry caps the test-execution limits
+    enforce -- every entry must name an exact class or Class#method.
     """
     if any(c in _WILDCARD_CHARS for c in value):
         raise ValidationError(
             "{} \"{}\" contains a Surefire wildcard character (* or ?), "
-            "which can match multiple classes/methods in a single -Dtest "
-            "invocation -- exactly the multi-test bypass the "
-            "one-test-per-invocation rule exists to prevent. Call "
-            "start_test_run once per test, naming it exactly.".format(
-                field_description, value)
+            "which can match an unbounded number of classes/methods in a "
+            "single -Dtest invocation -- exactly the uncapped selection the "
+            "test-execution limits exist to prevent. Name each entry exactly; "
+            "pass several entries up to the {}-class / {}-method caps.".format(
+                field_description, value, _MAX_TEST_CLASSES, _MAX_TEST_METHODS)
         )
 
 
@@ -101,18 +103,20 @@ def _reject_selector_delimiter(value: str, field_description: str) -> None:
     method-list separator (``Class#method1+method2`` -- the form the
     repository's own CI uses in ``.github/workflows/analysis.yaml``), so a
     ``method`` field of ``"first+second"`` runs both methods in one
-    invocation just the same. Either passes the earlier "at most one
-    selector" length check while still running more than one test, exactly
-    the bypass the one-test-per-invocation rule exists to prevent.
+    invocation just the same. Either packs several tests into a single entry,
+    evading the per-entry caps the test-execution limits enforce -- a selection
+    is bounded by passing each class or Class#method as its own entry.
     """
     for separator, description in ((",", "a comma"), ("+", "a '+'")):
         if separator in value:
             raise ValidationError(
                 "{} \"{}\" contains {}, which Maven/Surefire reads as a list "
-                "of multiple test patterns in a single -Dtest invocation -- "
-                "exactly the multi-test bypass the one-test-per-invocation "
-                "rule exists to prevent. Call start_test_run once per "
-                "test instead.".format(field_description, value, description)
+                "of multiple test patterns in a single -Dtest invocation. "
+                "That packs an unbounded selection into one entry and evades "
+                "the per-entry caps; pass each class or Class#method as its "
+                "own entry, up to the {}-class / {}-method caps.".format(
+                    field_description, value, description,
+                    _MAX_TEST_CLASSES, _MAX_TEST_METHODS)
             )
 
 
@@ -190,7 +194,6 @@ def validate_start_test_run_arguments(
     # _MAX_TEST_CLASSES/_MAX_TEST_METHODS in
     # tools/mcp/manager/execution_limits.py and MAX_TEST_CLASSES/
     # MAX_TEST_METHODS in PostCompletionCommandValidator.java.
-    # TODO(review): test_run_validation.py and test_runner_server.py still assert the old one-test/bare-class rejections and fail against this.
     selected_classes = set()
     selected_methods = 0
 

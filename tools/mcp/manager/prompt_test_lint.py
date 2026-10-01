@@ -88,12 +88,15 @@ class _MvnTestSegmentMatcher:
     a selector that belongs to a different command earlier or later on the
     same line.
 
-    A fragment is exempt only when it names exactly one ``-Dtest`` property
-    whose value bounds the run (``_dtest_is_narrow`` -- a class, a few classes,
-    or up to the method cap). More than one ``-Dtest`` property is NOT a
-    bounding selector: Maven's last-value-wins silently discards all but the
-    last, so an earlier narrow-looking value must not exempt the mention -- the
-    same last-value-wins reasoning already applied to ``-DskipTests`` below.
+    A fragment is exempt only when every ``-Dtest`` property it names bounds
+    the run (``_dtest_is_narrow`` -- a class, a few classes, or up to the
+    method cap), the same per-value rule the command validator applies, so a
+    bare class or a bounded multi-class list exempts the mention and a repeated
+    ``-Dtest`` is judged value by value. Maven's last-value-wins means only the
+    last actually runs, so the fragment is bounded when no value it could
+    resolve to is broad; a later broad value (``-Dtest=Foo#bar -Dtest=Whole*``)
+    therefore still flags the mention -- the same last-value-wins reasoning
+    already applied to ``-DskipTests`` below.
 
     A single regex with a negative lookahead for ``-Dtest=\\S+#\\S+`` cannot
     express this correctly: the lookahead scans the rest of the whole line,

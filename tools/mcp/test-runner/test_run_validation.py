@@ -64,18 +64,23 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
             _validate({"test_classes": ["FooTest#"]})
 
     def test_bare_class_without_jmx_monitoring_rejected(self):
-        with self.assertRaises(ValidationError):
-            _validate({"test_classes": ["FooTest"]})
+        # A single bare class is now a bounded run and accepted (see
+        # test_bare_class_accepted); what the caps still refuse is a selection
+        # with no ceiling. Six bare classes exceed the 5-class cap, so the
+        # selection is rejected.
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_classes": [f"FooTest{i}" for i in range(6)]})
+        self.assertIn("test classes", ctx.exception.error)
 
     def test_bare_class_with_jmx_monitoring_still_rejected(self):
-        # jmx_monitoring is caller-controlled and cannot authenticate a
-        # JVM-crash reproduction request, so it must never exempt the
-        # bare-class check -- otherwise any caller could widen a
-        # single-test invocation into a whole-class run just by setting
+        # jmx_monitoring is caller-controlled and never buys an exemption from
+        # the caps -- an over-cap selection is rejected whether or not it is
+        # set, so a caller cannot widen a run past the caps just by setting
         # jmx_monitoring:true.
         with self.assertRaises(ValidationError) as ctx:
-            _validate({"test_classes": ["FooTest"], "jmx_monitoring": True})
-        self.assertIn("jmx_monitoring", ctx.exception.error)
+            _validate({"test_classes": [f"FooTest{i}" for i in range(6)],
+                       "jmx_monitoring": True})
+        self.assertIn("test classes", ctx.exception.error)
 
     def test_comma_delimiter_in_test_classes_still_rejected(self):
         with self.assertRaises(ValidationError):
@@ -83,8 +88,8 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
 
     def test_plus_method_separator_in_test_classes_rejected(self):
         # Surefire treats "+" as a method-list separator, so
-        # "FooTest#first+second" runs both methods in one invocation despite
-        # passing the "at most one selector" length check.
+        # "FooTest#first+second" packs two methods into a single entry,
+        # evading the per-entry caps -- each must be its own entry.
         with self.assertRaises(ValidationError) as ctx:
             _validate({"test_classes": ["FooTest#first+second"]})
         self.assertIn("+", ctx.exception.error)
@@ -127,11 +132,16 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
             _validate({})
 
     def test_both_test_classes_and_test_methods_rejected(self):
-        with self.assertRaises(ValidationError):
+        # test_classes and test_methods are now honoured together (see
+        # test_mixed_classes_and_methods_within_caps_accepted), but the
+        # combined selection must still fit the caps: five classes plus a
+        # method naming a sixth distinct class exceeds the 5-class cap.
+        with self.assertRaises(ValidationError) as ctx:
             _validate({
-                "test_classes": ["FooTest#testBar"],
+                "test_classes": [f"FooTest{i}" for i in range(5)],
                 "test_methods": [{"class": "BazTest", "method": "testQux"}],
             })
+        self.assertIn("test classes", ctx.exception.error)
 
     def test_ar_test_group_in_jvm_args_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
@@ -152,6 +162,45 @@ class TestValidateStartTestRunArguments(unittest.TestCase):
     def test_timeout_within_ceiling_accepted(self):
         result = _validate({"test_classes": ["FooTest#testBar"], "timeout_minutes": 40})
         self.assertEqual(40, result["timeout_minutes"])
+
+    def test_bare_class_accepted(self):
+        # A single bare class names a bounded number of cases, so it is a
+        # bounded run and accepted now that the one-test-per-invocation rule
+        # has been relaxed to the class/method caps.
+        result = _validate({"test_classes": ["FooTest"]})
+        self.assertEqual(["FooTest"], result["test_classes"])
+
+    def test_multiple_classes_at_cap_accepted(self):
+        classes = [f"FooTest{i}" for i in range(5)]
+        result = _validate({"test_classes": classes})
+        self.assertEqual(classes, result["test_classes"])
+
+    def test_classes_over_cap_rejected(self):
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_classes": [f"FooTest{i}" for i in range(6)]})
+        self.assertIn("test classes", ctx.exception.error)
+
+    def test_methods_at_cap_accepted(self):
+        methods = [{"class": "FooTest", "method": f"testBar{i}"} for i in range(40)]
+        result = _validate({"test_methods": methods})
+        self.assertEqual(40, len(result["test_methods"]))
+
+    def test_methods_over_cap_rejected(self):
+        methods = [{"class": "FooTest", "method": f"testBar{i}"} for i in range(41)]
+        with self.assertRaises(ValidationError) as ctx:
+            _validate({"test_methods": methods})
+        self.assertIn("test methods", ctx.exception.error)
+
+    def test_mixed_classes_and_methods_within_caps_accepted(self):
+        # The validator now honours test_classes and test_methods together, so
+        # a bounded mix of the two is accepted (server.py merges both into one
+        # -Dtest rather than silently dropping either).
+        result = _validate({
+            "test_classes": ["FooTest", "BarTest"],
+            "test_methods": [{"class": "BazTest", "method": "testQux"}],
+        })
+        self.assertEqual(["FooTest", "BarTest"], result["test_classes"])
+        self.assertEqual(1, len(result["test_methods"]))
 
 
 if __name__ == "__main__":

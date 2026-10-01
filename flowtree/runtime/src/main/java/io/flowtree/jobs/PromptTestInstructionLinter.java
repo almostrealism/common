@@ -251,7 +251,8 @@ public class PromptTestInstructionLinter {
 
 	/**
 	 * Flags an {@code mvn <test-running-phase>} mention whose OWN chained-command fragment has
-	 * no Class#method {@code -Dtest} selector and no effective skip flag, without being fooled
+	 * no bounding {@code -Dtest} selector (a class, a few classes, or up to the method cap, as
+	 * {@link #hasBoundedSelector} decides) and no effective skip flag, without being fooled
 	 * by a selector or skip flag belonging to a different command earlier or later on the same
 	 * line -- e.g. {@code mvn test && mvn test -Dtest=Foo#bar} must not exempt the first, broad
 	 * {@code mvn test} just because a selector exists later on the line for an unrelated chained
@@ -313,6 +314,9 @@ public class PromptTestInstructionLinter {
 	 * @return whether a bounded selector is present
 	 */
 	private static boolean hasBoundedSelector(String fragment) {
+		// TODO(review): this returns bounded when ANY value is narrow, while the Python mirror
+		// _MvnTestSegmentMatcher._has_bounding_selector requires ALL values narrow; net line-flagging
+		// is identical today only because dtestBroadValue/_DTestBroadValueMatcher catches the broad value.
 		Matcher matcher = DTEST_VALUE.matcher(fragment);
 
 		while (matcher.find()) {

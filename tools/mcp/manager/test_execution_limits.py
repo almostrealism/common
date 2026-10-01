@@ -16,6 +16,7 @@ if _MANAGER_DIR not in sys.path:
 
 from execution_limits import (  # noqa: E402
     POST_COMPLETION_MAX_TIMEOUT_SECONDS,
+    post_completion_gate_violations,
     validate_post_completion_command,
     validate_post_completion_timeout,
 )
@@ -1246,6 +1247,68 @@ class TestCiPromptTemplatesLintClean(unittest.TestCase):
             with open(os.path.join(prompts_dir, name), encoding="utf-8") as f:
                 with self.subTest(template=name):
                     self.assertEqual([], lint_prompt_for_broad_test_instructions(f.read()))
+
+
+class TestPostCompletionGateViolations(unittest.TestCase):
+    """The extra post-completion GATE check (``post_completion_gate_violations``)
+    refuses a Maven ``-Dtest`` that names a bare class, even though the shared
+    validator accepts a bounded class selection for interactive surfaces. The
+    gate must see the real ``mvn`` invocation however it is wrapped, so it
+    traverses the same unwrapped/recursive command representation the shared
+    validator uses -- a direct ``mvn test -Dtest=FooTest`` and the same command
+    behind ``timeout``/``env``/``sudo``/``sh -c``/``$VAR`` must all be caught.
+    """
+
+    def test_direct_bare_class_is_flagged(self):
+        violations = post_completion_gate_violations("mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+        self.assertIn("bare", violations[0])
+
+    def test_class_method_selector_is_accepted(self):
+        self.assertEqual(
+            [], post_completion_gate_violations("mvn test -Dtest=FooTest#bar"))
+
+    def test_bounded_class_list_is_still_flagged_for_bare_class(self):
+        # FooTest#bar is fine but BazTest is bare, so the mixed selector is
+        # refused by the stricter gate even though the shared validator counts
+        # it as bounded.
+        violations = post_completion_gate_violations(
+            "mvn test -Dtest=FooTest#bar,BazTest")
+        self.assertEqual(1, len(violations))
+
+    def test_timeout_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "timeout 60 mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+        self.assertIn("bare", violations[0])
+
+    def test_env_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "env FOO=bar mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+
+    def test_sudo_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "sudo mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+
+    def test_sh_c_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "sh -c 'mvn test -Dtest=FooTest'")
+        self.assertEqual(1, len(violations))
+
+    def test_variable_indirection_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "cmd='mvn test -Dtest=FooTest'; $cmd")
+        self.assertEqual(1, len(violations))
+
+    def test_wrapped_class_method_selector_is_accepted(self):
+        self.assertEqual([], post_completion_gate_violations(
+            "timeout 60 mvn test -Dtest=FooTest#bar"))
+
+    def test_non_maven_command_clears_the_gate(self):
+        self.assertEqual(
+            [], post_completion_gate_violations("echo done"))
 
 
 if __name__ == "__main__":

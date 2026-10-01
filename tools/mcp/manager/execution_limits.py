@@ -1224,14 +1224,59 @@ def post_completion_gate_violations(command: str) -> list:
     only ever reached once the shared validator has passed, so ``command`` is
     already known to tokenize.
     """
-    for tokens in _shell_segments(command or ""):
-        if not tokens or tokens[0].rsplit("/", 1)[-1] not in _MVN_LAUNCHER_NAMES:
+    return _post_completion_gate_text_violations(command or "")
+
+
+def _post_completion_gate_text_violations(text: str) -> list:
+    """Walk ``text`` the way :func:`_text_violations` does -- per shell segment,
+    recording bare ``VAR=value`` assignments and resolving later ``$VAR``
+    references, then recursing into every command substitution -- but applying
+    the post-completion bare-class gate to each segment rather than the shared
+    violation set.
+
+    Mirroring that traversal is what closes the wrapper bypass: without it the
+    gate only inspected a segment whose literal first token was ``mvn``, so
+    ``timeout 60 mvn test -Dtest=FooTest``, ``env FOO=bar mvn ...``, ``sudo mvn
+    ...``, ``sh -c "mvn ..."``, and ``cmd='mvn ...'; $cmd`` all slipped past it
+    even though the shared validator reaches the same ``mvn`` invocation.
+    """
+    violations = []
+    variables = {}
+    for segment in _shell_segments(text):
+        if _record_assignment_only_segment(segment, variables):
             continue
-        for value in _dtest_values(tokens[1:]):
-            if any("#" not in entry for entry in value.split(",") if entry):
-                return [
-                    "Maven -Dtest={} in a post-completion gate names a bare "
-                    "class. A post-completion command runs unattended, so name "
-                    "explicit Class#method tests, one bounded check.".format(value)]
+        resolved = _resolve_variable_command(segment, variables)
+        violations.extend(
+            _post_completion_gate_segment_violation(
+                resolved if resolved is not None else segment))
+    for substitution in _command_substitutions(text):
+        violations.extend(_post_completion_gate_text_violations(substitution))
+    return violations
+
+
+def _post_completion_gate_segment_violation(tokens: list) -> list:
+    """Apply the post-completion bare-class gate to a single shell segment,
+    first unwrapping the same command-prefix wrappers (``env``, ``sudo``,
+    ``timeout``, ``nice``, leading assignments, ...) and recursing into an
+    ``sh -c``/``eval``/``env -S`` inline script that :func:`_segment_violations`
+    unwraps, so the gate inspects the real ``mvn`` invocation however it is
+    wrapped. Returns an empty list for a segment that does not resolve to a
+    Maven launcher."""
+    unwrapped = _unwrap_command_prefixes(tokens)
+    if _is_env_split_string_result(unwrapped):
+        return _post_completion_gate_text_violations(unwrapped[1])
+    script = _shell_dash_c_script(unwrapped)
+    if script is None:
+        script = _eval_script(unwrapped)
+    if script is not None:
+        return _post_completion_gate_text_violations(script)
+    if not unwrapped or unwrapped[0].rsplit("/", 1)[-1] not in _MVN_LAUNCHER_NAMES:
+        return []
+    for value in _dtest_values(unwrapped[1:]):
+        if any("#" not in entry for entry in value.split(",") if entry):
+            return [
+                "Maven -Dtest={} in a post-completion gate names a bare "
+                "class. A post-completion command runs unattended, so name "
+                "explicit Class#method tests, one bounded check.".format(value)]
     return []
 
