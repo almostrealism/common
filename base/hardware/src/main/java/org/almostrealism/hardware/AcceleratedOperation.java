@@ -750,7 +750,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 			} catch (RuntimeException | Error e) {
 				// A synchronous failure never installs the completion-driven release above; free the
-				// leases and temporaries, deferring until any in-flight work settles.
+				// leases and temporaries, deferring until any in-flight work settles. A group submission
+				// that throws has already settled its own started members (Submittable.submit).
 				if (process.hasResources()) {
 					if (inflight == null) {
 						process.releaseResources();

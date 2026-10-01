@@ -26,6 +26,7 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -123,6 +124,117 @@ public class SubmittableGroupTest extends TestSuiteBase {
 			Assert.fail("A failing member must propagate through the merged completion");
 		} catch (RuntimeException e) {
 			assertEquals("member failed", e.getMessage());
+		}
+	}
+
+	/**
+	 * When a member's submission throws after an earlier member has started asynchronously, the
+	 * failure must not propagate while that earlier member is still running: the caller releases
+	 * the group's resources as soon as it sees the failure, and the earlier member, whose
+	 * completion never reached the caller, may still be using them. The group submission must
+	 * therefore settle the started member before rethrowing, and must not invoke any member after
+	 * the one that threw.
+	 */
+	@Test(timeout = 30000)
+	public void partialSubmissionFailureSettlesStartedMembersFirst() throws InterruptedException {
+		LatchSemaphore started = new LatchSemaphore(1);
+		AtomicBoolean laterSubmitted = new AtomicBoolean(false);
+		AtomicBoolean propagated = new AtomicBoolean(false);
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+
+		Submittable throwing = dependsOn -> { throw new IllegalStateException("submit failed"); };
+		Submittable later = dependsOn -> {
+			laterSubmitted.set(true);
+			return null;
+		};
+
+		Thread submitter = new Thread(() -> {
+			try {
+				Submittable.submit(List.of(dependsOn -> started, throwing, later), null);
+			} catch (RuntimeException e) {
+				failure.set(e);
+			} finally {
+				propagated.set(true);
+			}
+		}, "SubmittableGroupTest submitter");
+		submitter.setDaemon(true);
+		submitter.start();
+
+		// The started member is still running, so the failure must not have reached the caller
+		submitter.join(250);
+		assertFalse(propagated.get());
+
+		started.countDown();
+		submitter.join(10000);
+		assertTrue(propagated.get());
+
+		assertTrue(failure.get() instanceof IllegalStateException);
+		assertEquals("submit failed", failure.get().getMessage());
+		assertEquals(0, failure.get().getSuppressed().length);
+		assertFalse(laterSubmitted.get());
+	}
+
+	/**
+	 * A started member that itself fails while the group submission is settling it must not
+	 * replace the submission failure: the submission failure propagates, carrying the member's
+	 * failure as suppressed so neither is lost.
+	 */
+	@Test(timeout = 30000)
+	public void partialSubmissionFailureKeepsStartedMemberFailureAsSuppressed() {
+		Semaphore failing = () -> { throw new RuntimeException("member failed"); };
+		Submittable throwing = dependsOn -> { throw new IllegalStateException("submit failed"); };
+
+		try {
+			Submittable.submit(List.of(dependsOn -> null, dependsOn -> failing, throwing), null);
+			Assert.fail("The submission failure must propagate");
+		} catch (IllegalStateException e) {
+			assertEquals("submit failed", e.getMessage());
+			assertEquals(1, e.getSuppressed().length);
+			assertEquals("member failed", e.getSuppressed()[0].getMessage());
+		}
+	}
+
+	/**
+	 * A failure in the very first submission has nothing started to settle and propagates
+	 * unchanged.
+	 */
+	@Test(timeout = 30000)
+	public void firstSubmissionFailurePropagatesUnchanged() {
+		AtomicBoolean laterSubmitted = new AtomicBoolean(false);
+		Submittable throwing = dependsOn -> { throw new IllegalStateException("submit failed"); };
+		Submittable later = dependsOn -> {
+			laterSubmitted.set(true);
+			return null;
+		};
+
+		try {
+			Submittable.submit(List.of(throwing, later), null);
+			Assert.fail("The submission failure must propagate");
+		} catch (IllegalStateException e) {
+			assertEquals("submit failed", e.getMessage());
+			assertEquals(0, e.getSuppressed().length);
+		}
+
+		assertFalse(laterSubmitted.get());
+	}
+
+	/**
+	 * A started member that rethrows the very same failure instance as the submission (both
+	 * observing one failed dependency) must not replace that failure with a self-suppression
+	 * {@link IllegalArgumentException}: the original failure propagates unchanged.
+	 */
+	@Test(timeout = 30000)
+	public void partialSubmissionFailureSharingOneInstancePropagatesUnchanged() {
+		IllegalStateException shared = new IllegalStateException("dependency failed");
+		Semaphore failing = () -> { throw shared; };
+		Submittable throwing = dependsOn -> { throw shared; };
+
+		try {
+			Submittable.submit(List.of(dependsOn -> failing, throwing), null);
+			Assert.fail("The submission failure must propagate");
+		} catch (IllegalStateException e) {
+			assertTrue(e == shared);
+			assertEquals(0, e.getSuppressed().length);
 		}
 	}
 

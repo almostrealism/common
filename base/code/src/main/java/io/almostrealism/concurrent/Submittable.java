@@ -72,6 +72,13 @@ public interface Submittable {
 	 * completion directly, so the common one-member case keeps the provider's own completion handle
 	 * and costs nothing.</p>
 	 *
+	 * <p>When a submission throws, the members already submitted are left with no completion
+	 * that reaches the caller, yet they may still be running against resources the caller
+	 * releases once it sees the failure. Before the failure propagates, each of them is
+	 * therefore waited for until it has settled (a failure of its own is attached to the
+	 * propagating one as suppressed), so a group submission that throws never leaves work in
+	 * flight. This host wait happens only on the failure path.</p>
+	 *
 	 * @param operations the operations to submit, in order
 	 * @param dependsOn  the completion the whole group depends on, or {@code null} to begin a chain
 	 * @return the merged completion of the submitted operations, or {@code null} when
@@ -80,8 +87,24 @@ public interface Submittable {
 	static Semaphore submit(List<Submittable> operations, Semaphore dependsOn) {
 		List<Semaphore> completions = new ArrayList<>(operations.size());
 
-		for (Submittable operation : operations) {
-			completions.add(operation.submit(dependsOn));
+		try {
+			for (Submittable operation : operations) {
+				completions.add(operation.submit(dependsOn));
+			}
+		} catch (RuntimeException | Error e) {
+			// TODO(review): host wait on the failure path; consider surfacing Semaphore.all(started) to the caller instead
+			for (Semaphore started : completions) {
+				if (started == null) continue;
+
+				try {
+					started.waitFor();
+				} catch (RuntimeException | Error settled) {
+					// A member sharing the failing dependency may rethrow the very same instance
+					if (settled != e) e.addSuppressed(settled);
+				}
+			}
+
+			throw e;
 		}
 
 		return Semaphore.all(completions);
