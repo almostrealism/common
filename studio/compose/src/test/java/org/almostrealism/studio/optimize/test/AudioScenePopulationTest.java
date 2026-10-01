@@ -30,7 +30,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.io.Console;
-import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.KeyUtils;
@@ -53,18 +52,17 @@ import java.util.stream.IntStream;
  */
 public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryTest {
 	/**
-	 * Creates an AudioScenePopulation for testing.
+	 * Creates an AudioScenePopulation for testing, whose runner advances
+	 * {@code bufferSize} frames per tick.
 	 */
-	protected AudioScenePopulation population(AudioScene<?> scene, MultiChannelAudioOutput output) {
-		int params = 8;
+	protected AudioScenePopulation population(AudioScene<?> scene, MultiChannelAudioOutput output, int bufferSize) {
 		List<Genome<PackedCollection>> genomes = new ArrayList<>();
-		genomes.add(new ProjectedGenome(params));
-		genomes.add(new ProjectedGenome(params));
-		genomes.add(new ProjectedGenome(params));
-		genomes.add(new ProjectedGenome(params));
+		for (int i = 0; i < 4; i++) {
+			genomes.add(scene.getGenome().random());
+		}
 
 		AudioScenePopulation pop = new AudioScenePopulation(scene, genomes);
-		pop.init(genomes.get(0), output);
+		pop.init(genomes.get(0), output, null, bufferSize);
 		return pop;
 	}
 
@@ -75,7 +73,8 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 	@TestDepth(1)
 	public void genomesFromPopulation() {
 		WaveOutput out = new WaveOutput(new File("layered-organ-pop-test.wav"));
-		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out));
+		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out),
+				AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
 
 		TemporalRunner organRun = new TemporalRunner(pop.enableGenome(0), OutputLine.sampleRate);
 		pop.disableGenome();
@@ -103,11 +102,13 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 	public void genomesFromPopulationHealth() {
 		AtomicInteger index = new AtomicInteger();
 
-		StableDurationHealthComputation health = new StableDurationHealthComputation(1, false);
+		AudioScene<?> scene = pattern(1, 1);
+		StableDurationHealthComputation health =
+				new StableDurationHealthComputation(scene.getStemCount(), false);
 		health.setMaxDuration(8);
 		health.setOutputFile(() -> "results/layered-organ-pop-health-test" + index.incrementAndGet() + ".wav");
 
-		AudioScenePopulation pop = population(pattern(1, 1), health.getOutput()); // TODO
+		AudioScenePopulation pop = population(scene, health.getOutput(), health.getBatchSize());
 
 		IntStream.range(0, 4).forEach(i -> {
 			health.setTarget(pop.enableGenome(i));

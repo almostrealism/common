@@ -25,6 +25,8 @@ import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.ctx.ContextSpecific;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
 import java.util.Map;
 import java.util.Random;
@@ -90,15 +92,28 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * Matrix products do not support signature-based instruction reuse,
 	 * so without this cache every {@link #refreshValues()} call on every
 	 * gene would compile a fresh kernel.
+	 *
+	 * <p>A compiled kernel belongs to the compute context it was compiled under, so
+	 * the cache is {@link ContextSpecific}: a context started and ended around some
+	 * work (a scoped data context, for example) gets its own set of kernels, which is
+	 * discarded with that context instead of being handed out after it has been
+	 * destroyed.</p>
 	 */
-	private static final Map<String, Evaluable<PackedCollection>> REFRESH_KERNELS = new ConcurrentHashMap<>();
+	private static final ContextSpecific<Map<String, Evaluable<PackedCollection>>> REFRESH_KERNELS =
+			new DefaultContextSpecific<>(ConcurrentHashMap::new);
 
 	/**
 	 * Compiled row-normalization kernels shared across all genes, keyed by
-	 * (factor count, source length), for the same reason as
+	 * (factor count, source length), for the same reasons as
 	 * {@link #REFRESH_KERNELS}.
 	 */
-	private static final Map<String, Evaluable<PackedCollection>> NORMALIZE_KERNELS = new ConcurrentHashMap<>();
+	private static final ContextSpecific<Map<String, Evaluable<PackedCollection>>> NORMALIZE_KERNELS =
+			new DefaultContextSpecific<>(ConcurrentHashMap::new);
+
+	static {
+		REFRESH_KERNELS.init();
+		NORMALIZE_KERNELS.init();
+	}
 
 	/** Cache of the most recently computed factor values for this gene. */
 	private PackedCollection values;
@@ -158,7 +173,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 
 		randn(shape(weightsScratch), new Random(seed)).into(weightsScratch).evaluate();
 
-		Evaluable<PackedCollection> normalize = NORMALIZE_KERNELS.computeIfAbsent(kernelKey(), key -> {
+		Evaluable<PackedCollection> normalize = NORMALIZE_KERNELS.getValue().computeIfAbsent(kernelKey(), key -> {
 			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0)).traverse(1);
 			return w.divide(sqrt(w.multiply(w).sum())).get();
 		});
@@ -194,7 +209,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 		int len = length();
 		int sourceLength = source.getShape().length(0);
 
-		Evaluable<PackedCollection> refresh = REFRESH_KERNELS.computeIfAbsent(kernelKey(), key -> {
+		Evaluable<PackedCollection> refresh = REFRESH_KERNELS.getValue().computeIfAbsent(kernelKey(), key -> {
 			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0));
 			CollectionProducer src = c(Input.value(shape(sourceLength), 1));
 			CollectionProducer bounds = c(Input.value(shape(len, 2), 2));

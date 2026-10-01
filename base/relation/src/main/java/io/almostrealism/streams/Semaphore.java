@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -70,6 +71,21 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Starts {@code work} once this has completed, without waiting for it on the calling
+	 * thread, and returns the completion of that work. Unlike {@link #onComplete(Runnable)},
+	 * a failure of this semaphore or of the work is not lost: the work does not run after a
+	 * failure here, and either failure is rethrown by the returned semaphore's
+	 * {@link #waitFor()}.
+	 *
+	 * @param work starts the work and returns its completion, or {@code null} if it has
+	 *             already finished
+	 * @return the completion of the work
+	 */
+	default Semaphore then(Supplier<Semaphore> work) {
+		return new DeferredSemaphore(this, work);
+	}
+
+	/**
 	 * Registers a callback to run once the guarded operation has completed, without
 	 * driving the operation toward completion. The default delegates to
 	 * {@link #onComplete(Runnable)}, whose callback thread actively waits; an
@@ -83,6 +99,27 @@ public interface Semaphore {
 	 */
 	default void whenComplete(Runnable r) {
 		onComplete(r);
+	}
+
+	/**
+	 * Registers a callback to be invoked on a background thread once the guarded
+	 * operation has either completed or failed. Unlike {@link #onComplete(Runnable)},
+	 * the callback runs on the failure path as well, which is what releasing a resource
+	 * held for the operation requires. The failure itself is not handled here: it is
+	 * reported to whoever waits on this semaphore.
+	 *
+	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
+	 */
+	default void whenSettled(Runnable r) {
+		CALLBACK_EXECUTOR.execute(() -> {
+			try {
+				waitFor();
+			} catch (RuntimeException e) {
+				// Reported to the operation's own waiters; this callback only observes settlement
+			} finally {
+				r.run();
+			}
+		});
 	}
 
 	/**

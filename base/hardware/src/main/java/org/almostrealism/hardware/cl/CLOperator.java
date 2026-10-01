@@ -192,22 +192,42 @@ public class CLOperator extends HardwareOperator {
 	}
 
 	/**
-	 * Enqueues the OpenCL kernel with the provided arguments and returns its completion
-	 * {@link CLSemaphore} without waiting for the kernel to finish.
+	 * Dispatches the OpenCL kernel with the provided arguments and returns its completion
+	 * without waiting for the kernel to finish, or for {@code dependsOn}.
 	 *
-	 * <p>Lazily creates the kernel on first invocation and sets kernel arguments (using caching
-	 * to skip unchanged arguments). A {@code dependsOn} that is a {@link CLSemaphore} is honored
-	 * inside the provider by placing its event in the enqueue wait-list; any other completion is
-	 * bridged by a host wait before the enqueue. The returned semaphore's
-	 * {@link CLSemaphore#waitFor() waitFor} performs the completion wait (and profiling) that
-	 * previously happened inline, and releases the dispatch's memory guard.</p>
+	 * <p>A {@code dependsOn} that is a {@link CLSemaphore} is honored inside the provider by
+	 * placing its event in the enqueue wait-list. Any other completion cannot be expressed to
+	 * the command queue, so the whole dispatch is deferred until it completes, through
+	 * {@link Semaphore#then}: argument preparation may copy an input into device memory, and
+	 * the dependency may still be writing that input, so preparing early would be as wrong as
+	 * enqueueing early. The caller is not held up either way.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
 	 * @return the dispatch's completion semaphore
 	 */
 	@Override
-	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
+	public Semaphore accept(Object[] args, Semaphore dependsOn) {
+		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
+			return dependsOn.then(() -> dispatch(args, null));
+		}
+
+		return dispatch(args, (CLSemaphore) dependsOn);
+	}
+
+	/**
+	 * Enqueues the OpenCL kernel with the provided arguments and returns its completion
+	 * {@link CLSemaphore} without waiting for the kernel to finish.
+	 *
+	 * <p>Lazily creates the kernel on first invocation and sets kernel arguments (using caching
+	 * to skip unchanged arguments). The returned semaphore's {@link CLSemaphore#waitFor() waitFor}
+	 * performs the completion wait (and profiling), and releases the dispatch's memory guard.</p>
+	 *
+	 * @param args      the arguments to pass to the kernel (MemoryData objects)
+	 * @param dependsOn an event this dispatch must be ordered after on the device, or null
+	 * @return the dispatch's completion semaphore
+	 */
+	private synchronized CLSemaphore dispatch(Object[] args, CLSemaphore dependsOn) {
 		if (kernel == null) {
 			try {
 				kernel = CL.clCreateKernel(prog.getProgram(), name, null);
@@ -224,10 +244,6 @@ public class CLOperator extends HardwareOperator {
 		if (enableVerboseLog) {
 			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
-
-		// A dependency from this backend is honored via the enqueue wait-list below; any
-		// other completion is bridged by a host wait before the enqueue.
-		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) dependsOn.waitFor();
 
 		MemoryData data[] = prepareArguments(argCount, args);
 
@@ -282,12 +298,11 @@ public class CLOperator extends HardwareOperator {
 
 					cl_event event = new cl_event();
 
-					if (dependsOn instanceof CLSemaphore) {
+					if (dependsOn != null) {
 						// The wait-list reference is taken under the dependency's processing
 						// lock; a null event means the dependency already completed (and its
 						// event was released), so no ordering constraint remains.
-						((CLSemaphore) dependsOn).whileValid(dependency ->
-								enqueueKernel(dependency, event));
+						dependsOn.whileValid(dependency -> enqueueKernel(dependency, event));
 					} else {
 						enqueueKernel(null, event);
 					}
