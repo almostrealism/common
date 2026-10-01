@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
@@ -220,7 +221,11 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @throws IllegalArgumentException if {@code dimHead} is not positive and even, so that the
 	 *                                  frequencies could not rotate the whole head, or if
 	 *                                  {@code theta} is not a finite positive number, for which
-	 *                                  the inverse frequencies would be {@code NaN}
+	 *                                  the inverse frequencies would be {@code NaN}, or is so far
+	 *                                  below one that the largest inverse frequency,
+	 *                                  {@code theta^(-(dimHead - 2) / dimHead)}, would overflow
+	 *                                  single precision to infinity (and the rotation angles to
+	 *                                  {@code NaN})
 	 */
 	default CollectionProducer computeInvFreq(int dimHead, double theta) {
 		if (dimHead <= 0 || dimHead % 2 != 0) {
@@ -230,6 +235,12 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 
 		if (!(theta > 0) || Double.isInfinite(theta)) {
 			throw new IllegalArgumentException("RoPE base must be finite and positive, not " + theta);
+		}
+
+		double maxExponent = -2.0 * (dimHead / 2 - 1) * Math.log(theta) / dimHead;
+		if (maxExponent > Math.log(-Precision.FP32.minValue())) {
+			throw new IllegalArgumentException("RoPE base " + theta + " gives inverse frequencies up to e^" +
+					maxExponent + ", which overflow single precision for head dimension " + dimHead);
 		}
 
 		return exp(integers(0, dimHead / 2).multiply(-2.0 * Math.log(theta) / dimHead));

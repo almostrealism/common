@@ -169,6 +169,65 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The dataset holds at most one pass of windows: every pass returns the same per-position
+	 * collections. A rotating pass rewrites them in place with the next windows, so no stale
+	 * one-hot entry of an earlier window survives, and a dataset that does not rotate keeps the
+	 * same contents on every pass.
+	 */
+	@Test(timeout = 60000)
+	public void passesReuseOnePassOfWindows() {
+		NextTokenDataset rotating = new NextTokenDataset(positions(30), VOCAB, 4, 5, 2).setRotating(true);
+		List<ValueTarget<PackedCollection>> first = pass(rotating);
+		Assert.assertEquals(2, first.size());
+		assertWindow(first.get(0), 0);
+		assertWindow(first.get(1), 5);
+
+		for (int expected : new int[] { 10, 20, 0 }) {
+			List<ValueTarget<PackedCollection>> next = pass(rotating);
+			Assert.assertEquals(2, next.size());
+			for (int p = 0; p < 2; p++) {
+				Assert.assertSame(first.get(p), next.get(p));
+				assertWindow(next.get(p), expected + 5 * p);
+			}
+		}
+
+		NextTokenDataset fixed = new NextTokenDataset(positions(30), VOCAB, 4, 5, 2);
+		List<ValueTarget<PackedCollection>> fixedFirst = pass(fixed);
+		List<ValueTarget<PackedCollection>> fixedSecond = pass(fixed);
+		for (int p = 0; p < 2; p++) {
+			Assert.assertSame(fixedFirst.get(p), fixedSecond.get(p));
+			assertWindow(fixedSecond.get(p), 5 * p);
+		}
+	}
+
+	/**
+	 * Returns the windows of one pass, in order.
+	 *
+	 * @param data the dataset
+	 * @return the windows of the pass
+	 */
+	private List<ValueTarget<PackedCollection>> pass(NextTokenDataset data) {
+		List<ValueTarget<PackedCollection>> windows = new ArrayList<>();
+		data.iterator().forEachRemaining(windows::add);
+		return windows;
+	}
+
+	/**
+	 * Asserts that a window over position-valued tokens starts at the given offset: input row
+	 * {@code t} is {@code s + t} and target row {@code t} is exactly the one-hot of {@code s + t + 1}.
+	 *
+	 * @param window the window
+	 * @param s      the expected start offset
+	 */
+	private void assertWindow(ValueTarget<PackedCollection> window, int s) {
+		int seqLen = window.getInput().getShape().getTotalSize();
+		for (int t = 0; t < seqLen; t++) {
+			Assert.assertEquals(s + t, (int) window.getInput().toDouble(t));
+			Assert.assertEquals("window " + s + " row " + t, s + t + 1, hotIndex(window.getExpectedOutput(), t));
+		}
+	}
+
+	/**
 	 * Returns the first input token of every window of one pass, which with position-valued
 	 * tokens is the window's start offset.
 	 *

@@ -532,6 +532,43 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 	}
 
 	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a positive base so small that
+	 * the largest inverse frequency would overflow single precision to infinity, both directly and
+	 * through {@link RotationFeatures#computeRopeFreqs}, while a small base whose frequencies still
+	 * fit is accepted, and a head dimension of two, whose only frequency is one, accepts any base.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsOverflowingBase() {
+		double[] overflowing = { Double.MIN_VALUE, 1e-100, 1e-50 };
+
+		for (double theta : overflowing) {
+			try {
+				computeInvFreq(64, theta);
+				Assert.fail("Expected IllegalArgumentException for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(theta, 64, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+		}
+
+		PackedCollection small = computeInvFreq(64, 1e-30).evaluate();
+		assertEquals(32, small.getShape().getTotalSize());
+		double largest = Math.pow(1e-30, -62.0 / 64);
+		assertTrue(Double.isFinite(small.toDouble(31)));
+		assertEquals(1.0, small.toDouble(31) / largest, 1e-3);
+
+		PackedCollection single = computeInvFreq(2, Double.MIN_VALUE).evaluate();
+		assertEquals(1, single.getShape().getTotalSize());
+		assertEquals(1.0, single.toDouble(0), 0.0);
+	}
+
+	/**
 	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a head dimension that is not
 	 * positive and even — zero would divide by zero, and an odd dimension would leave the last
 	 * dimension of each head unrotated — both directly and through

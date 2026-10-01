@@ -55,9 +55,14 @@ import java.util.stream.IntStream;
  * stays short while successive epochs see different text. Datasets used for evaluation should not
  * rotate, so that every evaluation scores the same windows.</p>
  *
- * <p>The one-hot targets are built by a computation with the same structure for every window,
- * and each window's collections are created once, when first needed, and reused across
- * passes.</p>
+ * <p>The one-hot targets are built by a computation with the same structure for every window.
+ * Window collections are allocated per position within a pass, when first needed, and reused by
+ * every later pass, so the dataset never holds more than {@link #getWindowCount()} windows. A
+ * dataset that does not rotate yields the same windows on every pass and builds each only once; a
+ * rotating dataset rewrites a position's collections in place when that position moves on to a
+ * different window. A window therefore stays valid only until the same position of a later pass
+ * is reached, which suits consumers that use each window as it is iterated, such as
+ * {@link org.almostrealism.optimize.ModelOptimizer}.</p>
  *
  * @see org.almostrealism.optimize.ModelOptimizer
  */
@@ -92,9 +97,11 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	/** The tokens of the region, loaded once when the first window is built. */
 	private PackedCollection regionTokens;
 
-	/** Lazily built windows by index, reused across passes. */
-	// TODO(review): cached windows are never released, so a full rotating run still retains every window's one-hot target
-	private List<ValueTarget<PackedCollection>> windows;
+	/** Lazily allocated window collections by position within a pass, reused across passes. */
+	private List<ValueTarget<PackedCollection>> slots;
+
+	/** Index of the window whose contents each slot currently holds. */
+	private int[] slotWindows;
 
 	/**
 	 * Creates a dataset over the whole token sequence.
@@ -331,31 +338,44 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 			nextWindow = (first + count) % available;
 		}
 
-		return IntStream.range(0, count).mapToObj(i -> window((first + i) % available)).iterator();
+		return IntStream.range(0, count).mapToObj(i -> window(i, (first + i) % available)).iterator();
 	}
 
 	/**
-	 * Returns the window with the given index, building its input ids and one-hot targets the
-	 * first time it is requested. Each target is written by the same one-hot computation over the
-	 * window's shifted ids, which enter as provider data so the computation has the same structure
-	 * for every window.
+	 * Returns the collections of the given position within a pass, holding the window with the
+	 * given index. The position's collections are allocated the first time it is reached and
+	 * rewritten only when the position last held a different window. Each target is written by the
+	 * same one-hot computation over the window's shifted ids, which enter as provider data so the
+	 * computation has the same structure for every window.
 	 *
-	 * @param index the window index, in {@code 0..getAvailableWindowCount()-1}
+	 * @param position the position within the pass, in {@code 0..getWindowCount()-1}
+	 * @param index    the window index, in {@code 0..getAvailableWindowCount()-1}
 	 * @return the window
 	 */
-	private ValueTarget<PackedCollection> window(int index) {
-		if (windows == null) {
-			windows = new ArrayList<>(Collections.nCopies(getAvailableWindowCount(), null));
+	private ValueTarget<PackedCollection> window(int position, int index) {
+		if (slots == null) {
+			slots = new ArrayList<>(Collections.nCopies(getWindowCount(), null));
+			slotWindows = new int[getWindowCount()];
 		}
 
-		if (windows.get(index) == null) {
-			int s = getWindowStart(index);
-			PackedCollection target = new PackedCollection(shape(seqLen, vocabSize));
-			a(cp(target.each()), oneHotRows(vocabSize, cp(ids(s + 1))).each()).get().run();
-			windows.set(index, ValueTarget.of(ids(s), target));
+		ValueTarget<PackedCollection> slot = slots.get(position);
+		if (slot == null) {
+			slot = ValueTarget.of(new PackedCollection(shape(seqLen)),
+					new PackedCollection(shape(seqLen, vocabSize)));
+			slots.set(position, slot);
+		} else if (slotWindows[position] == index) {
+			return slot;
 		}
 
-		return windows.get(index);
+		int s = getWindowStart(index);
+		slot.getInput().setFrom(0, regionTokens(), s - start, seqLen);
+
+		try (PackedCollection shifted = ids(s + 1)) {
+			a(cp(slot.getExpectedOutput().each()), oneHotRows(vocabSize, cp(shifted)).each()).get().run();
+		}
+
+		slotWindows[position] = index;
+		return slot;
 	}
 
 	/**
