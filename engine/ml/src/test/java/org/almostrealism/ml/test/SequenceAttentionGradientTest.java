@@ -76,6 +76,17 @@ public class SequenceAttentionGradientTest extends TestSuiteBase implements Atte
 	}
 
 	/**
+	 * A bidirectional attention model built after a causal one has been compiled, run and
+	 * destroyed still compiles its backward pass and delivers correct gradients, so destroying a
+	 * model leaves nothing behind that a later model depends on.
+	 */
+	@Test(timeout = 10 * 60000)
+	public void bidirectionalAfterCausalQkvSliceGradients() {
+		verifyQkvGradients(true);
+		verifyQkvGradients(false);
+	}
+
+	/**
 	 * Builds a tiny sequence attention model, captures the analytic gradient of the fused QKV
 	 * weight and compares each slice against finite differences.
 	 *

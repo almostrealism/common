@@ -270,6 +270,30 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The root argument a map creates for kernel-owned constant memory still resolves after
+	 * the map is destroyed, while the root argument of an operation's own input is released.
+	 *
+	 * <p>A compiled kernel stays in the instruction cache after the operation that compiled it
+	 * is destroyed, and an operation reusing it resolves the constant through the root argument
+	 * created here, since that argument has no position in any process tree. Releasing it with
+	 * the compiling operation left every later reuse with a null evaluable.</p>
+	 */
+	@Test(timeout = 60000)
+	public void kernelConstantArgumentOutlivesArgumentMap() {
+		PackedCollection constant = new PackedCollection(32);
+		PackedCollection input = new PackedCollection(32);
+		MemoryDataArgumentMap map = MemoryDataArgumentMap.create(null, null);
+
+		ArrayVariable<?> constantRoot = (ArrayVariable<?>)
+				map.get(new KernelConstantProviderSupplier(constant)).getRootDelegate();
+		ArrayVariable<?> inputRoot = (ArrayVariable<?>) map.get(p(input)).getRootDelegate();
+		map.destroy();
+
+		Assert.assertSame(constant, constantRoot.getProducer().get().evaluate());
+		Assert.assertNull(inputRoot.getProducer().get());
+	}
+
+	/**
 	 * Requesting the aggregate buffer from an argument map that aggregated nothing must
 	 * throw rather than deliver a null buffer to a kernel argument.
 	 */

@@ -95,7 +95,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/** Maps raw memory objects to the argument variables created for them. */
 	private final Map<Memory, ArrayVariable> mems;
-	/** All root delegate provider suppliers created by this map, for lifecycle management. */
+	/** Root delegate provider suppliers owned by this map, released when it is destroyed. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
 
 	/** Factory creating the aggregate buffer of a given element count, or null to disable aggregation. */
@@ -217,8 +217,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			}
 
 			if (var == null) {
-				// Otherwise obtain a standalone array variable for the root delegate
-				var = delegateProvider.getArgument(createDelegate(md), null, -1);
+				// Otherwise obtain a standalone array variable for the root delegate; that of
+				// kernel-owned constant memory outlives this map (see KernelConstantProviderSupplier)
+				// TODO(review): replace the repeated instanceof KernelConstantProviderSupplier checks with one ownership query
+				RootDelegateProviderSupplier root = key instanceof KernelConstantProviderSupplier
+						? new RootDelegateProviderSupplier(md) : createDelegate(md);
+				var = delegateProvider.getArgument(root, null, -1);
 			}
 
 			// Record that this MemoryData has var as its root delegate

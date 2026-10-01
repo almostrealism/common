@@ -434,7 +434,16 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 					" computation indicates an instruction cache collision");
 		}
 
-		return (Evaluable) producer.get();
+		Evaluable evaluable = (Evaluable) producer.get();
+		if (evaluable == null) {
+			throw new HardwareException("No evaluable available for argument " + argument.getName() +
+					(positionsForArguments.containsKey(argument)
+							? " at " + positionsForArguments.get(argument).describe() : "") +
+					" from " + producer.getClass().getSimpleName() +
+					"; its producer has been destroyed while a reused scope still refers to it");
+		}
+
+		return evaluable;
 	}
 
 	/**
