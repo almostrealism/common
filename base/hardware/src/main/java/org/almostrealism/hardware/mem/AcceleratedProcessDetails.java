@@ -382,10 +382,32 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * ({@link MemoryReplacementManager#releaseTemporaries()}). The same condition applies as
 	 * for {@link #releaseDestinationLeases()}: call only once the completion from
 	 * {@link #getSemaphore()} has fired.
+	 *
+	 * <p>Both phases are always attempted: destination-lease callbacks are arbitrary
+	 * {@link Runnable}s and may throw, but a failure returning a lease must not leave the
+	 * temporary replacement buffers unreleased (nor vice versa). The first failure from either
+	 * phase is rethrown once both have run, with any later ones attached to it as suppressed.</p>
 	 */
 	public void releaseResources() {
-		releaseDestinationLeases();
-		replacementManager.releaseTemporaries();
+		RuntimeException failure = null;
+
+		try {
+			releaseDestinationLeases();
+		} catch (RuntimeException e) {
+			failure = e;
+		}
+
+		try {
+			replacementManager.releaseTemporaries();
+		} catch (RuntimeException e) {
+			if (failure == null) {
+				failure = e;
+			} else {
+				failure.addSuppressed(e);
+			}
+		}
+
+		if (failure != null) throw failure;
 	}
 
 	/**
@@ -420,9 +442,23 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			destinationLeases = null;
 		}
 
-		if (leases != null) {
-			leases.forEach(Runnable::run);
+		if (leases == null) return;
+
+		RuntimeException failure = null;
+
+		for (Runnable lease : leases) {
+			try {
+				lease.run();
+			} catch (RuntimeException e) {
+				if (failure == null) {
+					failure = e;
+				} else {
+					failure.addSuppressed(e);
+				}
+			}
 		}
+
+		if (failure != null) throw failure;
 	}
 
 	/**
