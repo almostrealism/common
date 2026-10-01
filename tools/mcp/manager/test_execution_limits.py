@@ -16,10 +16,10 @@ if _MANAGER_DIR not in sys.path:
 
 from execution_limits import (  # noqa: E402
     POST_COMPLETION_MAX_TIMEOUT_SECONDS,
-    lint_prompt_for_broad_test_instructions,
     validate_post_completion_command,
     validate_post_completion_timeout,
 )
+from prompt_test_lint import lint_prompt_for_broad_test_instructions  # noqa: E402
 
 
 class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
@@ -87,6 +87,12 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("mvn install -pl engine/utils")
         self.assertTrue(violations)
 
+    # TODO(review): this and 5 sibling tests were RENAMED from their base-branch
+    # (_rejected/_flagged) names when the limits were relaxed. detect-python-test-hiding.sh
+    # requires every merge-base `def test_*` to survive, so the renames fail
+    # test-integrity-check (python-test-hiding) independently of the python-tests fix.
+    # Resolve by flipping the bodies in place under the original names, or dispatch with
+    # override_integrity_checks=true. See review-followup memory for the full list.
     def test_bare_class_dtest_selector_accepted(self):
         # A named class is bounded by its own methods, so checking one class
         # after a change is an ordinary run rather than a suite run.

@@ -452,6 +452,11 @@ def workstream_submit_task(
     for field_name, field_value in (("command", command),
                                      ("post_completion_command", post_completion_command)):
         cmd_violations = server.validate_post_completion_command(field_value)
+        # The post-completion command is an unattended gate, so it is held to a
+        # stricter selector rule than a shell job's own command: its Maven
+        # -Dtest must name explicit Class#method tests, not a whole class.
+        if field_name == "post_completion_command":
+            cmd_violations = cmd_violations + server.post_completion_gate_violations(field_value)
         if cmd_violations:
             return {
                 "ok": False,

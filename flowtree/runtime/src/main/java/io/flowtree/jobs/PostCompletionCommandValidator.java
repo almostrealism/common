@@ -903,10 +903,13 @@ public class PostCompletionCommandValidator {
 		}
 		for (String value : dtestValues) {
 			if (!dtestIsNarrow(value)) {
-				return "Maven -Dtest=" + value + " in \"" + rendered + "\" does not select "
-						+ "explicit Class#method tests. A bare class selector (or none) runs "
-						+ "every test in that class or module. Use Class#method for each test, "
-						+ "one per invocation.";
+				return "Maven -Dtest=" + value + " in \"" + rendered + "\" is not a bounded "
+						+ "selection: it names more than " + MAX_TEST_CLASSES + " classes or "
+						+ MAX_TEST_METHODS + " methods, or uses an unbounded construct (a "
+						+ "wildcard, the + method-list separator, ! negation, a %regex[...] "
+						+ "pattern, or an unresolved $VAR). Name at most " + MAX_TEST_CLASSES
+						+ " classes or " + MAX_TEST_METHODS + " Class#method tests per "
+						+ "invocation, splitting a larger run across invocations.";
 			}
 		}
 		return null;

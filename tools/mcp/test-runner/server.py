@@ -274,11 +274,13 @@ class TestRunner:
         # to the group together in one JVM). When test_group is set, ignore class/method
         # filters so the full group runs.
         if config.test_group is None:
-            if config.test_classes:
-                cmd.append(f"-Dtest={','.join(config.test_classes)}")
-            elif config.test_methods:
-                tests = [f"{m['class']}#{m['method']}" for m in config.test_methods]
-                cmd.append(f"-Dtest={','.join(tests)}")
+            # test_classes and test_methods are both honoured in one run: the
+            # validator permits a bounded mix of the two, so merge them into a
+            # single -Dtest rather than letting one silently drop the other.
+            selectors = list(config.test_classes)
+            selectors += [f"{m['class']}#{m['method']}" for m in config.test_methods]
+            if selectors:
+                cmd.append(f"-Dtest={','.join(selectors)}")
 
         return cmd
 
