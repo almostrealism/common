@@ -134,4 +134,42 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(40.0, permuted.toDouble(2));
 		assertEquals(20.0, permuted.toDouble(3));
 	}
+
+	/**
+	 * A provider over a collection whose shape carries an explicit
+	 * {@link ExplicitIndexTraversalOrdering} is refused by
+	 * {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} when the
+	 * destination does not carry the same ordering, rather than flat-copying the backing memory
+	 * and silently dropping the ordering.
+	 *
+	 * <p>The ordering makes the shape irregular while leaving its dimensions, dimension order, rates
+	 * and axis equal to a plain destination of the same size, so
+	 * {@link io.almostrealism.collect.TraversalPolicy#equals(Object)} — which does not compare the
+	 * traversal ordering — reports the two policies equal. A compatibility check that trusted that
+	 * equality would let the flat copy proceed and write backing-memory order; the ordering must be
+	 * compared as well.</p>
+	 */
+	@Test(timeout = 10000)
+	public void orderedSourceIntoPlainDestinationIsRefused() {
+		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+		PackedCollection indices = pack(2, 0, 3, 1);
+
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+		PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+		PackedCollection destination = new PackedCollection(shape(4));
+
+		assertFalse("the ordered shape should be irregular", ordered.getShape().isRegular());
+		assertTrue("the destination should be regular", destination.getShape().isRegular());
+		assertTrue("equals should ignore the ordering, reporting the policies equal",
+				ordered.getShape().equals(destination.getShape()));
+
+		try {
+			cp(ordered).get().into(destination).evaluate();
+			throw new AssertionError("an ordered source was copied into a plain destination");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("views other memory"));
+		}
+
+		destination.destroy();
+	}
 }

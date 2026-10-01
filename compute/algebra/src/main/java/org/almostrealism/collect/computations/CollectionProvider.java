@@ -26,6 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 
+import java.util.Objects;
+
 /**
  * A specialized {@link Provider} for {@link PackedCollection}s that provides efficient
  * memory copying and destination buffer management.
@@ -159,10 +161,13 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * <p><strong>The copy is flat.</strong> It moves the source's backing memory, so it reproduces
 	 * the source's values only where the source's {@link io.almostrealism.collect.TraversalPolicy}
 	 * reads its memory in order. A provider over a view — a collection whose shape maps indices
-	 * onto someone else's buffer, as a permuted shape does — is refused rather than copied, because
-	 * a flat copy of such a source silently yields backing-memory order and loses the mapping. A
-	 * destination carrying the identical policy is accepted, since the same mapping applied to both
-	 * sides preserves the correspondence.</p>
+	 * onto someone else's buffer, as a permuted shape or an explicit
+	 * {@link io.almostrealism.collect.TraversalOrdering} does — is refused rather than copied,
+	 * because a flat copy of such a source silently yields backing-memory order and loses the
+	 * mapping. A destination carrying the identical policy is accepted, since the same mapping
+	 * applied to both sides preserves the correspondence; identity here means matching the
+	 * traversal ordering as well as the dimensions, because {@link TraversalPolicy#equals(Object)}
+	 * compares only the latter.</p>
 	 *
 	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
 	 * than referencing the view: the permutation then runs as a kernel that writes each destination
@@ -179,7 +184,12 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 		TraversalPolicy shape = shape(get());
 		TraversalPolicy target = destination instanceof Shape ? ((Shape) destination).getShape() : null;
 
-		if (!shape.isRegular() && !shape.equals(target)) {
+		// equals compares dimensions but not the traversal ordering, so an ordered source and a
+		// plainly-shaped destination of the same dimensions would otherwise slip past the guard
+		boolean sharesMapping = shape.equals(target) &&
+				Objects.equals(shape.getOrder(), target.getOrder());
+
+		if (!shape.isRegular() && !sharesMapping) {
 			throw new IllegalArgumentException("A provider of " + shape + " views other memory, so " +
 					"copying it into a destination of a different layout would discard the mapping; " +
 					"apply the reordering as a computation instead of referencing the view");

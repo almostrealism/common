@@ -125,8 +125,8 @@ public class WavFileTest extends TestSuiteBase {
 		};
 
 		try (PackedCollection frameMajor = pack(
-				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2)) {
-			PackedCollection audio = new PackedCollection(shape(2, 5));
+				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2);
+			 PackedCollection audio = new PackedCollection(shape(2, 5))) {
 			cp(frameMajor).permute(1, 0).get().into(audio).evaluate();
 			Assert.assertTrue("the materialized collection should be regular",
 					audio.getShape().isRegular());
@@ -134,8 +134,6 @@ public class WavFileTest extends TestSuiteBase {
 			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
 				Assert.assertEquals(5, wav.writeFrames(audio));
 			}
-
-			audio.destroy();
 		}
 
 		try (WavFile wav = WavFile.openWavFile(file)) {
