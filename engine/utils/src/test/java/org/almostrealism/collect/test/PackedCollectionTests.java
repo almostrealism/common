@@ -98,6 +98,43 @@ public class PackedCollectionTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that doubleStream over a short logical range of a sparse permutation &mdash; where the
+	 * requested elements map to backing indices far apart, so their covering span is many times the
+	 * window &mdash; still yields the correct elements in logical order. Such a span exceeds the
+	 * limit at which a single bulk transfer is worthwhile, so the stream reads the window element by
+	 * element rather than allocating and transferring the whole covering span (which for this layout
+	 * would pull the entire backing buffer to return two values). The full stream, whose span equals
+	 * its length, still exercises the bulk-read path and must agree with {@link PackedCollection#toDouble(int)}.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamSparsePermutationBoundsBulkRead() {
+		int cols = 64;
+		int total = 2 * cols;
+
+		// Backing [2, cols] row-major holding 0..total-1; permuted view [cols, 2] maps logical (i, j) to memory (j, i).
+		try (PackedCollection rowMajor = integers(0, total).evaluate().reshape(2, cols)) {
+			PackedCollection permuted = rowMajor.reshape(rowMajor.getShape().permute(1, 0));
+			assertFalse(permuted.getShape().isRegular());
+
+			// Logical indices 0 and 1 map to backing 0 and cols: covering span cols + 1 over a window of two.
+			double expectedFirst = rowMajor.toDouble(0);
+			double expectedSecond = rowMajor.toDouble(cols);
+			double[] firstPair = permuted.doubleStream(0, 2).toArray();
+			assertTrue("a two-element window must return two values", firstPair.length == total / cols);
+			double firstValue = firstPair[0];
+			double secondValue = firstPair[1];
+			assertEquals(expectedFirst, firstValue);
+			assertEquals(expectedSecond, secondValue);
+
+			double[] all = permuted.doubleStream().toArray();
+			assertEquals(total, all.length);
+			for (int i = 0; i < all.length; i++) {
+				assertEquals(permuted.toDouble(i), all[i]);
+			}
+		}
+	}
+
+	/**
 	 * Tests that clear zeros out all elements in a collection.
 	 */
 	@Test(timeout = 10000)
