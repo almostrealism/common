@@ -64,8 +64,9 @@ pipeline profile. Run it with `AR_LONG_TESTS=enabled` and `AR_HARDWARE_MEMORY_SC
 | Data per epoch | 110 non-overlapping training windows, rotating through all 742 windows of the training region; 12 fixed held-out windows |
 | Length | 5 epochs, 550 steps (one step per 64-byte window, batch 1) |
 
-**Measured curve** (bits per byte, from the per-epoch mean NLL divided by ln 2). Baselines on the
-held-out region: uniform 8.0, unigram byte entropy 4.907.
+**Measured curve** (bits per byte, from the per-epoch mean NLL divided by ln 2). Baselines: uniform
+8.0; unigram byte entropy of the 768 targets the 12 held-out windows score, 4.600 (of the whole
+held-out region, 4.907).
 
 | Epoch | Train | Held-out |
 |-------|-------|----------|
@@ -75,9 +76,17 @@ held-out region: uniform 8.0, unigram byte entropy 4.907.
 | 3 | 4.604 | 4.649 |
 | 4 | 4.628 | 4.691 |
 
-The held-out loss ends 0.22 bits per byte below the unigram baseline. For calibration, a
-unigram model fitted to the training region scores 5.15 bits per byte on the held-out region, and
-an interpolated count-based bigram model scores about 3.85, so there is much room left.
+**The run does not beat the unigram baseline.** The held-out loss ends 0.09 bits per byte above
+the unigram entropy of the bytes it was scored on. It was first reported as 0.22 bits below the
+baseline, but that compared the 12 scored windows against the entropy of the whole held-out
+region, whose bytes are harder to predict than those windows. `CausalLanguageModelTest` now takes
+its baseline from `NextTokenDataset.scoredTargetEntropyBits()`, which counts exactly the scored
+targets, so this configuration fails it. For calibration, a unigram model fitted to the training
+region scores 4.78 bits per byte on the scored targets (5.15 on the whole held-out region): the
+model beats unigram frequencies learned from the training text, but not the in-sample entropy of
+the held-out bytes. An interpolated count-based bigram model scores about 3.85 on the held-out
+region, so there is much room left. Scoring every held-out window (82 at this stride), or training
+further, are the next steps.
 
 **Timing** (Mac Studio, Apple silicon, Metal, FP32): compile 2.5 s, cold first step about 113 s,
 warm about 3.2 s per window (dominated by the attention backward pass), about 386 s per warm epoch
@@ -92,7 +101,7 @@ trained one exactly (the test allows a relative difference of 1e-4).
 - With one or two passes over a fixed set of windows, the model stalls at the unigram rate; with
   many passes over a small set it memorizes those windows and the held-out loss rises. Rotating
   through the whole training region at a decaying learning rate is what moved the held-out loss
-  below the baseline within the step budget.
+  below the region's unigram rate within the step budget.
 - `ModelOptimizer` re-checks the first window of every epoch after its update and throws if that
   window's loss rose. A memorization probe on four windows tripped it after about 110 steps, once
   the loss was below one bit per byte; the budgeted run did not trip it.

@@ -24,6 +24,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -157,6 +158,43 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	public void unigramEntropy() {
 		NextTokenDataset data = new NextTokenDataset(new int[] { 0, 1, 1, 0, 1, 0 }, VOCAB, 2, 1, 0);
 		Assert.assertEquals(1.0, data.unigramEntropyBits(), 1e-12);
+	}
+
+	/**
+	 * The scored-target entropy counts only the targets of the windows a pass yields, once per
+	 * window that scores them: with one capped window over {@code 0, 1, 1, 0, 1, 0} the scored
+	 * targets are {@code 1, 1}, which carry no information, while the whole region is balanced.
+	 */
+	@Test(timeout = 60000)
+	public void scoredTargetEntropy() {
+		NextTokenDataset capped = new NextTokenDataset(new int[] { 0, 1, 1, 0, 1, 0 }, VOCAB, 2, 1, 1);
+		Assert.assertEquals(0.0, capped.scoredTargetEntropyBits(), 1e-12);
+		Assert.assertEquals(1.0, capped.unigramEntropyBits(), 1e-12);
+
+		NextTokenDataset disjoint = new NextTokenDataset(new int[] { 0, 0, 1, 1, 0 }, VOCAB, 2, 2, 0);
+		Assert.assertEquals(1.0, disjoint.scoredTargetEntropyBits(), 1e-12);
+	}
+
+	/** A token outside the vocabulary is rejected when the dataset is created. */
+	@Test(timeout = 60000)
+	public void rejectsTokenOutsideVocabulary() {
+		assertRejected(new int[] { 0, 1, VOCAB });
+		assertRejected(new int[] { 0, -1, 1 });
+	}
+
+	/**
+	 * Asserts that creating a dataset over the given tokens fails with an
+	 * {@link IllegalArgumentException}.
+	 *
+	 * @param tokens the token ids, at least one outside the vocabulary
+	 */
+	private void assertRejected(int[] tokens) {
+		try {
+			new NextTokenDataset(tokens, VOCAB, 1, 1, 0);
+			Assert.fail("tokens " + Arrays.toString(tokens) + " were accepted");
+		} catch (IllegalArgumentException expected) {
+			log("rejected=" + expected.getMessage());
+		}
 	}
 
 	/**

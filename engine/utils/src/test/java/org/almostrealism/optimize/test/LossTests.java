@@ -56,33 +56,25 @@ public class LossTests extends TestSuiteBase {
 	public void negativeLogLikelihoodMultiRowGradient() {
 		int rows = 4;
 		int classes = 5;
-		int[] targets = { 1, 4, 0, 4 };
 		TraversalPolicy outputShape = shape(rows, classes).traverseEach();
 
 		Random random = new Random(9);
 		PackedCollection output = randn(shape(rows, classes), -1.5, 0.5, random).evaluate();
-		PackedCollection target = new PackedCollection(shape(rows, classes));
-		for (int r = 0; r < rows; r++) {
-			target.setMem(r * classes + targets[r], 1.0);
-		}
+		PackedCollection target = PackedCollection.of(
+				0, 1, 0, 0, 0,
+				0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0,
+				0, 0, 0, 0, 1).reshape(shape(rows, classes));
 
 		NegativeLogLikelihood nll = new NegativeLogLikelihood();
 		PackedCollection gradient = nll.gradient(cv(outputShape, 0), cv(outputShape, 1)).get()
 				.evaluate(output.each(), target.each());
 
-		double eps = 1e-2;
+		double[] numeric = centralDifferences(output, 1e-2, () -> nll.loss(output, target));
 		for (int i = 0; i < rows * classes; i++) {
-			double original = output.toDouble(i);
-			output.setMem(i, original + eps);
-			double plus = nll.loss(output, target);
-			output.setMem(i, original - eps);
-			double minus = nll.loss(output, target);
-			output.setMem(i, original);
-
-			double numeric = (plus - minus) / (2 * eps);
-			Assert.assertEquals("element " + i, numeric, gradient.toDouble(i), 1e-4);
+			Assert.assertEquals("element " + i, numeric[i], gradient.toDouble(i), 1e-4);
 		}
 
-		Assert.assertEquals(-1.0 / rows, gradient.toDouble(targets[0]), 1e-9);
+		Assert.assertEquals(-1.0 / rows, gradient.toDouble(1), 1e-9);
 	}
 }

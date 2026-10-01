@@ -119,11 +119,22 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * @param depth     number of transformer blocks
 	 * @param ffDim     hidden width of the gated feed-forward
 	 * @param weights   the weights, under this class's keys
+	 * @throws IllegalArgumentException if {@code heads} is not positive, does not divide
+	 *                                  {@code dim}, or leaves an odd head dimension
 	 */
 	public CausalLanguageModel(int vocabSize, int seqLen, int dim, int heads, int depth, int ffDim,
 							   StateDictionary weights) {
+		if (heads <= 0) {
+			throw new IllegalArgumentException("heads must be positive, not " + heads);
+		}
+
 		if (dim % heads != 0) {
 			throw new IllegalArgumentException("dim " + dim + " is not divisible by " + heads + " heads");
+		}
+
+		if ((dim / heads) % 2 != 0) {
+			throw new IllegalArgumentException("Full rotary embedding needs an even head dimension, not " +
+					dim / heads);
 		}
 
 		this.vocabSize = vocabSize;

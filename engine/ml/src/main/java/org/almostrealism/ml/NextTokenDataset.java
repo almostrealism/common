@@ -21,8 +21,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -88,6 +88,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	/** Index of the window the next rotating pass starts at. */
 	private int nextWindow;
 
+	/** The tokens of the region, loaded once when the first window is built. */
+	private PackedCollection regionTokens;
+
 	/** Lazily built windows by index, reused across passes. */
 	private List<ValueTarget<PackedCollection>> windows;
 
@@ -114,8 +117,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	 * @param seqLen     the number of positions per window
 	 * @param stride     the distance between consecutive window starts
 	 * @param maxWindows the maximum number of windows, or a non-positive value for no cap
-	 * @throws IllegalArgumentException if the region is not within the sequence, or the window
-	 *                                  length or stride is not positive
+	 * @throws IllegalArgumentException if the region is not within the sequence, the vocabulary
+	 *                                  size, window length or stride is not positive, or a token
+	 *                                  of the region is not in {@code 0..vocabSize-1}
 	 */
 	public NextTokenDataset(int[] tokens, int start, int end, int vocabSize,
 							int seqLen, int stride, int maxWindows) {
@@ -124,8 +128,15 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 					") is not within a sequence of " + tokens.length + " tokens");
 		}
 
-		if (seqLen <= 0 || stride <= 0) {
-			throw new IllegalArgumentException("Window length and stride must be positive");
+		if (vocabSize <= 0 || seqLen <= 0 || stride <= 0) {
+			throw new IllegalArgumentException("Vocabulary size, window length and stride must be positive");
+		}
+
+		for (int i = start; i < end; i++) {
+			if (tokens[i] < 0 || tokens[i] >= vocabSize) {
+				throw new IllegalArgumentException("Token " + tokens[i] + " at position " + i +
+						" is outside the vocabulary [0, " + vocabSize + ")");
+			}
 		}
 
 		this.tokens = tokens;
@@ -249,7 +260,43 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 			counts[tokens[i]]++;
 		}
 
-		double total = end - start;
+		return entropyBits(counts, end - start);
+	}
+
+	/**
+	 * Returns the entropy, in bits per token, of the distribution of the target tokens scored by
+	 * one pass over this dataset: the targets of the first {@link #getWindowCount()} windows, with
+	 * a token counted once for every window that scores it. The mean loss over the windows of a
+	 * pass weighs every (window, position) equally, so a model that predicts every scored token
+	 * from the frequencies of exactly these targets, ignoring context, scores this cross-entropy
+	 * on the same tokens the pass scores. When the window count is capped, this is the unigram
+	 * baseline that the loss of a pass is comparable to; {@link #unigramEntropyBits()} describes
+	 * the whole region instead. For a {@link #setRotating(boolean) rotating} dataset it describes
+	 * the first pass.
+	 *
+	 * @return the unigram entropy of the scored targets in bits per token
+	 */
+	public double scoredTargetEntropyBits() {
+		long[] counts = new long[vocabSize];
+		int count = getWindowCount();
+		for (int w = 0; w < count; w++) {
+			int s = getWindowStart(w);
+			for (int i = s + 1; i <= s + seqLen; i++) {
+				counts[tokens[i]]++;
+			}
+		}
+
+		return entropyBits(counts, (double) count * seqLen);
+	}
+
+	/**
+	 * Returns the entropy, in bits, of the distribution given by the token counts.
+	 *
+	 * @param counts the number of occurrences of each token
+	 * @param total  the sum of the counts
+	 * @return the entropy in bits
+	 */
+	private static double entropyBits(long[] counts, double total) {
 		double entropy = 0.0;
 		for (long count : counts) {
 			if (count > 0) {
@@ -311,12 +358,36 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 	}
 
 	/**
-	 * Loads {@code seqLen} token ids starting at the given offset.
+	 * Copies {@code seqLen} token ids starting at the given source offset out of the region's
+	 * tokens.
 	 *
 	 * @param offset the source offset of the first id
 	 * @return the ids, shape {@code (seqLen)}
 	 */
 	private PackedCollection ids(int offset) {
-		return PackedCollection.of(Arrays.stream(tokens, offset, offset + seqLen).asDoubleStream().toArray());
+		PackedCollection ids = new PackedCollection(shape(seqLen));
+		ids.setFrom(0, regionTokens(), offset - start, seqLen);
+		return ids;
+	}
+
+	/**
+	 * Returns the tokens of the region as a collection, loading them the first time. The token
+	 * ids are data entering the system from outside (the tokenized text), so they are ingested
+	 * once, in a single transfer, through {@link PackedCollection#read(ByteBuffer)}.
+	 *
+	 * @return the region's tokens, shape {@code (end - start)}
+	 */
+	private PackedCollection regionTokens() {
+		if (regionTokens == null) {
+			ByteBuffer buffer = ByteBuffer.allocate(Double.BYTES * (end - start));
+			for (int i = start; i < end; i++) {
+				buffer.putDouble(tokens[i]);
+			}
+
+			regionTokens = new PackedCollection(shape(end - start));
+			regionTokens.read(buffer.flip());
+		}
+
+		return regionTokens;
 	}
 }

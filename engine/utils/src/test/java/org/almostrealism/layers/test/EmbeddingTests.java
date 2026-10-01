@@ -90,16 +90,11 @@ public class EmbeddingTests extends TestSuiteBase implements LayerFeatures, Mode
 	}
 
 	/**
-	 * Returns the token ids as a collection.
+	 * Returns the token ids as a collection, holding the same values as {@link #IDS}.
 	 *
 	 * @return the ids
 	 */
 	private PackedCollection ids() {
-		PackedCollection ids = new PackedCollection(shape(IDS.length));
-		for (int i = 0; i < IDS.length; i++) {
-			ids.setMem(i, IDS[i]);
-		}
-
-		return ids;
+		return PackedCollection.of(2, 4, 2, 1, 3);
 	}
 }

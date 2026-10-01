@@ -109,6 +109,9 @@ public class SequenceAttentionGradientTest extends TestSuiteBase implements Atte
 
 		Evaluable<PackedCollection> loss = multiply(cv(inputShape, 0), cv(inputShape, 1)).sum().get();
 
+		double[] numeric = centralDifferences(qkv, EPS,
+				() -> loss.evaluate(compiled.forward(input), outputGradient).toDouble());
+
 		String[] sliceNames = { "Q", "K", "V" };
 		for (int slice = 0; slice < 3; slice++) {
 			double maxAbs = 0.0;
@@ -117,18 +120,9 @@ public class SequenceAttentionGradientTest extends TestSuiteBase implements Atte
 			for (int r = slice * DIM; r < (slice + 1) * DIM; r++) {
 				for (int c = 0; c < DIM; c++) {
 					int index = r * DIM + c;
-					double original = qkv.toDouble(index);
-
-					qkv.setMem(index, original + EPS);
-					double plus = loss.evaluate(compiled.forward(input), outputGradient).toDouble();
-					qkv.setMem(index, original - EPS);
-					double minus = loss.evaluate(compiled.forward(input), outputGradient).toDouble();
-					qkv.setMem(index, original);
-
-					double numeric = (plus - minus) / (2 * EPS);
 					double actual = analytic.toDouble(index);
-					maxAbs = Math.max(maxAbs, Math.abs(numeric));
-					maxDiff = Math.max(maxDiff, Math.abs(numeric - actual));
+					maxAbs = Math.max(maxAbs, Math.abs(numeric[index]));
+					maxDiff = Math.max(maxDiff, Math.abs(numeric[index] - actual));
 				}
 			}
 

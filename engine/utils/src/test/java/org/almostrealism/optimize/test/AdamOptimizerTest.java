@@ -34,28 +34,27 @@ public class AdamOptimizerTest extends TestSuiteBase {
 		double beta1 = 0.9;
 		double beta2 = 0.999;
 		double eps = 1e-7;
-		double[] initial = { 0.5, -1.0, 2.0 };
-		double[][] gradients = { { 0.2, -0.4, 1.0 }, { -0.1, 0.3, 0.5 } };
+		PackedCollection weights = PackedCollection.of(0.5, -1.0, 2.0);
+		PackedCollection[] gradients = {
+				PackedCollection.of(0.2, -0.4, 1.0),
+				PackedCollection.of(-0.1, 0.3, 0.5)
+		};
 
-		PackedCollection weights = PackedCollection.of(initial);
 		PackedCollection gradient = new PackedCollection(shape(3));
 		Runnable step = new AdamOptimizer(lr, beta1, beta2)
 				.apply("test", cp(weights), cp(gradient)).get();
 
-		double[] w = initial.clone();
+		double[] w = weights.toArray();
 		double[] m = new double[3];
 		double[] v = new double[3];
 		for (int t = 1; t <= gradients.length; t++) {
-			for (int i = 0; i < 3; i++) {
-				gradient.setMem(i, gradients[t - 1][i]);
-			}
-
+			gradient.setFrom(0, gradients[t - 1]);
 			step.run();
 
+			double[] g = gradients[t - 1].toArray();
 			for (int i = 0; i < 3; i++) {
-				double g = gradients[t - 1][i];
-				m[i] = beta1 * m[i] + (1 - beta1) * g;
-				v[i] = beta2 * v[i] + (1 - beta2) * g * g;
+				m[i] = beta1 * m[i] + (1 - beta1) * g[i];
+				v[i] = beta2 * v[i] + (1 - beta2) * g[i] * g[i];
 				double mt = m[i] / (1 - Math.pow(beta1, t));
 				double vt = v[i] / (1 - Math.pow(beta2, t));
 				w[i] -= lr * mt / (Math.sqrt(vt) + eps);

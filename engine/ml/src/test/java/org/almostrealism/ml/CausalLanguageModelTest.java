@@ -216,17 +216,11 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 			double maxAbs = 0.0;
 			double maxDiff = 0.0;
-			for (int i = 0; i < weight.getMemLength(); i++) {
-				double original = weight.toDouble(i);
-				weight.setMem(i, original + eps);
-				double plus = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
-				weight.setMem(i, original - eps);
-				double minus = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
-				weight.setMem(i, original);
-
-				double numeric = (plus - minus) / (2 * eps);
-				maxAbs = Math.max(maxAbs, Math.abs(numeric));
-				maxDiff = Math.max(maxDiff, Math.abs(numeric - analytic.toDouble(i)));
+			double[] numeric = centralDifferences(weight, eps,
+					() -> loss.evaluate(compiled.forward(ids), outputGradient).toDouble());
+			for (int i = 0; i < numeric.length; i++) {
+				maxAbs = Math.max(maxAbs, Math.abs(numeric[i]));
+				maxDiff = Math.max(maxDiff, Math.abs(numeric[i] - analytic.toDouble(i)));
 			}
 
 			log("weight=" + key + " maxNumericGradient=" + maxAbs + " maxDifference=" + maxDiff);
@@ -241,7 +235,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	/**
 	 * Trains the tiny causal language model on the documentation corpus through
 	 * {@link ModelOptimizer} and requires its held-out loss to end below the unigram byte-entropy
-	 * baseline of the held-out region. Every training and validation loss passes through a
+	 * baseline of the held-out targets it is scored on
+	 * ({@link NextTokenDataset#scoredTargetEntropyBits()}). Every training and validation loss passes through a
 	 * fail-fast wrapper that rejects non-finite values, so no window is silently skipped. The
 	 * trained weights are saved, reloaded, and must reproduce the held-out loss.
 	 *
@@ -260,7 +255,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		NextTokenDataset heldOut = new NextTokenDataset(tokens, heldOutRegion.getStart(), heldOutRegion.getEnd(),
 				VOCAB, SEQ_LEN, HELD_OUT_STRIDE, HELD_OUT_WINDOWS);
 
-		double unigramBits = heldOut.unigramEntropyBits();
+		double unigramBits = heldOut.scoredTargetEntropyBits();
 		log("corpus bytes=" + tokens.length + " trainRegion=[" + train.getStart() + ", " + train.getEnd() +
 				") heldOutRegion=[" + heldOut.getStart() + ", " + heldOut.getEnd() + ")");
 		log("trainStride=" + TRAIN_STRIDE + " heldOutStride=" + HELD_OUT_STRIDE +
@@ -268,7 +263,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 				" (of " + trainWindows.getAvailableWindowCount() + ", rotating)" +
 				" heldOutWindows=" + heldOut.getWindowCount() +
 				" epochs=" + EPOCHS);
-		log("baselines: uniformBitsPerByte=8.0 unigramBitsPerByte=" + unigramBits);
+		log("baselines: uniformBitsPerByte=8.0 unigramBitsPerByte=" + unigramBits +
+				" heldOutRegionUnigramBitsPerByte=" + heldOut.unigramEntropyBits());
 		log("host=" + System.getProperty("os.name") + " " + System.getProperty("os.arch") +
 				" precision=" + Hardware.getLocalHardware().getPrecision() + " seed=" + SEED +
 				" learningRate=" + LEARNING_RATE + "->" + FINAL_LEARNING_RATE + " betas=0.9/0.999 ffDim=" + FF_DIM + " ropeBase=" + ROPE_BASE);
@@ -277,6 +273,9 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		log("parameters=" + lm.getParameterCount());
 		PackedCollection learningRate = PackedCollection.of(LEARNING_RATE);
 		Model model = lm.buildModel(new AdamOptimizer(cp(learningRate), c(0.9), c(0.999)));
+		Runnable decayLearningRate = a(p(learningRate), max(
+				cp(learningRate).add((FINAL_LEARNING_RATE - LEARNING_RATE) / (EPOCHS - 1)),
+				c(FINAL_LEARNING_RATE))).get();
 
 		long compileStart = System.nanoTime();
 		CompiledModel compiled = model.compile(true);
@@ -295,9 +294,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 					" heldOutBitsPerByte=" + progress.getValidationLoss() / Math.log(2) +
 					" learningRate=" + learningRate.toDouble() +
 					" elapsedSeconds=" + (System.nanoTime() - trainingStart) / 1e9);
-			double progressFraction = (progress.getEpoch() + 1) / (double) (EPOCHS - 1);
-			learningRate.setMem(0, LEARNING_RATE +
-					(FINAL_LEARNING_RATE - LEARNING_RATE) * Math.min(1.0, progressFraction));
+			decayLearningRate.run();
 		});
 
 		TrainingResult result = optimizer.optimize(EPOCHS);
@@ -309,6 +306,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		log("totalSteps=" + result.getEpochsCompleted() * trainWindows.getWindowCount() +
 				" epochsRun=" + result.getEpochsCompleted() +
 				" finalHeldOutBitsPerByte=" + finalBits + " unigramBitsPerByte=" + unigramBits);
+		// TODO(review): the documented configuration (4.691 vs scored baseline 4.600) fails this assertion; configuration/training needs revisiting
 		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
 				unigramBits, finalBits < unigramBits);
 
