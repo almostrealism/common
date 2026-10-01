@@ -17,7 +17,9 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
+import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
@@ -205,6 +207,41 @@ public class CollectionOrderingTests extends TestSuiteBase {
 			} catch (IllegalArgumentException expected) {
 				assertTrue(expected.getMessage().contains("views other memory"));
 			}
+		}
+	}
+
+	/**
+	 * When the source and destination carry the identical mapping, the flat copy is accepted, and it
+	 * transfers one element per input position rather than per logical output position.
+	 *
+	 * <p>A rated shape such as {@code new TraversalPolicy(3).repeat(0, 4)} reports a total size of 12
+	 * logical elements while its backing memory holds only 3 — its
+	 * {@link TraversalPolicy#getTotalInputSize() total input size}, which is what
+	 * {@link PackedCollection#getMemLength()} allocates. Because the destination shares the mapping, the
+	 * copy is permitted; sizing it by the logical total size would read and write 12 elements through
+	 * 3-element allocations, overrunning them. The copy must be sized by the input size, so this asserts
+	 * the three backing values arrive intact.</p>
+	 */
+	@Test(timeout = 10000)
+	public void sharedRatedMappingCopiesInputElements() {
+		TraversalPolicy rated = new TraversalPolicy(3).repeat(0, 4);
+
+		try (PackedCollection root = pack(2.0, 3.0, 1.0);
+				PackedCollection destination = new PackedCollection(rated)) {
+			PackedCollection source = new PackedCollection(rated, rated.getTraversalAxis(), root, 0);
+
+			assertFalse("the rated shape should be irregular", source.getShape().isRegular());
+			assertEquals("the rated shape reports 12 logical elements", 12, source.getShape().getTotalSize());
+			assertEquals("the rated shape backs only 3 input elements", 3, source.getMemLength());
+			assertTrue("equals should report the identical mappings equal",
+					source.getShape().equals(destination.getShape()));
+
+			new CollectionProvider<>(source).into(destination).evaluate();
+
+			double[] copied = destination.toArray(0, 3);
+			assertEquals(2.0, copied[0]);
+			assertEquals(3.0, copied[1]);
+			assertEquals(1.0, copied[2]);
 		}
 	}
 }

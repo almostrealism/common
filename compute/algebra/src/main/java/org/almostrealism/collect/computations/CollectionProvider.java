@@ -152,8 +152,12 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * created once and can be evaluated multiple times efficiently.</p>
 	 *
 	 * <p>The destination must be a {@link MemoryData} object (such as {@link PackedCollection})
-	 * with sufficient capacity to hold the source collection's data. The size is determined
-	 * by the source collection's {@link io.almostrealism.collect.TraversalPolicy}.</p>
+	 * with sufficient capacity to hold the source collection's data. Because the copy moves
+	 * backing memory, the number of elements transferred is the source policy's
+	 * {@link TraversalPolicy#getTotalInputSize() total input size} — one element per input
+	 * position — rather than its logical {@link TraversalPolicy#getTotalSize() total size};
+	 * the two agree for a regular shape or a permutation, but a rated or repeated view has
+	 * fewer input elements than it reports as its total size.</p>
 	 *
 	 * <p><strong>Performance:</strong> The copy operation uses direct memory transfer,
 	 * avoiding intermediate buffers and enabling efficient data movement even for large
@@ -203,8 +207,9 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 					"apply the reordering as a computation instead of referencing the view");
 		}
 
+		// the copy moves backing memory, so it transfers one element per input position
 		Runnable copy = new MemoryDataCopy("CollectionProvider Evaluate Into",
-				this::get, () -> (MemoryData) destination, shape.getTotalSize()).get();
+				this::get, () -> (MemoryData) destination, shape.getTotalInputSize()).get();
 		return args -> {
 			copy.run();
 			return (T) destination;
