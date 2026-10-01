@@ -1,0 +1,20 @@
+## The Machine the Work Needs
+
+If carrying out the plan needs something only some FlowTree nodes have — at
+present that means Metal, which only macOS nodes provide — say so in a
+settings file beside the plan, and give the reason in the plan itself:
+
+```yaml
+# docs/plans/<this branch's name without "project/">-workstream.yaml
+requiredLabels:
+  platform: macos
+```
+
+For this branch the file is `docs/plans/` + the branch name `${BRANCH}` with
+its leading `project/` removed + `-workstream.yaml`. Use that exact name: a
+shorter prefix would also apply to every later branch it matches.
+
+The settings are applied to this branch's workstream when a person approves
+the plan and starts its implementation, so the implementation runs on a
+matching machine. `requiredLabels` is the only setting the file may contain.
+If the work runs anywhere, write no file.

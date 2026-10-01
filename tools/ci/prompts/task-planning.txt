@@ -53,7 +53,9 @@ It should contain:
 
 Do not edit `docs/plans/MANAGER_LOG.md`: it records the free-form planning
 round's reasoning, not tracked work. Do not change code, tests or any file other
-than the new plan document.
+than the new plan document and, when the work needs it, the settings file below.
+
+@include plan-workstream-settings.txt
 
 @include plan-pr-framing.txt
 

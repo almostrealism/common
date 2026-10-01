@@ -9,8 +9,12 @@ name: "Verify Completion"
 # what a plan branch is until this runs, auto-review in analysis.yaml sends a
 # review that improves the documents and never carries out the plan.
 #
-# Includes an optional registration step that creates a FlowTree workstream
-# when a new plan document is detected.
+# Every run registers (or updates) the branch's FlowTree workstream, and applies
+# the workstream settings the plan declares for itself: a
+# docs/plans/<prefix>-workstream.yaml file whose prefix matches the branch name
+# without "project/" (see tools/ci/plan_workstream_config.py). Applying them
+# here, when a person dispatches the implementation, means approving the plan
+# also approves the environment it asks for — Metal, for instance.
 #
 # Like the Master Agent Dispatch jobs, every job runs on a GitHub-hosted
 # runner and reaches the controller through its Cloudflare Access tunnel;
@@ -115,10 +119,77 @@ jobs:
           echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Detected plan file: $PLAN"
 
-  # ── Phase 2: Register workstream (conditional) ────────────────────
+  # ── Phase 2a: Resolve the plan's workstream settings (token-free) ──
+  # Reading the settings means installing PyYAML from the network, and code a
+  # package runs on install or import can rewrite the checked-out scripts or
+  # append to $GITHUB_ENV/$GITHUB_PATH, both of which persist into later steps
+  # of the same job. So the settings are resolved here, in a job that never
+  # holds the controller token, and only the validated JSON crosses into
+  # register-workstream, as job outputs read through `env:`.
+  resolve-plan-settings:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      settings_file: ${{ steps.plan_settings.outputs.settings_file }}
+      required_labels: ${{ steps.plan_settings.outputs.required_labels }}
+
+    steps:
+      # The resolver is the default branch's copy, never the dispatched
+      # branch's, so a branch cannot change how its own settings are validated.
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The branch's docs/plans files are fetched as data — `git archive`, not a
+      # checkout — and read by the default branch's resolver, so nothing the
+      # branch controls runs in this job. They are read from the dispatched
+      # commit, the one every other job in this run uses, so a push made after
+      # the plan was approved cannot change the settings the implementation
+      # runs with; the branch name is used only to match the settings file.
+      # An invalid settings file, or a commit that cannot be read, fails the
+      # job, which stops the implementation from being submitted on a machine
+      # the plan did not ask for.
+      - name: Resolve the plan's workstream settings
+        id: plan_settings
+        env:
+          BRANCH: ${{ github.ref_name }}
+          DISPATCHED_SHA: ${{ github.sha }}
+        run: |
+          set -eo pipefail
+          if [ ! -f ./tools/ci/plan_workstream_config.py ]; then
+            echo "::warning::The default branch has no tools/ci/plan_workstream_config.py yet — no plan settings are applied"
+            exit 0
+          fi
+          python3 -m pip install --quiet pyyaml
+          mkdir -p branch-plans
+          if ! git fetch --quiet --no-tags --depth 1 origin "$DISPATCHED_SHA"; then
+            echo "::error::Could not fetch the dispatched commit ${DISPATCHED_SHA} — the plan's settings cannot be read"
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:docs/plans 2>/dev/null; then
+            git archive FETCH_HEAD docs/plans | tar -x -C branch-plans
+            SETTINGS=$(python3 ./tools/ci/plan_workstream_config.py "$BRANCH" branch-plans/docs/plans) \
+              || { echo "$SETTINGS"; exit 1; }
+          else
+            echo "The dispatched commit has no docs/plans — no plan settings are applied"
+            SETTINGS='{}'
+          fi
+          echo "Plan workstream settings: $SETTINGS"
+          echo "settings_file=$(echo "$SETTINGS" | jq -r '.file // empty')" >> "$GITHUB_OUTPUT"
+          echo "required_labels=$(echo "$SETTINGS" | jq -c '.requiredLabels // empty')" >> "$GITHUB_OUTPUT"
+
+  # ── Phase 2b: Register workstream and apply the plan's settings ────
+  # Runs on every dispatch: registration is idempotent, and an existing
+  # workstream is updated with the plan document and the plan's settings.
   register-workstream:
-    needs: detect-plan
-    if: needs.detect-plan.outputs.is_new_plan == 'true'
+    needs: [detect-plan, resolve-plan-settings]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -148,6 +219,7 @@ jobs:
           BASE_BRANCH: master
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
           REPO_URL: git@github.com:${{ github.repository }}.git
+          REQUIRED_LABELS_JSON: ${{ needs.resolve-plan-settings.outputs.required_labels }}
         run: |
           # The script is read from the default branch, which lacks it until the
           # change that added it has merged; register nothing rather than fail.
@@ -166,11 +238,25 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
+          SETTINGS_FILE: ${{ needs.resolve-plan-settings.outputs.settings_file }}
+          REQUIRED_LABELS: ${{ needs.resolve-plan-settings.outputs.required_labels }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          # This step runs even when an earlier one failed; only a successful
+          # job registered the workstream and applied the plan's settings.
+          if [ "$JOB_STATUS" != "success" ]; then
+            echo "Registration of the FlowTree workstream for branch \`$BRANCH\` **failed** ($JOB_STATUS)," >> "$GITHUB_STEP_SUMMARY"
+            echo "so the implementation was not submitted. See the failed step's log." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           echo "Registered a FlowTree workstream for branch \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
           echo "with planning document \`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SETTINGS_FILE" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Applied \`$SETTINGS_FILE\`: required labels \`$REQUIRED_LABELS\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # ── Phase 3: Build the implementation prompt ──────────────────────
   # The prompt is built from the branch's own templates, so it runs the branch's
@@ -178,16 +264,22 @@ jobs:
   # reach it. The prompt is staged as an artifact for the trusted submit job
   # below, the same way auto-review stages its request in analysis.yaml.
   build-prompt:
-    needs: [detect-plan, register-workstream]
-    # Run after detect-plan succeeds, even if register was skipped (is_new_plan
-    # false) — but not if register failed, and not if the run was cancelled.
+    needs: [detect-plan, resolve-plan-settings, register-workstream]
+    # Run after detect-plan succeeds, and only if registration succeeded (or was
+    # skipped) — not if it failed, and not if the run was cancelled.
     # `!cancelled()` (not `always()`) so a cancelled run stops here instead of
     # building and submitting the implementation anyway; register-workstream is
     # allowed only when it succeeded or was skipped, so its `cancelled` result
     # blocks this job rather than passing a `!= 'failure'` test.
+    # resolve-plan-settings must itself have succeeded: when it fails (an
+    # invalid plan settings file, an unreadable dispatched commit) the
+    # register-workstream job that needs it is *skipped*, not failed, and the
+    # skipped-registration allowance above would otherwise submit the
+    # implementation without the labels the plan declared.
     if: |
       !cancelled()
       && needs.detect-plan.result == 'success'
+      && needs.resolve-plan-settings.result == 'success'
       && (needs.register-workstream.result == 'success'
           || needs.register-workstream.result == 'skipped')
     runs-on: ubuntu-latest

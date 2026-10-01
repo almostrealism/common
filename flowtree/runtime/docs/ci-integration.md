@@ -42,18 +42,23 @@ The verify-completion workflow (`verify-completion.yaml`) implements a self-impr
 
 ### Four-Phase Pipeline
 
-The workflow runs as a four-job pipeline with conditional execution:
+The workflow runs as a four-phase pipeline of five jobs with conditional execution:
 
 ```
-detect-plan  ──>  register-workstream (conditional)  ──>  build-prompt  ──>  verify
+detect-plan ───────────┐
+                       ├──>  register-workstream  ──>  build-prompt  ──>  verify
+resolve-plan-settings ─┘
 ```
 
 No job that holds the controller's Cloudflare Access service token runs any of
-the branch's scripts. The jobs that need the token (`register-workstream` and
-`verify`) check out the default branch and run its copies of the scripts; the
-one job that runs the branch's own code (`build-prompt`, which renders the
-prompt from the branch's templates) never sees the token and hands its result
-to `verify` as an artifact. This is the same stage-then-submit pattern the
+the branch's scripts, or installs anything from the network. The jobs that need
+the token (`register-workstream` and `verify`) check out the default branch and
+run its copies of the scripts; the one job that runs the branch's own code
+(`build-prompt`, which renders the prompt from the branch's templates) never
+sees the token and hands its result to `verify` as an artifact, and the job
+that installs PyYAML to read the plan's settings (`resolve-plan-settings`)
+never sees it either and hands its result to `register-workstream` as job
+outputs. This is the same stage-then-submit pattern the
 `auto-review` / `auto-review-submit` jobs in `analysis.yaml` use.
 
 This protects against a branch's edits to *scripts*, not to the *workflow file*:
@@ -69,9 +74,13 @@ Identifies the plan document for the branch. The plan file can be provided expli
 - `plan_file`: Path to the detected plan document
 - `is_new_plan`: Whether the plan file is newly added on this branch
 
-**Phase 2: Register Workstream** (`register-workstream`, conditional)
+**Phase 2: Resolve Settings and Register Workstream** (`resolve-plan-settings`, then `register-workstream`)
 
-Runs only when `is_new_plan` is `true`. Checks out the default branch (it needs nothing from the branch under review) and calls that copy of `tools/ci/register-workstream.sh`, which POSTs to the controller's `POST /api/workstreams` endpoint. This:
+Both jobs run on every dispatch; registration is idempotent, and an existing workstream is updated. `register-workstream` checks out the default branch and calls that copy of `tools/ci/register-workstream.sh`, which POSTs to the controller's `POST /api/workstreams` endpoint.
+
+Registration applies the workstream settings the plan declares for itself, which `resolve-plan-settings` reads first. For a branch under `project/`, the branch name without `project/` is matched against the `<prefix>-workstream.yaml` files in the branch's `docs/plans/`: a prefix matches when the name equals it or continues it at a `-`, and the longest matching prefix wins. So for `project/plan-20260930-180401`, `plan-20260930-180401-workstream.yaml` overrides `plan-20260930-workstream.yaml`, and `plan-2026093-workstream.yaml` never matches. The only setting a file may contain today is `requiredLabels` (e.g. `platform: macos`), which becomes the workstream's default node labels, so the implementation and every later job run on a matching node. The branch's `docs/plans/` is fetched with `git archive`, never checked out, and read by the default branch's `tools/ci/plan_workstream_config.py`, so no branch code runs. Reading it installs PyYAML from the network, and a package's install or import code could rewrite the checked-out scripts or append to `$GITHUB_ENV`/`$GITHUB_PATH` for later steps of the same job, so this happens in `resolve-plan-settings`, which holds no controller token; only the resolved JSON reaches `register-workstream`, as job outputs read through `env:`. It is read from the dispatched commit (`github.sha`), the same commit every other job in the run uses, so a push made after the plan was approved cannot change the settings the implementation runs with. An invalid settings file (unknown key, wrongly shaped value), or a dispatched commit that cannot be fetched, fails `resolve-plan-settings`; `register-workstream` is then skipped, and `build-prompt` requires `resolve-plan-settings` to have succeeded, so the implementation is not submitted. Because the settings take effect only here, approving a plan and dispatching its implementation also approves the environment it asks for. Settings files stay in `docs/plans/` after their branch merges, so a short prefix keeps applying to later branches it matches.
+
+Registration:
 - Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
 - Auto-creates a **private** Slack channel named `w-<branch>` (with slashes replaced by hyphens)
 - Invites the configured `channelOwnerUserId` to the new channel
@@ -79,7 +88,7 @@ Runs only when `is_new_plan` is `true`. Checks out the default branch (it needs 
 
 **Phase 3: Build Prompt** (`build-prompt`)
 
-Runs after detect-plan succeeds, even if register-workstream was skipped (but not if it failed). Checks out the branch, builds the implementation prompt from the plan document via `build-verify-prompt.sh`, stages it with `stage-submit-request.sh` (which writes `agent-prompt.txt` and `submit.env`), and uploads the result as the `verify-request` artifact. This job holds no controller credentials.
+Runs after detect-plan, resolve-plan-settings and register-workstream succeed (not if registration failed, and not if the settings could not be resolved). Checks out the branch, builds the implementation prompt from the plan document via `build-verify-prompt.sh`, stages it with `stage-submit-request.sh` (which writes `agent-prompt.txt` and `submit.env`), and uploads the result as the `verify-request` artifact. This job holds no controller credentials.
 
 **Phase 4: Verify** (`verify`)
 
@@ -95,6 +104,8 @@ The `tools/ci/register-workstream.sh` script handles workstream registration fro
 
 **Optional environment variables:**
 - `PLAN_FILE` -- path to the planning document; when the workstream already exists, it is updated with this document
+- `TRACKER_CAPABILITIES` -- comma-separated tracker roles for the workstream's agents (e.g. `planner`)
+- `REQUIRED_LABELS_JSON` -- JSON object of default node labels (e.g. `{"platform":"macos"}`); applied to a new or existing workstream
 - `CHANNEL_NAME` -- explicit Slack channel name (the controller derives one from the branch when absent)
 - `CONTROLLER_URL` -- controller base URL; takes precedence over `CONTROLLER_HOST`/`CONTROLLER_PORT`, and is how a GitHub-hosted runner reaches the controller through its Cloudflare Access tunnel
 - `CONTROLLER_HOST` -- FlowTree controller hostname, used only when `CONTROLLER_URL` is unset (default: `localhost`)
