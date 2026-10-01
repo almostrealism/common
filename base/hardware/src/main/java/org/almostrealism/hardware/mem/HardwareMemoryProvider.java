@@ -480,7 +480,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				allocated.remove(ref.getAddress());
+				// The backend may already have handed this address to a new block, whose
+				// entry must survive; only the entry for this reference is removed
+				allocated.computeIfPresent(ref.getAddress(), (address, tracked) -> tracked == ref ? null : tracked);
 				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
@@ -748,7 +750,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * Registers the given memory block as allocated and returns it.
 	 *
 	 * <p>Creates a {@link NativeRef} and stores it in the allocation map. Warns if the block
-	 * is already tracked (duplicate allocation).</p>
+	 * is already tracked (duplicate allocation). An entry whose reference has already been
+	 * claimed for release is not a duplicate: the backend frees a block before its entry is
+	 * removed, so it may reuse the address for this allocation in between, and that stale
+	 * entry is simply replaced.</p>
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
@@ -764,7 +769,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		if (allocated.containsKey(ref.getAddress())) {
+		NativeRef<T> existing = allocated.get(ref.getAddress());
+		if (existing != null && !existing.isFreed()) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 
