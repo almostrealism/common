@@ -134,13 +134,24 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("mvn install -pl engine/utils").isEmpty());
 	}
 
-	/** A bare -Dtest=Class selector (no #method) still runs the whole class and must be rejected. */
+	/** A bare -Dtest=Class selector names a run bounded by that class's own methods. */
 	@Test(timeout = 10000)
-	public void bareClassDtestSelectorRejected() {
-		List<String> violations = violationsFor(
-				"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest");
-		assertFalse(violations.isEmpty());
-		assertTrue(violations.get(0).contains("Class#method"));
+	public void bareClassDtestSelectorAccepted() {
+		assertTrue(violationsFor(
+				"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest").isEmpty());
+	}
+
+	/** Up to MAX_TEST_CLASSES named classes is still a bounded run. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAtTheClassCapAccepted() {
+		assertTrue(violationsFor("mvn test -Dtest=A,B,C,D,E").isEmpty());
+	}
+
+	/** Beyond MAX_TEST_CLASSES the selector approaches the module's whole suite. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAboveTheClassCapRejected() {
+		assertFalse("a selector naming more classes than the cap must be rejected",
+				violationsFor("mvn test -Dtest=A,B,C,D,E,F").isEmpty());
 	}
 
 	/** The Maven Wrapper launcher must be rejected the same as a plain "mvn" invocation when it
@@ -166,11 +177,22 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 	 * single Maven invocation, contradicting the "one test per invocation" rule -- even though
 	 * every individual entry is itself narrow. */
 	@Test(timeout = 10000)
-	public void multipleMethodDtestSelectorRejected() {
-		List<String> violations = violationsFor(
-				"mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz");
-		assertFalse("a -Dtest value naming multiple methods must still be rejected",
-				violations.isEmpty());
+	public void multipleMethodDtestSelectorAccepted() {
+		assertTrue("a -Dtest value naming a few methods names a bounded run",
+				violationsFor("mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz").isEmpty());
+	}
+
+	/** Beyond MAX_TEST_METHODS the selector is no longer a targeted check. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAboveTheMethodCapRejected() {
+		StringBuilder selector = new StringBuilder("mvn -pl engine/utils test -Dtest=");
+		for (int i = 0; i < 41; i++) {
+			if (i > 0) selector.append(',');
+			selector.append("FooTest#m").append(i);
+		}
+
+		assertFalse("a selector naming more methods than the cap must be rejected",
+				violationsFor(selector.toString()).isEmpty());
 	}
 
 	/** AR_TEST_GROUP must be rejected even on a phase not itself named "test". */

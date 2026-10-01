@@ -87,16 +87,27 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("mvn install -pl engine/utils")
         self.assertTrue(violations)
 
-    def test_bare_class_dtest_selector_rejected(self):
+    def test_bare_class_dtest_selector_accepted(self):
+        # A named class is bounded by its own methods, so checking one class
+        # after a change is an ordinary run rather than a suite run.
         violations = validate_post_completion_command(
             "mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest")
-        self.assertTrue(violations, "a bare -Dtest=Class selector must be rejected")
-        self.assertIn("Class#method", " ".join(violations))
+        self.assertFalse(violations, "a bare -Dtest=Class selector names a bounded run")
 
-    def test_mixed_narrow_and_broad_dtest_selector_rejected(self):
+    def test_mixed_class_and_method_dtest_selector_accepted(self):
         violations = validate_post_completion_command(
             "mvn test -Dtest=FooTest#bar,BazTest")
-        self.assertTrue(violations)
+        self.assertFalse(violations)
+
+    def test_dtest_selector_above_the_class_cap_rejected(self):
+        violations = validate_post_completion_command(
+            "mvn test -Dtest=A,B,C,D,E,F")
+        self.assertTrue(violations,
+                        "a selector naming more classes than the cap must be rejected")
+
+    def test_dtest_selector_at_the_class_cap_accepted(self):
+        violations = validate_post_completion_command("mvn test -Dtest=A,B,C,D,E")
+        self.assertFalse(violations)
 
     def test_ar_test_group_alone_rejected_even_without_test_phase_keyword(self):
         violations = validate_post_completion_command(
@@ -268,15 +279,26 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("./mvnw test -pl engine/utils")
         self.assertTrue(violations, "./mvnw test must be rejected like a direct mvn test")
 
-    def test_multiple_method_dtest_selector_rejected(self):
-        # A -Dtest value naming more than one Class#method entry still runs
-        # multiple tests in a single Maven invocation, contradicting the
-        # "one test per invocation" rule -- even though every individual
-        # entry is itself narrow.
+    def test_multiple_method_dtest_selector_accepted(self):
+        # Several named methods are a bounded run, so a -Dtest value listing
+        # them is accepted up to the method cap.
         violations = validate_post_completion_command(
             "mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz")
+        self.assertFalse(violations,
+                         "a -Dtest value naming a few methods names a bounded run")
+
+    def test_dtest_selector_above_the_method_cap_rejected(self):
+        selector = ",".join("FooTest#m%d" % i for i in range(41))
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=" + selector)
         self.assertTrue(violations,
-                         "a -Dtest value naming multiple methods must still be rejected")
+                        "a selector naming more methods than the cap must be rejected")
+
+    def test_dtest_selector_at_the_method_cap_accepted(self):
+        selector = ",".join("FooTest#m%d" % i for i in range(40))
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=" + selector)
+        self.assertFalse(violations)
 
     def test_pytest_multiple_node_ids_rejected(self):
         # Even when every positional is an explicit node id, pytest still
@@ -786,31 +808,30 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "Please run mvn test to check your change compiles and passes.")
         self.assertTrue(hits)
 
-    def test_bare_dtest_class_mention_rejected(self):
+    def test_bare_dtest_class_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=NotifierRegistryTest to confirm the fix.")
-        self.assertTrue(hits)
+        self.assertEqual([], hits)
 
-    def test_mixed_narrow_and_broad_dtest_mention_rejected(self):
-        # -Dtest=Foo,Bar#baz -- Foo alone is broad even though Bar#baz is
-        # narrow. A single-entry lookahead can find the later "#" and miss
-        # this; every comma-separated entry must be checked individually.
+    def test_mixed_class_and_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=NotifierRegistryTest,OtherTest#testFoo to confirm the fix.")
-        self.assertTrue(hits, "a mixed narrow/broad -Dtest value must still be flagged")
+        self.assertEqual([], hits)
 
     def test_single_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar to confirm the fix.")
         self.assertEqual([], hits)
 
-    def test_multiple_method_dtest_mention_flagged(self):
-        # Every individual entry names a method, but Maven still runs both
-        # in the same invocation -- this is exactly as broad as a bare
-        # class selector for the "one test per invocation" rule.
+    def test_multiple_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar,BazTest#qux to confirm the fix.")
-        self.assertTrue(hits, "a -Dtest value naming multiple methods must still be flagged")
+        self.assertEqual([], hits)
+
+    def test_dtest_mention_above_the_class_cap_flagged(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=A,B,C,D,E,F to confirm the fix.")
+        self.assertTrue(hits, "a mention naming more classes than the cap must be flagged")
 
     def test_surefire_plus_method_separator_dtest_mention_flagged(self):
         # "Class#m1+m2" runs both methods in one invocation via Surefire's

@@ -38,6 +38,14 @@ _CLASS_NAME = re.compile(
     r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*")
 _METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
+# How much one invocation may select. Mirrors _MAX_TEST_CLASSES and
+# _MAX_TEST_METHODS in the manager's execution_limits.py, and MAX_TEST_CLASSES
+# and MAX_TEST_METHODS in the controller's PostCompletionCommandValidator.java.
+# A class carries an unknown number of cases, so the method cap bounds only the
+# selections that name a method; the class cap bounds the rest.
+_MAX_TEST_CLASSES = 5
+_MAX_TEST_METHODS = 40
+
 
 def _reject_inexact_name(value: str, pattern, field_description: str) -> None:
     """Raises ValidationError unless ``value`` is an exact Java name matching
@@ -175,54 +183,37 @@ def validate_start_test_run_arguments(
             "submitters may never start. Pass test_classes or "
             "test_methods to select the specific test(s) you need."
         )
-    if len(test_classes) + len(test_methods) > 1:
-        raise ValidationError(
-            "At most ONE test per invocation is permitted: "
-            f"got {len(test_classes)} test_classes and "
-            f"{len(test_methods)} test_methods. A -Dtest= value "
-            "listing several classes/methods runs them together "
-            "in one JVM, which agents and job submitters may "
-            "never do. Call start_test_run once per test."
-        )
-    # A bare class selector (no #method) is never tolerated, including when
-    # JMX monitoring is requested: jmx_monitoring is a caller-controlled
-    # flag with no trust boundary of its own, so exempting the bare-class
-    # check for it let any caller widen a "single test" invocation into a
-    # whole-class run just by setting jmx_monitoring:true. Every caller must
-    # narrow to Class#method, matching the manager and controller
-    # validators' identical bare-class rejection; JMX instrumentation is
-    # orthogonal to which tests run and must never widen that selection.
-    if test_classes:
-        _reject_selector_delimiter(test_classes[0], "test_classes entry")
-        _reject_wildcard(test_classes[0], "test_classes entry")
-        if "#" not in test_classes[0]:
-            raise ValidationError(
-                f"test_classes entry \"{test_classes[0]}\" has no "
-                "#method selector: build_maven_command emits "
-                f"-Dtest={test_classes[0]} for it, which runs every "
-                "method in that class -- the same bare-class breadth "
-                "the manager and controller validators reject. Pass "
-                "\"Class#method\" here, or use test_methods with an "
-                "explicit {\"class\": ..., \"method\": ...} entry. "
-                "jmx_monitoring does not exempt this rule -- it is a "
-                "caller-controlled flag that cannot authenticate a "
-                "JVM-crash reproduction request, so it must never widen "
-                "which tests run. If a crash gave no method attribution, "
-                "identify a specific candidate method (e.g. the most "
-                "resource-intensive test in the class) and target it, "
-                "one test at a time."
-            )
-        if "#" in test_classes[0]:
-            class_part, _, method_part = test_classes[0].partition("#")
+    # A named class is bounded by its own methods, and a handful of named
+    # classes is still a bounded run, so both are allowed. What stays refused
+    # is a selector with no ceiling: no selector at all (handled above), a
+    # wildcard, or more classes/methods than the caps. Mirrors
+    # _MAX_TEST_CLASSES/_MAX_TEST_METHODS in
+    # tools/mcp/manager/execution_limits.py and MAX_TEST_CLASSES/
+    # MAX_TEST_METHODS in PostCompletionCommandValidator.java.
+    selected_classes = set()
+    selected_methods = 0
+
+    for entry in test_classes:
+        _reject_selector_delimiter(entry, "test_classes entry")
+        _reject_wildcard(entry, "test_classes entry")
+
+        if "#" in entry:
+            class_part, _, method_part = entry.partition("#")
             if not class_part or not method_part:
                 raise ValidationError(
-                    f"test_classes entry \"{test_classes[0]}\" has an "
+                    f"test_classes entry \"{entry}\" has an "
                     "empty class or method component around '#'. Both "
                     "must be non-empty exact names, e.g. "
                     "\"FooTest#testBar\"."
                 )
             _reject_inexact_name(class_part, _CLASS_NAME, "test_classes class part")
             _reject_inexact_name(method_part, _METHOD_NAME, "test_classes method part")
+            selected_methods += 1
+        else:
+            class_part = entry
+            _reject_inexact_name(class_part, _CLASS_NAME, "test_classes entry")
+
+        selected_classes.add(class_part)
     for entry in test_methods:
         if not isinstance(entry, dict) or not entry.get("class") or not entry.get("method"):
             raise ValidationError(
@@ -236,6 +227,27 @@ def validate_start_test_run_arguments(
         _reject_wildcard(entry["method"], "test_methods method field")
         _reject_inexact_name(entry["class"], _CLASS_NAME, "test_methods class field")
         _reject_inexact_name(entry["method"], _METHOD_NAME, "test_methods method field")
+
+        selected_classes.add(entry["class"])
+        selected_methods += 1
+
+    if len(selected_classes) > _MAX_TEST_CLASSES:
+        raise ValidationError(
+            f"{len(selected_classes)} test classes were selected, more than "
+            f"the {_MAX_TEST_CLASSES} one invocation may run. Selecting a "
+            "class, or a few related classes, is a bounded run; beyond that "
+            "it approaches the module's whole suite, which is the pipeline's "
+            "job. Split the selection across calls."
+        )
+
+    if selected_methods > _MAX_TEST_METHODS:
+        raise ValidationError(
+            f"{selected_methods} test methods were selected, more than the "
+            f"{_MAX_TEST_METHODS} one invocation may run. Split the "
+            "selection across calls, or name the classes instead of every "
+            "method in them."
+        )
+
     return {
         "timeout_minutes": timeout_minutes,
         "test_classes": test_classes,

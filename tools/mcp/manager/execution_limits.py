@@ -880,39 +880,70 @@ _DTEST_CLASS_NAME = re.compile(
     r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*")
 _DTEST_METHOD_NAME = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
+# How much one invocation may select. These bound a run without forbidding the
+# ordinary case of checking a class, or a few related classes, after a change:
+# what they refuse is a selector with no ceiling at all, which is how an agent
+# ends up running a module's whole suite. Mirrors MAX_TEST_CLASSES and
+# MAX_TEST_METHODS in PostCompletionCommandValidator.java.
+_MAX_TEST_CLASSES = 5
+_MAX_TEST_METHODS = 40
+
 
 def _dtest_is_narrow(value: str) -> bool:
-    """True if ``value`` is exactly one Class#method entry with non-empty,
-    wildcard-free class and method names.
+    """True if ``value`` names a bounded set of tests: at most
+    ``_MAX_TEST_CLASSES`` distinct classes and at most ``_MAX_TEST_METHODS``
+    explicit ``Class#method`` entries, every name exact.
 
-    A ``-Dtest`` value may name several comma-separated entries, but Maven
-    runs all of them in a single invocation -- accepting more than one,
-    even when each individually names a method, would still let one command
-    run multiple tests, contradicting the "at most ONE test per invocation"
-    rule this validator otherwise enforces. Only a single Class#method entry
-    is narrow enough. A bare class name (no ``#``) also fails this check --
-    see the HARD RULES for this rule: "a bare -Dtest=Class also counts as
-    too broad". Surefire treats ``*`` and ``?`` in either half as
-    wildcards, so e.g. ``FooTest#test*`` or ``Foo*#bar`` can still select
-    and run several methods/classes in one invocation despite naming
-    exactly one comma-separated entry with a ``#`` in it. Surefire's ``+``
-    method-list separator (``Class#method1+method2``, the form the
-    repository's own CI uses) is rejected for the same reason -- it selects
-    several methods in one invocation. A ``$VAR``/``${VAR}`` parameter
-    expansion in either half is rejected too, since the shell resolves it to
-    an arbitrary (possibly broad) selector this validator cannot see. Rather
-    than enumerating every widening construct (``!`` negation and
-    ``%regex[...]`` patterns among them), each half must be an exact Java
-    name -- see ``_DTEST_CLASS_NAME``/``_DTEST_METHOD_NAME``.
+    What this rule exists to stop is an invocation that runs a whole module
+    or suite, which is the pipeline's job and takes hours. A named class is
+    bounded by its own methods, and a handful of named classes is still a
+    bounded run, so both are allowed; what is refused is a selector with no
+    ceiling.
+
+    Every construct that removes the ceiling is still refused. Surefire
+    treats ``*`` and ``?`` in either half as wildcards, so ``FooTest#test*``
+    or ``Foo*#bar`` can select arbitrarily many methods or classes from one
+    entry; the ``+`` method-list separator (``Class#method1+method2``, the
+    form the repository's own CI uses), ``!`` negation and ``%regex[...]``
+    patterns widen a selector the same way. Rather than enumerating them,
+    each half must be an exact Java name -- see
+    ``_DTEST_CLASS_NAME``/``_DTEST_METHOD_NAME``. A ``$VAR``/``${VAR}``
+    parameter expansion is refused too, since the shell resolves it to a
+    selector this validator cannot see.
+
+    A class counted here carries an unknown number of cases, so the method
+    cap bounds only the entries that name a method. The class cap is what
+    bounds the rest.
     """
     entries = [e for e in value.split(",") if e]
-    if len(entries) != 1 or entries[0].count("#") != 1:
+    if not entries:
         return False
-    if _contains_parameter_expansion(entries[0]):
-        return False
-    class_name, _, method_name = entries[0].partition("#")
-    return bool(_DTEST_CLASS_NAME.fullmatch(class_name)
-                and _DTEST_METHOD_NAME.fullmatch(method_name))
+
+    classes = set()
+    methods = 0
+
+    for entry in entries:
+        if _contains_parameter_expansion(entry):
+            return False
+
+        hashes = entry.count("#")
+        if hashes > 1:
+            return False
+
+        if hashes == 1:
+            class_name, _, method_name = entry.partition("#")
+            if not _DTEST_METHOD_NAME.fullmatch(method_name):
+                return False
+            methods += 1
+        else:
+            class_name = entry
+
+        if not _DTEST_CLASS_NAME.fullmatch(class_name):
+            return False
+
+        classes.add(class_name)
+
+    return len(classes) <= _MAX_TEST_CLASSES and methods <= _MAX_TEST_METHODS
 
 
 def _effective_skip_value(args: list, pattern) -> bool:

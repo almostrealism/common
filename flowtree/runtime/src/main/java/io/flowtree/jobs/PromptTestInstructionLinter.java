@@ -130,10 +130,6 @@ public class PromptTestInstructionLinter {
 			"post-integration-test", "verify", "install", "deploy",
 			"pre-site", "site", "post-site", "site-deploy"));
 
-	/** Matches an explicit {@code -Dtest=Class#method}-shaped mention in a prompt fragment. */
-	private static final Pattern SELECTOR_PATTERN = Pattern.compile(
-			"-Dtest=\\S+#\\S+", Pattern.CASE_INSENSITIVE);
-
 	/** Matches a whole {@code -DskipTests}/{@code -Dmaven.test.skip} mention, capturing the
 	 * assigned value token when present -- a bare flag with no {@code =value} means {@code true}.
 	 * The value is captured as a non-space run (not just {@code true}/{@code false}) so a dynamic
@@ -269,7 +265,7 @@ public class PromptTestInstructionLinter {
 					|| !MVN_TEST_PHASE_PATTERN.matcher(fragment).find()) {
 				continue;
 			}
-			if (SELECTOR_PATTERN.matcher(fragment).find()) {
+			if (hasBoundedSelector(fragment)) {
 				continue;
 			}
 			if (Boolean.TRUE.equals(effectiveSkipValue(fragment, SKIP_TESTS_MENTION))
@@ -305,11 +301,38 @@ public class PromptTestInstructionLinter {
 	}
 
 	/**
-	 * Flags a {@code -Dtest=<value>} mention that does not name exactly one wildcard-free
-	 * {@code Class#method} entry, checking EVERY {@code -Dtest=} occurrence on the line rather
-	 * than only the first -- e.g. {@code mvn test -Dtest=Foo#bar -Dtest=WholeClass} must still be
-	 * flagged even though the first value alone would be narrow enough, since a later occurrence
-	 * overrides it and Maven ultimately runs the whole class.
+	 * True when {@code fragment} carries a {@code -Dtest=} selector that bounds the run, which is
+	 * what exempts a Maven test-phase mention from {@link #mvnSegmentWithoutSelector}.
+	 *
+	 * <p>This asks {@link PostCompletionCommandValidator#dtestIsNarrow} rather than looking for a
+	 * {@code #}, so it agrees with {@link #dtestBroadValue} and with the command validator about
+	 * what counts as bounded. A mention naming a class, or a few classes, is exempt here and is
+	 * not flagged there; a wildcard or an over-cap list is exempt in neither.</p>
+	 *
+	 * @param fragment one chained-command fragment of a prompt line
+	 * @return whether a bounded selector is present
+	 */
+	private static boolean hasBoundedSelector(String fragment) {
+		Matcher matcher = DTEST_VALUE.matcher(fragment);
+
+		while (matcher.find()) {
+			if (PostCompletionCommandValidator.dtestIsNarrow(matcher.group(1))) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Flags a {@code -Dtest=<value>} mention that does not bound the run, checking EVERY
+	 * {@code -Dtest=} occurrence on the line rather than only the first -- e.g.
+	 * {@code mvn test -Dtest=Foo#bar -Dtest=Whole*} must still be flagged even though the first
+	 * value alone would be bounded, since a later occurrence overrides it and Maven ultimately
+	 * runs whatever the wildcard matches.
+	 *
+	 * @param line one prompt line
+	 * @return whether an unbounded selector is mentioned
 	 */
 	private static boolean dtestBroadValue(String line) {
 		Matcher matcher = DTEST_VALUE.matcher(line);

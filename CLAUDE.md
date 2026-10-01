@@ -464,6 +464,11 @@ job submission (`workstream_submit_task`), the controller's `/api/submit` endpoi
 `mcp__ar-test-runner__start_test_run` tool — not just by this paragraph. There is no bypass at
 those three surfaces.
 
+What the limits are for is the hours-long run: an agent guessing it can confirm a change by
+running everything, which is the pipeline's job. They are not meant to stop you checking the
+code you just touched, so a class, or a few classes, or a list of methods is an ordinary
+invocation. The caps below are where "a targeted check" stops and "the suite" begins.
+
 A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also blocks a direct
 `mvn test`/`mvn integration-test` invocation, but it does not yet cover the full rule above:
 it does not block `verify`/`install`/`package`/`deploy` (which also run tests unless
@@ -474,13 +479,18 @@ write under `.claude/hooks/` or `.claude/settings.json`. Until that diff lands, 
 broad Maven phase, `AR_TEST_GROUP`, or a broad pytest run past the hook layer; the three
 surfaces above remain the only ones with no bypass.
 
-- **One test per invocation.** A single pytest node id (`path/test_x.py::test_name`), or
-  `-Dtest=Class#method` for Java. A bare `-Dtest=Class` still runs the whole class and counts
-  as too broad. Never `AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning,
-  reserved for the CI workflow matrix.
+- **A bounded selection per invocation: at most 5 test classes and at most 40 named methods.**
+  Naming a class is fine — `-Dtest=FooTest`, or `test_classes: ["FooTest"]` — and so is naming
+  a few related classes or a list of methods, which is what verifying a change usually needs.
+  What is refused is a selection with no ceiling: no selector at all (that is the module's whole
+  suite), more classes or methods than those caps, a Surefire wildcard (`*`, `?`), the `+`
+  method-list separator, `!` negation, a `%regex[...]` pattern, or a `$VAR` the validator cannot
+  resolve. A class counts as one class with an unknown number of cases, so the method cap bounds
+  only the entries that name a method. Never `AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard
+  partitioning, reserved for the CI workflow matrix.
 - **Every test or build invocation needs an explicit timeout of at most 40 minutes (2400s).**
   `mvn install`/`package` with `-DskipTests` is a build, not a test run, and is exempt from
-  the one-test restriction (though it still needs a timeout).
+  the selection caps (though it still needs a timeout).
 - **Never leave a background build or test run active when you end your turn.** Sessions are
   killed for inactivity — stdout silence, not total runtime — so an unattended background
   process either gets killed mid-run or outlives the session as orphaned state the next
