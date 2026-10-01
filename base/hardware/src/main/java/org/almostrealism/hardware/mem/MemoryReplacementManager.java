@@ -316,7 +316,7 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 					}
 				});
 			}
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | Error e) {
 			// No completion chain will ever release what was created before the failure (most
 			// often a memory-limit failure, which retaining those buffers would only prolong),
 			// and the copies registered against them must not run.

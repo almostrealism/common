@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
@@ -487,11 +488,16 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	protected static void releaseDeferredArguments(Object[] args, Object[] resolved) {
 		if (args == null || resolved == null) return;
 
+		// Every migrated root is destroyed even if one destroy() throws, so a failing provider
+		// deallocation does not leak the replacement allocations of the later detached views.
+		List<Runnable> releases = new ArrayList<>(resolved.length);
 		for (int i = 0; i < resolved.length; i++) {
 			if (resolved[i] != args[i] && resolved[i] instanceof MemoryData view) {
-				view.getRootDelegate().destroy();
+				releases.add(() -> view.getRootDelegate().destroy());
 			}
 		}
+
+		Destroyable.releaseAll(releases);
 	}
 
 	/**

@@ -129,6 +129,55 @@ public class MemoryReplacementCleanupTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: when allocating a later temporary fails with an {@link Error} (most importantly
+	 * {@link OutOfMemoryError}), the temporaries already created are still freed and the copies
+	 * registered against them discarded before the Error propagates. An allocation under memory
+	 * pressure is exactly where retaining those buffers hurts most, so the cleanup path must handle
+	 * an {@link Error} the same way it handles a {@link RuntimeException}.
+	 */
+	@Test(timeout = 30000)
+	public void allocationErrorReleasesEarlierTemporaries() {
+		List<MemoryData> created = new ArrayList<>();
+		OutOfMemoryError limit = new OutOfMemoryError("Memory max reached");
+		MemoryReplacementManager manager = new MemoryReplacementManager(null, null, (length, atomic) -> {
+			if (created.size() == 2) throw limit;
+
+			MemoryData tmp = new Bytes(length, atomic);
+			created.add(tmp);
+			return tmp;
+		});
+
+		PackedCollection a = pack(1.0, 2.0);
+		PackedCollection b = pack(3.0, 4.0);
+		PackedCollection c = pack(5.0, 6.0);
+
+		try {
+			OutOfMemoryError thrown = null;
+
+			try {
+				manager.processArguments(new Object[] { a, b, c });
+			} catch (OutOfMemoryError e) {
+				thrown = e;
+			}
+
+			Assert.assertSame("The allocation Error must propagate unchanged", limit, thrown);
+			Assert.assertEquals(2, created.size());
+
+			for (MemoryData tmp : created) {
+				Assert.assertTrue("Temporaries created before the Error must be freed", tmp.isDestroyed());
+			}
+
+			Assert.assertTrue("No copy may remain registered against a freed temporary", manager.isEmpty());
+			Assert.assertFalse("The arguments themselves are untouched", a.isDestroyed());
+			Assert.assertArrayEquals(new double[] { 1.0, 2.0 }, a.toArray(0, 2), 0.0);
+		} finally {
+			a.destroy();
+			b.destroy();
+			c.destroy();
+		}
+	}
+
+	/**
 	 * Regression: a factory that reuses one exception instance for both a later allocation failure
 	 * and an earlier temporary's destroy failure must still propagate that failure. Without the
 	 * self-suppression guard, {@code e.addSuppressed(e)} throws {@link IllegalArgumentException} and

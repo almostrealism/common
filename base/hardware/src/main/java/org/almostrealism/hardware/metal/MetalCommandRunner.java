@@ -455,6 +455,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	/**
 	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
 	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
+	 *
+	 * <p>Every buffer up to the target is drained through {@link Destroyable#releaseAll} so a drain
+	 * that throws (an aggregated callback failure from one buffer) does not skip the callbacks and
+	 * buffer release of the later committed buffers; the first failure is rethrown once all have
+	 * drained, with any later ones attached as suppressed.</p>
 	 */
 	private void completeOnExecutor(MTLCommandBuffer target, OperationMetadata requester) {
 		if (target == openBuffer && commitOpenOnExecutor()) {
@@ -471,10 +476,13 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 		}
 
-		// Not found means it already completed and was drained by an earlier wait.
-		for (int i = 0; i <= index; i++) {
-			drainOldestCommitted(requester);
+		// Not found (index -1) means the target already completed and was drained by an earlier wait.
+		int count = index + 1;
+		List<Runnable> drains = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			drains.add(() -> drainOldestCommitted(requester));
 		}
+		Destroyable.releaseAll(drains);
 	}
 
 	/**
@@ -540,16 +548,23 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * Destroys this command runner and releases all resources.
 	 *
 	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, releases the
-	 * timeline event, and shuts down the executor service.</p>
+	 * timeline event, and shuts down the executor service. The per-buffer drains and the event
+	 * release are run through {@link Destroyable#releaseAll} so a drain that throws cannot leak the
+	 * remaining buffers or the shared event; the first failure is rethrown with any later ones
+	 * attached as suppressed.</p>
 	 */
 	public void destroy() {
 		if (executor != null) {
 			await(executor.submit(() -> runInPool(() -> {
 				if (commitOpenOnExecutor()) destroyCommits++;
-				while (!committed.isEmpty()) {
-					drainOldestCommitted(null);
+
+				List<Runnable> drains = new ArrayList<>(committed.size() + 1);
+				int remaining = committed.size();
+				for (int i = 0; i < remaining; i++) {
+					drains.add(() -> drainOldestCommitted(null));
 				}
-				event.release();
+				drains.add(event::release);
+				Destroyable.releaseAll(drains);
 			})));
 			executor.shutdown();
 		}

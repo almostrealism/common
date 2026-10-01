@@ -757,7 +757,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					if (inflight == null) {
 						try {
 							process.releaseResources();
-						} catch (RuntimeException releaseFailure) {
+						} catch (RuntimeException | Error releaseFailure) {
 							if (releaseFailure != e) e.addSuppressed(releaseFailure);
 						}
 					} else {

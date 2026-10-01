@@ -24,6 +24,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.util.TestSuiteBase;
@@ -209,6 +210,38 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 			KernelMemoryGuard.releaseFor(lease);
 			live.destroy();
 		}
+	}
+
+	/**
+	 * Regression: releasing resolved deferred arguments destroys the migrated root of every view
+	 * even when one root's destroy throws. A provider deallocation is allowed to fail, so a single
+	 * failing destroy must not strand the replacement allocations of the later detached views. The
+	 * first failure is rethrown with any later one attached as suppressed.
+	 */
+	@Test(timeout = 30000)
+	public void releasingDeferredArgumentsRunsEveryDestroyDespiteFailure() {
+		Object[] args = { new Object(), new Object(), new Object() };
+		FailingRootDestroy first = new FailingRootDestroy(2, 2);
+		FailingRootDestroy second = new FailingRootDestroy(2, 2);
+		Bytes healthy = new Bytes(2, 2);
+		Object[] resolved = { first, second, healthy };
+
+		IllegalStateException thrown = null;
+
+		try {
+			ArgumentCapture.release(args, resolved);
+		} catch (IllegalStateException e) {
+			thrown = e;
+		}
+
+		Assert.assertNotNull("A failed destroy must be reported", thrown);
+		Assert.assertEquals(FailingRootDestroy.MESSAGE, thrown.getMessage());
+		Assert.assertEquals(1, thrown.getSuppressed().length);
+		Assert.assertEquals(FailingRootDestroy.MESSAGE, thrown.getSuppressed()[0].getMessage());
+
+		Assert.assertTrue("The first root must be destroyed", first.isDestroyed());
+		Assert.assertTrue("A failing root must not skip the later ones", second.isDestroyed());
+		Assert.assertTrue("The healthy root must still be destroyed", healthy.isDestroyed());
 	}
 
 	/**
@@ -423,6 +456,29 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		 */
 		static void release(Object[] args, Object[] resolved) {
 			releaseDeferredArguments(args, resolved);
+		}
+	}
+
+	/** A view whose root frees its memory on destroy and then reports a deallocation failure. */
+	private static final class FailingRootDestroy extends Bytes {
+		/** The message of the failure every destroy reports. */
+		static final String MESSAGE = "deallocation failed";
+
+		/**
+		 * Allocates the view.
+		 *
+		 * @param length the number of elements
+		 * @param atomic the atomic length
+		 */
+		FailingRootDestroy(int length, int atomic) {
+			super(length, atomic);
+		}
+
+		/** Frees the memory, then reports a failure as a failing provider deallocation would. */
+		@Override
+		public void destroy() {
+			super.destroy();
+			throw new IllegalStateException(MESSAGE);
 		}
 	}
 }
