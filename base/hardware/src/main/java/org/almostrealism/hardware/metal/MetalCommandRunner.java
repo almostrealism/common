@@ -551,24 +551,28 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * timeline event, and shuts down the executor service. The per-buffer drains and the event
 	 * release are run through {@link Destroyable#releaseAll} so a drain that throws cannot leak the
 	 * remaining buffers or the shared event; the first failure is rethrown with any later ones
-	 * attached as suppressed.</p>
+	 * attached as suppressed. The executor is shut down and the field cleared in a {@code finally}
+	 * so that a rethrown drain failure can never leave the non-daemon executor thread alive.</p>
 	 */
 	public void destroy() {
 		if (executor != null) {
-			await(executor.submit(() -> runInPool(() -> {
-				if (commitOpenOnExecutor()) destroyCommits++;
+			try {
+				await(executor.submit(() -> runInPool(() -> {
+					if (commitOpenOnExecutor()) destroyCommits++;
 
-				List<Runnable> drains = new ArrayList<>(committed.size() + 1);
-				int remaining = committed.size();
-				for (int i = 0; i < remaining; i++) {
-					drains.add(() -> drainOldestCommitted(null));
-				}
-				drains.add(event::release);
-				Destroyable.releaseAll(drains);
-			})));
-			executor.shutdown();
+					List<Runnable> drains = new ArrayList<>(committed.size() + 1);
+					int remaining = committed.size();
+					for (int i = 0; i < remaining; i++) {
+						drains.add(() -> drainOldestCommitted(null));
+					}
+					drains.add(event::release);
+					Destroyable.releaseAll(drains);
+				})));
+			} finally {
+				executor.shutdown();
+				executor = null;
+			}
 		}
-		executor = null;
 	}
 
 	/** Returns the console for logging. */
