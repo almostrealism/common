@@ -172,8 +172,9 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * through its {@link MemoryData#getMemOrdering() memory ordering}, so that is inspected in
 	 * addition to the shape. A destination carrying the identical mapping is accepted, since the
 	 * same mapping applied to both sides preserves the correspondence; identity here means matching
-	 * the traversal ordering and the memory ordering as well as the dimensions, because
-	 * {@link TraversalPolicy#equals(Object)} compares only the dimensions.</p>
+	 * the traversal ordering and the memory ordering as well as the shape, because
+	 * {@link TraversalPolicy#equals(Object)} compares the dimensions, dimension order, rates, and
+	 * traversal axis, but not the traversal ordering.</p>
 	 *
 	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
 	 * than referencing the view: the permutation then runs as a kernel that writes each destination
