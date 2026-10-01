@@ -277,6 +277,20 @@ back deterministically when the deferred work settles (both the success and fail
 `Semaphore.whenSettled`), not left to a timer. The backstop still force-expires a leaked
 kernel-execution guard exactly as before.
 
+A lease keeps the *memory* alive, but destroying a `MemoryData` still clears that object's
+reference to it (`MemoryDataAdapter.destroy()` nulls its `mem`). Deferred work therefore never
+dereferences its arguments directly: it reaches each one through `MemoryData.deferredReference()`
+(for a raw operator argument array, `HardwareOperator.deferredArguments`), which yields the object
+itself while it is still backed — so a migration in the meantime is observed — and, once it has
+been destroyed, a `MemoryData.detachedView()` captured at scheduling time: the same memory, offset,
+length and atomic length, bound directly to the leased allocation.
+
+Every count — execution guard or lease — is keyed by the allocation's **container pointer**
+(`RAM.getContainerPointer()`), because that is the address a provider tracks an allocation by
+(`NativeRef.getAddress()`) and asks about when releasing it. For most backends the container and
+content pointers coincide; for Metal they do not (the `MTLBuffer` object versus the bytes it holds),
+and keying by content pointer would leave Metal memory unprotected.
+
 `KernelMemoryGuard` does **not**:
 
 - **Protect an argument it cannot resolve to a `RAM`.** `acquire` warns and skips such an argument;

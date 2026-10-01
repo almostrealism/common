@@ -36,6 +36,7 @@ import java.lang.ref.Reference;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * {@link HardwareOperator} that executes compiled OpenCL kernels.
@@ -210,7 +211,12 @@ public class CLOperator extends HardwareOperator {
 	 * released memory. A lease (rather than a plain execution reservation) is used because the
 	 * dependency may remain pending longer than the deferred-release backstop, which a lease is
 	 * exempt from. {@link #dispatch} acquires its own reservation once it runs; this one only
-	 * covers the scheduling-to-execution window that reservation cannot.</p>
+	 * covers the scheduling-to-execution window that reservation cannot. The lease keeps the
+	 * memory alive, but destroying an argument still clears that object's reference to it, so
+	 * the deferred dispatch receives its arguments through {@link #deferredArguments}: an
+	 * argument destroyed in the meantime is dispatched against the memory it described when the
+	 * dispatch was scheduled, exactly as it would have been had the dispatch been enqueued
+	 * then.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
@@ -220,7 +226,8 @@ public class CLOperator extends HardwareOperator {
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
 			KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireScheduledFor(argumentData(args));
-			Semaphore dispatched = dependsOn.then(() -> dispatch(args, null));
+			Supplier<Object[]> deferred = deferredArguments(args);
+			Semaphore dispatched = dependsOn.then(() -> dispatch(deferred.get(), null));
 			dispatched.whenSettled(() -> KernelMemoryGuard.releaseFor(guard));
 			return dispatched;
 		}

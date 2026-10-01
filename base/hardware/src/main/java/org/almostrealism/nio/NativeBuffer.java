@@ -129,7 +129,7 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 		// We proceed with unmap regardless — blocking or silently deferring
 		// explicit destroy is as dangerous as complex finalizer logic.
 		KernelMemoryGuard.warnIfActivelyReferenced(
-				getContentPointer(), getAllocationStackTrace(), "NativeBuffer");
+				getContainerPointer(), getAllocationStackTrace(), "NativeBuffer");
 
 		if (sharedLocation != null) {
 			provider.unmapSharedMemory(rootBuffer, rootBuffer.capacity());

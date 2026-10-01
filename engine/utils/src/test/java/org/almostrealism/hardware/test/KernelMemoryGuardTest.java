@@ -302,6 +302,39 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A provider asks the guard about an allocation by its container pointer (the address its
+	 * native reference records), which for some backends &mdash; a Metal buffer object versus the
+	 * bytes it holds &mdash; differs from the content pointer. Both an execution guard and a
+	 * scheduling lease must therefore be counted against the container pointer, or the
+	 * provider's query never matches and the memory is released while still in use.
+	 */
+	@Test(timeout = 10_000)
+	public void countsAreKeyedByContainerPointer() {
+		KernelMemoryGuard guard = new KernelMemoryGuard();
+		MemoryData data = new StubMemoryData(new StubRAM(1400L) {
+			@Override
+			public long getContainerPointer() { return 1401L; }
+		});
+
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
+		Assert.assertFalse("An execution guard must block the container address",
+				guard.canDeallocate(1401L));
+		Assert.assertTrue("The content address is not what a provider asks about",
+				guard.canDeallocate(1400L));
+		guard.release(held);
+		Assert.assertTrue(guard.canDeallocate(1401L));
+
+		KernelMemoryGuard.Reservation lease = guard.acquireScheduled(data);
+		Assert.assertFalse("A lease must block the container address", guard.canDeallocate(1401L));
+		Assert.assertTrue("A lease must be reported against the container address",
+				guard.isScheduled(1401L));
+		Assert.assertFalse(guard.isScheduled(1400L));
+		guard.release(lease);
+		Assert.assertTrue(guard.canDeallocate(1401L));
+		Assert.assertFalse(guard.isScheduled(1401L));
+	}
+
+	/**
 	 * Verifies that the static {@link KernelMemoryGuard#acquireFor} returns
 	 * null when no Hardware is available, and that
 	 * {@link KernelMemoryGuard#releaseFor} handles null guard gracefully.

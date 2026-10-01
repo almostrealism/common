@@ -37,8 +37,10 @@ import org.almostrealism.io.TimingMetric;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for compiled hardware operators (kernels/native functions) that execute on accelerators.
@@ -439,6 +441,33 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 				.filter(MemoryData.class::isInstance)
 				.map(MemoryData.class::cast)
 				.toArray(MemoryData[]::new);
+	}
+
+	/**
+	 * Captures a raw argument array for an operation that will run later, after an argument
+	 * may have been destroyed.
+	 *
+	 * <p>Each {@link MemoryData} argument is replaced, when the returned supplier is invoked,
+	 * by what its {@link MemoryData#deferredReference() deferred reference} yields at that
+	 * moment: the argument itself if it is still backed by memory, or a view of the memory it
+	 * described when this method was called if it has since been destroyed. Other entries
+	 * (including {@code null}) are passed through unchanged, so {@link #prepareArguments}
+	 * still reports them. Nothing is validated or migrated here, for the same reason as
+	 * {@link #argumentData}. Keeping the captured memory from being freed is the caller's
+	 * responsibility, for example with a {@link KernelMemoryGuard} scheduling lease.</p>
+	 *
+	 * @param args the raw arguments, or {@code null}
+	 * @return a supplier of the arguments to run with, resolved when it is invoked
+	 */
+	protected static Supplier<Object[]> deferredArguments(Object[] args) {
+		if (args == null) return () -> null;
+
+		List<Supplier<?>> references = new ArrayList<>(args.length);
+		for (Object arg : args) {
+			references.add(arg instanceof MemoryData data ? data.deferredReference() : () -> arg);
+		}
+
+		return () -> references.stream().map(Supplier::get).toArray();
 	}
 
 	/**

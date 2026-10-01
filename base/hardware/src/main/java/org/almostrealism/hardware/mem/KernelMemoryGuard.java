@@ -106,7 +106,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KernelMemoryGuard implements ConsoleFeatures {
 
-	/** Active kernel reference counts per native memory address. */
+	/**
+	 * Active kernel reference counts per native allocation, keyed by
+	 * {@link RAM#getContainerPointer()} as every check from a provider is.
+	 */
 	private final ConcurrentHashMap<Long, AtomicInteger> activeReferences;
 
 	/** Strong references to {@link RAM} objects held while kernels are active, preventing GC. */
@@ -218,6 +221,12 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * Registers all memory arguments against either the kernel-execution counts or the
 	 * scheduling-lease counts, depending on {@code scheduled}.
 	 *
+	 * <p>Each argument is counted against its allocation's {@link RAM#getContainerPointer()
+	 * container pointer}, because that is the address a {@link HardwareMemoryProvider} tracks
+	 * an allocation by and asks about when releasing it. For a backend whose container is not
+	 * its contents &mdash; a Metal buffer object versus the bytes it holds &mdash; counting the
+	 * content pointer would never match that query, and the memory would go unprotected.</p>
+	 *
 	 * @param scheduled whether to record a scheduling lease rather than a kernel-execution guard
 	 * @param args      the memory arguments (may contain nulls)
 	 * @return what was taken, to be handed to {@link #release(Reservation)}
@@ -240,7 +249,7 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 				continue;
 			}
 
-			long address = ram.getContentPointer();
+			long address = ram.getContainerPointer();
 
 			references.compute(address, (k, existing) -> {
 				AtomicInteger count = existing != null ? existing : new AtomicInteger(0);
@@ -416,7 +425,7 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * {@code AR_HARDWARE_ALLOCATION_TRACE_FRAMES}) it is included in the warning
 	 * so the developer can see where the memory about to be freed was allocated.</p>
 	 *
-	 * @param address         the native content pointer about to be freed
+	 * @param address         the container pointer of the allocation about to be freed
 	 * @param allocationTrace the allocation stack trace captured at RAM creation time, may be null
 	 * @param context         short description of the destroy path (e.g. {@code "NativeBuffer"},
 	 *                        {@code "NativeMemory"}) used to identify the source of the warning

@@ -217,7 +217,12 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * both regions from the moment it is scheduled until it has settled. Without it a block
 	 * released in the meantime could be freed while the copy is still using it. A lease (rather
 	 * than a plain execution reservation) is used because the dependency may remain pending
-	 * longer than the deferred-release backstop, which a lease is exempt from.</p>
+	 * longer than the deferred-release backstop, which a lease is exempt from. The lease keeps
+	 * the memory alive, but destroying {@code source} or {@code destination} still clears that
+	 * object's reference to it, so the scheduled copy reaches each region through a
+	 * {@link MemoryData#deferredReference() deferred reference}: the object itself while it is
+	 * still backed, or the memory it described when the copy was scheduled once it has been
+	 * destroyed.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
@@ -233,9 +238,12 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 
 		KernelMemoryGuard.Reservation guard =
 				KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { source, destination });
+		Supplier<MemoryData> from = source.deferredReference();
+		Supplier<MemoryData> to = destination.deferredReference();
 
 		Semaphore copied = dependsOn.then(() -> {
-			destination.setFrom(0, source, 0, source.getMemLength());
+			MemoryData src = from.get();
+			to.get().setFrom(0, src, 0, src.getMemLength());
 			return null;
 		});
 
