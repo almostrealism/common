@@ -450,29 +450,34 @@ def _require_within_reader_limits(tokens, merges, added):
             _require_string_length("merge element %r" % part, part)
 
 
-def _require_merge_results_present(tokens, merges):
-    """Reject a merge whose concatenated result is absent from the vocabulary.
+def _require_merge_results_present(vocab, merges):
+    """Reject a merge whose concatenated result is absent from the model vocabulary.
 
-    The Java reader applies every merge to the per-symbol text and looks the merged symbol up in the
-    vocabulary; a result with no vocabulary id would make it emit the unknown token (``-1`` when the
-    tokenizer has none) instead of a valid id, so the reader rejects such a binary while reading the
-    merge table. HuggingFace BPE only ever learns a merge whose result is itself a vocabulary token,
-    so an absent result means a corrupt or hand-crafted source; it is rejected here, before the binary
-    is written, to keep every export the reader would load.
+    HuggingFace extracts added tokens before the BPE model runs, so they are not part of
+    ``model.vocab`` and a merge can never produce one in the source tokenizer: added-token spans are
+    matched atomically before any merge is applied. A merge result validated here must therefore be a
+    *model* vocabulary token, not merely present in the combined id-indexed table the exporter writes.
+    Validating against that combined table would accept a merge whose result exists only as an added
+    token; the exported Java tokenizer would then resolve the merged symbol to the added-token id,
+    diverging from a source where the merge could never fire. HuggingFace BPE only ever learns a merge
+    whose result is itself a model vocabulary token, so an absent result means a corrupt or
+    hand-crafted source; it is rejected here, before the binary is written, to keep every export
+    faithful to the tokenizer it came from.
 
-    :param tokens: the filled token table, indexed by id, holding vocabulary and added-token strings.
+    :param vocab: the model BPE vocabulary, mapping each token string to its id (added tokens
+        excluded, matching how :func:`read_tokenizer` returns them separately).
     :param merges: the merge list, each entry a list or a space-separated string.
-    :raises ValueError: if a merge result is not a populated vocabulary token.
+    :raises ValueError: if a merge result is not a model vocabulary token.
     """
-    known = {token for token in tokens if token is not None}
+    known = set(vocab)
     for merge in merges:
         left, right = _merge_parts(merge)
         result = left + right
         if result not in known:
             raise ValueError(
-                "merge %r + %r produces %r, which is not in the vocabulary; applying it during "
-                "encoding would emit the unknown token instead of a valid id, and the Java reader "
-                "rejects such a binary" % (left, right, result))
+                "merge %r + %r produces %r, which is not in the model vocabulary; applying it during "
+                "encoding would emit a symbol the source tokenizer never produces by merging, so the "
+                "exported tokenizer would diverge from its source" % (left, right, result))
 
 
 def _require_special_ids(specials, tokens):
@@ -524,7 +529,7 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
 
     _require_special_ids(specials, tokens)
     _require_within_reader_limits(tokens, merges, added)
-    _require_merge_results_present(tokens, merges)
+    _require_merge_results_present(vocab, merges)
 
     with open(path, "wb") as out:
         out.write(MAGIC)

@@ -645,7 +645,7 @@ def test_merge_result_missing_from_vocabulary_is_rejected(tmp_path):
     vocab = {"a": 0, "b": 1}
     merges = ["a b"]
     out = tmp_path / "tokenizer.bin"
-    with pytest.raises(ValueError, match="produces 'ab', which is not in the vocabulary"):
+    with pytest.raises(ValueError, match="produces 'ab', which is not in the model vocabulary"):
         exporter.write_tokenizer(str(out), vocab, merges, {}, [])
     assert not out.exists()
 
@@ -669,11 +669,26 @@ def test_merge_result_present_in_vocabulary_is_accepted(tmp_path):
         assert _read_string(handle) == "b"
 
 
-def test_merge_result_from_added_token_is_accepted(tmp_path):
-    # A merge result placed in the token table only by an added token is still present, so the export
-    # is accepted -- the check honors the whole id-indexed table the reader's vocabulary mirrors.
+def test_merge_result_only_in_added_tokens_is_rejected(tmp_path):
+    # A merge result present only as an added token is NOT a model vocabulary token. HuggingFace
+    # extracts added tokens before the BPE model runs, so the source tokenizer never produces "ab" by
+    # merging "a" and "b" -- it would match the added token "ab" atomically instead. Accepting the
+    # export would let the Java tokenizer resolve the merged symbol to the added-token id, diverging
+    # from the source, so the merge-result check validates against the model vocabulary only.
     vocab = {"a": 0, "b": 1}
     added = [(2, "ab", False, False)]
+    merges = ["a b"]
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="produces 'ab', which is not in the model vocabulary"):
+        exporter.write_tokenizer(str(out), vocab, merges, {}, added)
+    assert not out.exists()
+
+
+def test_merge_result_in_model_vocabulary_with_added_tokens_is_accepted(tmp_path):
+    # The boundary complement: when the merge result is a genuine model vocabulary token, the presence
+    # of unrelated added tokens does not change acceptance -- the check keys off the model vocabulary.
+    vocab = {"a": 0, "b": 1, "ab": 2}
+    added = [(3, "<pad>", False, True)]
     merges = ["a b"]
     out = tmp_path / "tokenizer.bin"
     exporter.write_tokenizer(str(out), vocab, merges, {}, added)
