@@ -788,6 +788,13 @@ came to coexist). Only when no round is in progress does the job check the
 backlog: it starts a round unless more than `MAX_OPEN_PRS` (6, the number of
 automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
 
+Like the QA rounds, both planning jobs retire earlier rounds with
+`tools/ci/archive-stale-workstreams.sh` (their own prefix only) as soon as the
+gate has found no round in progress, which is exactly when every earlier round
+has been merged, closed or abandoned. A forced run archives nothing, since it
+skipped that check and an approved plan may still be being implemented on its
+workstream.
+
 `plan-release-task` plans the next ready tracker task of the release master is
 building (`<TRACKER_PROJECT> <root pom.xml version>`), beside the free-form
 round rather than instead of it. It is gated three ways, in order: no

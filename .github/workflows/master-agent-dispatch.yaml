@@ -130,6 +130,24 @@ jobs:
           chmod +x ./tools/ci/qa-cadence.sh
           ./tools/ci/qa-cadence.sh
 
+      # Retire the planning rounds that came before this one. Once the gate
+      # above has found no project/plan-* round in progress, each earlier one has
+      # been merged, closed or abandoned; an approved plan being implemented
+      # keeps its pull request open, so the gate stops the run before this.
+      # A forced run skips that check, so it archives nothing. Archiving is
+      # reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: "project/plan-"
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
       - name: Check the open PR backlog
         id: branches
         if: steps.decide.outputs.run == 'true'
@@ -335,6 +353,24 @@ jobs:
         run: |
           chmod +x ./tools/ci/qa-cadence.sh
           ./tools/ci/qa-cadence.sh
+
+      # Retire the task-planning rounds that came before this one. Once the gate
+      # above has found no project/task-* round in progress, each earlier one has
+      # been merged, closed or abandoned; an approved plan being implemented
+      # keeps its pull request open, so the gate stops the run before this.
+      # A forced run skips that check, so it archives nothing. Archiving is
+      # reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: "project/task-"
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
 
       - name: Check the open PR backlog
         id: backlog
