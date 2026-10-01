@@ -237,6 +237,10 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	 * it holds, and an operation dispatched repeatedly would otherwise exhaust that memory
 	 * long before the collector runs.</p>
 	 *
+	 * <p>Every temporary is destroyed even if destroying an earlier one fails: the first such
+	 * failure is rethrown once all have been attempted, with any later ones attached to it as
+	 * suppressed.</p>
+	 *
 	 * <p>Call only once the invocation's full completion chain has fired.</p>
 	 */
 	public void releaseTemporaries() {
@@ -247,7 +251,21 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			temporaries.clear();
 		}
 
-		released.forEach(MemoryData::destroy);
+		RuntimeException failure = null;
+
+		for (MemoryData tmp : released) {
+			try {
+				tmp.destroy();
+			} catch (RuntimeException e) {
+				if (failure == null) {
+					failure = e;
+				} else {
+					failure.addSuppressed(e);
+				}
+			}
+		}
+
+		if (failure != null) throw failure;
 	}
 
 	/**
@@ -255,6 +273,10 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	 *
 	 * <p>Groups arguments by their root delegate, then creates temporary buffers and
 	 * registers pre/post-processing copy operations for each group.</p>
+	 *
+	 * <p>If creating a temporary fails, the temporaries already created are freed and the
+	 * copies registered so far are discarded before the failure propagates, leaving the
+	 * manager with nothing to run and nothing to release.</p>
 	 *
 	 * @param args Kernel arguments to process
 	 * @return New argument array with out-of-provider arguments replaced by temporary copies
@@ -297,14 +319,30 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			replacement.children.add(data);
 		}
 
-		for (Replacement replacement : replacements.values()) {
-			replacement.processChildren(tempFactory, (child, temp) -> {
-				for (int i = 0; i < args.length; i++) {
-					if (child == args[i]) {
-						result[i] = temp;
+		try {
+			for (Replacement replacement : replacements.values()) {
+				replacement.processChildren(tempFactory, (child, temp) -> {
+					for (int i = 0; i < args.length; i++) {
+						if (child == args[i]) {
+							result[i] = temp;
+						}
 					}
-				}
-			});
+				});
+			}
+		} catch (RuntimeException e) {
+			// No completion chain will ever release what was created before the failure (most
+			// often a memory-limit failure, which retaining those buffers would only prolong),
+			// and the copies registered against them must not run.
+			prepare.clear();
+			postprocess.clear();
+
+			try {
+				releaseTemporaries();
+			} catch (RuntimeException releaseFailure) {
+				e.addSuppressed(releaseFailure);
+			}
+
+			throw e;
 		}
 
 		return result;

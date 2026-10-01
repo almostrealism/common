@@ -130,6 +130,88 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: argument preparation moves an argument backed by an unsupported provider by
+	 * reallocating its root, and the root of a detached view is non-owning. Moving it must neither
+	 * free the borrowed memory (which, with memory versions disabled, reassignment used to
+	 * deallocate) nor keep it as a cached version, and the replacement the root receives is its
+	 * own: destroying the root frees it, where the root used to ignore destroy entirely and retain
+	 * the replacement. Checked with memory versions both enabled and disabled.
+	 */
+	@Test(timeout = 30000)
+	public void detachedViewRootOwnsOnlyItsReplacementAfterMigration() {
+		boolean versions = MemoryDataAdapter.enableMemVersions;
+
+		try {
+			for (boolean enabled : new boolean[] { true, false }) {
+				MemoryDataAdapter.enableMemVersions = enabled;
+
+				PackedCollection source = pack(1.0, 3.0, 5.0, 7.0);
+				MemoryData view = source.detachedView();
+				MemoryData storage = view.getRootDelegate();
+
+				storage.reallocate(source.getMem().getProvider());
+
+				Assert.assertNotSame("The root must hold a replacement after migration",
+						source.getMem(), storage.getMem());
+				assertValues(view, 1.0, 3.0, 5.0, 7.0);
+
+				storage.destroy();
+
+				Assert.assertTrue("Destroying the root must free its replacement", storage.isDestroyed());
+				Assert.assertFalse("The source must still own its memory", source.isDestroyed());
+				assertValues(source, 1.0, 3.0, 5.0, 7.0);
+
+				source.destroy();
+			}
+		} finally {
+			MemoryDataAdapter.enableMemVersions = versions;
+		}
+	}
+
+	/**
+	 * Releasing resolved deferred arguments frees the replacement a destroyed argument's view was
+	 * migrated to, leaves an unmigrated view's captured memory alone, and never touches arguments
+	 * that resolved to themselves. A supplier that was never invoked has nothing to release.
+	 */
+	@Test(timeout = 30000)
+	public void releasingDeferredArgumentsFreesOnlyMigratedViews() {
+		PackedCollection live = pack(1.0, 2.0);
+		PackedCollection migrated = pack(3.0, 4.0);
+		PackedCollection unmigrated = pack(5.0, 6.0);
+		Object[] args = { live, migrated, unmigrated, "not memory" };
+
+		Supplier<Object[]> deferred = ArgumentCapture.capture(args);
+		KernelMemoryGuard.Reservation lease =
+				KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { migrated, unmigrated });
+
+		try {
+			migrated.destroy();
+			unmigrated.destroy();
+
+			Object[] resolved = deferred.get();
+			MemoryData migratedView = (MemoryData) resolved[1];
+			MemoryData unmigratedView = (MemoryData) resolved[2];
+			migratedView.getRootDelegate().reallocate(migratedView.getMem().getProvider());
+
+			ArgumentCapture.release(args, resolved);
+
+			Assert.assertTrue("The migrated view's replacement must be freed",
+					migratedView.getRootDelegate().isDestroyed());
+			Assert.assertFalse("An unmigrated view still reads its captured memory",
+					unmigratedView.isDestroyed());
+			assertValues(unmigratedView, 5.0, 6.0);
+			Assert.assertFalse("A live argument must not be released", live.isDestroyed());
+			assertValues(live, 1.0, 2.0);
+
+			ArgumentCapture.release(args, null);
+			Assert.assertFalse(live.isDestroyed());
+		} finally {
+			KernelMemoryGuard.releaseFor(lease);
+			live.destroy();
+		}
+	}
+
+	/**
 	 * Data that has already been destroyed has no memory to bind to, so its detached view is the
 	 * data itself, and a deferred reference to it yields the data itself.
 	 */
@@ -331,6 +413,16 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		 */
 		static Supplier<Object[]> capture(Object[] args) {
 			return deferredArguments(args);
+		}
+
+		/**
+		 * Releases what resolving captured arguments produced.
+		 *
+		 * @param args     the raw arguments that were captured
+		 * @param resolved what the capture's supplier returned
+		 */
+		static void release(Object[] args, Object[] resolved) {
+			releaseDeferredArguments(args, resolved);
 		}
 	}
 }

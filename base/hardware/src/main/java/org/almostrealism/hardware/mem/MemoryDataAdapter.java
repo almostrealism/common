@@ -360,10 +360,31 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns whether this data is responsible for deallocating the given {@link Memory}.
+	 *
+	 * <p>{@link #reassign(Memory)} consults this before giving up its current memory: memory
+	 * this data does not own is neither deallocated nor retained as a cached version, it is
+	 * simply no longer referenced. Every adapter owns the memory it holds unless a subclass
+	 * wraps memory whose lifetime is managed elsewhere.</p>
+	 *
+	 * @param mem the memory in question
+	 * @return true if this data deallocates {@code mem} when it is replaced or destroyed
+	 */
+	protected boolean ownsMemory(Memory mem) {
+		return true;
+	}
+
 	@Override
 	public void reassign(Memory mem) {
 		if (delegateMem != null || mem == null) {
 			throw new HardwareException("Only root memory can be reassigned");
+		}
+
+		if (!ownsMemory(this.mem)) {
+			// Memory owned elsewhere is neither freed nor kept as a version of this data
+			this.mem = mem;
+			return;
 		}
 
 		if (enableMemVersions && memVersions == null)

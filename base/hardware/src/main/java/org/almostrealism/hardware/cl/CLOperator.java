@@ -35,6 +35,7 @@ import org.jocl.cl_kernel;
 import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -236,9 +237,11 @@ public class CLOperator extends HardwareOperator {
 				if (leased.compareAndSet(true, false)) KernelMemoryGuard.releaseFor(guard);
 			};
 			Supplier<Object[]> deferred = deferredArguments(args);
+			AtomicReference<Object[]> resolved = new AtomicReference<>();
 			Semaphore dispatched = dependsOn.then(() -> {
 				try {
-					return dispatch(deferred.get(), null);
+					resolved.set(deferred.get());
+					return dispatch(resolved.get(), null);
 				} finally {
 					// dispatch() has now taken its own execution guard, so the scheduling lease is
 					// redundant; releasing it hands the memory to that guard (and its 30s backstop)
@@ -247,7 +250,12 @@ public class CLOperator extends HardwareOperator {
 				}
 			});
 			// Dependency-failure path: the work never runs, so give the lease back on settlement.
-			dispatched.whenSettled(releaseLease);
+			// Once the kernel has settled, free any allocation a destroyed argument's view was
+			// given when it was moved to a provider this operator supports.
+			dispatched.whenSettled(() -> {
+				releaseLease.run();
+				releaseDeferredArguments(args, resolved.get());
+			});
 			return dispatched;
 		}
 

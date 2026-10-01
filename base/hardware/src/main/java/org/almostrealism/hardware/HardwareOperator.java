@@ -471,6 +471,30 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	}
 
 	/**
+	 * Releases what resolving {@link #deferredArguments} produced, once the work that used the
+	 * resolved arguments has settled.
+	 *
+	 * <p>An argument destroyed before the work ran was resolved to a detached view, and
+	 * {@link #prepareArguments} may since have moved that view's root to a supported provider,
+	 * giving it a replacement allocation that nothing else references. Destroying the root of
+	 * each such view frees that replacement; it never frees the memory the view was captured
+	 * against, which remains with the (destroyed) argument and its lease. Arguments resolved to
+	 * themselves are left alone.</p>
+	 *
+	 * @param args     the raw arguments given to {@link #deferredArguments}, or {@code null}
+	 * @param resolved what its supplier returned, or {@code null} if it was never invoked
+	 */
+	protected static void releaseDeferredArguments(Object[] args, Object[] resolved) {
+		if (args == null || resolved == null) return;
+
+		for (int i = 0; i < resolved.length; i++) {
+			if (resolved[i] != args[i] && resolved[i] instanceof MemoryData view) {
+				view.getRootDelegate().destroy();
+			}
+		}
+	}
+
+	/**
 	 * Moves the given {@link MemoryData} to a supported memory provider if its current provider
 	 * is not supported by this operator.
 	 *

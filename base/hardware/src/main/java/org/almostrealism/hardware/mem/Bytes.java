@@ -318,11 +318,18 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	/**
 	 * A {@link Bytes} root that wraps memory it does not own.
 	 *
-	 * <p>Its {@link #destroy()} is a no-op, so neither an explicit destroy nor the
-	 * {@link MemoryDataAdapter#finalize()} path (which delegates to {@link #destroy()} when
-	 * {@link MemoryDataAdapter#enableFinalizer} is set) ever deallocates the wrapped memory.</p>
+	 * <p>Neither an explicit destroy nor the {@link MemoryDataAdapter#finalize()} path (which
+	 * delegates to {@link #destroy()} when {@link MemoryDataAdapter#enableFinalizer} is set)
+	 * ever deallocates the wrapped memory. If the root is later moved to another provider
+	 * (as {@link org.almostrealism.hardware.HardwareOperator} does for an argument whose
+	 * provider it does not support), the wrapped memory is released from this root without
+	 * being freed, and the replacement it receives is its own: destroying the root then
+	 * frees that replacement like any other {@link Bytes}.</p>
 	 */
 	private static final class NonOwning extends Bytes {
+		/** The memory this root was created around, which belongs to another {@link MemoryData}. */
+		private final Memory borrowed;
+
 		/**
 		 * Wraps existing memory without taking ownership of it.
 		 *
@@ -331,14 +338,23 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		 */
 		private NonOwning(Memory mem, int memLength) {
 			super(mem, memLength);
+			this.borrowed = mem;
+		}
+
+		/** Owns any memory except the memory it was created around. */
+		@Override
+		protected boolean ownsMemory(Memory mem) {
+			return mem != borrowed;
 		}
 
 		/**
-		 * Does nothing. The wrapped memory belongs to another {@link MemoryData}, so it is never
-		 * deallocated here, whether {@code destroy()} is called explicitly or by the finalizer.
+		 * Frees memory this root acquired by being moved to another provider, and does nothing
+		 * while it still wraps the borrowed memory, which is never deallocated here.
 		 */
 		@Override
 		public void destroy() {
+			if (getMem() == borrowed) return;
+			super.destroy();
 		}
 	}
 }

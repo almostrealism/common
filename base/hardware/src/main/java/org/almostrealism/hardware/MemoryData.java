@@ -309,9 +309,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * its memory, but not the view's: the view keeps the same memory, offset, length and atomic
 	 * length. It does not keep the memory itself alive &mdash; whoever needs the memory to outlive
 	 * a destroy must hold it some other way, for example with a
-	 * {@link org.almostrealism.hardware.mem.KernelMemoryGuard} scheduling lease. The view owns
-	 * nothing and must not be destroyed. Data that has already been destroyed has nothing to bind
-	 * to, and is returned unchanged.</p>
+	 * {@link org.almostrealism.hardware.mem.KernelMemoryGuard} scheduling lease. The view's root
+	 * never frees the captured memory; destroying that root only frees memory the root acquired
+	 * afterwards by being moved to another provider. Data that has already been destroyed has
+	 * nothing to bind to, and is returned unchanged.</p>
 	 *
 	 * @return a view of this data's current memory, or this data if it has been destroyed
 	 */
