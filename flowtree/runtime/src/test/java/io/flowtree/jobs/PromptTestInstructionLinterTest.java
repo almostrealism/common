@@ -167,6 +167,17 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 		assertTrue(violationsFor("Run mvn test -Dtest=A,B,C,D,E to confirm.").isEmpty());
 	}
 
+	/** A repeated {@code -Dtest} where EVERY value is bounded is accepted: the command validator,
+	 * the Python linter's {@code _has_bounding_selector}, and {@link PromptTestInstructionLinter}'s
+	 * {@code hasBoundedSelector} all judge each value in isolation and agree it is a bounded run
+	 * (Maven uses only the last value, itself a narrow one). This pins the aligned "every value
+	 * bounded" rule so that exempting the fragment does not depend on {@code dtestBroadValue}
+	 * running afterwards -- it has no broad value to catch here. */
+	@Test(timeout = 10000)
+	public void repeatedBoundedDtestMentionsAccepted() {
+		assertTrue(violationsFor("Run mvn test -Dtest=FooTest -Dtest=BarTest to confirm.").isEmpty());
+	}
+
 	/** Beyond the class cap the mention is a suite run and must be flagged. */
 	@Test(timeout = 10000)
 	public void mentionAboveTheClassCapRejected() {

@@ -26,7 +26,7 @@ the other concerns it used to carry inline is a collaborator:
 |--------|---------|
 | `project.py` | Which Maven project and module a run targets: root resolution, and the per-module CI test-group count read from the project's own workflow |
 | `common/run_store.py` | The on-disk record of runs: metadata, captured output, listing, retiring old runs, marking abandoned ones. Shared with ar-build-validator, so it lives in the `common` package rather than here. |
-| `run_validation.py` | The "no broad test runs" rule: validates `start_test_run` arguments (one `Class#method` test, no CI-shard selection, timeout within the maximum) before a run starts |
+| `run_validation.py` | The "no broad test runs" rule: validates `start_test_run` arguments (a bounded selection of at most 5 classes and 40 `Class#method` tests, no CI-shard selection, timeout within the maximum) before a run starts |
 | `reports.py` | Surefire XML: collecting reports out of the project, and reading counts, failures, and per-test times back |
 | `timing.py` | Statistics over a repeated run — duration spread and per-test pass rates |
 | `preflight.py` | What the upstream artifact state *is*: which are missing, how stale, how to seed them |
@@ -115,14 +115,18 @@ Start a new test run asynchronously.
 | `depth` | int (0-10) | No | AR_TEST_DEPTH value |
 | `project` | string | No | Root of the Maven project (default: this repository) |
 | `module` | string | No | Maven module, relative to the project root (default: "engine/utils") |
-| `test_classes` | string[] | No* | One `Class#method` selector; a bare class name is rejected |
-| `test_methods` | object[] | No* | One method: `[{"class": "...", "method": "..."}]` |
+| `test_classes` | string[] | No* | Exact class names or `Class#method` selectors; a bare class name is accepted |
+| `test_methods` | object[] | No* | Methods: `[{"class": "...", "method": "..."}, ...]` |
 | `timeout_minutes` | int | No | Max run time (default: 15, maximum: 40) |
 | `jvm_args` | string[] | No | Additional JVM arguments |
 
-\* Exactly one test must be selected across `test_classes` and `test_methods`
-(see `run_validation.py`). A call with neither, with more than one entry, with a
-bare class name, with a wildcard, or with `test_group`/`test_groups` (or an
+\* A bounded selection is required across `test_classes` and `test_methods`
+(see `run_validation.py`): at most 5 classes and at most 40 `Class#method`
+tests per invocation, which may be mixed (a class counts as one class with an
+unknown number of cases, so the method cap bounds only the entries naming a
+method). A call with neither field, with more classes or methods than those
+caps, with a wildcard or other unbounded selector (`*`, `?`, `+`, `!`,
+`%regex[...]`, an unresolved `$VAR`), or with `test_group`/`test_groups` (or an
 `AR_TEST_GROUP` reference in `jvm_args`) is rejected — broad runs belong to CI.
 
 **Examples:**

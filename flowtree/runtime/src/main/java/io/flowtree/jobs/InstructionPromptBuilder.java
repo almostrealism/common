@@ -990,19 +990,23 @@ public class InstructionPromptBuilder {
         sb.append("3. For Python changes in `tools/`, run the specific test node id(s) that ");
         sb.append("exercise your change (e.g., `python -m pytest ");
         sb.append("tools/mcp/manager/test_server.py::test_name`), never the whole module.\n");
-        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_methods` to run ");
-        sb.append("one `Class#method` per invocation; never a bare class or a full module ");
-        sb.append("run -- see \"Test Execution Limits\" below.\n\n");
+        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_classes`/");
+        sb.append("`test_methods` to run a bounded selection (a class, a few classes, or ");
+        sb.append("named methods, up to the caps); never a full module run -- see \"Test ");
+        sb.append("Execution Limits\" below.\n\n");
         sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. If a ");
         sb.append("test fails, fix the underlying cause. Do NOT add `@Disabled`, comment ");
         sb.append("out assertions, or weaken tests to make them green.\n\n");
 
         // Test execution limits -- always included for coding tasks
         sb.append("## Test Execution Limits\n");
-        sb.append("Run at most ONE test per invocation: a single pytest node id ");
-        sb.append("(`path/test_x.py::test_name`), or `-Dtest=Class#method` for Java via ");
-        sb.append("`mcp__ar-test-runner__start_test_run`. Never a bare `-Dtest=Class` (that ");
-        sb.append("still runs the whole class), never a module's whole suite, and never ");
+        sb.append("Run only a bounded selection per invocation. For Java via ");
+        sb.append("`-Dtest=` / `mcp__ar-test-runner__start_test_run`, that is at most 5 test ");
+        sb.append("classes and 40 named `Class#method` tests — a bare class or a few classes ");
+        sb.append("is an ordinary check, not a broad run. For Python, a single pytest node id ");
+        sb.append("(`path/test_x.py::test_name`). Refused is any selection with no ceiling: ");
+        sb.append("more classes or methods than those caps, a Surefire wildcard (`*`, `?`), ");
+        sb.append("the `+`/`!`/`%regex[...]` selectors, a module's whole suite, or ");
         sb.append("`AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning, reserved ");
         sb.append("for the CI workflow matrix. Broad verification belongs to CI, not to this ");
         sb.append("session.\n\n");

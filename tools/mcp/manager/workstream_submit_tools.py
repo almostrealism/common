@@ -83,9 +83,11 @@ def workstream_submit_task(
     RULE, NO BYPASS -- test execution limits: neither ``prompt`` nor
     ``command`` nor ``post_completion_command`` may instruct or run a
     full/whole/entire test suite, a module's whole suite, or a CI shard
-    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select an
-    explicit ``Class#method`` test; a pytest command must select an
-    explicit node id. This is checked mechanically on every submission --
+    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select a
+    bounded set of tests via ``-Dtest`` (at most 5 classes and 40
+    ``Class#method`` tests, no wildcard or other unbounded selector); a
+    pytest command must select one explicit node id. This is checked
+    mechanically on every submission --
     see ``tools/mcp/manager/execution_limits.py`` for the full rule
     and the incident that made it a hard requirement. There is no operator
     escape hatch, unlike ``allow_commit_language`` below.
@@ -95,8 +97,9 @@ def workstream_submit_task(
             default coding-agent job; ignored for a shell-command job. Be
             specific about what files to change, what behavior to implement,
             and any constraints. May not instruct the agent to run a broad
-            test set (see RULE above) -- ask for one narrowly-selected test
-            per invocation instead, or leave verification to CI.
+            test set (see RULE above) -- ask for a bounded selection (a class,
+            a few classes, or named methods up to the caps) instead, or leave
+            verification to CI.
         job_type: The job type to submit. Empty (default) or "coding" submits
             a coding-agent job; "shell" submits a shell-command job that runs
             ``command``. Providing ``command`` implies "shell".
@@ -488,12 +491,14 @@ def workstream_submit_task(
             "ok": False,
             "error": (
                 "Prompt instructs the agent to run a broad test set. Agents may "
-                "run at most one narrowly-selected test per invocation; broad "
-                "verification (full suites, module suites, CI shards) belongs "
-                "to CI only. There is no bypass for this check.\n\n"
+                "run only a bounded selection per invocation (at most 5 test "
+                "classes and 40 named Class#method tests for Maven, or one "
+                "pytest node id); broad verification (full suites, module "
+                "suites, CI shards) belongs to CI only. There is no bypass for "
+                "this check.\n\n"
                 "Forbidden phrases found:\n" + "\n".join(lines) +
                 "\n\nRewrite the prompt to name the specific failing test(s) to "
-                "run, one at a time."
+                "run as a bounded selection."
             ),
         }
     if max_wall_clock_hours is not None and max_wall_clock_hours < 0:

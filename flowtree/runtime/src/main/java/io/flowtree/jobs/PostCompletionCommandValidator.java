@@ -770,8 +770,8 @@ public class PostCompletionCommandValidator {
 		for (String violation : violations) {
 			sb.append("  - ").append(violation).append('\n');
 		}
-		sb.append("\nRewrite the command to select explicit Class#method tests (Maven) or "
-				+ "explicit node ids (pytest), one test per invocation.");
+		sb.append("\nRewrite the command to select a bounded set of tests (Maven: up to the "
+				+ "class/method caps via -Dtest; pytest: one explicit node id per invocation).");
 		return sb.toString();
 	}
 

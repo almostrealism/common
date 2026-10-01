@@ -302,30 +302,37 @@ public class PromptTestInstructionLinter {
 	}
 
 	/**
-	 * True when {@code fragment} carries a {@code -Dtest=} selector that bounds the run, which is
-	 * what exempts a Maven test-phase mention from {@link #mvnSegmentWithoutSelector}.
+	 * True when {@code fragment} carries at least one {@code -Dtest=} selector and EVERY
+	 * {@code -Dtest=} value it names bounds the run, which is what exempts a Maven test-phase
+	 * mention from {@link #mvnSegmentWithoutSelector}.
 	 *
 	 * <p>This asks {@link PostCompletionCommandValidator#dtestIsNarrow} rather than looking for a
 	 * {@code #}, so it agrees with {@link #dtestBroadValue} and with the command validator about
 	 * what counts as bounded. A mention naming a class, or a few classes, is exempt here and is
-	 * not flagged there; a wildcard or an over-cap list is exempt in neither.</p>
+	 * not flagged there; a wildcard or an over-cap list is exempt in neither. Requiring every
+	 * value to be narrow — rather than exempting the fragment as soon as any one value is narrow —
+	 * matches the Python mirror
+	 * {@code _MvnTestSegmentMatcher._has_bounding_selector}'s {@code all(...)} rule and Maven's
+	 * last-value-wins semantics directly, so a later broad value ({@code -Dtest=Foo#bar
+	 * -Dtest=Whole*}) is not exempted here on the strength of the earlier narrow one. This no
+	 * longer relies on {@link #dtestBroadValue} running afterwards to catch such a fragment, so
+	 * the two predicates stay independently correct regardless of rule ordering.</p>
 	 *
 	 * @param fragment one chained-command fragment of a prompt line
-	 * @return whether a bounded selector is present
+	 * @return whether a bounded selector is present and every value it names is bounded
 	 */
 	private static boolean hasBoundedSelector(String fragment) {
-		// TODO(review): this returns bounded when ANY value is narrow, while the Python mirror
-		// _MvnTestSegmentMatcher._has_bounding_selector requires ALL values narrow; net line-flagging
-		// is identical today only because dtestBroadValue/_DTestBroadValueMatcher catches the broad value.
 		Matcher matcher = DTEST_VALUE.matcher(fragment);
 
+		boolean any = false;
 		while (matcher.find()) {
-			if (PostCompletionCommandValidator.dtestIsNarrow(matcher.group(1))) {
-				return true;
+			any = true;
+			if (!PostCompletionCommandValidator.dtestIsNarrow(matcher.group(1))) {
+				return false;
 			}
 		}
 
-		return false;
+		return any;
 	}
 
 	/**
@@ -580,14 +587,16 @@ public class PromptTestInstructionLinter {
 	/** Renders {@link #getViolations()} as a rejection message for the submitter. */
 	public String formatRejection() {
 		StringBuilder sb = new StringBuilder(
-				"Prompt instructs the agent to run a broad test set. Agents may run at most one "
-				+ "narrowly-selected test per invocation; broad verification (full suites, module "
+				"Prompt instructs the agent to run a broad test set. Agents may run only a bounded "
+				+ "selection per invocation (at most 5 test classes and 40 named Class#method tests "
+				+ "for Maven, or one pytest node id); broad verification (full suites, module "
 				+ "suites, CI shards) belongs to CI only. There is no bypass for this check.\n\n"
 				+ "Forbidden phrases found:\n");
 		for (String violation : violations) {
 			sb.append("  ").append(violation).append('\n');
 		}
-		sb.append("\nRewrite the prompt to name the specific failing test(s) to run, one at a time.");
+		sb.append("\nRewrite the prompt to name the specific failing test(s) to run as a bounded "
+				+ "selection.");
 		return sb.toString();
 	}
 
