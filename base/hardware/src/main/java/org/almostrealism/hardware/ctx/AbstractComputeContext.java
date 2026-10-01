@@ -18,6 +18,7 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
@@ -26,6 +27,7 @@ import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -142,6 +144,16 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	/** Set as soon as {@link #destroy()} begins; see {@link #isDestroyed()}. */
 	private volatile boolean destroyed;
 
+	/** Monitor ordering the copies scheduled by {@link #copy(MemoryData, MemoryData, Semaphore)}. */
+	private final Object copyOrder = new Object();
+
+	/**
+	 * Settles when the most recently scheduled copy has completed or failed, while that copy
+	 * is outstanding; otherwise {@code null}. A new copy is ordered after it. Guarded by
+	 * {@link #copyOrder}.
+	 */
+	private Semaphore lastScheduledCopy;
+
 	/**
 	 * Constructs a compute context wrapping the given data context.
 	 *
@@ -217,6 +229,13 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * both regions from the moment it is scheduled until it has settled. Without it a block
 	 * released in the meantime could be freed while the copy is still using it.</p>
 	 *
+	 * <p>Scheduled copies complete in the order they were requested, as copies on a device
+	 * queue do: each is also ordered after the previous scheduled copy of this context. A
+	 * group of copies submitted together ({@code Submittable.submit}) is represented by the
+	 * completion of its last member, which is only sound when waiting on that member waits
+	 * on every earlier one. Copies running independently would let a caller read a
+	 * destination whose copy had not yet happened.</p>
+	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
 	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
@@ -224,21 +243,39 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
-		if (dependsOn == null) {
-			destination.setFrom(0, source, 0, source.getMemLength());
-			return null;
+		synchronized (copyOrder) {
+			Semaphore after = Semaphore.all(Arrays.asList(dependsOn, lastScheduledCopy));
+
+			if (after == null) {
+				destination.setFrom(0, source, 0, source.getMemLength());
+				return null;
+			}
+
+			KernelMemoryGuard.Reservation guard =
+					KernelMemoryGuard.acquireFor(new MemoryData[] { source, destination });
+
+			Semaphore copied = after.then(() -> {
+				destination.setFrom(0, source, 0, source.getMemLength());
+				return null;
+			});
+
+			// Later copies follow this one once it has settled, not only if it succeeded:
+			// a failure is reported to this copy's waiters and must not stall the rest
+			LatchSemaphore settled = new LatchSemaphore(1);
+			lastScheduledCopy = settled;
+
+			copied.whenSettled(() -> {
+				KernelMemoryGuard.releaseFor(guard);
+
+				synchronized (copyOrder) {
+					if (lastScheduledCopy == settled) lastScheduledCopy = null;
+				}
+
+				settled.countDown();
+			});
+
+			return copied;
 		}
-
-		KernelMemoryGuard.Reservation guard =
-				KernelMemoryGuard.acquireFor(new MemoryData[] { source, destination });
-
-		Semaphore copied = dependsOn.then(() -> {
-			destination.setFrom(0, source, 0, source.getMemLength());
-			return null;
-		});
-
-		copied.whenSettled(() -> KernelMemoryGuard.releaseFor(guard));
-		return copied;
 	}
 
 	/**

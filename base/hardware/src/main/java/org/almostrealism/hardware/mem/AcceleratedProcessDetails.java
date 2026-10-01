@@ -365,6 +365,30 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns true when this invocation holds anything that must be released once its
+	 * completion chain has fired: leased destination buffers, or temporary replacement
+	 * buffers created for its arguments.
+	 *
+	 * @return true when {@link #releaseResources()} has something to release
+	 */
+	public boolean hasResources() {
+		return hasDestinationLeases() || !isEmpty();
+	}
+
+	/**
+	 * Releases everything this invocation holds for the duration of its completion chain:
+	 * the leased destination buffers ({@link #releaseDestinationLeases()}) and the temporary
+	 * buffers its arguments were replaced with
+	 * ({@link MemoryReplacementManager#releaseTemporaries()}). The same condition applies as
+	 * for {@link #releaseDestinationLeases()}: call only once the completion from
+	 * {@link #getSemaphore()} has fired.
+	 */
+	public void releaseResources() {
+		releaseDestinationLeases();
+		replacementManager.releaseTemporaries();
+	}
+
+	/**
 	 * Releases every leased destination buffer back to its reuse slot, exactly once.
 	 *
 	 * <p>Safe to call only when nothing can still read or write the leased buffers —

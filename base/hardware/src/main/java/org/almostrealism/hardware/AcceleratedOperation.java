@@ -736,13 +736,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					activeHeapStage.addPendingKernel(completion);
 				}
 
-				if (process.hasDestinationLeases()) {
-					// Release at the end of the full chain, passively — an actively waiting
-					// callback (onComplete) forces a per-invocation commit on Metal.
+				if (process.hasResources()) {
+					// Release leases and replacement temporaries at the end of the full chain,
+					// passively — an actively waiting callback (onComplete) forces a
+					// per-invocation commit on Metal.
 					if (completion == null) {
-						process.releaseDestinationLeases();
+						process.releaseResources();
 					} else {
-						completion.whenComplete(process::releaseDestinationLeases);
+						completion.whenComplete(process::releaseResources);
 					}
 				}
 			} finally {
