@@ -129,6 +129,50 @@ public class MemoryReplacementCleanupTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: a factory that reuses one exception instance for both a later allocation failure
+	 * and an earlier temporary's destroy failure must still propagate that failure. Without the
+	 * self-suppression guard, {@code e.addSuppressed(e)} throws {@link IllegalArgumentException} and
+	 * replaces the real allocation failure.
+	 */
+	@Test(timeout = 30000)
+	public void sharedFailureInstanceIsNotSelfSuppressed() {
+		IllegalStateException shared = new IllegalStateException("shared failure");
+		List<MemoryData> created = new ArrayList<>();
+		MemoryReplacementManager manager = new MemoryReplacementManager(null, null, (length, atomic) -> {
+			if (created.size() == 2) throw shared;
+
+			MemoryData tmp = new FailingDestroyWith(length, atomic, shared);
+			created.add(tmp);
+			return tmp;
+		});
+
+		PackedCollection a = pack(1.0, 2.0);
+		PackedCollection b = pack(3.0, 4.0);
+		PackedCollection c = pack(5.0, 6.0);
+
+		try {
+			IllegalStateException thrown = null;
+
+			try {
+				manager.processArguments(new Object[] { a, b, c });
+			} catch (IllegalStateException e) {
+				thrown = e;
+			}
+
+			Assert.assertSame("The allocation failure must propagate unchanged", shared, thrown);
+			Assert.assertEquals(0, thrown.getSuppressed().length);
+
+			for (MemoryData tmp : created) {
+				Assert.assertTrue("Temporaries created before the failure must be freed", tmp.isDestroyed());
+			}
+		} finally {
+			a.destroy();
+			b.destroy();
+			c.destroy();
+		}
+	}
+
+	/**
 	 * Allocating every temporary successfully leaves them all alive until
 	 * {@link MemoryReplacementManager#releaseTemporaries()} is called, which frees them all.
 	 */
@@ -189,6 +233,31 @@ public class MemoryReplacementCleanupTest extends TestSuiteBase {
 		public void destroy() {
 			super.destroy();
 			throw new IllegalStateException(MESSAGE);
+		}
+	}
+
+	/** A temporary that frees its memory on destroy and then rethrows a shared failure instance. */
+	private static final class FailingDestroyWith extends Bytes {
+		/** The failure instance every destroy rethrows. */
+		private final RuntimeException failure;
+
+		/**
+		 * Allocates the temporary.
+		 *
+		 * @param length  the number of elements
+		 * @param atomic  the atomic length
+		 * @param failure the failure instance to rethrow on destroy
+		 */
+		FailingDestroyWith(int length, int atomic, RuntimeException failure) {
+			super(length, atomic);
+			this.failure = failure;
+		}
+
+		/** Frees the memory, then rethrows the shared failure instance. */
+		@Override
+		public void destroy() {
+			super.destroy();
+			throw failure;
 		}
 	}
 }

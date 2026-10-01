@@ -101,6 +101,49 @@ public class DestroyableReleaseAllTest {
 		}
 	}
 
+	/**
+	 * Regression: an {@link Error} (such as the {@code AssertionError}/{@code OutOfMemoryError} an
+	 * arbitrary completion callback may raise) must not skip later actions. The first failure is
+	 * rethrown and the later ones are attached as suppressed, exactly as for a {@link RuntimeException}.
+	 */
+	@Test(timeout = 10000)
+	public void errorDoesNotSkipLaterActions() {
+		List<Integer> ran = new ArrayList<>();
+		AssertionError first = new AssertionError("first");
+		RuntimeException second = new RuntimeException("second");
+
+		try {
+			Destroyable.releaseAll(List.<Runnable>of(
+					() -> { ran.add(1); throw first; },
+					() -> ran.add(2),
+					() -> { ran.add(3); throw second; },
+					() -> ran.add(4)));
+			Assert.fail("The first failure must propagate");
+		} catch (AssertionError e) {
+			Assert.assertSame(first, e);
+			Assert.assertEquals(1, e.getSuppressed().length);
+			Assert.assertSame(second, e.getSuppressed()[0]);
+		}
+
+		Assert.assertEquals(List.of(1, 2, 3, 4), ran);
+	}
+
+	/** A {@link RuntimeException} raised first keeps a later {@link Error} as suppressed. */
+	@Test(timeout = 10000)
+	public void runtimeExceptionFirstSuppressesLaterError() {
+		RuntimeException first = new IllegalStateException("first");
+		Error second = new LinkageError("second");
+
+		try {
+			Destroyable.releaseAll(List.<Runnable>of(() -> { throw first; }, () -> { throw second; }));
+			Assert.fail("The first failure must propagate");
+		} catch (RuntimeException e) {
+			Assert.assertSame(first, e);
+			Assert.assertEquals(1, e.getSuppressed().length);
+			Assert.assertSame(second, e.getSuppressed()[0]);
+		}
+	}
+
 	/** A null or empty iterable is a no-op rather than a failure. */
 	@Test(timeout = 10000)
 	public void nullAndEmptyAreNoOps() {

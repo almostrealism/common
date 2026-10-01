@@ -188,21 +188,26 @@ public interface Destroyable extends AutoCloseable {
 	 * Runs every release action in the given iterable, even when earlier ones fail.
 	 *
 	 * <p>Cleanup that frees several independent resources must not let one failing release
-	 * leave the rest allocated. Every action is attempted; the first {@link RuntimeException}
-	 * is rethrown once all have run, with any later ones attached to it as suppressed.</p>
+	 * leave the rest allocated. Every action is attempted; the first unchecked failure
+	 * ({@link RuntimeException} or {@link Error}) is rethrown once all have run, with any
+	 * later ones attached to it as suppressed. {@link Error}s are aggregated too because
+	 * callers such as Metal completion-callback draining run arbitrary actions whose
+	 * {@link AssertionError}, {@link LinkageError}, or {@link OutOfMemoryError} must not
+	 * skip the releases owned by subsequent actions.</p>
 	 *
 	 * @param releases the release actions to run, in iteration order; null is treated as empty
-	 * @throws RuntimeException the first failure raised by any action
+	 * @throws RuntimeException the first failure raised by any action, if it is a {@link RuntimeException}
+	 * @throws Error the first failure raised by any action, if it is an {@link Error}
 	 */
 	static void releaseAll(Iterable<? extends Runnable> releases) {
 		if (releases == null) return;
 
-		RuntimeException failure = null;
+		Throwable failure = null;
 
 		for (Runnable release : releases) {
 			try {
 				release.run();
-			} catch (RuntimeException e) {
+			} catch (RuntimeException | Error e) {
 				if (failure == null) {
 					failure = e;
 				} else if (failure != e) {
@@ -211,7 +216,8 @@ public interface Destroyable extends AutoCloseable {
 			}
 		}
 
-		if (failure != null) throw failure;
+		if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+		if (failure instanceof Error) throw (Error) failure;
 	}
 }
 

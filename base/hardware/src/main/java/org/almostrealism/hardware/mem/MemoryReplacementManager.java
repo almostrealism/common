@@ -325,8 +325,8 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 
 			try {
 				releaseTemporaries();
-			} catch (RuntimeException releaseFailure) {
-				e.addSuppressed(releaseFailure);
+			} catch (RuntimeException | Error releaseFailure) {
+				if (e != releaseFailure) e.addSuppressed(releaseFailure);
 			}
 
 			throw e;
