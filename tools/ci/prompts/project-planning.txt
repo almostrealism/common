@@ -122,7 +122,8 @@ but also think practically about what's achievable as a concrete next step.
 
 ## Deliverables
 
-You must produce exactly two things:
+You must produce exactly two things (plus, only when the work needs particular
+hardware, the settings file described under "The Machine the Work Needs"):
 
 ### 1. A Plan Document in `docs/plans/`
 
@@ -156,6 +157,8 @@ were made.
   relevant should be condensed or removed to keep the document focused and useful.
   Retain the narrative thread — the story of how thinking evolved — but trim the details
   of decisions that are fully resolved.
+
+@include plan-workstream-settings.txt
 
 @include plan-pr-framing.txt
 
