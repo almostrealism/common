@@ -17,12 +17,10 @@
 package io.almostrealism.streams;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * A synchronization primitive used to coordinate completion of asynchronous hardware
@@ -184,22 +182,38 @@ public interface Semaphore {
 	 *         when there is nothing to wait for
 	 */
 	static Semaphore all(List<Semaphore> semaphores, IntFunction<? extends LatchSemaphore> combiner) {
-		List<Semaphore> pending = semaphores == null ? List.of() :
-				semaphores.stream().filter(Objects::nonNull).collect(Collectors.toList());
+		if (semaphores == null) return null;
 
-		if (pending.isEmpty()) return null;
-		if (pending.size() == 1) return pending.get(0);
-
-		LatchSemaphore combined = combiner.apply(pending.size());
-		pending.forEach(s -> CALLBACK_EXECUTOR.execute(() -> {
-			try {
-				s.waitFor();
-			} catch (Throwable t) {
-				combined.fail(t);
-			} finally {
-				combined.countDown();
+		// A single pass avoids the stream and intermediate list this per-dispatch merge would
+		// otherwise allocate for its common zero- or one-member outcome.
+		int count = 0;
+		Semaphore single = null;
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s != null) {
+				count++;
+				single = s;
 			}
-		}));
+		}
+
+		if (count == 0) return null;
+		if (count == 1) return single;
+
+		LatchSemaphore combined = combiner.apply(count);
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s == null) continue;
+
+			CALLBACK_EXECUTOR.execute(() -> {
+				try {
+					s.waitFor();
+				} catch (Throwable t) {
+					combined.fail(t);
+				} finally {
+					combined.countDown();
+				}
+			});
+		}
 		return combined;
 	}
 }

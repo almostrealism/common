@@ -201,6 +201,14 @@ public class NativeExecution extends HardwareOperator {
 	private int argCount;
 
 	/**
+	 * Memoized result of {@link #getSupportedMemory()}. The compute context's memory providers are
+	 * fixed for the life of this operator, so the filtered list is computed once and reused rather
+	 * than reallocated on every dispatch (this operator is reused across many dispatches, and the
+	 * list is resolved on each one during argument preparation).
+	 */
+	private volatile List<MemoryProvider<? extends Memory>> supportedMemory;
+
+	/**
 	 * Creates a native execution operator backed by a compiled JNI instruction set.
 	 *
 	 * @param inst The {@link NativeInstructionSet} providing the compiled native function
@@ -230,9 +238,14 @@ public class NativeExecution extends HardwareOperator {
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
-		return inst.getComputeContext().getDataContext().getMemoryProviders()
+		List<MemoryProvider<? extends Memory>> supported = supportedMemory;
+		if (supported != null) return supported;
+
+		supported = inst.getComputeContext().getDataContext().getMemoryProviders()
 				.stream().filter(Predicate.not(JVMMemoryProvider.class::isInstance))
-				.collect(Collectors.toList());
+				.collect(Collectors.toUnmodifiableList());
+		supportedMemory = supported;
+		return supported;
 	}
 
 	/**
