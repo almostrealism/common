@@ -485,30 +485,83 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * the timeout: it covers the scheduling-to-execution window of a deferred dispatch or copy
 	 * waiting on a foreign dependency, which may legitimately outlast the backstop that a
 	 * millisecond-scale kernel execution never reaches. Such a block keeps being held back
-	 * until the lease is given back when the deferred work settles.</p>
+	 * until the lease is given back when the deferred work settles, and its timeout is restarted
+	 * on every sweep while the lease is held, so that once the lease hands off to the execution
+	 * guard that runs the scheduled work, the guard receives its own full timeout window rather
+	 * than one already consumed by the scheduling wait.</p>
+	 *
+	 * @see #decideSweep(long, long, long, boolean, boolean)
 	 */
 	private void sweepDeferred() {
 		if (deferred.isEmpty()) return;
 
 		for (DeferredRelease<T> release : List.copyOf(deferred.values())) {
 			NativeRef<T> ref = release.ref();
-			boolean expired = System.currentTimeMillis() - release.deferredAt()
-					>= deferredReleaseTimeoutMs;
+			long address = ref.getAddress();
+			long now = System.currentTimeMillis();
+			boolean expired = now - release.deferredAt() >= deferredReleaseTimeoutMs;
 
-			if (!expired && isActivelyReferenced(ref.getAddress())) continue;
-			if (expired && isScheduled(ref.getAddress())) continue;
+			SweepAction action = decideSweep(release.deferredAt(), now, deferredReleaseTimeoutMs,
+					isScheduled(address), isActivelyReferenced(address));
 
-			deferred.remove(ref.getAddress());
+			if (action == SweepAction.HOLD) continue;
+			if (action == SweepAction.RESET) {
+				deferred.replace(address, new DeferredRelease<>(ref, now));
+				continue;
+			}
+
+			deferred.remove(address);
 
 			if (expired) {
 				KernelMemoryGuard.warnIfActivelyReferenced(
-						ref.getAddress(), ref.getAllocationStackTrace(),
+						address, ref.getAllocationStackTrace(),
 						getClass().getSimpleName() + " (held for " +
 								deferredReleaseTimeoutMs + "ms)");
 			}
 
 			releaseNow(ref);
 		}
+	}
+
+	/**
+	 * What {@link #sweepDeferred()} does with one held-back release.
+	 */
+	enum SweepAction {
+		/** Keep the release held back unchanged; the memory is legitimately in use within its window. */
+		HOLD,
+		/** Keep the release held back and restart its timeout at a scheduling-lease handoff. */
+		RESET,
+		/** Release the memory now. */
+		RELEASE
+	}
+
+	/**
+	 * Decides what {@link #sweepDeferred()} does with one held-back release, as a pure function of
+	 * the memory's guard state and the clock so the scheduling-to-execution timeout handoff can be
+	 * verified directly.
+	 *
+	 * <p>While a {@linkplain KernelMemoryGuard#isScheduled(long) scheduling lease} covers the
+	 * memory the release is {@link SweepAction#RESET held with its timeout restarted}, because a
+	 * lease may legitimately outlast the backstop and, once it hands off to an execution guard,
+	 * that guard must receive its own full window rather than one already consumed by the
+	 * scheduling wait. With no lease, an actively referenced block is {@link SweepAction#HOLD held}
+	 * until its timeout elapses, after which it is {@link SweepAction#RELEASE released} as a
+	 * backstop against a count that never came back; an unreferenced block is released at once.</p>
+	 *
+	 * @param deferredAt         when the release was last (re)stamped
+	 * @param now                the current time
+	 * @param timeoutMs          how long a release may be held back before the backstop fires
+	 * @param scheduled          whether a scheduling lease currently covers the memory
+	 * @param activelyReferenced whether a kernel execution currently references the memory
+	 * @return the action to take
+	 */
+	static SweepAction decideSweep(long deferredAt, long now, long timeoutMs,
+								   boolean scheduled, boolean activelyReferenced) {
+		if (scheduled) return SweepAction.RESET;
+
+		boolean expired = now - deferredAt >= timeoutMs;
+		if (!expired && activelyReferenced) return SweepAction.HOLD;
+		return SweepAction.RELEASE;
 	}
 
 	/**
