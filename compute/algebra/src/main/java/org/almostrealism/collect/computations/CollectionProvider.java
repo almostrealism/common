@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Multiple;
@@ -154,17 +156,41 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * avoiding intermediate buffers and enabling efficient data movement even for large
 	 * collections.</p>
 	 *
+	 * <p><strong>The copy is flat.</strong> It moves the source's backing memory, so it reproduces
+	 * the source's values only where the source's {@link io.almostrealism.collect.TraversalPolicy}
+	 * reads its memory in order. A provider over a view — a collection whose shape maps indices
+	 * onto someone else's buffer, as a permuted shape does — is refused rather than copied, because
+	 * a flat copy of such a source silently yields backing-memory order and loses the mapping. A
+	 * destination carrying the identical policy is accepted, since the same mapping applied to both
+	 * sides preserves the correspondence.</p>
+	 *
+	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
+	 * than referencing the view: the permutation then runs as a kernel that writes each destination
+	 * position, which is what reorders the memory.</p>
+	 *
 	 * @param destination The destination {@link MemoryData} buffer (must be a {@link MemoryData} instance)
 	 * @return An {@link Evaluable} that performs the copy and returns the destination
-	 * @throws ClassCastException if destination is not a {@link MemoryData} instance
+	 * @throws ClassCastException       if destination is not a {@link MemoryData} instance
+	 * @throws IllegalArgumentException if the source is a view whose mapping the destination does
+	 *                                  not share, so a flat copy would discard it
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
+		TraversalPolicy shape = shape(get());
+		TraversalPolicy target = destination instanceof Shape ? ((Shape) destination).getShape() : null;
+
+		if (!shape.isRegular() && !shape.equals(target)) {
+			throw new IllegalArgumentException("A provider of " + shape + " views other memory, so " +
+					"copying it into a destination of a different layout would discard the mapping; " +
+					"apply the reordering as a computation instead of referencing the view");
+		}
+
 		Runnable copy = new MemoryDataCopy("CollectionProvider Evaluate Into",
-				this::get, () -> (MemoryData) destination, shape(get()).getTotalSize()).get();
+				this::get, () -> (MemoryData) destination, shape.getTotalSize()).get();
 		return args -> {
 			copy.run();
 			return (T) destination;
 		};
 	}
+
 }

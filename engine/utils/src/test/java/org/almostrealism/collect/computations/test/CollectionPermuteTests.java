@@ -16,9 +16,12 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.Arrays;
 
 /**
  * Test suite for {@link CollectionPermute} demonstrating various dimension reordering scenarios.
@@ -29,6 +32,116 @@ import org.junit.Test;
  * @see org.almostrealism.collect.CollectionFeatures#permute(io.almostrealism.relation.Producer, int...)
  */
 public class CollectionPermuteTests extends TestSuiteBase {
+	/**
+	 * Reordering complies with the {@code into(destination)} contract: evaluating the permutation
+	 * into a destination whose shape is regular physically restructures that destination's memory,
+	 * rather than producing a collection that views the input through a permuting
+	 * {@link io.almostrealism.collect.TraversalPolicy}.
+	 *
+	 * <p>This is the distinction the other tests here cannot make. They read the result through
+	 * {@code valueAt}, which applies the policy, so restructured memory and a view are
+	 * indistinguishable to them. This reads the destination linearly instead — which is its
+	 * physical order, because its shape is regular and the destination is the caller's own
+	 * collection — and compares against the permutation computed independently. A result handed
+	 * back as a view would leave the destination holding the input's order.</p>
+	 */
+	@Test(timeout = 30000)
+	public void permuteIntoRegularDestinationRestructuresMemory() {
+		PackedCollection input = pack(
+				0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
+				12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0)
+				.reshape(2, 3, 4);
+		PackedCollection destination = new PackedCollection(shape(4, 3, 2));
+
+		assertTrue("the destination should start with a regular shape",
+				destination.getShape().isRegular());
+
+		cp(input).permute(2, 1, 0).get().into(destination).evaluate();
+
+		assertTrue("the destination's shape was replaced with a view-adjusting policy",
+				destination.getShape().isRegular());
+
+		log("destination memory " + Arrays.toString(destination.toArray(0, 24)));
+
+		for (int a = 0; a < 4; a++) {
+			for (int b = 0; b < 3; b++) {
+				for (int c = 0; c < 2; c++) {
+					// The destination's own layout, and the input value that belongs at [a][b][c]
+					int physical = (a * 3 + b) * 2 + c;
+					double expected = (c * 3 + b) * 4 + a;
+
+					assertEquals("destination[" + a + "][" + b + "][" + c + "] at " + physical,
+							expected, destination.toDouble(physical));
+				}
+			}
+		}
+	}
+
+	/**
+	 * A bulk read of a permuted result agrees with element-by-element access, whatever layout the
+	 * result carries. Evaluating without a destination may hand back a collection that views its
+	 * input through a permuting {@link io.almostrealism.collect.TraversalPolicy} rather than one
+	 * whose memory has been restructured, and a bulk read that ignored that policy would return
+	 * the input's order while {@code valueAt} returned the permutation — the two disagreeing is
+	 * the defect this pins.
+	 */
+	@Test(timeout = 30000)
+	public void bulkReadOfAPermutedResultAgreesWithElementAccess() {
+		PackedCollection input = pack(
+				0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
+				12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0)
+				.reshape(2, 3, 4);
+		PackedCollection out = cp(input).permute(2, 1, 0).evaluate();
+
+		log("result shape " + out.getShape() + " regular=" + out.getShape().isRegular());
+		log("result bulk read " + Arrays.toString(out.toArray(0, 24)));
+
+		double[] bulk = out.toArray(0, 24);
+		double[] streamed = out.doubleStream(0, 24).toArray();
+
+		for (int a = 0; a < 4; a++) {
+			for (int b = 0; b < 3; b++) {
+				for (int c = 0; c < 2; c++) {
+					int index = (a * 3 + b) * 2 + c;
+
+					assertEquals("bulk read at " + index, out.valueAt(a, b, c), bulk[index]);
+					assertEquals("stream at " + index, out.valueAt(a, b, c), streamed[index]);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Referencing a view and evaluating it into a destination of another layout is refused, rather
+	 * than copying the view's backing memory and silently losing the reordering.
+	 *
+	 * <p>A producer over a collection is a reference to that collection's memory, and writing it
+	 * into a destination is a flat copy. For a view — a shape that maps indices onto another
+	 * collection's buffer — that copy yields backing-memory order, which is not the view's values.
+	 * The reordering belongs in a computation, which
+	 * {@link #permuteIntoRegularDestinationRestructuresMemory} covers; this pins the refusal, so the
+	 * difference cannot be discovered as wrong data.</p>
+	 */
+	@Test(timeout = 30000)
+	public void referencingAViewIntoAnotherLayoutIsRefused() {
+		PackedCollection frameMajor = pack(0.0, -0.1, 0.1, -0.2, 0.2, -0.3).reshape(3, 2);
+		PackedCollection view = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
+		PackedCollection destination = new PackedCollection(shape(2, 3));
+
+		assertFalse("the view should be irregular", view.getShape().isRegular());
+		assertTrue("the destination should be regular", destination.getShape().isRegular());
+
+		try {
+			cp(view).get().into(destination).evaluate();
+			throw new AssertionError("a view was copied into a destination of another layout");
+		} catch (IllegalArgumentException expected) {
+			log("refused: " + expected.getMessage());
+			assertTrue(expected.getMessage().contains("views other memory"));
+		}
+
+		destination.destroy();
+	}
+
 	/**
 	 * Tests basic 2D transpose operation (matrix transpose).
 	 * Demonstrates swapping the two dimensions of a 2D collection using permute(1, 0).

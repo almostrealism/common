@@ -103,12 +103,16 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A {@code [channels, frames]} collection whose logical order is a permutation of its backing
-	 * memory is written in logical channel/frame order, not backing-memory order. The samples are
-	 * laid out frame-major (a {@code [frames, channels]} memory buffer) and then presented as
-	 * {@code [channels, frames]} by permuting the shape, so a raw contiguous read would interleave
-	 * the channels; only routing each element through the shape's index mapping reproduces the
-	 * documented layout.
+	 * Samples held frame-major are written in logical channel/frame order by reordering them with a
+	 * kernel first. The buffer is a {@code [frames, channels]} memory layout, so a contiguous read
+	 * would interleave the channels; applying the permutation as a computation produces a
+	 * {@code [channels, frames]} collection whose memory is restructured, which is what the writer
+	 * accepts.
+	 *
+	 * <p>The reordering is applied to the regular source, not to a permuted view of it. Wrapping a
+	 * view in a producer and evaluating it into a destination copies the view's backing memory in
+	 * its own order and silently loses the reordering, so the permutation belongs in the
+	 * computation.</p>
 	 *
 	 * @throws IOException if the file cannot be written or read
 	 */
@@ -122,12 +126,16 @@ public class WavFileTest extends TestSuiteBase {
 
 		try (PackedCollection frameMajor = pack(
 				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2)) {
-			PackedCollection audio = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
-			Assert.assertFalse("permuted shape should be irregular", audio.getShape().isRegular());
+			PackedCollection audio = new PackedCollection(shape(2, 5));
+			cp(frameMajor).permute(1, 0).get().into(audio).evaluate();
+			Assert.assertTrue("the materialized collection should be regular",
+					audio.getShape().isRegular());
 
 			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
 				Assert.assertEquals(5, wav.writeFrames(audio));
 			}
+
+			audio.destroy();
 		}
 
 		try (WavFile wav = WavFile.openWavFile(file)) {
@@ -191,37 +199,53 @@ public class WavFileTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A collection with more frames than the file has remaining writes only the leading frames that
-	 * fit, taking each channel's frames from that channel's own row rather than from a row boundary
-	 * computed from the truncated length; once the file is full a further write writes nothing.
+	 * A collection with more frames than the file has remaining is rejected, and rejected before
+	 * anything is written, so a caller who miscounted gets an error rather than a short file. The
+	 * {@code double[][]} overloads remain available to a caller who wants to write what fits and be
+	 * told how far it got.
 	 *
-	 * @throws IOException if the file cannot be written or read
+	 * @throws IOException if the file cannot be created
 	 */
 	@Test(timeout = 60000)
-	public void oversizedCollectionWritesOnlyRemainingFrames() throws IOException {
+	public void oversizedCollectionIsRejected() throws IOException {
 		File file = tempWav();
 
 		try (PackedCollection audio = pack(
 				0.1, 0.2, 0.3, 0.4, 0.5,
 				-0.1, -0.2, -0.3, -0.4, -0.5).reshape(2, 5);
 			 WavFile wav = WavFile.newWavFile(file, 2, 3, 16, SAMPLE_RATE)) {
-			Assert.assertEquals(3, wav.writeFrames(audio));
-			Assert.assertEquals(0, wav.getFramesRemaining());
-			Assert.assertEquals(0, wav.writeFrames(audio));
+			try {
+				wav.writeFrames(audio);
+				Assert.fail("a five-frame collection was written to a three-frame file");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("room for"));
+			}
+
+			Assert.assertEquals("nothing should have been written", 3, wav.getFramesRemaining());
 		}
+	}
 
-		try (WavFile wav = WavFile.openWavFile(file)) {
-			Assert.assertEquals(3, wav.getNumFrames());
+	/**
+	 * A collection that views other memory through a reordering shape is rejected, naming what to do
+	 * instead, rather than being rearranged one element at a time on the host.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void viewOfOtherMemoryIsRejected() throws IOException {
+		File file = tempWav();
 
-			double[][] in = new double[2][3];
-			Assert.assertEquals(3, wav.readFrames(in, 3));
+		try (PackedCollection frameMajor = pack(
+				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2);
+			 WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+			PackedCollection view = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
+			Assert.assertFalse("permuted shape should be irregular", view.getShape().isRegular());
 
-			double[][] expected = {{0.1, 0.2, 0.3}, {-0.1, -0.2, -0.3}};
-			for (int c = 0; c < 2; c++) {
-				for (int f = 0; f < 3; f++) {
-					Assert.assertEquals("channel " + c + " frame " + f,
-							expected[c][f], in[c][f], TOL_16);
-				}
+			try {
+				wav.writeFrames(view);
+				Assert.fail("a view of other memory was written");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("view of other memory"));
 			}
 		}
 	}

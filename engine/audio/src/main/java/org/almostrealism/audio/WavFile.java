@@ -1025,19 +1025,28 @@ public class WavFile implements AutoCloseable {
 	/**
 	 * Writes an audio collection, shaped {@code [channels, frames]} or {@code [frames]} when there
 	 * is one channel. This is how a collection produced on a device reaches a file: each channel is
-	 * read in logical {@code [channels, frames]} order with one bulk transfer rather than sample by
-	 * sample. A permuted or otherwise reordered shape is mapped through its {@link TraversalPolicy}
-	 * (see {@link PackedCollection#doubleStream(int, int)}) so the file receives channel/frame order,
-	 * not backing memory order. Only the leading frames that still fit in the file are copied off the device;
-	 * frames beyond {@link #getFramesRemaining()} are neither transferred nor written.
+	 * read with one bulk transfer rather than sample by sample.
+	 *
+	 * <p>What does not fit, and what is not laid out as it reads, are both refused rather than
+	 * quietly accommodated. A collection with more frames than {@link #getFramesRemaining()} is
+	 * rejected instead of having its tail dropped, because a caller who miscounted is better served
+	 * by being told than by a short file; the {@code double[][]} overloads stop at capacity and
+	 * report how far they got, and a caller who wants that can use them.</p>
+	 *
+	 * <p>A collection whose {@link TraversalPolicy} is not regular — a permuted or otherwise
+	 * reordered view of other memory — is likewise rejected. Rearranging it here would mean walking
+	 * the index mapping on the host, one element at a time, to assemble an order the device can
+	 * produce in a single pass. The caller evaluates the view into a collection of its own shape
+	 * first, which does the rearranging in a kernel, and hands the result here.</p>
 	 *
 	 * @param audio the samples, in the range the file's bit depth can represent
-	 * @return the number of frames written, which is less than the collection's frame count when
-	 *         the file has fewer frames remaining
+	 * @return the number of frames written, which is every frame of the collection
 	 * @throws IOException              if this file is not open for writing, or writing fails; the
 	 *                                  state is checked before any sample is copied off the device
 	 * @throws IllegalArgumentException if the collection's channel count does not match the file's,
-	 *                                  or its shape is neither one- nor two-dimensional
+	 *                                  if it has more frames than the file has room for, if its
+	 *                                  shape is a view of other memory, or if its shape is neither
+	 *                                  one- nor two-dimensional
 	 */
 	public int writeFrames(PackedCollection audio) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
@@ -1056,14 +1065,22 @@ public class WavFile implements AutoCloseable {
 					+ getNumChannels());
 		}
 
-		int writable = (int) Math.min(frames, getFramesRemaining());
+		if (frames > getFramesRemaining()) {
+			throw new IllegalArgumentException("Audio has " + frames + " frame(s) but the file has room for "
+					+ getFramesRemaining());
+		}
+
+		if (!shape.isRegular()) {
+			throw new IllegalArgumentException("Audio " + shape + " is a view of other memory; evaluate it " +
+					"into a collection of its own shape before writing it");
+		}
 
 		double[][] samples = new double[channels][];
 		for (int c = 0; c < channels; c++) {
-			samples[c] = audio.doubleStream(c * frames, writable).toArray();
+			samples[c] = audio.toArray(c * frames, frames);
 		}
 
-		return writeFrames(samples, writable);
+		return writeFrames(samples, frames);
 	}
 
 	/**
