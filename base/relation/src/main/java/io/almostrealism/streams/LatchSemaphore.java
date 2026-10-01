@@ -38,7 +38,7 @@ public class LatchSemaphore implements Semaphore {
 	private final CountDownLatch latch;
 
 	/** The first failure observed among merged members, rethrown by {@link #waitFor()}. */
-	private final AtomicReference<Throwable> failure = new AtomicReference<>();
+	private final AtomicReference<Throwable> failure;
 
 	/**
 	 * Constructs a semaphore whose {@link #waitFor()} returns after {@code count}
@@ -53,21 +53,45 @@ public class LatchSemaphore implements Semaphore {
 
 	/**
 	 * Constructs a semaphore sharing an existing latch, allowing a subclass to reuse the
-	 * synchronization state under a different attribution.
+	 * synchronization state under a different attribution. A fresh failure reference is
+	 * created; use {@link #LatchSemaphore(CountDownLatch, AtomicReference)} to share the
+	 * recorded failure as well.
 	 *
 	 * @param latch the existing {@link CountDownLatch} to reuse
 	 */
 	protected LatchSemaphore(CountDownLatch latch) {
+		this(latch, new AtomicReference<>());
+	}
+
+	/**
+	 * Constructs a semaphore sharing both an existing latch and the failure reference that
+	 * {@link #waitFor()} rethrows, so a re-attributed view of a merged completion still
+	 * reports a member failure recorded through the original.
+	 *
+	 * @param latch   the existing {@link CountDownLatch} to reuse
+	 * @param failure the existing failure reference to reuse
+	 */
+	protected LatchSemaphore(CountDownLatch latch, AtomicReference<Throwable> failure) {
 		this.latch = latch;
+		this.failure = failure;
 	}
 
 	/**
 	 * Returns the underlying latch, so a subclass sharing this synchronization state can
-	 * pass it to {@link #LatchSemaphore(CountDownLatch)}.
+	 * pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)}.
 	 *
 	 * @return the underlying latch
 	 */
 	protected CountDownLatch getLatch() { return latch; }
+
+	/**
+	 * Returns the shared failure reference, so a subclass sharing this synchronization
+	 * state can pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)} and
+	 * preserve the rethrow-on-failure contract across a re-attribution.
+	 *
+	 * @return the failure reference rethrown by {@link #waitFor()}
+	 */
+	protected AtomicReference<Throwable> getFailure() { return failure; }
 
 	/**
 	 * Decrements the latch count, releasing waiters once it reaches zero.

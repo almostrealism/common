@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
@@ -119,6 +120,32 @@ public class SubmittableGroupTest extends TestSuiteBase {
 		try {
 			group.waitFor();
 			Assert.fail("A failing member must propagate through the merged completion");
+		} catch (RuntimeException e) {
+			assertEquals("member failed", e.getMessage());
+		}
+	}
+
+	/**
+	 * Re-attributing a merged completion through {@link OperationSemaphore#withRequester} must
+	 * preserve the rethrow-on-failure contract: the view shares the recorded member failure, so
+	 * its {@link Semaphore#waitFor()} rethrows the failure rather than returning normally after
+	 * the shared latch releases. Without sharing the failure reference the view would have its own
+	 * empty reference and silently swallow the failure.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedMergedCompletionStillRethrowsMemberFailure() {
+		Semaphore failing = () -> { throw new RuntimeException("member failed"); };
+		LatchSemaphore ok = new LatchSemaphore(1);
+		ok.countDown();
+
+		Semaphore merged = OperationSemaphore.all(null, List.of(failing, ok));
+		assertTrue(merged instanceof OperationSemaphore);
+
+		Semaphore view = ((OperationSemaphore) merged).withRequester(null);
+
+		try {
+			view.waitFor();
+			Assert.fail("A re-attributed view must rethrow the recorded member failure");
 		} catch (RuntimeException e) {
 			assertEquals("member failed", e.getMessage());
 		}
