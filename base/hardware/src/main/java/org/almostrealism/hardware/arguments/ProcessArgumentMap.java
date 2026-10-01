@@ -440,7 +440,8 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 					(positionsForArguments.containsKey(argument)
 							? " at " + positionsForArguments.get(argument).describe() : "") +
 					" from " + producer.getClass().getSimpleName() +
-					"; its producer has been destroyed while a reused scope still refers to it");
+					"; a reused scope still refers to a producer that no longer supplies one," +
+					" as happens when that producer has been destroyed");
 		}
 
 		return evaluable;

@@ -208,19 +208,17 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		} else {
 			ArrayVariable var = null;
 
+			// Kernel-owned memory is never aggregated and outlives this map (see KernelConstantProviderSupplier)
+			boolean kernelOwned = key instanceof KernelConstantProviderSupplier;
+
 			// If aggregation is enabled and this root is small enough, fold it into the
 			// shared aggregate buffer instead of giving it its own kernel argument.
-			// Kernel-owned constant memory is never folded (see KernelConstantProviderSupplier).
-			if (aggregateGenerator != null && !(key instanceof KernelConstantProviderSupplier)
-					&& isAggregationTarget(md.getRootDelegate())) {
+			if (aggregateGenerator != null && !kernelOwned && isAggregationTarget(md.getRootDelegate())) {
 				var = aggregate(createDelegate(md), md.getRootDelegate());
 			}
 
 			if (var == null) {
-				// Otherwise obtain a standalone array variable for the root delegate; that of
-				// kernel-owned constant memory outlives this map (see KernelConstantProviderSupplier)
-				// TODO(review): replace the repeated instanceof KernelConstantProviderSupplier checks with one ownership query
-				RootDelegateProviderSupplier root = key instanceof KernelConstantProviderSupplier
+				RootDelegateProviderSupplier root = kernelOwned
 						? new RootDelegateProviderSupplier(md) : createDelegate(md);
 				var = delegateProvider.getArgument(root, null, -1);
 			}
