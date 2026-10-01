@@ -752,9 +752,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// A synchronous failure never installs the completion-driven release above; free the
 				// leases and temporaries, deferring until any in-flight work settles. A group submission
 				// that throws has already settled its own started members (Submittable.submit).
+				// A cleanup failure is attached to the dispatch failure rather than replacing it.
 				if (process.hasResources()) {
 					if (inflight == null) {
-						process.releaseResources();
+						try {
+							process.releaseResources();
+						} catch (RuntimeException releaseFailure) {
+							if (releaseFailure != e) e.addSuppressed(releaseFailure);
+						}
 					} else {
 						inflight.whenSettled(process::releaseResources);
 					}

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
@@ -501,8 +502,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 					" errorCompletions=" + errorCompletions.get());
 		}
 
-		c.onComplete.forEach(Runnable::run);
-		c.buffer.release();
+		try {
+			Destroyable.releaseAll(c.onComplete);
+		} finally {
+			c.buffer.release();
+		}
 	}
 
 	/**

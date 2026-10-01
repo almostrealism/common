@@ -19,6 +19,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.OperationList;
@@ -389,25 +390,8 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * phase is rethrown once both have run, with any later ones attached to it as suppressed.</p>
 	 */
 	public void releaseResources() {
-		RuntimeException failure = null;
-
-		try {
-			releaseDestinationLeases();
-		} catch (RuntimeException e) {
-			failure = e;
-		}
-
-		try {
-			replacementManager.releaseTemporaries();
-		} catch (RuntimeException e) {
-			if (failure == null) {
-				failure = e;
-			} else {
-				failure.addSuppressed(e);
-			}
-		}
-
-		if (failure != null) throw failure;
+		Destroyable.releaseAll(List.<Runnable>of(this::releaseDestinationLeases,
+				replacementManager::releaseTemporaries));
 	}
 
 	/**
@@ -442,23 +426,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			destinationLeases = null;
 		}
 
-		if (leases == null) return;
-
-		RuntimeException failure = null;
-
-		for (Runnable lease : leases) {
-			try {
-				lease.run();
-			} catch (RuntimeException e) {
-				if (failure == null) {
-					failure = e;
-				} else {
-					failure.addSuppressed(e);
-				}
-			}
-		}
-
-		if (failure != null) throw failure;
+		Destroyable.releaseAll(leases);
 	}
 
 	/**

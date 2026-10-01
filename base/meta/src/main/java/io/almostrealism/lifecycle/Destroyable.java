@@ -183,5 +183,35 @@ public interface Destroyable extends AutoCloseable {
 
 		return destroyed;
 	}
+
+	/**
+	 * Runs every release action in the given iterable, even when earlier ones fail.
+	 *
+	 * <p>Cleanup that frees several independent resources must not let one failing release
+	 * leave the rest allocated. Every action is attempted; the first {@link RuntimeException}
+	 * is rethrown once all have run, with any later ones attached to it as suppressed.</p>
+	 *
+	 * @param releases the release actions to run, in iteration order; null is treated as empty
+	 * @throws RuntimeException the first failure raised by any action
+	 */
+	static void releaseAll(Iterable<? extends Runnable> releases) {
+		if (releases == null) return;
+
+		RuntimeException failure = null;
+
+		for (Runnable release : releases) {
+			try {
+				release.run();
+			} catch (RuntimeException e) {
+				if (failure == null) {
+					failure = e;
+				} else if (failure != e) {
+					failure.addSuppressed(e);
+				}
+			}
+		}
+
+		if (failure != null) throw failure;
+	}
 }
 

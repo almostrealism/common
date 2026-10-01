@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
@@ -251,21 +252,7 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			temporaries.clear();
 		}
 
-		RuntimeException failure = null;
-
-		for (MemoryData tmp : released) {
-			try {
-				tmp.destroy();
-			} catch (RuntimeException e) {
-				if (failure == null) {
-					failure = e;
-				} else {
-					failure.addSuppressed(e);
-				}
-			}
-		}
-
-		if (failure != null) throw failure;
+		Destroyable.releaseAll(released.stream().map(tmp -> (Runnable) tmp::destroy).toList());
 	}
 
 	/**
