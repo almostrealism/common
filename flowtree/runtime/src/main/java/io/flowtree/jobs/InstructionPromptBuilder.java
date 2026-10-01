@@ -983,10 +983,10 @@ public class InstructionPromptBuilder {
         sb.append("Concrete heuristic:\n");
         sb.append("1. For each modified Java file `Foo.java`, look for `FooTest.java`, ");
         sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java`, ");
-        sb.append("then run the specific method(s) that exercise your change -- one at a ");
-        sb.append("time, never the whole class.\n");
+        sb.append("then run the test(s) that exercise your change -- a class, a few ");
+        sb.append("classes, or named methods, up to the caps below.\n");
         sb.append("2. Look for any tests in the same package that import the file you ");
-        sb.append("changed and run their relevant methods too, one at a time.\n");
+        sb.append("changed and run the relevant ones too, within the same caps.\n");
         sb.append("3. For Python changes in `tools/`, run the specific test node id(s) that ");
         sb.append("exercise your change (e.g., `python -m pytest ");
         sb.append("tools/mcp/manager/test_server.py::test_name`), never the whole module.\n");

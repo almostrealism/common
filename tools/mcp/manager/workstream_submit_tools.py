@@ -462,17 +462,31 @@ def workstream_submit_task(
         if field_name == "post_completion_command":
             cmd_violations = cmd_violations + server.post_completion_gate_violations(field_value)
         if cmd_violations:
+            # The post-completion command is an unattended gate, so its Maven
+            # -Dtest must name explicit Class#method tests -- a bare class is
+            # not accepted there, even though it is on a shell job's command.
+            if field_name == "post_completion_command":
+                remediation = (
+                    "Rewrite the command to name explicit Class#method tests "
+                    "(Maven: at most 5 classes' worth, 40 Class#method tests "
+                    "total, via -Dtest) or exactly one explicit node id "
+                    "(pytest). A bare class is not accepted for a "
+                    "post_completion_command."
+                )
+            else:
+                remediation = (
+                    "Rewrite the command to select a bounded set of tests "
+                    "(Maven: at most 5 classes and 40 Class#method tests via "
+                    "-Dtest) or exactly one explicit node id (pytest)."
+                )
             return {
                 "ok": False,
                 "error": (
                     "{} would run a broad test set, which agents and job "
                     "submitters may never do -- broad verification belongs to "
                     "CI. There is no bypass for this check.\n\n"
-                    "Violations found:\n  - {}\n\n"
-                    "Rewrite the command to select a bounded set of tests "
-                    "(Maven: at most 5 classes and 40 Class#method tests via "
-                    "-Dtest) or exactly one explicit node id (pytest)."
-                    .format(field_name, "\n  - ".join(cmd_violations))
+                    "Violations found:\n  - {}\n\n{}"
+                    .format(field_name, "\n  - ".join(cmd_violations), remediation)
                 ),
             }
     if post_completion_timeout_seconds:

@@ -1259,6 +1259,21 @@ class TestSubmitTestExecutionLimits(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Class#method", result["error"])
 
+    def test_post_completion_rejection_does_not_recommend_bare_classes(self):
+        # The post-completion gate rejects a bare class, so its remediation must
+        # not tell the caller to select up to five classes (which would recommend
+        # the same invalid input). It must call for explicit Class#method tests
+        # and say a bare class is not accepted here.
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("name explicit Class#method tests", result["error"])
+        self.assertIn("bare class is not accepted", result["error"])
+        self.assertNotIn("select a bounded set of tests", result["error"])
+
     def test_rejects_post_completion_command_pytest_directory(self):
         result = server.workstream_submit_task(
             prompt="Investigate the failing build",
