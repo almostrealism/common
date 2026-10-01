@@ -276,14 +276,16 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	}
 
 	/**
-	 * Returns the number of trainable parameters (every weight except the rotary frequencies).
+	 * Returns the number of trainable parameters (every weight this configuration declares in
+	 * {@link #getWeightShapes()}, except the rotary frequencies). Any additional entries a loaded
+	 * checkpoint carries are not part of the model and are not counted.
 	 *
 	 * @return the parameter count
 	 */
 	public long getParameterCount() {
-		return weights.keySet().stream()
-				.filter(key -> !INV_FREQ_KEY.equals(key))
-				.mapToLong(key -> weights.get(key).getShape().getTotalSize())
+		return getWeightShapes().entrySet().stream()
+				.filter(entry -> !INV_FREQ_KEY.equals(entry.getKey()))
+				.mapToLong(entry -> entry.getValue().getTotalSize())
 				.sum();
 	}
 

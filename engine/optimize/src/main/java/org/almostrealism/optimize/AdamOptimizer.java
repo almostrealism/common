@@ -154,6 +154,12 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFea
 		PackedCollection g = new PackedCollection(shape.traverseEach());
 		PackedCollection m = new PackedCollection(shape.traverseEach());
 		PackedCollection v = new PackedCollection(shape.traverseEach());
+
+		// The timestep and moments are read before they are first written, and not every
+		// backend zero-initializes a new allocation; g is fully assigned before it is read
+		c.clear();
+		m.clear();
+		v.clear();
 		double eps = 1e-7; // Hardware.getLocalHardware().epsilon();
 
 		OperationList ops = new OperationList();

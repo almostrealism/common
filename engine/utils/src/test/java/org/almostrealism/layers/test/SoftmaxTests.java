@@ -329,6 +329,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		integers(0, rows * size).multiply(0.37).subtract(2.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(shape(rows, size));
+		gradient.clear();
 		gradient.setMem(active * size + 2, -1.0);
 		gradient.setMem(active * size + 4, 0.5);
 

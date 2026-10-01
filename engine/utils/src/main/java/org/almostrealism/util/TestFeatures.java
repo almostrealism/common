@@ -432,6 +432,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		PackedCollection original = new PackedCollection(flat);
 		original.setFrom(0, values);
 		PackedCollection position = new PackedCollection(1);
+		position.clear();
 
 		CollectionProducer step = oneHot(n, cp(position)).multiply(eps);
 		Runnable plus = a(p(values.reshape(flat)), cp(original).add(step)).get();

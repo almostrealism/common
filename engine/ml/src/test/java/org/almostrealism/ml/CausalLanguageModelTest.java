@@ -190,6 +190,28 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
+	 * The parameter count covers exactly the trainable weights the configuration declares: the
+	 * rotary frequencies are excluded, and an extra entry carried by a loaded checkpoint, which
+	 * the model never reads, is not counted.
+	 */
+	@Test(timeout = 60000)
+	public void parameterCountIgnoresUndeclaredWeights() {
+		int vocab = 2;
+		int dim = 4;
+		long expected = 2L * vocab * dim + dim;
+
+		CausalLanguageModel minimal = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1, ROPE_BASE,
+				new Random(SEED));
+		Assert.assertEquals(expected, minimal.getParameterCount());
+
+		Map<String, PackedCollection> extended = new HashMap<>(minimal.getWeights().getAllWeights());
+		extended.put("unused.extra", new PackedCollection(shape(32)));
+		CausalLanguageModel reloaded = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1,
+				new StateDictionary(extended));
+		Assert.assertEquals(expected, reloaded.getParameterCount());
+	}
+
+	/**
 	 * The fresh-weights constructor rejects a rotary base for which the inverse frequencies would
 	 * be {@code NaN} (zero, negative, infinite or {@code NaN}), instead of creating a model with
 	 * invalid rotary weights; a valid base produces {@code theta^(-2i / dimHead)}.
