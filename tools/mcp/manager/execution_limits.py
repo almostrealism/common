@@ -996,8 +996,10 @@ def _dynamic_property_name_violation(tokens: list, args: list) -> str:
 
 def _maven_segment_violation(tokens: list) -> str:
     """Return a violation reason for a single ``mvn ...`` command segment,
-    or ``""`` when the segment is not Maven, skips tests, or already
-    selects an explicit Class#method test."""
+    or ``""`` when the segment is not Maven, skips tests, or already names a
+    bounded ``-Dtest`` selection (at most ``_MAX_TEST_CLASSES`` classes and
+    ``_MAX_TEST_METHODS`` Class#method tests -- a bare class or a few classes
+    is fine, a wildcard or other unbounded selector is not)."""
     if not tokens:
         return ""
     base = tokens[0].rsplit("/", 1)[-1]

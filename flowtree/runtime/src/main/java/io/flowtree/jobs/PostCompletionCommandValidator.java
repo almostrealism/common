@@ -46,7 +46,10 @@ import java.util.regex.Pattern;
  *
  * <p>There is no bypass for this check. A command may never run a Maven
  * test-executing phase (test/integration-test/verify/install/package/
- * deploy) without an explicit {@code Class#method} selector, reference
+ * deploy) without a bounded {@code -Dtest} selection (at most
+ * {@link #MAX_TEST_CLASSES} classes and {@link #MAX_TEST_METHODS}
+ * {@code Class#method} tests -- a bare class or a few classes is fine, a
+ * wildcard or other unbounded selector is not), reference
  * {@code AR_TEST_GROUP}/{@code AR_TEST_GROUPS}, or run pytest against a
  * directory or whole file instead of an explicit node id. The sibling
  * timeout ceiling ({@link #MAX_TIMEOUT_SECONDS}) is enforced separately by
