@@ -314,11 +314,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 		List<Producer<PackedCollection>> recordedWeights = new ArrayList<>();
 		List<PackedCollection> recordedGradients = new ArrayList<>();
+		ParameterUpdate<PackedCollection> gradients = gradientRecorder(recordedGradients);
 		ParameterUpdate<PackedCollection> recorder = (name, weights, gradient) -> {
-			PackedCollection buffer = new PackedCollection(shape(weights));
 			recordedWeights.add(weights);
-			recordedGradients.add(buffer);
-			return a(name + " (recorded gradient)", p(buffer.each()), c(gradient).reshape(buffer.getShape()).each());
+			return gradients.apply(name, weights, gradient);
 		};
 
 		CompiledModel compiled = lm.buildModel(recorder).compile(true);
