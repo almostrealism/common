@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -406,10 +407,40 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 				cp(learningRate).add((FINAL_LEARNING_RATE - LEARNING_RATE) / (EPOCHS - 1)),
 				c(FINAL_LEARNING_RATE))).get();
 
-		long compileStart = System.nanoTime();
-		CompiledModel compiled = model.compile(true);
-		log("compileSeconds=" + (System.nanoTime() - compileStart) / 1e9);
+		CompiledModel compiled = null;
+		try {
+			long compileStart = System.nanoTime();
+			compiled = model.compile(true);
+			log("compileSeconds=" + (System.nanoTime() - compileStart) / 1e9);
 
+			assertTrainsPastBaselineAndReloads(lm, compiled, learningRate, decayLearningRate,
+					trainWindows, heldOut, unigramBits);
+		} finally {
+			Destroyable.destroy(compiled);
+			lm.getWeights().destroy();
+			learningRate.destroy();
+		}
+	}
+
+	/**
+	 * Runs the training loop of {@link #trainOnDocumentation()}, saves and reloads the trained
+	 * weights, requires the reloaded model to reproduce the held-out loss, and requires the final
+	 * held-out loss to beat the unigram baseline. The reload evaluator and its weights are released
+	 * before returning or throwing.
+	 *
+	 * @param lm                the model being trained
+	 * @param compiled          the compiled training model
+	 * @param learningRate      the learning-rate cell read by the optimizer
+	 * @param decayLearningRate the per-epoch learning-rate decay
+	 * @param trainWindows      the training windows
+	 * @param heldOut           the held-out windows
+	 * @param unigramBits       the unigram baseline of the scored held-out targets, in bits per byte
+	 * @throws IOException if the weights cannot be saved or reloaded
+	 */
+	private void assertTrainsPastBaselineAndReloads(CausalLanguageModel lm, CompiledModel compiled,
+													PackedCollection learningRate, Runnable decayLearningRate,
+													NextTokenDataset trainWindows, NextTokenDataset heldOut,
+													double unigramBits) throws IOException {
 		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> trainWindows);
 		optimizer.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
 		optimizer.setValidationDataset(() -> heldOut);
@@ -439,15 +470,22 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		Files.createDirectories(weightsDir);
 		lm.getWeights().save(weightsDir.resolve("weights.pb"));
 
-		CausalLanguageModel reloaded = new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
-				new StateDictionary(weightsDir.toString()));
-		ModelOptimizer evaluator = new ModelOptimizer(
-				reloaded.buildModel(ParameterUpdate.disabled()).compile(false), () -> heldOut);
-		evaluator.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
-		double reloadedBits = evaluator.evaluate(heldOut) / Math.log(2);
-		double trainedBits = optimizer.evaluate(heldOut) / Math.log(2);
-		log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
-		Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
+		StateDictionary reloadedWeights = new StateDictionary(weightsDir.toString());
+		CompiledModel reloadedCompiled = null;
+		try {
+			CausalLanguageModel reloaded = new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
+					reloadedWeights);
+			reloadedCompiled = reloaded.buildModel(ParameterUpdate.disabled()).compile(false);
+			ModelOptimizer evaluator = new ModelOptimizer(reloadedCompiled, () -> heldOut);
+			evaluator.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
+			double reloadedBits = evaluator.evaluate(heldOut) / Math.log(2);
+			double trainedBits = optimizer.evaluate(heldOut) / Math.log(2);
+			log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
+			Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
+		} finally {
+			Destroyable.destroy(reloadedCompiled);
+			reloadedWeights.destroy();
+		}
 
 		// TODO(review): the documented configuration (4.691 vs scored baseline 4.600) fails this assertion; configuration/training needs revisiting
 		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
