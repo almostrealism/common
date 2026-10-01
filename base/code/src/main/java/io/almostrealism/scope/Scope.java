@@ -50,6 +50,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1174,6 +1176,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *   <li>Repeat until no new replacement opportunities exist</li>
 	 * </ol>
 	 *
+	 * <p>Targets are considered in the order {@code replacementTargets} supplies them, and
+	 * replacements are applied in the order they were declared. Both choices change the
+	 * generated code, since a replacement can absorb part of another target, so they must
+	 * not depend on hash iteration order: every {@link StaticReference} has the same hash,
+	 * and a hash table holding many of them orders them by identity, which differs from
+	 * one run to the next.</p>
+	 *
 	 * @param statements         the list of statements to process
 	 * @param replacementTargets supplier of expressions that are candidates for replacement
 	 * @return the processed statements with common subexpressions extracted
@@ -1187,9 +1196,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		try {
 			Set<Expression<?>> processed = new HashSet<>();
 			List<Statement<?>> declarations = new ArrayList<>();
-			Map<StaticReference, Expression<?>> replacements = new HashMap<>();
+			Map<StaticReference, Expression<?>> replacements = new LinkedHashMap<>();
 
-			Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
+			Set<Expression<?>> targets = new LinkedHashSet<>(replacementTargets.get());
 
 			while (!targets.isEmpty() && replacements.size() < ScopeSettings.getMaximumReplacements()) {
 				if (verbose) log("Processing " + targets.size() + " replacement targets");
