@@ -285,7 +285,10 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	/**
 	 * Wraps existing {@link Memory} in a {@link Bytes} instance.
 	 *
-	 * <p>Used internally to wrap provider-allocated memory.</p>
+	 * <p>Used internally to wrap provider-allocated memory. The returned {@link Bytes}
+	 * owns the memory: destroying it (explicitly or, when
+	 * {@link MemoryDataAdapter#enableFinalizer} is set, through its finalizer) deallocates
+	 * the memory. Use {@link #ofNonOwning(Memory, int)} to wrap memory owned elsewhere.</p>
 	 *
 	 * @param mem The memory to wrap
 	 * @param memLength The size of the memory in bytes
@@ -293,5 +296,49 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	 */
 	public static Bytes of(Memory mem, int memLength) {
 		return new Bytes(mem, memLength);
+	}
+
+	/**
+	 * Wraps existing {@link Memory} in a non-owning {@link Bytes} root.
+	 *
+	 * <p>Unlike {@link #of(Memory, int)}, the returned {@link Bytes} does not own the memory:
+	 * neither an explicit {@link #destroy()} nor a finalizer-triggered destroy (when
+	 * {@link MemoryDataAdapter#enableFinalizer} is set) deallocates it. This is used to bind a
+	 * view directly to memory whose lifetime is managed by another {@link MemoryData}, so that
+	 * collecting the view can never free memory still owned elsewhere.</p>
+	 *
+	 * @param mem The memory to wrap
+	 * @param memLength The size of the memory in bytes
+	 * @return A non-owning {@link Bytes} wrapping the given memory
+	 */
+	public static Bytes ofNonOwning(Memory mem, int memLength) {
+		return new NonOwning(mem, memLength);
+	}
+
+	/**
+	 * A {@link Bytes} root that wraps memory it does not own.
+	 *
+	 * <p>Its {@link #destroy()} is a no-op, so neither an explicit destroy nor the
+	 * {@link MemoryDataAdapter#finalize()} path (which delegates to {@link #destroy()} when
+	 * {@link MemoryDataAdapter#enableFinalizer} is set) ever deallocates the wrapped memory.</p>
+	 */
+	private static final class NonOwning extends Bytes {
+		/**
+		 * Wraps existing memory without taking ownership of it.
+		 *
+		 * @param mem       the memory to wrap
+		 * @param memLength the size of the memory in bytes
+		 */
+		private NonOwning(Memory mem, int memLength) {
+			super(mem, memLength);
+		}
+
+		/**
+		 * Does nothing. The wrapped memory belongs to another {@link MemoryData}, so it is never
+		 * deallocated here, whether {@code destroy()} is called explicitly or by the finalizer.
+		 */
+		@Override
+		public void destroy() {
+		}
 	}
 }

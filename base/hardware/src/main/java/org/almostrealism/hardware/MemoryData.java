@@ -320,8 +320,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		if (mem == null) return this;
 
 		MemoryData root = getRootDelegate();
-		// TODO(review): with MemoryDataAdapter.enableFinalizer=true, GC of this non-owning root would destroy the shared mem
-		Bytes storage = Bytes.of(mem, root.getOffset() + root.getMemLength());
+		Bytes storage = Bytes.ofNonOwning(mem, root.getOffset() + root.getMemLength());
 		return new Bytes(getMemLength(), getAtomicMemLength(), storage, getOffset());
 	}
 

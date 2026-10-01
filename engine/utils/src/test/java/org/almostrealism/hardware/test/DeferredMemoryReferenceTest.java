@@ -25,6 +25,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -93,6 +94,39 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		} finally {
 			KernelMemoryGuard.releaseFor(lease);
 		}
+	}
+
+	/**
+	 * Regression: the root backing a detached view does not own the memory it wraps, so destroying
+	 * that root must not deallocate the memory the source still owns. Destroying the root is what the
+	 * finalizer does when {@link MemoryDataAdapter#enableFinalizer} is enabled, so this holds across
+	 * both the explicit and finalizer destroy paths. Before the view used a non-owning root, this
+	 * freed the shared allocation out from under the source.
+	 */
+	@Test(timeout = 30000)
+	public void detachedViewRootDoesNotFreeSharedMemory() {
+		PackedCollection source = pack(2.0, 4.0, 6.0, 8.0);
+		MemoryData view = source.detachedView();
+		MemoryData storage = view.getRootDelegate();
+
+		Assert.assertNotSame(source, storage);
+		Assert.assertSame(source.getMem(), storage.getMem());
+
+		boolean finalizer = MemoryDataAdapter.enableFinalizer;
+		MemoryDataAdapter.enableFinalizer = true;
+
+		try {
+			storage.destroy();
+
+			Assert.assertFalse("The source must still own the shared memory", source.isDestroyed());
+			Assert.assertSame(source.getMem(), storage.getMem());
+			assertValues(source, 2.0, 4.0, 6.0, 8.0);
+			assertValues(view, 2.0, 4.0, 6.0, 8.0);
+		} finally {
+			MemoryDataAdapter.enableFinalizer = finalizer;
+		}
+
+		source.destroy();
 	}
 
 	/**
