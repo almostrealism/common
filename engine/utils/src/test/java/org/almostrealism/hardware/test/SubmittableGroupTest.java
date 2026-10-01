@@ -20,11 +20,13 @@ import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
 /**
@@ -97,5 +99,28 @@ public class SubmittableGroupTest extends TestSuiteBase {
 				List.of(dependsOn -> null, dependsOn -> null), null);
 
 		assertNull(group);
+	}
+
+	/**
+	 * A member whose {@link Semaphore#waitFor()} throws must not pin the merged completion: the
+	 * group must still settle (not hang) and must rethrow the member's failure to its waiter,
+	 * rather than swallowing it the way a plain {@code onComplete} callback would. This is now
+	 * reachable because a deferred fallback copy can fail.
+	 */
+	@Test(timeout = 30000)
+	public void mergedCompletionSettlesAndRethrowsMemberFailure() {
+		Semaphore failing = () -> { throw new RuntimeException("member failed"); };
+		LatchSemaphore ok = new LatchSemaphore(1);
+		ok.countDown();
+
+		Semaphore group = Submittable.submit(
+				List.of(dependsOn -> failing, dependsOn -> ok), null);
+
+		try {
+			group.waitFor();
+			Assert.fail("A failing member must propagate through the merged completion");
+		} catch (RuntimeException e) {
+			assertEquals("member failed", e.getMessage());
+		}
 	}
 }

@@ -480,6 +480,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * the block forever. Freeing it is the old behavior, and is announced,
 	 * because from here on a kernel still holding that address would read
 	 * memory that is gone.</p>
+	 *
+	 * <p>A {@linkplain KernelMemoryGuard#isScheduled(long) scheduling lease} is exempt from
+	 * the timeout: it covers the scheduling-to-execution window of a deferred dispatch or copy
+	 * waiting on a foreign dependency, which may legitimately outlast the backstop that a
+	 * millisecond-scale kernel execution never reaches. Such a block keeps being held back
+	 * until the lease is given back when the deferred work settles.</p>
 	 */
 	private void sweepDeferred() {
 		if (deferred.isEmpty()) return;
@@ -490,6 +496,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 					>= deferredReleaseTimeoutMs;
 
 			if (!expired && isActivelyReferenced(ref.getAddress())) continue;
+			if (expired && isScheduled(ref.getAddress())) continue;
 
 			deferred.remove(ref.getAddress());
 
@@ -516,6 +523,21 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
 		return guard != null && !guard.canDeallocate(address);
+	}
+
+	/**
+	 * Returns whether a scheduling lease currently holds the given address, so the
+	 * deferred-release backstop must not force-expire it.
+	 *
+	 * @param address the native address to test
+	 * @return {@code true} if a scheduling lease is still holding the memory
+	 */
+	private boolean isScheduled(long address) {
+		Hardware hw = Hardware.getLocalHardware();
+		if (hw == null) return false;
+
+		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+		return guard != null && guard.isScheduled(address);
 	}
 
 	/**

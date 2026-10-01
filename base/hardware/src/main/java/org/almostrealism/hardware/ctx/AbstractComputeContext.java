@@ -213,9 +213,11 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * memory on the device instead.</p>
 	 *
 	 * <p>A scheduled copy reads and writes memory after this method has returned, exactly
-	 * as a dispatched kernel does, so it holds a {@link KernelMemoryGuard} reservation over
+	 * as a dispatched kernel does, so it holds a {@link KernelMemoryGuard} scheduling lease over
 	 * both regions from the moment it is scheduled until it has settled. Without it a block
-	 * released in the meantime could be freed while the copy is still using it.</p>
+	 * released in the meantime could be freed while the copy is still using it. A lease (rather
+	 * than a plain execution reservation) is used because the dependency may remain pending
+	 * longer than the deferred-release backstop, which a lease is exempt from.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
@@ -230,7 +232,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 		}
 
 		KernelMemoryGuard.Reservation guard =
-				KernelMemoryGuard.acquireFor(new MemoryData[] { source, destination });
+				KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { source, destination });
 
 		Semaphore copied = dependsOn.then(() -> {
 			destination.setFrom(0, source, 0, source.getMemLength());

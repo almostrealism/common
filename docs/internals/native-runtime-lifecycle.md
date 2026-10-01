@@ -267,6 +267,16 @@ consequence: if a dispatch genuinely hangs or leaks its reservation past 30 s, t
 its memory out from under it, so a use-after-free is **not** ruled out merely by confirming the
 dispatch was bracketed — check whether the timeout fired.
 
+One count is exempt from the backstop: a **scheduling lease**
+(`KernelMemoryGuard.acquireScheduled`, consulted through `isScheduled`). A deferred dispatch
+(`CLOperator.accept`) or fallback copy (`AbstractComputeContext.copy`) that waits on a foreign
+completion before it runs holds a lease over its memory for the whole scheduling-to-execution window,
+which — unlike a kernel execution — may legitimately last longer than 30 s. `sweepDeferred()` keeps
+holding a leased block back past the timeout instead of force-freeing it, because the lease is given
+back deterministically when the deferred work settles (both the success and failure paths of
+`Semaphore.whenSettled`), not left to a timer. The backstop still force-expires a leaked
+kernel-execution guard exactly as before.
+
 `KernelMemoryGuard` does **not**:
 
 - **Protect an argument it cannot resolve to a `RAM`.** `acquire` warns and skips such an argument;

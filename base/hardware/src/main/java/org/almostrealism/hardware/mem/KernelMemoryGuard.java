@@ -80,11 +80,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   {@link #canDeallocate(long)} into a hard barrier.</li>
  *   <li><strong>A dispatch that was never bracketed</strong> with
  *   {@link #acquireFor(MemoryData[])}/{@link #releaseFor(Reservation)}.</li>
- *   <li><strong>A dispatch that outlives the deferred-release timeout.</strong> A
- *   non-zero count holds a release back only up to
+ *   <li><strong>A kernel-execution guard that outlives the deferred-release timeout.</strong>
+ *   A non-zero execution count holds a release back only up to
  *   {@code HardwareMemoryProvider.deferredReleaseTimeoutMs} (30&nbsp;s by default);
  *   past that, {@code HardwareMemoryProvider.sweepDeferred()} frees the block anyway
- *   (with a warning), so a hung or leaked dispatch is not protected indefinitely.</li>
+ *   (with a warning), so a hung or leaked dispatch is not protected indefinitely. A
+ *   {@linkplain #acquireScheduled(MemoryData...) scheduling lease} is exempt from this
+ *   backstop: its scheduling-to-execution window may legitimately outlast the timeout, so it
+ *   holds the release back until it is explicitly given back.</li>
  * </ul>
  *
  * <p>The internals doc on the native runtime lifecycle covers the exact
@@ -110,11 +113,24 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	private final ConcurrentHashMap<Long, Set<RAM>> heldMemory;
 
 	/**
+	 * Scheduling-lease reference counts per native memory address. These cover the window
+	 * between scheduling an asynchronous operation and its execution, which &mdash; unlike a
+	 * kernel execution &mdash; may legitimately last longer than the deferred-release backstop,
+	 * so {@link HardwareMemoryProvider} never force-expires a lease.
+	 */
+	private final ConcurrentHashMap<Long, AtomicInteger> scheduledReferences;
+
+	/** Strong references to {@link RAM} objects held while scheduling leases are active, preventing GC. */
+	private final ConcurrentHashMap<Long, Set<RAM>> scheduledMemory;
+
+	/**
 	 * Creates a new {@link KernelMemoryGuard} with empty tracking maps.
 	 */
 	public KernelMemoryGuard() {
 		this.activeReferences = new ConcurrentHashMap<>();
 		this.heldMemory = new ConcurrentHashMap<>();
+		this.scheduledReferences = new ConcurrentHashMap<>();
+		this.scheduledMemory = new ConcurrentHashMap<>();
 	}
 
 	/**
@@ -133,6 +149,9 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 		/** The guard the addresses were counted against. */
 		private final KernelMemoryGuard guard;
 
+		/** Whether this is a scheduling lease rather than a kernel-execution guard. */
+		private final boolean scheduled;
+
 		/** The addresses counted, one entry per argument that had one. */
 		private final List<Long> addresses;
 
@@ -140,8 +159,9 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 		private final List<RAM> held;
 
 		/** Creates an empty reservation against the given guard. */
-		private Reservation(KernelMemoryGuard guard) {
+		private Reservation(KernelMemoryGuard guard, boolean scheduled) {
 			this.guard = guard;
+			this.scheduled = scheduled;
 			this.addresses = new ArrayList<>();
 			this.held = new ArrayList<>();
 		}
@@ -173,7 +193,40 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * @return what was taken, to be handed to {@link #release(Reservation)}
 	 */
 	public Reservation acquire(MemoryData... args) {
-		Reservation reservation = new Reservation(this);
+		return acquire(false, args);
+	}
+
+	/**
+	 * Registers all memory arguments as covered by a scheduling lease: an asynchronous
+	 * operation that has been scheduled against them but not yet executed.
+	 *
+	 * <p>A lease blocks deallocation the same way {@link #acquire(MemoryData...)} does, but
+	 * {@link HardwareMemoryProvider} never force-expires it. It covers the
+	 * scheduling-to-execution window of a deferred dispatch or copy, which waits on a foreign
+	 * dependency and so may legitimately outlast the deferred-release backstop that a
+	 * millisecond-scale kernel execution never reaches. Pair it with
+	 * {@link #release(Reservation)} once the deferred work has settled.</p>
+	 *
+	 * @param args the memory arguments (may contain nulls)
+	 * @return what was taken, to be handed to {@link #release(Reservation)}
+	 */
+	public Reservation acquireScheduled(MemoryData... args) {
+		return acquire(true, args);
+	}
+
+	/**
+	 * Registers all memory arguments against either the kernel-execution counts or the
+	 * scheduling-lease counts, depending on {@code scheduled}.
+	 *
+	 * @param scheduled whether to record a scheduling lease rather than a kernel-execution guard
+	 * @param args      the memory arguments (may contain nulls)
+	 * @return what was taken, to be handed to {@link #release(Reservation)}
+	 */
+	private Reservation acquire(boolean scheduled, MemoryData... args) {
+		ConcurrentHashMap<Long, AtomicInteger> references = scheduled ? scheduledReferences : activeReferences;
+		ConcurrentHashMap<Long, Set<RAM>> memory = scheduled ? scheduledMemory : heldMemory;
+
+		Reservation reservation = new Reservation(this, scheduled);
 		if (args == null) return reservation;
 
 		for (MemoryData arg : args) {
@@ -189,13 +242,13 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 
 			long address = ram.getContentPointer();
 
-			activeReferences.compute(address, (k, existing) -> {
+			references.compute(address, (k, existing) -> {
 				AtomicInteger count = existing != null ? existing : new AtomicInteger(0);
 				count.incrementAndGet();
 				return count;
 			});
 
-			heldMemory.computeIfAbsent(address,
+			memory.computeIfAbsent(address,
 					k -> Collections.newSetFromMap(new ConcurrentHashMap<>()))
 					.add(ram);
 
@@ -223,11 +276,16 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	public void release(Reservation reservation) {
 		if (reservation == null) return;
 
+		ConcurrentHashMap<Long, AtomicInteger> references =
+				reservation.scheduled ? scheduledReferences : activeReferences;
+		ConcurrentHashMap<Long, Set<RAM>> memory =
+				reservation.scheduled ? scheduledMemory : heldMemory;
+
 		for (long address : reservation.addresses) {
-			activeReferences.computeIfPresent(address, (k, count) -> {
+			references.computeIfPresent(address, (k, count) -> {
 				int remaining = count.decrementAndGet();
 				if (remaining <= 0) {
-					heldMemory.remove(address);
+					memory.remove(address);
 					return null;
 				}
 				return count;
@@ -238,15 +296,41 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	/**
 	 * Checks whether native memory at the given address can be safely deallocated.
 	 *
-	 * <p>Returns {@code true} if the address has no active kernel references
-	 * (not in the map or count is zero or below).</p>
+	 * <p>Returns {@code true} if the address has neither an active kernel-execution reference
+	 * nor a scheduling lease (not in either map, or both counts are zero or below).</p>
 	 *
 	 * @param address the native memory address to check
-	 * @return {@code true} if deallocation is safe, {@code false} if kernels are still active
+	 * @return {@code true} if deallocation is safe, {@code false} if a kernel or a scheduling
+	 *         lease is still holding the memory
 	 */
 	public boolean canDeallocate(long address) {
-		AtomicInteger count = activeReferences.get(address);
-		return count == null || count.get() <= 0;
+		return !hasCount(activeReferences, address) && !hasCount(scheduledReferences, address);
+	}
+
+	/**
+	 * Returns whether native memory at the given address is held by a scheduling lease.
+	 *
+	 * <p>Distinguished from {@link #canDeallocate(long)} so the deferred-release backstop can
+	 * force-expire a leaked kernel-execution guard while never expiring a lease, whose
+	 * scheduling-to-execution window may legitimately outlast the backstop.</p>
+	 *
+	 * @param address the native memory address to check
+	 * @return {@code true} if a scheduling lease still holds the memory
+	 */
+	public boolean isScheduled(long address) {
+		return hasCount(scheduledReferences, address);
+	}
+
+	/**
+	 * Returns whether the given reference map records a positive count for the address.
+	 *
+	 * @param references the reference-count map to consult
+	 * @param address    the native memory address to check
+	 * @return {@code true} if the map holds a positive count for the address
+	 */
+	private static boolean hasCount(ConcurrentHashMap<Long, AtomicInteger> references, long address) {
+		AtomicInteger count = references.get(address);
+		return count != null && count.get() > 0;
 	}
 
 	/**
@@ -271,6 +355,33 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 			}
 		} catch (Exception e) {
 			// Guard failures must not prevent kernel execution
+		}
+		return null;
+	}
+
+	/**
+	 * Acquires a scheduling lease for the given memory data from the local {@link Hardware}.
+	 *
+	 * <p>Behaves like {@link #acquireFor(MemoryData[])} but records a lease that the
+	 * deferred-release backstop never force-expires, for the scheduling-to-execution window of
+	 * a deferred asynchronous operation. Returns what was taken, to be handed back to
+	 * {@link #releaseFor(Reservation)}, or {@code null} if no hardware or guard is available,
+	 * or if acquisition fails for any reason.</p>
+	 *
+	 * @param data the memory arguments
+	 * @return the reservation, or {@code null}
+	 */
+	public static Reservation acquireScheduledFor(MemoryData[] data) {
+		try {
+			Hardware hw = Hardware.getLocalHardware();
+			if (hw != null) {
+				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+				if (guard != null) {
+					return guard.acquireScheduled(data);
+				}
+			}
+		} catch (Exception e) {
+			// Guard failures must not prevent scheduling
 		}
 		return null;
 	}

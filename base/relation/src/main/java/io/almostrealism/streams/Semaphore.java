@@ -172,6 +172,12 @@ public interface Semaphore {
 	 * remaining semaphore is returned directly, so the combiner is only invoked when there
 	 * is genuinely more than one completion to merge.</p>
 	 *
+	 * <p>Every member is settled rather than merely awaited: a member whose {@link #waitFor()}
+	 * throws still counts the composite down, so a single failure can never pin the latch and
+	 * leave a waiter blocked forever. The first such failure is retained and rethrown from the
+	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
+	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
+	 *
 	 * @param semaphores the completions to merge; may contain nulls
 	 * @param combiner   produces the composite latch for a given number of members
 	 * @return a semaphore completing after all of the given semaphores, or {@code null}
@@ -185,7 +191,15 @@ public interface Semaphore {
 		if (pending.size() == 1) return pending.get(0);
 
 		LatchSemaphore combined = combiner.apply(pending.size());
-		pending.forEach(s -> s.onComplete(combined::countDown));
+		pending.forEach(s -> CALLBACK_EXECUTOR.execute(() -> {
+			try {
+				s.waitFor();
+			} catch (Throwable t) {
+				combined.fail(t);
+			} finally {
+				combined.countDown();
+			}
+		}));
 		return combined;
 	}
 }

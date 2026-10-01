@@ -204,11 +204,13 @@ public class CLOperator extends HardwareOperator {
 	 *
 	 * <p>The deferred dispatch does not prepare or enqueue its arguments until the dependency
 	 * has completed, so &mdash; exactly as the fallback copy guards its regions across its own
-	 * deferral &mdash; a {@link KernelMemoryGuard} reservation is held over the argument memory
-	 * from the moment this returns until the deferred dispatch has settled. Without it an
+	 * deferral &mdash; a {@link KernelMemoryGuard} scheduling lease is held over the argument
+	 * memory from the moment this returns until the deferred dispatch has settled. Without it an
 	 * argument freed while the dependency is still pending would be prepared or enqueued against
-	 * released memory. {@link #dispatch} acquires its own reservation once it runs; this one
-	 * only covers the scheduling-to-execution window that reservation cannot.</p>
+	 * released memory. A lease (rather than a plain execution reservation) is used because the
+	 * dependency may remain pending longer than the deferred-release backstop, which a lease is
+	 * exempt from. {@link #dispatch} acquires its own reservation once it runs; this one only
+	 * covers the scheduling-to-execution window that reservation cannot.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
@@ -217,7 +219,7 @@ public class CLOperator extends HardwareOperator {
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
-			KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(argumentData(args));
+			KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireScheduledFor(argumentData(args));
 			Semaphore dispatched = dependsOn.then(() -> dispatch(args, null));
 			dispatched.whenSettled(() -> KernelMemoryGuard.releaseFor(guard));
 			return dispatched;
