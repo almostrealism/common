@@ -458,6 +458,7 @@ def workstream_submit_task(
         # The post-completion command is an unattended gate, so it is held to a
         # stricter selector rule than a shell job's own command: its Maven
         # -Dtest must name explicit Class#method tests, not a whole class.
+        # TODO(review): the controller (TestExecutionLimitsSubmissionValidator) has no Java mirror of this gate, so a direct /api/submit can bypass it.
         if field_name == "post_completion_command":
             cmd_violations = cmd_violations + server.post_completion_gate_violations(field_value)
         if cmd_violations:
@@ -468,9 +469,10 @@ def workstream_submit_task(
                     "submitters may never do -- broad verification belongs to "
                     "CI. There is no bypass for this check.\n\n"
                     "Violations found:\n  - {}\n\n"
-                    "Rewrite the command to select explicit Class#method tests "
-                    "(Maven) or explicit node ids (pytest), one test per "
-                    "invocation.".format(field_name, "\n  - ".join(cmd_violations))
+                    "Rewrite the command to select a bounded set of tests "
+                    "(Maven: at most 5 classes and 40 Class#method tests via "
+                    "-Dtest) or exactly one explicit node id (pytest)."
+                    .format(field_name, "\n  - ".join(cmd_violations))
                 ),
             }
     if post_completion_timeout_seconds:
@@ -479,9 +481,10 @@ def workstream_submit_task(
             return {"ok": False, "error": timeout_err}
     # Broad-test-instruction linter -- rejects prompts that instruct the
     # agent, in English, to run a full/whole/entire suite, a module's
-    # tests, a shard, mvn test without a single-method selector, or
+    # tests, a shard, mvn test without a bounded -Dtest selection, or
     # AR_TEST_GROUP. No bypass flag; unlike allow_commit_language, this
-    # rule has no legitimate exception -- see execution_limits.py.
+    # rule has no legitimate exception -- see execution_limits.py and
+    # prompt_test_lint.py.
     prompt_test_hits = server.lint_prompt_for_broad_test_instructions(prompt)
     if prompt_test_hits:
         lines = []

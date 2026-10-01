@@ -1309,6 +1309,19 @@ class TestSubmitTestExecutionLimits(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("no -Dtest selector", result["error"])
 
+    def test_command_rejection_advertises_bounded_selection(self):
+        # The rewrite advice must describe the bounded contract (a few classes
+        # or Class#method tests), not the retired one-test-per-invocation rule.
+        result = server.workstream_submit_task(
+            job_type="shell",
+            workstream_id="ws-test",
+            command="mvn test -pl engine/utils",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("at most 5 classes and 40 Class#method tests", result["error"])
+        self.assertIn("exactly one explicit node id", result["error"])
+        self.assertNotIn("one test per invocation", result["error"])
+
     def test_rejects_prompt_instructing_broad_test_run(self):
         result = server.workstream_submit_task(
             prompt="Fix the bug, then run the full test suite to confirm nothing broke.",

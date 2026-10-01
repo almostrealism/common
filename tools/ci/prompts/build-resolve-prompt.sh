@@ -125,10 +125,11 @@ append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 # ── Determine which modules contain failures and build CI commands ──
 # Parse class#method names from the failure list and map each class to its
 # Maven module. The CI command section names the SPECIFIC failing method via
-# test_methods so the agent reproduces narrowly, one test at a time -- never
-# a bare module run (a whole-module suite) and never a bare class selector
-# (every method in that class), both of which agents may never run; see
-# ci/test-execution-limits.
+# test_methods so the agent reproduces narrowly, one failing method per
+# invocation -- never a bare module run (a whole-module suite), which agents
+# may never run. A bare class selector is within the execution limits, but it
+# would rerun every method in that class, so the resolve job does not use it
+# (see the CI_COMMANDS comment below).
 FAILING_MODULES=""
 # One "<module> <Class#method>" record per line. Plain newline-delimited data
 # (not `eval "MODULE_METHODS_${module}=..."`) so a crafted failure name is
