@@ -52,6 +52,41 @@ public class CollectionPermuteTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that permuting a collection and evaluating the result {@code into} a destination with a
+	 * standard (non-reordered) {@link org.almostrealism.collect.PackedCollection#getShape() shape}
+	 * physically restructures the destination's backing memory, rather than leaving it as a
+	 * view whose {@link io.almostrealism.collect.TraversalPolicy} merely reorders logical access.
+	 *
+	 * <p>The destination is a plain {@code shape(4, 3)} collection, so its memory is row-major with no
+	 * ordering adjustment. After {@code cp(input).permute(1, 0).into(destination).evaluate()} the raw
+	 * memory of the destination — read with {@link org.almostrealism.collect.PackedCollection#toArray(int, int)},
+	 * which returns physical order for a regular shape — must equal the transposed values laid out
+	 * row-major, proving the permutation was applied to real memory.</p>
+	 */
+	@Test(timeout = 30000)
+	public void permuteMaterializesIntoDestinationMemory() {
+		try (PackedCollection input = pack(
+				0.0, 1.0, 2.0, 3.0,
+				10.0, 11.0, 12.0, 13.0,
+				20.0, 21.0, 22.0, 23.0).reshape(3, 4);
+				PackedCollection destination = new PackedCollection(shape(4, 3))) {
+			cp(input).permute(1, 0).into(destination.traverseEach()).evaluate();
+
+			// Transpose of input, laid out row-major for shape (4, 3)
+			double[] expectedMemory = {
+					0.0, 10.0, 20.0,
+					1.0, 11.0, 21.0,
+					2.0, 12.0, 22.0,
+					3.0, 13.0, 23.0};
+
+			double[] actualMemory = destination.toArray(0, 12);
+			for (int i = 0; i < expectedMemory.length; i++) {
+				assertEquals(expectedMemory[i], actualMemory[i]);
+			}
+		}
+	}
+
+	/**
 	 * Tests 4D dimension reordering with partial permutation.
 	 * Demonstrates swapping middle dimensions while keeping first and last in place using permute(0, 2, 1, 3).
 	 *
