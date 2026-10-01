@@ -130,10 +130,6 @@ public class PromptTestInstructionLinter {
 			"post-integration-test", "verify", "install", "deploy",
 			"pre-site", "site", "post-site", "site-deploy"));
 
-	/** Matches an explicit {@code -Dtest=Class#method}-shaped mention in a prompt fragment. */
-	private static final Pattern SELECTOR_PATTERN = Pattern.compile(
-			"-Dtest=\\S+#\\S+", Pattern.CASE_INSENSITIVE);
-
 	/** Matches a whole {@code -DskipTests}/{@code -Dmaven.test.skip} mention, capturing the
 	 * assigned value token when present -- a bare flag with no {@code =value} means {@code true}.
 	 * The value is captured as a non-space run (not just {@code true}/{@code false}) so a dynamic
@@ -227,9 +223,9 @@ public class PromptTestInstructionLinter {
 		rules.add(new LineRule(line -> AR_TEST_GROUP.matcher(line).find(),
 				"AR_TEST_GROUP/AR_TEST_GROUPS reference"));
 		rules.add(new LineRule(PromptTestInstructionLinter::mvnSegmentWithoutSelector,
-				"\"mvn test/verify/install/package/deploy\" without a Class#method -Dtest selector"));
+				"\"mvn test/verify/install/package/deploy\" without a bounded -Dtest selector"));
 		rules.add(new LineRule(PromptTestInstructionLinter::dtestBroadValue,
-				"-Dtest=<value> not naming exactly one Class#method entry"));
+				"-Dtest=<value> not naming a bounded set of classes or methods"));
 		rules.add(new LineRule(PromptTestInstructionLinter::unittestDiscovery,
 				"\"python -m unittest discover\" (or a unittest invocation naming no single "
 						+ "module.Class.method id)"));
@@ -255,7 +251,8 @@ public class PromptTestInstructionLinter {
 
 	/**
 	 * Flags an {@code mvn <test-running-phase>} mention whose OWN chained-command fragment has
-	 * no Class#method {@code -Dtest} selector and no effective skip flag, without being fooled
+	 * no bounding {@code -Dtest} selector (a class, a few classes, or up to the method cap, as
+	 * {@link #hasBoundedSelector} decides) and no effective skip flag, without being fooled
 	 * by a selector or skip flag belonging to a different command earlier or later on the same
 	 * line -- e.g. {@code mvn test && mvn test -Dtest=Foo#bar} must not exempt the first, broad
 	 * {@code mvn test} just because a selector exists later on the line for an unrelated chained
@@ -269,7 +266,7 @@ public class PromptTestInstructionLinter {
 					|| !MVN_TEST_PHASE_PATTERN.matcher(fragment).find()) {
 				continue;
 			}
-			if (SELECTOR_PATTERN.matcher(fragment).find()) {
+			if (hasBoundedSelector(fragment)) {
 				continue;
 			}
 			if (Boolean.TRUE.equals(effectiveSkipValue(fragment, SKIP_TESTS_MENTION))
@@ -305,11 +302,48 @@ public class PromptTestInstructionLinter {
 	}
 
 	/**
-	 * Flags a {@code -Dtest=<value>} mention that does not name exactly one wildcard-free
-	 * {@code Class#method} entry, checking EVERY {@code -Dtest=} occurrence on the line rather
-	 * than only the first -- e.g. {@code mvn test -Dtest=Foo#bar -Dtest=WholeClass} must still be
-	 * flagged even though the first value alone would be narrow enough, since a later occurrence
-	 * overrides it and Maven ultimately runs the whole class.
+	 * True when {@code fragment} carries at least one {@code -Dtest=} selector and EVERY
+	 * {@code -Dtest=} value it names bounds the run, which is what exempts a Maven test-phase
+	 * mention from {@link #mvnSegmentWithoutSelector}.
+	 *
+	 * <p>This asks {@link PostCompletionCommandValidator#dtestIsNarrow} rather than looking for a
+	 * {@code #}, so it agrees with {@link #dtestBroadValue} and with the command validator about
+	 * what counts as bounded. A mention naming a class, or a few classes, is exempt here and is
+	 * not flagged there; a wildcard or an over-cap list is exempt in neither. Requiring every
+	 * value to be narrow — rather than exempting the fragment as soon as any one value is narrow —
+	 * matches the Python mirror
+	 * {@code _MvnTestSegmentMatcher._has_bounding_selector}'s {@code all(...)} rule and Maven's
+	 * last-value-wins semantics directly, so a later broad value ({@code -Dtest=Foo#bar
+	 * -Dtest=Whole*}) is not exempted here on the strength of the earlier narrow one. This no
+	 * longer relies on {@link #dtestBroadValue} running afterwards to catch such a fragment, so
+	 * the two predicates stay independently correct regardless of rule ordering.</p>
+	 *
+	 * @param fragment one chained-command fragment of a prompt line
+	 * @return whether a bounded selector is present and every value it names is bounded
+	 */
+	private static boolean hasBoundedSelector(String fragment) {
+		Matcher matcher = DTEST_VALUE.matcher(fragment);
+
+		boolean any = false;
+		while (matcher.find()) {
+			any = true;
+			if (!PostCompletionCommandValidator.dtestIsNarrow(matcher.group(1))) {
+				return false;
+			}
+		}
+
+		return any;
+	}
+
+	/**
+	 * Flags a {@code -Dtest=<value>} mention that does not bound the run, checking EVERY
+	 * {@code -Dtest=} occurrence on the line rather than only the first -- e.g.
+	 * {@code mvn test -Dtest=Foo#bar -Dtest=Whole*} must still be flagged even though the first
+	 * value alone would be bounded, since a later occurrence overrides it and Maven ultimately
+	 * runs whatever the wildcard matches.
+	 *
+	 * @param line one prompt line
+	 * @return whether an unbounded selector is mentioned
 	 */
 	private static boolean dtestBroadValue(String line) {
 		Matcher matcher = DTEST_VALUE.matcher(line);
@@ -553,14 +587,16 @@ public class PromptTestInstructionLinter {
 	/** Renders {@link #getViolations()} as a rejection message for the submitter. */
 	public String formatRejection() {
 		StringBuilder sb = new StringBuilder(
-				"Prompt instructs the agent to run a broad test set. Agents may run at most one "
-				+ "narrowly-selected test per invocation; broad verification (full suites, module "
+				"Prompt instructs the agent to run a broad test set. Agents may run only a bounded "
+				+ "selection per invocation (at most 5 test classes and 40 named Class#method tests "
+				+ "for Maven, or one pytest node id); broad verification (full suites, module "
 				+ "suites, CI shards) belongs to CI only. There is no bypass for this check.\n\n"
 				+ "Forbidden phrases found:\n");
 		for (String violation : violations) {
 			sb.append("  ").append(violation).append('\n');
 		}
-		sb.append("\nRewrite the prompt to name the specific failing test(s) to run, one at a time.");
+		sb.append("\nRewrite the prompt to name the specific failing test(s) to run as a bounded "
+				+ "selection.");
 		return sb.toString();
 	}
 

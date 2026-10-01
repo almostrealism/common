@@ -134,13 +134,24 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse(violationsFor("mvn install -pl engine/utils").isEmpty());
 	}
 
-	/** A bare -Dtest=Class selector (no #method) still runs the whole class and must be rejected. */
+	/** A bare -Dtest=Class selector names a run bounded by that class's own methods. */
 	@Test(timeout = 10000)
-	public void bareClassDtestSelectorRejected() {
-		List<String> violations = violationsFor(
-				"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest");
-		assertFalse(violations.isEmpty());
-		assertTrue(violations.get(0).contains("Class#method"));
+	public void bareClassDtestSelectorAccepted() {
+		assertTrue(violationsFor(
+				"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest").isEmpty());
+	}
+
+	/** Up to MAX_TEST_CLASSES named classes is still a bounded run. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAtTheClassCapAccepted() {
+		assertTrue(violationsFor("mvn test -Dtest=A,B,C,D,E").isEmpty());
+	}
+
+	/** Beyond MAX_TEST_CLASSES the selector approaches the module's whole suite. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAboveTheClassCapRejected() {
+		assertFalse("a selector naming more classes than the cap must be rejected",
+				violationsFor("mvn test -Dtest=A,B,C,D,E,F").isEmpty());
 	}
 
 	/** The Maven Wrapper launcher must be rejected the same as a plain "mvn" invocation when it
@@ -162,15 +173,42 @@ public class PostCompletionCommandValidatorTest extends TestSuiteBase {
 		assertFalse("./mvnw.cmd test must be rejected like a direct mvn test", violations.isEmpty());
 	}
 
-	/** A -Dtest value naming more than one Class#method entry still runs multiple tests in a
-	 * single Maven invocation, contradicting the "one test per invocation" rule -- even though
-	 * every individual entry is itself narrow. */
+	/** Several named methods are a bounded run, so a -Dtest value listing them is accepted up to
+	 * MAX_TEST_METHODS. */
 	@Test(timeout = 10000)
-	public void multipleMethodDtestSelectorRejected() {
-		List<String> violations = violationsFor(
-				"mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz");
-		assertFalse("a -Dtest value naming multiple methods must still be rejected",
-				violations.isEmpty());
+	public void multipleMethodDtestSelectorAccepted() {
+		assertTrue("a -Dtest value naming a few methods names a bounded run",
+				violationsFor("mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz").isEmpty());
+	}
+
+	/** Beyond MAX_TEST_METHODS the selector is no longer a targeted check. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAboveTheMethodCapRejected() {
+		assertFalse("a selector naming more methods than the cap must be rejected",
+				violationsFor(methodSelectorCommand(41)).isEmpty());
+	}
+
+	/** Exactly MAX_TEST_METHODS named methods is still a bounded run. */
+	@Test(timeout = 10000)
+	public void dtestSelectorAtTheMethodCapAccepted() {
+		assertTrue("a selector naming exactly the method cap must be accepted",
+				violationsFor(methodSelectorCommand(40)).isEmpty());
+	}
+
+	/**
+	 * A Maven test command whose -Dtest value names {@code count} methods of one class.
+	 *
+	 * @param count how many Class#method entries to list
+	 * @return the command line
+	 */
+	private static String methodSelectorCommand(int count) {
+		StringBuilder selector = new StringBuilder("mvn -pl engine/utils test -Dtest=");
+		for (int i = 0; i < count; i++) {
+			if (i > 0) selector.append(',');
+			selector.append("FooTest#m").append(i);
+		}
+
+		return selector.toString();
 	}
 
 	/** AR_TEST_GROUP must be rejected even on a phase not itself named "test". */
