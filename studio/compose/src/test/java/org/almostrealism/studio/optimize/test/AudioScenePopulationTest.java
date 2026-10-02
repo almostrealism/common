@@ -68,15 +68,18 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 
 	/**
 	 * Test that genomes can be retrieved and run from population.
+	 *
+	 * <p>Each tick of the population's runner advances a whole buffer, so each run of
+	 * {@code organRun} is one second of audio: {@code sampleRate / bufferSize} ticks.</p>
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(1)
 	public void genomesFromPopulation() {
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 		WaveOutput out = new WaveOutput(new File("layered-organ-pop-test.wav"));
-		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out),
-				AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
+		AudioScenePopulation pop = population(pattern(1, 1), new MultiChannelAudioOutput(out), bufferSize);
 
-		TemporalRunner organRun = new TemporalRunner(pop.enableGenome(0), OutputLine.sampleRate);
+		TemporalRunner organRun = new TemporalRunner(pop.enableGenome(0), OutputLine.sampleRate / bufferSize);
 		pop.disableGenome();
 
 		IntStream.range(0, 4).forEach(i -> {
