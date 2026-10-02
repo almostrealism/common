@@ -354,6 +354,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * Releases the block behind the given reference, once it has been decided
 	 * that releasing it is safe.
 	 *
+	 * <p>The block is freed before its entry is removed, so that nothing observes this
+	 * provider as fully released while a native free is still in progress. In the
+	 * interval between the two, the allocator may already have handed the same address
+	 * to a new allocation, which {@link #allocated(RAM)} registers under the same key.
+	 * The removal therefore takes out this reference's own entry only, compared by
+	 * identity, since {@link NativeRef} equality is by address and size and would
+	 * match the new allocation's entry as well.</p>
+	 *
 	 * @param ref Native reference to the memory block to free
 	 */
 	private void releaseNow(NativeRef<T> ref) {
@@ -368,7 +376,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				allocated.remove(ref.getAddress());
+				allocated.computeIfPresent(ref.getAddress(), (address, current) -> current == ref ? null : current);
 				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
@@ -727,7 +735,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		if (allocated.containsKey(ref.getAddress())) {
+		// An entry whose reference has been claimed for release is a block that has
+		// been freed and is about to be untracked; the allocator reusing its address is
+		// expected. Only an entry still live means the same address is tracked twice.
+		NativeRef<T> existing = allocated.get(ref.getAddress());
+		if (existing != null && !existing.isFreed()) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 
