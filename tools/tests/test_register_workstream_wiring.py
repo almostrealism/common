@@ -182,10 +182,12 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: require.
     #: ``trackerCapabilities`` grants the workstream's agents a tracker role
     #: (the task-planning round registers its workstream as a "planner"); it
-    #: is a permission, not a model setting.
+    #: is a permission, not a model setting. ``requiredLabels`` chooses which
+    #: nodes may run the workstream's jobs (Verify Completion applies the ones a
+    #: plan declares); it selects a machine, not a model.
     _ALLOWED_PAYLOAD_KEYS = frozenset({
         "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
-        "trackerCapabilities",
+        "trackerCapabilities", "requiredLabels",
     })
 
     @staticmethod

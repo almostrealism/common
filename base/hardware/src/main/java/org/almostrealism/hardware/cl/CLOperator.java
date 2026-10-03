@@ -22,6 +22,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.profile.RunData;
@@ -34,8 +35,11 @@ import org.jocl.cl_kernel;
 
 import java.lang.ref.Reference;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * {@link HardwareOperator} that executes compiled OpenCL kernels.
@@ -192,22 +196,87 @@ public class CLOperator extends HardwareOperator {
 	}
 
 	/**
-	 * Enqueues the OpenCL kernel with the provided arguments and returns its completion
-	 * {@link CLSemaphore} without waiting for the kernel to finish.
+	 * Dispatches the OpenCL kernel with the provided arguments and returns its completion
+	 * without waiting for the kernel to finish, or for {@code dependsOn}.
 	 *
-	 * <p>Lazily creates the kernel on first invocation and sets kernel arguments (using caching
-	 * to skip unchanged arguments). A {@code dependsOn} that is a {@link CLSemaphore} is honored
-	 * inside the provider by placing its event in the enqueue wait-list; any other completion is
-	 * bridged by a host wait before the enqueue. The returned semaphore's
-	 * {@link CLSemaphore#waitFor() waitFor} performs the completion wait (and profiling) that
-	 * previously happened inline, and releases the dispatch's memory guard.</p>
+	 * <p>A {@code dependsOn} that is a {@link CLSemaphore} is honored inside the provider by
+	 * placing its event in the enqueue wait-list. Any other completion cannot be expressed to
+	 * the command queue, so the whole dispatch is deferred until it completes, through
+	 * {@link Semaphore#then}: argument preparation may copy an input into device memory, and
+	 * the dependency may still be writing that input, so preparing early would be as wrong as
+	 * enqueueing early. The caller is not held up either way.</p>
+	 *
+	 * <p>The deferred dispatch does not prepare or enqueue its arguments until the dependency
+	 * has completed, so &mdash; exactly as the fallback copy guards its regions across its own
+	 * deferral &mdash; a {@link KernelMemoryGuard} scheduling lease is held over the argument
+	 * memory from the moment this returns until {@link #dispatch} has taken its own execution
+	 * reservation (or until the deferred completion settles without running, on a dependency
+	 * failure). Without it an argument freed while the dependency is still pending would be
+	 * prepared or enqueued against released memory. A lease (rather than a plain execution
+	 * reservation) is used because the dependency may remain pending longer than the
+	 * deferred-release backstop, which a lease is exempt from. {@link #dispatch} acquires its own
+	 * reservation once it runs; this one only covers the scheduling-to-execution window that
+	 * reservation cannot, and is given back as soon as that reservation exists so a long-running
+	 * (or hung) kernel is subject to the execution-guard backstop exactly as a non-deferred
+	 * dispatch is. The lease keeps the
+	 * memory alive, but destroying an argument still clears that object's reference to it, so
+	 * the deferred dispatch receives its arguments through the lease's
+	 * {@link KernelMemoryGuard.Reservation#deferredArguments deferred arguments}: an argument
+	 * destroyed in the meantime is dispatched against the memory the lease holds for it, exactly
+	 * as it would have been had the dispatch been enqueued then, and an argument that has moved
+	 * to other memory has the lease extended to that memory before it is used.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
 	 * @return the dispatch's completion semaphore
 	 */
 	@Override
-	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
+	public Semaphore accept(Object[] args, Semaphore dependsOn) {
+		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
+			KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
+			AtomicBoolean leased = new AtomicBoolean(true);
+			Runnable releaseLease = () -> {
+				if (leased.compareAndSet(true, false)) lease.release();
+			};
+			Supplier<Object[]> deferred = lease.deferredArguments(args);
+			AtomicReference<Object[]> resolved = new AtomicReference<>();
+			Semaphore dispatched = dependsOn.then(() -> {
+				try {
+					resolved.set(deferred.get());
+					return dispatch(resolved.get(), null);
+				} finally {
+					// dispatch() has now taken its own execution guard, so the scheduling lease is
+					// redundant; releasing it hands the memory to that guard (and its 30s backstop)
+					// rather than exempting it for a possibly-unbounded kernel run.
+					releaseLease.run();
+				}
+			});
+			// Dependency-failure path: the work never runs, so give the lease back on settlement.
+			// Once the kernel has settled, free any allocation a destroyed argument's view was
+			// given when it was moved to a provider this operator supports.
+			dispatched.whenSettled(() -> {
+				releaseLease.run();
+				lease.releaseResolvedViews(args, resolved.get());
+			});
+			return dispatched;
+		}
+
+		return dispatch(args, (CLSemaphore) dependsOn);
+	}
+
+	/**
+	 * Enqueues the OpenCL kernel with the provided arguments and returns its completion
+	 * {@link CLSemaphore} without waiting for the kernel to finish.
+	 *
+	 * <p>Lazily creates the kernel on first invocation and sets kernel arguments (using caching
+	 * to skip unchanged arguments). The returned semaphore's {@link CLSemaphore#waitFor() waitFor}
+	 * performs the completion wait (and profiling), and releases the dispatch's memory guard.</p>
+	 *
+	 * @param args      the arguments to pass to the kernel (MemoryData objects)
+	 * @param dependsOn an event this dispatch must be ordered after on the device, or null
+	 * @return the dispatch's completion semaphore
+	 */
+	private synchronized CLSemaphore dispatch(Object[] args, CLSemaphore dependsOn) {
 		if (kernel == null) {
 			try {
 				kernel = CL.clCreateKernel(prog.getProgram(), name, null);
@@ -225,13 +294,9 @@ public class CLOperator extends HardwareOperator {
 			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
-		// A dependency from this backend is honored via the enqueue wait-list below; any
-		// other completion is bridged by a host wait before the enqueue.
-		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) dependsOn.waitFor();
-
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
 		CLSemaphore semaphore[] = new CLSemaphore[1];
 
 		try {
@@ -282,12 +347,11 @@ public class CLOperator extends HardwareOperator {
 
 					cl_event event = new cl_event();
 
-					if (dependsOn instanceof CLSemaphore) {
+					if (dependsOn != null) {
 						// The wait-list reference is taken under the dependency's processing
 						// lock; a null event means the dependency already completed (and its
 						// event was released), so no ordering constraint remains.
-						((CLSemaphore) dependsOn).whileValid(dependency ->
-								enqueueKernel(dependency, event));
+						dependsOn.whileValid(dependency -> enqueueKernel(dependency, event));
 					} else {
 						enqueueKernel(null, event);
 					}
@@ -295,7 +359,7 @@ public class CLOperator extends HardwareOperator {
 					// The memory guard is released only once the kernel has completed (the
 					// enqueue above is asynchronous), via the semaphore's processing callback.
 					semaphore[0] = new CLSemaphore(prog.getMetadata(), context, event, profile,
-							() -> KernelMemoryGuard.releaseFor(guard));
+							guard::release);
 
 					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
 				} catch (CLException e) {
@@ -309,7 +373,7 @@ public class CLOperator extends HardwareOperator {
 			if (semaphore[0] == null) {
 				// The dispatch never published a completion (argument setup or the enqueue
 				// failed), so there is no kernel in flight and the guard is released here.
-				KernelMemoryGuard.releaseFor(guard);
+				guard.release();
 			}
 		}
 
