@@ -23,7 +23,9 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -201,30 +203,53 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 
 	/**
 	 * Copies all of {@code source} into {@code destination} with a direct host-mediated
-	 * {@link MemoryData#setMem} after waiting for {@code dependsOn}.
+	 * {@link MemoryData#setMem}, ordered after {@code dependsOn}.
 	 *
-	 * <p>This is the fallback that has no asynchronous mechanism of its own: it blocks on
-	 * {@code dependsOn} (so the copy is ordered after the work it depends on), performs the copy
-	 * synchronously, and reports completion by returning {@code null}. A backend that owns a command
-	 * buffer or queue overrides this to move the memory asynchronously and honor {@code dependsOn}
-	 * without a host stall.</p>
+	 * <p>This is the fallback for a backend with no asynchronous copy of its own. With no
+	 * dependency the copy happens now and {@code null} is returned. Otherwise the copy is
+	 * scheduled to run once the dependency completes, through {@link Semaphore#then}, and the
+	 * completion of that scheduled copy is returned: the calling thread is not held up, since
+	 * blocking belongs only where a caller demands a result, never inside internal machinery
+	 * like this. A backend that owns a command buffer or queue overrides this to move the
+	 * memory on the device instead.</p>
+	 *
+	 * <p>A scheduled copy reads and writes memory after this method has returned, exactly
+	 * as a dispatched kernel does, so it holds a {@link KernelMemoryGuard} scheduling lease over
+	 * both regions from the moment it is scheduled until it has settled. Without it a block
+	 * released in the meantime could be freed while the copy is still using it. A lease (rather
+	 * than a plain execution reservation) is used because the dependency may remain pending
+	 * longer than the deferred-release backstop, which a lease is exempt from. The lease keeps
+	 * the memory alive, but destroying {@code source} or {@code destination} still clears that
+	 * object's reference to it, so the scheduled copy reaches each region through the lease's
+	 * {@link KernelMemoryGuard.Reservation#detachedReference(MemoryData) detached reference}: a
+	 * view bound to memory the lease holds, which no destroy can take away between the copy
+	 * resolving it and using it.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
 	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
-	 * @return {@code null}; the copy is complete on return
+	 * @return the completion of the copy, or {@code null} if it is complete on return
 	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
-		// TODO  Rather than blocking here, this should schedule an operation that happens
-		// TODO  after dependsOn (plain Java threading is always available for chaining even
-		// TODO  when there is no native queueing mechanism) and return that operation's own
-		// TODO  Semaphore. Blocking should only ever occur because the end user demanded a
-		// TODO  result, never inside internal machinery like this fallback.
-		if (dependsOn != null) dependsOn.waitFor();
+		if (dependsOn == null) {
+			destination.setFrom(0, source, 0, source.getMemLength());
+			return null;
+		}
 
-		destination.setFrom(0, source, 0, source.getMemLength());
-		return null;
+		KernelMemoryGuard.Reservation lease =
+				Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(source, destination);
+		Supplier<MemoryData> from = lease.detachedReference(source);
+		Supplier<MemoryData> to = lease.detachedReference(destination);
+
+		Semaphore copied = dependsOn.then(() -> {
+			MemoryData src = from.get();
+			to.get().setFrom(0, src, 0, src.getMemLength());
+			return null;
+		});
+
+		copied.whenSettled(lease::release);
+		return copied;
 	}
 
 	/**

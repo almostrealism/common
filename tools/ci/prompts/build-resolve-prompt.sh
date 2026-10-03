@@ -125,10 +125,11 @@ append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 # ── Determine which modules contain failures and build CI commands ──
 # Parse class#method names from the failure list and map each class to its
 # Maven module. The CI command section names the SPECIFIC failing method via
-# test_methods so the agent reproduces narrowly, one test at a time -- never
-# a bare module run (a whole-module suite) and never a bare class selector
-# (every method in that class), both of which agents may never run; see
-# ci/test-execution-limits.
+# test_methods so the agent reproduces narrowly, one failing method per
+# invocation -- never a bare module run (a whole-module suite), which agents
+# may never run. A bare class selector is within the execution limits, but it
+# would rerun every method in that class, so the resolve job does not use it
+# (see the CI_COMMANDS comment below).
 FAILING_MODULES=""
 # One "<module> <Class#method>" record per line. Plain newline-delimited data
 # (not `eval "MODULE_METHODS_${module}=..."`) so a crafted failure name is
@@ -167,10 +168,11 @@ while IFS= read -r line; do
 done < "$FAILURES_FILE"
 
 # Build CI reproduction commands for each failing module: one invocation per
-# failing method, never a bare module-wide run, never a bare class selector
-# (which would run every method in that class), and never several methods
-# grouped into one test_methods list -- one test per invocation, same as
-# every other surface this rule covers.
+# failing method, never a bare module-wide run. The execution-limit surfaces now
+# accept a bounded selection (up to 5 classes / 40 Class#method tests per
+# invocation), but a resolve job deliberately reproduces each failing method in
+# its own invocation so the pass/fail of each is attributed unambiguously -- a
+# conservative choice well within those caps, not the cap itself.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
     pairs=$(printf '%s\n' "$MODULE_METHOD_RECORDS" | awk -v m="$module" '$1 == m { print $2 }')

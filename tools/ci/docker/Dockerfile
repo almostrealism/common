@@ -13,7 +13,7 @@
 
 FROM ubuntu:22.04
 
-ARG RUNNER_VERSION=2.321.0
+ARG RUNNER_VERSION=2.337.0
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

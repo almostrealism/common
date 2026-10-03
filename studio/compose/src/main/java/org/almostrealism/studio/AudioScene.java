@@ -753,6 +753,23 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public int getChannelCount() { return channelCount; }
 
 	/**
+	 * Returns the number of stems a render of the whole scene produces: one for each mix
+	 * channel, and one more for the effects bus, at index {@link #getChannelCount()}. An
+	 * output that receives the stems of a full render must have this many.
+	 *
+	 * @return the stem count of a full render
+	 */
+	public int getStemCount() { return channelCount + 1; }
+
+	/**
+	 * Returns the stem index of the effects bus in a render of the whole scene.
+	 *
+	 * @return the effects stem index
+	 * @see #getStemCount()
+	 */
+	public int getEffectsStemIndex() { return channelCount; }
+
+	/**
 	 * Returns the number of delay echo layers in the mixdown pipeline.
 	 *
 	 * @return the delay layer count

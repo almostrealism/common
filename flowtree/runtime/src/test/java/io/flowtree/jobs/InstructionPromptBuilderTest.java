@@ -84,8 +84,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Test Execution Limits section",
 			result.contains("## Test Execution Limits"));
-		assertTrue("Expected one-test-per-invocation guidance",
-			result.contains("Run at most ONE test per invocation"));
+		assertTrue("Expected bounded-selection guidance",
+			result.contains("Run only a bounded selection per invocation"));
 		assertTrue("Expected AR_TEST_GROUP shard warning",
 			result.contains("AR_TEST_GROUP"));
 		assertTrue("Expected 40-minute timeout ceiling",

@@ -16,9 +16,11 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
@@ -30,6 +32,8 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
+import java.util.Random;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -48,6 +52,12 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class SyntheticCompositionTrainingTest extends TestSuiteBase implements ModelTestFeatures {
+	/** Seed for the weights and data of {@link #residualBlock()}. */
+	private static final long RESIDUAL_SEED = 51L;
+
+	/** Seed for the weights and data of {@link #sequentialComposition()}. */
+	private static final long SEQUENTIAL_SEED = 52L;
+
 	/**
 	 * Fixed coefficients for target functions.
 	 */
@@ -89,15 +99,16 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		int size = 4;
 		int epochs = 300;
 		int steps = 260;
+		Random random = new Random(RESIDUAL_SEED);
 
 		// Build model with residual connection
 		SequentialBlock innerBlock = new SequentialBlock(shape(size));
-		innerBlock.add(dense(size, size));
-		innerBlock.add(dense(size, size));
+		innerBlock.add(seededDense(size, random));
+		innerBlock.add(seededDense(size, random));
 
 		SequentialBlock block = new SequentialBlock(shape(size));
 		block.add(residual(innerBlock));
-		block.add(dense(size, size));
+		block.add(seededDense(size, random));
 
 		Model model = new Model(shape(size), 1e-5);
 		model.add(block);
@@ -108,7 +119,7 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> {
-					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					rand(input.getShape(), random).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
 				.map(input -> ValueTarget.of(input, identityLikeFunc.apply(input)))
@@ -135,12 +146,13 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		int size = 4;
 		int epochs = 300;
 		int steps = 260;
+		Random random = new Random(SEQUENTIAL_SEED);
 
 		// Build model with multiple sequential dense layers
 		SequentialBlock block = new SequentialBlock(shape(size));
-		block.add(dense(size, size));
-		block.add(dense(size, size));
-		block.add(dense(size, size));
+		block.add(seededDense(size, random));
+		block.add(seededDense(size, random));
+		block.add(seededDense(size, random));
 
 		Model model = new Model(shape(size), 1e-5);
 		model.add(block);
@@ -151,7 +163,7 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> {
-					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					rand(input.getShape(), random).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
 				.map(input -> ValueTarget.of(input, scaleFunc.apply(input)))
@@ -161,5 +173,21 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		train("sequentialComposition", model, data, epochs, steps, 1.5, 0.75);
 
 		log("Test 5.2 completed successfully");
+	}
+
+	/**
+	 * Creates a square dense layer with a learnable bias whose weights are initialised
+	 * the way {@code dense(size, size)} initialises them (a standard normal sample divided
+	 * by the input size, zero bias), but drawn from the given generator, so that training
+	 * follows the same path on every run instead of depending on an unseeded draw.
+	 *
+	 * @param size   the input and output size of the layer
+	 * @param random the generator supplying the initial weights
+	 * @return a factory for the dense layer
+	 */
+	private Function<TraversalPolicy, CellularLayer> seededDense(int size, Random random) {
+		PackedCollection weights = randn(shape(size, size), random).divide(size).evaluate();
+		PackedCollection biases = new PackedCollection(shape(size));
+		return dense(weights, biases);
 	}
 }
