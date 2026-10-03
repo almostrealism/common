@@ -17,11 +17,10 @@
 package io.almostrealism.streams;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.IntFunction;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 
 /**
  * A synchronization primitive used to coordinate completion of asynchronous hardware
@@ -70,6 +69,21 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Starts {@code work} once this has completed, without waiting for it on the calling
+	 * thread, and returns the completion of that work. Unlike {@link #onComplete(Runnable)},
+	 * a failure of this semaphore or of the work is not lost: the work does not run after a
+	 * failure here, and either failure is rethrown by the returned semaphore's
+	 * {@link #waitFor()}.
+	 *
+	 * @param work starts the work and returns its completion, or {@code null} if it has
+	 *             already finished
+	 * @return the completion of the work
+	 */
+	default Semaphore then(Supplier<Semaphore> work) {
+		return new DeferredSemaphore(this, work);
+	}
+
+	/**
 	 * Registers a callback to run once the guarded operation has completed, without
 	 * driving the operation toward completion. The default delegates to
 	 * {@link #onComplete(Runnable)}, whose callback thread actively waits; an
@@ -83,6 +97,27 @@ public interface Semaphore {
 	 */
 	default void whenComplete(Runnable r) {
 		onComplete(r);
+	}
+
+	/**
+	 * Registers a callback to be invoked on a background thread once the guarded
+	 * operation has either completed or failed. Unlike {@link #onComplete(Runnable)},
+	 * the callback runs on the failure path as well, which is what releasing a resource
+	 * held for the operation requires. The failure itself is not handled here: it is
+	 * reported to whoever waits on this semaphore.
+	 *
+	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
+	 */
+	default void whenSettled(Runnable r) {
+		CALLBACK_EXECUTOR.execute(() -> {
+			try {
+				waitFor();
+			} catch (RuntimeException e) {
+				// Reported to the operation's own waiters; this callback only observes settlement
+			} finally {
+				r.run();
+			}
+		});
 	}
 
 	/**
@@ -135,20 +170,50 @@ public interface Semaphore {
 	 * remaining semaphore is returned directly, so the combiner is only invoked when there
 	 * is genuinely more than one completion to merge.</p>
 	 *
+	 * <p>Every member is settled rather than merely awaited: a member whose {@link #waitFor()}
+	 * throws still counts the composite down, so a single failure can never pin the latch and
+	 * leave a waiter blocked forever. The first such failure is retained and rethrown from the
+	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
+	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
+	 *
 	 * @param semaphores the completions to merge; may contain nulls
 	 * @param combiner   produces the composite latch for a given number of members
 	 * @return a semaphore completing after all of the given semaphores, or {@code null}
 	 *         when there is nothing to wait for
 	 */
 	static Semaphore all(List<Semaphore> semaphores, IntFunction<? extends LatchSemaphore> combiner) {
-		List<Semaphore> pending = semaphores == null ? List.of() :
-				semaphores.stream().filter(Objects::nonNull).collect(Collectors.toList());
+		if (semaphores == null) return null;
 
-		if (pending.isEmpty()) return null;
-		if (pending.size() == 1) return pending.get(0);
+		// A single pass avoids the stream and intermediate list this per-dispatch merge would
+		// otherwise allocate for its common zero- or one-member outcome.
+		int count = 0;
+		Semaphore single = null;
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s != null) {
+				count++;
+				single = s;
+			}
+		}
 
-		LatchSemaphore combined = combiner.apply(pending.size());
-		pending.forEach(s -> s.onComplete(combined::countDown));
+		if (count == 0) return null;
+		if (count == 1) return single;
+
+		LatchSemaphore combined = combiner.apply(count);
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s == null) continue;
+
+			CALLBACK_EXECUTOR.execute(() -> {
+				try {
+					s.waitFor();
+				} catch (Throwable t) {
+					combined.fail(t);
+				} finally {
+					combined.countDown();
+				}
+			});
+		}
 		return combined;
 	}
 }

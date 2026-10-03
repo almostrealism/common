@@ -97,6 +97,21 @@ public class MetalSemaphore implements OperationSemaphore {
 		runner.whenComplete(commandBuffer, r);
 	}
 
+	/**
+	 * Registers the callback with the command buffer's completion callbacks, exactly as
+	 * {@link #whenComplete(Runnable)} does. A Metal command buffer runs those callbacks once
+	 * it has completed whether or not it finished with an error status, so the same passive
+	 * registration also satisfies the settlement contract — the callback runs on the failure
+	 * path too — without the host-forced commit that the default {@link #waitFor()}-based
+	 * implementation would impose per registration.
+	 *
+	 * @param r the callback to invoke once the buffer has settled
+	 */
+	@Override
+	public void whenSettled(Runnable r) {
+		runner.whenComplete(commandBuffer, r);
+	}
+
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
 		return new MetalSemaphore(requester, runner, commandBuffer, event, value);
