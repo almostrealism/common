@@ -16,14 +16,16 @@
 
 package io.almostrealism.streams;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
- * A {@link Semaphore} implementation backed by a count of outstanding parts, held in a
- * {@link LatchState}.
+ * A {@link Semaphore} implementation backed by a {@link CountDownLatch}.
  *
  * <p>The latch counts down to zero when the guarded operation (or a set of parallel
  * sub-operations) completes. Callers blocked in {@link #waitFor()} are released once the
- * count reaches zero, and settlement callbacks run then without occupying a thread while
- * they wait. A subclass may attach requester attribution (see
+ * count reaches zero. This is the metadata-free completion latch used by
+ * {@link Semaphore#all(java.util.List)}; a subclass may attach requester attribution (see
  * {@code io.almostrealism.concurrent.DefaultLatchSemaphore}).</p>
  *
  * <p>A merged member that fails is recorded with {@link #fail(Throwable)} and still counts
@@ -32,8 +34,11 @@ package io.almostrealism.streams;
  * rather than being lost.</p>
  */
 public class LatchSemaphore implements Semaphore {
-	/** The completion state, possibly shared with other semaphores attributed differently. */
-	private final LatchState state;
+	/** The underlying latch used for synchronization. */
+	private final CountDownLatch latch;
+
+	/** The first failure observed among merged members, rethrown by {@link #waitFor()}. */
+	private final AtomicReference<Throwable> failure;
 
 	/**
 	 * Constructs a semaphore whose {@link #waitFor()} returns after {@code count}
@@ -43,31 +48,55 @@ public class LatchSemaphore implements Semaphore {
 	 *              {@link #waitFor()} returns
 	 */
 	public LatchSemaphore(int count) {
-		this(new LatchState(count));
+		this(new CountDownLatch(count));
 	}
 
 	/**
-	 * Constructs a semaphore sharing an existing completion state, so that a re-attributed
-	 * view counts down, fails and settles together with the semaphore it was derived from.
+	 * Constructs a semaphore sharing an existing latch, allowing a subclass to reuse the
+	 * synchronization state under a different attribution. A fresh failure reference is
+	 * created; use {@link #LatchSemaphore(CountDownLatch, AtomicReference)} to share the
+	 * recorded failure as well.
 	 *
-	 * @param state the completion state to share
+	 * @param latch the existing {@link CountDownLatch} to reuse
 	 */
-	protected LatchSemaphore(LatchState state) {
-		this.state = state;
+	protected LatchSemaphore(CountDownLatch latch) {
+		this(latch, new AtomicReference<>());
 	}
 
 	/**
-	 * Returns the completion state, so a subclass can share it with a re-attributed view.
+	 * Constructs a semaphore sharing both an existing latch and the failure reference that
+	 * {@link #waitFor()} rethrows, so a re-attributed view of a merged completion still
+	 * reports a member failure recorded through the original.
 	 *
-	 * @return the completion state
+	 * @param latch   the existing {@link CountDownLatch} to reuse
+	 * @param failure the existing failure reference to reuse
 	 */
-	protected LatchState getState() { return state; }
+	protected LatchSemaphore(CountDownLatch latch, AtomicReference<Throwable> failure) {
+		this.latch = latch;
+		this.failure = failure;
+	}
 
 	/**
-	 * Decrements the latch count, releasing waiters and running settlement callbacks once it
-	 * reaches zero.
+	 * Returns the underlying latch, so a subclass sharing this synchronization state can
+	 * pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)}.
+	 *
+	 * @return the underlying latch
 	 */
-	public void countDown() { state.countDown(); }
+	protected CountDownLatch getLatch() { return latch; }
+
+	/**
+	 * Returns the shared failure reference, so a subclass sharing this synchronization
+	 * state can pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)} and
+	 * preserve the rethrow-on-failure contract across a re-attribution.
+	 *
+	 * @return the failure reference rethrown by {@link #waitFor()}
+	 */
+	protected AtomicReference<Throwable> getFailure() { return failure; }
+
+	/**
+	 * Decrements the latch count, releasing waiters once it reaches zero.
+	 */
+	public void countDown() { latch.countDown(); }
 
 	/**
 	 * Records a failure observed while merging a member's completion, so it can be rethrown
@@ -77,17 +106,22 @@ public class LatchSemaphore implements Semaphore {
 	 *
 	 * @param t the failure to record, or {@code null} if the member completed normally
 	 */
-	public void fail(Throwable t) { state.fail(t); }
+	public void fail(Throwable t) {
+		if (t != null) failure.compareAndSet(null, t);
+	}
 
 	@Override
-	public void waitFor() { state.await(); }
+	public void waitFor() {
+		try {
+			latch.await();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 
-	/**
-	 * Runs the callback once the count reaches zero, on the thread that counts it down, without
-	 * occupying a thread in the meantime.
-	 *
-	 * @param r the callback to run on settlement
-	 */
-	@Override
-	public void whenSettled(Runnable r) { state.whenSettled(r); }
+		Throwable t = failure.get();
+		if (t == null) return;
+		if (t instanceof RuntimeException) throw (RuntimeException) t;
+		if (t instanceof Error) throw (Error) t;
+		throw new RuntimeException(t);
+	}
 }

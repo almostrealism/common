@@ -70,6 +70,6 @@ public interface OperationSemaphore extends Semaphore {
 	 *         when there is nothing to wait for
 	 */
 	static Semaphore all(OperationMetadata requester, List<Semaphore> semaphores) {
-		return Semaphore.all(semaphores, members -> new DefaultCompositeSemaphore(requester, members));
+		return Semaphore.all(semaphores, count -> new DefaultLatchSemaphore(requester, count));
 	}
 }

@@ -16,11 +16,10 @@
 
 package io.almostrealism.streams;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
@@ -157,36 +156,36 @@ public interface Semaphore {
 	 *         when there is nothing to wait for
 	 */
 	static Semaphore all(List<Semaphore> semaphores) {
-		return all(semaphores, CompositeSemaphore::new);
+		return all(semaphores, LatchSemaphore::new);
 	}
 
 	/**
 	 * Returns a {@link Semaphore} that completes once every one of the given semaphores has
 	 * completed, constructing the composite from the given combiner. The combiner produces a
-	 * {@link CompositeSemaphore} over the members; a subclass (for example a metadata-bearing
-	 * one) may be supplied so the composite carries additional attribution.
+	 * {@link LatchSemaphore} counting down once per merged completion; a subclass (for
+	 * example a metadata-bearing one) may be supplied so the composite carries additional
+	 * attribution.
 	 *
 	 * <p>Null entries are ignored; an empty selection yields {@code null} and a single
 	 * remaining semaphore is returned directly, so the combiner is only invoked when there
 	 * is genuinely more than one completion to merge.</p>
 	 *
-	 * <p>The composite's {@link #waitFor()} waits for every member, so a single failure can never
-	 * leave a waiter blocked forever, and the first failure is rethrown, so a member failure
-	 * reaches the group's waiter instead of being swallowed the way {@link #onComplete(Runnable)}
-	 * would swallow it. Its {@link #whenSettled(Runnable)} is driven by the members' own
-	 * settlement and occupies no thread while they are pending.</p>
+	 * <p>Every member is settled rather than merely awaited: a member whose {@link #waitFor()}
+	 * throws still counts the composite down, so a single failure can never pin the latch and
+	 * leave a waiter blocked forever. The first such failure is retained and rethrown from the
+	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
+	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
 	 *
 	 * @param semaphores the completions to merge; may contain nulls
-	 * @param combiner   produces the composite for the non-null members
+	 * @param combiner   produces the composite latch for a given number of members
 	 * @return a semaphore completing after all of the given semaphores, or {@code null}
 	 *         when there is nothing to wait for
 	 */
-	static Semaphore all(List<Semaphore> semaphores,
-						 Function<List<Semaphore>, ? extends CompositeSemaphore> combiner) {
+	static Semaphore all(List<Semaphore> semaphores, IntFunction<? extends LatchSemaphore> combiner) {
 		if (semaphores == null) return null;
 
-		// A single pass avoids the intermediate list this per-dispatch merge would otherwise
-		// allocate for its common zero- or one-member outcome.
+		// A single pass avoids the stream and intermediate list this per-dispatch merge would
+		// otherwise allocate for its common zero- or one-member outcome.
 		int count = 0;
 		Semaphore single = null;
 		for (int i = 0; i < semaphores.size(); i++) {
@@ -200,11 +199,21 @@ public interface Semaphore {
 		if (count == 0) return null;
 		if (count == 1) return single;
 
-		List<Semaphore> members = new ArrayList<>(count);
-		for (Semaphore s : semaphores) {
-			if (s != null) members.add(s);
-		}
+		LatchSemaphore combined = combiner.apply(count);
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s == null) continue;
 
-		return combiner.apply(members);
+			CALLBACK_EXECUTOR.execute(() -> {
+				try {
+					s.waitFor();
+				} catch (Throwable t) {
+					combined.fail(t);
+				} finally {
+					combined.countDown();
+				}
+			});
+		}
+		return combined;
 	}
 }
