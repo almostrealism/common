@@ -472,7 +472,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return {@code true} if the release was held back
 	 */
 	private boolean deferIfInUse(NativeRef<T> ref) {
-		if (destroying || !isActivelyReferenced(ref.getAddress())) return false;
+		if (destroying || reservations(ref.getAddress()).isReleasable()) return false;
 
 		deferred.computeIfAbsent(ref.getAddress(),
 				k -> new DeferredRelease<>(ref, System.currentTimeMillis()));
@@ -489,7 +489,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * because from here on a kernel still holding that address would read
 	 * memory that is gone.</p>
 	 *
-	 * <p>A {@linkplain KernelMemoryGuard#isScheduled(long) scheduling lease} is exempt from
+	 * <p>A {@linkplain ReservationState#isLeased() scheduling lease} is exempt from
 	 * the timeout: it covers the scheduling-to-execution window of a deferred dispatch or copy
 	 * waiting on a foreign dependency, which may legitimately outlast the backstop that a
 	 * millisecond-scale kernel execution never reaches. Such a block keeps being held back
@@ -498,7 +498,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * guard that runs the scheduled work, the guard receives its own full timeout window rather
 	 * than one already consumed by the scheduling wait.</p>
 	 *
-	 * @see #decideSweep(long, long, long, boolean, boolean)
+	 * @see SweepAction#forRelease(ReservationState, long, long, long)
 	 */
 	private void sweepDeferred() {
 		if (deferred.isEmpty()) return;
@@ -509,8 +509,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			long now = System.currentTimeMillis();
 			boolean expired = now - release.deferredAt() >= deferredReleaseTimeoutMs;
 
-			SweepAction action = decideSweep(release.deferredAt(), now, deferredReleaseTimeoutMs,
-					isScheduled(address), isActivelyReferenced(address));
+			SweepAction action = SweepAction.forRelease(reservations(address),
+					release.deferredAt(), now, deferredReleaseTimeoutMs);
 
 			if (action == SweepAction.HOLD) continue;
 			if (action == SweepAction.RESET) {
@@ -520,11 +520,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 			deferred.remove(address);
 
-			if (expired) {
-				KernelMemoryGuard.warnIfActivelyReferenced(
-						address, ref.getAllocationStackTrace(),
-						getClass().getSimpleName() + " (held for " +
-								deferredReleaseTimeoutMs + "ms)");
+			KernelMemoryGuard guard = kernelMemoryGuard();
+			if (expired && guard != null) {
+				guard.warnIfReserved(getClass().getSimpleName() + " (held for " +
+								deferredReleaseTimeoutMs + "ms)",
+						address, ref.getAllocationStackTrace());
 			}
 
 			releaseNow(ref);
@@ -532,73 +532,25 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/**
-	 * What {@link #sweepDeferred()} does with one held-back release.
+	 * Returns the guard of the local {@link Hardware}, if there is one yet.
+	 *
+	 * @return the kernel memory guard, or {@code null} before hardware is available
 	 */
-	enum SweepAction {
-		/** Keep the release held back unchanged; the memory is legitimately in use within its window. */
-		HOLD,
-		/** Keep the release held back and restart its timeout at a scheduling-lease handoff. */
-		RESET,
-		/** Release the memory now. */
-		RELEASE
+	private KernelMemoryGuard kernelMemoryGuard() {
+		Hardware hw = Hardware.getLocalHardware();
+		return hw == null ? null : hw.getKernelMemoryGuard();
 	}
 
 	/**
-	 * Decides what {@link #sweepDeferred()} does with one held-back release, as a pure function of
-	 * the memory's guard state and the clock so the scheduling-to-execution timeout handoff can be
-	 * verified directly.
-	 *
-	 * <p>While a {@linkplain KernelMemoryGuard#isScheduled(long) scheduling lease} covers the
-	 * memory the release is {@link SweepAction#RESET held with its timeout restarted}, because a
-	 * lease may legitimately outlast the backstop and, once it hands off to an execution guard,
-	 * that guard must receive its own full window rather than one already consumed by the
-	 * scheduling wait. With no lease, an actively referenced block is {@link SweepAction#HOLD held}
-	 * until its timeout elapses, after which it is {@link SweepAction#RELEASE released} as a
-	 * backstop against a count that never came back; an unreferenced block is released at once.</p>
-	 *
-	 * @param deferredAt         when the release was last (re)stamped
-	 * @param now                the current time
-	 * @param timeoutMs          how long a release may be held back before the backstop fires
-	 * @param scheduled          whether a scheduling lease currently covers the memory
-	 * @param activelyReferenced whether a kernel execution currently references the memory
-	 * @return the action to take
-	 */
-	static SweepAction decideSweep(long deferredAt, long now, long timeoutMs,
-								   boolean scheduled, boolean activelyReferenced) {
-		if (scheduled) return SweepAction.RESET;
-
-		boolean expired = now - deferredAt >= timeoutMs;
-		if (!expired && activelyReferenced) return SweepAction.HOLD;
-		return SweepAction.RELEASE;
-	}
-
-	/**
-	 * Returns whether a kernel currently reports the given address as in use.
+	 * Returns the reservations kernels and scheduling leases currently hold on the given
+	 * address, both read at the same moment.
 	 *
 	 * @param address the native address to test
-	 * @return {@code true} if a kernel is still using the memory
+	 * @return the reservations, or {@link ReservationState#NONE} when there is no guard
 	 */
-	private boolean isActivelyReferenced(long address) {
-		Hardware hw = Hardware.getLocalHardware();
-		if (hw == null) return false;
-
-		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-		return guard != null && !guard.canDeallocate(address);
-	}
-
-	/**
-	 * Returns whether a scheduling lease currently holds the given address, so the
-	 * deferred-release backstop must not force-expire it.
-	 *
-	 * @param address the native address to test
-	 * @return {@code true} if a scheduling lease is still holding the memory
-	 */
-	private boolean isScheduled(long address) {
-		Hardware hw = Hardware.getLocalHardware();
-		if (hw == null) return false;
-
-		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-		return guard != null && guard.isScheduled(address);
+	private ReservationState reservations(long address) {
+		KernelMemoryGuard guard = kernelMemoryGuard();
+		return guard == null ? ReservationState.NONE : guard.stateOf(address);
 	}
 
 	/**

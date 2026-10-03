@@ -169,6 +169,11 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 	/** Raw memory backing this data when there is no delegate. */
 	private Memory mem;
+	/**
+	 * Whether this data is responsible for deallocating {@link #mem}: true for memory it
+	 * allocated or was handed, false for memory it only borrows from another owner.
+	 */
+	private boolean memOwned;
 	/** Per-provider cached copies of this memory, keyed by provider. */
 	private Map<MemoryProvider, Memory> memVersions;
 
@@ -190,7 +195,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			Heap heap = getDefaultDelegate();
 
 			if (heap == null) {
-				mem = Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength());
+				init(Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength()));
 			} else {
 				Bytes data = heap.allocate(getMemLength());
 				setDelegate(data.getDelegate(), data.getDelegateOffset(), data.getDelegateOrdering());
@@ -200,12 +205,25 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	}
 
 	/**
-	 * Initializes this adapter with explicitly provided backing memory.
+	 * Initializes this adapter with explicitly provided backing memory, taking ownership of
+	 * it: destroying this data deallocates the memory.
 	 *
 	 * @param mem The pre-allocated memory to use as backing storage
 	 */
 	protected void init(Memory mem) {
+		init(mem, true);
+	}
+
+	/**
+	 * Initializes this adapter with explicitly provided backing memory.
+	 *
+	 * @param mem   The pre-allocated memory to use as backing storage
+	 * @param owned Whether this data becomes responsible for deallocating {@code mem};
+	 *              false when the memory's lifetime is managed by another owner
+	 */
+	protected void init(Memory mem, boolean owned) {
 		this.mem = mem;
+		this.memOwned = owned;
 	}
 
 	@Override
@@ -363,27 +381,37 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	/**
 	 * Returns whether this data is responsible for deallocating the given {@link Memory}.
 	 *
-	 * <p>{@link #reassign(Memory)} consults this before giving up its current memory: memory
-	 * this data does not own is neither deallocated nor retained as a cached version, it is
-	 * simply no longer referenced. Every adapter owns the memory it holds unless a subclass
-	 * wraps memory whose lifetime is managed elsewhere.</p>
+	 * <p>Only memory this data holds can be owned by it: its current backing memory, when it
+	 * allocated that memory or was handed it, and the versions it cached on other providers.
+	 * Memory it borrows from another owner, memory reached through a delegate, and any memory
+	 * it has no relationship to are not owned.</p>
 	 *
 	 * @param mem the memory in question
 	 * @return true if this data deallocates {@code mem} when it is replaced or destroyed
 	 */
-	protected boolean ownsMemory(Memory mem) {
-		return true;
+	public boolean ownsMemory(Memory mem) {
+		if (mem == null) return false;
+		if (mem == this.mem) return memOwned;
+		return memVersions != null && memVersions.containsValue(mem);
 	}
 
+	/**
+	 * Replaces the backing memory with {@code mem}, which this data then owns.
+	 *
+	 * <p>Memory this data owned is deallocated or, when version caching is enabled, kept as
+	 * a version on its provider. Memory it only borrowed is neither: it is simply no longer
+	 * referenced.</p>
+	 *
+	 * @param mem the new backing memory
+	 */
 	@Override
 	public void reassign(Memory mem) {
 		if (delegateMem != null || mem == null) {
 			throw new HardwareException("Only root memory can be reassigned");
 		}
 
-		if (!ownsMemory(this.mem)) {
-			// Memory owned elsewhere is neither freed nor kept as a version of this data
-			this.mem = mem;
+		if (!memOwned) {
+			init(mem);
 			return;
 		}
 
@@ -396,7 +424,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			memVersions.put(this.mem.getProvider(), this.mem);
 		}
 
-		this.mem = mem;
+		init(mem);
 	}
 
 	@Override
@@ -410,8 +438,9 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 
 		if (mem != null) {
-			mem.getProvider().deallocate(getMemLength(), mem);
+			if (memOwned) mem.getProvider().deallocate(getMemLength(), mem);
 			mem = null;
+			memOwned = false;
 		}
 
 		if (memVersions != null) {

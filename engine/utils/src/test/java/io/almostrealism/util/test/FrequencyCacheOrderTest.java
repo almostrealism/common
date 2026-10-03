@@ -104,6 +104,30 @@ public class FrequencyCacheOrderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Entries with equal eviction scores are evicted oldest first. With a pure frequency
+	 * bias, entries that were never read all score zero; the one inserted first must be the
+	 * first to go, then the next, while the entry that was read survives both evictions.
+	 */
+	@Test(timeout = 10000)
+	public void evictionTiesAreBrokenByInsertionOrder() {
+		List<CollidingKey> keys = keys();
+		FrequencyCache<CollidingKey, CollidingKey> cache = new FrequencyCache<>(3, 1.0);
+		for (int i = 0; i < 3; i++) {
+			cache.put(keys.get(i), keys.get(i));
+		}
+
+		Assert.assertSame(keys.get(2), cache.get(keys.get(2)));
+
+		cache.put(keys.get(3), keys.get(3));
+		Assert.assertFalse("the oldest unread entry is evicted first", cache.containsKey(keys.get(0)));
+		Assert.assertTrue(cache.containsKey(keys.get(1)));
+
+		cache.put(keys.get(4), keys.get(4));
+		Assert.assertFalse("then the next oldest unread entry", cache.containsKey(keys.get(1)));
+		Assert.assertTrue("an entry that was read outscores unread ones", cache.containsKey(keys.get(2)));
+	}
+
+	/**
 	 * Creates {@link #KEYS} distinct keys that all share one hash.
 	 *
 	 * @return the keys, in the order they are to be inserted

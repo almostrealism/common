@@ -17,16 +17,17 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -36,7 +37,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * Validates {@link MemoryData#detachedView()}, {@link MemoryData#deferredReference()} and the
+ * Validates {@link MemoryData#detachedView()}, the lease-bound references of
+ * {@link KernelMemoryGuard.Reservation} and the
  * deferred copy that relies on them. A copy or dispatch scheduled behind a dependency runs after
  * the scheduling call has returned, and its caller may destroy an argument in the meantime. The
  * scheduling lease keeps the memory alive across that window, but destroying a
@@ -81,7 +83,7 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		PackedCollection region = base.range(shape(2), 1);
 		MemoryData view = region.detachedView();
 
-		KernelMemoryGuard.Reservation lease = KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { base });
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(new MemoryData[] { base });
 
 		try {
 			base.destroy();
@@ -93,13 +95,14 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 			Assert.assertEquals(2, view.getMemLength());
 			assertValues(view, 20.0, 30.0);
 		} finally {
-			KernelMemoryGuard.releaseFor(lease);
+			lease.release();
 		}
 	}
 
 	/**
 	 * Regression: the root backing a detached view does not own the memory it wraps, so destroying
-	 * that root must not deallocate the memory the source still owns. Destroying the root is what the
+	 * that root releases only its own reference and must not deallocate the memory the source still
+	 * owns. Destroying the root is what the
 	 * finalizer does when {@link MemoryDataAdapter#enableFinalizer} is enabled, so this holds across
 	 * both the explicit and finalizer destroy paths. Before the view used a non-owning root, this
 	 * freed the shared allocation out from under the source.
@@ -117,12 +120,14 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		MemoryDataAdapter.enableFinalizer = true;
 
 		try {
+			Memory shared = source.getMem();
 			storage.destroy();
 
+			Assert.assertTrue("Destroying the root releases its reference", storage.isDestroyed());
 			Assert.assertFalse("The source must still own the shared memory", source.isDestroyed());
-			Assert.assertSame(source.getMem(), storage.getMem());
+			Assert.assertSame(shared, source.getMem());
+			Assert.assertFalse("The shared memory must not be freed", shared.getProvider().isReleased(shared));
 			assertValues(source, 2.0, 4.0, 6.0, 8.0);
-			assertValues(view, 2.0, 4.0, 6.0, 8.0);
 		} finally {
 			MemoryDataAdapter.enableFinalizer = finalizer;
 		}
@@ -171,7 +176,7 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 
 	/**
 	 * Releasing resolved deferred arguments frees the replacement a destroyed argument's view was
-	 * migrated to, leaves an unmigrated view's captured memory alone, and never touches arguments
+	 * migrated to, never frees the memory an unmigrated view was bound to, and never touches arguments
 	 * that resolved to themselves. A supplier that was never invoked has nothing to release.
 	 */
 	@Test(timeout = 30000)
@@ -181,9 +186,8 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		PackedCollection unmigrated = pack(5.0, 6.0);
 		Object[] args = { live, migrated, unmigrated, "not memory" };
 
-		Supplier<Object[]> deferred = ArgumentCapture.capture(args);
-		KernelMemoryGuard.Reservation lease =
-				KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { migrated, unmigrated });
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
+		Supplier<Object[]> deferred = lease.deferredArguments(args);
 
 		try {
 			migrated.destroy();
@@ -192,22 +196,23 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 			Object[] resolved = deferred.get();
 			MemoryData migratedView = (MemoryData) resolved[1];
 			MemoryData unmigratedView = (MemoryData) resolved[2];
+			Memory captured = unmigratedView.getMem();
+			assertValues(unmigratedView, 5.0, 6.0);
 			migratedView.getRootDelegate().reallocate(migratedView.getMem().getProvider());
 
-			ArgumentCapture.release(args, resolved);
+			lease.releaseResolvedViews(args, resolved);
 
 			Assert.assertTrue("The migrated view's replacement must be freed",
 					migratedView.getRootDelegate().isDestroyed());
-			Assert.assertFalse("An unmigrated view still reads its captured memory",
-					unmigratedView.isDestroyed());
-			assertValues(unmigratedView, 5.0, 6.0);
+			Assert.assertFalse("An unmigrated view's captured memory must not be freed",
+					captured.getProvider().isReleased(captured));
 			Assert.assertFalse("A live argument must not be released", live.isDestroyed());
 			assertValues(live, 1.0, 2.0);
 
-			ArgumentCapture.release(args, null);
+			lease.releaseResolvedViews(args, null);
 			Assert.assertFalse(live.isDestroyed());
 		} finally {
-			KernelMemoryGuard.releaseFor(lease);
+			lease.release();
 			live.destroy();
 		}
 	}
@@ -228,8 +233,10 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 
 		IllegalStateException thrown = null;
 
+		KernelMemoryGuard.Reservation lease = new KernelMemoryGuard().leaseArguments(null);
+
 		try {
-			ArgumentCapture.release(args, resolved);
+			lease.releaseResolvedViews(args, resolved);
 		} catch (IllegalStateException e) {
 			thrown = e;
 		}
@@ -246,7 +253,8 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 
 	/**
 	 * Data that has already been destroyed has no memory to bind to, so its detached view is the
-	 * data itself, and a deferred reference to it yields the data itself.
+	 * data itself, a lease reserves nothing for it, and a deferred reference to it yields the
+	 * data itself.
 	 */
 	@Test(timeout = 30000)
 	public void destroyedDataHasNothingToDetach() {
@@ -254,7 +262,10 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		data.destroy();
 
 		Assert.assertSame(data, data.detachedView());
-		Assert.assertSame(data, data.deferredReference().get());
+
+		KernelMemoryGuard.Reservation lease = new KernelMemoryGuard().acquireScheduled(data);
+		Assert.assertSame(data, lease.deferredReference(data).get());
+		lease.release();
 	}
 
 	/**
@@ -265,13 +276,12 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void deferredReferenceSwitchesToCapturedViewOnlyAfterDestroy() {
 		PackedCollection base = pack(5.0, 6.0, 7.0);
-		Supplier<MemoryData> reference = base.deferredReference();
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(base);
+		Supplier<MemoryData> reference = lease.deferredReference(base);
 
 		Assert.assertSame(base, reference.get());
 		Assert.assertSame("The live object must be yielded on every call while it is backed",
 				base, reference.get());
-
-		KernelMemoryGuard.Reservation lease = KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { base });
 
 		try {
 			base.destroy();
@@ -282,8 +292,58 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 			Assert.assertEquals(3, resolved.getMemLength());
 			assertValues(resolved, 5.0, 6.0, 7.0);
 		} finally {
-			KernelMemoryGuard.releaseFor(lease);
+			lease.release();
 		}
+	}
+
+	/**
+	 * Regression: a reference taken after its data was destroyed still reaches the memory the
+	 * lease reserved. The reference is bound to what the lease captured when it was acquired, not
+	 * to a second read of the data's memory, so a destroy between leasing and taking the
+	 * reference cannot leave the deferred work holding a destroyed object.
+	 */
+	@Test(timeout = 30000)
+	public void referenceTakenAfterDestroyReachesLeasedMemory() {
+		PackedCollection base = pack(8.0, 9.0);
+		KernelMemoryGuard.Reservation lease =
+				Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(base);
+
+		try {
+			base.destroy();
+
+			MemoryData resolved = lease.detachedReference(base).get();
+			Assert.assertNotSame(base, resolved);
+			assertValues(resolved, 8.0, 9.0);
+			assertValues(lease.deferredReference(base).get(), 8.0, 9.0);
+		} finally {
+			lease.release();
+		}
+	}
+
+	/**
+	 * Regression: data that moved to new memory after it was leased has the lease extended to
+	 * that memory when its reference is resolved, so everything deferred work can reach stays
+	 * reserved until the lease is released.
+	 */
+	@Test(timeout = 30000)
+	public void referenceExtendsLeaseToMigratedMemory() {
+		PackedCollection base = pack(1.0, 2.0);
+		KernelMemoryGuard guard = Hardware.getLocalHardware().getKernelMemoryGuard();
+		KernelMemoryGuard.Reservation lease = guard.acquireScheduled(base);
+
+		try {
+			base.reallocate(base.getMem().getProvider());
+			long migrated = ((RAM) base.getMem()).getContainerPointer();
+
+			Assert.assertSame(base, lease.deferredReference(base).get());
+			Assert.assertFalse("The migrated memory must be leased", guard.canDeallocate(migrated));
+			assertValues(lease.detachedReference(base).get(), 1.0, 2.0);
+		} finally {
+			lease.release();
+		}
+
+		Assert.assertTrue(guard.canDeallocate(((RAM) base.getMem()).getContainerPointer()));
+		base.destroy();
 	}
 
 	/**
@@ -299,8 +359,8 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 		PackedCollection destroyed = pack(3.0, 4.0);
 		Object[] args = { live, destroyed, "not memory", null };
 
-		Supplier<Object[]> deferred = ArgumentCapture.capture(args);
-		KernelMemoryGuard.Reservation lease = KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { destroyed });
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
+		Supplier<Object[]> deferred = lease.deferredArguments(args);
 
 		try {
 			destroyed.destroy();
@@ -314,11 +374,11 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 			Assert.assertEquals("not memory", resolved[2]);
 			Assert.assertNull(resolved[3]);
 		} finally {
-			KernelMemoryGuard.releaseFor(lease);
+			lease.release();
 			live.destroy();
 		}
 
-		Assert.assertNull(ArgumentCapture.capture(null).get());
+		Assert.assertNull(lease.deferredArguments(null).get());
 	}
 
 	/**
@@ -430,32 +490,6 @@ public class DeferredMemoryReferenceTest extends TestSuiteBase {
 					.getDeclaringClass() == AbstractComputeContext.class;
 		} catch (NoSuchMethodException e) {
 			return false;
-		}
-	}
-
-	/**
-	 * Exposes {@link HardwareOperator}'s protected deferred-argument capture to this test. It is
-	 * never instantiated.
-	 */
-	private abstract static class ArgumentCapture extends HardwareOperator {
-		/**
-		 * Captures the given raw arguments for a deferred operation.
-		 *
-		 * @param args the raw arguments
-		 * @return a supplier of the arguments to run with
-		 */
-		static Supplier<Object[]> capture(Object[] args) {
-			return deferredArguments(args);
-		}
-
-		/**
-		 * Releases what resolving captured arguments produced.
-		 *
-		 * @param args     the raw arguments that were captured
-		 * @param resolved what the capture's supplier returned
-		 */
-		static void release(Object[] args, Object[] resolved) {
-			releaseDeferredArguments(args, resolved);
 		}
 	}
 

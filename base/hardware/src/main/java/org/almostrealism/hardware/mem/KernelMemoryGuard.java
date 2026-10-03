@@ -17,17 +17,20 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
  * Reference-counting registry that tracks active kernel executions and their
@@ -40,17 +43,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <h2>Usage Pattern</h2>
  *
- * <p>Kernel execution backends use the static {@link #acquireFor(MemoryData[])}
- * and {@link #releaseFor(Reservation)} methods to bracket kernel dispatch. What
- * acquiring returns is what releasing takes: the arguments are not consulted
- * again, because by then they may no longer name the memory they used.</p>
+ * <p>Kernel execution backends take a {@link Reservation} from the guard of the local
+ * {@link Hardware} to bracket kernel dispatch, and give it back when the kernel is done.
+ * What acquiring returns is what releasing takes: the arguments are not consulted again,
+ * because by then they may no longer name the memory they used.</p>
  *
  * <pre>{@code
- * KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
+ * KernelMemoryGuard.Reservation reservation =
+ *         Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
  * try {
  *     // dispatch kernel...
  * } finally {
- *     KernelMemoryGuard.releaseFor(guard);
+ *     reservation.release();
  * }
  * }</pre>
  *
@@ -75,11 +79,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   warns and skips an argument whose memory it cannot resolve to a {@link RAM};
  *   a kernel using that argument runs unguarded.</li>
  *   <li><strong>A caller that frees anyway.</strong>
- *   {@link #warnIfActivelyReferenced(long, StackTraceElement[], String)} is
+ *   {@link #warnIfReserved(String, long, StackTraceElement[])} is
  *   diagnostic only &mdash; it never throws or blocks, so it does not turn
  *   {@link #canDeallocate(long)} into a hard barrier.</li>
  *   <li><strong>A dispatch that was never bracketed</strong> with
- *   {@link #acquireFor(MemoryData[])}/{@link #releaseFor(Reservation)}.</li>
+ *   {@link #acquire(MemoryData...)}/{@link Reservation#release()}.</li>
  *   <li><strong>A kernel-execution guard that outlives the deferred-release timeout.</strong>
  *   A non-zero execution count holds a release back only up to
  *   {@code HardwareMemoryProvider.deferredReleaseTimeoutMs} (30&nbsp;s by default);
@@ -95,11 +99,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <h2>Thread Safety</h2>
  *
- * <p>All operations are thread-safe, using {@link ConcurrentHashMap} and
- * {@link AtomicInteger} for lock-free reference counting. The {@link #release}
- * method uses {@link ConcurrentHashMap#computeIfPresent} to atomically
- * decrement and remove entries, preventing races with concurrent
- * {@link #acquire} calls.</p>
+ * <p>All operations are thread-safe. Each address has one record of both its
+ * kernel-execution count and its scheduling-lease count, changed only inside
+ * {@link ConcurrentHashMap#compute} for that address and read as a single
+ * {@link ReservationState}, so a reservation handed from a lease to an execution is never
+ * observed as neither.</p>
  *
  * @see HardwareMemoryProvider
  * @see org.almostrealism.hardware.Hardware#getKernelMemoryGuard()
@@ -107,37 +111,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class KernelMemoryGuard implements ConsoleFeatures {
 
 	/**
-	 * Active kernel reference counts per native allocation, keyed by
-	 * {@link RAM#getContainerPointer()} as every check from a provider is.
+	 * Reservations per native allocation, keyed by {@link RAM#getContainerPointer()} as every
+	 * check from a provider is. An address is present only while something holds it.
 	 */
-	private final ConcurrentHashMap<Long, AtomicInteger> activeReferences;
-
-	/** Strong references to {@link RAM} objects held while kernels are active, preventing GC. */
-	private final ConcurrentHashMap<Long, Set<RAM>> heldMemory;
+	private final ConcurrentHashMap<Long, AddressReservations> reservations;
 
 	/**
-	 * Scheduling-lease reference counts per native memory address. These cover the window
-	 * between scheduling an asynchronous operation and its execution, which &mdash; unlike a
-	 * kernel execution &mdash; may legitimately last longer than the deferred-release backstop,
-	 * so {@link HardwareMemoryProvider} never force-expires a lease.
-	 */
-	private final ConcurrentHashMap<Long, AtomicInteger> scheduledReferences;
-
-	/** Strong references to {@link RAM} objects held while scheduling leases are active, preventing GC. */
-	private final ConcurrentHashMap<Long, Set<RAM>> scheduledMemory;
-
-	/**
-	 * Creates a new {@link KernelMemoryGuard} with empty tracking maps.
+	 * Creates a new {@link KernelMemoryGuard} with nothing reserved.
 	 */
 	public KernelMemoryGuard() {
-		this.activeReferences = new ConcurrentHashMap<>();
-		this.heldMemory = new ConcurrentHashMap<>();
-		this.scheduledReferences = new ConcurrentHashMap<>();
-		this.scheduledMemory = new ConcurrentHashMap<>();
+		this.reservations = new ConcurrentHashMap<>();
 	}
 
 	/**
-	 * What one kernel execution took, and must give back.
+	 * What one kernel execution or scheduling lease took, and must give back.
 	 *
 	 * <p>Holds the addresses that were counted, rather than the arguments they
 	 * came from. An argument is not a reliable way to find its own memory again
@@ -161,12 +148,16 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 		/** The memory behind those addresses, held so it cannot be collected. */
 		private final List<RAM> held;
 
+		/** The memory reserved for each argument, by argument identity. */
+		private final Map<MemoryData, RAM> leased;
+
 		/** Creates an empty reservation against the given guard. */
 		private Reservation(KernelMemoryGuard guard, boolean scheduled) {
 			this.guard = guard;
 			this.scheduled = scheduled;
 			this.addresses = new ArrayList<>();
 			this.held = new ArrayList<>();
+			this.leased = new IdentityHashMap<>();
 		}
 
 		/**
@@ -175,9 +166,209 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 		 * @param address the address counted
 		 * @param ram     the memory behind it, held until release
 		 */
-		private void record(long address, RAM ram) {
+		private synchronized void record(long address, RAM ram) {
 			addresses.add(address);
 			held.add(ram);
+		}
+
+		/**
+		 * Returns what this reservation holds, as a snapshot that later extensions do not change.
+		 *
+		 * @return the addresses and memory counted so far, in matching order
+		 */
+		private synchronized List<Map.Entry<Long, RAM>> counted() {
+			List<Map.Entry<Long, RAM>> counted = new ArrayList<>(addresses.size());
+			for (int i = 0; i < addresses.size(); i++) {
+				counted.add(Map.entry(addresses.get(i), held.get(i)));
+			}
+			return counted;
+		}
+
+		/**
+		 * Returns a reference to the given argument for work that runs later, which yields the
+		 * argument itself for as long as it is backed by memory, and a view of the memory this
+		 * reservation holds for it once it has been destroyed.
+		 *
+		 * <p>Yielding the argument itself lets the deferred work observe what happened to it in
+		 * the meantime, and lets argument preparation move the argument (not a copy of it) to a
+		 * provider the work supports, so what the work writes reaches the argument. The memory is
+		 * read once when the reference is resolved. If the argument has moved to memory this
+		 * reservation does not cover, the reservation is extended to that memory first, so
+		 * everything the deferred work can reach stays reserved until the reservation is
+		 * released.</p>
+		 *
+		 * @param data an argument this reservation was acquired for
+		 * @return a supplier resolving the argument when the deferred work runs
+		 */
+		public Supplier<MemoryData> deferredReference(MemoryData data) {
+			RAM reserved = reservedFor(data);
+			if (reserved == null) return () -> data;
+
+			MemoryData reservedView = data.detachedView(reserved);
+			return () -> {
+				Memory current = data.getMem();
+				if (current == null) return reservedView;
+				if (current != reserved && !extendTo(data, current)) return reservedView;
+				return data;
+			};
+		}
+
+		/**
+		 * Returns a reference to the given argument for work that runs later and does not need
+		 * the argument object itself, which always yields a view bound to reserved memory.
+		 *
+		 * <p>The view is of the memory backing the argument when the reference is resolved, or
+		 * of the memory this reservation holds for it if the argument has since been destroyed.
+		 * Unlike {@link #deferredReference(MemoryData)}, nothing the reference yields can lose
+		 * its memory to a concurrent destroy between being resolved and being used.</p>
+		 *
+		 * @param data an argument this reservation was acquired for
+		 * @return a supplier resolving a view of the argument when the deferred work runs
+		 */
+		public Supplier<MemoryData> detachedReference(MemoryData data) {
+			RAM reserved = reservedFor(data);
+			if (reserved == null) return () -> data;
+
+			MemoryData reservedView = data.detachedView(reserved);
+			return () -> {
+				Memory current = data.getMem();
+				if (current == null || current == reserved || !extendTo(data, current)) return reservedView;
+				return data.detachedView(current);
+			};
+		}
+
+		/**
+		 * Returns the deferred arguments for an operation that runs later, resolved when the
+		 * returned supplier is invoked: each {@link MemoryData} argument through its
+		 * {@link #deferredReference(MemoryData) deferred reference}, every other entry
+		 * (including {@code null}) unchanged so argument preparation still reports it.
+		 *
+		 * @param args the raw arguments this reservation was acquired for, or {@code null}
+		 * @return a supplier of the arguments to run with
+		 */
+		public Supplier<Object[]> deferredArguments(Object[] args) {
+			if (args == null) return () -> null;
+
+			List<Supplier<?>> references = new ArrayList<>(args.length);
+			for (Object arg : args) {
+				references.add(arg instanceof MemoryData data ? deferredReference(data) : () -> arg);
+			}
+
+			return () -> references.stream().map(Supplier::get).toArray();
+		}
+
+		/**
+		 * Releases what resolving {@link #deferredArguments(Object[])} produced, once the work
+		 * that used the resolved arguments has settled.
+		 *
+		 * <p>An argument destroyed before the work ran was resolved to a view, and argument
+		 * preparation may since have moved that view's root to a supported provider, giving it a
+		 * replacement allocation that nothing else references. Destroying the root of each such
+		 * view frees that replacement; it never frees the memory the view was bound to, which
+		 * remains with the (destroyed) argument and this reservation. Arguments resolved to
+		 * themselves are left alone. Every root is destroyed even if one destroy throws.</p>
+		 *
+		 * @param args     the raw arguments given to {@link #deferredArguments(Object[])}, or {@code null}
+		 * @param resolved what its supplier returned, or {@code null} if it was never invoked
+		 */
+		public void releaseResolvedViews(Object[] args, Object[] resolved) {
+			if (args == null || resolved == null) return;
+
+			List<Runnable> releases = new ArrayList<>(resolved.length);
+			for (int i = 0; i < resolved.length; i++) {
+				if (resolved[i] != args[i] && resolved[i] instanceof MemoryData view) {
+					releases.add(() -> view.getRootDelegate().destroy());
+				}
+			}
+
+			Destroyable.releaseAll(releases);
+		}
+
+		/**
+		 * Gives back everything this reservation took from its guard.
+		 */
+		public void release() {
+			guard.release(this);
+		}
+
+		/**
+		 * Returns the memory this reservation holds for the given argument.
+		 *
+		 * @param data the argument
+		 * @return the reserved memory, or {@code null} if none was reserved for it
+		 */
+		private synchronized RAM reservedFor(MemoryData data) {
+			return leased.get(data);
+		}
+
+		/**
+		 * Extends this reservation to memory an argument has moved to since it was reserved,
+		 * and confirms the memory was not released before the extension took hold.
+		 *
+		 * @param data    the argument
+		 * @param current the memory now backing it
+		 * @return true if the memory is now reserved and usable; false if it cannot be used
+		 */
+		private boolean extendTo(MemoryData data, Memory current) {
+			if (!(current instanceof RAM ram)) return false;
+
+			guard.reserve(this, ram);
+			synchronized (this) {
+				leased.put(data, ram);
+			}
+
+			MemoryProvider provider = current.getProvider();
+			return provider == null || !provider.isReleased(current);
+		}
+	}
+
+	/**
+	 * The reservations held against one address. Every change is made inside the guard's
+	 * per-address {@link ConcurrentHashMap#compute} and every read through
+	 * {@link #state()}, both under this object's monitor, so the two counts always change and
+	 * are observed together.
+	 */
+	private static final class AddressReservations {
+		/** Kernel executions using the memory. */
+		private int executions;
+
+		/** Scheduling leases covering the memory. */
+		private int leases;
+
+		/** The memory held against collection, one entry per reservation. */
+		private final List<RAM> held = new ArrayList<>();
+
+		/**
+		 * Records one more reservation.
+		 *
+		 * @param scheduled whether it is a scheduling lease
+		 * @param ram       the memory to hold
+		 */
+		synchronized void add(boolean scheduled, RAM ram) {
+			if (scheduled) leases++; else executions++;
+			held.add(ram);
+		}
+
+		/**
+		 * Gives back one reservation.
+		 *
+		 * @param scheduled whether it is a scheduling lease
+		 * @param ram       the memory it held
+		 * @return true if nothing remains reserved
+		 */
+		synchronized boolean remove(boolean scheduled, RAM ram) {
+			if (scheduled) leases--; else executions--;
+			held.remove(ram);
+			return executions <= 0 && leases <= 0;
+		}
+
+		/**
+		 * Returns both counts as they are at this moment.
+		 *
+		 * @return the current state
+		 */
+		synchronized ReservationState state() {
+			return new ReservationState(executions, leases);
 		}
 	}
 
@@ -193,7 +384,7 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * produced, so nothing later can report it either.</p>
 	 *
 	 * @param args the kernel memory arguments (may contain nulls)
-	 * @return what was taken, to be handed to {@link #release(Reservation)}
+	 * @return what was taken, to be given back with {@link Reservation#release()}
 	 */
 	public Reservation acquire(MemoryData... args) {
 		return acquire(false, args);
@@ -209,8 +400,8 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * dependency and so may legitimately outlast the deferred-release backstop that a
 	 * millisecond-scale kernel execution never reaches.</p>
 	 *
-	 * <p>Pair it with {@link #release(Reservation)} at whichever of two points ends that
-	 * window, so the lease is never retained across the execution it was meant to precede:</p>
+	 * <p>Give it back at whichever of two points ends that window, so the lease is never
+	 * retained across the execution it was meant to precede:</p>
 	 * <ul>
 	 *   <li>once the deferred work has taken its own execution reservation, if it does
 	 *   &mdash; a deferred kernel dispatch releases its lease the moment the dispatch has
@@ -222,7 +413,7 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * </ul>
 	 *
 	 * @param args the memory arguments (may contain nulls)
-	 * @return what was taken, to be handed to {@link #release(Reservation)}
+	 * @return what was taken, to be given back with {@link Reservation#release()}
 	 */
 	public Reservation acquireScheduled(MemoryData... args) {
 		return acquire(true, args);
@@ -240,12 +431,9 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 *
 	 * @param scheduled whether to record a scheduling lease rather than a kernel-execution guard
 	 * @param args      the memory arguments (may contain nulls)
-	 * @return what was taken, to be handed to {@link #release(Reservation)}
+	 * @return what was taken, to be given back with {@link Reservation#release()}
 	 */
 	private Reservation acquire(boolean scheduled, MemoryData... args) {
-		ConcurrentHashMap<Long, AtomicInteger> references = scheduled ? scheduledReferences : activeReferences;
-		ConcurrentHashMap<Long, Set<RAM>> memory = scheduled ? scheduledMemory : heldMemory;
-
 		Reservation reservation = new Reservation(this, scheduled);
 		if (args == null) return reservation;
 
@@ -260,26 +448,52 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 				continue;
 			}
 
-			long address = ram.getContainerPointer();
-
-			references.compute(address, (k, existing) -> {
-				AtomicInteger count = existing != null ? existing : new AtomicInteger(0);
-				count.incrementAndGet();
-				return count;
-			});
-
-			memory.computeIfAbsent(address,
-					k -> Collections.newSetFromMap(new ConcurrentHashMap<>()))
-					.add(ram);
-
-			reservation.record(address, ram);
+			reserve(reservation, ram);
+			synchronized (reservation) {
+				reservation.leased.put(arg, ram);
+			}
 		}
 
 		return reservation;
 	}
 
 	/**
-	 * Gives back what a kernel execution took.
+	 * Adds one count against the given memory to a reservation.
+	 *
+	 * @param reservation the reservation the count belongs to
+	 * @param ram         the memory to count
+	 */
+	private void reserve(Reservation reservation, RAM ram) {
+		long address = ram.getContainerPointer();
+		reservations.compute(address, (k, existing) -> {
+			AddressReservations entry = existing != null ? existing : new AddressReservations();
+			entry.add(reservation.scheduled, ram);
+			return entry;
+		});
+
+		reservation.record(address, ram);
+	}
+
+	/**
+	 * Takes a scheduling lease over the memory arguments among a raw operator argument array,
+	 * without the validation or provider migration argument preparation performs: a dependency
+	 * may still be writing the arguments, so preparing them now would be incorrect.
+	 * {@code null} and non-{@link MemoryData} entries are skipped.
+	 *
+	 * @param args the raw arguments, or {@code null}
+	 * @return the lease, to be given back with {@link Reservation#release()}
+	 */
+	public Reservation leaseArguments(Object[] args) {
+		if (args == null) return acquireScheduled();
+
+		return acquireScheduled(Arrays.stream(args)
+				.filter(MemoryData.class::isInstance)
+				.map(MemoryData.class::cast)
+				.toArray(MemoryData[]::new));
+	}
+
+	/**
+	 * Gives back what a kernel execution or scheduling lease took.
 	 *
 	 * <p>Decrements each address the matching {@link #acquire} recorded, and
 	 * forgets an address once nothing is left holding it.</p>
@@ -296,175 +510,75 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	public void release(Reservation reservation) {
 		if (reservation == null) return;
 
-		ConcurrentHashMap<Long, AtomicInteger> references =
-				reservation.scheduled ? scheduledReferences : activeReferences;
-		ConcurrentHashMap<Long, Set<RAM>> memory =
-				reservation.scheduled ? scheduledMemory : heldMemory;
-
-		for (long address : reservation.addresses) {
-			references.computeIfPresent(address, (k, count) -> {
-				int remaining = count.decrementAndGet();
-				if (remaining <= 0) {
-					memory.remove(address);
-					return null;
-				}
-				return count;
-			});
+		for (Map.Entry<Long, RAM> counted : reservation.counted()) {
+			reservations.computeIfPresent(counted.getKey(),
+					(k, entry) -> entry.remove(reservation.scheduled, counted.getValue()) ? null : entry);
 		}
 	}
 
 	/**
-	 * Checks whether native memory at the given address can be safely deallocated.
+	 * Returns the reservations held against the given address, with both counts read at the
+	 * same moment.
 	 *
-	 * <p>Returns {@code true} if the address has neither an active kernel-execution reference
-	 * nor a scheduling lease (not in either map, or both counts are zero or below).</p>
+	 * @param address the native memory address to check
+	 * @return the current state, or {@link ReservationState#NONE} if nothing holds the address
+	 */
+	public ReservationState stateOf(long address) {
+		AddressReservations entry = reservations.get(address);
+		return entry == null ? ReservationState.NONE : entry.state();
+	}
+
+	/**
+	 * Checks whether native memory at the given address can be safely deallocated.
 	 *
 	 * @param address the native memory address to check
 	 * @return {@code true} if deallocation is safe, {@code false} if a kernel or a scheduling
 	 *         lease is still holding the memory
 	 */
 	public boolean canDeallocate(long address) {
-		return !hasCount(activeReferences, address) && !hasCount(scheduledReferences, address);
+		return stateOf(address).isReleasable();
 	}
 
 	/**
 	 * Returns whether native memory at the given address is held by a scheduling lease.
 	 *
-	 * <p>Distinguished from {@link #canDeallocate(long)} so the deferred-release backstop can
-	 * force-expire a leaked kernel-execution guard while never expiring a lease, whose
-	 * scheduling-to-execution window may legitimately outlast the backstop.</p>
-	 *
 	 * @param address the native memory address to check
 	 * @return {@code true} if a scheduling lease still holds the memory
 	 */
 	public boolean isScheduled(long address) {
-		return hasCount(scheduledReferences, address);
+		return stateOf(address).isLeased();
 	}
 
 	/**
-	 * Returns whether the given reference map records a positive count for the address.
-	 *
-	 * @param references the reference-count map to consult
-	 * @param address    the native memory address to check
-	 * @return {@code true} if the map holds a positive count for the address
-	 */
-	private static boolean hasCount(ConcurrentHashMap<Long, AtomicInteger> references, long address) {
-		AtomicInteger count = references.get(address);
-		return count != null && count.get() > 0;
-	}
-
-	/**
-	 * Acquires the guard for the given memory data from the local {@link Hardware}.
-	 *
-	 * <p>Returns what was taken, to be handed back to
-	 * {@link #releaseFor(Reservation)}, or {@code null} if no hardware or guard
-	 * is available, or if acquisition fails for any reason. Guard failures are
-	 * silently absorbed to avoid disrupting kernel execution.</p>
-	 *
-	 * @param data the kernel memory arguments
-	 * @return the reservation, or {@code null}
-	 */
-	public static Reservation acquireFor(MemoryData[] data) {
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-				if (guard != null) {
-					return guard.acquire(data);
-				}
-			}
-		} catch (Exception e) {
-			// Guard failures must not prevent kernel execution
-		}
-		return null;
-	}
-
-	/**
-	 * Acquires a scheduling lease for the given memory data from the local {@link Hardware}.
-	 *
-	 * <p>Behaves like {@link #acquireFor(MemoryData[])} but records a lease that the
-	 * deferred-release backstop never force-expires, for the scheduling-to-execution window of
-	 * a deferred asynchronous operation. Returns what was taken, to be handed back to
-	 * {@link #releaseFor(Reservation)}, or {@code null} if no hardware or guard is available,
-	 * or if acquisition fails for any reason.</p>
-	 *
-	 * @param data the memory arguments
-	 * @return the reservation, or {@code null}
-	 */
-	public static Reservation acquireScheduledFor(MemoryData[] data) {
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-				if (guard != null) {
-					return guard.acquireScheduled(data);
-				}
-			}
-		} catch (Exception e) {
-			// Guard failures must not prevent scheduling
-		}
-		return null;
-	}
-
-	/**
-	 * Gives back what {@link #acquireFor(MemoryData[])} took.
-	 *
-	 * <p>No-op if the reservation is {@code null}. Release failures are
-	 * silently absorbed to avoid disrupting kernel return.</p>
-	 *
-	 * @param reservation what was acquired, or {@code null}
-	 */
-	public static void releaseFor(Reservation reservation) {
-		if (reservation == null) return;
-		try {
-			reservation.guard.release(reservation);
-		} catch (Exception e) {
-			// Guard failures must not prevent returning
-		}
-	}
-
-	/**
-	 * Consults the local {@link Hardware}'s {@link KernelMemoryGuard} and emits a
-	 * warning if the given native address is still marked as actively referenced
-	 * by a running kernel. This is a <em>diagnostic-only</em> check: it never
-	 * throws, never blocks, and does not prevent the caller from proceeding with
-	 * deallocation. Callers that want to avoid an imminent use-after-free crash
-	 * must decide how to react on their own (defer, retry, etc.) — this helper
-	 * only surfaces the condition.
+	 * Emits a warning if the given native address is still reserved by a kernel execution or
+	 * a scheduling lease. This is a <em>diagnostic-only</em> check: it never throws, never
+	 * blocks, and does not prevent the caller from proceeding with deallocation. Callers that
+	 * want to avoid an imminent use-after-free must decide how to react on their own (defer,
+	 * retry, etc.) — this only surfaces the condition.
 	 *
 	 * <p>When the allocation stack trace is available (controlled by
 	 * {@code AR_HARDWARE_ALLOCATION_TRACE_FRAMES}) it is included in the warning
 	 * so the developer can see where the memory about to be freed was allocated.</p>
 	 *
-	 * @param address         the container pointer of the allocation about to be freed
-	 * @param allocationTrace the allocation stack trace captured at RAM creation time, may be null
 	 * @param context         short description of the destroy path (e.g. {@code "NativeBuffer"},
 	 *                        {@code "NativeMemory"}) used to identify the source of the warning
+	 * @param address         the container pointer of the allocation about to be freed
+	 * @param allocationTrace the allocation stack trace captured at RAM creation time, may be null
 	 */
-	public static void warnIfActivelyReferenced(long address,
-												StackTraceElement[] allocationTrace,
-												String context) {
-		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw == null) return;
-			KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-			if (guard == null || guard.canDeallocate(address)) return;
+	public void warnIfReserved(String context, long address, StackTraceElement[] allocationTrace) {
+		if (canDeallocate(address)) return;
 
-			Hardware.console.warn(
-					context + " at 0x" + Long.toHexString(address) +
-					" is being deallocated while the KernelMemoryGuard still " +
-					"reports active kernel references; in-flight kernels may " +
-					"read from unmapped memory");
-			if (allocationTrace != null && allocationTrace.length > 0) {
-				StringBuilder sb = new StringBuilder("  (allocated at:");
-				for (StackTraceElement el : allocationTrace) {
-					sb.append("\n    at ").append(el);
-				}
-				sb.append(")");
-				Hardware.console.warn(sb.toString());
+		warn(context + " at 0x" + Long.toHexString(address) +
+				" is being deallocated while the KernelMemoryGuard still " +
+				"reports active kernel references; in-flight kernels may " +
+				"read from unmapped memory");
+		if (allocationTrace != null && allocationTrace.length > 0) {
+			StringBuilder sb = new StringBuilder("  (allocated at:");
+			for (StackTraceElement el : allocationTrace) {
+				sb.append("\n    at ").append(el);
 			}
-		} catch (Throwable t) {
-			// Diagnostic inspection must never block the caller's destroy/deallocate path
+			sb.append(")");
+			warn(sb.toString());
 		}
 	}
 

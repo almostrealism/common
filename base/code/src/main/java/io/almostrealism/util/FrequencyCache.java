@@ -50,6 +50,10 @@ import java.util.stream.Stream;
  * indicate more valuable entries; the entry with the lowest score is evicted
  * first.</p>
  *
+ * <p>Entries are kept in insertion order, so iteration is reproducible from one run to
+ * the next even when many keys share a hash, and entries with equal scores are evicted
+ * oldest first.</p>
+ *
  * <h2>Primary Usage: Instruction Set Caching</h2>
  *
  * <p>{@link FrequencyCache} is used by
@@ -223,7 +227,6 @@ public class FrequencyCache<K, V> {
 
 		this.capacity = capacity;
 		this.frequencyBias = frequencyBias;
-		// TODO(review): insertion order also changes eviction tie-breaking in prepareCapacity(); watch compile-time regressions
 		this.cache = new LinkedHashMap<>(capacity);
 		this.reverseCache = new LinkedHashMap<>(capacity);
 	}

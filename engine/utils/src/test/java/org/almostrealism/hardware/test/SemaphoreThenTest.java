@@ -20,11 +20,15 @@ import io.almostrealism.streams.DeferredSemaphore;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Validates {@link Semaphore#then(java.util.function.Supplier)} and the
@@ -34,6 +38,44 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * release, so the failure paths are covered as well as the success path.
  */
 public class SemaphoreThenTest extends TestSuiteBase {
+
+	/**
+	 * Regression: work deferred behind a pending dependency occupies no thread while it waits.
+	 * Hundreds of operations queued behind one long dependency, with settlement callbacks on
+	 * each and on a composite of them all, must not start a callback thread per operation; every
+	 * one of them still runs, and settles, once the dependency completes.
+	 */
+	@Test(timeout = 30000)
+	public void pendingWorkOccupiesNoThreads() throws InterruptedException {
+		int operations = 300;
+		LatchSemaphore dependency = new LatchSemaphore(1);
+		AtomicInteger ran = new AtomicInteger();
+		AtomicInteger settled = new AtomicInteger();
+		List<Semaphore> chained = new ArrayList<>();
+
+		int before = Thread.activeCount();
+		for (int i = 0; i < operations; i++) {
+			Semaphore work = dependency.then(() -> {
+				ran.incrementAndGet();
+				return null;
+			});
+			work.whenSettled(settled::incrementAndGet);
+			chained.add(work);
+		}
+
+		Semaphore all = Semaphore.all(chained);
+		CountDownLatch groupSettled = new CountDownLatch(1);
+		all.whenSettled(groupSettled::countDown);
+
+		assertTrue("Pending deferred work must not occupy a thread per operation; active threads grew by " +
+				(Thread.activeCount() - before), Thread.activeCount() - before < operations / 10);
+
+		dependency.countDown();
+		all.waitFor();
+		Assert.assertEquals(operations, ran.get());
+		assertTrue(groupSettled.await(10, TimeUnit.SECONDS));
+		Assert.assertEquals(operations, settled.get());
+	}
 
 	/**
 	 * {@code then} returns before the dependency completes and does not run the work until

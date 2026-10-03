@@ -19,6 +19,7 @@ package org.almostrealism.nio;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
@@ -128,8 +129,11 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 		// Diagnostic: warn if a kernel is still actively using this buffer.
 		// We proceed with unmap regardless — blocking or silently deferring
 		// explicit destroy is as dangerous as complex finalizer logic.
-		KernelMemoryGuard.warnIfActivelyReferenced(
-				getContainerPointer(), getAllocationStackTrace(), "NativeBuffer");
+		Hardware hardware = Hardware.getLocalHardware();
+		KernelMemoryGuard guard = hardware == null ? null : hardware.getKernelMemoryGuard();
+		if (guard != null) {
+			guard.warnIfReserved("NativeBuffer", getContainerPointer(), getAllocationStackTrace());
+		}
 
 		if (sharedLocation != null) {
 			provider.unmapSharedMemory(rootBuffer, rootBuffer.capacity());

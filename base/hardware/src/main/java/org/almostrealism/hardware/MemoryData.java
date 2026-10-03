@@ -27,6 +27,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.BytesView;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -318,29 +319,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 */
 	default MemoryData detachedView() {
 		Memory mem = getMem();
-		if (mem == null) return this;
-
-		MemoryData root = getRootDelegate();
-		Bytes storage = Bytes.ofNonOwning(mem, root.getOffset() + root.getMemLength());
-		return new Bytes(getMemLength(), getAtomicMemLength(), storage, getOffset());
+		return mem == null ? this : detachedView(mem);
 	}
 
 	/**
-	 * Returns a reference to this data for work that will use it later, after it may have
-	 * been destroyed.
+	 * Returns a view of the region this data describes, bound to the given {@link Memory}
+	 * rather than to whatever memory backs this data when the view is used. The view has this
+	 * data's offset, length and atomic length within that memory; see {@link #detachedView()}
+	 * for how its lifetime relates to the memory's.
 	 *
-	 * <p>The reference yields this data itself while it is still backed by memory, so the
-	 * deferred work observes anything that happened to it in the meantime (such as a migration
-	 * to another provider). If it has been destroyed by the time the work runs, the reference
-	 * yields a {@link #detachedView()} captured now, so the work still runs against the memory
-	 * this data described when it was scheduled. Keeping that memory from being freed is the
-	 * caller's responsibility, as with {@link #detachedView()}.</p>
-	 *
-	 * @return a supplier of this data, or of its memory as captured now once it is destroyed
+	 * @param mem the memory to bind the view to, which must be memory this data's root describes
+	 * @return a view of this data's region within {@code mem}
 	 */
-	default Supplier<MemoryData> deferredReference() {
-		MemoryData view = detachedView();
-		return () -> isDestroyed() ? view : this;
+	default MemoryData detachedView(Memory mem) {
+		MemoryData root = getRootDelegate();
+		Bytes storage = new BytesView(mem, root.getOffset() + root.getMemLength());
+		return new Bytes(getMemLength(), getAtomicMemLength(), storage, getOffset());
 	}
 
 	/**

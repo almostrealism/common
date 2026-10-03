@@ -395,6 +395,39 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Releases everything this invocation holds after its dispatch failed before publishing a
+	 * completion.
+	 *
+	 * <p>Work submitted before the failure may still be running against the leased and
+	 * temporary buffers, and no completion reaches a caller who could wait for it. It is
+	 * therefore waited for here, actively, before anything is released: a passive callback is
+	 * not enough, because a backend that batches dispatches (Metal) only settles a pending
+	 * dispatch once something commits its command buffer, and on this path nothing else will.
+	 * This host wait happens only when a dispatch has failed.</p>
+	 *
+	 * @param failure  the dispatch failure; a failure of the in-flight work or of the release
+	 *                 is attached to it as suppressed rather than replacing it
+	 * @param inflight the latest work submitted before the failure, or {@code null} if none
+	 */
+	public void releaseResourcesAfterFailure(Throwable failure, Semaphore inflight) {
+		if (!hasResources()) return;
+
+		if (inflight != null) {
+			try {
+				inflight.waitFor();
+			} catch (RuntimeException | Error settled) {
+				if (settled != failure) failure.addSuppressed(settled);
+			}
+		}
+
+		try {
+			releaseResources();
+		} catch (RuntimeException | Error releaseFailure) {
+			if (releaseFailure != failure) failure.addSuppressed(releaseFailure);
+		}
+	}
+
+	/**
 	 * Releases every leased destination buffer back to its reuse slot, exactly once.
 	 *
 	 * <p>Safe to call only when nothing can still read or write the leased buffers —

@@ -142,11 +142,12 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	 *
 	 * @param mem       the memory to wrap
 	 * @param memLength the size of the memory in bytes
+	 * @param owned     whether this instance becomes responsible for deallocating {@code mem}
 	 */
-	private Bytes(Memory mem, int memLength) {
+	protected Bytes(Memory mem, int memLength, boolean owned) {
 		this.atomicLength = memLength;
 		this.memLength = memLength;
-		init(mem);
+		init(mem, owned);
 	}
 
 	/**
@@ -288,73 +289,13 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	 * <p>Used internally to wrap provider-allocated memory. The returned {@link Bytes}
 	 * owns the memory: destroying it (explicitly or, when
 	 * {@link MemoryDataAdapter#enableFinalizer} is set, through its finalizer) deallocates
-	 * the memory. Use {@link #ofNonOwning(Memory, int)} to wrap memory owned elsewhere.</p>
+	 * the memory. Use {@link BytesView} to wrap memory owned elsewhere.</p>
 	 *
 	 * @param mem The memory to wrap
 	 * @param memLength The size of the memory in bytes
 	 * @return A {@link Bytes} wrapping the given memory
 	 */
 	public static Bytes of(Memory mem, int memLength) {
-		return new Bytes(mem, memLength);
-	}
-
-	/**
-	 * Wraps existing {@link Memory} in a non-owning {@link Bytes} root.
-	 *
-	 * <p>Unlike {@link #of(Memory, int)}, the returned {@link Bytes} does not own the memory:
-	 * neither an explicit {@link #destroy()} nor a finalizer-triggered destroy (when
-	 * {@link MemoryDataAdapter#enableFinalizer} is set) deallocates it. This is used to bind a
-	 * view directly to memory whose lifetime is managed by another {@link MemoryData}, so that
-	 * collecting the view can never free memory still owned elsewhere.</p>
-	 *
-	 * @param mem The memory to wrap
-	 * @param memLength The size of the memory in bytes
-	 * @return A non-owning {@link Bytes} wrapping the given memory
-	 */
-	public static Bytes ofNonOwning(Memory mem, int memLength) {
-		return new NonOwning(mem, memLength);
-	}
-
-	/**
-	 * A {@link Bytes} root that wraps memory it does not own.
-	 *
-	 * <p>Neither an explicit destroy nor the {@link MemoryDataAdapter#finalize()} path (which
-	 * delegates to {@link #destroy()} when {@link MemoryDataAdapter#enableFinalizer} is set)
-	 * ever deallocates the wrapped memory. If the root is later moved to another provider
-	 * (as {@link org.almostrealism.hardware.HardwareOperator} does for an argument whose
-	 * provider it does not support), the wrapped memory is released from this root without
-	 * being freed, and the replacement it receives is its own: destroying the root then
-	 * frees that replacement like any other {@link Bytes}.</p>
-	 */
-	private static final class NonOwning extends Bytes {
-		/** The memory this root was created around, which belongs to another {@link MemoryData}. */
-		private final Memory borrowed;
-
-		/**
-		 * Wraps existing memory without taking ownership of it.
-		 *
-		 * @param mem       the memory to wrap
-		 * @param memLength the size of the memory in bytes
-		 */
-		private NonOwning(Memory mem, int memLength) {
-			super(mem, memLength);
-			this.borrowed = mem;
-		}
-
-		/** Owns any memory except the memory it was created around. */
-		@Override
-		protected boolean ownsMemory(Memory mem) {
-			return mem != borrowed;
-		}
-
-		/**
-		 * Frees memory this root acquired by being moved to another provider, and does nothing
-		 * while it still wraps the borrowed memory, which is never deallocated here.
-		 */
-		@Override
-		public void destroy() {
-			if (getMem() == borrowed) return;
-			super.destroy();
-		}
+		return new Bytes(mem, memLength, true);
 	}
 }

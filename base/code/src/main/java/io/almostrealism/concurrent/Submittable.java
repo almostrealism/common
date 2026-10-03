@@ -79,6 +79,11 @@ public interface Submittable {
 	 * propagating one as suppressed), so a group submission that throws never leaves work in
 	 * flight. This host wait happens only on the failure path.</p>
 	 *
+	 * <p>The wait is deliberately here rather than left to the caller with the started
+	 * completions attached to the failure: every caller would have to perform the same wait,
+	 * because a completion from a batching backend (Metal) settles only once something commits
+	 * its command buffer, and a passive callback on it never fires if nothing else does.</p>
+	 *
 	 * @param operations the operations to submit, in order
 	 * @param dependsOn  the completion the whole group depends on, or {@code null} to begin a chain
 	 * @return the merged completion of the submitted operations, or {@code null} when
@@ -92,7 +97,6 @@ public interface Submittable {
 				completions.add(operation.submit(dependsOn));
 			}
 		} catch (RuntimeException | Error e) {
-			// TODO(review): host wait on the failure path; consider surfacing Semaphore.all(started) to the caller instead
 			for (Semaphore started : completions) {
 				if (started == null) continue;
 

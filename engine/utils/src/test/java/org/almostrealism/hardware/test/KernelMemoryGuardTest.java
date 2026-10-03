@@ -19,6 +19,7 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.TraversalOrdering;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.NoOpMemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
@@ -335,18 +336,20 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the static {@link KernelMemoryGuard#acquireFor} returns
-	 * null when no Hardware is available, and that
-	 * {@link KernelMemoryGuard#releaseFor} handles null guard gracefully.
+	 * Verifies that the guard of the local {@link Hardware} brackets a dispatch: memory it has
+	 * reserved cannot be deallocated, and giving the {@link KernelMemoryGuard.Reservation}
+	 * back through {@link KernelMemoryGuard.Reservation#release()} frees it again.
 	 */
 	@Test(timeout = 10_000)
 	public void staticHelpersWithNoHardware() {
 		MemoryData data = stubMemoryData(500L);
+		KernelMemoryGuard local = Hardware.getLocalHardware().getKernelMemoryGuard();
 
-		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(new MemoryData[]{ data });
-		// In test environment without Hardware initialized, guard may be null
-		// Either way, releaseFor should not throw
-		KernelMemoryGuard.releaseFor(guard);
+		KernelMemoryGuard.Reservation reservation = local.acquire(data);
+		Assert.assertFalse("Reserved memory must not be deallocatable", local.canDeallocate(500L));
+
+		reservation.release();
+		Assert.assertTrue("Released memory must be deallocatable again", local.canDeallocate(500L));
 	}
 
 	/**

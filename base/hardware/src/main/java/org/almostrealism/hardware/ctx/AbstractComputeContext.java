@@ -23,6 +23,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
@@ -219,10 +220,10 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * than a plain execution reservation) is used because the dependency may remain pending
 	 * longer than the deferred-release backstop, which a lease is exempt from. The lease keeps
 	 * the memory alive, but destroying {@code source} or {@code destination} still clears that
-	 * object's reference to it, so the scheduled copy reaches each region through a
-	 * {@link MemoryData#deferredReference() deferred reference}: the object itself while it is
-	 * still backed, or the memory it described when the copy was scheduled once it has been
-	 * destroyed.</p>
+	 * object's reference to it, so the scheduled copy reaches each region through the lease's
+	 * {@link KernelMemoryGuard.Reservation#detachedReference(MemoryData) detached reference}: a
+	 * view bound to memory the lease holds, which no destroy can take away between the copy
+	 * resolving it and using it.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
@@ -236,10 +237,10 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 			return null;
 		}
 
-		KernelMemoryGuard.Reservation guard =
-				KernelMemoryGuard.acquireScheduledFor(new MemoryData[] { source, destination });
-		Supplier<MemoryData> from = source.deferredReference();
-		Supplier<MemoryData> to = destination.deferredReference();
+		KernelMemoryGuard.Reservation lease =
+				Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(source, destination);
+		Supplier<MemoryData> from = lease.detachedReference(source);
+		Supplier<MemoryData> to = lease.detachedReference(destination);
 
 		Semaphore copied = dependsOn.then(() -> {
 			MemoryData src = from.get();
@@ -247,7 +248,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 			return null;
 		});
 
-		copied.whenSettled(() -> KernelMemoryGuard.releaseFor(guard));
+		copied.whenSettled(lease::release);
 		return copied;
 	}
 

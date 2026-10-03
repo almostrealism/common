@@ -22,6 +22,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.profile.RunData;
@@ -219,10 +220,11 @@ public class CLOperator extends HardwareOperator {
 	 * (or hung) kernel is subject to the execution-guard backstop exactly as a non-deferred
 	 * dispatch is. The lease keeps the
 	 * memory alive, but destroying an argument still clears that object's reference to it, so
-	 * the deferred dispatch receives its arguments through {@link #deferredArguments}: an
-	 * argument destroyed in the meantime is dispatched against the memory it described when the
-	 * dispatch was scheduled, exactly as it would have been had the dispatch been enqueued
-	 * then.</p>
+	 * the deferred dispatch receives its arguments through the lease's
+	 * {@link KernelMemoryGuard.Reservation#deferredArguments deferred arguments}: an argument
+	 * destroyed in the meantime is dispatched against the memory the lease holds for it, exactly
+	 * as it would have been had the dispatch been enqueued then, and an argument that has moved
+	 * to other memory has the lease extended to that memory before it is used.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
@@ -231,12 +233,12 @@ public class CLOperator extends HardwareOperator {
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
-			KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireScheduledFor(argumentData(args));
+			KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
 			AtomicBoolean leased = new AtomicBoolean(true);
 			Runnable releaseLease = () -> {
-				if (leased.compareAndSet(true, false)) KernelMemoryGuard.releaseFor(guard);
+				if (leased.compareAndSet(true, false)) lease.release();
 			};
-			Supplier<Object[]> deferred = deferredArguments(args);
+			Supplier<Object[]> deferred = lease.deferredArguments(args);
 			AtomicReference<Object[]> resolved = new AtomicReference<>();
 			Semaphore dispatched = dependsOn.then(() -> {
 				try {
@@ -254,7 +256,7 @@ public class CLOperator extends HardwareOperator {
 			// given when it was moved to a provider this operator supports.
 			dispatched.whenSettled(() -> {
 				releaseLease.run();
-				releaseDeferredArguments(args, resolved.get());
+				lease.releaseResolvedViews(args, resolved.get());
 			});
 			return dispatched;
 		}
@@ -294,7 +296,7 @@ public class CLOperator extends HardwareOperator {
 
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
 		CLSemaphore semaphore[] = new CLSemaphore[1];
 
 		try {
@@ -357,7 +359,7 @@ public class CLOperator extends HardwareOperator {
 					// The memory guard is released only once the kernel has completed (the
 					// enqueue above is asynchronous), via the semaphore's processing callback.
 					semaphore[0] = new CLSemaphore(prog.getMetadata(), context, event, profile,
-							() -> KernelMemoryGuard.releaseFor(guard));
+							guard::release);
 
 					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
 				} catch (CLException e) {
@@ -371,7 +373,7 @@ public class CLOperator extends HardwareOperator {
 			if (semaphore[0] == null) {
 				// The dispatch never published a completion (argument setup or the enqueue
 				// failed), so there is no kernel in flight and the guard is released here.
-				KernelMemoryGuard.releaseFor(guard);
+				guard.release();
 			}
 		}
 
