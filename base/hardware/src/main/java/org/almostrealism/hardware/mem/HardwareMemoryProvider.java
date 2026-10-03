@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -31,7 +32,10 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -197,6 +201,15 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/** How often deferred releases are reconsidered. */
 	private static final long DEFERRED_SWEEP_INTERVAL_MS = 100;
 
+	/**
+	 * How many garbage collections {@link #reclaim(BooleanSupplier)} requests before an
+	 * allocation that would exceed the memory ceiling is rejected.
+	 */
+	public static int reclaimAttempts = 10;
+
+	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
+	public static long reclaimWaitMs = 100;
+
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 
@@ -275,6 +288,105 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		deallocationSubmit.start();
 		deallocationProcess.start();
+	}
+
+	/**
+	 * Tries to make room for an allocation that would otherwise exceed this provider's memory
+	 * ceiling. Native memory is released only after the garbage collector has found its
+	 * {@link RAM} unreachable and the reference has been dequeued, but the Java objects that hold
+	 * large native blocks are themselves small, so heap pressure alone may not trigger a
+	 * collection before the native ceiling is reached; a workload that discards gigabytes of
+	 * temporary device memory per iteration would then fail although almost all of that memory is
+	 * garbage. This method requests a collection and waits briefly for the resulting releases,
+	 * repeating up to {@link #reclaimAttempts} times, until {@code fits} reports that the
+	 * allocation fits.
+	 *
+	 * <p>{@code fits} is evaluated exactly once after each collection, and never again once it
+	 * has returned {@code true}, so it may claim the room it finds (as
+	 * {@link #reserve(AtomicLong, long, long)} does) rather than only test for it. The caller is
+	 * expected to have tried {@code fits} itself before calling this method.</p>
+	 *
+	 * <p>It must be called without holding this provider's monitor, which the deallocation path
+	 * may need.</p>
+	 *
+	 * @param fits reports whether the pending allocation now fits under the ceiling
+	 * @return whether the allocation fits after reclaiming
+	 */
+	protected boolean reclaim(BooleanSupplier fits) {
+		for (int i = 0; i < reclaimAttempts; i++) {
+			System.gc();
+
+			try {
+				Thread.sleep(reclaimWaitMs);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return false;
+			}
+
+			if (fits.getAsBoolean()) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Atomically reserves {@code size} bytes against a usage counter, so that concurrent
+	 * allocations can neither exceed {@code max} together nor lose each other's updates. When the
+	 * reservation does not fit, unreachable allocations are first {@link #reclaim(BooleanSupplier)
+	 * reclaimed} and the reservation is retried after each collection. A successful reservation
+	 * must be returned to {@code used} (by subtracting {@code size}) when the memory is released or
+	 * when the native allocation it was made for fails. A {@code size} larger than {@code max}
+	 * can never fit, so it is rejected at once without reclaiming anything.
+	 *
+	 * @param used the bytes currently allocated by the provider
+	 * @param max  the provider's memory ceiling in bytes
+	 * @param size the bytes to reserve
+	 * @return whether the bytes were reserved
+	 */
+	protected boolean reserve(AtomicLong used, long max, long size) {
+		if (size > max) return false;
+
+		BooleanSupplier tryReserve = () -> {
+			long current = used.get();
+
+			while (current + size <= max) {
+				if (used.compareAndSet(current, current + size)) return true;
+				current = used.get();
+			}
+
+			return false;
+		};
+
+		return tryReserve.getAsBoolean() || reclaim(tryReserve);
+	}
+
+	/**
+	 * {@link #reserve(AtomicLong, long, long) Reserves} {@code size} bytes against {@code used}
+	 * and then runs the backend allocation the reservation was made for. When the backend call
+	 * fails, with either a {@link RuntimeException} or an {@link Error} such as
+	 * {@link OutOfMemoryError}, the reservation is returned to {@code used} before the failure is
+	 * rethrown, so bytes that were never allocated do not stay charged against the ceiling and
+	 * cause later allocations to be rejected.
+	 *
+	 * @param used       the bytes currently allocated by the provider
+	 * @param max        the provider's memory ceiling in bytes
+	 * @param size       the bytes the backend call allocates
+	 * @param allocation the backend allocation call
+	 * @param <B>        the type of the backend buffer
+	 * @return the buffer produced by {@code allocation}
+	 * @throws HardwareException if the reservation does not fit under {@code max}
+	 */
+	protected <B> B allocateReserved(AtomicLong used, long max, long size, Supplier<B> allocation) {
+		if (!reserve(used, max, size)) {
+			throw new HardwareException("Memory Max Reached");
+		}
+
+		try {
+			return allocation.get();
+		} catch (RuntimeException | Error e) {
+			used.addAndGet(-size);
+			throw e;
+		}
 	}
 
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */
@@ -368,7 +480,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				allocated.remove(ref.getAddress());
+				// The backend may already have handed this address to a new block, whose
+				// entry must survive; only the entry for this reference is removed
+				allocated.computeIfPresent(ref.getAddress(), (address, tracked) -> tracked == ref ? null : tracked);
 				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
@@ -636,7 +750,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * Registers the given memory block as allocated and returns it.
 	 *
 	 * <p>Creates a {@link NativeRef} and stores it in the allocation map. Warns if the block
-	 * is already tracked (duplicate allocation).</p>
+	 * is already tracked (duplicate allocation). An entry whose reference has already been
+	 * claimed for release is not a duplicate: the backend frees a block before its entry is
+	 * removed, so it may reuse the address for this allocation in between, and that stale
+	 * entry is simply replaced.</p>
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
@@ -652,7 +769,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		if (allocated.containsKey(ref.getAddress())) {
+		NativeRef<T> existing = allocated.get(ref.getAddress());
+		if (existing != null && !existing.isFreed()) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 

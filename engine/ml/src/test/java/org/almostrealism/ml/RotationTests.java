@@ -27,6 +27,7 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -494,6 +495,109 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
 		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
 		assertEquals("Shape dim 2 (cos/sin pair)", 2, freqCis.getShape().length(2));
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a base for which the inverse
+	 * frequencies would be {@code NaN} — zero, negative, infinite or {@code NaN} — both directly
+	 * and through {@link RotationFeatures#computeRopeFreqs}, while a valid base below one still
+	 * yields {@code theta^(-2i / dimHead)}.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsInvalidBase() {
+		double[] invalid = { 0.0, -1.0, -10000.0, Double.POSITIVE_INFINITY,
+				Double.NEGATIVE_INFINITY, Double.NaN };
+
+		for (double theta : invalid) {
+			try {
+				computeInvFreq(8, theta);
+				Assert.fail("Expected IllegalArgumentException for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(theta, 8, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+		}
+
+		PackedCollection invFreq = computeInvFreq(8, 0.5).evaluate();
+		assertEquals(4, invFreq.getShape().getTotalSize());
+		for (int i = 0; i < 4; i++) {
+			assertEquals("invFreq[" + i + "]", Math.pow(0.5, -2.0 * i / 8), invFreq.toDouble(i), 1e-6);
+		}
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a positive base so small that
+	 * the largest inverse frequency would overflow single precision to infinity, both directly and
+	 * through {@link RotationFeatures#computeRopeFreqs}, while a small base whose frequencies still
+	 * fit is accepted, and a head dimension of two, whose only frequency is one, accepts any base.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsOverflowingBase() {
+		double[] overflowing = { Double.MIN_VALUE, 1e-100, 1e-50 };
+
+		for (double theta : overflowing) {
+			try {
+				computeInvFreq(64, theta);
+				Assert.fail("Expected IllegalArgumentException for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(theta, 64, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+		}
+
+		PackedCollection small = computeInvFreq(64, 1e-30).evaluate();
+		assertEquals(32, small.getShape().getTotalSize());
+		double largest = Math.pow(1e-30, -62.0 / 64);
+		assertTrue(Double.isFinite(small.toDouble(31)));
+		assertEquals(1.0, small.toDouble(31) / largest, 1e-3);
+
+		PackedCollection single = computeInvFreq(2, Double.MIN_VALUE).evaluate();
+		assertEquals(1, single.getShape().getTotalSize());
+		assertEquals(1.0, single.toDouble(0), 0.0);
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a head dimension that is not
+	 * positive and even — zero would divide by zero, and an odd dimension would leave the last
+	 * dimension of each head unrotated — both directly and through
+	 * {@link RotationFeatures#computeRopeFreqs}, while the smallest valid dimension, two, yields
+	 * the single frequency one.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsInvalidHeadDimension() {
+		int[] invalid = { 0, -2, -1, 1, 7 };
+
+		for (int dimHead : invalid) {
+			try {
+				computeInvFreq(dimHead, 10000.0);
+				Assert.fail("Expected IllegalArgumentException for dimHead=" + dimHead);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().endsWith(" " + dimHead));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(10000.0, dimHead, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for dimHead=" + dimHead);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().endsWith(" " + dimHead));
+			}
+		}
+
+		PackedCollection invFreq = computeInvFreq(2, 10000.0).evaluate();
+		assertEquals(1, invFreq.getShape().getTotalSize());
+		assertEquals(1.0, invFreq.toDouble(0), 1e-6);
 	}
 
 	/**
