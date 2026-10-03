@@ -466,6 +466,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * Releases the block behind the given reference, once it has been decided
 	 * that releasing it is safe.
 	 *
+	 * <p>The block is freed before its entry is removed, so that nothing observes this
+	 * provider as fully released while a native free is still in progress. In the
+	 * interval between the two, the allocator may already have handed the same address
+	 * to a new allocation, which {@link #allocated(RAM)} registers under the same key.
+	 * The removal therefore takes out this reference's own entry only, compared by
+	 * identity, since {@link NativeRef} equality is by address and size and would
+	 * match the new allocation's entry as well.</p>
+	 *
 	 * @param ref Native reference to the memory block to free
 	 */
 	private void releaseNow(NativeRef<T> ref) {
@@ -480,9 +488,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				// The backend may already have handed this address to a new block, whose
-				// entry must survive; only the entry for this reference is removed
-				allocated.computeIfPresent(ref.getAddress(), (address, tracked) -> tracked == ref ? null : tracked);
+				allocated.computeIfPresent(ref.getAddress(), (address, current) -> current == ref ? null : current);
 				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
@@ -578,7 +584,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return {@code true} if the release was held back
 	 */
 	private boolean deferIfInUse(NativeRef<T> ref) {
-		if (destroying || !isActivelyReferenced(ref.getAddress())) return false;
+		if (destroying || reservations(ref.getAddress()).isReleasable()) return false;
 
 		deferred.computeIfAbsent(ref.getAddress(),
 				k -> new DeferredRelease<>(ref, System.currentTimeMillis()));
@@ -594,24 +600,43 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * the block forever. Freeing it is the old behavior, and is announced,
 	 * because from here on a kernel still holding that address would read
 	 * memory that is gone.</p>
+	 *
+	 * <p>A {@linkplain ReservationState#isLeased() scheduling lease} is exempt from
+	 * the timeout: it covers the scheduling-to-execution window of a deferred dispatch or copy
+	 * waiting on a foreign dependency, which may legitimately outlast the backstop that a
+	 * millisecond-scale kernel execution never reaches. Such a block keeps being held back
+	 * until the lease is given back when the deferred work settles, and its timeout is restarted
+	 * on every sweep while the lease is held, so that once the lease hands off to the execution
+	 * guard that runs the scheduled work, the guard receives its own full timeout window rather
+	 * than one already consumed by the scheduling wait.</p>
+	 *
+	 * @see SweepAction#forRelease(ReservationState, long, long, long)
 	 */
 	private void sweepDeferred() {
 		if (deferred.isEmpty()) return;
 
 		for (DeferredRelease<T> release : List.copyOf(deferred.values())) {
 			NativeRef<T> ref = release.ref();
-			boolean expired = System.currentTimeMillis() - release.deferredAt()
-					>= deferredReleaseTimeoutMs;
+			long address = ref.getAddress();
+			long now = System.currentTimeMillis();
+			boolean expired = now - release.deferredAt() >= deferredReleaseTimeoutMs;
 
-			if (!expired && isActivelyReferenced(ref.getAddress())) continue;
+			SweepAction action = SweepAction.forRelease(reservations(address),
+					release.deferredAt(), now, deferredReleaseTimeoutMs);
 
-			deferred.remove(ref.getAddress());
+			if (action == SweepAction.HOLD) continue;
+			if (action == SweepAction.RESET) {
+				deferred.replace(address, new DeferredRelease<>(ref, now));
+				continue;
+			}
 
-			if (expired) {
-				KernelMemoryGuard.warnIfActivelyReferenced(
-						ref.getAddress(), ref.getAllocationStackTrace(),
-						getClass().getSimpleName() + " (held for " +
-								deferredReleaseTimeoutMs + "ms)");
+			deferred.remove(address);
+
+			KernelMemoryGuard guard = kernelMemoryGuard();
+			if (expired && guard != null) {
+				guard.warnIfReserved(getClass().getSimpleName() + " (held for " +
+								deferredReleaseTimeoutMs + "ms)",
+						address, ref.getAllocationStackTrace());
 			}
 
 			releaseNow(ref);
@@ -619,17 +644,25 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/**
-	 * Returns whether a kernel currently reports the given address as in use.
+	 * Returns the guard of the local {@link Hardware}, if there is one yet.
+	 *
+	 * @return the kernel memory guard, or {@code null} before hardware is available
+	 */
+	private KernelMemoryGuard kernelMemoryGuard() {
+		Hardware hw = Hardware.getLocalHardware();
+		return hw == null ? null : hw.getKernelMemoryGuard();
+	}
+
+	/**
+	 * Returns the reservations kernels and scheduling leases currently hold on the given
+	 * address, both read at the same moment.
 	 *
 	 * @param address the native address to test
-	 * @return {@code true} if a kernel is still using the memory
+	 * @return the reservations, or {@link ReservationState#NONE} when there is no guard
 	 */
-	private boolean isActivelyReferenced(long address) {
-		Hardware hw = Hardware.getLocalHardware();
-		if (hw == null) return false;
-
-		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-		return guard != null && !guard.canDeallocate(address);
+	private ReservationState reservations(long address) {
+		KernelMemoryGuard guard = kernelMemoryGuard();
+		return guard == null ? ReservationState.NONE : guard.stateOf(address);
 	}
 
 	/**

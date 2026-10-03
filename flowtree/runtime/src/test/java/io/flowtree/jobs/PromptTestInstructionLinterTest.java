@@ -151,11 +151,37 @@ public class PromptTestInstructionLinterTest extends TestSuiteBase {
 	}
 
 	/** A later, broader "-Dtest=" occurrence overriding an earlier narrow one must still be
-	 * flagged, since Maven uses the later property value. */
+	 * flagged, since Maven uses the later property value. The later value here is a wildcard,
+	 * which has no ceiling at all -- a bare class name would not do, since naming one class is
+	 * itself a bounded run. */
 	@Test(timeout = 10000)
 	public void laterBroaderDtestOverrideRejected() {
 		assertFalse(violationsFor(
-				"Run mvn test -Dtest=Foo#bar -Dtest=WholeClass to confirm.").isEmpty());
+				"Run mvn test -Dtest=Foo#bar -Dtest=Whole* to confirm.").isEmpty());
+	}
+
+	/** Naming a class, or a few classes, is a bounded run and must not be flagged. */
+	@Test(timeout = 10000)
+	public void boundedClassMentionsAccepted() {
+		assertTrue(violationsFor("Run mvn test -Dtest=NotifierRegistryTest to confirm.").isEmpty());
+		assertTrue(violationsFor("Run mvn test -Dtest=A,B,C,D,E to confirm.").isEmpty());
+	}
+
+	/** A repeated {@code -Dtest} where EVERY value is bounded is accepted: the command validator,
+	 * the Python linter's {@code _has_bounding_selector}, and {@link PromptTestInstructionLinter}'s
+	 * {@code hasBoundedSelector} all judge each value in isolation and agree it is a bounded run
+	 * (Maven uses only the last value, itself a narrow one). This pins the aligned "every value
+	 * bounded" rule so that exempting the fragment does not depend on {@code dtestBroadValue}
+	 * running afterwards -- it has no broad value to catch here. */
+	@Test(timeout = 10000)
+	public void repeatedBoundedDtestMentionsAccepted() {
+		assertTrue(violationsFor("Run mvn test -Dtest=FooTest -Dtest=BarTest to confirm.").isEmpty());
+	}
+
+	/** Beyond the class cap the mention is a suite run and must be flagged. */
+	@Test(timeout = 10000)
+	public void mentionAboveTheClassCapRejected() {
+		assertFalse(violationsFor("Run mvn test -Dtest=A,B,C,D,E,F to confirm.").isEmpty());
 	}
 
 	/** A "-Dtest=Class#method1+method2" mention using Surefire's "+" method-list separator runs

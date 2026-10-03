@@ -142,11 +142,12 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	 *
 	 * @param mem       the memory to wrap
 	 * @param memLength the size of the memory in bytes
+	 * @param owned     whether this instance becomes responsible for deallocating {@code mem}
 	 */
-	private Bytes(Memory mem, int memLength) {
+	protected Bytes(Memory mem, int memLength, boolean owned) {
 		this.atomicLength = memLength;
 		this.memLength = memLength;
-		init(mem);
+		init(mem, owned);
 	}
 
 	/**
@@ -285,13 +286,16 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	/**
 	 * Wraps existing {@link Memory} in a {@link Bytes} instance.
 	 *
-	 * <p>Used internally to wrap provider-allocated memory.</p>
+	 * <p>Used internally to wrap provider-allocated memory. The returned {@link Bytes}
+	 * owns the memory: destroying it (explicitly or, when
+	 * {@link MemoryDataAdapter#enableFinalizer} is set, through its finalizer) deallocates
+	 * the memory. Use {@link BytesView} to wrap memory owned elsewhere.</p>
 	 *
 	 * @param mem The memory to wrap
 	 * @param memLength The size of the memory in bytes
 	 * @return A {@link Bytes} wrapping the given memory
 	 */
 	public static Bytes of(Memory mem, int memLength) {
-		return new Bytes(mem, memLength);
+		return new Bytes(mem, memLength, true);
 	}
 }

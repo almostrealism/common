@@ -103,6 +103,18 @@ import java.util.function.Supplier;
  * @see HardwareMemoryProvider
  */
 public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
+	/*
+	 * The adapter registries are declared first: the metrics below initialize Hardware,
+	 * which starts the backends, and a backend registers its adapters from its own static
+	 * initializer. When this class is loaded before Hardware, those registrations arrive
+	 * while this class is still being initialized, so the registries must already exist.
+	 */
+
+	/** Registered custom allocators for adapting foreign memory types. */
+	private static final Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
+	/** Registered custom writers for adapting foreign memory types. */
+	private static final Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
+
 	/**
 	 * Enables logging of large memory allocations (greater than 20MB).
 	 * Controlled by {@code AR_HARDWARE_ALLOCATION_LOGGING}.
@@ -118,11 +130,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	/** Distribution metric tracking native memory deallocation sizes in bytes. */
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("nativeDeallocationSizes", 1024 * 1024);
-
-	/** Registered custom allocators for adapting foreign memory types. */
-	private static final Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
-	/** Registered custom writers for adapting foreign memory types. */
-	private static final Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
 	/** Numeric precision for element storage in this provider's memory. */
 	private final Precision precision;
@@ -374,22 +381,29 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * ({@link #sharedBridge(Precision, long)}) is fixed at {@link Precision#FP32} whatever a data
 	 * context's own provider addresses — and reading one straight into the other would misread every
 	 * element rather than convert it.</p>
+	 *
+	 * <p>The {@code double[]} path reads the source through its own provider, which serializes
+	 * its operations on its own monitor. That read is made without holding this provider's
+	 * monitor: two providers copying into each other at the same time would otherwise each hold
+	 * its own monitor while waiting for the other's, and deadlock.</p>
 	 */
 	@Override
-	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
-		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer
-				&& source.getProvider().getNumberSize() == getNumberSize()) {
-			copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
-			return;
-		}
-
-		if (mem instanceof DirectMemory buffer && writeAdapters.containsKey(source.getClass())) {
-			if (source.getProvider().getNumberSize() == getNumberSize()) {
-				writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
+	public void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
+		synchronized (this) {
+			if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer
+					&& source.getProvider().getNumberSize() == getNumberSize()) {
+				copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
 				return;
 			}
 
-			warn("Unable to copy memory directly due to precision difference");
+			if (mem instanceof DirectMemory buffer && writeAdapters.containsKey(source.getClass())) {
+				if (source.getProvider().getNumberSize() == getNumberSize()) {
+					writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
+					return;
+				}
+
+				warn("Unable to copy memory directly due to precision difference");
+			}
 		}
 
 		double[] value = new double[length];

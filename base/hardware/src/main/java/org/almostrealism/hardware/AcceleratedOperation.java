@@ -672,6 +672,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(activeRequirements);
 			}
 
+			// Latest submitted work; the catch settles resource release after it on a synchronous failure.
+			Semaphore inflight = null;
+
 			try {
 				MemoryData input[] = process.getArguments(MemoryData[]::new);
 
@@ -683,26 +686,26 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
-				// Copy-in groups chain on one another, and the kernel chains on the last of them.
-				// Arguments delivered asynchronously with an outstanding completion (see
-				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
-				// kernel is ordered after the work producing them without any host wait.
+				// The kernel chains on each copy-in group's merged completion (Submittable.submit)
+				// and on any asynchronously-delivered arguments merged in here, so it is ordered
+				// after every one of them with no host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
 				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				if (processing) {
 					Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
 				Semaphore nextSemaphore = operator.accept(input, ready);
+				if (nextSemaphore != null) inflight = nextSemaphore;
 
 				// activeHeapStage avoids Heap.addPendingKernel()'s thread-local lookup; see javadoc above.
 				if (activeHeapStage != null) activeHeapStage.addPendingKernel(nextSemaphore);
@@ -712,7 +715,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// Copy-out unwinds in reverse order; see the method javadoc
 				if (processing) {
 					Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
-					if (copyBack != null) completion = copyBack;
+					if (copyBack != null) completion = inflight = copyBack;
 				}
 
 				if (aggregateCopyOut) {
@@ -720,7 +723,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 							argumentMap.getPostprocessOperations(null) :
 							argumentMap.getPostprocessOperations((MemoryData) output), completion);
 					if (copyOut != null) {
-						completion = copyOut;
+						completion = inflight = copyOut;
 					}
 				}
 
@@ -736,15 +739,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					activeHeapStage.addPendingKernel(completion);
 				}
 
-				if (process.hasDestinationLeases()) {
-					// Release at the end of the full chain, passively — an actively waiting
-					// callback (onComplete) forces a per-invocation commit on Metal.
+				if (process.hasResources()) {
+					// whenSettled also fires on the failure path, so a failed dispatch still frees
+					// its leases and temporaries; MetalSemaphore overrides it to attach passively.
 					if (completion == null) {
-						process.releaseDestinationLeases();
+						process.releaseResources();
 					} else {
-						completion.whenComplete(process::releaseDestinationLeases);
+						completion.whenSettled(process::releaseResources);
 					}
 				}
+			} catch (RuntimeException | Error e) {
+				// A synchronous failure never installs the completion-driven release above
+				process.releaseResourcesAfterFailure(e, inflight);
+
+				throw e;
 			} finally {
 				if (!activeRequirements.isEmpty()) {
 					Hardware.getLocalHardware().getComputer().popRequirements();

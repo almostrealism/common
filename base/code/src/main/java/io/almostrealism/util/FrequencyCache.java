@@ -18,7 +18,7 @@ package io.almostrealism.util;
 
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -49,6 +49,10 @@ import java.util.stream.Stream;
  * <p>where {@code age = (clock - lastAccessTime) / clock}. Higher scores
  * indicate more valuable entries; the entry with the lowest score is evicted
  * first.</p>
+ *
+ * <p>Entries are kept in insertion order, so iteration is reproducible from one run to
+ * the next even when many keys share a hash, and entries with equal scores are evicted
+ * oldest first.</p>
  *
  * <h2>Primary Usage: Instruction Set Caching</h2>
  *
@@ -89,6 +93,16 @@ import java.util.stream.Stream;
  * previous value with no remaining keys. This enables resource cleanup
  * (e.g., destroying compiled native code when an instruction manager is
  * evicted or when a different key takes ownership of its value).</p>
+ *
+ * <h2>Iteration Order</h2>
+ *
+ * <p>Entries are iterated in insertion order &mdash; by {@link #entriesByFrequency},
+ * {@link #forEach}, and the eviction scan that breaks score ties &mdash; never in hash
+ * order. Keys whose hashes collide (structurally similar expressions, for example)
+ * would otherwise share a hash bucket that orders them by identity, which differs
+ * from one run to the next, and any caller that ranks entries and keeps ties in
+ * iteration order (such as {@link io.almostrealism.scope.ExpressionCache#getFrequentExpressions()})
+ * would produce different results for the same sequence of accesses.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -213,8 +227,8 @@ public class FrequencyCache<K, V> {
 
 		this.capacity = capacity;
 		this.frequencyBias = frequencyBias;
-		this.cache = new HashMap<>(capacity);
-		this.reverseCache = new HashMap<>(capacity);
+		this.cache = new LinkedHashMap<>(capacity);
+		this.reverseCache = new LinkedHashMap<>(capacity);
 	}
 
 	/**
