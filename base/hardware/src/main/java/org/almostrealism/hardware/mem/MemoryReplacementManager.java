@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
@@ -175,6 +176,8 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	private final List<Submittable> prepare;
 	/** Copies that move results from temporary replacements back to original memory after kernel execution. */
 	private final List<Submittable> postprocess;
+	/** Temporary buffers created by {@link #processArguments(Object[])}, freed by {@link #releaseTemporaries()}. */
+	private final List<MemoryData> temporaries;
 
 	/**
 	 * Creates a replacement manager with a default aggregation threshold of 1M elements.
@@ -208,6 +211,7 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 
 		this.prepare = new ArrayList<>();
 		this.postprocess = new ArrayList<>();
+		this.temporaries = new ArrayList<>();
 	}
 
 	/** Returns the pre-execution copies that move data into temporary replacements. */
@@ -224,10 +228,42 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	}
 
 	/**
+	 * Frees the temporary buffers this manager created, exactly once.
+	 *
+	 * <p>A manager serves a single invocation, and its temporaries are read only by that
+	 * invocation's prepare copies, kernel and postprocess copies; results are taken from the
+	 * original arguments, never from a temporary. Once that chain has completed nothing can
+	 * use them again, so they are released here rather than left for the garbage collector:
+	 * a temporary's Java handle is small, so collection gives no signal of the device memory
+	 * it holds, and an operation dispatched repeatedly would otherwise exhaust that memory
+	 * long before the collector runs.</p>
+	 *
+	 * <p>Every temporary is destroyed even if destroying an earlier one fails: the first such
+	 * failure is rethrown once all have been attempted, with any later ones attached to it as
+	 * suppressed.</p>
+	 *
+	 * <p>Call only once the invocation's full completion chain has fired.</p>
+	 */
+	public void releaseTemporaries() {
+		List<MemoryData> released;
+
+		synchronized (temporaries) {
+			released = new ArrayList<>(temporaries);
+			temporaries.clear();
+		}
+
+		Destroyable.releaseAll(released.stream().map(tmp -> (Runnable) tmp::destroy).toList());
+	}
+
+	/**
 	 * Processes an argument array, replacing memory blocks not in the target provider with temporary copies.
 	 *
 	 * <p>Groups arguments by their root delegate, then creates temporary buffers and
 	 * registers pre/post-processing copy operations for each group.</p>
+	 *
+	 * <p>If creating a temporary fails, the temporaries already created are freed and the
+	 * copies registered so far are discarded before the failure propagates, leaving the
+	 * manager with nothing to run and nothing to release.</p>
 	 *
 	 * @param args Kernel arguments to process
 	 * @return New argument array with out-of-provider arguments replaced by temporary copies
@@ -270,14 +306,30 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			replacement.children.add(data);
 		}
 
-		for (Replacement replacement : replacements.values()) {
-			replacement.processChildren(tempFactory, (child, temp) -> {
-				for (int i = 0; i < args.length; i++) {
-					if (child == args[i]) {
-						result[i] = temp;
+		try {
+			for (Replacement replacement : replacements.values()) {
+				replacement.processChildren(tempFactory, (child, temp) -> {
+					for (int i = 0; i < args.length; i++) {
+						if (child == args[i]) {
+							result[i] = temp;
+						}
 					}
-				}
-			});
+				});
+			}
+		} catch (RuntimeException | Error e) {
+			// No completion chain will ever release what was created before the failure (most
+			// often a memory-limit failure, which retaining those buffers would only prolong),
+			// and the copies registered against them must not run.
+			prepare.clear();
+			postprocess.clear();
+
+			try {
+				releaseTemporaries();
+			} catch (RuntimeException | Error releaseFailure) {
+				if (e != releaseFailure) e.addSuppressed(releaseFailure);
+			}
+
+			throw e;
 		}
 
 		return result;
@@ -312,6 +364,10 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 
 			MemoryData data = new Bytes(length, root, start);
 			MemoryData tmp = tempFactory.apply(length, length);
+
+			synchronized (temporaries) {
+				temporaries.add(tmp);
+			}
 
 			prepare.add(dependsOn -> context.copy(data, tmp, dependsOn));
 

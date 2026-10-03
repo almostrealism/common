@@ -244,13 +244,15 @@ here).
 The dangerous interaction is: a kernel has been dispatched and is reading a native block, and the GC
 concurrently decides the block's Java holder is unreachable and frees it — a use-after-free.
 `KernelMemoryGuard` closes this race for *bracketed dispatches*. Each backend operator
-(`NativeExecution`, `CLOperator`, `MetalOperator`, `CudaOperator`) calls
-`KernelMemoryGuard.acquireFor(data)` before dispatch and `releaseFor(reservation)` after completion —
+(`NativeExecution`, `CLOperator`, `MetalOperator`, `CudaOperator`) takes a reservation from the local
+`Hardware`'s guard (`getKernelMemoryGuard().acquire(data)`) before dispatch and gives it back with
+`reservation.release()` after completion —
 for `CudaOperator` the release runs in the completion callback `CudaStreamRunner.submit` invokes once
 the stream has drained (including its failure paths), so the reservation is never leaked. Acquisition ref-counts each argument's
 native address and holds a strong reference to the resolved `RAM`, so the block cannot be collected
-while the kernel runs; `HardwareMemoryProvider` consults `canDeallocate(address)` and holds the free
-back while the count is non-zero. The reservation records *addresses*, not arguments, precisely
+while the kernel runs; `HardwareMemoryProvider` reads the address's `ReservationState` (the
+kernel-execution and scheduling-lease counts, observed together) and holds the free back while either
+is non-zero. The reservation records *addresses*, not arguments, precisely
 because an argument may be destroyed mid-flight and can then name no address at all. As a second,
 independent layer, the same operators call `Reference.reachabilityFence(data)`/`(args)` after
 dispatch to stop the JIT from treating the holders as dead before the native call returns.
@@ -259,20 +261,68 @@ The hold-back is **not indefinite.** `HardwareMemoryProvider.sweepDeferred()` ru
 deallocation-process thread (every `DEFERRED_SWEEP_INTERVAL_MS`, regardless of the
 `queueDeallocation` switch) and force-frees any deferred block whose wait has exceeded
 `deferredReleaseTimeoutMs` (`30_000` ms by default) **even if its guard count is still non-zero**,
-logging `warnIfActivelyReferenced` with the allocation trace. This is a backstop against a dispatch
-that died without calling `releaseFor` — a never-returned count would otherwise pin the block for the
+logging `warnIfReserved` with the allocation trace. This is a backstop against a dispatch
+that died without releasing its reservation — a never-returned count would otherwise pin the block for the
 life of the process. In normal operation a kernel finishes in milliseconds, so the timeout never
 fires; a run that logs it is reporting a leaked or stuck dispatch, not doing routine work. The triage
 consequence: if a dispatch genuinely hangs or leaks its reservation past 30 s, the guard will free
 its memory out from under it, so a use-after-free is **not** ruled out merely by confirming the
 dispatch was bracketed — check whether the timeout fired.
 
+One count is exempt from the backstop: a **scheduling lease**
+(`KernelMemoryGuard.acquireScheduled`, consulted through `isScheduled`). A deferred dispatch
+(`CLOperator.accept`) or fallback copy (`AbstractComputeContext.copy`) that waits on a foreign
+completion before it runs holds a lease over its memory for the scheduling-to-execution window,
+which — unlike a kernel execution — may legitimately last longer than 30 s. `sweepDeferred()` keeps
+holding a leased block back past the timeout instead of force-freeing it, because the lease is given
+back deterministically, not left to a timer. The backstop still force-expires a leaked
+kernel-execution guard exactly as before.
+
+The two deferred operations end that window differently, and the lease is released at whichever
+point ends it — never retained across the execution it precedes:
+
+- The deferred **dispatch** hands off to an execution guard. On the success path `CLOperator.accept`
+  releases the lease as soon as `dispatch()` has returned, by which point `dispatch()` has taken its
+  own execution reservation (subject to the backstop like any non-deferred dispatch); holding the
+  non-expiring lease through the kernel run would instead exempt a possibly-unbounded run from the
+  backstop. Only the dependency-failure path, where the work never runs and so no execution guard is
+  ever taken, releases the lease on settlement through `Semaphore.whenSettled`.
+- The fallback **copy** has no separate execution reservation — it reads and writes the memory itself
+  — so `AbstractComputeContext.copy` holds its lease for the whole window and releases it on
+  settlement (both the success and failure paths of `Semaphore.whenSettled`).
+
+A lease keeps the *memory* alive, but destroying a `MemoryData` still clears that object's
+reference to it (`MemoryDataAdapter.destroy()` nulls its `mem`). Deferred work therefore never
+dereferences its arguments directly: it reaches each one through a reference the lease itself
+hands out, bound to the memory the lease reserved when it was acquired — never a second read of
+the argument, which a destroy in between could already have cleared.
+
+- `Reservation.deferredReference(data)` (for a raw operator argument array,
+  `Reservation.deferredArguments(args)`) yields the object itself while it is still backed — so a
+  migration in the meantime is observed, and argument preparation moves the object rather than a
+  copy of it — and, once it has been destroyed, a `MemoryData.detachedView(Memory)` bound to the
+  leased allocation.
+- `Reservation.detachedReference(data)` always yields such a view, for work that does not need the
+  object itself (the fallback copy). Nothing it yields can lose its memory between being resolved
+  and being used.
+
+Either reference reads the argument's memory once. If the argument has moved to memory the lease
+does not cover, the lease is extended to that memory first and the memory is confirmed not to have
+been released, so everything the deferred work can reach stays reserved until the lease is given
+back.
+
+Every count — execution guard or lease — is keyed by the allocation's **container pointer**
+(`RAM.getContainerPointer()`), because that is the address a provider tracks an allocation by
+(`NativeRef.getAddress()`) and asks about when releasing it. For most backends the container and
+content pointers coincide; for Metal they do not (the `MTLBuffer` object versus the bytes it holds),
+and keying by content pointer would leave Metal memory unprotected.
+
 `KernelMemoryGuard` does **not**:
 
 - **Protect an argument it cannot resolve to a `RAM`.** `acquire` warns and skips such an argument;
   a kernel using it is unguarded, because every downstream check is keyed by the address resolution
   would have produced.
-- **Turn `canDeallocate` into a hard barrier on every path.** `warnIfActivelyReferenced(...)` is
+- **Turn `canDeallocate` into a hard barrier on every path.** `warnIfReserved(...)` is
   diagnostic only — it never throws or blocks; a caller that frees anyway is not stopped.
 - **Guard a dispatch that was never bracketed.** It is defense-in-depth around the standard
   operators, not a global invariant on all native memory.
@@ -440,7 +490,7 @@ For a native crash whose Java stack ends in `GeneratedOperationN.apply` / `Nativ
    `KernelMemoryGuard`, whether any argument failed to resolve to a `RAM` (an unguarded argument is an
    exposed surface), and whether the deferred-release timeout fired — a dispatch that held its
    reservation past `deferredReleaseTimeoutMs` (30 s) is force-freed even while bracketed, so bracketing
-   alone does not clear it. The guard's warning (`warnIfActivelyReferenced`) with allocation traces
+   alone does not clear it. The guard's warning (`warnIfReserved`) with allocation traces
    (`AR_HARDWARE_ALLOCATION_TRACE_FRAMES`) points at where the freed block was allocated.
 5. **Then inspect the arguments at the boundary (§5).** `NativeInstructionSet`'s pre-dispatch
    pointer checks will already have named a zero argument if one was present; a crash that got past
