@@ -40,8 +40,11 @@ import java.util.function.IntFunction;
  *
  * <p>In {@link PatternFeatures#render}, each {@code RenderedNoteAudio} is processed by setting
  * the start frame in {@link #getOffsetArg()}, then calling {@link #getProducer(int)} with the
- * desired frame count. The resulting audio is cached by note offset for reuse across buffer
- * ticks, and the overlap region is summed to the destination buffer.</p>
+ * desired frame count. The resulting audio is cached in a {@link NoteAudioCache} keyed by the
+ * composite of the note offset and this note's {@link #getCacheIdentity() cacheIdentity} for
+ * reuse across buffer ticks; the identity is what keeps coincident notes (chords, layered
+ * voices, stereo channels) at the same offset from sharing a cache entry. The overlap region
+ * is then summed to the destination buffer.</p>
  *
  * <h2>Signature Independence</h2>
  *
@@ -75,6 +78,15 @@ public class RenderedNoteAudio {
 	 * falls back to per-note rendering).
 	 */
 	private BatchedNoteInputs batchedInputs;
+
+	/**
+	 * Stable identity distinguishing this note from other notes that begin at the
+	 * same {@link #offset}. Used by {@link NoteAudioCache} so coincident notes
+	 * (chords, layered voices) do not share a cache entry. Must be equal across
+	 * buffer ticks for the same note and distinct between coincident notes; may be
+	 * {@code null}, in which case the offset alone identifies the cache entry.
+	 */
+	private Object cacheIdentity;
 
 	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
@@ -189,5 +201,25 @@ public class RenderedNoteAudio {
 	 */
 	public void setBatchedInputs(BatchedNoteInputs batchedInputs) {
 		this.batchedInputs = batchedInputs;
+	}
+
+	/**
+	 * Returns the stable per-note identity used to key this note in a
+	 * {@link NoteAudioCache}, or {@code null} if none was set.
+	 *
+	 * @return the cache identity, or {@code null}
+	 */
+	public Object getCacheIdentity() {
+		return cacheIdentity;
+	}
+
+	/**
+	 * Sets the stable per-note identity used to distinguish coincident notes in a
+	 * {@link NoteAudioCache}.
+	 *
+	 * @param cacheIdentity the cache identity, or {@code null}
+	 */
+	public void setCacheIdentity(Object cacheIdentity) {
+		this.cacheIdentity = cacheIdentity;
 	}
 }

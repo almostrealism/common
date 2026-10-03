@@ -198,16 +198,24 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	}
 
 	/**
-	 * Returns the smallest bucket N {@code >=} the given note count, or the
-	 * largest bucket when the count exceeds {@link #BUCKETS}.
+	 * Returns the smallest bucket N {@code >=} the given note count. A dispatch
+	 * sizes its per-note rows by this bucket, so a count larger than
+	 * {@link #maxBucket()} cannot be dispatched at once and is rejected; callers
+	 * split such batches into chunks of at most {@link #maxBucket()} notes.
 	 *
-	 * @param n raw note count for the current tick
+	 * @param n raw note count for the current dispatch
 	 * @return the chosen bucket N
+	 * @throws IllegalArgumentException if {@code n} exceeds {@link #maxBucket()}
 	 */
 	public static int bucketFor(int n) {
 		for (int b : BUCKETS) {
 			if (b >= n) return b;
 		}
+		throw new IllegalArgumentException("Note count exceeds the largest batch bucket");
+	}
+
+	/** Returns the largest note count a single batched dispatch can hold. */
+	public static int maxBucket() {
 		return BUCKETS[BUCKETS.length - 1];
 	}
 
@@ -217,7 +225,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * the construction parameters beyond the shape — sample rate and filter order — are
 	 * part of the cache key so differently-configured dispatch sites never share.
 	 *
-	 * @param bucket       the bucket-N (one of {@link #BUCKETS}, or larger if oversized)
+	 * @param bucket       the bucket-N (one of {@link #BUCKETS})
 	 * @param sourceLength per-note source buffer length (already source-bucketed)
 	 * @param targetLength per-note row length (the render window width)
 	 * @return the renderer compiled for that shape
@@ -336,7 +344,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 		if (!batchNow.isEmpty()) {
 			dispatchBatched(batchNow, startFrame, frameCount, destination);
-			batchedDispatchCount.incrementAndGet();
 		}
 		if (!perNote.isEmpty()) {
 			fallbackCount.incrementAndGet();
@@ -376,8 +383,11 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 				}
 				sub.add(note);
 			}
-			if (!sub.isEmpty()) {
-				dispatchWindow(sub, subStart, subWidth, destination, ws);
+			// Each dispatch holds at most maxBucket() notes; a denser sub-window is
+			// split into chunks whose outputs accumulate into the same slice.
+			for (int from = 0; from < sub.size(); from += maxBucket()) {
+				int to = Math.min(sub.size(), from + maxBucket());
+				dispatchWindow(sub.subList(from, to), subStart, subWidth, destination, ws);
 			}
 		}
 	}
@@ -388,6 +398,12 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * fused melodic-SSS kernel sized to this window, and accumulates the placed,
 	 * summed output into {@code destination} starting at {@code destBaseOffset}.
 	 *
+	 * <p>Each invocation runs exactly one fused kernel and is therefore one
+	 * batched dispatch, so {@link #batchedDispatchCount} is incremented here.
+	 * A single {@link #dispatchBatched} call can drive several invocations — one
+	 * per sub-window, and one per chunk when a sub-window exceeds
+	 * {@link #maxBucket()} notes — and each is counted independently.</p>
+	 *
 	 * @param notes         the notes overlapping this sub-window (size {@code >= 1})
 	 * @param windowStart   the sub-window's absolute start frame
 	 * @param windowWidth   the sub-window's frame count (per-note row length)
@@ -396,6 +412,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 */
 	private void dispatchWindow(List<RenderedNoteAudio> notes, int windowStart,
 								int windowWidth, PackedCollection destination, int destBaseOffset) {
+		batchedDispatchCount.incrementAndGet();
+
 		// A channel is homogeneous (all melodic OR all percussion), so the first note's
 		// kind classifies the whole window; percussion takes the strict-subset path.
 		if (!notes.get(0).getBatchedInputs().isMelodic()) {

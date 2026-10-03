@@ -108,9 +108,21 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 	 * @return the configured audio context
 	 */
 	private NoteAudioContext audioContext(PatternNote note) {
+		return audioContext(ChannelInfo.StereoChannel.LEFT, note);
+	}
+
+	/**
+	 * Builds a {@link NoteAudioContext} for MAIN voicing on the given stereo channel
+	 * selecting the given note.
+	 *
+	 * @param channel the stereo channel to render
+	 * @param note    the note audio to select
+	 * @return the configured audio context
+	 */
+	private NoteAudioContext audioContext(ChannelInfo.StereoChannel channel, PatternNote note) {
 		return new NoteAudioContext(
 				ChannelInfo.Voicing.MAIN,
-				ChannelInfo.StereoChannel.LEFT,
+				channel,
 				d -> note,
 				pos -> pos + 1.0);
 	}
@@ -136,6 +148,95 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			Assert.assertEquals("Chord should produce one destination per scale position",
 					3, destinations.size());
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * Coincident chord tones share a frame offset but must carry distinct cache
+	 * identities, so the note-audio cache does not conflate them during buffered
+	 * per-note rendering.
+	 */
+	@Test(timeout = 120000)
+	public void coincidentChordTonesHaveDistinctCacheIdentities() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+
+			List<RenderedNoteAudio> destinations = element.getNoteDestinations(
+					true, 0.0, context(scale), audioContext(element.getNote(ChannelInfo.Voicing.MAIN)));
+
+			Assert.assertEquals(3, destinations.size());
+
+			int offset = destinations.get(0).getOffset();
+			for (RenderedNoteAudio note : destinations) {
+				Assert.assertEquals("chord tones are coincident", offset, note.getOffset());
+				Assert.assertNotNull("each chord tone carries a cache identity", note.getCacheIdentity());
+			}
+
+			Assert.assertNotEquals(destinations.get(0).getCacheIdentity(),
+					destinations.get(1).getCacheIdentity());
+			Assert.assertNotEquals(destinations.get(0).getCacheIdentity(),
+					destinations.get(2).getCacheIdentity());
+			Assert.assertNotEquals(destinations.get(1).getCacheIdentity(),
+					destinations.get(2).getCacheIdentity());
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * The LEFT and RIGHT renders of one note read different channels of the source
+	 * audio, and a single {@link NoteAudioCache} serves both channels of a layer, so
+	 * their cache identities must differ even though {@link ElementVoicingDetails}
+	 * equality ignores the stereo channel. Rendering the same channel twice must
+	 * still produce equal identities so a note spanning buffers hits its own entry.
+	 */
+	@Test(timeout = 120000)
+	public void stereoChannelsHaveDistinctCacheIdentities() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0), 1);
+			PatternNote note = element.getNote(ChannelInfo.Voicing.MAIN);
+
+			RenderedNoteAudio left = element.getNoteDestinations(true, 0.0, context(scale),
+					audioContext(ChannelInfo.StereoChannel.LEFT, note)).get(0);
+			RenderedNoteAudio leftAgain = element.getNoteDestinations(true, 0.0, context(scale),
+					audioContext(ChannelInfo.StereoChannel.LEFT, note)).get(0);
+			RenderedNoteAudio right = element.getNoteDestinations(true, 0.0, context(scale),
+					audioContext(ChannelInfo.StereoChannel.RIGHT, note)).get(0);
+
+			Assert.assertEquals("both channels start at the same frame",
+					left.getOffset(), right.getOffset());
+			Assert.assertEquals("the same note on the same channel keeps its identity",
+					left.getCacheIdentity(), leftAgain.getCacheIdentity());
+			Assert.assertNotEquals("LEFT and RIGHT renders must not share a cache entry",
+					left.getCacheIdentity(), right.getCacheIdentity());
+
+			NoteAudioCache cache = new NoteAudioCache();
+			try {
+				PackedCollection leftAudio = new PackedCollection(4);
+				PackedCollection rightAudio = new PackedCollection(4);
+				cache.put(left.getOffset(), left.getCacheIdentity(), leftAudio);
+				cache.put(right.getOffset(), right.getCacheIdentity(), rightAudio);
+
+				Assert.assertEquals(2, cache.size());
+				Assert.assertSame(leftAudio, cache.get(leftAgain.getOffset(), leftAgain.getCacheIdentity()));
+				Assert.assertSame(rightAudio, cache.get(right.getOffset(), right.getCacheIdentity()));
+			} finally {
+				cache.clear();
+			}
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}
