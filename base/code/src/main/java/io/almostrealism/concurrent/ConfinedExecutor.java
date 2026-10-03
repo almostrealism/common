@@ -23,7 +23,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Confines a set of work to one thread: every task runs on the same thread, one at a time,
@@ -76,12 +78,35 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * @throws IllegalStateException if this executor has been destroyed
 	 */
 	public void run(Runnable task) {
+		call(() -> {
+			task.run();
+			return null;
+		});
+	}
+
+	/**
+	 * Runs a task that produces a result on the confined thread, waits for it to finish, and
+	 * returns its result.
+	 *
+	 * <p>Failures and interrupts are handled exactly as {@link #run(Runnable)} handles them; an
+	 * abandoned wait returns {@code null}.</p>
+	 *
+	 * @param task the work to run
+	 * @param <T>  the type of the result
+	 * @return the result of the task
+	 * @throws IllegalStateException if this executor has been destroyed
+	 */
+	public <T> T call(Supplier<T> task) {
 		ExecutorService current = executor;
 		if (current == null) {
 			throw new IllegalStateException("The executor has been destroyed");
 		}
 
-		await(current.submit(() -> taskScope.accept(task)));
+		return await(current.submit(() -> {
+			AtomicReference<T> result = new AtomicReference<>();
+			taskScope.accept(() -> result.set(task.get()));
+			return result.get();
+		}));
 	}
 
 	/**
@@ -126,13 +151,16 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * Waits for a submitted task, rethrowing its failure.
 	 *
 	 * @param future the submitted task
+	 * @param <T>    the type of the task's result
+	 * @return the task's result, or {@code null} if the wait was interrupted
 	 */
-	private void await(Future<?> future) {
+	private <T> T await(Future<T> future) {
 		try {
-			future.get();
+			return future.get();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			warn("Interrupted while awaiting a confined task; the work it performs may not have completed");
+			return null;
 		} catch (ExecutionException e) {
 			Throwable cause = e.getCause();
 			if (cause instanceof RuntimeException) throw (RuntimeException) cause;

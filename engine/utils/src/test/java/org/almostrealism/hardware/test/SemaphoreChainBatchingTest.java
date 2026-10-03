@@ -168,6 +168,45 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: a dispatch bridged on a composite of the runner's own dispatches must complete
+	 * when the host waits for it, without stalling until the GPU watchdog kills its buffer.
+	 *
+	 * <p>{@link Semaphore#all(List)} is not a {@link org.almostrealism.hardware.metal.MetalSemaphore},
+	 * so the runner bridges it through a host-signaled event, and the signal is sent once a
+	 * callback thread has waited for each member. Each member wait needs the runner. When the
+	 * host wait for the bridged dispatch blocked the runner's single thread until that dispatch's
+	 * buffer completed, the member waits queued behind it, the bridge was never signaled, and the
+	 * buffer stalled until the watchdog killed it ({@code kIOGPUCommandBufferCallbackErrorTimeout}),
+	 * after which the driver ignored every later submission.</p>
+	 */
+	@Test(timeout = 60000)
+	public void bridgedCompositeOfOwnDispatchesCompletes() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		long errors = runner.getErrorCompletionCount();
+		long lateSignals = runner.getLateBridgeSignalCount();
+
+		Semaphore first = runner.submit(null, buffer -> { }, null, null);
+		Semaphore second = runner.submit(null, buffer -> { }, null, null);
+		Semaphore both = Semaphore.all(List.of(first, second));
+
+		AtomicBoolean ran = new AtomicBoolean();
+		Semaphore dependent = runner.submit(null, buffer -> { }, both, () -> ran.set(true));
+		dependent.waitFor();
+
+		assertTrue("The bridged dispatch's buffer must complete", ran.get());
+		assertEquals("No command buffer may finish with an error",
+				(double) errors, (double) runner.getErrorCompletionCount());
+		assertEquals("The bridge must be signaled before its buffer completes",
+				(double) lateSignals, (double) runner.getLateBridgeSignalCount());
+	}
+
+	/**
 	 * Verifies commit-cause attribution: a host wait that forces a commit increments
 	 * {@link MetalCommandRunner#getHostCompleteCommitCount()} and records the requesting
 	 * operation in {@link MetalCommandRunner#hostCompleteRequesters}, while a repeated wait
