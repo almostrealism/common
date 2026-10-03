@@ -17,7 +17,9 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
+import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
@@ -133,5 +135,113 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(10.0, permuted.toDouble(1));
 		assertEquals(40.0, permuted.toDouble(2));
 		assertEquals(20.0, permuted.toDouble(3));
+	}
+
+	/**
+	 * A provider over a collection whose shape carries an explicit
+	 * {@link ExplicitIndexTraversalOrdering} is refused by
+	 * {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} when the
+	 * destination does not carry the same ordering, rather than flat-copying the backing memory
+	 * and silently dropping the ordering.
+	 *
+	 * <p>The ordering makes the shape irregular while leaving its dimensions, dimension order, rates
+	 * and axis equal to a plain destination of the same size, so
+	 * {@link io.almostrealism.collect.TraversalPolicy#equals(Object)} — which does not compare the
+	 * traversal ordering — reports the two policies equal. A compatibility check that trusted that
+	 * equality would let the flat copy proceed and write backing-memory order; the ordering must be
+	 * compared as well.</p>
+	 */
+	@Test(timeout = 10000)
+	public void orderedSourceIntoPlainDestinationIsRefused() {
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destination = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+
+			assertFalse("the ordered shape should be irregular", ordered.getShape().isRegular());
+			assertTrue("the destination should be regular", destination.getShape().isRegular());
+			assertTrue("equals should ignore the ordering, reporting the policies equal",
+					ordered.getShape().equals(destination.getShape()));
+
+			try {
+				cp(ordered).get().into(destination).evaluate();
+				throw new AssertionError("an ordered source was copied into a plain destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
+		}
+	}
+
+	/**
+	 * A provider over a collection whose outer {@link io.almostrealism.collect.TraversalPolicy} is
+	 * regular, but which inherits a {@link ExplicitIndexTraversalOrdering} from its delegate, is
+	 * refused by
+	 * {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} just as an
+	 * explicitly ordered shape is, rather than flat-copying the backing memory and silently dropping
+	 * the ordering.
+	 *
+	 * <p>Here {@link org.almostrealism.collect.PackedCollection#getShape()} reports a regular shape —
+	 * so {@link io.almostrealism.collect.TraversalPolicy#isRegular()} is {@code true} and the shape
+	 * alone would admit the flat copy — while
+	 * {@link org.almostrealism.hardware.MemoryData#getMemOrdering()} composes the delegate's ordering,
+	 * so logical reads still apply it. The guard must inspect the memory ordering, not only the
+	 * shape.</p>
+	 */
+	@Test(timeout = 10000)
+	public void inheritedOrderingIntoPlainDestinationIsRefused() {
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destination = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection view = new PackedCollection(shape(4), 0, ordered, 0);
+
+			assertTrue("the view's outer shape should be regular", view.getShape().isRegular());
+			assertNotNull("the view should inherit the delegate's memory ordering", view.getMemOrdering());
+			assertTrue("the destination should be regular", destination.getShape().isRegular());
+
+			try {
+				cp(view).get().into(destination).evaluate();
+				throw new AssertionError("a view inheriting a delegate ordering was copied into a plain destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
+		}
+	}
+
+	/**
+	 * When the source and destination carry the identical mapping, the flat copy is accepted, and it
+	 * transfers one element per input position rather than per logical output position.
+	 *
+	 * <p>A rated shape such as {@code new TraversalPolicy(3).repeat(0, 4)} reports a total size of 12
+	 * logical elements while its backing memory holds only 3 — its
+	 * {@link TraversalPolicy#getTotalInputSize() total input size}, which is what
+	 * {@link PackedCollection#getMemLength()} allocates. Because the destination shares the mapping, the
+	 * copy is permitted; sizing it by the logical total size would read and write 12 elements through
+	 * 3-element allocations, overrunning them. The copy must be sized by the input size, so this asserts
+	 * the three backing values arrive intact.</p>
+	 */
+	@Test(timeout = 10000)
+	public void sharedRatedMappingCopiesInputElements() {
+		TraversalPolicy rated = new TraversalPolicy(3).repeat(0, 4);
+
+		try (PackedCollection root = pack(2.0, 3.0, 1.0);
+				PackedCollection destination = new PackedCollection(rated)) {
+			PackedCollection source = new PackedCollection(rated, rated.getTraversalAxis(), root, 0);
+
+			assertFalse("the rated shape should be irregular", source.getShape().isRegular());
+			assertEquals("the rated shape reports 12 logical elements", 12, source.getShape().getTotalSize());
+			assertEquals("the rated shape backs only 3 input elements", 3, source.getMemLength());
+			assertTrue("equals should report the identical mappings equal",
+					source.getShape().equals(destination.getShape()));
+
+			new CollectionProvider<>(source).into(destination).evaluate();
+
+			double[] copied = destination.toArray(0, 3);
+			assertEquals(2.0, copied[0]);
+			assertEquals(3.0, copied[1]);
+			assertEquals(1.0, copied[2]);
+		}
 	}
 }

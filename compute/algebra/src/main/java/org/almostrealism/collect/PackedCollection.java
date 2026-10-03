@@ -212,6 +212,15 @@ public class PackedCollection extends MemoryDataAdapter
 	/** How many calls a report names when asked where it came from. */
 	private static final int ORIGIN_FRAMES = 12;
 
+	/**
+	 * The largest ratio of covering backing-memory span to requested element count for which
+	 * {@link #doubleStream(int, int)} still reads an irregular shape with a single bulk transfer.
+	 * Beyond this ratio the span is so much wider than the window that one bulk read would allocate
+	 * and transfer far more than requested (for a sparse permutation it can approach the whole
+	 * backing buffer), so the stream falls back to element-by-element reads instead.
+	 */
+	private static final int BULK_STREAM_SPAN_LIMIT = 4;
+
 	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
 
@@ -442,7 +451,16 @@ public class PackedCollection extends MemoryDataAdapter
 
 	/**
 	 * Returns a {@link DoubleStream} over a range of elements in this collection.
-	 * Uses a direct array read for regular (non-reordered) shapes for efficiency.
+	 * Elements are streamed in the logical order of this collection's shape. A regular shape is a
+	 * single direct read. An irregular shape (permuted, or otherwise mapped through its
+	 * {@link TraversalPolicy}) is read with a single transfer of the span of backing memory the
+	 * requested elements occupy, with each element then picked out of that span on the host &mdash;
+	 * unless that span is more than {@link #BULK_STREAM_SPAN_LIMIT} times wider than the requested
+	 * range (as it can be for a short logical range over a sparse permutation, where the mapped
+	 * endpoints may lie near opposite ends of the backing buffer), in which case the bulk read would
+	 * allocate and transfer far more than requested and the stream falls back to element-by-element
+	 * reads. A collection whose memory carries a {@link TraversalOrdering} is always read element by
+	 * element.
 	 *
 	 * @param offset the starting element index
 	 * @param length the number of elements to stream
@@ -450,11 +468,27 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getMemOrdering() == null && getShape().isRegular()) {
+		if (getMemOrdering() != null) {
+			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
+		} else if (getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
-		} else {
+		} else if (length == 0) {
+			return DoubleStream.empty();
+		}
+
+		int[] source = IntStream.range(offset, offset + length).map(getShape()::inputIndex).toArray();
+		// A negative input index lies outside the backing memory and reads as 0.0, as toDouble does
+		int start = IntStream.of(source).filter(i -> i >= 0).min().orElse(0);
+		int end = IntStream.of(source).max().orElse(-1) + 1;
+		long span = (long) end - start;
+		if (span > (long) BULK_STREAM_SPAN_LIMIT * length) {
+			// The covering span is far wider than the window; reading it in bulk would allocate and
+			// transfer far more than requested, so read each requested element directly instead.
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
 		}
+
+		double[] window = span > 0 ? toArray(start, (int) span) : new double[0];
+		return IntStream.of(source).mapToDouble(i -> i < 0 ? 0.0 : window[i - start]);
 	}
 
 	/**
