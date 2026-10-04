@@ -225,7 +225,10 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 *                                  below one that the largest inverse frequency,
 	 *                                  {@code theta^(-(dimHead - 2) / dimHead)}, would overflow
 	 *                                  single precision to infinity (and the rotation angles to
-	 *                                  {@code NaN})
+	 *                                  {@code NaN}), or so far above one that the smallest inverse
+	 *                                  frequency, the same power, would fall below the smallest
+	 *                                  normal single-precision value (and be flushed to zero,
+	 *                                  leaving that part of the head unrotated)
 	 */
 	default CollectionProducer computeInvFreq(int dimHead, double theta) {
 		if (dimHead <= 0 || dimHead % 2 != 0) {
@@ -237,10 +240,15 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 			throw new IllegalArgumentException("RoPE base must be finite and positive, not " + theta);
 		}
 
-		double maxExponent = -2.0 * (dimHead / 2 - 1) * Math.log(theta) / dimHead;
-		if (maxExponent > Math.log(-Precision.FP32.minValue())) {
+		double extremeExponent = -2.0 * (dimHead / 2 - 1) * Math.log(theta) / dimHead;
+		if (extremeExponent > Math.log(-Precision.FP32.minValue())) {
 			throw new IllegalArgumentException("RoPE base " + theta + " gives inverse frequencies up to e^" +
-					maxExponent + ", which overflow single precision for head dimension " + dimHead);
+					extremeExponent + ", which overflow single precision for head dimension " + dimHead);
+		}
+
+		if (extremeExponent < Math.log(Float.MIN_NORMAL)) {
+			throw new IllegalArgumentException("RoPE base " + theta + " gives inverse frequencies down to e^" +
+					extremeExponent + ", which underflow single precision for head dimension " + dimHead);
 		}
 
 		return exp(integers(0, dimHead / 2).multiply(-2.0 * Math.log(theta) / dimHead));

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.Dataset;
@@ -23,6 +24,7 @@ import org.almostrealism.optimize.ValueTarget;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -65,9 +67,13 @@ import java.util.stream.IntStream;
  * is reached, which suits consumers that use each window as it is iterated, such as
  * {@link org.almostrealism.optimize.ModelOptimizer}.</p>
  *
+ * <p>The dataset owns every collection it allocates, including the windows it yields, and releases
+ * them all when {@link #destroy() destroyed}. A window must not be used after its dataset has been
+ * destroyed; a later pass allocates fresh collections.</p>
+ *
  * @see org.almostrealism.optimize.ModelOptimizer
  */
-public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures {
+public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable, CodeFeatures {
 	/** The full source token sequence. */
 	private final int[] tokens;
 
@@ -393,6 +399,31 @@ public class NextTokenDataset implements Dataset<PackedCollection>, CodeFeatures
 
 		slotWindows[position] = index;
 		return slot;
+	}
+
+	/**
+	 * Releases every collection this dataset has allocated: the region's tokens, the input and
+	 * output of the one-hot assignment, and the input and target of every window yielded so far.
+	 * Calling this more than once has no further effect, and a pass started afterwards allocates
+	 * and builds its windows again.
+	 */
+	@Override
+	public void destroy() {
+		if (slots != null) {
+			for (ValueTarget<PackedCollection> slot : slots) {
+				if (slot != null) {
+					Destroyable.destroy(List.of(slot.getInput(), slot.getExpectedOutput()));
+				}
+			}
+		}
+
+		Destroyable.destroy(Arrays.asList(shifted, oneHot, regionTokens));
+		slots = null;
+		slotWindows = null;
+		oneHotTarget = null;
+		shifted = null;
+		oneHot = null;
+		regionTokens = null;
 	}
 
 	/**

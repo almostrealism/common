@@ -344,6 +344,45 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link NextTokenDataset#destroy()} releases the input and target of every window yielded
+	 * so far, is safe to call again and on a dataset that never built a window, and a pass started
+	 * after it builds fresh, correct windows.
+	 */
+	@Test(timeout = 60000)
+	public void destroyReleasesWindows() {
+		int seqLen = 4;
+		NextTokenDataset unused = new NextTokenDataset(positions(20), VOCAB, seqLen, seqLen, 0);
+		unused.destroy();
+		unused.destroy();
+
+		NextTokenDataset data = new NextTokenDataset(positions(20), VOCAB, seqLen, seqLen, 0);
+		List<ValueTarget<PackedCollection>> first = new ArrayList<>();
+		data.forEach(first::add);
+		Assert.assertEquals(data.getWindowCount(), first.size());
+		Assert.assertTrue(data.getWindowCount() > 1);
+
+		data.destroy();
+		for (ValueTarget<PackedCollection> window : first) {
+			Assert.assertTrue(window.getInput().isDestroyed());
+			Assert.assertTrue(window.getExpectedOutput().isDestroyed());
+		}
+
+		data.destroy();
+
+		int w = 0;
+		for (ValueTarget<PackedCollection> window : data) {
+			Assert.assertFalse(window.getInput().isDestroyed());
+			int s = data.getWindowStart(w++);
+			Assert.assertEquals(s, (int) window.getInput().toDouble(0));
+			Assert.assertEquals(s + 1, hotIndex(window.getExpectedOutput(), 0));
+			Assert.assertEquals(s + seqLen, hotIndex(window.getExpectedOutput(), seqLen - 1));
+		}
+
+		Assert.assertEquals(data.getWindowCount(), w);
+		data.destroy();
+	}
+
+	/**
 	 * Returns the sequence {@code 0, 1, ..., length - 1}.
 	 *
 	 * @param length the sequence length

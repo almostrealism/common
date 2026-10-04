@@ -418,6 +418,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			Destroyable.destroy(compiled);
 			lm.getWeights().destroy();
 			learningRate.destroy();
+			trainWindows.destroy();
+			heldOut.destroy();
 		}
 	}
 

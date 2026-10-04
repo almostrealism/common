@@ -569,6 +569,46 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 	}
 
 	/**
+	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a base so large that the
+	 * smallest inverse frequency would fall below the smallest normal single-precision value
+	 * (and be flushed to zero, leaving part of each head unrotated), both directly and through
+	 * {@link RotationFeatures#computeRopeFreqs}, while a large base whose frequencies remain
+	 * normal is accepted, and a head dimension of two, whose only frequency is one, accepts any
+	 * finite base.
+	 */
+	@Test(timeout = 30000)
+	public void computeInvFreqRejectsUnderflowingBase() {
+		double[] underflowing = { Double.MAX_VALUE, 1e100, 1e50 };
+
+		for (double theta : underflowing) {
+			try {
+				computeInvFreq(64, theta);
+				Assert.fail("Expected IllegalArgumentException for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+				assertTrue(expected.getMessage().contains("underflow"));
+			}
+
+			try {
+				RotationFeatures.computeRopeFreqs(theta, 64, 4);
+				Assert.fail("Expected IllegalArgumentException from computeRopeFreqs for theta=" + theta);
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(theta)));
+			}
+		}
+
+		PackedCollection large = computeInvFreq(64, 1e30).evaluate();
+		assertEquals(32, large.getShape().getTotalSize());
+		double smallest = Math.pow(1e30, -62.0 / 64);
+		assertTrue(large.toDouble(31) > 0.0);
+		assertEquals(1.0, large.toDouble(31) / smallest, 1e-3);
+
+		PackedCollection single = computeInvFreq(2, Double.MAX_VALUE).evaluate();
+		assertEquals(1, single.getShape().getTotalSize());
+		assertEquals(1.0, single.toDouble(0), 0.0);
+	}
+
+	/**
 	 * Verify that {@link RotationFeatures#computeInvFreq} rejects a head dimension that is not
 	 * positive and even — zero would divide by zero, and an odd dimension would leave the last
 	 * dimension of each head unrotated — both directly and through
