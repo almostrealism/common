@@ -195,6 +195,11 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	/**
 	 * Build a {@code skytnt_block} with the given head configuration and synthetic weights.
 	 *
+	 * <p>Since {@code skytnt_block.pdsl} now imports {@code /pdsl/attention.pdsl} and calls its
+	 * decomposed {@code attention} layer, the block also needs the {@code head_size} it passes to
+	 * that layer and the {@code key_cache}/{@code value_cache} of the imported
+	 * {@code attention_cache} state, allocated here.</p>
+	 *
 	 * @param heads    number of attention heads
 	 * @param headSize attention head dimension
 	 * @param ffnDim   FFN intermediate dimension
@@ -204,8 +209,14 @@ public class SkyTntPdslTest extends TestSuiteBase {
 		PdslLoader loader = new PdslLoader();
 		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
 
+		PackedCollection keyCache = new PackedCollection(new TraversalPolicy(SEQ_LEN, DIM));
+		PackedCollection valueCache = new PackedCollection(new TraversalPolicy(SEQ_LEN, DIM));
+		keyCache.clear();
+		valueCache.clear();
+
 		Map<String, Object> args = new HashMap<>();
 		args.put("heads", heads);
+		args.put("head_size", headSize);
 		args.put("rms_att_weight", new PackedCollection(new TraversalPolicy(DIM)));
 		args.put("wq", new PackedCollection(new TraversalPolicy(DIM, DIM)));
 		args.put("wk", new PackedCollection(new TraversalPolicy(DIM, DIM)));
@@ -213,6 +224,8 @@ public class SkyTntPdslTest extends TestSuiteBase {
 		args.put("wo", new PackedCollection(new TraversalPolicy(DIM, DIM)));
 		args.put("freq_cis", new PackedCollection(new TraversalPolicy(SEQ_LEN, headSize / 2, 2)));
 		args.put("position", new PackedCollection(1));
+		args.put("key_cache", keyCache);
+		args.put("value_cache", valueCache);
 		args.put("rms_ffn_weight", new PackedCollection(new TraversalPolicy(DIM)));
 		args.put("gate_proj", new PackedCollection(new TraversalPolicy(ffnDim, DIM)));
 		args.put("up_proj", new PackedCollection(new TraversalPolicy(ffnDim, DIM)));

@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
@@ -37,7 +38,10 @@ import org.almostrealism.io.TimingMetric;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for compiled hardware operators (kernels/native functions) that execute on accelerators.
@@ -381,6 +385,11 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 		MemoryData data[] = new MemoryData[argCount];
 
+		// The supported providers are fixed for this operator, so resolve them once rather
+		// than once per argument: getSupportedMemory() allocates a fresh filtered list on
+		// every call, and this method runs on every dispatch.
+		List<MemoryProvider<? extends Memory>> supported = getSupportedMemory();
+
 		for (int i = 0; i < argCount; i++) {
 			if (args[i] == null) {
 				throw new NullPointerException("argument " + i + " to function " + getName());
@@ -401,7 +410,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 								: " refers to memory that has already been released"));
 			}
 
-			reassignMemory(data[i]);
+			reassignMemory(data[i], supported);
 
 			if (!data[i].isWithinBounds()) {
 				throw new HardwareException("argument " + i + " to function " +
@@ -423,10 +432,10 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 * Otherwise, the data is reallocated in the first supported provider.</p>
 	 *
 	 * @param data The memory data to potentially relocate
+	 * @param supported The providers this operator supports, resolved once by the caller
 	 * @throws RuntimeException if no memory providers are supported by this operator
 	 */
-	private void reassignMemory(MemoryData data) {
-		List<MemoryProvider<? extends Memory>> supported = getSupportedMemory();
+	private void reassignMemory(MemoryData data, List<MemoryProvider<? extends Memory>> supported) {
 		if (supported.isEmpty())
 			throw new RuntimeException("No memory providers are supported by " + getName());
 

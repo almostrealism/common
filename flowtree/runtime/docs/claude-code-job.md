@@ -459,9 +459,11 @@ In addition to the numbered, conditionally-included sections above, `build()` al
 appends a block of unconditional operational guidance (working-efficiently heuristics,
 the targeted-test-verification reminder, and enforcement-configuration rules) ahead of
 the budget/turn-limit section. **Test Execution Limits** is one of these: it tells the
-agent to run at most one test per invocation (a pytest node id, or `-Dtest=Class#method`
-for Java -- never a bare `-Dtest=Class`, a module's whole suite, or
-`AR_TEST_GROUP`/`AR_TEST_GROUPS`), to give every test or build invocation an explicit
+agent to run only a bounded selection per invocation -- for Java via `-Dtest` or the
+test runner, at most 5 test classes and 40 named `Class#method` tests (a bare class or a
+few classes is fine); for Python, a single pytest node id -- but never a module's whole
+suite, a wildcard or other unbounded selector, or `AR_TEST_GROUP`/`AR_TEST_GROUPS`, to
+give every test or build invocation an explicit
 timeout of at most 40 minutes (2400s), and to never leave a background build or test run
 active when the turn ends, since the session is killed for stdout inactivity rather than
 total runtime. This mirrors the same rule enforced at job submission by

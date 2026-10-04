@@ -1,0 +1,74 @@
+/**
+ * Scaled dot-product attention over a whole sequence at once (parallel, non-autoregressive):
+ * softmax(mask(softcap(Q Kᵀ / sqrt(dim_head)))) V.
+ *
+ * This file replaces the Java assembly that used to live in
+ * AttentionFeatures.scaledDotProductAttention, which built the same stages as a SequentialBlock:
+ * a batched Q Kᵀ product, a scale, an optional logit soft-cap, an optional key mask, a softmax and
+ * a batched A V product. AttentionFeatures.scaledDotProductAttention is now a thin loader that
+ * binds the key and value tensors and chains these layers; the structure is here.
+ *
+ * It is the full-sequence counterpart of the autoregressive `attend` layer of /pdsl/attention.pdsl:
+ * `attend` scores one query per head against a growing KV cache one token at a time, while this
+ * scores every query position against every key position in one pass. The two share the same
+ * shape: scores → scale → mask → softmax → weighted sum of values.
+ *
+ * The attention is split into its two halves — the score half `sdpa_scores` (up to the softmax)
+ * and the context half `sdpa_context` (the weighted sum) — so that a caller wanting the attention
+ * weights (a cross-attention visualization, say) can observe them between the halves without a
+ * capture stage inside the graph. The score half has a plain form and a soft-capped form; the
+ * caller selects one.
+ *
+ * Shapes (batch is 1): the query input is [batch, heads, queries, dim_head]; the key and value
+ * tensors k and v are [batch, heads, keys, dim_head]; the scores are [batch, heads, queries, keys];
+ * the context output is [batch, heads, queries, dim_head]. key_mask is one validity value per key,
+ * [batch, keys], with one for a key that may be attended and zero for one that may not; an all-ones
+ * mask adds zero and leaves every score unchanged.
+ */
+
+/**
+ * The score half: the attention weights of every query over every key.
+ *
+ *   scaled_dot_product(k, true)     Q Kᵀ, contracting dim_head     [batch, heads, queries, keys]
+ *   scale(1 / sqrt(dim_head))       divide the logits by sqrt(d_k) [batch, heads, queries, keys]
+ *   key_mask(key_mask)              -bias on invalid key columns    [batch, heads, queries, keys]
+ *   softmax()                       normalize over the key axis     [batch, heads, queries, keys]
+ */
+layer sdpa_scores(k: weight, key_mask: weight, dim_head: int) {
+    scaled_dot_product(k, true)
+    scale(1 / sqrt(dim_head))
+    key_mask(key_mask)
+    softmax()
+}
+
+/**
+ * The score half with logit soft-capping (T5Gemma): the scaled logits are squashed to
+ * softcap * tanh(logit / softcap) before masking, bounding them smoothly. As `sdpa_scores`, with
+ * the three-stage soft-cap inserted between the scale and the mask.
+ *
+ *   scaled_dot_product(k, true)     Q Kᵀ                            [batch, heads, queries, keys]
+ *   scale(1 / sqrt(dim_head))       / sqrt(d_k)                     [batch, heads, queries, keys]
+ *   scale(1 / softcap)              soft-cap: softcap * tanh(x / softcap)
+ *   tanh_act()
+ *   scale(softcap)
+ *   key_mask(key_mask)              -bias on invalid key columns    [batch, heads, queries, keys]
+ *   softmax()                       normalize over the key axis     [batch, heads, queries, keys]
+ */
+layer sdpa_scores_softcapped(k: weight, key_mask: weight, dim_head: int, softcap: float) {
+    scaled_dot_product(k, true)
+    scale(1 / sqrt(dim_head))
+    scale(1 / softcap)
+    tanh_act()
+    scale(softcap)
+    key_mask(key_mask)
+    softmax()
+}
+
+/**
+ * The context half: each query's attention-weighted sum of the value rows.
+ *
+ *   scaled_dot_product(v, false)    A V, contracting the key axis   [batch, heads, queries, dim_head]
+ */
+layer sdpa_context(v: weight) {
+    scaled_dot_product(v, false)
+}

@@ -28,6 +28,92 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling
+
+**Category:** Performance
+**Branch:** `project/plan-20260929-043714`
+**Plan:** [`PLAN-20260929-finetune-compile-scaling-rebaseline.md`](PLAN-20260929-finetune-compile-scaling-rebaseline.md)
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent.** Every layer/domain/engine module has a README; `docs/internals/`
+  now holds 36 pages spanning the whole story (Producer → process tree → process optimization →
+  backend compilation/dispatch → `native-runtime-lifecycle`, which landed last cycle). The only
+  catalogued gap left is the low-priority ONNX-induced-pressure research note in
+  `KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md`, explicitly "a research task in its own right." Not a
+  flagship. Moved on.
+- **Code quality — strong and actively owned.** The continuous QA pipeline (`qa/defect-*`,
+  `qa/consolidate-*`, `qa/coverage-*`) merges fixes daily, and enforcement (checkstyle, code_policy,
+  duplicate_code, test-integrity) is mechanical. The one flagged structural debt (split
+  `io.almostrealism.collect`) is real but minor and high-churn. No neglected, high-value flagship
+  here. Moved on.
+- **Performance — the category.** The compile-time front saw a decisive win: the kernel-series /
+  `Expression.sequence` analysis that dominated expression simplification was rebuilt on
+  `feature/cl-profile-perf` (2026-09-08), taking `convDeltaSmall` 172 s → 1.15 s and `upsample`
+  233 s → 4 s (see `CONVOLUTION_COMPILE_TIME.md` §Resolution). That is genuine open leverage — see
+  below.
+
+#### The finding that decided it
+
+`FINE_TUNE_FAIL.md` is the platform's authoritative verdict on training feasibility, and it says, in
+bold, that production-scale LoRA fine-tuning is **infeasible** — backward-pass compile time scaling
+super-linearly, projected to "days, not minutes" at embed=1024/depth=16. That measurement is from
+**February 2026**. Its stage-detail profile lists `expressionCacheMatch` (~1375.6 s) as by far
+the largest accumulated entry and the kernel-series / `Sum.simplify → getSeries →
+Expression.sequence` analysis (`kernelSeries`, ~150 s) as a much smaller one. Both are
+non-exclusive `stageDetailTime` accumulations (the first is listed at 268 % of the 512.8 s run),
+so neither is a wall-clock share and they should not be ranked as exact levers. Both fronts have
+since moved, by *different* work, and it is worth keeping them straight: the September
+`ExplicitExpressionMatrix` cache-bypass and on-demand-entry changes attacked `expressionCacheMatch`
+directly (isolated `testSingleAttentionBackward` ~186 s → ~25 s → 3.6 s on Metal across the two
+changes), while the `feature/cl-profile-perf` kernel-series rebuild (`convDeltaSmall`
+172 s → 1.15 s, ~150×) attacked `kernelSeries`. The ~150× convolution figure therefore is *not* a
+prediction for the fine-tuning backward pass. Nobody has re-measured the transformer backward pass against either.
+The verdict that gates the entire proof-of-value trajectory is very likely stale — and stale in the
+pessimistic direction.
+
+Separately confirmed while investigating: frozen-weight gradient pruning already exists at the
+layer level (`DefaultGradientPropagation` only calls `delta()` on the trainable weight list; LoRA
+excludes base weights), so the remaining backward-compile cost is the *expression-tree size* of
+differentiating the trainable weights through the deep forward graph — precisely the territory
+both the `ExplicitExpressionMatrix` cache work and the kernel-series work attack. That reinforces
+the premise that the old numbers should move.
+
+#### Why this task
+
+It recovers the truth about the platform's most strategically important performance number, using
+the measurement harness that already exists (`AggressiveFineTuningTest`), against optimizations
+already on `master`. It is deliberately scoped to measure → profile (via `ar-profile-analyzer`) →
+re-baseline `FINE_TUNE_FAIL.md` → name the next lever, with an *only-if-clean* conditional step to
+land one small optimization. Crucially it stays clear of the in-flight `feature/lora-gradients`
+core-autodiff work (sparse Jacobians, `Sum` reordering, memoization gating) — avoiding the
+add/revert collision that has bitten this area before.
+
+#### Balance across categories
+
+Foundations are in good shape and under continuous ownership. The right move now is not to open
+another deep front but to *cash in* the compile-time win the platform already has — establishing
+what training is now possible so the next cycle can plan against reality.
+
+#### What comes next
+
+1. This plan executes: first the additive `AggressiveFineTuningTest` harness change (individually
+   selectable, bounded scaling and profiled methods, each excluded from the CI pipeline profile;
+   separate cold/warm columns; profile written under the module's `results/`), then current scaling
+   numbers, a fresh embed=64 backward-compile
+   profile, a rewritten `FINE_TUNE_FAIL.md`, and a named next lever. Open risk: the profiled run
+   may still hit the `IndexProjectionProducerComputation.delta()` scope error recorded in
+   `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data
+   and a partial profile (the new profiled method saves the profile even when the run fails).
+   Before execution, the approver fixes the feasibility threshold (target configuration and
+   compile budget); without one, the plan reports timings and growth rates with no feasibility label.
+2. If the verdict flips toward feasible: scope the **minimal end-to-end self-hosted training run** —
+   a tiny model trained on the platform's own docs/source via `ModelOptimizer` — the first concrete
+   step toward software that studies itself. (This was item 4 of the prior cycle's "what next".)
+3. If a clean compile-time lever was identified but deferred, promote it to its own performance plan.
+4. Still open from prior cycles: the ONNX-pressure documentation note; the `io.almostrealism.collect`
+   package split as a code-quality candidate.
+
 ### 2026-09-26 — Native Runtime Lifecycle Documentation
 
 **Category:** Documentation

@@ -20,8 +20,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -44,7 +46,10 @@ import java.util.regex.Pattern;
  *
  * <p>There is no bypass for this check. A command may never run a Maven
  * test-executing phase (test/integration-test/verify/install/package/
- * deploy) without an explicit {@code Class#method} selector, reference
+ * deploy) without a bounded {@code -Dtest} selection (at most
+ * {@link #MAX_TEST_CLASSES} classes and {@link #MAX_TEST_METHODS}
+ * {@code Class#method} tests -- a bare class or a few classes is fine, a
+ * wildcard or other unbounded selector is not), reference
  * {@code AR_TEST_GROUP}/{@code AR_TEST_GROUPS}, or run pytest against a
  * directory or whole file instead of an explicit node id. The sibling
  * timeout ceiling ({@link #MAX_TIMEOUT_SECONDS}) is enforced separately by
@@ -121,6 +126,17 @@ public class PostCompletionCommandValidator {
 
 	/** The method half of a narrow {@code -Dtest} selector: a single Java method name. */
 	private static final Pattern DTEST_METHOD_NAME = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
+
+	/** The most distinct test classes one invocation may select. Bounds a run without forbidding
+	 * the ordinary case of checking a class, or a few related classes, after a change. Mirrored by
+	 * {@code _MAX_TEST_CLASSES} in {@code tools/mcp/manager/execution_limits.py}. */
+	static final int MAX_TEST_CLASSES = 5;
+
+	/** The most explicit {@code Class#method} entries one invocation may select. A selector naming
+	 * whole classes is bounded by {@link #MAX_TEST_CLASSES} instead, since the number of cases in a
+	 * class is not knowable from the selector. Mirrored by {@code _MAX_TEST_METHODS} in
+	 * {@code tools/mcp/manager/execution_limits.py}. */
+	static final int MAX_TEST_METHODS = 40;
 
 	/** Maven launcher executable names recognized by {@link #mavenSegmentViolation}: the plain
 	 * {@code mvn} plus the Maven Wrapper scripts ({@code ./mvnw}, {@code ./mvnw.cmd}) and the
@@ -757,8 +773,8 @@ public class PostCompletionCommandValidator {
 		for (String violation : violations) {
 			sb.append("  - ").append(violation).append('\n');
 		}
-		sb.append("\nRewrite the command to select explicit Class#method tests (Maven) or "
-				+ "explicit node ids (pytest), one test per invocation.");
+		sb.append("\nRewrite the command to select a bounded set of tests (Maven: up to the "
+				+ "class/method caps via -Dtest; pytest: one explicit node id per invocation).");
 		return sb.toString();
 	}
 
@@ -885,36 +901,43 @@ public class PostCompletionCommandValidator {
 		if (dtestValues.isEmpty()) {
 			return "Maven command runs a test-executing phase (" + String.join(", ", phasesPresent)
 					+ ") with no -Dtest selector: \"" + rendered + "\". This runs the module's "
-					+ "whole test suite. Pass -Dtest=Class#method for each test, or add "
+					+ "whole test suite. Pass -Dtest naming at most " + MAX_TEST_CLASSES
+					+ " classes or " + MAX_TEST_METHODS + " Class#method tests, or add "
 					+ "-DskipTests if this command is only meant to build.";
 		}
 		for (String value : dtestValues) {
 			if (!dtestIsNarrow(value)) {
-				return "Maven -Dtest=" + value + " in \"" + rendered + "\" does not select "
-						+ "explicit Class#method tests. A bare class selector (or none) runs "
-						+ "every test in that class or module. Use Class#method for each test, "
-						+ "one per invocation.";
+				return "Maven -Dtest=" + value + " in \"" + rendered + "\" is not a bounded "
+						+ "selection: it names more than " + MAX_TEST_CLASSES + " classes or "
+						+ MAX_TEST_METHODS + " methods, or uses an unbounded construct (a "
+						+ "wildcard, the + method-list separator, ! negation, a %regex[...] "
+						+ "pattern, or an unresolved $VAR). Name at most " + MAX_TEST_CLASSES
+						+ " classes or " + MAX_TEST_METHODS + " Class#method tests per "
+						+ "invocation, splitting a larger run across invocations.";
 			}
 		}
 		return null;
 	}
 
-	/** True when {@code value} is exactly one {@code Class#method} entry with non-empty,
-	 * wildcard-free class and method names.
+	/** True when {@code value} names a bounded set of tests: at most {@link #MAX_TEST_CLASSES}
+	 * distinct classes and at most {@link #MAX_TEST_METHODS} explicit {@code Class#method} entries,
+	 * every name exact.
 	 *
-	 * <p>A {@code -Dtest} value may name several comma-separated entries, but Maven runs all of
-	 * them in a single invocation -- accepting more than one, even when each individually names a
-	 * method, would still let one command run multiple tests, contradicting the "at most ONE test
-	 * per invocation" rule this validator otherwise enforces (e.g. via the pytest and MCP runner
-	 * checks). Only a single {@code Class#method} entry is narrow enough -- and Surefire treats
-	 * {@code *} and {@code ?} in either half as wildcards, so e.g. {@code FooTest#test*} or
-	 * {@code Foo*#bar} can still select and run several methods/classes in one invocation despite
-	 * naming exactly one comma-separated entry with a {@code #} in it.</p>
+	 * <p>What this rule exists to stop is an invocation that runs a whole module or suite, which is
+	 * the pipeline's job and takes hours. A named class is bounded by its own methods, and a handful
+	 * of named classes is still a bounded run, so both are allowed; what is refused is a selector
+	 * with no ceiling.</p>
 	 *
-	 * <p>Rather than enumerating the Surefire constructs that widen a selector -- wildcards, the
-	 * {@code +} method-list separator, {@code !} negation, {@code %regex[...]} patterns, and any
-	 * later addition -- each half must be an exact Java name: {@link #DTEST_CLASS_NAME} for the
-	 * (optionally package-qualified) class and {@link #DTEST_METHOD_NAME} for the method.</p>
+	 * <p>Every construct that removes the ceiling is still refused. Surefire treats {@code *} and
+	 * {@code ?} in either half as wildcards, so {@code FooTest#test*} or {@code Foo*#bar} can select
+	 * arbitrarily many methods or classes from one entry; the {@code +} method-list separator
+	 * ({@code Class#method1+method2}, the form the repository's own CI uses), {@code !} negation and
+	 * {@code %regex[...]} patterns widen a selector the same way. Rather than enumerating them, each
+	 * half must be an exact Java name: {@link #DTEST_CLASS_NAME} for the (optionally
+	 * package-qualified) class and {@link #DTEST_METHOD_NAME} for the method.</p>
+	 *
+	 * <p>A class counted here carries an unknown number of cases, so the method cap bounds only the
+	 * entries that name a method. The class cap is what bounds the rest.</p>
 	 *
 	 * <p>Package-private (not private) and static -- it reads no instance state -- so
 	 * {@link PromptTestInstructionLinter} can reuse the identical rule instead of duplicating
@@ -927,21 +950,43 @@ public class PostCompletionCommandValidator {
 				entries.add(entry);
 			}
 		}
-		if (entries.size() != 1) {
+
+		if (entries.isEmpty()) {
 			return false;
 		}
-		String entry = entries.get(0);
-		if (containsParameterExpansion(entry)) {
-			return false;
+
+		Set<String> classes = new HashSet<>();
+		int methods = 0;
+
+		for (String entry : entries) {
+			if (containsParameterExpansion(entry)) {
+				return false;
+			}
+
+			int hash = entry.indexOf('#');
+			if (hash >= 0 && entry.indexOf('#', hash + 1) >= 0) {
+				return false;
+			}
+
+			String className;
+			if (hash >= 0) {
+				className = entry.substring(0, hash);
+				if (!DTEST_METHOD_NAME.matcher(entry.substring(hash + 1)).matches()) {
+					return false;
+				}
+				methods++;
+			} else {
+				className = entry;
+			}
+
+			if (!DTEST_CLASS_NAME.matcher(className).matches()) {
+				return false;
+			}
+
+			classes.add(className);
 		}
-		int hash = entry.indexOf('#');
-		if (hash < 0 || entry.indexOf('#', hash + 1) >= 0) {
-			return false;
-		}
-		String className = entry.substring(0, hash);
-		String methodName = entry.substring(hash + 1);
-		return DTEST_CLASS_NAME.matcher(className).matches()
-				&& DTEST_METHOD_NAME.matcher(methodName).matches();
+
+		return classes.size() <= MAX_TEST_CLASSES && methods <= MAX_TEST_METHODS;
 	}
 
 	/**

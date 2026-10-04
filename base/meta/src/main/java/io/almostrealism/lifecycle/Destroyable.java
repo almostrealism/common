@@ -16,6 +16,10 @@
 
 package io.almostrealism.lifecycle;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * A lifecycle interface for objects that require explicit cleanup of resources.
  *
@@ -182,6 +186,62 @@ public interface Destroyable extends AutoCloseable {
 		}
 
 		return destroyed;
+	}
+
+	/**
+	 * Runs every release action in the given iterable, even when earlier ones fail.
+	 *
+	 * <p>Cleanup that frees several independent resources must not let one failing release
+	 * leave the rest allocated. Every action is attempted; the first unchecked failure
+	 * ({@link RuntimeException} or {@link Error}) is rethrown once all have run, with any
+	 * later ones attached to it as suppressed. {@link Error}s are aggregated too because
+	 * callers such as Metal completion-callback draining run arbitrary actions whose
+	 * {@link AssertionError}, {@link LinkageError}, or {@link OutOfMemoryError} must not
+	 * skip the releases owned by subsequent actions.</p>
+	 *
+	 * @param releases the release actions to run, in iteration order; null is treated as empty
+	 * @throws RuntimeException the first failure raised by any action, if it is a {@link RuntimeException}
+	 * @throws Error the first failure raised by any action, if it is an {@link Error}
+	 */
+	static void releaseAll(Iterable<? extends Runnable> releases) {
+		releaseAll(releases, new Runnable[0]);
+	}
+
+	/**
+	 * Runs every release action in the given iterable and then each of the further actions,
+	 * even when earlier ones fail, with the same failure aggregation as
+	 * {@link #releaseAll(Iterable)}.
+	 *
+	 * <p>This replaces a {@code try}/{@code finally} around a group of releases followed by one
+	 * more: {@code releaseAll(callbacks, buffer::release)} runs the callbacks and then releases
+	 * the buffer, whichever of them throws.</p>
+	 *
+	 * @param releases the release actions to run first, in iteration order; null is treated as empty
+	 * @param more     further release actions to run after them, in order
+	 * @throws RuntimeException the first failure raised by any action, if it is a {@link RuntimeException}
+	 * @throws Error the first failure raised by any action, if it is an {@link Error}
+	 */
+	static void releaseAll(Iterable<? extends Runnable> releases, Runnable... more) {
+		List<Runnable> all = new ArrayList<>();
+		if (releases != null) releases.forEach(all::add);
+		all.addAll(Arrays.asList(more));
+
+		Throwable failure = null;
+
+		for (Runnable release : all) {
+			try {
+				release.run();
+			} catch (RuntimeException | Error e) {
+				if (failure == null) {
+					failure = e;
+				} else if (failure != e) {
+					failure.addSuppressed(e);
+				}
+			}
+		}
+
+		if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+		if (failure instanceof Error) throw (Error) failure;
 	}
 }
 

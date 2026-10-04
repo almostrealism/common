@@ -130,16 +130,23 @@ before the submission ever reaches the controller:
 
 - **`post_completion_command` / `command`** — rejected when it runs a Maven
   test-executing phase (`test`/`integration-test`/`verify`/`install`/`package`/`deploy`)
-  without an explicit `Class#method` `-Dtest` selector (a bare `-Dtest=Class` also
-  counts as too broad), references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
-  against a directory or whole file instead of an explicit node id.
+  without a bounded `-Dtest` selection — at most 5 test classes and at most 40
+  named `Class#method` tests; a bare class or a few classes is fine, but no
+  selector at all, more than those caps, a Surefire wildcard (`*`, `?`), the `+`
+  method-list separator, `!` negation, a `%regex[...]` pattern, or an unresolvable
+  `$VAR` is rejected — references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
+  against a directory, a whole file, or more than one node id instead of exactly
+  one explicit node id. A `post_completion_command` runs unattended, so it is held
+  to one stricter rule on top of that: every `-Dtest` entry must name a
+  `Class#method`, not a bare class.
 - **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
 - **`prompt`** — rejected when it instructs the agent, in English, to run a
   full/whole/entire suite, a module's tests, a shard, `mvn test` without a
-  single-method selector, or `AR_TEST_GROUP`.
+  bounded `-Dtest` selection, or `AR_TEST_GROUP`.
 
-Implemented in [`execution_limits.py`](execution_limits.py); see its module
-docstring for the incident that made this a hard requirement. The controller
+The command validator is implemented in [`execution_limits.py`](execution_limits.py)
+(see its module docstring for the incident that made this a hard requirement) and
+the prompt linter in [`prompt_test_lint.py`](prompt_test_lint.py). The controller
 (`FlowTreeApiEndpoint#handleSubmit`) applies the same command validation independently
 via `io.flowtree.jobs.PostCompletionCommandValidator`, so a direct API call cannot
 bypass what this server rejects, and clamps `postCompletionTimeoutSeconds` to the same

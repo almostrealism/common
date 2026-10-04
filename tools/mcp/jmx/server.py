@@ -36,7 +36,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 from jvm_diagnostics import (
-    is_process_alive,
+    pid_alive,
     run_jcmd,
     run_jstat,
     find_forked_booter_pids,
@@ -89,7 +89,7 @@ def get_forked_pid(run_id: str) -> int:
             "Was jmx_monitoring=true when the test was started?"
         )
     pid = int(pid)
-    if not is_process_alive(pid):
+    if not pid_alive(pid):
         raise ProcessNotFoundError(
             f"Forked JVM (PID {pid}) for run {run_id} is no longer running"
         )
@@ -707,7 +707,7 @@ async def call_tool(name: str, arguments: dict):
             pid = arguments["pid"]
             label = arguments.get("label", "")
 
-            if not is_process_alive(pid):
+            if not pid_alive(pid):
                 return _error_response(f"Process {pid} is not running", "")
 
             # Verify it's a JVM
