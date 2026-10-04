@@ -361,7 +361,7 @@ public final class JsonFieldExtractor {
 		int count = 0;
 		int pos = 0;
 		while (pos < arrContent.length()) {
-			int objStart = arrContent.indexOf("{", pos);
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
 			if (objStart < 0) break;
 
 			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
@@ -407,7 +407,7 @@ public final class JsonFieldExtractor {
 		String arrContent = json.substring(arrStart + 1, arrEnd);
 		int pos = 0;
 		while (pos < arrContent.length()) {
-			int objStart = arrContent.indexOf("{", pos);
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
 			if (objStart < 0) break;
 
 			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
@@ -736,19 +736,10 @@ public final class JsonFieldExtractor {
 	 */
 	private static int matchingDelimiter(CharSequence s, int openIndex, char open, char close) {
 		int depth = 0;
-		boolean inString = false;
 		for (int i = openIndex; i < s.length(); i++) {
 			char c = s.charAt(i);
-			if (inString) {
-				if (c == '\\') {
-					i++;
-				} else if (c == '"') {
-					inString = false;
-				}
-				continue;
-			}
 			if (c == '"') {
-				inString = true;
+				i = skipString(s, i) - 1;
 			} else if (c == open) {
 				depth++;
 			} else if (c == close) {
@@ -757,6 +748,73 @@ public final class JsonFieldExtractor {
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * Finds the index of the first {@code target} character at or after
+	 * {@code from} that lies outside a JSON string literal. Characters inside a
+	 * string literal — and the escapes within it — are skipped, so a brace that
+	 * is part of a string value is not mistaken for structural punctuation.
+	 *
+	 * <p>The object-scanning loops in {@link #countArrayEntries(String, String)}
+	 * and {@link #extractFieldFromArrayObjects(String, String, String)} use this
+	 * to locate each object's opening {@code {}, mirroring the string-awareness
+	 * that {@link #matchingDelimiter(CharSequence, int, char, char)} already
+	 * applies to the closing {@code }} via the shared {@link #skipString(CharSequence, int)}
+	 * routine. A plain {@code indexOf} would find a brace inside a string element
+	 * or field value and desynchronize the scan.
+	 * {@code from} must point at a position outside any string literal — the
+	 * loops begin at the start of the array content and resume just past a
+	 * balanced object, both of which satisfy that.</p>
+	 *
+	 * @param s      the source text
+	 * @param from   the index to begin scanning from, outside any string literal
+	 * @param target the character to find outside string literals
+	 * @return the index of the first unquoted {@code target}, or {@code -1} when
+	 *         none remains
+	 */
+	private static int indexOfUnquoted(CharSequence s, int from, char target) {
+		for (int i = from; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (c == '"') {
+				i = skipString(s, i) - 1;
+			} else if (c == target) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Advances past the JSON string literal that opens at {@code openQuoteIndex}
+	 * and returns the index of the first character after its closing quote.
+	 * Escaped characters within the string — including an escaped quote — are
+	 * consumed rather than ending the string, so {@code "a\""} is a single
+	 * literal. When the string is never closed the end of the input is returned.
+	 *
+	 * <p>This is the one JSON string/escape state machine shared by
+	 * {@link #matchingDelimiter(CharSequence, int, char, char)} and
+	 * {@link #indexOfUnquoted(CharSequence, int, char)}: both scan structural
+	 * characters while treating a {@code "} as the start of a region to skip, so
+	 * braces, brackets, and other punctuation inside a string are never mistaken
+	 * for structure. Keeping the escape handling here means a future fix to it
+	 * cannot diverge between the two scanners.</p>
+	 *
+	 * @param s              the source text
+	 * @param openQuoteIndex the index of the opening {@code "}
+	 * @return the index just past the closing {@code "}, or {@code s.length()}
+	 *         when the string is not closed
+	 */
+	private static int skipString(CharSequence s, int openQuoteIndex) {
+		for (int i = openQuoteIndex + 1; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (c == '\\') {
+				i++;
+			} else if (c == '"') {
+				return i + 1;
+			}
+		}
+		return s.length();
 	}
 
 	/**
