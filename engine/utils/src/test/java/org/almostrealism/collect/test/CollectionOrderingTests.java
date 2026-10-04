@@ -282,4 +282,111 @@ public class CollectionOrderingTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/**
+	 * A regular provider is refused by
+	 * {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} when the
+	 * destination carries an explicit {@link ExplicitIndexTraversalOrdering}.
+	 *
+	 * <p>The flat copy writes the destination's backing memory in order, so a destination ordered
+	 * {@code [2, 0, 3, 1]} would read the copied values back as
+	 * {@code [source[2], source[0], source[3], source[1]]} rather than as the source. The destination's
+	 * ordering is inspected as well as the source's, and the backing memory is left untouched.</p>
+	 */
+	@Test(timeout = 10000)
+	public void plainSourceIntoOrderedDestinationIsRefused() {
+		try (PackedCollection source = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destinationValues = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection destination = new PackedCollection(shape(4), 0, destinationValues, 0, order);
+
+			assertTrue("the source should be regular", source.getShape().isRegular());
+			assertTrue("the source should carry no memory ordering", source.getMemOrdering() == null);
+			assertNotNull("the destination should carry a memory ordering", destination.getMemOrdering());
+
+			try {
+				new CollectionProvider<>(source).into(destination).evaluate();
+				throw new AssertionError("a regular source was flat-copied into an ordered destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("destination"));
+			}
+
+			double[] untouched = destinationValues.toArray(0, 4);
+			for (int i = 0; i < untouched.length; i++) {
+				assertEquals(0.0, untouched[i]);
+			}
+		}
+	}
+
+	/**
+	 * A regular provider is refused when the destination's outer shape is regular but it inherits an
+	 * {@link ExplicitIndexTraversalOrdering} from its delegate, because its logical reads still apply
+	 * the ordering through {@link org.almostrealism.hardware.MemoryData#getMemOrdering()}.
+	 */
+	@Test(timeout = 10000)
+	public void plainSourceIntoInheritedOrderingDestinationIsRefused() {
+		try (PackedCollection source = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destinationValues = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, destinationValues, 0, order);
+			PackedCollection destination = new PackedCollection(shape(4), 0, ordered, 0);
+
+			assertTrue("the destination's outer shape should be regular", destination.getShape().isRegular());
+			assertNotNull("the destination should inherit the delegate's ordering", destination.getMemOrdering());
+
+			try {
+				new CollectionProvider<>(source).into(destination).evaluate();
+				throw new AssertionError("a regular source was flat-copied into a destination inheriting an ordering");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("destination"));
+			}
+		}
+	}
+
+	/**
+	 * A regular provider is refused when the destination is a rated view the source does not share.
+	 *
+	 * <p>A destination of {@code new TraversalPolicy(3).repeat(0, 4)} backs only 3 elements, while a
+	 * regular 12-element source transfers 12, so the flat copy would overrun the destination and its
+	 * logical reads would repeat the first three values regardless.</p>
+	 */
+	@Test(timeout = 10000)
+	public void plainSourceIntoRatedDestinationIsRefused() {
+		TraversalPolicy rated = new TraversalPolicy(3).repeat(0, 4);
+
+		try (PackedCollection source = new PackedCollection(shape(12));
+				PackedCollection destination = new PackedCollection(rated)) {
+			assertTrue("the source should be regular", source.getShape().isRegular());
+			assertFalse("the rated destination should be irregular", destination.getShape().isRegular());
+			assertEquals(12, source.getShape().getTotalInputSize());
+			assertEquals(3, destination.getMemLength());
+
+			try {
+				new CollectionProvider<>(source).into(destination).evaluate();
+				throw new AssertionError("a regular source was flat-copied into a rated destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("destination"));
+			}
+		}
+	}
+
+	/**
+	 * A regular provider copied into a regular destination of a different but equally sized shape is
+	 * still accepted, and the values arrive in order.
+	 */
+	@Test(timeout = 10000)
+	public void plainSourceIntoReshapedRegularDestinationCopies() {
+		try (PackedCollection source = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection destination = new PackedCollection(shape(2, 2))) {
+			new CollectionProvider<>(source).into(destination).evaluate();
+
+			double[] copied = destination.toArray(0, 4);
+			assertEquals(10.0, copied[0]);
+			assertEquals(20.0, copied[1]);
+			assertEquals(30.0, copied[2]);
+			assertEquals(40.0, copied[3]);
+		}
+	}
 }

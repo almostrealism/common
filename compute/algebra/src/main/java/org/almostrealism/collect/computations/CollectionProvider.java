@@ -186,6 +186,13 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * ordering as well as the shape, because {@link TraversalPolicy#equals(Object)} compares the
 	 * dimensions, dimension order, rates, and traversal axis, but not the traversal ordering.</p>
 	 *
+	 * <p>The same holds for the destination. The copy writes the destination's backing memory in
+	 * order, so a destination that is itself a view — one carrying a traversal or memory ordering, or
+	 * a rate/dimension mapping the source does not share — is refused: its logical reads would apply
+	 * the mapping to the flat-copied values (an explicit order {@code [2, 0, 3, 1]} would read back
+	 * {@code [source[2], source[0], source[3], source[1]]}), and a rated destination backs fewer
+	 * elements than a regular source transfers.</p>
+	 *
 	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
 	 * than referencing the view: the permutation then runs as a kernel that writes each destination
 	 * position, which is what reorders the memory.</p>
@@ -195,7 +202,9 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * @throws ClassCastException       if destination is not a {@link MemoryData} instance
 	 * @throws IllegalArgumentException if the source carries a traversal or memory ordering, or is a
 	 *                                  rate/dimension view whose mapping the destination does not
-	 *                                  share, so a flat copy would discard it
+	 *                                  share, so a flat copy would discard it; or if the destination
+	 *                                  carries a traversal or memory ordering, or a rate/dimension
+	 *                                  mapping the source does not share
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
@@ -209,6 +218,7 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 		TraversalOrdering targetOrder = destination instanceof MemoryData ?
 				((MemoryData) destination).getMemOrdering() : null;
 		boolean sourceOrdersMemory = shape.getOrder() != null || sourceOrder != null;
+		boolean targetOrdersMemory = (target != null && target.getOrder() != null) || targetOrder != null;
 		boolean sharesMapping = shape.equals(target) &&
 				Objects.equals(shape.getOrder(), target.getOrder()) &&
 				Objects.equals(sourceOrder, targetOrder);
@@ -217,6 +227,12 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 			throw new IllegalArgumentException("A provider of " + shape + " views other memory, so " +
 					"copying it with a flat memory transfer would discard the mapping; " +
 					"apply the reordering as a computation instead of referencing the view");
+		}
+
+		if (targetOrdersMemory || (target != null && !target.isRegular() && !sharesMapping)) {
+			throw new IllegalArgumentException("The destination " + target + " views other memory, so " +
+					"a flat memory transfer into it would be read back through its mapping; " +
+					"copy into regular memory instead of a view");
 		}
 
 		// the copy moves backing memory, so it transfers one element per input position
