@@ -247,15 +247,57 @@ class MacosFleetSecurityTests(unittest.TestCase):
         render = install.find('s|@RUNNER_PATH@|')
         self.assertLess(check, render, "RUNNER_PATH must be screened before it is rendered into the plist")
 
+    def test_runner_path_screen_captures_the_checks_exit_status(self):
+        """A crash in untrusted_search_path (e.g. an empty-array abort under
+        `set -u` on bash 3.2) must count as an error, not pass every entry: the
+        output is captured into a variable with its exit status, rather than
+        read through `done < <(...)` whose failure the loop never saw."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIsNone(
+            re.search(r"done < <\(untrusted_search_path", install),
+            "the fail-open process-substitution form must be gone")
+        self.assertRegex(
+            install,
+            r'path_untrusted="\$\(untrusted_search_path "\$\{RUNNER_USER\}" '
+            r'"\$\{RUNNER_PATH\}" sudo\)" \|\| path_status=\$\?',
+            "untrusted_search_path's output and exit status must both be captured")
+        self.assertRegex(
+            install,
+            r'if \[ "\$\{path_status\}" -ne 0 \]',
+            "a non-zero exit from the check must be reported as an error")
+
+    def test_trust_helpers_reject_write_granting_acls(self):
+        """macOS ACLs can grant write with the mode bits clear; the env-file,
+        RUNNER_DIR and RUNNER_PATH trust checks must reject them too, the same
+        way register-daemon.sh does on the plist path."""
+        self.assertRegex(self.src, r"acl_write_grant\(\)\s*\{",
+                         "a reusable ACL-trust helper should exist")
+        self.assertIn("ls -lde", self.src, "ACL entries are read with `ls -e`")
+        for helper in ("untrusted_path", "untrusted_tool_dir"):
+            body = re.search(r"^%s\(\) \{.*?^\}" % helper, self.src, re.M | re.S).group(0)
+            self.assertIn("acl_write_grant", body,
+                          "%s must consult the ACL check, not only mode bits" % helper)
+
+    def test_the_path_walk_guards_an_empty_component_array(self):
+        """A "/" path leaves the components array empty, and expanding an empty
+        array under `set -u` aborts on the bash macOS ships (3.2); the walk
+        guards both its arrays with the ${arr[@]+...} idiom."""
+        for array in ("parts", "dirs"):
+            self.assertIn('${%s[@]+"${%s[@]}"}' % (array, array), self.src,
+                          "%s must be expanded with the empty-array guard" % array)
+
 
 def _trust_functions(*names):
     """The source of fleet.sh's path-trust helpers, to run outside the script
-    (which refuses to run anywhere but macOS)."""
+    (which refuses to run anywhere but macOS). ``acl_write_grant`` is always
+    included because ``untrusted_path`` and ``untrusted_tool_dir`` call it."""
     with open(_MACOS_FLEET) as f:
         src = f.read()
+    names = names or ("untrusted_path", "untrusted_ancestor")
+    names = tuple(dict.fromkeys(names + ("acl_write_grant",)))
     return "\n".join(
         re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
-        for name in names or ("untrusted_path", "untrusted_ancestor"))
+        for name in names)
 
 
 class UntrustedAncestorTests(unittest.TestCase):
@@ -455,6 +497,14 @@ admin_members() { echo "${FIXTURE_ADMINS}"; }'''
         walk stops at the first component, the fixture root."""
         self.assertEqual([self.root], self._check(self.bin, admin_group="fleet-no-such-group"))
 
+    def test_a_root_entry_does_not_abort_the_walk(self):
+        """A "/" entry leaves the component array empty; under `set -u` that is
+        an unbound-variable abort on bash 3.2 unless the walk guards it. The
+        entry resolves to the root directory, which is root's, so it is not
+        reported - what matters is that the screen does not die, which would
+        otherwise wave the whole path through."""
+        self.assertEqual([], self._check("/:" + self.bin))
+
     @unittest.skipUnless(platform.system() == "Darwin", "needs macOS's own directories and admin group")
     def test_the_host_system_directories_pass_and_tmp_does_not(self):
         """The real predicate, with the real admin group, on the real host:
@@ -470,6 +520,53 @@ admin_members() { echo "${FIXTURE_ADMINS}"; }'''
             capture_output=True, text=True, timeout=30)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["/tmp"], result.stdout.splitlines())
+
+
+class AclWriteGrantTests(unittest.TestCase):
+    """Runs ``acl_write_grant`` against canned ``ls -lde`` output, so the macOS
+    ACL parsing is exercised on any host. A shell function shadows ``ls`` to
+    emit the listing a real macOS ``ls -lde`` would print for a fixture, which
+    is the one part of the check a Linux host cannot produce for real.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.functions = _trust_functions("acl_write_grant")
+
+    def _grant(self, listing):
+        result = subprocess.run(
+            ["bash", "-c",
+             "set -euo pipefail\nls() { printf '%s' \"${LS_OUTPUT}\"; }\n"
+             + self.functions + '\nacl_write_grant /some/path'],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, LS_OUTPUT=listing))
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    _MODE_LINE = "drwxr-xr-x+ 3 someone staff 96 Jan  1 00:00 path\n"
+
+    def test_no_acl_is_not_reported(self):
+        self.assertEqual("", self._grant(
+            "drwxr-xr-x  3 someone staff 96 Jan  1 00:00 path\n"))
+
+    def test_an_allow_write_entry_is_reported(self):
+        self.assertEqual("/some/path", self._grant(
+            self._MODE_LINE + " 0: user:someone allow write,delete\n"))
+
+    def test_an_allow_append_entry_is_reported(self):
+        """append lets a subject add to the file; it is a write-granting right."""
+        self.assertEqual("/some/path", self._grant(
+            self._MODE_LINE + " 0: user:someone allow append\n"))
+
+    def test_a_deny_entry_is_not_reported(self):
+        """The 'everyone deny delete' macOS puts on a home directory must not
+        read as a grant."""
+        self.assertEqual("", self._grant(
+            self._MODE_LINE + " 0: group:everyone deny delete\n"))
+
+    def test_a_read_only_allow_entry_is_not_reported(self):
+        self.assertEqual("", self._grant(
+            self._MODE_LINE + " 0: user:someone allow read,readattr\n"))
 
 
 class ShellSyntaxTests(unittest.TestCase):

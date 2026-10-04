@@ -191,17 +191,37 @@ runner_busy() {
     [ -n "$(runner_processes Worker)" ]
 }
 
+# Echoes PATH when an ACL entry grants a subject a right that lets them change
+# or replace it even with the mode bits clear — the gap a mode-only check leaves
+# open on macOS, closed the same way register-daemon.sh closes it on the plist
+# path. `ls -e` lists each ACL entry after the mode line as " N: <who>
+# allow|deny <rights,...>"; only an allow entry carrying a write-granting right
+# counts (a deny entry, like the "everyone deny delete" macOS puts on a home
+# directory, does not). A host whose `ls` has no `-e` has no such ACLs to read,
+# so nothing is reported. PRIV is as for untrusted_path.
+acl_write_grant() {
+    local path="$1" priv="${2:-}"
+    ${priv} ls -lde "${path}" 2>/dev/null | awk -v p="${path}" '
+        NR > 1 && $3 == "allow" \
+            && $4 ~ /(^|,)(write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown)(,|$)/ {
+            print p; exit
+        }' || true
+}
+
 # Echoes PATH when an account other than root or OWNER could change it — when it
-# is a symlink, is group- or world-writable, or is owned by a third account —
-# and nothing when only root and OWNER can. PRIV is "sudo" to reach a path under
-# a service account's home the invoker cannot stat, or empty to stat as the
-# invoker. This is the check register-daemon.sh makes on every component of the
-# plist's path, applied here to the files fleet.sh trusts before it is reached.
+# is a symlink, is group- or world-writable, is owned by a third account, or
+# carries a write-granting ACL entry — and nothing when only root and OWNER can.
+# PRIV is "sudo" to reach a path under a service account's home the invoker
+# cannot stat, or empty to stat as the invoker. This is the check
+# register-daemon.sh makes on every component of the plist's path, applied here
+# to the files fleet.sh trusts before it is reached.
 untrusted_path() {
-    local owner="$1" path="$2" priv="${3:-}"
-    ${priv} find "${path}" -maxdepth 0 \
+    local owner="$1" path="$2" priv="${3:-}" bad
+    bad="$(${priv} find "${path}" -maxdepth 0 \
         \( -type l -o -perm -g+w -o -perm -o+w \
-           -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null
+           -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null)" || true
+    [ -n "${bad}" ] || bad="$(acl_write_grant "${path}" "${priv}")"
+    [ -z "${bad}" ] || echo "${path}"
 }
 
 # Echoes the first component of the absolute PATH, walking down from / to PATH
@@ -215,7 +235,10 @@ untrusted_ancestor() {
     local owner="$1" path="$2" priv="${3:-}" check="${4:-untrusted_path}" prefix="" component
     local -a parts
     IFS='/' read -r -a parts <<< "${path#/}"
-    for component in "${parts[@]}"; do
+    # ${parts[@]+…} guards the empty-array case: a "/" path leaves parts empty,
+    # and expanding an empty array under `set -u` is an unbound-variable error
+    # on the bash macOS ships (3.2), which would abort the walk mid-stream.
+    for component in ${parts[@]+"${parts[@]}"}; do
         [ -n "${component}" ] || continue
         prefix="${prefix}/${component}"
         ${priv} test -e "${prefix}" -o -L "${prefix}" || return 0
@@ -234,7 +257,8 @@ admin_members() {
 
 # Echoes PATH when an account other than root, OWNER or an administrator could
 # change what it holds — it is world-writable, group-writable by a group other
-# than ADMIN_GROUP, or owned by a third account — and nothing otherwise. Looser
+# than ADMIN_GROUP, owned by a third account, or carries a write-granting ACL
+# entry — and nothing otherwise. Looser
 # than untrusted_path on purpose: Homebrew's directories belong to the
 # administrator who installed it and are writable by the admin group, and
 # everyone in that group can already become root. A symlink is judged by the
@@ -252,6 +276,7 @@ untrusted_tool_dir() {
     out="$(${priv} find -H "${path}" -maxdepth 0 \
         \( -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
            -o \( "${owners[@]}" \) \) -print 2>/dev/null)" || out="${path}"
+    [ -n "${out}" ] || out="$(acl_write_grant "${path}" "${priv}")"
     [ -z "${out}" ] || echo "${out}"
 }
 
@@ -265,7 +290,9 @@ untrusted_search_path() {
     local owner="$1" search="$2" priv="${3:-}" dir real bad
     local -a dirs
     IFS=':' read -r -a dirs <<< "${search}"
-    for dir in "${dirs[@]}"; do
+    # ${dirs[@]+…} guards the empty-array case the same way untrusted_ancestor
+    # does: an empty SEARCH would otherwise abort under `set -u` on bash 3.2.
+    for dir in ${dirs[@]+"${dirs[@]}"}; do
         case "${dir}" in
             /*) ;;
             *) echo "${dir:-(empty entry)}"; continue ;;
@@ -461,13 +488,25 @@ cmd_install() {
     # has them first, so finding them is not enough: an entry such as /tmp/bin,
     # or one another account can write, would let that account put its own java
     # or mvn ahead of the real one between this check and the next job.
-    local tool_bad
-    # TODO(review): fails open if untrusted_search_path dies (e.g. bash 3.2 set -u on an empty parts array for a "/" entry); the <(...) exit status is never checked.
-    while IFS= read -r tool_bad; do
-        echo "  ✗ ${tool_bad}, on RUNNER_PATH, is not absolute, or can be written by an account other" >&2
-        echo "      than root, ${RUNNER_USER} and the administrators; a program put there would run as ${RUNNER_USER}." >&2
+    # Captured with its exit status, rather than read through `done < <(...)`
+    # whose failure the loop never sees: a check that dies — say on a bash that
+    # aborts the walk — then counts as an error instead of waving every entry
+    # through unscreened.
+    local tool_bad path_untrusted path_status=0
+    path_untrusted="$(untrusted_search_path "${RUNNER_USER}" "${RUNNER_PATH}" sudo)" || path_status=$?
+    if [ "${path_status}" -ne 0 ]; then
+        echo "  ✗ could not screen RUNNER_PATH (${RUNNER_PATH}); the trust check exited ${path_status}." >&2
+        echo "      Refusing to render an unscreened PATH into the daemon." >&2
         errors=$((errors + 1))
-    done < <(untrusted_search_path "${RUNNER_USER}" "${RUNNER_PATH}" sudo)
+    elif [ -n "${path_untrusted}" ]; then
+        while IFS= read -r tool_bad; do
+            echo "  ✗ ${tool_bad}, on RUNNER_PATH, is not absolute, or can be written by an account other" >&2
+            echo "      than root, ${RUNNER_USER} and the administrators; a program put there would run as ${RUNNER_USER}." >&2
+            errors=$((errors + 1))
+        done <<EOF
+${path_untrusted}
+EOF
+    fi
     if ! xcodebuild -version >/dev/null 2>&1; then
         echo "  ! full Xcode is not selected; jobs that run xcodebuild will fail (see README, Prerequisites)"
     fi
