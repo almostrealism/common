@@ -72,7 +72,10 @@ privileges, so it is refused unless the file and every directory above it
 belong to you or root, are not group- or world-writable, carry no
 write-granting ACL entry (macOS ACLs can grant write access with the mode
 bits clear), and are not symlinks. Everything under the stage directory is
-written as the runner account, never as root.
+written as the runner account, never as root. The same standard keeps the
+monitor's `FLEET_HOME` (default `~/fleet`), which holds its database
+credential, out of the runner account's reach, and keeps an existing runner
+directory free of files others can write.
 
 The runner runs as `worker` unless you pass `--user NAME`. Every job step runs
 as that account too.
@@ -192,7 +195,7 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 | `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |
-| `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere. Every entry must be absolute and writable — by mode bits or by an ACL — only by root, the runner account and the `admin` group (install refuses e.g. `/tmp/bin`) |
+| `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere. Every entry must be absolute and writable — by mode bits or by an ACL — only by root, the runner account and the `admin` group (install refuses e.g. `/tmp/bin`, and an empty or trailing `:` entry). The same holds for each required program found on it, and for every symlink on the way to it |
 
 ### "chmod: Unable to change file mode on .../svc.sh: Operation not permitted"
 

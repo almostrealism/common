@@ -278,6 +278,37 @@ class MacosFleetSecurityTests(unittest.TestCase):
             self.assertIn("acl_write_grant", body,
                           "%s must consult the ACL check, not only mode bits" % helper)
 
+    def test_install_screens_every_program_the_daemon_will_run(self):
+        """A trusted RUNNER_PATH directory can still hold a writable java, or a
+        link to one elsewhere; install must screen each resolved program, for
+        every required tool, before the PATH is rendered into the plist."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('untrusted_program "${RUNNER_USER}" "${program}" sudo')
+        self.assertNotEqual(-1, check, "install must screen each resolved program")
+        self.assertLess(check, install.find('s|@RUNNER_PATH@|'))
+        self.assertEqual(2, install.count("_ ${REQUIRED_TOOLS}"),
+                         "the lookup and the screen must cover the same tool list")
+
+    def test_runner_dir_files_others_can_write_are_refused(self):
+        """Files the runner owns are still another account's to rewrite when a
+        group or world write bit is set; the daemon would run them."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'sudo find "\$\{RUNNER_DIR\}" -path "\$\{RUNNER_DIR\}/_work" -prune\s*\\\s*'
+            r'-o ! -type l \\\( -perm -g\+w -o -perm -o\+w \\\) -print -quit')
+
+    def test_the_monitor_home_is_walked_before_the_monitor_is_installed(self):
+        """FLEET_HOME comes from the administrator's environment and holds the
+        monitor's database credential; one under the runner's home would put
+        it within CI jobs' reach."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('untrusted_ancestor "${admin_user}" "${fleet_home}"')
+        self.assertNotEqual(-1, check, "install must walk FLEET_HOME's path")
+        self.assertLess(check, install.find('"${MONITOR_INSTALL}"'))
+        self.assertIn('*) fleet_bad="${fleet_home}" ;;', install,
+                      "a relative FLEET_HOME must be refused, not walked from /")
+
     def test_the_path_walk_guards_an_empty_component_array(self):
         """A "/" path leaves the components array empty, and expanding an empty
         array under `set -u` aborts on the bash macOS ships (3.2); the walk
@@ -397,7 +428,8 @@ class UntrustedSearchPathTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        functions = _trust_functions("untrusted_ancestor", "untrusted_tool_dir", "untrusted_search_path")
+        functions = _trust_functions("untrusted_ancestor", "untrusted_tool_dir", "untrusted_search_path",
+                                     "untrusted_program")
         functions = functions.replace("untrusted_tool_dir() {", "real_untrusted_tool_dir() {", 1)
         cls.functions = functions + '''
 untrusted_tool_dir() {
@@ -410,9 +442,9 @@ admin_members() { echo "${FIXTURE_ADMINS}"; }'''
         cls.group = grp.getgrgid(os.getegid()).gr_name
         cls.other_group = grp.getgrgid(0).gr_name
 
-    def _check(self, search, owner=None, admins="", admin_group=None):
+    def _check(self, search, owner=None, admins="", admin_group=None, function="untrusted_search_path"):
         result = subprocess.run(
-            ["bash", "-c", "set -euo pipefail\n" + self.functions + '\nuntrusted_search_path "$1" "$2"',
+            ["bash", "-c", "set -euo pipefail\n" + self.functions + '\n%s "$1" "$2"' % function,
              "_", owner or self.user, search],
             capture_output=True, text=True, timeout=30,
             env=dict(os.environ, FIXTURE_ROOT=self.root, FIXTURE_ADMINS=admins,
@@ -505,6 +537,67 @@ admin_members() { echo "${FIXTURE_ADMINS}"; }'''
         otherwise wave the whole path through."""
         self.assertEqual([], self._check("/:" + self.bin))
 
+    def test_a_trailing_separator_is_reported(self):
+        """`read -a` drops a trailing empty field, so "bin:" would split to
+        bin alone; that trailing entry is the current directory all the same."""
+        self.assertEqual(["(empty entry)"], self._check(self.bin + ":"))
+        self.assertEqual(["(empty entry)", "(empty entry)"], self._check(":" + self.bin + ":"))
+
+    def test_an_empty_search_is_reported(self):
+        self.assertEqual(["(empty entry)"], self._check(""))
+
+    def _program(self, directory, name="java", mode=0o755):
+        path = os.path.join(directory, name)
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(path, mode)
+        return path
+
+    def _screen_program(self, path):
+        return self._check(path, function="untrusted_program")
+
+    def test_a_private_program_in_a_trusted_directory_is_trusted(self):
+        self.assertEqual([], self._screen_program(self._program(self.bin)))
+
+    def test_a_writable_program_in_a_trusted_directory_is_reported(self):
+        """The directory screen passes bin, but the java in it can be
+        rewritten by anyone."""
+        java = self._program(self.bin, mode=0o777)
+        self.assertEqual([], self._check(self.bin))
+        self.assertEqual([java], self._screen_program(java))
+
+    def test_a_program_linked_into_a_writable_directory_is_reported(self):
+        cellar = os.path.join(self.root, "cellar")
+        os.mkdir(cellar)
+        os.chmod(cellar, 0o777)
+        link = os.path.join(self.bin, "java")
+        os.symlink(self._program(cellar), link)
+        self.assertEqual([cellar], self._screen_program(link))
+
+    def test_a_link_chain_through_a_writable_directory_is_reported(self):
+        """bin/java -> opt/java -> cellar/java: the first link and the final
+        program are both safe, but opt, which holds the middle link, can be
+        written by others, who could re-point it."""
+        cellar = os.path.join(self.root, "cellar")
+        opt = os.path.join(self.root, "opt")
+        for d in (cellar, opt):
+            os.mkdir(d)
+            os.chmod(d, 0o755)
+        os.symlink(self._program(cellar), os.path.join(opt, "java"))
+        link = os.path.join(self.bin, "java")
+        os.symlink(os.path.join("..", "opt", "java"), link)
+        self.assertEqual([], self._screen_program(link))
+        os.chmod(opt, 0o777)
+        self.assertEqual([opt], self._screen_program(link))
+
+    def test_a_program_whose_links_cannot_be_followed_is_reported(self):
+        loop = os.path.join(self.bin, "java")
+        os.symlink(loop, loop)
+        self.assertEqual([loop], self._screen_program(loop))
+        dangling = os.path.join(self.bin, "mvn")
+        os.symlink(os.path.join(self.root, "missing"), dangling)
+        self.assertEqual([dangling], self._screen_program(dangling))
+
     @unittest.skipUnless(platform.system() == "Darwin", "needs macOS's own directories and admin group")
     def test_the_host_system_directories_pass_and_tmp_does_not(self):
         """The real predicate, with the real admin group, on the real host:
@@ -520,6 +613,25 @@ admin_members() { echo "${FIXTURE_ADMINS}"; }'''
             capture_output=True, text=True, timeout=30)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["/tmp"], result.stdout.splitlines())
+
+    @unittest.skipUnless(platform.system() == "Darwin", "needs macOS's own programs and admin group")
+    def test_the_host_system_programs_pass(self):
+        """The real program screen, with the real admin group, on the real
+        host: the system tools the daemon runs must pass, or install could
+        never succeed."""
+        functions = _trust_functions("untrusted_path", "untrusted_ancestor", "admin_members",
+                                     "untrusted_tool_dir", "untrusted_program")
+        programs = ["/usr/bin/curl", "/usr/bin/git", "/usr/sbin/lsof"]
+        # Homebrew's links into its Cellar, where the host has them.
+        programs += [p for p in ("/opt/homebrew/bin/mvn", "/opt/homebrew/bin/jq") if os.path.exists(p)]
+        for program in programs:
+            with self.subTest(program=program):
+                result = subprocess.run(
+                    ["bash", "-c", "set -euo pipefail\nADMIN_GROUP=admin\n" + functions
+                     + '\nuntrusted_program "$1" "$2"', "_", self.user, program],
+                    capture_output=True, text=True, timeout=30)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stdout)
 
 
 class AclWriteGrantTests(unittest.TestCase):

@@ -73,6 +73,8 @@ LABEL_BASE="com.almostrealism.ci-runner"
 MONITOR_LABEL="com.almostrealism.fleet-collector"
 ADMIN_GROUP="admin"
 ONLINE_TIMEOUT_SECONDS=120
+# The programs runner.sh and the jobs need on the daemon's PATH.
+REQUIRED_TOOLS="java mvn curl jq git lsof"
 
 usage() { sed -n '4,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
@@ -289,6 +291,12 @@ untrusted_tool_dir() {
 untrusted_search_path() {
     local owner="$1" search="$2" priv="${3:-}" dir real bad
     local -a dirs
+    # `read -a` drops a trailing empty field, so "/usr/bin:" would split to
+    # just /usr/bin; that trailing entry (or an empty search) is the current
+    # directory all the same, and is reported here rather than lost.
+    case "${search}" in
+        ""|*:) echo "(empty entry)" ;;
+    esac
     IFS=':' read -r -a dirs <<< "${search}"
     # ${dirs[@]+…} guards the empty-array case the same way untrusted_ancestor
     # does: an empty SEARCH would otherwise abort under `set -u` on bash 3.2.
@@ -304,6 +312,45 @@ untrusted_search_path() {
         fi
         [ -z "${bad}" ] || echo "${bad}"
     done
+}
+
+# Echoes the first place on the way to the program at the absolute PATH where an
+# account other than root, OWNER or an administrator could change what runs: a
+# directory or file, judged as untrusted_tool_dir judges them, along PATH itself,
+# along every symlink it passes through, and along what it finally resolves to.
+# A trusted directory can still hold a writable program, or a link to one
+# somewhere else, so screening the search path alone is not enough. A program
+# whose links cannot be followed (a loop, a dangling link) is reported, never
+# passed. Nothing when the program is safe. PRIV is as for untrusted_path.
+untrusted_program() {
+    local owner="$1" path="$2" priv="${3:-}" hops hop bad
+    hops="$(${priv} /bin/sh -c '
+        p=$1 n=0
+        while :; do
+            d=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || exit 1
+            c="${d%/}/$(basename "$p")"
+            echo "$c"
+            [ "$c" = "$p" ] || echo "$p"
+            p=$c
+            [ -L "$p" ] || break
+            n=$((n + 1))
+            [ "$n" -le 40 ] || exit 1
+            t=$(readlink "$p") || exit 1
+            case "$t" in
+                /*) p=$t ;;
+                *) p="${d%/}/$t" ;;
+            esac
+        done
+        [ -e "$p" ] || exit 1' _ "${path}")" || { echo "${path}"; return 0; }
+    while IFS= read -r hop; do
+        bad="$(untrusted_ancestor "${owner}" "${hop}" "${priv}" untrusted_tool_dir)"
+        if [ -n "${bad}" ]; then
+            echo "${bad}"
+            return 0
+        fi
+    done <<EOF
+${hops}
+EOF
 }
 
 # Writes stdin to DEST with MODE, as the runner account. The stage directory is
@@ -471,9 +518,9 @@ cmd_install() {
     # will look them up: as the runner account, with the daemon's PATH.
     local missing
     missing="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" /bin/bash -c '
-        for c in java mvn curl jq git lsof; do command -v "$c" >/dev/null 2>&1 || printf "%s " "$c"; done
+        for c in "$@"; do command -v "$c" >/dev/null 2>&1 || printf "%s " "$c"; done
         major=$(java -version 2>&1 | sed -n "1s/.*\"\([0-9][0-9]*\).*/\1/p")
-        [ -n "$major" ] && [ "$major" -ge 17 ] || printf "jdk17+ "' 2>/dev/null || true)"
+        [ -n "$major" ] && [ "$major" -ge 17 ] || printf "jdk17+ "' _ ${REQUIRED_TOOLS} 2>/dev/null || true)"
     if [ -n "${missing}" ]; then
         echo "  ✗ not on ${RUNNER_USER}'s daemon PATH: ${missing}" >&2
         echo "      PATH=${RUNNER_PATH}" >&2
@@ -507,6 +554,29 @@ cmd_install() {
 ${path_untrusted}
 EOF
     fi
+
+    # A trusted directory can still hold a program another account can rewrite,
+    # or a link to one elsewhere, so each program the daemon will actually run is
+    # screened too — the file, and every link on the way to it. A relative result
+    # comes from a relative RUNNER_PATH entry, which the screen above reports.
+    local programs program program_bad
+    programs="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" /bin/bash -c '
+        for c in "$@"; do command -v "$c" 2>/dev/null || true; done' _ ${REQUIRED_TOOLS} || true)"
+    while IFS= read -r program; do
+        case "${program}" in
+            /*) ;;
+            *) continue ;;
+        esac
+        program_bad="$(untrusted_program "${RUNNER_USER}" "${program}" sudo)"
+        if [ -n "${program_bad}" ]; then
+            echo "  ✗ ${program_bad}, on the way to ${program}, can be changed by an account other than" >&2
+            echo "      root, ${RUNNER_USER} and the administrators, or its links cannot be followed;" >&2
+            echo "      the daemon would run whatever it holds as ${RUNNER_USER}." >&2
+            errors=$((errors + 1))
+        fi
+    done <<EOF
+${programs}
+EOF
     if ! xcodebuild -version >/dev/null 2>&1; then
         echo "  ! full Xcode is not selected; jobs that run xcodebuild will fail (see README, Prerequisites)"
     fi
@@ -527,6 +597,18 @@ EOF
         if [ -n "${foreign}" ]; then
             echo "  ✗ ${RUNNER_DIR} holds files not owned by ${RUNNER_USER} (first: ${foreign})" >&2
             echo "      Fix: sudo chown -R ${RUNNER_USER} ${RUNNER_DIR}" >&2
+            errors=$((errors + 1))
+        fi
+        # Owned by the runner is not enough when a group or world write bit lets
+        # another account rewrite run.sh, or anything it runs, under the daemon.
+        # _work holds the jobs' checkouts, which each job replaces anyway; links
+        # are skipped because their own mode bits mean nothing.
+        local writable
+        writable="$(sudo find "${RUNNER_DIR}" -path "${RUNNER_DIR}/_work" -prune \
+            -o ! -type l \( -perm -g+w -o -perm -o+w \) -print -quit 2>/dev/null || true)"
+        if [ -n "${writable}" ]; then
+            echo "  ✗ ${RUNNER_DIR} holds files others can write (first: ${writable})" >&2
+            echo "      Fix: sudo chmod -R go-w ${RUNNER_DIR}" >&2
             errors=$((errors + 1))
         fi
     fi
@@ -562,7 +644,22 @@ EOF
     fi
 
     if [ "${MONITOR}" = true ]; then
-        local store_url="${FLEET_HOME:-${HOME}/fleet}/store-url"
+        # install.sh keeps the monitor's database credential in FLEET_HOME and
+        # runs FLEET_HOME's Python as you, so a FLEET_HOME the runner account (or
+        # any other) could change — one under the runner's home, say — would
+        # hand CI jobs both the credential and your account.
+        local fleet_home="${FLEET_HOME:-${HOME}/fleet}" fleet_bad
+        case "${fleet_home}" in
+            /*) fleet_bad="$(untrusted_ancestor "${admin_user}" "${fleet_home}")" ;;
+            *) fleet_bad="${fleet_home}" ;;
+        esac
+        if [ -n "${fleet_bad}" ]; then
+            echo "  ✗ ${fleet_bad}, on the path to the monitor's FLEET_HOME (${fleet_home}), is not absolute," >&2
+            echo "      is a symlink, is writable by others, or is owned by neither you (${admin_user}) nor root;" >&2
+            echo "      the monitor's credential kept there would be within another account's reach." >&2
+            errors=$((errors + 1))
+        fi
+        local store_url="${fleet_home}/store-url"
         if [ -s "${store_url}" ]; then
             echo "  ✓ monitor credential present (${store_url})"
         elif [ -n "${STORE_FROM}" ]; then
