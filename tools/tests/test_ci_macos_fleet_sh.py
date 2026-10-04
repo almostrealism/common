@@ -350,7 +350,7 @@ class MacosFleetSecurityTests(unittest.TestCase):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         check = install.find('untrusted_ancestor "${admin_user}" "${fleet_home}"')
         self.assertNotEqual(-1, check, "install must walk FLEET_HOME's path")
-        self.assertLess(check, install.find('"${MONITOR_INSTALL}"'))
+        self.assertLess(check, install.find('"${MONITOR_INSTALL}" ${STORE_FROM'))
         self.assertIn('*) fleet_bad="${fleet_home}" ;;', install,
                       "a relative FLEET_HOME must be refused, not walked from /")
 
@@ -443,6 +443,71 @@ class MacosFleetSecurityTests(unittest.TestCase):
         run = install.find('sudo "${REGISTER_SCRIPT}"')
         self.assertNotEqual(-1, run, "install runs the register script through sudo")
         self.assertLess(walk, run, "the path must be screened before it runs as root")
+
+    def test_the_env_file_path_is_screened_before_the_template_is_copied(self):
+        """When the default .env is missing, cmd_install copies .env.example into
+        place with the administrator's cp, which follows a symlink at the target;
+        a dangling symlink there, or a checkout under an attacker-writable parent,
+        would redirect that write. The path must be walked before the copy, not
+        only after it, so the trust check is not too late to matter."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        walk = install.find('create_bad="$(untrusted_ancestor "${admin_user}" "${ENV_FILE}")"')
+        copy = install.find('cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"')
+        self.assertNotEqual(-1, walk, "install must walk the env file's path before creating it")
+        self.assertNotEqual(-1, copy)
+        self.assertLess(walk, copy, "the path must be screened before the template is copied")
+
+    def test_the_monitor_installer_and_its_code_paths_are_screened(self):
+        """install.sh and the render.sh it calls run with the administrator's
+        privileges straight from the checkout, exactly as the register script
+        does; a runner-writable one would run as the administrator during the
+        monitor step, so each must be walked before the monitor install runs, and
+        an explicitly set FLEET_PYTHON interpreter held to the same standard."""
+        self.assertIn('MONITOR_RENDER="${CHECKOUT}/tools/fleet/launchd/render.sh"', self.src,
+                      "the render script path must be defined")
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('for monitor_code in "${MONITOR_INSTALL}" "${MONITOR_RENDER}"; do', install,
+                      "install must screen both the monitor installer and render.sh")
+        walk = install.find('untrusted_ancestor "${admin_user}" "${monitor_code}"')
+        run = install.find('"${MONITOR_INSTALL}" ${STORE_FROM')
+        self.assertNotEqual(-1, walk, "install must walk the monitor code paths")
+        self.assertNotEqual(-1, run, "install runs the monitor installer")
+        self.assertLess(walk, run, "the code paths must be screened before the monitor install runs")
+        self.assertIn('if [ -n "${FLEET_PYTHON:-}" ]; then', install,
+                      "an explicitly set FLEET_PYTHON interpreter must be screened too")
+
+    def test_status_refuses_to_source_a_readable_env_file(self):
+        """status sources the env file as the invoker just as install does, and
+        the file holds GITHUB_PAT; install refuses a group- or world-readable one,
+        so status must apply the same read-exposure check before sourcing it
+        rather than condoning a credential file the runner account can read."""
+        status = re.search(r"^cmd_status\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = status.find('exposed_secret "$(id -un)" "${ENV_FILE}"')
+        source = status.find('read_env "${ENV_FILE}"')
+        self.assertNotEqual(-1, check, "status should screen the env file for read exposure")
+        self.assertNotEqual(-1, source)
+        self.assertLess(check, source, "the read-exposure check must come before the env file is sourced")
+
+    def test_install_rejects_a_runner_dir_shared_by_another_instance(self):
+        """RUNNER_DIR carries the instance suffix only when it falls back to the
+        default, so a custom ENV_RUNNER_DIR could name a directory another
+        installed instance already uses; the two would share .runner/config.sh
+        state and overwrite each other's GitHub registration. install must reject
+        a RUNNER_DIR already registered to a different service's plist, skipping
+        the current instance's own plist on re-install."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('for other_plist in "${DAEMONS_DIR}/${LABEL_BASE}"*.plist; do', install,
+                      "install must enumerate the installed runner plists")
+        self.assertIn('[ "${other_plist}" = "${INSTALLED_PLIST}" ] && continue', install,
+                      "the current instance's own plist must be skipped on re-install")
+        self.assertRegex(
+            install,
+            r'other_dir="\$\(plist_value "\$\{other_plist\}" ProgramArguments:3\)"',
+            "install must read each plist's runner directory to compare it")
+        self.assertRegex(
+            install,
+            r'\[ "\$\{other_dir\}" = "\$\{RUNNER_DIR\}" \]',
+            "install must reject a RUNNER_DIR already used by another instance")
 
     def test_runner_dir_scans_stat_through_sudo(self):
         """A RUNNER_DIR under a home the administrator cannot enter reads as

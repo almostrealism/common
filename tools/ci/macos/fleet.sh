@@ -66,6 +66,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKOUT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 REGISTER_SCRIPT="${CHECKOUT}/flowtree/runtime/agent/macos/register-daemon.sh"
 MONITOR_INSTALL="${CHECKOUT}/tools/fleet/launchd/install.sh"
+MONITOR_RENDER="${CHECKOUT}/tools/fleet/launchd/render.sh"
 TEMPLATE="${SCRIPT_DIR}/com.almostrealism.ci-runner.plist"
 PLISTBUDDY="/usr/libexec/PlistBuddy"
 DAEMONS_DIR="/Library/LaunchDaemons"
@@ -447,12 +448,28 @@ github_status() {
 
 cmd_install() {
     local errors=0
+    local admin_user
+    admin_user="$(id -un)"
 
     echo "Preflight"
 
     # The env file is the operator's one piece of configuration.
     if [ ! -f "${ENV_FILE}" ]; then
         if [ "${ENV_FILE}" = "${SCRIPT_DIR}/.env" ] && [ -f "${SCRIPT_DIR}/.env.example" ]; then
+            # cp runs with the administrator's privileges and follows a symlink
+            # at ENV_FILE, so the path it writes through must be screened first —
+            # the same walk the existing env file gets below. A dangling symlink
+            # here, or a checkout under a parent another account can write, would
+            # otherwise let that account redirect the administrator's cp onto a
+            # path of its choosing; the trust check after the copy is too late.
+            local create_bad
+            create_bad="$(untrusted_ancestor "${admin_user}" "${ENV_FILE}")"
+            if [ -n "${create_bad}" ]; then
+                echo "ERROR: ${create_bad}, on the path to ${ENV_FILE}, is a symlink, is writable by" >&2
+                echo "  others, or is owned by neither you (${admin_user}) nor root; it is not safe to create" >&2
+                echo "  the env file there. Fix that component, or create a trusted ${ENV_FILE} yourself." >&2
+                exit 1
+            fi
             cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"
             # The template becomes the home of GITHUB_PAT once filled in, so
             # create it owner-only rather than at the copy's default mode.
@@ -490,8 +507,7 @@ cmd_install() {
     # sourced. A mode-0644 file owned by the runner account would pass a
     # write-bit-only check yet still be the runner's to edit, and a directory
     # above it that another account can write lets that account replace it.
-    local admin_user env_bad
-    admin_user="$(id -un)"
+    local env_bad
     env_bad="$(untrusted_ancestor "${admin_user}" "${ENV_FILE}")"
     if [ -n "${env_bad}" ]; then
         echo "ERROR: ${env_bad}, on the path to ${ENV_FILE}, is a symlink, is writable by" >&2
@@ -700,6 +716,27 @@ EOF
         errors=$((errors + 1))
     fi
 
+    # Each runner keeps its registration state (.runner, config.sh, _work) in its
+    # own RUNNER_DIR, and the suffix that keeps instances apart is applied only
+    # when RUNNER_DIR falls back to the default. A custom ENV_RUNNER_DIR can
+    # therefore name a directory another installed instance already uses; with
+    # the other service stopped there is no listener to detect, so both installs
+    # succeed, then share .runner/config.sh and config.sh --replace makes each
+    # registration overwrite the other's. Reject a RUNNER_DIR already registered
+    # to a different service's plist.
+    local other_plist other_dir
+    for other_plist in "${DAEMONS_DIR}/${LABEL_BASE}"*.plist; do
+        [ -e "${other_plist}" ] || continue
+        [ "${other_plist}" = "${INSTALLED_PLIST}" ] && continue
+        other_dir="$(plist_value "${other_plist}" ProgramArguments:3)"
+        if [ -n "${other_dir}" ] && [ "${other_dir}" = "${RUNNER_DIR}" ]; then
+            echo "  ✗ ${RUNNER_DIR} is already the runner directory of ${other_plist##*/}; two runners" >&2
+            echo "      sharing one directory would overwrite each other's GitHub registration." >&2
+            echo "      Give this instance its own RUNNER_DIR, or unset RUNNER_DIR to use the derived default." >&2
+            errors=$((errors + 1))
+        fi
+    done
+
     # runner.sh checks out and runs every job in RUNNER_WORKDIR, defaulting to
     # ${RUNNER_DIR}/_work when the env file leaves it unset, and runs mkdir -p on
     # it unconditionally. The effective path — the default as much as a custom
@@ -804,6 +841,40 @@ EOF
     fi
 
     if [ "${MONITOR}" = true ]; then
+        # install.sh, and the render.sh it calls, both run with your privileges
+        # (no sudo), straight from the checkout — exactly the position the
+        # register script is in before it runs as root. If any component on the
+        # way to either — anywhere in the checkout — is a symlink, writable by
+        # others, or owned by neither you nor root, another account could swap a
+        # script fleet runs as you between this preflight and the monitor step.
+        # Walk the full path of each, the same way the register script is walked.
+        local monitor_code monitor_bad
+        for monitor_code in "${MONITOR_INSTALL}" "${MONITOR_RENDER}"; do
+            monitor_bad="$(untrusted_ancestor "${admin_user}" "${monitor_code}")"
+            if [ -n "${monitor_bad}" ]; then
+                echo "  ✗ ${monitor_bad}, on the path to ${monitor_code}, is a symlink, is writable by" >&2
+                echo "      others, or is owned by neither you (${admin_user}) nor root; another account could" >&2
+                echo "      replace a script the monitor install runs as you." >&2
+                errors=$((errors + 1))
+            fi
+        done
+        # FLEET_PYTHON, when the environment sets it, is the interpreter
+        # install.sh runs as you; the default lives under FLEET_HOME, screened
+        # just below. Hold an explicit one to the same standard — absolute, and
+        # beyond another account's reach to replace.
+        if [ -n "${FLEET_PYTHON:-}" ]; then
+            local python_bad
+            case "${FLEET_PYTHON}" in
+                /*) python_bad="$(untrusted_ancestor "${admin_user}" "${FLEET_PYTHON}")" ;;
+                *) python_bad="${FLEET_PYTHON}" ;;
+            esac
+            if [ -n "${python_bad}" ]; then
+                echo "  ✗ ${python_bad}, on the path to FLEET_PYTHON (${FLEET_PYTHON}), is not absolute, is a" >&2
+                echo "      symlink, is writable by others, or is owned by neither you (${admin_user}) nor root;" >&2
+                echo "      another account could replace the interpreter the monitor install runs as you." >&2
+                errors=$((errors + 1))
+            fi
+        fi
         # install.sh keeps the monitor's database credential in FLEET_HOME and
         # runs FLEET_HOME's Python as you, so a FLEET_HOME the runner account (or
         # any other) could change — one under the runner's home, say — would
@@ -1027,6 +1098,12 @@ cmd_status() {
     env_bad="$(untrusted_ancestor "$(id -un)" "${ENV_FILE}")"
     if [ -n "${env_bad}" ]; then
         echo "  GitHub:   not checked; ${env_bad} can be changed by another account, so ${ENV_FILE} is not read"
+    elif [ -r "${ENV_FILE}" ] && [ -n "$(exposed_secret "$(id -un)" "${ENV_FILE}")" ]; then
+        # install refuses an env file other local accounts can read, because it
+        # holds GITHUB_PAT; the ancestor walk above deliberately permits a
+        # readable file, so status holds it to the same read-exposure standard
+        # rather than sourcing a credential file visible to the runner account.
+        echo "  GitHub:   not checked; ${ENV_FILE} is readable by another account (it holds GITHUB_PAT), so it is not read"
     elif [ -r "${ENV_FILE}" ]; then
         read_env "${ENV_FILE}"
         resolve_api_base
