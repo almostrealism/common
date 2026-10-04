@@ -298,6 +298,29 @@ class MacosFleetSecurityTests(unittest.TestCase):
             r'sudo find "\$\{RUNNER_DIR\}" -path "\$\{RUNNER_DIR\}/_work" -prune\s*\\\s*'
             r'-o ! -type l \\\( -perm -g\+w -o -perm -o\+w \\\) -print -quit')
 
+    def test_install_verifies_the_runner_can_write_the_runner_dir(self):
+        """Trust is not usability: a RUNNER_DIR owned by root, or owned by the
+        runner with its own write bit cleared, passes the ownership, mode, and
+        ancestor checks yet leaves runner.sh unable to create config.sh, so the
+        daemon registers and then waits for a runner that never comes online.
+        install must probe effective write access as the runner — walking up to
+        the nearest existing directory when RUNNER_DIR does not exist yet, since
+        runner.sh creates it with mkdir -p."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'while \[ ! -d "\$\{writable_at\}" \] && \[ "\$\{writable_at\}" != "/" \]',
+            "the write-access probe must fall back to the nearest existing directory")
+        self.assertRegex(
+            install,
+            r'sudo -u "\$\{RUNNER_USER\}" /bin/sh -c \'test -w "\$1" && test -x "\$1"\'',
+            "install must probe write and search access as the runner account")
+        probe = install.find("writable_at")
+        render = install.find('s|@RUNNER_DIR@|')
+        if render != -1:
+            self.assertLess(probe, render,
+                            "the write-access probe must run before install proceeds")
+
     def test_the_monitor_home_is_walked_before_the_monitor_is_installed(self):
         """FLEET_HOME comes from the administrator's environment and holds the
         monitor's database credential; one under the runner's home would put

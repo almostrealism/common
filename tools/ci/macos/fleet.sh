@@ -632,6 +632,33 @@ EOF
         errors=$((errors + 1))
     fi
 
+    # Trust is necessary but not sufficient: runner.sh runs as ${RUNNER_USER}
+    # and must create ${RUNNER_DIR}/config.sh and _work. A runner directory the
+    # runner account cannot write — owned by root, or by the runner with its own
+    # write bit cleared — passes every check above yet leaves the daemon waiting
+    # for a runner that can never register. A ${RUNNER_DIR} that does not exist
+    # yet is created with mkdir -p, which needs the same write access on the
+    # nearest directory that does exist. Probe as the runner so the answer is
+    # the daemon's, not root's.
+    local writable_at="${RUNNER_DIR}"
+    while [ ! -d "${writable_at}" ] && [ "${writable_at}" != "/" ]; do
+        writable_at="$(dirname "${writable_at}")"
+    done
+    if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${writable_at}"; then
+        if [ "${writable_at}" = "${RUNNER_DIR}" ]; then
+            echo "  ✗ ${RUNNER_USER} cannot write to ${RUNNER_DIR}; runner.sh could not create" >&2
+            echo "      config.sh there, and the daemon would wait for a runner that never registers." >&2
+            echo "      Fix: sudo chown ${RUNNER_USER} ${RUNNER_DIR} && sudo chmod u+rwx ${RUNNER_DIR}" >&2
+        else
+            echo "  ✗ ${RUNNER_DIR} does not exist and ${RUNNER_USER} cannot create it: the nearest" >&2
+            echo "      existing directory ${writable_at} is not writable by ${RUNNER_USER}, so the" >&2
+            echo "      daemon would wait for a runner that never registers." >&2
+            echo "      Fix: sudo chown ${RUNNER_USER} ${writable_at}, or choose a RUNNER_DIR the" >&2
+            echo "      runner account can create." >&2
+        fi
+        errors=$((errors + 1))
+    fi
+
     # A runner started by hand from the same directory would fight the
     # daemon over one registration.
     if [ -z "$(service_state "${LABEL}")" ] && [ -n "$(runner_processes Listener)" ]; then
