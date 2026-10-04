@@ -170,11 +170,21 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * does — is refused rather than copied, because a flat copy of such a source silently yields
 	 * backing-memory order and loses the mapping. A regular shape can still carry such an ordering
 	 * through its {@link MemoryData#getMemOrdering() memory ordering}, so that is inspected in
-	 * addition to the shape. A destination carrying the identical mapping is accepted, since the
-	 * same mapping applied to both sides preserves the correspondence; identity here means matching
-	 * the traversal ordering and the memory ordering as well as the shape, because
-	 * {@link TraversalPolicy#equals(Object)} compares the dimensions, dimension order, rates, and
-	 * traversal axis, but not the traversal ordering.</p>
+	 * addition to the shape.</p>
+	 *
+	 * <p>A destination carrying the identical mapping is accepted <em>only</em> when the mapping is a
+	 * rate or dimension mapping — a rated, repeated, or permuted shape with no
+	 * {@link io.almostrealism.collect.TraversalOrdering}. Such a mapping reads its backing memory as a
+	 * dense run of {@link TraversalPolicy#getTotalInputSize() total input size} elements, so the same
+	 * mapping on both sides preserves the correspondence under a flat copy. A
+	 * {@link io.almostrealism.collect.TraversalOrdering} — whether carried on the shape or inherited
+	 * through the delegate — is refused even when both sides share it, because the ordering can map a
+	 * logical index onto a sparse backing index (for example an explicit order {@code [10, 20]} over a
+	 * two-element shape): a flat transfer of the leading input elements would neither read nor write
+	 * those positions, and a compact ordering can make the transferred length exceed the delegate.
+	 * Identity for the rate/dimension case means matching the traversal ordering and the memory
+	 * ordering as well as the shape, because {@link TraversalPolicy#equals(Object)} compares the
+	 * dimensions, dimension order, rates, and traversal axis, but not the traversal ordering.</p>
 	 *
 	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
 	 * than referencing the view: the permutation then runs as a kernel that writes each destination
@@ -183,8 +193,9 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * @param destination The destination {@link MemoryData} buffer (must be a {@link MemoryData} instance)
 	 * @return An {@link Evaluable} that performs the copy and returns the destination
 	 * @throws ClassCastException       if destination is not a {@link MemoryData} instance
-	 * @throws IllegalArgumentException if the source is a view whose mapping the destination does
-	 *                                  not share, so a flat copy would discard it
+	 * @throws IllegalArgumentException if the source carries a traversal or memory ordering, or is a
+	 *                                  rate/dimension view whose mapping the destination does not
+	 *                                  share, so a flat copy would discard it
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
@@ -192,19 +203,19 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 		TraversalPolicy shape = shape(value);
 		TraversalPolicy target = destination instanceof Shape ? ((Shape) destination).getShape() : null;
 
-		// a regular shape can still inherit a memory ordering from a delegate; equals compares
-		// neither that nor the traversal ordering, so both are matched explicitly
+		// equals compares neither the memory ordering nor the traversal ordering, so both are
+		// matched explicitly; a TraversalOrdering is refused even when shared (see javadoc)
 		TraversalOrdering sourceOrder = value.getMemOrdering();
 		TraversalOrdering targetOrder = destination instanceof MemoryData ?
 				((MemoryData) destination).getMemOrdering() : null;
-		boolean sourceViewsMemory = !shape.isRegular() || sourceOrder != null;
+		boolean sourceOrdersMemory = shape.getOrder() != null || sourceOrder != null;
 		boolean sharesMapping = shape.equals(target) &&
 				Objects.equals(shape.getOrder(), target.getOrder()) &&
 				Objects.equals(sourceOrder, targetOrder);
 
-		if (sourceViewsMemory && !sharesMapping) {
+		if (sourceOrdersMemory || (!shape.isRegular() && !sharesMapping)) {
 			throw new IllegalArgumentException("A provider of " + shape + " views other memory, so " +
-					"copying it into a destination of a different layout would discard the mapping; " +
+					"copying it with a flat memory transfer would discard the mapping; " +
 					"apply the reordering as a computation instead of referencing the view");
 		}
 

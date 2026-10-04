@@ -244,4 +244,42 @@ public class CollectionOrderingTests extends TestSuiteBase {
 			assertEquals(1.0, copied[2]);
 		}
 	}
+
+	/**
+	 * A provider over a collection carrying an explicit {@link ExplicitIndexTraversalOrdering} is
+	 * refused by {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} even
+	 * when the destination carries the identical ordering, rather than flat-copying the backing
+	 * memory.
+	 *
+	 * <p>The "identical mapping" escape hatch is safe only for a rate or dimension mapping (as
+	 * {@link #sharedRatedMappingCopiesInputElements()} covers), which reads a dense run of backing
+	 * memory. A {@link io.almostrealism.collect.TraversalOrdering} can instead map a logical index
+	 * onto a sparse backing index, so a flat transfer of the leading input elements would not
+	 * reproduce it even when both sides share the ordering — and a compact ordering can make the
+	 * transferred length overrun the delegate. Such a source must therefore be refused regardless of
+	 * the destination's ordering; the reordering belongs in a computation.</p>
+	 */
+	@Test(timeout = 10000)
+	public void orderedSourceIntoIdenticallyOrderedDestinationIsRefused() {
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1);
+				PackedCollection destinationValues = new PackedCollection(shape(4))) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection destination = new PackedCollection(shape(4), 0, destinationValues, 0, order);
+
+			assertFalse("the ordered source should be irregular", ordered.getShape().isRegular());
+			assertTrue("the two shapes should compare equal",
+					ordered.getShape().equals(destination.getShape()));
+			assertNotNull("the source should carry a memory ordering", ordered.getMemOrdering());
+			assertEquals(ordered.getMemOrdering(), destination.getMemOrdering());
+
+			try {
+				new CollectionProvider<>(ordered).into(destination).evaluate();
+				throw new AssertionError("an ordered source was flat-copied into an identically ordered destination");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("views other memory"));
+			}
+		}
+	}
 }
