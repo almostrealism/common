@@ -36,7 +36,7 @@ The hardware module enables:
 Before using any Almost Realism functionality, set the **required** environment variable:
 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
-- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `cuda`, `gpu`, `cpu`, or `*` to force a specific backend. CUDA is opt-in: it is used only when `cuda` is named, never by `*`, `gpu`, or an unset value.
+- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `cuda`, `gpu`, `cpu`, or `*` to force a specific backend. CUDA is opt-in: it is used only when `cuda` is named, never by `*`, `gpu`, or an unset value. CUDA is currently Linux-only — the bridge ships solely as `libARCUDA-linux-<arch>.so`, so selecting `cuda` on macOS or Windows fails to load.
 
 ### 2. Basic Usage
 
@@ -138,7 +138,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 |----------------|---------|-------------|
 | **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
 | **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
-| **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels; opt-in via `AR_HARDWARE_DRIVER=cuda`) | CudaDataContext, CudaMemoryProvider, CudaOperator |
+| **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels; opt-in via `AR_HARDWARE_DRIVER=cuda`; Linux-only bridge) | CudaDataContext, CudaMemoryProvider, CudaOperator |
 | **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
 | **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
@@ -752,7 +752,7 @@ export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
 # GPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
 export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
-export AR_HARDWARE_DRIVER=cuda    # CUDA (NVIDIA GPU; opt-in, never auto-selected)
+export AR_HARDWARE_DRIVER=cuda    # CUDA (NVIDIA GPU; opt-in, never auto-selected; Linux-only)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
 # Multi-Backend (optional override)
