@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Evaluable;
@@ -120,7 +121,7 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
+public class PatternLayerManager implements PatternFeatures, HeredityFeatures, Destroyable {
 	/** Number of genes in the envelope automation chromosome per layer. */
 	public static int AUTOMATION_GENE_LENGTH = 6;
 	/** Maximum number of layers supported per pattern. */
@@ -240,6 +241,23 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 */
 	static int currentCacheEpoch() {
 		return cacheEpoch.get();
+	}
+
+	/**
+	 * Releases the native memory held by this manager's {@link #noteAudioCache}.
+	 *
+	 * <p>Each cached entry is a standalone copy owned by the cache (see
+	 * {@link NoteAudioCache}), so without an explicit release they are reclaimed
+	 * only once the manager becomes unreachable and the reference queue runs. When
+	 * many scenes are built and discarded in sequence (for example the repeated
+	 * render attempts a render-until-audible search performs), deferring that
+	 * reclamation lets the retained note audio accumulate across attempts. Clearing
+	 * the cache on teardown frees it deterministically instead.</p>
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+		noteAudioCache.clear();
 	}
 
 	/**

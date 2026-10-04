@@ -1357,6 +1357,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public void destroy() {
 		Destroyable.super.destroy();
 		getSectionManager().destroy();
+		patterns.destroy();
 
 		if (activeCells != null) {
 			activeCells.destroy();

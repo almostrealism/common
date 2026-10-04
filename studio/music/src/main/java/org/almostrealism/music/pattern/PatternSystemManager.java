@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -120,7 +121,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
+public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, Destroyable {
 	/** Whether automatic volume adjustment is enabled. */
 	public static final boolean enableAutoVolume = false;
 
@@ -405,6 +406,20 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	/** Removes all patterns from this manager. */
 	public void clear() {
 		patterns.clear();
+	}
+
+	/**
+	 * Releases the native memory held by every pattern's note-audio cache. Each
+	 * {@link PatternLayerManager} owns a cache of rendered note audio that is
+	 * otherwise reclaimed only when the manager becomes unreachable; destroying them
+	 * here frees that memory deterministically when the owning scene is torn down.
+	 * The pattern list itself is left intact (and the operation is idempotent) so a
+	 * repeated teardown simply re-clears already-empty caches.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+		patterns.forEach(PatternLayerManager::destroy);
 	}
 
 	/**
