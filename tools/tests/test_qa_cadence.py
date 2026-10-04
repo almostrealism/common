@@ -118,7 +118,7 @@ class _GateTestBase(unittest.TestCase):
         self._git("push", "-q", "origin", name)
 
     def _decide(self, prefix="qa/docs-", interval="7", force="false",
-                grace="0", api=None):
+                grace="0", api=None, ignore_interval="false"):
         """Runs the gate and returns its ``(run, reason)`` outputs.
 
         With ``api`` (a :class:`_PullsStub`) the GitHub queries go to the
@@ -131,6 +131,7 @@ class _GateTestBase(unittest.TestCase):
             "PR_GRACE_HOURS": grace,
             "REMOTE": "origin",
             "FORCE": force,
+            "IGNORE_INTERVAL": ignore_interval,
             # Unset so the open-PR half is skipped; see the module docstring.
             "GITHUB_REPOSITORY": "",
             "GITHUB_TOKEN": "",
@@ -196,6 +197,25 @@ class QaCadenceTests(_GateTestBase):
     def test_force_overrides_a_recent_run(self):
         self._branch("qa/docs-%s-010101" % _stamp(1))
         self.assertEqual(("true", "forced"), self._decide(force="true"))
+
+    def test_interval_override_allows_a_recent_run(self):
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("true", "interval-ignored"),
+                         self._decide(ignore_interval="true"))
+
+    def test_interval_override_does_not_bypass_an_open_pr(self):
+        # Unlike force, the override must never stack a round on an open one.
+        api = _PullsStub(open_heads=["qa/docs-%s-010101" % _stamp(1)])
+        self.addCleanup(api.close)
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "pr-open"),
+                         self._decide(ignore_interval="true", api=api))
+
+    def test_unset_interval_override_keeps_the_interval(self):
+        # A push to master passes the dispatch input through as "".
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "too-recent"),
+                         self._decide(ignore_interval=""))
 
     def test_unparseable_branch_date_does_not_block_forever(self):
         # Erring toward running is right here: a name the gate cannot read

@@ -59,6 +59,36 @@ on:
         description: "Submit even if at capacity or one ran recently"
         required: false
         default: "false"
+      ignore_interval_docs:
+        description: "Run the documentation QA even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_defect_hunt:
+        description: "Run the defect hunt even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_coverage:
+        description: "Run the coverage QA even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_consolidation:
+        description: "Run the consolidation QA even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_performance:
+        description: "Run the performance QA even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_pdsl:
+        description: "Run the PDSL migration QA even if its minimum interval has not passed (an open PR still blocks it)"
+        required: false
+        default: false
+        type: boolean
       plan_title:
         description: "Project Manager only — short title, used in the planning branch name"
         required: false
@@ -472,7 +502,11 @@ jobs:
   #
   # Cadence is shared with the defect hunt via tools/ci/qa-cadence.sh: skip
   # while a previous round's PR is still open, otherwise run at most once per
-  # MIN_INTERVAL_DAYS. A dispatch with force=true bypasses both.
+  # MIN_INTERVAL_DAYS. A dispatch with force=true bypasses both; one with this
+  # job's ignore_interval_* input checked bypasses only the interval.
+  #
+  # Intervals: 2 days for the defect hunt, coverage, consolidation and
+  # performance rounds; 5 days for the documentation and PDSL rounds.
   #
   # This replaced a once-per-UTC-day cap held in the GitHub Actions cache. The
   # cache was not durable enough to hold it: the branch names it produced show
@@ -500,7 +534,7 @@ jobs:
       # Passed to the prompt as a git --since expression.
       REVIEW_SINCE: "1 week ago"
       BRANCH_PREFIX: "qa/docs-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "5"
 
     steps:
       - name: Checkout Code
@@ -515,6 +549,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_docs }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -645,7 +680,7 @@ jobs:
 
     env:
       BRANCH_PREFIX: "qa/defect-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "2"
 
     steps:
       - name: Checkout Code
@@ -660,6 +695,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_defect_hunt }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -803,7 +839,7 @@ jobs:
 
     env:
       BRANCH_PREFIX: "qa/coverage-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "2"
       # A single global threshold: COVERAGE_THRESHOLD_PYTHON is
       # deliberately left unset here so select-target.py falls back to
       # this value for Python units too. Set COVERAGE_THRESHOLD_PYTHON
@@ -828,6 +864,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_coverage }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1093,7 +1130,7 @@ jobs:
 
     env:
       BRANCH_PREFIX: "qa/consolidate-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "2"
 
     steps:
       - name: Checkout Code
@@ -1108,6 +1145,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_consolidation }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1261,7 +1299,7 @@ jobs:
 
     env:
       BRANCH_PREFIX: "qa/performance-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "2"
 
     steps:
       - name: Checkout Code
@@ -1276,6 +1314,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_performance }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1431,7 +1470,7 @@ jobs:
 
     env:
       BRANCH_PREFIX: "qa/pdsl-"
-      MIN_INTERVAL_DAYS: "7"
+      MIN_INTERVAL_DAYS: "5"
 
     steps:
       - name: Checkout Code
@@ -1446,6 +1485,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_pdsl }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

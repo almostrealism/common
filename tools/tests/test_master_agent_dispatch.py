@@ -95,6 +95,30 @@ class MasterAgentDispatchTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertGreaterEqual(int(job["env"]["MIN_INTERVAL_DAYS"]), 1)
 
+    def test_every_qa_job_has_its_own_interval_override(self):
+        """Each interval-bound job needs a dispatch input that lifts only its own interval.
+
+        A missing input leaves no way to run that job early short of force,
+        which also bypasses the open-PR check; a shared input would lift the
+        interval of jobs nobody asked to run early.
+        """
+        inputs = self.workflow[_ON]["workflow_dispatch"]["inputs"]
+        seen = []
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"]
+                        if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                match = re.fullmatch(
+                    r"\$\{\{ github\.event\.inputs\.(ignore_interval_[a-z_]+) \}\}",
+                    gate["env"].get("IGNORE_INTERVAL", ""))
+                self.assertIsNotNone(match, "IGNORE_INTERVAL is not wired to an input")
+                key = match.group(1)
+                self.assertIn(key, inputs)
+                self.assertEqual("boolean", inputs[key]["type"])
+                self.assertIs(False, inputs[key]["default"])
+                seen.append(key)
+        self.assertEqual(len(seen), len(set(seen)))
+
     def test_every_step_after_the_gate_is_gated(self):
         """An ungated step would run on merges the cadence gate declined."""
         for name, job in self.qa_jobs.items():
