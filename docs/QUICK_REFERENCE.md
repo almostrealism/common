@@ -394,7 +394,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
-| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux-only) |
+| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux/aarch64 bridge only) |
 | `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |

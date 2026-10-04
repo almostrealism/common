@@ -183,7 +183,7 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 | `native` | JNI only (C compilation via clang) |
 | `cl` | OpenCL only |
 | `mtl` | Metal only (macOS) |
-| `cuda` | CUDA only (NVIDIA GPU; opt-in — never loaded by `*`/unset auto-detect; Linux-only) |
+| `cuda` | CUDA only (NVIDIA GPU; opt-in — never loaded by `*`/unset auto-detect; Linux/aarch64 bridge only) |
 | `cpu` | CPU-optimized backend |
 | `gpu` | GPU-optimized backend |
 | `*` or unset | Auto-detect best available |
