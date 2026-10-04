@@ -39,6 +39,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
@@ -179,6 +180,53 @@ public class MemoryReclaimTest extends TestSuiteBase {
 
 		Assert.assertFalse(called.get());
 		Assert.assertEquals(CEILING - BLOCK_BYTES + 1, used.get());
+	}
+
+	/**
+	 * Allocations that reach a full ceiling together share their collection passes rather than
+	 * each requesting its own sequence of full collections. Every contender is rejected, and the
+	 * number of collections stays near {@link HardwareMemoryProvider#reclaimAttempts} instead of
+	 * growing with the number of contenders. The bound allows one extra pass per contender, for a
+	 * contender that arrives between two passes and starts one of its own.
+	 */
+	@Test(timeout = 60000)
+	public void concurrentReclaimSharesCollections() throws InterruptedException {
+		ReservingProvider provider = new ReservingProvider();
+		AtomicLong used = new AtomicLong(CEILING);
+		int threads = 2 * BLOCKS_PER_CEILING;
+		List<HardwareException> rejected = Collections.synchronizedList(new ArrayList<>());
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(threads);
+		long waitMs = HardwareMemoryProvider.reclaimWaitMs;
+		HardwareMemoryProvider.reclaimWaitMs = 20;
+
+		try {
+			for (int i = 0; i < threads; i++) {
+				executor.execute(() -> {
+					try {
+						start.await();
+						provider.allocate(used, BLOCK_BYTES, () -> BLOCK_BYTES);
+					} catch (HardwareException e) {
+						rejected.add(e);
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+					}
+				});
+			}
+
+			start.countDown();
+			executor.shutdown();
+			Assert.assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+		} finally {
+			executor.shutdownNow();
+			HardwareMemoryProvider.reclaimWaitMs = waitMs;
+		}
+
+		log("collections=" + provider.collections.get() + " contenders=" + threads);
+		Assert.assertEquals(threads, rejected.size());
+		Assert.assertEquals(CEILING, used.get());
+		Assert.assertTrue("collections=" + provider.collections.get(),
+				provider.collections.get() <= HardwareMemoryProvider.reclaimAttempts + threads);
 	}
 
 	/**
@@ -338,6 +386,9 @@ public class MemoryReclaimTest extends TestSuiteBase {
 	 * caller-supplied usage counter, so its reservation accounting can be checked on any machine.
 	 */
 	private static class ReservingProvider extends NativeMemoryProvider {
+		/** How many garbage collections reclaiming has requested. */
+		private final AtomicInteger collections = new AtomicInteger();
+
 		/** Creates a direct-buffer provider with the test ceiling. */
 		ReservingProvider() {
 			super(Precision.FP32, CEILING, false, null, true);
@@ -354,6 +405,12 @@ public class MemoryReclaimTest extends TestSuiteBase {
 		 */
 		<B> B allocate(AtomicLong used, long size, Supplier<B> allocation) {
 			return allocateReserved(used, CEILING, size, allocation);
+		}
+
+		/** Counts the collection instead of requesting one; nothing here is garbage. */
+		@Override
+		protected void collectGarbage() {
+			collections.incrementAndGet();
 		}
 	}
 }

@@ -456,7 +456,7 @@ public class GraphicsConverter {
 				}
 
 				PackedCollection result = image[i][j].evaluate(positionForImageIndices.apply(new Pair(i, j)));
-				evaluated[i][j] = result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
+				evaluated[i][j] = RGB.of(result);
 			}
 
 			if (notify != null) {

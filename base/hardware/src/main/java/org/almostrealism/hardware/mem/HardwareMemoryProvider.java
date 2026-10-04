@@ -210,6 +210,15 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
 	public static long reclaimWaitMs = 100;
 
+	/** Guards {@link #collecting} and {@link #collectionPasses}, and is waited on by joining threads. */
+	private final Object collectionLock = new Object();
+
+	/** Whether a thread is currently running a {@link #collectionPass()}. */
+	private boolean collecting;
+
+	/** How many collection passes have completed; lets a joining thread see its pass finish. */
+	private long collectionPasses;
+
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 
@@ -306,6 +315,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * {@link #reserve(AtomicLong, long, long)} does) rather than only test for it. The caller is
 	 * expected to have tried {@code fits} itself before calling this method.</p>
 	 *
+	 * <p>Each attempt waits for one {@link #collectionPass() collection pass}, and passes are
+	 * shared: when several allocations reach the ceiling together, one of them requests the
+	 * collection and the others wait for that same pass to finish, instead of each running its
+	 * own sequence of full collections.</p>
+	 *
 	 * <p>It must be called without holding this provider's monitor, which the deallocation path
 	 * may need.</p>
 	 *
@@ -314,19 +328,63 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 */
 	protected boolean reclaim(BooleanSupplier fits) {
 		for (int i = 0; i < reclaimAttempts; i++) {
-			System.gc();
-
-			try {
-				Thread.sleep(reclaimWaitMs);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return false;
-			}
-
+			if (!collectionPass()) return false;
 			if (fits.getAsBoolean()) return true;
 		}
 
 		return false;
+	}
+
+	/**
+	 * Waits for one collection pass: a {@link #collectGarbage() garbage collection} followed by
+	 * {@link #reclaimWaitMs} for the releases it causes. When another thread is already running a
+	 * pass, this joins it and returns when it completes rather than starting another, so
+	 * concurrent reclaimers do not multiply the number of full collections requested.
+	 *
+	 * @return {@code false} if the thread was interrupted while waiting
+	 */
+	private boolean collectionPass() {
+		synchronized (collectionLock) {
+			if (collecting) {
+				long pass = collectionPasses;
+
+				try {
+					while (collectionPasses == pass) {
+						collectionLock.wait();
+					}
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return false;
+				}
+
+				return true;
+			}
+
+			collecting = true;
+		}
+
+		try {
+			collectGarbage();
+			Thread.sleep(reclaimWaitMs);
+			return true;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return false;
+		} finally {
+			synchronized (collectionLock) {
+				collecting = false;
+				collectionPasses++;
+				collectionLock.notifyAll();
+			}
+		}
+	}
+
+	/**
+	 * Requests a garbage collection, so that unreachable {@link RAM} is found and its native
+	 * memory released. Called once per {@link #collectionPass() collection pass}.
+	 */
+	protected void collectGarbage() {
+		System.gc();
 	}
 
 	/**
@@ -719,7 +777,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * native types do not clear their pointer when the block behind it is
 	 * freed, so a released {@link RAM} goes on reporting the same address. A
 	 * block is released once its reference is gone from the registry, or once
-	 * that reference has been claimed for freeing.</p>
+	 * that reference has been claimed for freeing. An entry at the same address
+	 * that tracks a different {@link RAM} (a later allocation the backend placed
+	 * at the address after this block was freed) does not make this block live
+	 * again.</p>
 	 *
 	 * @param mem the memory to test
 	 * @return {@code true} if the memory has been released, or belongs to
@@ -727,10 +788,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 */
 	@Override
 	public boolean isReleased(Memory mem) {
-		if (!(mem instanceof RAM ram)) return false;
-		if (ram.getProvider() != this) return true;
+		if (!(mem instanceof RAM)) return false;
+		if (((RAM) mem).getProvider() != this) return true;
 
-		NativeRef<T> ref = allocated.get(ram.getContainerPointer());
+		NativeRef<T> ref = getNativeRef((T) mem);
 		return ref == null || ref.isFreed();
 	}
 
@@ -768,15 +829,21 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
 	 *
+	 * <p>The allocation map is keyed by address, and the backend may hand a freed block's address
+	 * to a later allocation. The entry found is therefore returned only when it tracks this very
+	 * {@link RAM} instance, so that a stale handle to the freed block neither appears live nor
+	 * resolves to (and can free) the allocation that replaced it.</p>
+	 *
 	 * @param ram Memory block to look up
-	 * @return Native reference for the memory block
+	 * @return Native reference for the memory block, or {@code null} if it is not tracked
 	 * @throws IllegalArgumentException if the RAM does not belong to this provider
 	 */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");
 
-		return allocated.get(ram.getContainerPointer());
+		NativeRef<T> ref = allocated.get(ram.getContainerPointer());
+		return ref != null && ref.refersTo(ram) ? ref : null;
 	}
 
 	/**
@@ -845,7 +912,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			throw new IllegalArgumentException();
 
 		if (queueDeallocation) {
-			getDeallocationQueue().put(getNativeRef(mem));
+			NativeRef<T> ref = getNativeRef(mem);
+			if (ref != null) getDeallocationQueue().put(ref);
 		} else {
 			deallocateNow(mem);
 		}
