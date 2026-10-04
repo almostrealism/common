@@ -788,8 +788,12 @@ the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
 every QA gate) its branch is younger than that window and has not opened one yet.
 Those two checks run before the interval, so they also stop the `Archive previous
 rounds` step from retiring a round whose agent is still working. `force` lifts
-all three. A new QA job gets its own `ignore_interval_*` input and sets
-`PR_GRACE_HOURS`; `tools/tests/test_master_agent_dispatch.py` checks both.
+all three — so, as on the planning jobs, each QA `Archive previous rounds` step
+also carries `reason != 'forced'`: a forced dispatch skips the in-progress
+checks, so it archives nothing rather than retiring a live round beside the one
+it starts. A new QA job gets its own `ignore_interval_*` input, sets
+`PR_GRACE_HOURS`, and guards its archive step against the forced reason;
+`tools/tests/test_master_agent_dispatch.py` checks all three.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both

@@ -561,11 +561,14 @@ jobs:
           ./tools/ci/qa-cadence.sh
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open PR:
-      # anything still registered has been merged, closed, or abandoned.
-      # Archiving is reversible.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -708,11 +711,14 @@ jobs:
           ./tools/ci/qa-cadence.sh
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open
-      # PR: anything still registered has been merged, closed, or
-      # abandoned. Archiving is reversible.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -971,13 +977,16 @@ jobs:
           fi
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open
-      # PR: anything still registered has been merged, closed, or
-      # abandoned. Archiving is reversible. Only runs once a target is
-      # actually selected — a "nothing to do" decision should not touch
-      # the backlog of a real, still-open concern.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible. Only runs once a target is actually selected — a
+      # "nothing to do" decision should not touch the backlog of a real,
+      # still-open concern.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced' && steps.select.outputs.target != ''
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -1160,11 +1169,14 @@ jobs:
           ./tools/ci/qa-cadence.sh
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open
-      # PR: anything still registered has been merged, closed, or
-      # abandoned. Archiving is reversible.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -1330,11 +1342,14 @@ jobs:
           ./tools/ci/qa-cadence.sh
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open
-      # PR: anything still registered has been merged, closed, or
-      # abandoned. Archiving is reversible.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -1502,11 +1517,14 @@ jobs:
           ./tools/ci/qa-cadence.sh
 
       # Retire the rounds that came before this one. Safe here because the
-      # gate above has already established that none of them has an open
-      # PR: anything still registered has been merged, closed, or
-      # abandoned. Archiving is reversible.
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
       - name: Archive previous rounds
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}

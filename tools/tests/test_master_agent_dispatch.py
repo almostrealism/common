@@ -152,6 +152,26 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         or condition == "always()",
                         "ungated: " + step["name"])
 
+    def test_qa_rounds_do_not_archive_on_a_forced_run(self):
+        """A forced QA dispatch must not retire a round that is still in progress.
+
+        The open-PR and awaiting-PR checks run before the interval, so a
+        scheduled or ignore_interval dispatch only reaches the archive step once
+        no round of this prefix is in progress. A forced dispatch skips every
+        check, so its run=true carries reason=forced while a previous round may
+        still be live (branch and workstream registered, agent working, PR not
+        yet opened). Archiving then retires that live round and a duplicate
+        starts beside it. Each QA archive step therefore excludes the forced
+        reason, exactly as the planning jobs do.
+        """
+        for name, job in self.qa_jobs.items():
+            archive = next(s for s in job["steps"]
+                           if "archive-stale-workstreams.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                condition = archive.get("if", "")
+                self.assertIn("steps.decide.outputs.run == 'true'", condition)
+                self.assertIn("steps.decide.outputs.reason != 'forced'", condition)
+
     def test_setup_python_provisioning_is_best_effort(self):
         """A setup-python failure must not abort before the fallback fetch step.
 
