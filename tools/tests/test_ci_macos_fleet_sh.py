@@ -397,11 +397,23 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn(" RUNNER_WORKDIR ", re.search(r"^read_env\(\) \{.*?^\}", self.src, re.M | re.S).group(0),
                       "read_env must read RUNNER_WORKDIR for install to screen it")
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
-        check = install.find('untrusted_ancestor "${RUNNER_USER}" "${ENV_RUNNER_WORKDIR}" sudo')
-        self.assertNotEqual(-1, check, "install must walk a custom RUNNER_WORKDIR")
+        check = install.find('untrusted_ancestor "${RUNNER_USER}" "${runner_workdir}" sudo')
+        self.assertNotEqual(-1, check, "install must walk the effective RUNNER_WORKDIR")
         self.assertLess(check, install.find('s|@RUNNER_DIR@|'))
-        self.assertIn('*) bad="${ENV_RUNNER_WORKDIR}" ;;', install,
+        self.assertIn('*) bad="${runner_workdir}" ;;', install,
                       "a relative RUNNER_WORKDIR must be refused, not walked from /")
+
+    def test_the_default_runner_workdir_is_validated(self):
+        """When the env file leaves RUNNER_WORKDIR unset, runner.sh still runs
+        mkdir -p on ${RUNNER_DIR}/_work, so the default is not exempt: a
+        pre-existing _work regular file, or one the runner cannot write, must be
+        caught in preflight. install must screen the effective default, not only
+        an explicitly set custom path."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('runner_workdir="${ENV_RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"', install,
+                      "install must fall back to ${RUNNER_DIR}/_work so the default is screened")
+        self.assertNotIn('if [ -n "${ENV_RUNNER_WORKDIR}" ]; then', install,
+                         "the workdir checks must not be gated on a non-empty RUNNER_WORKDIR")
 
     def test_a_custom_runner_workdir_is_checked_for_runner_write_access(self):
         """runner.sh runs mkdir -p on RUNNER_WORKDIR unconditionally, so a
@@ -411,13 +423,26 @@ class MacosFleetSecurityTests(unittest.TestCase):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertRegex(
             install,
-            r'sudo test -e "\$\{ENV_RUNNER_WORKDIR\}" && ! sudo test -d "\$\{ENV_RUNNER_WORKDIR\}"',
+            r'sudo test -e "\$\{runner_workdir\}" && ! sudo test -d "\$\{runner_workdir\}"',
             "install must reject a RUNNER_WORKDIR that exists but is not a directory")
-        self.assertIn('workdir_at="$(nearest_existing_dir "${ENV_RUNNER_WORKDIR}")"', install,
+        self.assertIn('workdir_at="$(nearest_existing_dir "${runner_workdir}")"', install,
                       "install must probe the nearest existing ancestor of RUNNER_WORKDIR")
-        probe = install.find('nearest_existing_dir "${ENV_RUNNER_WORKDIR}"')
+        probe = install.find('nearest_existing_dir "${runner_workdir}"')
         self.assertLess(probe, install.find('s|@RUNNER_DIR@|'),
                         "the write-access probe must run before install proceeds")
+
+    def test_the_register_script_path_is_walked_before_it_runs_as_root(self):
+        """register-daemon.sh is handed to sudo and runs as root; checking only
+        its -x bit leaves a TOCTOU hole — another account that can write any
+        component of the checkout path could swap it between preflight and the
+        sudo call and have root run its code. install must walk the full path
+        with the root/administrator trust boundary, before the sudo invocation."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        walk = install.find('untrusted_ancestor "${admin_user}" "${REGISTER_SCRIPT}"')
+        self.assertNotEqual(-1, walk, "install must walk the register script's path")
+        run = install.find('sudo "${REGISTER_SCRIPT}"')
+        self.assertNotEqual(-1, run, "install runs the register script through sudo")
+        self.assertLess(walk, run, "the path must be screened before it runs as root")
 
     def test_runner_dir_scans_stat_through_sudo(self):
         """A RUNNER_DIR under a home the administrator cannot enter reads as

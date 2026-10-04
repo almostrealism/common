@@ -700,46 +700,50 @@ EOF
         errors=$((errors + 1))
     fi
 
-    # runner.sh checks out and runs every job in RUNNER_WORKDIR, by default
-    # ${RUNNER_DIR}/_work, which the walk above already covers. One set apart
-    # from RUNNER_DIR gets the same walk: a writable or symlinked directory on
-    # the way to it would let another account change the files a job executes
-    # as the runner. Like RUNNER_DIR, it must be absolute — runner.sh creates it
-    # from the stage directory, but config.sh reads a relative one against the
+    # runner.sh checks out and runs every job in RUNNER_WORKDIR, defaulting to
+    # ${RUNNER_DIR}/_work when the env file leaves it unset, and runs mkdir -p on
+    # it unconditionally. The effective path — the default as much as a custom
+    # one — gets the same treatment: a writable or symlinked directory on the way
+    # to it would let another account change the files a job executes as the
+    # runner, and an existing non-directory or a path the runner cannot create
+    # breaks the mkdir -p and leaves launchd retrying a runner that never
+    # registers. The default lives directly under RUNNER_DIR, whose ancestors the
+    # walk above already covered, but ${RUNNER_DIR}/_work itself is not screened
+    # there, so the walk runs for it too. It must be absolute — runner.sh creates
+    # it from the stage directory, but config.sh reads a relative one against the
     # runner directory, so a relative path names two different places.
-    if [ -n "${ENV_RUNNER_WORKDIR}" ]; then
-        case "${ENV_RUNNER_WORKDIR}" in
-            /*) bad="$(untrusted_ancestor "${RUNNER_USER}" "${ENV_RUNNER_WORKDIR}" sudo)" ;;
-            *) bad="${ENV_RUNNER_WORKDIR}" ;;
-        esac
-        if [ -n "${bad}" ]; then
-            echo "  ✗ ${bad}, on the path to RUNNER_WORKDIR (${ENV_RUNNER_WORKDIR}), is not absolute, is a" >&2
-            echo "      symlink, is writable by others, or is owned by neither root nor ${RUNNER_USER};" >&2
-            echo "      another account could change the files jobs run there as ${RUNNER_USER}." >&2
-            echo "      Keep RUNNER_WORKDIR under a path only root and ${RUNNER_USER} can write, or unset it." >&2
+    local runner_workdir="${ENV_RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
+    case "${runner_workdir}" in
+        /*) bad="$(untrusted_ancestor "${RUNNER_USER}" "${runner_workdir}" sudo)" ;;
+        *) bad="${runner_workdir}" ;;
+    esac
+    if [ -n "${bad}" ]; then
+        echo "  ✗ ${bad}, on the path to RUNNER_WORKDIR (${runner_workdir}), is not absolute, is a" >&2
+        echo "      symlink, is writable by others, or is owned by neither root nor ${RUNNER_USER};" >&2
+        echo "      another account could change the files jobs run there as ${RUNNER_USER}." >&2
+        echo "      Keep RUNNER_WORKDIR under a path only root and ${RUNNER_USER} can write, or unset it." >&2
+        errors=$((errors + 1))
+    elif sudo test -e "${runner_workdir}" && ! sudo test -d "${runner_workdir}"; then
+        # Exactly as for RUNNER_DIR: runner.sh runs mkdir -p on RUNNER_WORKDIR,
+        # which fails on an existing non-directory, leaving the daemon waiting.
+        echo "  ✗ RUNNER_WORKDIR ${runner_workdir} exists but is not a directory; runner.sh runs" >&2
+        echo "      mkdir -p there and would fail, leaving the daemon waiting for a runner that never registers." >&2
+        echo "      Fix: remove or relocate ${runner_workdir}, or set RUNNER_WORKDIR to a directory path." >&2
+        errors=$((errors + 1))
+    else
+        # The ancestor walk proves no other account can swap the path, but not
+        # that the runner can create it. A trusted but runner-unwritable work
+        # directory — or a missing one whose nearest existing ancestor the
+        # runner cannot create in — passes every check above yet breaks the
+        # mkdir -p in runner.sh, exactly as an unwritable RUNNER_DIR does.
+        local workdir_at
+        workdir_at="$(nearest_existing_dir "${runner_workdir}")"
+        if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${workdir_at}"; then
+            echo "  ✗ ${RUNNER_USER} cannot create RUNNER_WORKDIR ${runner_workdir}: the nearest existing" >&2
+            echo "      directory ${workdir_at} is not writable by it, so runner.sh's mkdir -p would fail and" >&2
+            echo "      the daemon would wait for a runner that never registers." >&2
+            echo "      Fix: sudo chown ${RUNNER_USER} ${workdir_at}, or choose a RUNNER_WORKDIR it can create." >&2
             errors=$((errors + 1))
-        elif sudo test -e "${ENV_RUNNER_WORKDIR}" && ! sudo test -d "${ENV_RUNNER_WORKDIR}"; then
-            # Exactly as for RUNNER_DIR: runner.sh runs mkdir -p on RUNNER_WORKDIR,
-            # which fails on an existing non-directory, leaving the daemon waiting.
-            echo "  ✗ RUNNER_WORKDIR ${ENV_RUNNER_WORKDIR} exists but is not a directory; runner.sh runs" >&2
-            echo "      mkdir -p there and would fail, leaving the daemon waiting for a runner that never registers." >&2
-            echo "      Fix: remove or relocate ${ENV_RUNNER_WORKDIR}, or set RUNNER_WORKDIR to a directory path." >&2
-            errors=$((errors + 1))
-        else
-            # The ancestor walk proves no other account can swap the path, but not
-            # that the runner can create it. A trusted but runner-unwritable work
-            # directory — or a missing one whose nearest existing ancestor the
-            # runner cannot create in — passes every check above yet breaks the
-            # mkdir -p in runner.sh, exactly as an unwritable RUNNER_DIR does.
-            local workdir_at
-            workdir_at="$(nearest_existing_dir "${ENV_RUNNER_WORKDIR}")"
-            if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${workdir_at}"; then
-                echo "  ✗ ${RUNNER_USER} cannot create RUNNER_WORKDIR ${ENV_RUNNER_WORKDIR}: the nearest existing" >&2
-                echo "      directory ${workdir_at} is not writable by it, so runner.sh's mkdir -p would fail and" >&2
-                echo "      the daemon would wait for a runner that never registers." >&2
-                echo "      Fix: sudo chown ${RUNNER_USER} ${workdir_at}, or choose a RUNNER_WORKDIR it can create." >&2
-                errors=$((errors + 1))
-            fi
         fi
     fi
 
@@ -781,6 +785,22 @@ EOF
     if [ ! -x "${REGISTER_SCRIPT}" ]; then
         echo "  ✗ ${REGISTER_SCRIPT} is missing; is this a complete checkout?" >&2
         errors=$((errors + 1))
+    else
+        # The register script is handed to sudo below, so it runs as root. Its -x
+        # bit says nothing about who can rewrite it: if any component on the way to
+        # it — anywhere in the checkout — is a symlink, writable by others, or
+        # owned by neither you nor root, another account could swap register-
+        # daemon.sh for its own between this preflight and the sudo call and have
+        # root run it. Walk the full path the same way the env file is walked.
+        local register_bad
+        register_bad="$(untrusted_ancestor "${admin_user}" "${REGISTER_SCRIPT}")"
+        if [ -n "${register_bad}" ]; then
+            echo "  ✗ ${register_bad}, on the path to ${REGISTER_SCRIPT}, is a symlink, is writable by" >&2
+            echo "      others, or is owned by neither you (${admin_user}) nor root; another account could" >&2
+            echo "      replace the script fleet runs as root. Keep the checkout under a path only you and" >&2
+            echo "      root can write (sudo chown and chmod go-w the flagged component)." >&2
+            errors=$((errors + 1))
+        fi
     fi
 
     if [ "${MONITOR}" = true ]; then
