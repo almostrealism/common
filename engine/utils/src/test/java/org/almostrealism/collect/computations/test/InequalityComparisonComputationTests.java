@@ -134,4 +134,35 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			// expected: shared CollectionProducerComputationBase shape validation
 		}
 	}
+
+	/**
+	 * Pins the shared conditional-selection scaffold for greater-than: when the strict
+	 * relation holds the true value is selected, and otherwise the false value is. This
+	 * exercises the {@code conditional(compare(...), trueValue, falseValue)} expression
+	 * now hoisted onto {@link org.almostrealism.collect.computations.InequalityComparisonComputation},
+	 * with the operator direction supplied by {@link GreaterThanCollection}.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanSelectsTrueAndFalseValues() {
+		try (PackedCollection whenTrue = greaterThan(c(7.0), c(5.0), c(10.0), c(20.0), false).get().evaluate();
+			 PackedCollection whenFalse = greaterThan(c(2.0), c(5.0), c(10.0), c(20.0), false).get().evaluate()) {
+			Assert.assertEquals("7 > 5 selects the true value", 10.0, whenTrue.toDouble(), 0.001);
+			Assert.assertEquals("2 > 5 selects the false value", 20.0, whenFalse.toDouble(), 0.001);
+		}
+	}
+
+	/**
+	 * Pins the shared conditional-selection scaffold for less-than: when the strict
+	 * relation holds the true value is selected, and otherwise the false value is. The
+	 * operator direction is supplied by {@link LessThanCollection}; the surrounding
+	 * selection is the shared scaffold on the superclass.
+	 */
+	@Test(timeout = 30000)
+	public void lessThanSelectsTrueAndFalseValues() {
+		try (PackedCollection whenTrue = lessThan(c(2.0), c(5.0), c(10.0), c(20.0), false).get().evaluate();
+			 PackedCollection whenFalse = lessThan(c(7.0), c(5.0), c(10.0), c(20.0), false).get().evaluate()) {
+			Assert.assertEquals("2 < 5 selects the true value", 10.0, whenTrue.toDouble(), 0.001);
+			Assert.assertEquals("7 < 5 selects the false value", 20.0, whenFalse.toDouble(), 0.001);
+		}
+	}
 }
