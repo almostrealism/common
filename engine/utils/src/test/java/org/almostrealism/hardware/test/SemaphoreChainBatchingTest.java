@@ -168,6 +168,52 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: a dispatch bridged on a foreign completion that itself waits for one of the
+	 * runner's own dispatches must complete when the host waits for it, without stalling until
+	 * the GPU watchdog kills its buffer.
+	 *
+	 * <p>The foreign dependency reaches the runner only after the host wait for the bridged
+	 * dispatch has begun, which is the losing side of the race a composite completion's member
+	 * waits can run. When that host wait occupied the runner's single thread until the bridged
+	 * buffer completed, the foreign wait queued behind it, the bridge was never signaled, and the
+	 * buffer stalled until the watchdog killed it
+	 * ({@code kIOGPUCommandBufferCallbackErrorTimeout}), so the dispatches in it never ran.</p>
+	 */
+	@Test(timeout = 60000)
+	public void bridgedDependencyOnOwnDispatchCompletes() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		long errors = runner.getErrorCompletionCount();
+		long lateSignals = runner.getLateBridgeSignalCount();
+
+		Semaphore first = runner.submit(null, buffer -> { }, null, null);
+		Semaphore late = () -> {
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+
+			first.waitFor();
+		};
+
+		AtomicBoolean ran = new AtomicBoolean();
+		Semaphore dependent = runner.submit(null, buffer -> { }, late, () -> ran.set(true));
+		dependent.waitFor();
+
+		assertTrue("The bridged dispatch's buffer must complete", ran.get());
+		assertEquals("No command buffer may finish with an error",
+				(double) errors, (double) runner.getErrorCompletionCount());
+		assertEquals("The bridge must be signaled before its buffer completes",
+				(double) lateSignals, (double) runner.getLateBridgeSignalCount());
+	}
+
+	/**
 	 * Verifies commit-cause attribution: a host wait that forces a commit increments
 	 * {@link MetalCommandRunner#getHostCompleteCommitCount()} and records the requesting
 	 * operation in {@link MetalCommandRunner#hostCompleteRequesters}, while a repeated wait
