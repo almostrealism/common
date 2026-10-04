@@ -1259,6 +1259,21 @@ class TestSubmitTestExecutionLimits(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Class#method", result["error"])
 
+    def test_post_completion_rejection_does_not_recommend_bare_classes(self):
+        # The post-completion gate rejects a bare class, so its remediation must
+        # not tell the caller to select up to five classes (which would recommend
+        # the same invalid input). It must call for explicit Class#method tests
+        # and say a bare class is not accepted here.
+        result = server.workstream_submit_task(
+            prompt="Investigate the failing build",
+            workstream_id="ws-test",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("name explicit Class#method tests", result["error"])
+        self.assertIn("bare class is not accepted", result["error"])
+        self.assertNotIn("select a bounded set of tests", result["error"])
+
     def test_rejects_post_completion_command_pytest_directory(self):
         result = server.workstream_submit_task(
             prompt="Investigate the failing build",
@@ -1308,6 +1323,19 @@ class TestSubmitTestExecutionLimits(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("no -Dtest selector", result["error"])
+
+    def test_command_rejection_advertises_bounded_selection(self):
+        # The rewrite advice must describe the bounded contract (a few classes
+        # or Class#method tests), not the retired one-test-per-invocation rule.
+        result = server.workstream_submit_task(
+            job_type="shell",
+            workstream_id="ws-test",
+            command="mvn test -pl engine/utils",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("at most 5 classes and 40 Class#method tests", result["error"])
+        self.assertIn("exactly one explicit node id", result["error"])
+        self.assertNotIn("one test per invocation", result["error"])
 
     def test_rejects_prompt_instructing_broad_test_run(self):
         result = server.workstream_submit_task(

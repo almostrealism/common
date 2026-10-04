@@ -18,13 +18,11 @@ and asserts each one is covered by both failure detection and the surefire
 allowlist. A new test lane added to ``analysis.needs`` without also being
 wired into ``auto-resolve`` fails this test until it is.
 
-The CL lanes (``test-cl``, ``test-media-cl``) are the one documented
-exclusion: they upload no coverage and no surefire by design (an OpenCL host
-with known flakiness that is deliberately not part of the merge gate — see
-"Three lanes" in ``.github/CLAUDE.md``), so they are absent from
-``analysis.needs`` and from this test's required set. This test pins that
-absence too, so the exclusion stays a fact about the workflow rather than a
-comment that can silently drift from it.
+The CL lanes (``test-cl``, ``test-media-cl``) were once the documented
+exclusion from this set: informational jobs outside the merge gate that
+uploaded no surefire. They are now required like every other lane, so the
+pipeline covers every accelerator backend it tests, and this test pins their
+presence so they cannot quietly drop back out of the gate.
 """
 
 import os
@@ -37,8 +35,8 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 
-# Documented exclusion: CL lanes are intentionally not part of the merge gate.
-_EXCLUDED_LANES = {"test-cl", "test-media-cl"}
+# The OpenCL lanes, required like every other test lane.
+_CL_LANES = {"test-cl", "test-media-cl"}
 
 # Matches a `${{ ... }}` GitHub Actions expression anywhere in a string.
 _EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
@@ -112,12 +110,13 @@ def _matches_allowlist(name, patterns):
 
 
 class AutoResolveTestJobCoverageTest(unittest.TestCase):
-    def test_cl_lanes_are_not_required(self):
+    def test_cl_lanes_are_required(self):
+        """The CL lanes are required test jobs."""
         workflow = _workflow()
         required = _required_test_jobs(workflow)
-        self.assertEqual(set(), required & _EXCLUDED_LANES,
-                          "CL lanes must stay out of analysis.needs (they are the "
-                          "documented exclusion, not a required test job)")
+        self.assertEqual(_CL_LANES, required & _CL_LANES,
+                          "CL lanes must be in analysis.needs, and through it in the "
+                          "merge gate and auto-resolve's failure routing")
 
     def test_required_jobs_are_in_auto_resolve_needs(self):
         workflow = _workflow()

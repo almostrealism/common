@@ -31,9 +31,12 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
+import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -94,6 +97,19 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	private static final String DIFFUSION_OBJECTIVE = "rf_denoiser";
 	/** Latent sequence length for training. */
 	private static final int LATENT_LENGTH = 4;
+
+	/** Latent sequence length used by the compilation-scaling measurements. */
+	private static final int SCALING_LATENT_LENGTH = 2;
+
+	/**
+	 * JUnit timeout for each individually selectable measurement method.
+	 * Kept strictly below the 40-minute test-runner budget so the method can
+	 * unwind (and persist its profile) before the runner kills the JVM.
+	 */
+	private static final int MEASUREMENT_TIMEOUT = 30 * 60000;
+
+	/** Module-relative directory where profiles are written for ar-profile-analyzer. */
+	private static final Path RESULTS_DIR = Path.of("results");
 
 	/**
 	 * Production-scale fine-tuning pipeline test.
@@ -157,14 +173,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 
 		log("=== Compilation Scaling Test ===");
 		log("");
-		log(String.format("%-8s %-6s %-6s %-6s %-14s %-14s %-14s %-14s %-14s",
-				"Embed", "IO", "Depth", "Heads",
-				"Fwd(ms)", "Bwd(ms)", "Train1(ms)",
-				"HeapUsed(MB)", "HeapMax(MB)"));
-		log(String.format("%-8s %-6s %-6s %-6s %-14s %-14s %-14s %-14s %-14s",
-				"--------", "------", "------", "------",
-				"--------------", "--------------", "--------------",
-				"--------------", "--------------"));
+		log(ScalingMeasurement.HEADER);
 
 		for (int[] cfg : configs) {
 			int embedDim = cfg[0];
@@ -191,19 +200,176 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("=== Scaling Test Complete ===");
 	}
 
+	/*
+	 * Individually selectable compilation-scaling measurements.
+	 *
+	 * Each method measures exactly one configuration so that every point can be
+	 * run in its own JVM (an independent cold start) within a bounded timeout.
+	 * The "Lockstep" series reproduces the configurations of
+	 * testCompilationScaling, where ioChannels, numHeads and globalCondDim grow
+	 * together with embedDim.  The "FixedDims" series varies embedDim alone
+	 * (io=8, heads=1, globalCond=16, depth=1; embed=16 is shared with the
+	 * lockstep series) and the "Depth" series varies depth alone at the
+	 * embed=16 lockstep configuration.
+	 */
+
+	/** Lockstep scaling point: embed=8, io=4, depth=1, heads=1, globalCond=8. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed8() {
+		assertScalingPoint(8, 4, 1, 1, 8);
+	}
+
+	/** Lockstep scaling point: embed=16, io=8, depth=1, heads=1, globalCond=16. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed16() {
+		assertScalingPoint(16, 8, 1, 1, 16);
+	}
+
+	/** Lockstep scaling point: embed=32, io=16, depth=1, heads=1, globalCond=32. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed32() {
+		assertScalingPoint(32, 16, 1, 1, 32);
+	}
+
+	/** Lockstep scaling point: embed=64, io=32, depth=1, heads=2, globalCond=64. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed64() {
+		assertScalingPoint(64, 32, 1, 2, 64);
+	}
+
+	/** Lockstep scaling point: embed=128, io=64, depth=1, heads=2, globalCond=128. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed128() {
+		assertScalingPoint(128, 64, 1, 2, 128);
+	}
+
+	/** Lockstep scaling point: embed=256, io=64, depth=1, heads=4, globalCond=256. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingLockstepEmbed256() {
+		assertScalingPoint(256, 64, 1, 4, 256);
+	}
+
+	/** Embed-only scaling point: embed=32 with io=8, depth=1, heads=1, globalCond=16. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingFixedDimsEmbed32() {
+		assertScalingPoint(32, 8, 1, 1, 16);
+	}
+
+	/** Embed-only scaling point: embed=64 with io=8, depth=1, heads=1, globalCond=16. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingFixedDimsEmbed64() {
+		assertScalingPoint(64, 8, 1, 1, 16);
+	}
+
+	/** Depth scaling point: the embed=16 lockstep configuration with depth=2. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingDepth2Embed16() {
+		assertScalingPoint(16, 8, 2, 1, 16);
+	}
+
+	/** Depth scaling point: the embed=16 lockstep configuration with depth=3. */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testScalingDepth3Embed16() {
+		assertScalingPoint(16, 8, 3, 1, 16);
+	}
+
+	/**
+	 * Profiles only the first backward pass of the embed=64, depth=1 LoRA
+	 * transformer (the configuration of {@link #testProfiledFineTuning()}).
+	 *
+	 * <p>Model construction, {@link LoRADiffusionTransformer#compileForTraining()}
+	 * and a forward pass all happen before the profile is assigned, so the
+	 * emitted XML contains only the work done by the first
+	 * {@link CompiledModel#backward(PackedCollection)} call: any lazy
+	 * compilation of the backward kernels plus one execution of them.  A
+	 * whole-profile compile ranking over this file is therefore
+	 * backward-specific.</p>
+	 *
+	 * <p>The profile is written to {@code results/finetune_backward_profile_embed64.xml}
+	 * relative to the module directory whether the backward pass succeeds or
+	 * fails, so a partial profile of a failing run is still available.  The
+	 * outcome and the cold and warm backward latencies are logged as
+	 * {@code profiledBackward outcome=... coldBackwardMs=...}.</p>
+	 */
+	@Test(timeout = MEASUREMENT_TIMEOUT)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	@TestDepth(2)
+	public void testProfiledBackwardEmbed64() throws IOException {
+		Files.createDirectories(RESULTS_DIR);
+		Path profilePath = RESULTS_DIR.resolve("finetune_backward_profile_embed64.xml");
+
+		int ioChannels = 32;
+		int globalCondDim = 64;
+		LoRADiffusionTransformer model = createScalingModel(64, ioChannels, 1, 2, 0, globalCondDim);
+		CompiledModel compiled = model.compileForTraining();
+
+		DiffusionTrainingDataset dataset = syntheticDataset(ioChannels, SCALING_LATENT_LENGTH, globalCondDim, 1);
+		ValueTarget<PackedCollection> target = dataset.iterator().next();
+		compiled.forward(target.getInput(), target.getArguments());
+
+		PackedCollection gradient = new PackedCollection(compiled.getOutputShape());
+		gradient.randnFill(new Random(7));
+
+		OperationProfileNode profile = new OperationProfileNode("finetune_backward_embed64");
+		boolean succeeded = false;
+		long start = System.nanoTime();
+		try {
+			profile(profile, () -> compiled.backward(gradient));
+			succeeded = true;
+		} finally {
+			long coldMs = (System.nanoTime() - start) / 1_000_000;
+			profile.save(profilePath.toString());
+			log("profiledBackward outcome=" + (succeeded ? "success" : "failure")
+					+ " coldBackwardMs=" + coldMs
+					+ " profile=" + profilePath.toAbsolutePath());
+		}
+
+		long warmStart = System.nanoTime();
+		compiled.backward(gradient);
+		log("profiledBackward warmBackwardMs=" + (System.nanoTime() - warmStart) / 1_000_000);
+
+		model.releaseCompiledModel();
+
+		Assert.assertTrue("Profile was not written to " + profilePath, Files.size(profilePath) > 0);
+		Assert.assertFalse("Backward profile recorded no operations", profile.getChildren().isEmpty());
+	}
+
 	/**
 	 * Profiled fine-tuning run at embed=64 to capture detailed performance
 	 * data for analysis with the ar-profile-analyzer MCP tools.
 	 *
 	 * <p>This test creates an XML profile file that can be analyzed to
 	 * identify which operations dominate backward pass compilation time.
-	 * The profile is saved to {@code utils/results/finetune_profile_embed64.xml}.
+	 * The profile is saved to {@code results/finetune_profile_embed64.xml}
+	 * relative to the module directory.  It covers model creation, forward
+	 * execution and three epochs; {@link #testProfiledBackwardEmbed64()}
+	 * produces a profile scoped to the backward pass alone.</p>
 	 */
 	@Test(timeout = 5 * 60000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(2)
 	public void testProfiledFineTuning() throws IOException {
-		Files.createDirectories(Path.of("/workspace/project/common/utils/results"));
+		Files.createDirectories(RESULTS_DIR);
 
 		int embedDim = 64;
 		int ioChannels = 32;
@@ -218,19 +384,21 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 
 		OperationProfileNode profile = new OperationProfileNode("finetune_embed64");
 
-		profile(profile, () -> {
-			try {
-				runProfiledFineTuning(embedDim, ioChannels, depth, numHeads,
-						condTokenDim, globalCondDim, latentLen);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-		});
-
-		String profilePath = "/workspace/project/common/utils/results/finetune_profile_embed64.xml";
-		profile.save(profilePath);
-		log("");
-		log("Profile saved to: " + profilePath);
+		Path profilePath = RESULTS_DIR.resolve("finetune_profile_embed64.xml");
+		try {
+			profile(profile, () -> {
+				try {
+					runProfiledFineTuning(embedDim, ioChannels, depth, numHeads,
+							condTokenDim, globalCondDim, latentLen);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			});
+		} finally {
+			profile.save(profilePath.toString());
+			log("");
+			log("Profile saved to: " + profilePath.toAbsolutePath());
+		}
 	}
 
 	/**
@@ -264,21 +432,8 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		log("");
 		log("Step 3: Creating training data...");
 		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
-		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(100);
-
-		List<PackedCollection> latents = new ArrayList<>();
-		Random rng = new Random(42);
-		for (int i = 0; i < 3; i++) {
-			PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
-			latent.randnFill(rng);
-			latents.add(latent);
-		}
-
-		DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(latents, scheduler, 1);
-		if (globalCondDim > 0) {
-			dataset.setExtraArguments(new PackedCollection(globalCondDim));
-		}
-		log("  Created " + latents.size() + " training samples");
+		DiffusionTrainingDataset dataset = syntheticDataset(ioChannels, latentLen, globalCondDim, 3);
+		log("  Created " + dataset.uniqueSize() + " training samples");
 
 		// Step 4: Train for 3 epochs
 		log("");
@@ -304,23 +459,50 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Measures compilation and first training step timing for a single
-	 * model configuration.
+	 * Measures a single scaling configuration in the current JVM and checks that
+	 * both training steps completed.  The result is logged as a table row and as
+	 * a greppable {@code scalingResult ...} line.
+	 *
+	 * @param embedDim      transformer embedding dimension
+	 * @param ioChannels    latent channel count
+	 * @param depth         number of transformer blocks
+	 * @param numHeads      number of attention heads
+	 * @param globalCondDim global conditioning dimension
 	 */
-	private void measureCompilation(int embedDim, int ioChannels, int depth,
-									int numHeads, int condTokenDim,
-									int globalCondDim) {
+	private void assertScalingPoint(int embedDim, int ioChannels, int depth,
+									int numHeads, int globalCondDim) {
+		log(ScalingMeasurement.HEADER);
+		ScalingMeasurement m = measureCompilation(embedDim, ioChannels, depth,
+				numHeads, 0, globalCondDim);
+		log("scalingResult embed=" + embedDim + " io=" + ioChannels + " depth=" + depth
+				+ " heads=" + numHeads + " globalCond=" + globalCondDim
+				+ " fwdCompileMs=" + m.fwdMs() + " coldStepMs=" + m.coldMs()
+				+ " warmStepMs=" + m.warmMs() + " compileEstimateMs=" + m.compileEstimateMs());
+		Assert.assertTrue("Cold first step was not measured", m.coldMs() > 0);
+		Assert.assertTrue("Warm second step was not measured", m.warmMs() > 0);
+	}
+
+	/**
+	 * Measures compilation and first/second training step timing for a single
+	 * model configuration.
+	 *
+	 * <p>The backward pass is compiled lazily inside the first training step,
+	 * so the first {@code optimize(1)} call is reported as the <em>cold</em>
+	 * step latency (lazy compile plus forward, loss, backward and update) and
+	 * the second as the <em>warm</em> step latency (the same work with every
+	 * kernel already compiled).  {@link ScalingMeasurement#compileEstimateMs()}
+	 * is the derived {@code cold - warm} estimate of the lazy compile cost.</p>
+	 *
+	 * @return the measured timings for this configuration
+	 */
+	private ScalingMeasurement measureCompilation(int embedDim, int ioChannels, int depth,
+												  int numHeads, int condTokenDim,
+												  int globalCondDim) {
 		Runtime runtime = Runtime.getRuntime();
+		int latentLen = SCALING_LATENT_LENGTH;
 
-		AdapterConfig adapterConfig = AdapterConfig.forAudioDiffusion();
-		int latentLen = 2;
-
-		// Create model
-		LoRADiffusionTransformer model = LoRADiffusionTransformer.create(
-				ioChannels, embedDim, depth, numHeads, PATCH_SIZE,
-				condTokenDim, globalCondDim, DIFFUSION_OBJECTIVE,
-				latentLen, 0, null, adapterConfig, false
-		);
+		LoRADiffusionTransformer model = createScalingModel(embedDim, ioChannels, depth,
+				numHeads, condTokenDim, globalCondDim);
 
 		// Forward pass compilation (compileForTraining includes forward)
 		runtime.gc();
@@ -330,47 +512,103 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 
 		runtime.gc();
 
-		// First training step (triggers backward pass compilation)
 		TraversalPolicy latentShape = new TraversalPolicy(1, ioChannels, latentLen);
-		DiffusionNoiseScheduler scheduler = new DiffusionNoiseScheduler(100);
-
-		List<PackedCollection> latents = new ArrayList<>();
-		Random rng = new Random(42);
-		PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
-		latent.randnFill(rng);
-		latents.add(latent);
-
-		DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(
-				latents, scheduler, 1
-		);
-		if (globalCondDim > 0) {
-			dataset.setExtraArguments(new PackedCollection(globalCondDim));
-		}
+		DiffusionTrainingDataset dataset = syntheticDataset(ioChannels, latentLen, globalCondDim, 1);
 
 		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> dataset);
 		optimizer.setLossFunction(new MeanSquaredError(latentShape.traverseEach()));
 		optimizer.setLogFrequency(1);
 		optimizer.setLogConsumer(this::log);
 
-		long startBwd = System.nanoTime();
+		// First training step (triggers lazy backward pass compilation)
+		long startCold = System.nanoTime();
 		optimizer.optimize(1);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
+		long coldMs = (System.nanoTime() - startCold) / 1_000_000;
 
 		// Second training step (no recompilation, measures pure runtime)
-		long startTrain = System.nanoTime();
+		long startWarm = System.nanoTime();
 		optimizer.optimize(1);
-		long trainMs = (System.nanoTime() - startTrain) / 1_000_000;
+		long warmMs = (System.nanoTime() - startWarm) / 1_000_000;
 
 		runtime.gc();
-		long heapAfterTrain = runtime.totalMemory() - runtime.freeMemory();
-		long heapUsedMb = heapAfterTrain / (1024 * 1024);
+		long heapUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
 		long heapMaxMb = runtime.maxMemory() / (1024 * 1024);
 
-		log(String.format("%-8d %-6d %-6d %-6d %-14d %-14d %-14d %-14d %-14d",
-				embedDim, ioChannels, depth, numHeads,
-				fwdMs, bwdMs, trainMs, heapUsedMb, heapMaxMb));
+		ScalingMeasurement m = new ScalingMeasurement(embedDim, ioChannels, depth, numHeads,
+				fwdMs, coldMs, warmMs, heapUsedMb, heapMaxMb);
+		log(m.row());
 
 		model.releaseCompiledModel();
+		return m;
+	}
+
+	/**
+	 * Creates a LoRA diffusion transformer with random weights for the
+	 * compilation-scaling measurements.
+	 */
+	private static LoRADiffusionTransformer createScalingModel(int embedDim, int ioChannels, int depth,
+															   int numHeads, int condTokenDim,
+															   int globalCondDim) {
+		return LoRADiffusionTransformer.create(
+				ioChannels, embedDim, depth, numHeads, PATCH_SIZE,
+				condTokenDim, globalCondDim, DIFFUSION_OBJECTIVE,
+				SCALING_LATENT_LENGTH, 0, null, AdapterConfig.forAudioDiffusion(), false
+		);
+	}
+
+	/**
+	 * Creates a diffusion training dataset of random latents (seeded for
+	 * reproducibility) with a zero global conditioning vector when
+	 * {@code globalCondDim} is positive.
+	 */
+	private static DiffusionTrainingDataset syntheticDataset(int ioChannels, int latentLen,
+															 int globalCondDim, int samples) {
+		List<PackedCollection> latents = new ArrayList<>();
+		Random rng = new Random(42);
+		for (int i = 0; i < samples; i++) {
+			PackedCollection latent = new PackedCollection(1, ioChannels, latentLen);
+			latent.randnFill(rng);
+			latents.add(latent);
+		}
+
+		DiffusionTrainingDataset dataset = new DiffusionTrainingDataset(
+				latents, new DiffusionNoiseScheduler(100), 1);
+		if (globalCondDim > 0) {
+			dataset.setExtraArguments(new PackedCollection(1, globalCondDim));
+		}
+		return dataset;
+	}
+
+	/**
+	 * Timings for one compilation-scaling configuration.
+	 *
+	 * @param embedDim   transformer embedding dimension
+	 * @param ioChannels latent channel count
+	 * @param depth      number of transformer blocks
+	 * @param numHeads   number of attention heads
+	 * @param fwdMs      wall-clock of {@code compileForTraining()}
+	 * @param coldMs     wall-clock of the first training step (includes lazy backward compile)
+	 * @param warmMs     wall-clock of the second training step (no compilation)
+	 * @param heapUsedMb JVM heap in use after both steps
+	 * @param heapMaxMb  JVM maximum heap
+	 */
+	private record ScalingMeasurement(int embedDim, int ioChannels, int depth, int numHeads,
+									  long fwdMs, long coldMs, long warmMs,
+									  long heapUsedMb, long heapMaxMb) {
+		/** Table header matching {@link #row()}. */
+		static final String HEADER = String.format("%-8s %-6s %-6s %-6s %-12s %-12s %-12s %-16s %-14s %-14s",
+				"Embed", "IO", "Depth", "Heads", "Fwd(ms)", "Cold1(ms)", "Warm2(ms)",
+				"CompileEst(ms)", "HeapUsed(MB)", "HeapMax(MB)");
+
+		/** Derived lazy-compile estimate: cold first-step minus warm second-step latency. */
+		long compileEstimateMs() { return coldMs - warmMs; }
+
+		/** Formats this measurement as a row of the {@link #HEADER} table. */
+		String row() {
+			return String.format("%-8d %-6d %-6d %-6d %-12d %-12d %-12d %-16d %-14d %-14d",
+					embedDim, ioChannels, depth, numHeads, fwdMs, coldMs, warmMs,
+					compileEstimateMs(), heapUsedMb, heapMaxMb);
+		}
 	}
 
 	/**
@@ -458,7 +696,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 				syntheticLatents, scheduler, repeatFactor
 		);
 		if (globalCondDim > 0) {
-			diffusionDataset.setExtraArguments(new PackedCollection(globalCondDim));
+			diffusionDataset.setExtraArguments(new PackedCollection(1, globalCondDim));
 		}
 
 		ModelOptimizer optimizer = new ModelOptimizer(compiledModel, () -> {
@@ -507,7 +745,7 @@ public class AggressiveFineTuningTest extends TestSuiteBase {
 		sampler.setNumInferenceSteps(10);
 
 		PackedCollection globalCond = globalCondDim > 0
-				? new PackedCollection(globalCondDim) : null;
+				? new PackedCollection(1, globalCondDim) : null;
 		long inferStart = System.nanoTime();
 		PackedCollection generatedLatent = sampler.sample(42L, null, globalCond);
 		long inferMs = (System.nanoTime() - inferStart) / 1_000_000;

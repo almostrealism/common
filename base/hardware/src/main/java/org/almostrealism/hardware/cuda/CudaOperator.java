@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
@@ -137,14 +138,14 @@ public class CudaOperator extends HardwareOperator {
 			log("\tGrid = " + grid + " x " + block + " for " + count + " work items");
 		}
 
-		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
 
 		return context.getStreamRunner().submit(getMetadata(), stream -> recordDuration(null, () -> {
 			if (count > 0) {
 				function.launch(stream, (int) grid, block, buffers, offsets, sizes, elementBytes, count, offset);
 			}
 		}), dependsOn, () -> {
-			KernelMemoryGuard.releaseFor(guard);
+			guard.release();
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
 		});

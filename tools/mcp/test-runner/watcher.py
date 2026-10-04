@@ -22,6 +22,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Run as a standalone script, so the shared MCP modules are not on the path.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from processes import pid_alive  # noqa: E402
+
 
 # Polling interval (seconds) between liveness checks for the watched maven PID.
 POLL_INTERVAL = 1.0
@@ -30,23 +36,6 @@ POLL_INTERVAL = 1.0
 # within milliseconds of maven exit; a 5-second grace covers the case where
 # the python parent is alive but slow.
 THREAD_GRACE_SECONDS = 5.0
-
-
-def is_alive(pid: int) -> bool:
-    """Check whether a process with the given PID is still alive.
-
-    Uses the standard `kill 0` probe. Returns True if the process exists
-    (whether or not we have permission to signal it), False if it does not.
-    """
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
 
 
 def load_metadata(metadata_path: Path):
@@ -130,7 +119,7 @@ def watch(maven_pid: int, metadata_path: Path, output_path: Path,
     or a future repetitions path) and a stale watcher must not overwrite the
     new run's metadata.
     """
-    while is_alive(maven_pid):
+    while pid_alive(maven_pid):
         time.sleep(POLL_INTERVAL)
 
     grace_deadline = time.monotonic() + THREAD_GRACE_SECONDS

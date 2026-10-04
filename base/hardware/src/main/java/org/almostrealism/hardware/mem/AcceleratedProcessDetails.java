@@ -19,6 +19,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.OperationList;
@@ -365,6 +366,68 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns true when this invocation holds anything that must be released once its
+	 * completion chain has fired: leased destination buffers, or temporary replacement
+	 * buffers created for its arguments.
+	 *
+	 * @return true when {@link #releaseResources()} has something to release
+	 */
+	public boolean hasResources() {
+		return hasDestinationLeases() || !isEmpty();
+	}
+
+	/**
+	 * Releases everything this invocation holds for the duration of its completion chain:
+	 * the leased destination buffers ({@link #releaseDestinationLeases()}) and the temporary
+	 * buffers its arguments were replaced with
+	 * ({@link MemoryReplacementManager#releaseTemporaries()}). The same condition applies as
+	 * for {@link #releaseDestinationLeases()}: call only once the completion from
+	 * {@link #getSemaphore()} has fired.
+	 *
+	 * <p>Both phases are always attempted: destination-lease callbacks are arbitrary
+	 * {@link Runnable}s and may throw, but a failure returning a lease must not leave the
+	 * temporary replacement buffers unreleased (nor vice versa). The first failure from either
+	 * phase is rethrown once both have run, with any later ones attached to it as suppressed.</p>
+	 */
+	public void releaseResources() {
+		Destroyable.releaseAll(List.<Runnable>of(this::releaseDestinationLeases,
+				replacementManager::releaseTemporaries));
+	}
+
+	/**
+	 * Releases everything this invocation holds after its dispatch failed before publishing a
+	 * completion.
+	 *
+	 * <p>Work submitted before the failure may still be running against the leased and
+	 * temporary buffers, and no completion reaches a caller who could wait for it. It is
+	 * therefore waited for here, actively, before anything is released: a passive callback is
+	 * not enough, because a backend that batches dispatches (Metal) only settles a pending
+	 * dispatch once something commits its command buffer, and on this path nothing else will.
+	 * This host wait happens only when a dispatch has failed.</p>
+	 *
+	 * @param failure  the dispatch failure; a failure of the in-flight work or of the release
+	 *                 is attached to it as suppressed rather than replacing it
+	 * @param inflight the latest work submitted before the failure, or {@code null} if none
+	 */
+	public void releaseResourcesAfterFailure(Throwable failure, Semaphore inflight) {
+		if (!hasResources()) return;
+
+		if (inflight != null) {
+			try {
+				inflight.waitFor();
+			} catch (RuntimeException | Error settled) {
+				if (settled != failure) failure.addSuppressed(settled);
+			}
+		}
+
+		try {
+			releaseResources();
+		} catch (RuntimeException | Error releaseFailure) {
+			if (releaseFailure != failure) failure.addSuppressed(releaseFailure);
+		}
+	}
+
+	/**
 	 * Releases every leased destination buffer back to its reuse slot, exactly once.
 	 *
 	 * <p>Safe to call only when nothing can still read or write the leased buffers —
@@ -396,9 +459,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			destinationLeases = null;
 		}
 
-		if (leases != null) {
-			leases.forEach(Runnable::run);
-		}
+		Destroyable.releaseAll(leases);
 	}
 
 	/**

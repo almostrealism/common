@@ -464,12 +464,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 									.add(cp(stemReverb.range(
 											new TraversalPolicy(bufferSize), 0)))
 									.each()));
-					addStemPushes(stemAppends, output, channelCount, p(fx));
+					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fx));
 				} else if (stemEfx != null) {
-					addStemPushes(stemAppends, output, channelCount,
+					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
 							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
 				} else if (stemReverb != null) {
-					addStemPushes(stemAppends, output, channelCount,
+					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
 							p(stemReverb.range(new TraversalPolicy(bufferSize), 0)));
 				}
 			}

@@ -1,18 +1,51 @@
-// SkyTNT LLaMA Transformer Block
-//
-// Standard LLaMA block: RMSNorm + Attention + Residual + RMSNorm + SwiGLU FFN + Residual.
-// Used for both the 12-layer main transformer (net) and the 3-layer token transformer
-// (net_token) — the block structure is identical; only hyperparameter values differ.
-//
-// Parameter naming follows the HuggingFace SkyTNT weight key conventions:
-//   gate_proj  = mlp.gate_proj  (SwiGLU gate path: dense -> SiLU)
-//   up_proj    = mlp.up_proj    (SwiGLU up path: dense)
-//   down_proj  = mlp.down_proj  (SwiGLU down projection)
+/**
+ * SkyTNT LLaMA transformer block: a residual self-attention stage followed by a residual
+ * SwiGLU feed-forward stage. Used for both the 12-layer main transformer (net) and the
+ * 3-layer token transformer (net_token) — the block structure is identical, only the
+ * hyperparameter values differ.
+ *
+ * This file imports /pdsl/attention.pdsl so the attention stage is the decomposed `attention`
+ * layer of that asset — rmsnorm, the key/value/query projections, the rotary embedding, the KV
+ * cache writes, the scores, the causal mask, the softmax, the weighted values and the output
+ * projection are all written out there and resolved into this program by the import. Before this
+ * migration the stage was the `attention` built-in, which hid that structure inside
+ * AttentionFeatures.attention and allocated the caches in Java; the caches are now the
+ * attention_cache state declared by attention.pdsl, allocated and bound by the SkyTNT loader
+ * (SkyTntMidi.buildTransformerModel), exactly as the transformer.pdsl layers already do it.
+ *
+ * SkyTNT attention is plain multi-head attention with no grouped-query sharing (kv_heads == heads)
+ * and no projection biases (bq, bk, bv are null), so the call names those directly.
+ *
+ * Parameter naming follows the HuggingFace SkyTNT weight key conventions:
+ *   gate_proj  = mlp.gate_proj  (SwiGLU gate path: dense -> SiLU)
+ *   up_proj    = mlp.up_proj    (SwiGLU up path: dense)
+ *   down_proj  = mlp.down_proj  (SwiGLU down projection)
+ *
+ * Data flow of one forward pass. The input is one event position's residual-stream vector:
+ *
+ *   x                                                             [1, dim]
+ *   accum   x = x + attention(x)                                  [1, dim]
+ *             rmsnorm -> key/value projections -> rotate -> cache
+ *             query projection -> rotate -> attend over the cache -> dense(wo)
+ *   accum   x = x + skytnt_ffn(x)                                 [1, dim]
+ *             rmsnorm -> silu(dense(gate_proj)) * dense(up_proj) -> dense(down_proj)
+ *
+ * Each accum adds its stage's output to the residual stream the stage read (pre-norm), so the
+ * stream itself is never normalized in place; dim is heads * head_size throughout.
+ */
 
-// ----- SwiGLU Feed-Forward Network -----
-// Architecture: RMSNorm -> (gate_proj -> SiLU) * up_proj -> down_proj
-// This is the standard LLaMA MLP sub-layer.
+import "/pdsl/attention.pdsl"
 
+/**
+ * SwiGLU feed-forward network — the position-wise MLP sub-layer of the block.
+ *
+ *   rmsnorm(norm_weights, epsilon)                               [1, dim]
+ *   product(silu(dense(gate_proj)), dense(up_proj))              [1, hidden_dim]
+ *   dense(down_proj)                                             [1, dim]
+ *
+ * Both projections read the normalized vector; the SiLU-gated gate path times the linear up path
+ * forms the gated hidden activation, and the down projection maps it back to the model dimension.
+ */
 layer skytnt_ffn(
     norm_weights: weight,
     gate_proj: weight,
@@ -28,16 +61,20 @@ layer skytnt_ffn(
     dense(down_proj)
 }
 
-// ----- LLaMA Transformer Block -----
-// Architecture:
-//   input -> accum(attention(input)) -> accum(skytnt_ffn(output)) -> output
-//
-// The attention built-in handles: RMSNorm, Q/K/V projections, RoPE rotation,
-// KV caching, scaled dot-product attention, output projection.
-// The skytnt_ffn user-defined layer handles the SwiGLU feed-forward sub-layer.
-
+/**
+ * LLaMA transformer block: [1, dim] -> [1, dim].
+ *
+ *   accum   attention(...)     the rmsnorm(rms_att_weight) + attention stage over the KV cache
+ *   accum   skytnt_ffn(...)    the rmsnorm(rms_ffn_weight) + SwiGLU stage
+ *
+ * The attention call passes heads for kv_heads (multi-head, no GQA) and null for the three
+ * projection biases (SkyTNT has none), and forwards epsilon so the attention RMSNorm uses the
+ * same epsilon as the feed-forward RMSNorm. key_cache and value_cache are the attention_cache
+ * state of the imported attention.pdsl, bound by the caller and persistent across forward passes.
+ */
 layer skytnt_block(
     heads: int,
+    head_size: int,
     rms_att_weight: weight,
     wq: weight,
     wk: weight,
@@ -50,12 +87,14 @@ layer skytnt_block(
     up_proj: weight,
     down_proj: weight,
     epsilon: float
-) -> [1, dim] {
+) -> [1, heads * head_size] {
+    // Residual self-attention: the stream plus attention over its normalized copy.
     accum {
-        attention(heads, rms_att_weight,
-                  wk, wv, wq, wo,
-                  freq_cis, position)
+        attention(heads, heads, head_size, rms_att_weight, wq, wk, wv, wo,
+                  null, null, null, freq_cis, position, epsilon)
     }
+
+    // Residual feed-forward: the stream plus the SwiGLU network over its normalized copy.
     accum {
         skytnt_ffn(rms_ffn_weight, gate_proj, up_proj, down_proj, epsilon)
     }

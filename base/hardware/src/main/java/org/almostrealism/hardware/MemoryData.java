@@ -26,6 +26,8 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.BytesView;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +35,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.function.DoublePredicate;
+import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -297,6 +300,41 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 */
 	default boolean isDestroyed() {
 		return getMem() == null;
+	}
+
+	/**
+	 * Returns a view of the region this data describes, bound directly to the {@link Memory}
+	 * backing it at the moment of the call rather than through this object or its delegate chain.
+	 *
+	 * <p>Destroying this data (or the root it delegates to) clears that object's reference to
+	 * its memory, but not the view's: the view keeps the same memory, offset, length and atomic
+	 * length. It does not keep the memory itself alive &mdash; whoever needs the memory to outlive
+	 * a destroy must hold it some other way, for example with a
+	 * {@link org.almostrealism.hardware.mem.KernelMemoryGuard} scheduling lease. The view's root
+	 * never frees the captured memory; destroying that root only frees memory the root acquired
+	 * afterwards by being moved to another provider. Data that has already been destroyed has
+	 * nothing to bind to, and is returned unchanged.</p>
+	 *
+	 * @return a view of this data's current memory, or this data if it has been destroyed
+	 */
+	default MemoryData detachedView() {
+		Memory mem = getMem();
+		return mem == null ? this : detachedView(mem);
+	}
+
+	/**
+	 * Returns a view of the region this data describes, bound to the given {@link Memory}
+	 * rather than to whatever memory backs this data when the view is used. The view has this
+	 * data's offset, length and atomic length within that memory; see {@link #detachedView()}
+	 * for how its lifetime relates to the memory's.
+	 *
+	 * @param mem the memory to bind the view to, which must be memory this data's root describes
+	 * @return a view of this data's region within {@code mem}
+	 */
+	default MemoryData detachedView(Memory mem) {
+		MemoryData root = getRootDelegate();
+		Bytes storage = new BytesView(mem, root.getOffset() + root.getMemLength());
+		return new Bytes(getMemLength(), getAtomicMemLength(), storage, getOffset());
 	}
 
 	/**
