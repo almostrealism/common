@@ -18,6 +18,7 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.RAM;
@@ -131,6 +132,40 @@ public class PackedCollectionTests extends TestSuiteBase {
 			for (int i = 0; i < all.length; i++) {
 				assertEquals(permuted.toDouble(i), all[i]);
 			}
+		}
+	}
+
+	/**
+	 * Tests that doubleStream over a rated (repeated) view, whose logical range is far larger than the
+	 * handful of elements its memory backs, streams every logical element in order without first
+	 * materializing one index per logical element. A {@code new TraversalPolicy(3).repeat(0, count)}
+	 * view reports {@code 3 * count} logical elements over only three backing values, so retaining an
+	 * index per logical element would allocate far more than the data it describes. The stream must
+	 * still agree with {@link PackedCollection#toDouble(int)} element for element and, aggregated,
+	 * reproduce each backing value exactly {@code count} times.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamRatedViewDoesNotMaterializeIndices() {
+		int count = 300000;
+		TraversalPolicy rated = new TraversalPolicy(3).repeat(0, count);
+
+		try (PackedCollection root = pack(2.0, 3.0, 1.0)) {
+			PackedCollection repeated = new PackedCollection(rated, rated.getTraversalAxis(), root, 0);
+			assertFalse(repeated.getShape().isRegular());
+			assertEquals(3 * count, repeated.getShape().getTotalSize());
+			assertEquals(3, repeated.getMemLength());
+
+			// A prefix must match toDouble, which resolves the same input index per logical element.
+			double[] prefix = repeated.doubleStream(0, 9).toArray();
+			assertEquals(9, prefix.length);
+			for (int i = 0; i < prefix.length; i++) {
+				assertEquals(repeated.toDouble(i), prefix[i]);
+			}
+
+			// The full logical range aggregates to each backing value repeated count times; the stream
+			// completes within the timeout without allocating a per-element index array.
+			double sum = repeated.doubleStream().sum();
+			assertEquals((2.0 + 3.0 + 1.0) * count, sum);
 		}
 	}
 

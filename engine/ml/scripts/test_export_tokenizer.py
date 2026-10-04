@@ -565,6 +565,16 @@ def test_write_tokenizer_invalid_added_id_is_rejected(tmp_path, token_id):
     assert not out.exists()
 
 
+def test_write_tokenizer_empty_added_content_is_rejected(tmp_path):
+    # write_tokenizer is reachable without read_tokenizer, which rejects empty added-token content
+    # upstream. An empty content here would otherwise write a zero-length added-token record that
+    # SentencePieceBPETokenizer.readAddedTokens refuses, so the binary is unloadable; catch it first.
+    out = tmp_path / "tokenizer.bin"
+    with pytest.raises(ValueError, match="empty content"):
+        exporter.write_tokenizer(str(out), {"a": 0}, [], {}, [(0, "", False, False)])
+    assert not out.exists()
+
+
 def test_write_tokenizer_special_id_out_of_range_is_rejected(tmp_path):
     # A special id beyond the vocabulary is what readControlId rejects on load; catch it before writing.
     out = tmp_path / "tokenizer.bin"

@@ -518,6 +518,11 @@ def write_tokenizer(path, vocab, merges, specials, added=()):
         _require_token_id("vocabulary token %r" % token, index)
     for index, content, _, _ in added:
         _require_token_id("added token %r" % content, index)
+        if not content:
+            raise ValueError(
+                "added token id %d has empty content; SentencePieceBPETokenizer.readAddedTokens "
+                "rejects a zero-length added-token record, so the exported binary would fail to "
+                "load" % index)
 
     ids = list(vocab.values()) + [index for index, _, _, _ in added]
     size = max(ids) + 1 if ids else 0

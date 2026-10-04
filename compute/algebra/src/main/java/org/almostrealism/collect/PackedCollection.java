@@ -476,19 +476,26 @@ public class PackedCollection extends MemoryDataAdapter
 			return DoubleStream.empty();
 		}
 
-		int[] source = IntStream.range(offset, offset + length).map(getShape()::inputIndex).toArray();
-		// A negative input index lies outside the backing memory and reads as 0.0, as toDouble does
-		int start = IntStream.of(source).filter(i -> i >= 0).min().orElse(0);
-		int end = IntStream.of(source).max().orElse(-1) + 1;
+		// Scan the covering span without retaining one index per logical element. A negative input
+		// index lies outside the backing memory and reads as 0.0, as toDouble does.
+		int lowest = Integer.MAX_VALUE;
+		int highest = -1;
+		for (int i = offset; i < offset + length; i++) {
+			int index = getShape().inputIndex(i);
+			if (index >= 0 && index < lowest) lowest = index;
+			if (index + 1 > highest) highest = index + 1;
+		}
+		int start = lowest == Integer.MAX_VALUE ? 0 : lowest;
+		int end = highest;
 		long span = (long) end - start;
 		if (span > (long) BULK_STREAM_SPAN_LIMIT * length) {
-			// The covering span is far wider than the window; reading it in bulk would allocate and
-			// transfer far more than requested, so read each requested element directly instead.
+			// The covering span is far wider than the window, so read each element directly instead.
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
 		}
 
 		double[] window = span > 0 ? toArray(start, (int) span) : new double[0];
-		return IntStream.of(source).mapToDouble(i -> i < 0 ? 0.0 : window[i - start]);
+		return IntStream.range(offset, offset + length).map(getShape()::inputIndex)
+				.mapToDouble(i -> i < 0 ? 0.0 : window[i - start]);
 	}
 
 	/**
