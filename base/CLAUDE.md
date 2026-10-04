@@ -19,7 +19,7 @@ above this layer depends on it; nothing here depends on higher layers.
 - PackedCollection: hardware-accelerated tensor storage and memory layout
 - CollectionProducer: lazy computation API for building expression graphs
 - GPU/CPU acceleration backends, kernel compilation, memory management
-- Hardware abstraction layer (Metal, OpenCL, JNI bridges)
+- Hardware abstraction layer (Metal, OpenCL, CUDA, JNI bridges)
 
 ## What Does NOT Belong Here
 

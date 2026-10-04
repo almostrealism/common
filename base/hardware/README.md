@@ -1,6 +1,6 @@
 # Hardware Module
 
-The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal) with zero-code configuration.
+The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal, CUDA) with zero-code configuration.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
 The hardware module enables:
 
 - **Hardware Acceleration**: Execute computations on CPU, GPU, or specialized accelerators
-- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection
+- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection, plus an opt-in CUDA backend
 - **Memory Abstraction**: Unified memory interface across heap, off-heap, and device memory
 - **Kernel Caching**: Multi-level caching to minimize compilation overhead
 - **Zero-Code Configuration**: Control behavior via environment variables
@@ -36,7 +36,7 @@ The hardware module enables:
 Before using any Almost Realism functionality, set the **required** environment variable:
 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
-- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
+- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `cuda`, `gpu`, `cpu`, or `*` to force a specific backend.
 
 ### 2. Basic Usage
 
@@ -86,6 +86,7 @@ mvn test
 |    +------------------------------------+                     |
 |    |  * CLDataContext (OpenCL)          |                     |
 |    |  * MetalDataContext (Metal)        |                     |
+|    |  * CudaDataContext (CUDA)          |                     |
 |    |  * NativeDataContext (JNI)         |                     |
 |    |                                    |                     |
 |    |  Provides:                         |                     |
@@ -137,6 +138,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 |----------------|---------|-------------|
 | **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
 | **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
+| **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels) | CudaDataContext, CudaMemoryProvider, CudaOperator |
 | **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
 | **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
@@ -750,6 +752,7 @@ export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
 # GPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
 export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
+export AR_HARDWARE_DRIVER=cuda    # CUDA (NVIDIA GPU)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
 # Multi-Backend (optional override)
