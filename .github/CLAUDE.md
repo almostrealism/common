@@ -260,9 +260,8 @@ and general-review prompts now go out before test results exist, and say so.)
 
 **Every required test job must upload a Surefire artifact the allowlist
 keeps.** The "required" set is `analysis.needs` minus `build` — the same set
-`all-checks` waits on (see "What the `analysis` job does" below) — except the
-CL lanes (`test-cl`, `test-media-cl`), which are excluded from both `analysis`
-and the merge gate by design and upload neither coverage nor Surefire.
+`all-checks` waits on (see "What the `analysis` job does" below), which
+includes every test lane: CPU, flowtree, Metal and OpenCL.
 `Filter to resolvable surefire reports` keeps only artifact names the
 allowlist recognises and deletes the rest before
 `parse-surefire-failures.sh` ever runs, so a job whose artifact name the
@@ -605,19 +604,23 @@ already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running two of its four groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
 
-The `test-mac` and `test-media-mac` (Metal) jobs upload surefire reports
-(`surefire-mac-group-*`, `surefire-media-mac-group-*`) so a Metal-specific test
-failure a Linux run would not surface is still parsed and auto-resolved. The CL
-jobs (`test-cl`, `test-media-cl`) upload no surefire and are the **only** test
-results not eligible for auto-resolution.
+The accelerator jobs upload surefire reports — `surefire-mac-group-*` and
+`surefire-media-mac-group-*` (Metal), `surefire-cl-group-*` and
+`surefire-media-cl-group-*` (OpenCL) — so a failure specific to one backend,
+which a Linux CPU run would not surface, is still parsed and auto-resolved.
 
-The CL jobs upload no coverage, so neither appears in `analysis` needs, and
-**neither is part of the `all-checks` merge gate**: the CL backend has not been
-a focus for some time and carries known flakiness/timeouts predating this
-coverage, so the jobs are informational. They report their own pass/fail status
-on the PR as independent checks; they just do not decide mergeability. Restore
-them to `all-checks` (needs + env + `check_job` + summary lines) once the CL
-backend is considered stable again.
+**Every accelerator lane is part of the `all-checks` merge gate.** The CL jobs
+were once informational, outside the gate and the auto-resolve routing, while
+the CL backend carried known flakiness; they were made required once the CL
+lanes passed reliably, because the goal is a pipeline that holds every
+accelerator it tests to the same bar. They upload no coverage, but they appear
+in `analysis.needs` for the same ordering reason as the mac jobs (see "What the
+`analysis` job does"), and therefore in `auto-resolve`'s failure routing and
+Surefire allowlist. A new accelerator lane joins the same way: `analysis.needs`,
+`all-checks` (needs + env + `check_job` + summary line), `auto-resolve.needs`,
+the `Check for incomplete test execution` step, and a Surefire upload the
+allowlist keeps — `tools/tests/test_auto_resolve_test_job_coverage.py` fails
+until all of them are in place.
 
 ### What the `docker-build` job covers
 
@@ -897,8 +900,9 @@ here.
 
 ### What the `analysis` job does
 
-Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`, and
-`test-media-mac` (any may be skipped). The mac jobs upload no coverage; they are
+Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`,
+`test-media-mac`, `test-cl` and `test-media-cl` (any may be skipped). The mac
+and CL jobs upload no coverage; they are
 in `needs` so that the input to `analysis` is not narrower than the input to
 `all-checks` — `auto-resolve` depends on `analysis`, so on its attempt it does
 not proceed until the same set of jobs that decide `all-checks` has reported. Downloads all
