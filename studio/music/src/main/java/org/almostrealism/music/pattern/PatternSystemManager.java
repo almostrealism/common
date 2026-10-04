@@ -257,7 +257,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * @param settings the settings to apply
 	 */
 	public void setSettings(Settings settings) {
-		patterns.clear();
+		clear();
 		settings.getPatterns().forEach(s -> addPattern(s.getChannel(), s.getDuration(), s.isMelodic()).setSettings(s));
 	}
 
@@ -403,23 +403,33 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		return events;
 	}
 
-	/** Removes all patterns from this manager. */
+	/**
+	 * Removes all patterns from this manager, destroying each one first so its
+	 * note-audio cache is released rather than leaked.
+	 *
+	 * <p>Each {@link PatternLayerManager} owns a cache of rendered note audio backed
+	 * by native memory. Simply dropping the manager references (as a bare
+	 * {@code patterns.clear()} would) leaves that memory reachable only through the
+	 * garbage collector's reference queue, so {@link #destroy()} on the owning scene
+	 * could no longer reach it. Destroying each manager before removing it frees that
+	 * memory deterministically, which matters when settings are reloaded into a live
+	 * manager (see {@link #setSettings(Settings)}) as well as at teardown.</p>
+	 */
 	public void clear() {
+		patterns.forEach(PatternLayerManager::destroy);
 		patterns.clear();
 	}
 
 	/**
-	 * Releases the native memory held by every pattern's note-audio cache. Each
-	 * {@link PatternLayerManager} owns a cache of rendered note audio that is
-	 * otherwise reclaimed only when the manager becomes unreachable; destroying them
-	 * here frees that memory deterministically when the owning scene is torn down.
-	 * The pattern list itself is left intact (and the operation is idempotent) so a
-	 * repeated teardown simply re-clears already-empty caches.
+	 * Releases the native memory held by every pattern's note-audio cache and empties
+	 * the pattern list. Delegates to {@link #clear()} so teardown and settings reloads
+	 * share one code path; the operation is idempotent, so a repeated teardown simply
+	 * finds an already-empty list.
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		patterns.forEach(PatternLayerManager::destroy);
+		clear();
 	}
 
 	/**

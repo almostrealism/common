@@ -28,6 +28,7 @@ import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -87,6 +88,81 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 		psm.setTree(null, progress::add);
 		Assert.assertEquals("progress starts at zero and advances once per source",
 				List.of(0.0, 1.0 / 3, 2.0 / 3, 1.0), progress);
+	}
+
+	/**
+	 * Seeds the given manager's note-audio cache with a single owned entry, so that a
+	 * later teardown has something to release.
+	 *
+	 * @param manager the manager whose cache to seed
+	 * @return the audio placed in the cache
+	 */
+	private PackedCollection seedCache(PatternLayerManager manager) {
+		PackedCollection audio = new PackedCollection(shape(16).traverseEach());
+		manager.getNoteAudioCache().put(0, null, audio);
+		Assert.assertEquals(1, manager.getNoteAudioCache().size());
+		return audio;
+	}
+
+	/**
+	 * {@code clear()} destroys each dropped pattern's note-audio cache rather than
+	 * leaving its native memory reachable only through the garbage collector.
+	 */
+	@Test(timeout = 30000)
+	public void clearReleasesDroppedPatternCaches() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(2));
+		PatternLayerManager first = psm.addPattern(0, 2.0, false);
+		PatternLayerManager second = psm.addPattern(1, 2.0, false);
+		PackedCollection firstAudio = seedCache(first);
+		PackedCollection secondAudio = seedCache(second);
+
+		psm.clear();
+
+		Assert.assertTrue(psm.getPatterns().isEmpty());
+		Assert.assertEquals("the dropped manager's cache is emptied", 0, first.getNoteAudioCache().size());
+		Assert.assertEquals(0, second.getNoteAudioCache().size());
+		Assert.assertTrue("the cached audio is released, not leaked", firstAudio.isDestroyed());
+		Assert.assertTrue(secondAudio.isDestroyed());
+	}
+
+	/**
+	 * Reloading settings into a live manager releases the caches of the patterns it
+	 * replaces, so their native memory is not stranded beyond the reach of
+	 * {@link PatternSystemManager#destroy()}.
+	 */
+	@Test(timeout = 30000)
+	public void setSettingsReleasesReplacedPatternCaches() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(2));
+		PatternLayerManager original = psm.addPattern(0, 2.0, false);
+		PackedCollection originalAudio = seedCache(original);
+
+		PatternSystemManager.Settings settings = new PatternSystemManager.Settings();
+		settings.setPatterns(new ArrayList<>());
+		psm.setSettings(settings);
+
+		Assert.assertTrue(psm.getPatterns().isEmpty());
+		Assert.assertEquals("the replaced manager's cache is emptied", 0, original.getNoteAudioCache().size());
+		Assert.assertTrue("the replaced manager's cached audio is released", originalAudio.isDestroyed());
+	}
+
+	/**
+	 * {@code destroy()} empties the pattern list, releasing every manager's cache, and
+	 * is idempotent across repeated teardown.
+	 */
+	@Test(timeout = 30000)
+	public void destroyReleasesAllPatternCaches() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(1));
+		PatternLayerManager pattern = psm.addPattern(0, 2.0, false);
+		PackedCollection audio = seedCache(pattern);
+
+		psm.destroy();
+
+		Assert.assertTrue(psm.getPatterns().isEmpty());
+		Assert.assertEquals(0, pattern.getNoteAudioCache().size());
+		Assert.assertTrue(audio.isDestroyed());
+
+		psm.destroy();
+		Assert.assertTrue("a repeated teardown is a no-op", psm.getPatterns().isEmpty());
 	}
 
 	/** Pattern elements are merged across patterns by the choice that owns them. */

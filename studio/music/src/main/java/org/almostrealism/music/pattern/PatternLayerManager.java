@@ -198,6 +198,17 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
 	/**
+	 * Returns this manager's note-audio cache. Package-private: it exposes the cache
+	 * so tests in this package can verify that {@link #destroy()} releases it, without
+	 * widening the public surface.
+	 *
+	 * @return the note-audio cache
+	 */
+	NoteAudioCache getNoteAudioCache() {
+		return noteAudioCache;
+	}
+
+	/**
 	 * When {@code true}, {@link #noteAudioCache} is never cleared or evicted in
 	 * {@link #sum}, so a continuously looped arrangement reuses the same rendered
 	 * note audio across passes with no re-evaluation and no per-loop deallocation
