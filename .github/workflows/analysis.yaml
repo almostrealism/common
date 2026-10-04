@@ -2368,7 +2368,7 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
       # Metal (mac) surefire reports so auto-resolve can parse Metal-specific test failures
-      # a Linux run would not surface. Named distinctly from the CL jobs, which are not resolved.
+      # a Linux run would not surface.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -2547,6 +2547,19 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
 
+      # OpenCL surefire reports so auto-resolve can parse CL-specific test failures that
+      # neither the Linux CPU lane nor the Metal lane would surface.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-cl-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
   test-media-mac:
     needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # GPU lane, second stage: runs after test-mac. test-media-mac and test-mac both run heavy
@@ -2690,8 +2703,7 @@ jobs:
            -DAR_TEST_GROUPS=4
 
       # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
-      # failures a Linux run would not surface. Named distinctly from the CL jobs, which
-      # are not resolved.
+      # failures a Linux run would not surface.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -2872,14 +2884,28 @@ jobs:
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=8
 
+      # OpenCL media surefire reports so auto-resolve can parse CL-specific test failures
+      # that neither the Linux CPU lane nor the Metal lane would surface.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-media-cl-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
   analysis:
-    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac test jobs
-    # (test-mac, test-media-mac) that the all-checks gate also waits on. auto-resolve depends
-    # on analysis, so waiting for the mac jobs here means auto-resolve does not proceed until
-    # the same set of jobs that decide all-checks has reported — the input to analysis is not
-    # narrower than the input to all-checks. The mac jobs upload no coverage; they are here for
-    # ordering only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
-    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac]
+    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac and CL test jobs
+    # (test-mac, test-media-mac, test-cl, test-media-cl) that the all-checks gate also waits
+    # on. auto-resolve depends on analysis, so waiting for those jobs here means auto-resolve
+    # does not proceed until the same set of jobs that decide all-checks has reported — the
+    # input to analysis is not narrower than the input to all-checks. The mac and CL jobs
+    # upload no coverage; they are here for ordering only, and `if: !cancelled()` keeps
+    # analysis running when any of them fail or skip.
+    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -3527,7 +3553,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, python-tests, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
+    needs: [changes, build, python-tests, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
     if: >-
       !cancelled() &&
       github.ref != 'refs/heads/master' &&
@@ -3549,11 +3575,10 @@ jobs:
           ref: ${{ needs.changes.outputs.head_sha }}
           fetch-depth: 0
 
-      # Linux (test, test-media), flowtree and Metal mac (test-mac,
-      # test-media-mac) results are considered — a Metal-specific failure a
-      # Linux run would not surface is still auto-resolved. The CL jobs
-      # (test-cl, test-media-cl) upload no surefire and remain the only test
-      # results NOT treated as requiring auto-resolution.
+      # Every test lane is considered: Linux (test, test-media), flowtree,
+      # Metal (test-mac, test-media-mac) and OpenCL (test-cl, test-media-cl).
+      # A failure specific to one accelerator backend, which the other lanes
+      # would not surface, is still auto-resolved.
 
       - name: Clean stale surefire reports
         run: |
@@ -3596,14 +3621,14 @@ jobs:
           # which fails a new test lane until it is added here):
           #   surefire-utils-group-*, surefire-ml-group-* (test),
           #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
-          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac)
-          # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
-          # so CL results are never parsed here — CL remains the only ignored case.
+          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac),
+          #   surefire-cl-group-* (test-cl), surefire-media-cl-group-* (test-media-cl)
+          # Remove anything else.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*)
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
@@ -3650,7 +3675,9 @@ jobs:
           MAC_RESULT="${{ needs.test-mac.result }}"
           MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
           TEST_FLOWTREE_RESULT="${{ needs.test-flowtree.result }}"
-          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT}"
+          CL_RESULT="${{ needs.test-cl.result }}"
+          MEDIA_CL_RESULT="${{ needs.test-media-cl.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT} test-cl=${CL_RESULT} test-media-cl=${MEDIA_CL_RESULT}"
 
           # Check for genuine failures (job ran but failed without surefire XML).
           # Every job in `analysis.needs` other than `build` (the required
@@ -3677,6 +3704,14 @@ jobs:
           if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$CL_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-cl job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MEDIA_CL_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-media-cl job failed without producing parseable surefire failures — treating as build failure"
           fi
 
           # If a real failure occurred, route to the build-failure path
@@ -3751,6 +3786,43 @@ jobs:
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"
               fi
+            fi
+          fi
+
+          # The CL lane runs only once the CPU and Metal lanes have cleared (admission
+          # control — see test-cl), so a CL stage skipped or cancelled after any of those
+          # lanes failed or was cancelled is expected. Any other skip of a CL stage whose
+          # layer gate was met is unexplained.
+          UPSTREAM_LANE_FAILED="false"
+          for result in "$TEST_RESULT" "$MEDIA_RESULT" "$MAC_RESULT" "$MEDIA_MAC_RESULT"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              UPSTREAM_LANE_FAILED="true"
+            fi
+          done
+          if [ "$CL_RESULT" = "cancelled" ] || [ "$CL_RESULT" = "skipped" ]; then
+            if [ "$UPSTREAM_LANE_FAILED" = "true" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} because an earlier lane failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-cl job was ${CL_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_CL_RESULT" = "cancelled" ] || [ "$MEDIA_CL_RESULT" = "skipped" ]; then
+            # A skipped test-cl is NOT an excuse, for the same reason as test-media above:
+            # test-media-cl has the wider layer gate and runs on studio/extern-only changes.
+            if [ "$UPSTREAM_LANE_FAILED" = "true" ] || [ "$CL_RESULT" = "failure" ] || [ "$CL_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because an earlier lane failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-cl job was ${MEDIA_CL_RESULT} without an upstream failure"
+              INCOMPLETE="true"
             fi
           fi
           echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
@@ -3898,6 +3970,8 @@ jobs:
       - test-media
       - test-mac
       - test-media-mac
+      - test-cl
+      - test-media-cl
       - analysis
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -3923,6 +3997,8 @@ jobs:
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
+          TEST_CL_RESULT: ${{ needs.test-cl.result }}
+          TEST_MEDIA_CL_RESULT: ${{ needs.test-media-cl.result }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
         run: |
           FAILED=""
@@ -3960,6 +4036,8 @@ jobs:
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
+          check_job "test-cl"                 "$TEST_CL_RESULT"
+          check_job "test-media-cl"           "$TEST_MEDIA_CL_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
 
           # checkstyle now fails hard (no continue-on-error), so its job result
@@ -3997,4 +4075,6 @@ jobs:
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-cl | ${{ needs.test-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-cl | ${{ needs.test-media-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
