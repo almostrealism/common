@@ -191,6 +191,42 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals("c", names.get(1));
 	}
 
+	/**
+	 * A {@code '{'} inside a <em>string element</em> of an array is a literal
+	 * character, not the start of an object. Locating objects with a plain
+	 * {@code indexOf("{")} finds the brace inside the string and counts the
+	 * string element as an object, so {@link JsonFieldExtractor#countArrayEntries(String, String)}
+	 * must ignore braces inside string literals the same way its closing-brace
+	 * scan ({@code matchingDelimiter}) already does. The array here holds a
+	 * single string {@code "a{}b"} and zero objects.
+	 */
+	@Test(timeout = 10000)
+	public void countArrayEntriesIgnoresBraceInStringElement() {
+		String json = "{\"items\":[\"a{}b\"]}";
+
+		int count = JsonFieldExtractor.countArrayEntries(json, "items");
+
+		Assert.assertEquals(0, count);
+	}
+
+	/**
+	 * A lone {@code '{'} inside a string element must not be mistaken for an
+	 * object start. When object starts are located with a plain
+	 * {@code indexOf("{")}, the brace inside the string {@code "{"} is treated
+	 * as an object open; its balancing {@code '}'} is then sought past the end
+	 * of the real object, so the scan desynchronizes and the genuine object's
+	 * field is never extracted. The array here holds a string {@code "{"} and
+	 * one object whose {@code name} is {@code real}.
+	 */
+	@Test(timeout = 10000)
+	public void extractFieldFromArrayObjectsIgnoresBraceInStringElement() {
+		String json = "{\"items\":[\"{\",{\"name\":\"real\"}]}";
+
+		List<String> names = JsonFieldExtractor.extractFieldFromArrayObjects(json, "items", "name");
+
+		Assert.assertEquals(List.of("real"), names);
+	}
+
 	/** A well-formed array of strings is returned in order, escapes decoded. */
 	@Test(timeout = 10000)
 	public void strictStringArrayReturnsValuesInOrder() {

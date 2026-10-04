@@ -361,7 +361,7 @@ public final class JsonFieldExtractor {
 		int count = 0;
 		int pos = 0;
 		while (pos < arrContent.length()) {
-			int objStart = arrContent.indexOf("{", pos);
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
 			if (objStart < 0) break;
 
 			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
@@ -407,7 +407,7 @@ public final class JsonFieldExtractor {
 		String arrContent = json.substring(arrStart + 1, arrEnd);
 		int pos = 0;
 		while (pos < arrContent.length()) {
-			int objStart = arrContent.indexOf("{", pos);
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
 			if (objStart < 0) break;
 
 			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
@@ -754,6 +754,47 @@ public final class JsonFieldExtractor {
 			} else if (c == close) {
 				depth--;
 				if (depth == 0) return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Finds the index of the first {@code target} character at or after
+	 * {@code from} that lies outside a JSON string literal. Characters inside a
+	 * string literal — and the escapes within it — are skipped, so a brace that
+	 * is part of a string value is not mistaken for structural punctuation.
+	 *
+	 * <p>The object-scanning loops in {@link #countArrayEntries(String, String)}
+	 * and {@link #extractFieldFromArrayObjects(String, String, String)} use this
+	 * to locate each object's opening {@code {}, mirroring the string-awareness
+	 * that {@link #matchingDelimiter(CharSequence, int, char, char)} already
+	 * applies to the closing {@code }}. A plain {@code indexOf} would find a
+	 * brace inside a string element or field value and desynchronize the scan.
+	 * {@code from} must point at a position outside any string literal — the
+	 * loops begin at the start of the array content and resume just past a
+	 * balanced object, both of which satisfy that.</p>
+	 *
+	 * @param s      the source text
+	 * @param from   the index to begin scanning from, outside any string literal
+	 * @param target the character to find outside string literals
+	 * @return the index of the first unquoted {@code target}, or {@code -1} when
+	 *         none remains
+	 */
+	private static int indexOfUnquoted(CharSequence s, int from, char target) {
+		boolean inString = false;
+		for (int i = from; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (inString) {
+				if (c == '\\') {
+					i++;
+				} else if (c == '"') {
+					inString = false;
+				}
+			} else if (c == '"') {
+				inString = true;
+			} else if (c == target) {
+				return i;
 			}
 		}
 		return -1;
