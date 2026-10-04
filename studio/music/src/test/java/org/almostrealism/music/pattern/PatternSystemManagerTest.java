@@ -165,6 +165,46 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 		Assert.assertTrue("a repeated teardown is a no-op", psm.getPatterns().isEmpty());
 	}
 
+	/**
+	 * {@code destroy()} releases the manager-owned volume collection allocated by
+	 * {@code init()} and nulls the reference, so the native memory is freed
+	 * deterministically and a repeated teardown is safe.
+	 */
+	@Test(timeout = 30000)
+	public void destroyReleasesVolumeCollection() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(1));
+		psm.init();
+
+		PackedCollection volume = psm.getVolume();
+		Assert.assertNotNull("init allocates the volume collection", volume);
+
+		psm.destroy();
+
+		Assert.assertTrue("the volume collection is released, not leaked", volume.isDestroyed());
+		Assert.assertNull("the reference is cleared so a repeated teardown is safe", psm.getVolume());
+
+		psm.destroy();
+		Assert.assertNull("a repeated teardown leaves the volume reference null", psm.getVolume());
+	}
+
+	/**
+	 * Re-initializing a live manager releases the volume collection allocated by the
+	 * previous {@code init()} rather than leaking it, and installs a distinct fresh one.
+	 */
+	@Test(timeout = 30000)
+	public void initReleasesPreviousVolumeCollection() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(1));
+		psm.init();
+		PackedCollection first = psm.getVolume();
+
+		psm.init();
+		PackedCollection second = psm.getVolume();
+
+		Assert.assertTrue("the previous volume collection is released", first.isDestroyed());
+		Assert.assertNotSame("init installs a distinct collection", first, second);
+		Assert.assertFalse("the fresh volume collection is live", second.isDestroyed());
+	}
+
 	/** Pattern elements are merged across patterns by the choice that owns them. */
 	@Test(timeout = 30000)
 	public void patternElementsAreMergedByChoice() {

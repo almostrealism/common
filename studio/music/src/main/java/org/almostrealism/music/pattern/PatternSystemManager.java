@@ -179,8 +179,13 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		this.chromosomes = chromosomes;
 	}
 
-	/** Initializes the volume to 1.0. */
+	/**
+	 * Initializes the volume to 1.0. Releases any previously allocated volume
+	 * collection first, so re-initializing a live manager does not leak the native
+	 * memory backing the old one.
+	 */
 	public void init() {
+		if (volume != null) volume.destroy();
 		volume = pack(1.0);
 		volumeValue = 1.0;
 	}
@@ -228,6 +233,18 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		});
 
 		return elements;
+	}
+
+	/**
+	 * Returns this manager's volume scaling collection, or {@code null} before
+	 * {@link #init()} or after {@link #destroy()}. Package-private: it exposes the
+	 * collection so tests in this package can verify that {@link #destroy()} releases it,
+	 * without widening the public surface.
+	 *
+	 * @return the volume collection, or {@code null}
+	 */
+	PackedCollection getVolume() {
+		return volume;
 	}
 
 	/**
@@ -425,11 +442,21 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * the pattern list. Delegates to {@link #clear()} so teardown and settings reloads
 	 * share one code path; the operation is idempotent, so a repeated teardown simply
 	 * finds an already-empty list.
+	 *
+	 * <p>Also releases the manager-owned {@link #volume} collection allocated by
+	 * {@link #init()} and nulls the reference, so a repeated teardown is safe and the
+	 * native memory backing it is freed deterministically rather than left for the
+	 * garbage collector's reference queue.</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
 		clear();
+
+		if (volume != null) {
+			volume.destroy();
+			volume = null;
+		}
 	}
 
 	/**

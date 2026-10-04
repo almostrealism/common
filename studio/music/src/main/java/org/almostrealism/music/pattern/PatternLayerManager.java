@@ -198,6 +198,16 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
 	/**
+	 * Manager-owned automation parameter collections, one allocated per {@link #layer}
+	 * call and shared by that layer's elements. They back native memory, so they are
+	 * released in {@link #clear()} (when the layers that reference them are removed) and
+	 * in {@link #destroy()}. Externally supplied elements installed by
+	 * {@link #setExplicitElements} never carry a manager-allocated collection, so they
+	 * are not tracked here and are left untouched.
+	 */
+	private final List<PackedCollection> automationParameterData = new ArrayList<>();
+
+	/**
 	 * Returns this manager's note-audio cache. Package-private: it exposes the cache
 	 * so tests in this package can verify that {@link #destroy()} releases it, without
 	 * widening the public surface.
@@ -206,6 +216,18 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 */
 	NoteAudioCache getNoteAudioCache() {
 		return noteAudioCache;
+	}
+
+	/**
+	 * Returns the manager-owned automation parameter collections tracked for release.
+	 * Package-private: it exposes the tracking list so tests in this package can verify
+	 * that {@link #clear()} and {@link #destroy()} release the collections, without
+	 * widening the public surface.
+	 *
+	 * @return the tracked automation parameter collections
+	 */
+	List<PackedCollection> getAutomationParameterData() {
+		return automationParameterData;
 	}
 
 	/**
@@ -269,6 +291,19 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	public void destroy() {
 		Destroyable.super.destroy();
 		noteAudioCache.clear();
+		releaseAutomationParameterData();
+	}
+
+	/**
+	 * Destroys the manager-owned automation parameter collections tracked in
+	 * {@link #automationParameterData} and empties the tracking list. Each collection is
+	 * allocated by {@link #layer} and shared only by the elements of the layer that
+	 * created it, so once those layers are removed nothing else references it and it can
+	 * be freed. Idempotent: a repeated call finds an empty list.
+	 */
+	private void releaseAutomationParameterData() {
+		automationParameterData.forEach(PackedCollection::destroy);
+		automationParameterData.clear();
 	}
 
 	/**
@@ -655,6 +690,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	protected void layer(ParameterSet params) {
 		PackedCollection automationParams =
 				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH);
+		automationParameterData.add(automationParams);
 		automationParamEvaluables.computeIfAbsent(depth(), d -> {
 			Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);
 			return concat(shape(AUTOMATION_GENE_LENGTH),
@@ -726,9 +762,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		roots.forEach(layer -> layer.getLastParent().setChild(null));
 	}
 
-	/** Removes all layers from the hierarchy. */
+	/**
+	 * Removes all layers from the hierarchy, releasing the manager-owned automation
+	 * parameter collections those layers referenced so they do not leak across a
+	 * {@link #refresh()}.
+	 */
 	public void clear() {
 		while (depth() > 0) removeLayer();
+		releaseAutomationParameterData();
 	}
 
 	/**

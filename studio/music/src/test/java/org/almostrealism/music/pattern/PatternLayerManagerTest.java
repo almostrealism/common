@@ -285,6 +285,53 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	}
 
 	/**
+	 * Each {@code layer()} allocates one manager-owned automation parameter collection.
+	 * A refresh that lowers the layer count reaches {@code clear()}, which destroys the
+	 * collections referenced by the removed layers rather than leaking their native
+	 * memory across the refresh.
+	 */
+	@Test(timeout = 120000)
+	public void refreshReleasesAutomationParameterData() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		plm.setLayerCount(2);
+		List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+		Assert.assertTrue("one automation parameter collection is allocated per layer",
+				allocated.size() == 2);
+		allocated.forEach(c -> Assert.assertFalse("a live layer's automation parameters are not destroyed",
+				c.isDestroyed()));
+
+		plm.setLayerCount(0);
+
+		Assert.assertTrue("the tracking list is emptied on refresh", plm.getAutomationParameterData().isEmpty());
+		allocated.forEach(c -> Assert.assertTrue("the removed layers' automation parameters are released",
+				c.isDestroyed()));
+	}
+
+	/**
+	 * {@code destroy()} releases every manager-owned automation parameter collection and
+	 * empties the tracking list, and is idempotent across a repeated teardown.
+	 */
+	@Test(timeout = 120000)
+	public void destroyReleasesAutomationParameterData() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		plm.setLayerCount(2);
+		List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+		Assert.assertTrue("one automation parameter collection is allocated per layer",
+				allocated.size() == 2);
+
+		plm.destroy();
+
+		Assert.assertTrue("the tracking list is emptied on teardown", plm.getAutomationParameterData().isEmpty());
+		allocated.forEach(c -> Assert.assertTrue("teardown releases the automation parameters",
+				c.isDestroyed()));
+
+		plm.destroy();
+		Assert.assertTrue("a repeated teardown is a no-op", plm.getAutomationParameterData().isEmpty());
+	}
+
+	/**
 	 * With every selection function fixed, the first layer seeds one root per
 	 * measure and the second layer adds a note half a measure either side of every
 	 * seed, discarding those before the start of the pattern. Every element carries
