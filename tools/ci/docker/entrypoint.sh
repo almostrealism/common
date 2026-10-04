@@ -15,6 +15,11 @@ set -euo pipefail
 #   RUNNER_LABELS   - Comma-separated extra labels (always includes "self-hosted,linux")
 #   RUNNER_GROUP    - Runner group (default: "Default")
 #   RUNNER_WORKDIR  - Working directory for job execution (default: /home/runner/_work)
+#   RUNNER_DISABLE_UPDATE - "true" registers with --disableupdate, so the agent never
+#                     self-updates; the image must then carry a current agent release.
+#                     Ephemeral runners need this: an agent that updates itself while
+#                     reporting its result can lose the job's completion (see
+#                     tools/ci/rocm/README.md). Default: unset (self-update allowed).
 
 # ---------- Validation ----------
 for var in GITHUB_OWNER GITHUB_PAT; do
@@ -176,6 +181,11 @@ if ! REG_TOKEN=$(request_runner_token "runners/registration-token"); then
 fi
 
 # ---------- Configure the runner ----------
+CONFIG_FLAGS=()
+if [ "${RUNNER_DISABLE_UPDATE:-}" = "true" ]; then
+    CONFIG_FLAGS+=(--disableupdate)
+fi
+
 echo "Registering with ${SCOPE_LABEL} as '${RUNNER_NAME}' [${ALL_LABELS}]..."
 ./config.sh \
     --url "${CONFIG_URL}" \
@@ -186,7 +196,8 @@ echo "Registering with ${SCOPE_LABEL} as '${RUNNER_NAME}' [${ALL_LABELS}]..."
     --work "${RUNNER_WORKDIR}" \
     --replace \
     --unattended \
-    --ephemeral
+    --ephemeral \
+    "${CONFIG_FLAGS[@]}"
 
 # ---------- Graceful shutdown ----------
 cleanup() {

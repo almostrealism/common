@@ -1,0 +1,82 @@
+# ─── AR CI CUDA Runner Fleet ─────────────────────────────────────────
+#
+# Self-hosted GitHub Actions runners for the CUDA lane: jobs labelled
+# [self-hosted, linux, ar-ci-cuda] (test-cuda, test-media-cuda).
+#
+# Use fleet.sh rather than calling docker compose directly — it resolves
+# the current actions/runner release so the image's agent is never stale:
+#
+#   cp .env.example .env    # set GITHUB_PAT
+#   ./fleet.sh up           # build and start one runner
+#
+# The image is the Linux CPU fleet's (../docker), unchanged. GPU access
+# comes from the NVIDIA Container Toolkit that ships with the host, and
+# the CUDA toolkit is the host's own, bind-mounted read-only — nothing
+# CUDA-specific is installed into the image or onto the host.
+#
+# See README.md for full documentation.
+# ─────────────────────────────────────────────────────────────────────
+
+# Explicit and distinct from the CPU fleet's "ar-ci": two stacks sharing a
+# project name tear down each other's containers.
+name: ar-ci-cuda
+
+services:
+  runner:
+    build:
+      context: ../docker
+      dockerfile: Dockerfile
+      args:
+        RUNNER_VERSION: ${RUNNER_VERSION:?Run ./fleet.sh up, which resolves RUNNER_VERSION}
+    image: ar-ci-cuda-runner:latest
+    # The GPU preflight runs first and only then hands over to the shared
+    # entrypoint, so a runner that cannot see the GPU never registers.
+    entrypoint: ["/opt/ar-ci-cuda/cuda-preflight.sh"]
+    environment:
+      - GITHUB_PAT=${GITHUB_PAT:?GITHUB_PAT must be set in .env}
+      - RUNNER_SCOPE=${RUNNER_SCOPE:-org}
+      - GITHUB_OWNER=${GITHUB_OWNER:-almostrealism}
+      - GITHUB_REPO=${GITHUB_REPO:-common}
+      - RUNNER_PREFIX=${RUNNER_PREFIX:-dgx-spark}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_LABELS=ar-ci-cuda
+      - RUNNER_DISABLE_UPDATE=true
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - type: bind
+        source: ./cuda-preflight.sh
+        target: /opt/ar-ci-cuda/cuda-preflight.sh
+        read_only: true
+      # The host's CUDA toolkit, for NVRTC: the CUDA backend's JNI library
+      # links libnvrtc with a runpath of /usr/local/cuda/lib64. The driver
+      # library (libcuda) is injected by the NVIDIA runtime instead.
+      - type: bind
+        source: ${CUDA_HOME_HOST:-/usr/local/cuda}
+        target: /usr/local/cuda
+        read_only: true
+        bind:
+          create_host_path: false
+      # The curated sample library test-media-cuda reads (AR_RINGS_LIBRARY /
+      # AR_RINGS_PATTERNS in analysis.yaml). Must exist on the host; see README.
+      - type: bind
+        source: ${AR_CI_SAMPLES_DIR:-/srv/ar-ci/music}
+        target: /opt/ar-samples
+        read_only: true
+        bind:
+          create_host_path: false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: ${RUNNER_MEMORY_LIMIT:-48g}
+          cpus: "${RUNNER_CPU_LIMIT:-12}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
