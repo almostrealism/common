@@ -95,6 +95,25 @@ class MasterAgentDispatchTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertGreaterEqual(int(job["env"]["MIN_INTERVAL_DAYS"]), 1)
 
+    def test_qa_intervals_match_the_documented_cadence(self):
+        """The per-job intervals are documented in .github/CLAUDE.md and the workflow header.
+
+        A changed interval that is not reflected there leaves the next reader
+        planning around a cadence the workflow no longer has; a QA job added
+        without an entry here fails, so its interval is chosen deliberately.
+        """
+        expected = {
+            "doc-qa": 5,
+            "defect-hunt": 2,
+            "coverage-qa": 2,
+            "consolidation-qa": 2,
+            "performance-qa": 2,
+            "pdsl-qa": 5,
+        }
+        actual = {name: int(job["env"]["MIN_INTERVAL_DAYS"])
+                  for name, job in self.qa_jobs.items()}
+        self.assertEqual(expected, actual)
+
     def test_every_qa_job_has_its_own_interval_override(self):
         """Each interval-bound job needs a dispatch input that lifts only its own interval.
 
