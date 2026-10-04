@@ -227,6 +227,25 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals(List.of("real"), names);
 	}
 
+	/**
+	 * An escaped quote inside a string element must not end the string early for
+	 * the object-start scan. The element {@code "a\"{"} contains an escaped quote
+	 * followed by a literal {@code '{'}; if the shared {@code skipString} escape
+	 * handling were bypassed on the {@code indexOfUnquoted} path, the escaped
+	 * quote would be read as the string's close, the following {@code '{'} would
+	 * be mistaken for an object start, and the scan would desynchronize. The
+	 * array here holds that string element and one object whose {@code name} is
+	 * {@code real}.
+	 */
+	@Test(timeout = 10000)
+	public void extractFieldFromArrayObjectsIgnoresEscapedQuoteThenBraceInStringElement() {
+		String json = "{\"items\":[\"a\\\"{\",{\"name\":\"real\"}]}";
+
+		List<String> names = JsonFieldExtractor.extractFieldFromArrayObjects(json, "items", "name");
+
+		Assert.assertEquals(List.of("real"), names);
+	}
+
 	/** A well-formed array of strings is returned in order, escapes decoded. */
 	@Test(timeout = 10000)
 	public void strictStringArrayReturnsValuesInOrder() {
