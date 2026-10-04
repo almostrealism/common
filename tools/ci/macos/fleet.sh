@@ -216,7 +216,7 @@ resolve_api_base() {
 # GitHub's view of the runner: "online", "offline", or nothing when it is not
 # registered (or the API cannot be asked).
 github_status() {
-    [ -n "${API_BASE:-}" ] && command -v jq >/dev/null 2>&1 || return 0
+    [ -n "${API_BASE:-}" ] && command -v jq >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || return 0
     local name
     name="$(jq -rn --arg n "${ENV_RUNNER_NAME}" '$n | @uri')"
     curl -fsS -H "Authorization: token ${ENV_GITHUB_PAT}" -H "Accept: application/vnd.github+json" \
@@ -263,8 +263,29 @@ cmd_install() {
         exit 1
     fi
 
+    # read_env sources the env file with the invoking administrator's
+    # privileges, so a file writable by anyone else is an arbitrary-code
+    # execution vector. Refuse it here, the same way register-daemon.sh refuses
+    # a group- or world-writable plist, before it is ever sourced.
+    if [ -n "$(find "${ENV_FILE}" -maxdepth 0 \( -perm -g+w -o -perm -o+w \) 2>/dev/null)" ]; then
+        echo "ERROR: ${ENV_FILE} is group- or world-writable; it is sourced with your" >&2
+        echo "  privileges, so anyone who can write it could run commands as you." >&2
+        echo "  Fix: chmod go-w ${ENV_FILE}" >&2
+        exit 1
+    fi
+
     read_env "${ENV_FILE}"
     resolve_api_base
+    # A named instance must carry its own RUNNER_NAME. The default name,
+    # $(hostname)-macos, belongs to the default instance, and runner.sh registers
+    # with config.sh --replace, so a second instance that fell back to it would
+    # take over the first runner's GitHub registration instead of adding one.
+    if [ -z "${ENV_RUNNER_NAME}" ] && [ -n "${INSTANCE}" ]; then
+        echo "ERROR: instance '${INSTANCE}' needs its own RUNNER_NAME in ${ENV_FILE}." >&2
+        echo "  Without it the runner would take the default name ($(hostname)-macos) and" >&2
+        echo "  replace the default runner's GitHub registration. Set RUNNER_NAME and retry." >&2
+        exit 1
+    fi
     STAGE_DIR="${RUNNER_HOME}/ci-runner${SUFFIX}"
     RUNNER_DIR="${ENV_RUNNER_DIR:-${RUNNER_HOME}/actions-runner${SUFFIX}}"
     ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}"
@@ -427,8 +448,8 @@ xml_value() {
 # Waits for GitHub to list the runner online, so a successful install means a
 # runner that can take jobs, not merely a process launchd started.
 wait_online() {
-    if ! command -v jq >/dev/null 2>&1; then
-        echo "  (jq is not on your PATH, so not checking GitHub; see the log: ${LOG_FILE})"
+    if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+        echo "  (jq and curl are not both on your PATH, so not checking GitHub; see the log: ${LOG_FILE})"
         return 0
     fi
     echo "Waiting for ${ENV_RUNNER_NAME} to come online in GitHub..."
