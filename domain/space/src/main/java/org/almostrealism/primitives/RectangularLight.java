@@ -127,7 +127,7 @@ public class RectangularLight extends Plane implements SurfaceLight {
 
 			// TODO This should hand off the color producer directly
 			PackedCollection colorResult = getColorAt(vector()).get().evaluate();
-			RGB color = colorResult instanceof RGB ? (RGB) colorResult : new RGB(colorResult.toDouble(0), colorResult.toDouble(1), colorResult.toDouble(2));
+			RGB color = RGB.of(colorResult);
 			l[i] = new PointLight(new Vector(p.get().evaluate(), 0), in, color);
 		}
 		
