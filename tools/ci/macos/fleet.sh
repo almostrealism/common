@@ -592,6 +592,21 @@ EOF
         errors=$((errors + 1))
     fi
 
+    # A RUNNER_DIR that already exists as something other than a directory — a
+    # regular file, most likely — slips past every check below: the ownership
+    # and write-bit blocks are gated on [ -d ], the ancestor walk treats the
+    # file as a trusted leaf when the runner owns it, and the write probe falls
+    # back to its parent. runner.sh then runs `mkdir -p "${RUNNER_DIR}"`, which
+    # fails on a non-directory, and launchd retries until wait_online times out.
+    # sudo stats it so a path under a home the administrator cannot enter still
+    # reads correctly.
+    if sudo test -e "${RUNNER_DIR}" && ! sudo test -d "${RUNNER_DIR}"; then
+        echo "  ✗ ${RUNNER_DIR} exists but is not a directory; runner.sh runs mkdir -p there" >&2
+        echo "      and would fail, leaving the daemon waiting for a runner that never registers." >&2
+        echo "      Fix: remove or relocate ${RUNNER_DIR}, or set RUNNER_DIR to a directory path." >&2
+        errors=$((errors + 1))
+    fi
+
     # The runner directory must belong to the runner account (runner.sh
     # explains why at length); catching it here beats a retry loop in a log.
     if [ -d "${RUNNER_DIR}" ]; then

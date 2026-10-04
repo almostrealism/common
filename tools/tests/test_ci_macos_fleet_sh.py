@@ -321,6 +321,25 @@ class MacosFleetSecurityTests(unittest.TestCase):
             self.assertLess(probe, render,
                             "the write-access probe must run before install proceeds")
 
+    def test_install_rejects_a_runner_dir_that_is_not_a_directory(self):
+        """A pre-existing RUNNER_DIR that is a regular file is skipped by the
+        [ -d ] ownership/write-bit blocks, passes the ancestor walk as a
+        runner-owned leaf, and lets the write probe fall back to its parent, so
+        it clears preflight. runner.sh then runs mkdir -p on it, which fails on
+        a non-directory, and the daemon waits for a runner that never registers.
+        install must reject an existing non-directory RUNNER_DIR, before the
+        plist is rendered."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'sudo test -e "\$\{RUNNER_DIR\}" && ! sudo test -d "\$\{RUNNER_DIR\}"',
+            "install must reject a RUNNER_DIR that exists but is not a directory")
+        reject = install.find('! sudo test -d "${RUNNER_DIR}"')
+        render = install.find('s|@RUNNER_DIR@|')
+        if render != -1:
+            self.assertLess(reject, render,
+                            "the non-directory check must run before install proceeds")
+
     def test_the_monitor_home_is_walked_before_the_monitor_is_installed(self):
         """FLEET_HOME comes from the administrator's environment and holds the
         monitor's database credential; one under the runner's home would put
