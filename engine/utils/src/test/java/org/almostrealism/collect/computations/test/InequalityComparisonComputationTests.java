@@ -165,4 +165,30 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			Assert.assertEquals("7 < 5 selects the false value", 20.0, whenFalse.toDouble(), 0.001);
 		}
 	}
+
+	/**
+	 * Pins the inclusive operators element-wise over a multi-element shape, with operands
+	 * above, equal to, and below the threshold, and distinct true and false values per
+	 * element. This covers the inclusive branch of each subclass's
+	 * {@code compare} for unequal operands (the strict-versus-inclusive tests only use
+	 * equal operands) and verifies that the shared scaffold reads every argument at the
+	 * same index rather than at a fixed position.
+	 */
+	@Test(timeout = 30000)
+	public void inclusiveOperatorsSelectElementWise() {
+		try (PackedCollection a = pack(7.0, 5.0, 2.0);
+			 PackedCollection b = pack(5.0, 5.0, 5.0);
+			 PackedCollection t = pack(10.0, 11.0, 12.0);
+			 PackedCollection f = pack(20.0, 21.0, 22.0);
+			 PackedCollection gte = greaterThan(cp(a), cp(b), cp(t), cp(f), true).get().evaluate();
+			 PackedCollection lte = lessThan(cp(a), cp(b), cp(t), cp(f), true).get().evaluate()) {
+			Assert.assertEquals("7 >= 5 selects true", 10.0, gte.toDouble(0), 0.001);
+			Assert.assertEquals("5 >= 5 selects true", 11.0, gte.toDouble(1), 0.001);
+			Assert.assertEquals("2 >= 5 selects false", 22.0, gte.toDouble(2), 0.001);
+
+			Assert.assertEquals("7 <= 5 selects false", 20.0, lte.toDouble(0), 0.001);
+			Assert.assertEquals("5 <= 5 selects true", 11.0, lte.toDouble(1), 0.001);
+			Assert.assertEquals("2 <= 5 selects true", 12.0, lte.toDouble(2), 0.001);
+		}
+	}
 }
