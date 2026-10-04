@@ -19,6 +19,7 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CONSULTANT = os.path.join(_HERE, "..", "consultant")
@@ -38,23 +39,38 @@ def _load(relative_path, name):
     return module
 
 
-# ``validate_responses`` imports ``consult`` from the retired consultant
-# ``server`` module, whose import runs live side effects at load time: it
-# instantiates ``DocsRetriever``/``HistoryStore`` (opening the configured
-# history database) and ``create_backend`` (which, under the default ``auto``
-# backend, probes the LLM endpoints over HTTP). The ``from server import
-# consult`` there is guarded only against ``ImportError``, so if the import
-# gets far enough to run those constructors, an unwritable history directory or
-# an unreachable endpoint raises an uncaught error that would abort discovery
-# of the whole common suite. These string-check tests never call ``consult``,
-# so stub the module before loading the script to keep discovery off
-# application storage and live services regardless of what is installed.
-_server_stub = types.ModuleType("server")
-_server_stub.consult = lambda *args, **kwargs: {}
-sys.modules.setdefault("server", _server_stub)
+def _load_validate_responses():
+    """Load ``validate_responses`` with the ``server`` import stubbed.
+
+    ``validate_responses`` does ``from server import consult`` at import
+    time. Importing the retired consultant ``server`` module runs live side
+    effects at load: it instantiates ``DocsRetriever``/``HistoryStore``
+    (opening the configured history database) and ``create_backend`` (which,
+    under the default ``auto`` backend, probes the LLM endpoints over HTTP).
+    The import there is guarded only against ``ImportError``, so if it gets
+    far enough to run those constructors, an unwritable history directory or
+    an unreachable endpoint raises an uncaught error that would abort
+    discovery of the whole common suite. These string-check tests never call
+    ``consult``, so a no-op stub stands in for the module while the script is
+    loaded.
+
+    The stub is installed only for the duration of this load and the previous
+    ``sys.modules["server"]`` entry (if any) is restored afterward. Leaving
+    the stub cached would break the ar-manager tests: both
+    ``manager_test_support.py`` and ``test_dispatch_capable.py`` do
+    ``import server`` and then call ``server._set_scopes(...)``, which the
+    stub does not define. CI loads the manager and common suites in separate
+    interpreters, but a single-interpreter discovery over ``tools/mcp`` must
+    stay isolated regardless of load order.
+    """
+    stub = types.ModuleType("server")
+    stub.consult = lambda *args, **kwargs: {}
+    with patch.dict(sys.modules, {"server": stub}):
+        return _load("../consultant/scripts/validate_responses.py", "validate_responses")
+
 
 evaluate_dataset = _load("../consultant/scripts/evaluate_dataset.py", "evaluate_dataset")
-validate_responses = _load("../consultant/scripts/validate_responses.py", "validate_responses")
+validate_responses = _load_validate_responses()
 analyze_history = _load("../consultant/qc/analyze_history.py", "analyze_history")
 common_inference = _load("inference.py", "common_inference_under_test")
 
