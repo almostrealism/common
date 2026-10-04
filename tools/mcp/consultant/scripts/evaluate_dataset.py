@@ -23,23 +23,12 @@ import re
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
+# Add the consultant directory and the shared tools/mcp/common directory to
+# the path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(1, str(Path(__file__).parent.parent.parent / "common"))
 from docs_retriever import DocsRetriever
-
-
-# Speculation phrases that indicate the LLM is guessing
-SPECULATION_PHRASES = [
-    "does not contain",
-    "does not specifically",
-    "not mentioned",
-    "speculative",
-    "hypothetical",
-    "based on typical",
-    "I can infer",
-    "you may need to refer",
-    "not covered in",
-]
+from inference import has_speculation
 
 # Generic terms that are not useful as primary keywords
 GENERIC_TERMS = {
@@ -88,12 +77,6 @@ def check_term_documented(retriever: DocsRetriever, term: str) -> tuple[bool, li
     results = retriever.search(term, max_results=5)
     relevant = [r for r in results if 'heredity' not in r['file']]
     return len(relevant) > 0, [r['file'] for r in relevant[:3]]
-
-
-def has_speculation(response: str) -> bool:
-    """Check if response contains speculation phrases."""
-    response_lower = response.lower()
-    return any(phrase in response_lower for phrase in SPECULATION_PHRASES)
 
 
 def evaluate_record(
