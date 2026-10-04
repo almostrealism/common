@@ -1,0 +1,23 @@
+/**
+ * Fixtures that exercise the scaled_dot_product and key_mask primitives in isolation, one primitive
+ * per layer, so each can be tested against the framework op it stands for without the surrounding
+ * scaled dot-product attention structure.
+ *
+ *   sdp_transpose(other)  Q Kᵀ: [batch, heads, queries, dim], other [batch, heads, keys, dim]
+ *                              -> [batch, heads, queries, keys]
+ *   sdp_plain(other)      A V:  [batch, heads, queries, keys], other [batch, heads, keys, dim]
+ *                              -> [batch, heads, queries, dim]
+ *   km(mask)              additive key mask on [batch, heads, queries, keys] scores, mask [batch, keys]
+ */
+
+layer sdp_transpose(other: weight) {
+    scaled_dot_product(other, true)
+}
+
+layer sdp_plain(other: weight) {
+    scaled_dot_product(other, false)
+}
+
+layer km(mask: weight) {
+    key_mask(mask)
+}
