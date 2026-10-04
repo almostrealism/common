@@ -25,8 +25,11 @@ every placeholder filled.
 import os
 import platform
 import plistlib
+import pwd
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -142,8 +145,8 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn("! -user", self.src, "the trust check must reject foreign ownership")
         self.assertRegex(
             self.src,
-            r'untrusted_path "\$\{admin_user\}" "\$\{ENV_FILE\}"',
-            "cmd_install should screen the env file with untrusted_path before sourcing it")
+            r'untrusted_ancestor "\$\{admin_user\}" "\$\{ENV_FILE\}"',
+            "cmd_install should screen the env file and every directory above it before sourcing it")
 
     def test_runner_dir_path_is_walked_for_a_swappable_ancestor(self):
         """RUNNER_DIR may be any absolute path, and the daemon runs
@@ -151,10 +154,44 @@ class MacosFleetSecurityTests(unittest.TestCase):
         lets another account swap it, so every component must be checked."""
         self.assertRegex(
             self.src,
-            r'untrusted_path "\$\{RUNNER_USER\}" "\$\{prefix\}" sudo',
-            "cmd_install should walk RUNNER_DIR's ancestors with untrusted_path")
-        self.assertIn('IFS=\'/\' read -r -a parts <<< "${RUNNER_DIR#/}"', self.src,
-                      "the walk should split RUNNER_DIR into path components")
+            r'untrusted_ancestor "\$\{RUNNER_USER\}" "\$\{RUNNER_DIR\}" sudo',
+            "cmd_install should walk RUNNER_DIR's ancestors with untrusted_ancestor")
+        self.assertIn('IFS=\'/\' read -r -a parts <<< "${path#/}"', self.src,
+                      "the walk should split the path into components")
+
+    def test_status_checks_the_env_file_path_before_sourcing_it(self):
+        """status sources the env file as the invoker, exactly as install
+        does, so it must hold the file to the same path-trust standard."""
+        status = re.search(r"^cmd_status\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = status.find('untrusted_ancestor "$(id -un)" "${ENV_FILE}"')
+        source = status.find('read_env "${ENV_FILE}"')
+        self.assertNotEqual(-1, check, "status should walk the env file's path")
+        self.assertNotEqual(-1, source)
+        self.assertLess(check, source, "the check must come before the env file is sourced")
+
+    def test_a_relative_env_file_is_made_absolute_before_the_walk(self):
+        """The walk starts at /, so a relative --env would leave every
+        directory above the working directory unchecked."""
+        self.assertIn('*) ENV_FILE="${PWD}/${ENV_FILE}" ;;', self.src)
+
+    def test_nothing_is_staged_into_the_runner_home_through_sudo(self):
+        """The stage directory belongs to the runner, which can plant a
+        symlink in it; a root write there (sudo install -o ...) would follow
+        that link and could chown or overwrite any file on the host."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIsNone(re.search(r"sudo install\b", install),
+                          "staging must not write through sudo install")
+        self.assertRegex(self.src, r'sudo -u "\$\{RUNNER_USER\}" /bin/sh -c \'umask 077 && cat > "\$1"')
+        for dest in (r'"\$\{STAGE_DIR\}/bin/\$\{script\}" 755',
+                     r'"\$\{STAGE_DIR\}/runner.env" 600',
+                     r'"\$\{STAGE_DIR\}/\$\{LABEL\}.plist" 644'):
+            self.assertRegex(install, r"stage_file " + dest)
+
+    def test_the_runner_log_is_read_as_the_runner(self):
+        """The log lives in the runner's stage directory; reading it as root
+        would follow a symlink the runner put in its place."""
+        self.assertIn('sudo -u "${RUNNER_USER}" tail -n 30 "${LOG_FILE}"', self.src)
+        self.assertNotIn('sudo tail', self.src)
 
     def test_start_bootstraps_the_root_owned_installed_plist(self):
         """start must load the root:wheel plist register-daemon.sh installs under
@@ -165,6 +202,103 @@ class MacosFleetSecurityTests(unittest.TestCase):
             "start should bootstrap INSTALLED_PLIST")
         self.assertIn('INSTALLED_PLIST="${DAEMONS_DIR}/${LABEL}.plist"', self.src)
         self.assertIn('DAEMONS_DIR="/Library/LaunchDaemons"', self.src)
+
+
+def _trust_functions():
+    """The source of fleet.sh's path-trust helpers, to run outside the script
+    (which refuses to run anywhere but macOS)."""
+    with open(_MACOS_FLEET) as f:
+        src = f.read()
+    return "\n".join(
+        re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
+        for name in ("untrusted_path", "untrusted_ancestor"))
+
+
+class UntrustedAncestorTests(unittest.TestCase):
+    """Runs ``untrusted_ancestor`` itself against real directories. Accounts
+    other than the test's own cannot be created here, so foreign ownership is
+    covered only at the source level above; symlinks, write bits and the walk
+    order are exercised for real.
+
+    The walk starts at /, and the directories above a temporary directory are
+    the host's, not the test's: /tmp is 1777, and macOS's /var is a symlink.
+    So ``untrusted_path`` is wrapped to treat everything above the fixture root
+    as trusted, and to apply the real predicate to everything inside it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        functions = _trust_functions().replace("untrusted_path() {", "real_untrusted_path() {", 1)
+        cls.functions = functions + '''
+untrusted_path() {
+    case "$2" in
+        "${FIXTURE_ROOT}"|"${FIXTURE_ROOT}"/*) real_untrusted_path "$@" ;;
+    esac
+}'''
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+
+    def _walk(self, path):
+        result = subprocess.run(
+            ["bash", "-c", self.functions + '\nuntrusted_ancestor "$1" "$2"', "_", self.user, path],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, FIXTURE_ROOT=self.root))
+        if result.returncode != 0:
+            raise AssertionError(result.stderr)
+        return result.stdout.strip()
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="fleet-trust-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.dir = os.path.join(self.root, "ci")
+        os.mkdir(self.dir, 0o755)
+        os.chmod(self.dir, 0o755)
+        self.file = os.path.join(self.dir, ".env")
+        with open(self.file, "w") as f:
+            f.write("GITHUB_OWNER=x\n")
+        os.chmod(self.file, 0o600)
+
+    def test_a_private_file_in_private_directories_is_trusted(self):
+        self.assertEqual("", self._walk(self.file))
+
+    def test_a_group_writable_file_is_reported(self):
+        os.chmod(self.file, 0o620)
+        self.assertEqual(self.file, self._walk(self.file))
+
+    def test_a_world_writable_parent_is_reported_even_when_the_file_is_private(self):
+        """The case the file-only check missed: whoever can write the
+        directory can rename the file away and put their own in its place."""
+        os.chmod(self.dir, 0o777)
+        self.addCleanup(os.chmod, self.dir, 0o755)
+        self.assertEqual(self.dir, self._walk(self.file))
+
+    def test_the_first_untrusted_component_is_the_one_reported(self):
+        os.chmod(self.dir, 0o775)
+        self.addCleanup(os.chmod, self.dir, 0o755)
+        os.chmod(self.file, 0o666)
+        self.assertEqual(self.dir, self._walk(self.file))
+
+    def test_a_symlinked_directory_on_the_path_is_reported(self):
+        link = os.path.join(self.root, "link")
+        os.symlink(self.dir, link)
+        self.assertEqual(link, self._walk(os.path.join(link, ".env")))
+
+    def test_a_symlinked_file_is_reported(self):
+        link = os.path.join(self.dir, "linked.env")
+        os.symlink(self.file, link)
+        self.assertEqual(link, self._walk(link))
+
+    def test_a_missing_tail_ends_the_walk_at_the_last_trusted_directory(self):
+        """A RUNNER_DIR that install has not created yet is fine, so long as
+        the directory it will be created in is trusted."""
+        self.assertEqual("", self._walk(os.path.join(self.dir, "missing", "deeper")))
+
+    def test_a_missing_tail_below_an_untrusted_directory_is_still_reported(self):
+        os.chmod(self.dir, 0o757)
+        self.addCleanup(os.chmod, self.dir, 0o755)
+        self.assertEqual(self.dir, self._walk(os.path.join(self.dir, "missing")))
+
+    def test_repeated_separators_are_ignored(self):
+        self.assertEqual("", self._walk(self.dir + "//.env"))
 
 
 class ShellSyntaxTests(unittest.TestCase):

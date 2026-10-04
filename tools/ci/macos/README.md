@@ -67,6 +67,12 @@ boot with nobody logged in, and restarts if it dies), waits until GitHub
 lists the runner **online**, and installs the fleet metrics collector
 (`tools/fleet/launchd/install.sh`) as the administrator account.
 
+`install` (and `status`) read the env file with the administrator's
+privileges, so it is refused unless the file and every directory above it
+belong to you or root, are not group- or world-writable, and are not
+symlinks. Everything under the stage directory is written as the runner
+account, never as root.
+
 The runner runs as `worker` unless you pass `--user NAME`. Every job step runs
 as that account too.
 

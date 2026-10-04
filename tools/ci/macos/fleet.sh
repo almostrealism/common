@@ -135,6 +135,11 @@ SUFFIX="${INSTANCE:+-${INSTANCE}}"
 LABEL="${LABEL_BASE}${SUFFIX}"
 INSTALLED_PLIST="${DAEMONS_DIR}/${LABEL}.plist"
 ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/${INSTANCE}.env}"
+# Absolute, so the trust walk below covers every directory above it.
+case "${ENV_FILE}" in
+    /*) ;;
+    *) ENV_FILE="${PWD}/${ENV_FILE}" ;;
+esac
 
 if [ "$(uname -s)" != "Darwin" ]; then
     echo "ERROR: this is the macOS runner; for the Linux GPU fleet use: tools/bin/fleet rocm ${COMMAND}" >&2
@@ -196,6 +201,36 @@ untrusted_path() {
     ${priv} find "${path}" -maxdepth 0 \
         \( -type l -o -perm -g+w -o -perm -o+w \
            -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null
+}
+
+# Echoes the first component of the absolute PATH, walking down from / to PATH
+# itself, that untrusted_path flags for OWNER, and nothing when none is. A file
+# is only as safe as the directories above it: whoever can write one of them can
+# rename the file away and put their own in its place. A component that does not
+# exist yet ends the walk, since only the accounts that could write the last
+# existing directory — already checked — can create it. PRIV is as for
+# untrusted_path.
+untrusted_ancestor() {
+    local owner="$1" path="$2" priv="${3:-}" prefix="" component
+    local -a parts
+    IFS='/' read -r -a parts <<< "${path#/}"
+    for component in "${parts[@]}"; do
+        [ -n "${component}" ] || continue
+        prefix="${prefix}/${component}"
+        ${priv} test -e "${prefix}" -o -L "${prefix}" || return 0
+        if [ -n "$(untrusted_path "${owner}" "${prefix}" "${priv}")" ]; then
+            echo "${prefix}"
+            return 0
+        fi
+    done
+}
+
+# Writes stdin to DEST with MODE, as the runner account. The stage directory is
+# the runner's, so it can plant a symlink anywhere in it; writing there as the
+# runner rather than through sudo means a planted link can only redirect the
+# write to somewhere the runner could already write.
+stage_file() {
+    sudo -u "${RUNNER_USER}" /bin/sh -c 'umask 077 && cat > "$1" && chmod "$2" "$1"' _ "$1" "$2"
 }
 
 # Reads the env file into ENV_* variables. It is sourced in a clean shell
@@ -275,7 +310,6 @@ cmd_install() {
         exit 1
     fi
     RUNNER_HOME="$(dscl . -read "/Users/${RUNNER_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-    RUNNER_GROUP="$(id -gn "${RUNNER_USER}")"
     if [ -z "${RUNNER_HOME}" ] || [ ! -d "${RUNNER_HOME}" ]; then
         echo "ERROR: ${RUNNER_USER} has no home directory." >&2
         exit 1
@@ -287,14 +321,17 @@ cmd_install() {
     # symlink — is an arbitrary-code-execution vector. Refuse it here, the same
     # way register-daemon.sh refuses a plist others can change, before it is ever
     # sourced. A mode-0644 file owned by the runner account would pass a
-    # write-bit-only check yet still be the runner's to edit.
-    local admin_user
+    # write-bit-only check yet still be the runner's to edit, and a directory
+    # above it that another account can write lets that account replace it.
+    local admin_user env_bad
     admin_user="$(id -un)"
-    if [ -n "$(untrusted_path "${admin_user}" "${ENV_FILE}")" ]; then
-        echo "ERROR: ${ENV_FILE} must be a regular file (not a symlink) owned by you" >&2
-        echo "  (${admin_user}) or root and writable by no one else; it is sourced with your" >&2
-        echo "  privileges, so anyone else who can change it could run commands as you." >&2
-        echo "  Fix: sudo chown ${admin_user} ${ENV_FILE} && chmod go-w ${ENV_FILE}" >&2
+    env_bad="$(untrusted_ancestor "${admin_user}" "${ENV_FILE}")"
+    if [ -n "${env_bad}" ]; then
+        echo "ERROR: ${env_bad}, on the path to ${ENV_FILE}, is a symlink, is writable by" >&2
+        echo "  others, or is owned by neither you (${admin_user}) nor root. The env file is" >&2
+        echo "  sourced with your privileges, so anyone else who can change it, or the" >&2
+        echo "  directories above it, could run commands as you." >&2
+        echo "  Fix: sudo chown ${admin_user} ${env_bad} && chmod go-w ${env_bad}" >&2
         exit 1
     fi
 
@@ -395,16 +432,8 @@ cmd_install() {
     # account alone: a writable or symlinked ancestor would let another account
     # swap RUNNER_DIR for one holding a hostile run.sh between this check and the
     # launch. sudo stats components under a home the administrator cannot enter.
-    local prefix="" component bad=""
-    local -a parts
-    IFS='/' read -r -a parts <<< "${RUNNER_DIR#/}"
-    for component in "${parts[@]}"; do
-        prefix="${prefix}/${component}"
-        if [ -n "$(untrusted_path "${RUNNER_USER}" "${prefix}" sudo)" ]; then
-            bad="${prefix}"
-            break
-        fi
-    done
+    local bad
+    bad="$(untrusted_ancestor "${RUNNER_USER}" "${RUNNER_DIR}" sudo)"
     if [ -n "${bad}" ]; then
         echo "  ✗ ${bad}, on the path to ${RUNNER_DIR}, is a symlink, is writable by others," >&2
         echo "      or is owned by neither root nor ${RUNNER_USER}; another account could swap" >&2
@@ -450,10 +479,14 @@ cmd_install() {
     echo "Installing ${LABEL}"
 
     # ── Stage ──
-    sudo install -d -o "${RUNNER_USER}" -g "${RUNNER_GROUP}" -m 755 "${STAGE_DIR}" "${STAGE_DIR}/bin"
-    sudo install -o "${RUNNER_USER}" -g "${RUNNER_GROUP}" -m 755 \
-        "${SCRIPT_DIR}/runner.sh" "${SCRIPT_DIR}/cpu-watcher.sh" "${STAGE_DIR}/bin/"
-    sudo install -o "${RUNNER_USER}" -g "${RUNNER_GROUP}" -m 600 "${ENV_FILE}" "${STAGE_DIR}/runner.env"
+    # Everything under STAGE_DIR is written as the runner, never through sudo:
+    # see stage_file.
+    sudo -u "${RUNNER_USER}" /bin/sh -c 'mkdir -p "$1/bin" && chmod 755 "$1" "$1/bin"' _ "${STAGE_DIR}"
+    local script
+    for script in runner.sh cpu-watcher.sh; do
+        stage_file "${STAGE_DIR}/bin/${script}" 755 < "${SCRIPT_DIR}/${script}"
+    done
+    stage_file "${STAGE_DIR}/runner.env" 600 < "${ENV_FILE}"
 
     local rendered
     rendered="$(mktemp -t ci-runner-plist)"
@@ -465,7 +498,7 @@ cmd_install() {
         -e "s|@STAGE_DIR@|$(xml_value "${STAGE_DIR}")|g" \
         "${TEMPLATE}" > "${rendered}"
     plutil -lint -s "${rendered}"
-    sudo install -o "${RUNNER_USER}" -g "${RUNNER_GROUP}" -m 644 "${rendered}" "${STAGE_DIR}/${LABEL}.plist"
+    stage_file "${STAGE_DIR}/${LABEL}.plist" 644 < "${rendered}"
     rm -f "${rendered}"
 
     # ── Register ──
@@ -514,7 +547,9 @@ wait_online() {
         waited=$((waited + 5))
     done
     echo "ERROR: ${ENV_RUNNER_NAME} is not online in GitHub after ${ONLINE_TIMEOUT_SECONDS}s. Last lines of ${LOG_FILE}:" >&2
-    sudo tail -n 30 "${LOG_FILE}" >&2 || true
+    # As the runner, whose file it is, so a log the runner swapped for a
+    # symlink cannot make root read something else onto this terminal.
+    sudo -u "${RUNNER_USER}" tail -n 30 "${LOG_FILE}" >&2 || true
     exit 1
 }
 
@@ -596,7 +631,13 @@ cmd_status() {
             echo "  activity: idle, waiting for a job"
         fi
     fi
-    if [ -r "${ENV_FILE}" ]; then
+    # status sources the env file with the invoker's privileges just as
+    # install does, so it holds the file to the same standard.
+    local env_bad
+    env_bad="$(untrusted_ancestor "$(id -un)" "${ENV_FILE}")"
+    if [ -n "${env_bad}" ]; then
+        echo "  GitHub:   not checked; ${env_bad} can be changed by another account, so ${ENV_FILE} is not read"
+    elif [ -r "${ENV_FILE}" ]; then
         read_env "${ENV_FILE}"
         resolve_api_base
         ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}"
