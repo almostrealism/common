@@ -1226,7 +1226,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 					LightingEngineAggregator l = new LightingEngineAggregator(v(new Ray(vpo, vs)),
 							p.getAllSurfaces(), p.getAllLights(), p);
 					PackedCollection cl = l.evaluate(args);
-					c = cl instanceof RGB ? (RGB) cl : new RGB(cl.toDouble(0), cl.toDouble(1), cl.toDouble(2));
+					c = RGB.of(cl);
 					if (c != null)
 						c.multiplyBy(p.getLight().getIntensity() * d);
 
