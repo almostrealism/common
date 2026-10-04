@@ -193,21 +193,26 @@ runner_busy() {
     [ -n "$(runner_processes Worker)" ]
 }
 
+# Echoes PATH when an ACL entry allows a subject one of RIGHTS, a
+# '|'-separated list of ACL right names, and nothing otherwise. `ls -e` lists
+# each ACL entry after the mode line as " N: <who> [inherited] allow|deny
+# <rights,...>"; only an allow entry counts (a deny entry, like the "everyone
+# deny delete" macOS puts on a home directory, does not). A host whose `ls` has
+# no `-e` has no such ACLs to read, so nothing is reported. PRIV is as for
+# untrusted_path.
+acl_grant() {
+    local rights="$1" path="$2" priv="${3:-}"
+    ${priv} ls -lde "${path}" 2>/dev/null | awk -v p="${path}" -v r="(^|,)(${rights})(,|$)" '
+        NR > 1 { i = ($3 == "inherited") ? 4 : 3 }
+        NR > 1 && $i == "allow" && $(i + 1) ~ r { print p; exit }' || true
+}
+
 # Echoes PATH when an ACL entry grants a subject a right that lets them change
 # or replace it even with the mode bits clear — the gap a mode-only check leaves
 # open on macOS, closed the same way register-daemon.sh closes it on the plist
-# path. `ls -e` lists each ACL entry after the mode line as " N: <who>
-# allow|deny <rights,...>"; only an allow entry carrying a write-granting right
-# counts (a deny entry, like the "everyone deny delete" macOS puts on a home
-# directory, does not). A host whose `ls` has no `-e` has no such ACLs to read,
-# so nothing is reported. PRIV is as for untrusted_path.
+# path. PRIV is as for untrusted_path.
 acl_write_grant() {
-    local path="$1" priv="${2:-}"
-    ${priv} ls -lde "${path}" 2>/dev/null | awk -v p="${path}" '
-        NR > 1 && $3 == "allow" \
-            && $4 ~ /(^|,)(write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown)(,|$)/ {
-            print p; exit
-        }' || true
+    acl_grant "write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown" "$1" "${2:-}"
 }
 
 # Echoes PATH when an account other than root or OWNER could change it — when it
@@ -226,6 +231,21 @@ untrusted_path() {
         \( -type l -o -perm -g+w -o -perm -o+w \
            -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null)" || bad="${path}"
     [ -n "${bad}" ] || bad="$(acl_write_grant "${path}" "${priv}")"
+    [ -z "${bad}" ] || echo "${path}"
+}
+
+# Echoes PATH when a credential file there could be read or changed by an
+# account other than root or OWNER: when untrusted_path reports it, when a group
+# or world read bit is set, or when an ACL entry allows another subject to read
+# it. Nothing when only root and OWNER can. A probe that cannot run reports the
+# path, as untrusted_path does.
+exposed_secret() {
+    local owner="$1" path="$2" bad
+    bad="$(untrusted_path "${owner}" "${path}")"
+    [ -n "${bad}" ] \
+        || bad="$(find "${path}" -maxdepth 0 \( -perm -g+r -o -perm -o+r \) 2>/dev/null)" \
+        || bad="${path}"
+    [ -n "${bad}" ] || bad="$(acl_grant "read" "${path}")"
     [ -z "${bad}" ] || echo "${path}"
 }
 
@@ -373,7 +393,7 @@ read_env() {
     values="$(env -i HOME="${RUNNER_HOME}" PATH=/usr/bin:/bin /bin/bash -c '
         set -a
         . "$1" >/dev/null
-        for v in GITHUB_PAT GITHUB_OWNER GITHUB_REPO RUNNER_SCOPE RUNNER_NAME RUNNER_DIR RUNNER_LABELS RUNNER_PATH; do
+        for v in GITHUB_PAT GITHUB_OWNER GITHUB_REPO RUNNER_SCOPE RUNNER_NAME RUNNER_DIR RUNNER_WORKDIR RUNNER_LABELS RUNNER_PATH; do
             eval "x=\${$v-}"
             printf "ENV_%s=%q\n" "$v" "$x"
         done' _ "$1")" || {
@@ -609,7 +629,9 @@ EOF
 
     # The runner directory must belong to the runner account (runner.sh
     # explains why at length); catching it here beats a retry loop in a log.
-    if [ -d "${RUNNER_DIR}" ]; then
+    # sudo, like the finds inside, so a RUNNER_DIR under a home the
+    # administrator cannot enter is still scanned rather than skipped.
+    if sudo test -d "${RUNNER_DIR}"; then
         local foreign
         foreign="$(sudo find "${RUNNER_DIR}" ! -user "${RUNNER_USER}" -print -quit 2>/dev/null || true)"
         if [ -n "${foreign}" ]; then
@@ -647,6 +669,27 @@ EOF
         errors=$((errors + 1))
     fi
 
+    # runner.sh checks out and runs every job in RUNNER_WORKDIR, by default
+    # ${RUNNER_DIR}/_work, which the walk above already covers. One set apart
+    # from RUNNER_DIR gets the same walk: a writable or symlinked directory on
+    # the way to it would let another account change the files a job executes
+    # as the runner. Like RUNNER_DIR, it must be absolute — runner.sh creates it
+    # from the stage directory, but config.sh reads a relative one against the
+    # runner directory, so a relative path names two different places.
+    if [ -n "${ENV_RUNNER_WORKDIR}" ]; then
+        case "${ENV_RUNNER_WORKDIR}" in
+            /*) bad="$(untrusted_ancestor "${RUNNER_USER}" "${ENV_RUNNER_WORKDIR}" sudo)" ;;
+            *) bad="${ENV_RUNNER_WORKDIR}" ;;
+        esac
+        if [ -n "${bad}" ]; then
+            echo "  ✗ ${bad}, on the path to RUNNER_WORKDIR (${ENV_RUNNER_WORKDIR}), is not absolute, is a" >&2
+            echo "      symlink, is writable by others, or is owned by neither root nor ${RUNNER_USER};" >&2
+            echo "      another account could change the files jobs run there as ${RUNNER_USER}." >&2
+            echo "      Keep RUNNER_WORKDIR under a path only root and ${RUNNER_USER} can write, or unset it." >&2
+            errors=$((errors + 1))
+        fi
+    fi
+
     # Trust is necessary but not sufficient: runner.sh runs as ${RUNNER_USER}
     # and must create ${RUNNER_DIR}/config.sh and _work. A runner directory the
     # runner account cannot write — owned by root, or by the runner with its own
@@ -654,9 +697,10 @@ EOF
     # for a runner that can never register. A ${RUNNER_DIR} that does not exist
     # yet is created with mkdir -p, which needs the same write access on the
     # nearest directory that does exist. Probe as the runner so the answer is
-    # the daemon's, not root's.
+    # the daemon's, not root's; the walk up stats through sudo for the same
+    # reason the ownership scan does.
     local writable_at="${RUNNER_DIR}"
-    while [ ! -d "${writable_at}" ] && [ "${writable_at}" != "/" ]; do
+    while ! sudo test -d "${writable_at}" && [ "${writable_at}" != "/" ]; do
         writable_at="$(dirname "${writable_at}")"
     done
     if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${writable_at}"; then
@@ -704,8 +748,21 @@ EOF
             echo "      the monitor's credential kept there would be within another account's reach." >&2
             errors=$((errors + 1))
         fi
-        local store_url="${fleet_home}/store-url"
-        if [ -s "${store_url}" ]; then
+        # An existing credential is used as it stands, and install.sh restricts
+        # its mode only after the runner is already online taking jobs, so one
+        # the runner account can read — a mode-0644 file, or one the runner owns
+        # — must be refused here rather than repaired later.
+        local store_url="${fleet_home}/store-url" store_bad
+        store_bad=""
+        if [ -e "${store_url}" ] || [ -L "${store_url}" ]; then
+            store_bad="$(exposed_secret "${admin_user}" "${store_url}")"
+        fi
+        if [ -n "${store_bad}" ]; then
+            echo "  ✗ ${store_url} is a symlink, is owned by neither you (${admin_user}) nor root, or can be" >&2
+            echo "      read or written by another account; CI jobs could take the monitor's credential." >&2
+            echo "      Fix: chmod 600 ${store_url} (and remove any ACL: chmod -N ${store_url})" >&2
+            errors=$((errors + 1))
+        elif [ -s "${store_url}" ]; then
             echo "  ✓ monitor credential present (${store_url})"
         elif [ -n "${STORE_FROM}" ]; then
             echo "  ✓ monitor credential will be copied from ${STORE_FROM}"
@@ -820,7 +877,10 @@ cmd_start() {
 cmd_stop() {
     load_installed
     if [ -z "$(service_state "${LABEL}")" ]; then
-        echo "${LABEL} is not running."
+        # Not loaded now — booted out by hand, say — is not the same as stopped:
+        # an enabled plist in ${DAEMONS_DIR} is loaded again at the next boot.
+        sudo launchctl disable "system/${LABEL}"
+        echo "${LABEL} is not running. It stays stopped across reboots until: tools/bin/fleet macos start${INSTANCE:+ --instance ${INSTANCE}}"
         return 0
     fi
     if runner_busy; then

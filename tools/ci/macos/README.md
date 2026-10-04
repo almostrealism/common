@@ -191,7 +191,7 @@ All configuration is via the `.env` file (see `.env.example`).
 | `GITHUB_REPO` | `common` | Repository name (required for `repo` scope, ignored for `org`) |
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
-| `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
+| `RUNNER_WORKDIR` | `${RUNNER_DIR}/_work` | Job working directory. Must be absolute; `fleet macos install` refuses one under a directory any account but root and the runner's could change. The `~/actions-runner/_work` in `.env.example` is this default for the default `RUNNER_DIR` |
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 | `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |

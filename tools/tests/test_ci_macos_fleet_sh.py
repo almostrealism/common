@@ -309,7 +309,7 @@ class MacosFleetSecurityTests(unittest.TestCase):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertRegex(
             install,
-            r'while \[ ! -d "\$\{writable_at\}" \] && \[ "\$\{writable_at\}" != "/" \]',
+            r'while ! sudo test -d "\$\{writable_at\}" && \[ "\$\{writable_at\}" != "/" \]',
             "the write-access probe must fall back to the nearest existing directory")
         self.assertRegex(
             install,
@@ -351,6 +351,60 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn('*) fleet_bad="${fleet_home}" ;;', install,
                       "a relative FLEET_HOME must be refused, not walked from /")
 
+    def test_an_existing_monitor_credential_must_be_private(self):
+        """install.sh restricts store-url's mode only after the runner is online,
+        so an existing credential the runner can read (mode 0644, or owned by the
+        runner) must be refused in preflight, before anything is installed."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('exposed_secret "${admin_user}" "${store_url}"')
+        self.assertNotEqual(-1, check, "install must screen an existing store-url")
+        self.assertLess(check, install.find('s|@RUNNER_DIR@|'),
+                        "the credential must be screened before anything is installed")
+        self.assertLess(check, install.find('echo "  ✓ monitor credential present'),
+                        "an exposed credential must not be reported as present")
+
+    def test_a_custom_runner_workdir_is_walked_like_the_runner_dir(self):
+        """Jobs run as the runner in RUNNER_WORKDIR; one set apart from
+        RUNNER_DIR needs the same ancestor walk, and a relative one is refused."""
+        self.assertIn(" RUNNER_WORKDIR ", re.search(r"^read_env\(\) \{.*?^\}", self.src, re.M | re.S).group(0),
+                      "read_env must read RUNNER_WORKDIR for install to screen it")
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('untrusted_ancestor "${RUNNER_USER}" "${ENV_RUNNER_WORKDIR}" sudo')
+        self.assertNotEqual(-1, check, "install must walk a custom RUNNER_WORKDIR")
+        self.assertLess(check, install.find('s|@RUNNER_DIR@|'))
+        self.assertIn('*) bad="${ENV_RUNNER_WORKDIR}" ;;', install,
+                      "a relative RUNNER_WORKDIR must be refused, not walked from /")
+
+    def test_runner_dir_scans_stat_through_sudo(self):
+        """A RUNNER_DIR under a home the administrator cannot enter reads as
+        missing to an unprivileged [ -d ], which would skip the ownership and
+        write-bit scans and misplace the write probe."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('if sudo test -d "${RUNNER_DIR}"; then', install)
+        self.assertNotIn('[ -d "${RUNNER_DIR}" ]', install)
+        self.assertNotIn('[ ! -d "${writable_at}" ]', install)
+
+    def test_stop_disables_a_service_launchd_does_not_have(self):
+        """A plist launchd has not loaded (booted out by hand) is loaded again
+        at the next boot unless disabled, so stop must disable it even when
+        there is nothing to boot out."""
+        stop = re.search(r"^cmd_stop\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        not_running = stop[:stop.find("return 0")]
+        self.assertIn('sudo launchctl disable "system/${LABEL}"', not_running,
+                      "the not-running path must disable the label before returning")
+
+    def test_the_shutdown_trap_stops_the_cpu_watcher(self):
+        """The trap exits before the loop reaches the lines that stop the
+        watcher, so it must stop the watcher itself."""
+        with open(os.path.join(_REPO_ROOT, "tools", "ci", "macos", "runner.sh")) as f:
+            runner = f.read()
+        cleanup = re.search(r"^cleanup\(\) \{.*?^\}", runner, re.M | re.S).group(0)
+        self.assertIn('kill "${WATCHER_PID}"', cleanup)
+        self.assertIn('wait "${WATCHER_PID}"', cleanup)
+        self.assertLess(cleanup.find('kill "${WATCHER_PID}"'), cleanup.find("exit 0"))
+        self.assertIn('WATCHER_PID=""\n\nstart_agent()', runner,
+                      "WATCHER_PID must be initialised so the trap is safe under set -u")
+
     def test_the_path_walk_guards_an_empty_component_array(self):
         """A "/" path leaves the components array empty, and expanding an empty
         array under `set -u` aborts on the bash macOS ships (3.2); the walk
@@ -362,12 +416,13 @@ class MacosFleetSecurityTests(unittest.TestCase):
 
 def _trust_functions(*names):
     """The source of fleet.sh's path-trust helpers, to run outside the script
-    (which refuses to run anywhere but macOS). ``acl_write_grant`` is always
-    included because ``untrusted_path`` and ``untrusted_tool_dir`` call it."""
+    (which refuses to run anywhere but macOS). ``acl_write_grant`` and the
+    ``acl_grant`` it delegates to are always included because ``untrusted_path``
+    and ``untrusted_tool_dir`` call them."""
     with open(_MACOS_FLEET) as f:
         src = f.read()
     names = names or ("untrusted_path", "untrusted_ancestor")
-    names = tuple(dict.fromkeys(names + ("acl_write_grant",)))
+    names = tuple(dict.fromkeys(names + ("acl_write_grant", "acl_grant")))
     return "\n".join(
         re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
         for name in names)
@@ -728,6 +783,83 @@ class AclWriteGrantTests(unittest.TestCase):
     def test_a_read_only_allow_entry_is_not_reported(self):
         self.assertEqual("", self._grant(
             self._MODE_LINE + " 0: user:someone allow read,readattr\n"))
+
+    def test_an_inherited_allow_write_entry_is_reported(self):
+        """macOS lists an entry inherited from the parent directory as
+        "N: <who> inherited allow <rights>"; it grants the same rights."""
+        self.assertEqual("/some/path", self._grant(
+            self._MODE_LINE + " 0: user:someone inherited allow read,write\n"))
+        self.assertEqual("", self._grant(
+            self._MODE_LINE + " 0: group:everyone inherited deny delete\n"))
+
+
+class ExposedSecretTests(unittest.TestCase):
+    """Runs ``exposed_secret`` against real files owned by the test's account.
+    Foreign ownership cannot be produced here; mode bits, symlinks and (through
+    a shadowed ``ls``) a macOS read-granting ACL are exercised for real."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.functions = _trust_functions("exposed_secret", "untrusted_path")
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="fleet-secret-")
+        self.addCleanup(shutil.rmtree, self.root)
+        self.secret = os.path.join(self.root, "store-url")
+        with open(self.secret, "w") as f:
+            f.write("postgres://example\n")
+
+    def _exposed(self, path, prelude="", env=None):
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\n" + prelude + self.functions
+             + '\nexposed_secret "$1" "$2"', "_", self.user, path],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, **(env or {})))
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def test_an_owner_only_file_is_not_exposed(self):
+        os.chmod(self.secret, 0o600)
+        self.assertEqual("", self._exposed(self.secret))
+
+    def test_a_world_readable_file_is_exposed(self):
+        os.chmod(self.secret, 0o644)
+        self.assertEqual(self.secret, self._exposed(self.secret))
+
+    def test_a_group_readable_file_is_exposed(self):
+        os.chmod(self.secret, 0o640)
+        self.assertEqual(self.secret, self._exposed(self.secret))
+
+    def test_a_group_writable_file_is_exposed(self):
+        os.chmod(self.secret, 0o620)
+        self.assertEqual(self.secret, self._exposed(self.secret))
+
+    def test_a_symlink_to_a_private_file_is_exposed(self):
+        os.chmod(self.secret, 0o600)
+        link = os.path.join(self.root, "link")
+        os.symlink(self.secret, link)
+        self.assertEqual(link, self._exposed(link))
+
+    def test_a_read_granting_acl_is_exposed(self):
+        """The mode bits say owner-only, but an ACL lets another account read."""
+        os.chmod(self.secret, 0o600)
+        listing = ("-rw-------+ 1 someone staff 20 Jan  1 00:00 store-url\n"
+                   " 0: user:worker allow read\n")
+        self.assertEqual(self.secret, self._exposed(
+            self.secret, "ls() { printf '%s' \"${LS_OUTPUT}\"; }\n", {"LS_OUTPUT": listing}))
+
+    def test_a_deny_read_acl_is_not_exposed(self):
+        os.chmod(self.secret, 0o600)
+        listing = ("-rw-------+ 1 someone staff 20 Jan  1 00:00 store-url\n"
+                   " 0: group:everyone deny read\n")
+        self.assertEqual("", self._exposed(
+            self.secret, "ls() { printf '%s' \"${LS_OUTPUT}\"; }\n", {"LS_OUTPUT": listing}))
+
+    def test_a_probe_that_cannot_run_reports_rather_than_passes(self):
+        os.chmod(self.secret, 0o600)
+        self.assertEqual(self.secret, self._exposed(
+            self.secret, "find() { return 1; }\n"))
 
 
 class ShellSyntaxTests(unittest.TestCase):

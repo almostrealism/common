@@ -378,6 +378,7 @@ configure_runner() {
 export RUNNER_MANUALLY_TRAP_SIG=1
 RUNNING=true
 RUN_PID=""
+WATCHER_PID=""
 
 start_agent() {
     set -m
@@ -393,6 +394,13 @@ cleanup() {
     if [ -n "${RUN_PID}" ] && kill -0 "${RUN_PID}" 2>/dev/null; then
         kill -TERM "${RUN_PID}" 2>/dev/null || true
         wait "${RUN_PID}" 2>/dev/null || true
+    fi
+    # The loop stops the CPU watcher after the agent returns, but this trap
+    # exits before the loop gets there; left running, the watcher would go on
+    # throttling, and could act on an unrelated process once this PID is reused.
+    if [ -n "${WATCHER_PID}" ]; then
+        kill "${WATCHER_PID}" 2>/dev/null || true
+        wait "${WATCHER_PID}" 2>/dev/null || true
     fi
     remove_runner
     echo "Runner removed. Exiting."
@@ -431,6 +439,7 @@ while ${RUNNING}; do
         wait "${RUN_PID}" || true
         kill "${WATCHER_PID}" 2>/dev/null || true
         wait "${WATCHER_PID}" 2>/dev/null || true
+        WATCHER_PID=""
     else
         start_agent
         wait "${RUN_PID}" || true
