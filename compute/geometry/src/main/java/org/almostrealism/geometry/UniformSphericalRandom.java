@@ -25,8 +25,11 @@ import org.almostrealism.algebra.VectorFeatures;
  * This is useful for Monte Carlo methods in rendering, such as ambient occlusion,
  * global illumination, and random sampling for anti-aliasing.
  *
- * <p>The implementation uses spherical coordinates with random azimuth and polar
- * angles to achieve uniform distribution over the sphere's surface.</p>
+ * <p>The implementation uses spherical coordinates with a random azimuth and a
+ * polar coordinate chosen so that {@code cos(theta)} is uniform on {@code [-1, 1]}.
+ * Sampling the polar angle itself uniformly would concentrate points near the poles
+ * and break the uniform surface distribution; drawing {@code cos(theta)} uniformly
+ * instead yields an even distribution over the sphere's surface.</p>
  *
  * <p>This class is implemented as a singleton accessible via {@link #getInstance()}.</p>
  *
