@@ -213,6 +213,9 @@ acl_write_grant() {
 # Echoes PATH when an account other than root or OWNER could change it — when it
 # is a symlink, is group- or world-writable, is owned by a third account, or
 # carries a write-granting ACL entry — and nothing when only root and OWNER can.
+# A find that cannot run — the probe this check is built on — reports the path
+# rather than passing it, so a probe that fails to execute can never read as
+# trusted; untrusted_tool_dir fails closed the same way.
 # PRIV is "sudo" to reach a path under a service account's home the invoker
 # cannot stat, or empty to stat as the invoker. This is the check
 # register-daemon.sh makes on every component of the plist's path, applied here
@@ -221,7 +224,7 @@ untrusted_path() {
     local owner="$1" path="$2" priv="${3:-}" bad
     bad="$(${priv} find "${path}" -maxdepth 0 \
         \( -type l -o -perm -g+w -o -perm -o+w \
-           -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null)" || true
+           -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null)" || bad="${path}"
     [ -n "${bad}" ] || bad="$(acl_write_grant "${path}" "${priv}")"
     [ -z "${bad}" ] || echo "${path}"
 }

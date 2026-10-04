@@ -354,9 +354,9 @@ untrusted_path() {
 }'''
         cls.user = pwd.getpwuid(os.geteuid()).pw_name
 
-    def _walk(self, path):
+    def _walk(self, path, owner=None):
         result = subprocess.run(
-            ["bash", "-c", self.functions + '\nuntrusted_ancestor "$1" "$2"', "_", self.user, path],
+            ["bash", "-c", self.functions + '\nuntrusted_ancestor "$1" "$2"', "_", owner or self.user, path],
             capture_output=True, text=True, timeout=30,
             env=dict(os.environ, FIXTURE_ROOT=self.root))
         if result.returncode != 0:
@@ -416,6 +416,13 @@ untrusted_path() {
 
     def test_repeated_separators_are_ignored(self):
         self.assertEqual("", self._walk(self.dir + "//.env"))
+
+    def test_a_probe_that_cannot_run_reports_rather_than_passes(self):
+        """find refuses an unknown user, so its probe of the component exits
+        non-zero with no output; that must read as untrusted, not trusted. An
+        unknown owner makes `! -user "${owner}"` fail at the first fixture-root
+        component, which the walk then reports instead of waving it through."""
+        self.assertEqual(self.root, self._walk(self.file, owner="fleet-no-such-user"))
 
 
 class UntrustedSearchPathTests(unittest.TestCase):
