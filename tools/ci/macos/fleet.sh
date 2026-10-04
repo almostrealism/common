@@ -185,6 +185,19 @@ runner_busy() {
     [ -n "$(runner_processes Worker)" ]
 }
 
+# Echoes PATH when an account other than root or OWNER could change it — when it
+# is a symlink, is group- or world-writable, or is owned by a third account —
+# and nothing when only root and OWNER can. PRIV is "sudo" to reach a path under
+# a service account's home the invoker cannot stat, or empty to stat as the
+# invoker. This is the check register-daemon.sh makes on every component of the
+# plist's path, applied here to the files fleet.sh trusts before it is reached.
+untrusted_path() {
+    local owner="$1" path="$2" priv="${3:-}"
+    ${priv} find "${path}" -maxdepth 0 \
+        \( -type l -o -perm -g+w -o -perm -o+w \
+           -o \( ! -user "${owner}" -a ! -user root \) \) 2>/dev/null
+}
+
 # Reads the env file into ENV_* variables. It is sourced in a clean shell
 # whose HOME is the runner account's, so a `~` or `$HOME` in it means the
 # runner's home — what it means when runner.sh sources it under launchd —
@@ -219,7 +232,12 @@ github_status() {
     [ -n "${API_BASE:-}" ] && command -v jq >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || return 0
     local name
     name="$(jq -rn --arg n "${ENV_RUNNER_NAME}" '$n | @uri')"
-    curl -fsS -H "Authorization: token ${ENV_GITHUB_PAT}" -H "Accept: application/vnd.github+json" \
+    # The token goes through a curl config file on stdin, never on the command
+    # line: `ps` shows every process's arguments to every account on the host —
+    # the runner account among them, which runs untrusted CI jobs — the same
+    # leak tools/fleet/credentials.py exists to prevent.
+    printf 'header = "Authorization: token %s"\n' "${ENV_GITHUB_PAT}" \
+        | curl -fsS --config - -H "Accept: application/vnd.github+json" \
         "${API_BASE}/actions/runners?per_page=100&name=${name}" 2>/dev/null \
         | jq -r --arg n "${ENV_RUNNER_NAME}" \
             '.runners[]? | select(.name == $n) | "\(.status) \(.busy) [\([.labels[].name] | join(","))]"' \
@@ -264,13 +282,19 @@ cmd_install() {
     fi
 
     # read_env sources the env file with the invoking administrator's
-    # privileges, so a file writable by anyone else is an arbitrary-code
-    # execution vector. Refuse it here, the same way register-daemon.sh refuses
-    # a group- or world-writable plist, before it is ever sourced.
-    if [ -n "$(find "${ENV_FILE}" -maxdepth 0 \( -perm -g+w -o -perm -o+w \) 2>/dev/null)" ]; then
-        echo "ERROR: ${ENV_FILE} is group- or world-writable; it is sourced with your" >&2
-        echo "  privileges, so anyone who can write it could run commands as you." >&2
-        echo "  Fix: chmod go-w ${ENV_FILE}" >&2
+    # privileges, so any account other than root or the administrator that can
+    # change it — by owning it, by a group/world write bit, or by substituting a
+    # symlink — is an arbitrary-code-execution vector. Refuse it here, the same
+    # way register-daemon.sh refuses a plist others can change, before it is ever
+    # sourced. A mode-0644 file owned by the runner account would pass a
+    # write-bit-only check yet still be the runner's to edit.
+    local admin_user
+    admin_user="$(id -un)"
+    if [ -n "$(untrusted_path "${admin_user}" "${ENV_FILE}")" ]; then
+        echo "ERROR: ${ENV_FILE} must be a regular file (not a symlink) owned by you" >&2
+        echo "  (${admin_user}) or root and writable by no one else; it is sourced with your" >&2
+        echo "  privileges, so anyone else who can change it could run commands as you." >&2
+        echo "  Fix: sudo chown ${admin_user} ${ENV_FILE} && chmod go-w ${ENV_FILE}" >&2
         exit 1
     fi
 
@@ -363,6 +387,30 @@ cmd_install() {
             echo "      Fix: sudo chown -R ${RUNNER_USER} ${RUNNER_DIR}" >&2
             errors=$((errors + 1))
         fi
+    fi
+
+    # The daemon runs ${RUNNER_DIR}/run.sh as the runner. RUNNER_DIR may be set
+    # to any absolute path, so — exactly as register-daemon.sh does for the plist
+    # — every directory on the way to it must be writable by root and the runner
+    # account alone: a writable or symlinked ancestor would let another account
+    # swap RUNNER_DIR for one holding a hostile run.sh between this check and the
+    # launch. sudo stats components under a home the administrator cannot enter.
+    local prefix="" component bad=""
+    local -a parts
+    IFS='/' read -r -a parts <<< "${RUNNER_DIR#/}"
+    for component in "${parts[@]}"; do
+        prefix="${prefix}/${component}"
+        if [ -n "$(untrusted_path "${RUNNER_USER}" "${prefix}" sudo)" ]; then
+            bad="${prefix}"
+            break
+        fi
+    done
+    if [ -n "${bad}" ]; then
+        echo "  ✗ ${bad}, on the path to ${RUNNER_DIR}, is a symlink, is writable by others," >&2
+        echo "      or is owned by neither root nor ${RUNNER_USER}; another account could swap" >&2
+        echo "      ${RUNNER_DIR} for one holding a hostile run.sh that the daemon would run." >&2
+        echo "      Keep ${RUNNER_DIR} under a path only root and ${RUNNER_USER} can write." >&2
+        errors=$((errors + 1))
     fi
 
     # A runner started by hand from the same directory would fight the

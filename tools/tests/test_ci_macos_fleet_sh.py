@@ -106,6 +106,81 @@ class MacosFleetArgumentTests(unittest.TestCase):
         self.assertIn("install --instance fleet-test-never-installed", result.stderr)
 
 
+class MacosFleetSecurityTests(unittest.TestCase):
+    """The install path needs sudo and launchd, so these guard the security
+    properties of ``fleet.sh`` at the source level instead - the same way the
+    template tests read ``fleet.sh`` rather than running it. Each one fails if a
+    future edit reopens a credential leak or a path-trust hole a reviewer closed.
+    """
+
+    def setUp(self):
+        with open(_MACOS_FLEET) as f:
+            self.src = f.read()
+
+    def test_github_token_never_reaches_a_curl_command_line(self):
+        """`ps` shows every process's arguments to every account on the host,
+        so the token must travel through a curl config file on stdin, never in
+        a `-H` argument where the runner account could read it."""
+        self.assertIsNone(
+            re.search(r'-H\s+"Authorization: token \$\{ENV_GITHUB_PAT\}"', self.src),
+            "GITHUB_PAT is passed in a curl -H argument, exposing it via `ps`")
+        self.assertIn("--config -", self.src,
+                      "the token should be fed to curl through a config file on stdin")
+        self.assertRegex(
+            self.src,
+            r'printf \'header = "Authorization: token %s".*\$\{ENV_GITHUB_PAT\}',
+            "the Authorization header should be built with printf and piped to curl --config -")
+
+    def test_env_file_trust_check_validates_ownership_not_only_mode_bits(self):
+        """A mode-0644 env file owned by the runner account passes a
+        write-bit-only check yet is still the runner's to edit before it is
+        sourced as the administrator; the check must reject foreign ownership,
+        symlinks, and group/world write together."""
+        self.assertRegex(self.src, r"untrusted_path\(\)\s*\{",
+                         "a reusable path-trust helper should exist")
+        self.assertIn("-type l", self.src, "the trust check must reject symlinks")
+        self.assertIn("! -user", self.src, "the trust check must reject foreign ownership")
+        self.assertRegex(
+            self.src,
+            r'untrusted_path "\$\{admin_user\}" "\$\{ENV_FILE\}"',
+            "cmd_install should screen the env file with untrusted_path before sourcing it")
+
+    def test_runner_dir_path_is_walked_for_a_swappable_ancestor(self):
+        """RUNNER_DIR may be any absolute path, and the daemon runs
+        ${RUNNER_DIR}/run.sh as the runner; a writable or symlinked ancestor
+        lets another account swap it, so every component must be checked."""
+        self.assertRegex(
+            self.src,
+            r'untrusted_path "\$\{RUNNER_USER\}" "\$\{prefix\}" sudo',
+            "cmd_install should walk RUNNER_DIR's ancestors with untrusted_path")
+        self.assertIn('IFS=\'/\' read -r -a parts <<< "${RUNNER_DIR#/}"', self.src,
+                      "the walk should split RUNNER_DIR into path components")
+
+    def test_start_bootstraps_the_root_owned_installed_plist(self):
+        """start must load the root:wheel plist register-daemon.sh installs under
+        /Library/LaunchDaemons, never the runner-writable staged copy."""
+        self.assertRegex(
+            self.src,
+            r'launchctl bootstrap system "\$\{INSTALLED_PLIST\}"',
+            "start should bootstrap INSTALLED_PLIST")
+        self.assertIn('INSTALLED_PLIST="${DAEMONS_DIR}/${LABEL}.plist"', self.src)
+        self.assertIn('DAEMONS_DIR="/Library/LaunchDaemons"', self.src)
+
+
+class ShellSyntaxTests(unittest.TestCase):
+    """`bash -n` catches a syntax error in any of the installer scripts without
+    needing macOS; it runs anywhere and guards every future edit to them."""
+
+    def test_installer_scripts_parse(self):
+        for script in (_FLEET, _MACOS_FLEET,
+                       os.path.join(_REPO_ROOT, "tools", "ci", "macos", "runner.sh"),
+                       os.path.join(_REPO_ROOT, "tools", "ci", "macos", "cpu-watcher.sh")):
+            with self.subTest(script=os.path.relpath(script, _REPO_ROOT)):
+                result = subprocess.run(["bash", "-n", script],
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(0, result.returncode, result.stderr)
+
+
 class RunnerPlistTemplateTests(unittest.TestCase):
 
     def _render(self):
