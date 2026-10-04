@@ -581,6 +581,34 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private static final long DOUBLE_FREE_SUMMARY_INTERVAL = 100_000;
 
 	/**
+	 * How much of a prevented double free is reported, decided by its process-wide ordinal.
+	 */
+	enum DoubleFreeReport {
+		/** The full report, including allocation, first-free and current stack traces. */
+		DETAIL,
+
+		/** A single compact line carrying the running total of prevented double frees. */
+		SUMMARY,
+
+		/** Nothing is reported. */
+		NONE;
+
+		/**
+		 * Returns how the prevented double free with the given 1-based process-wide
+		 * ordinal is reported: in full for the first {@link HardwareMemoryProvider#DOUBLE_FREE_DETAIL_LIMIT}
+		 * attempts, then as a running total on every multiple of
+		 * {@link HardwareMemoryProvider#DOUBLE_FREE_SUMMARY_INTERVAL}, and otherwise not at all.
+		 *
+		 * @param attempt the 1-based ordinal of the prevented double free
+		 * @return the extent of the report
+		 */
+		static DoubleFreeReport forAttempt(long attempt) {
+			if (attempt <= DOUBLE_FREE_DETAIL_LIMIT) return DETAIL;
+			return attempt % DOUBLE_FREE_SUMMARY_INTERVAL == 0 ? SUMMARY : NONE;
+		}
+	}
+
+	/**
 	 * Logs a warning that a double-free of the given reference was prevented, including
 	 * the allocation stack trace and (when available) the stack trace of the first
 	 * successful release. Skips the warning during provider destruction, where extra
@@ -599,13 +627,13 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		if (destroying || !RAM.enableWarnings) return;
 
 		long attempt = doubleFreeAttempts.incrementAndGet();
-		if (attempt > DOUBLE_FREE_DETAIL_LIMIT) {
-			if (attempt % DOUBLE_FREE_SUMMARY_INTERVAL == 0) {
-				warn("Skipping double deallocate (" + attempt + " prevented so far; per-attempt"
-						+ " detail suppressed after the first " + DOUBLE_FREE_DETAIL_LIMIT + ")");
-			}
-			return;
+		DoubleFreeReport report = DoubleFreeReport.forAttempt(attempt);
+		if (report == DoubleFreeReport.SUMMARY) {
+			warn("Skipping double deallocate (" + attempt + " prevented so far; per-attempt"
+					+ " detail suppressed after the first " + DOUBLE_FREE_DETAIL_LIMIT + ")");
 		}
+
+		if (report != DoubleFreeReport.DETAIL) return;
 
 		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
 		StackTraceElement[] alloc = ref.getAllocationStackTrace();

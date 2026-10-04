@@ -17,6 +17,7 @@
 package org.almostrealism.music.pattern;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -59,8 +60,42 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		Assert.assertEquals(32, note.getExpectedFrameCount());
 		Assert.assertSame(audio, note.getOffsetArg());
 
-		Object identity = new Object();
+		RenderedNoteAudio.Identity identity = RenderedNoteAudio.Identity.of(new PatternElement(),
+				new ElementVoicingDetails());
 		note.setCacheIdentity(identity);
 		Assert.assertSame(identity, note.getCacheIdentity());
+	}
+
+	/**
+	 * A note identity compares its element by instance, its voicing details by
+	 * value, and its stereo channel separately, since the details' own equality
+	 * ignores the channel.
+	 */
+	@Test(timeout = 10000)
+	public void identityDistinguishesElementDetailsAndChannel() {
+		PatternElement element = new PatternElement();
+		ElementVoicingDetails left = new ElementVoicingDetails(ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT, false, null, 1.0, 2.0);
+		ElementVoicingDetails leftAgain = new ElementVoicingDetails(ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT, false, null, 1.0, 2.0);
+		ElementVoicingDetails right = new ElementVoicingDetails(ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.RIGHT, false, null, 1.0, 2.0);
+		ElementVoicingDetails wet = new ElementVoicingDetails(ChannelInfo.Voicing.WET,
+				ChannelInfo.StereoChannel.LEFT, false, null, 1.0, 2.0);
+
+		RenderedNoteAudio.Identity identity = RenderedNoteAudio.Identity.of(element, left);
+		Assert.assertEquals(ChannelInfo.StereoChannel.LEFT, identity.stereoChannel());
+		Assert.assertSame(element, identity.element());
+		Assert.assertSame(left, identity.details());
+
+		RenderedNoteAudio.Identity same = RenderedNoteAudio.Identity.of(element, leftAgain);
+		Assert.assertEquals("equal details of the same element give an equal identity", identity, same);
+		Assert.assertEquals(identity.hashCode(), same.hashCode());
+
+		Assert.assertEquals("voicing details ignore the stereo channel", left, right);
+		Assert.assertNotEquals(identity, RenderedNoteAudio.Identity.of(element, right));
+		Assert.assertNotEquals(identity, RenderedNoteAudio.Identity.of(element, wet));
+		Assert.assertNotEquals("an equal-valued but distinct element is a different note",
+				identity, RenderedNoteAudio.Identity.of(new PatternElement(), leftAgain));
 	}
 }

@@ -18,6 +18,7 @@ package org.almostrealism.music.pattern;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.data.ChannelInfo;
 
 import java.util.function.IntFunction;
 
@@ -60,6 +61,37 @@ import java.util.function.IntFunction;
  * @author Michael Murray
  */
 public class RenderedNoteAudio {
+	/**
+	 * Stable identity of a rendered note, used together with its frame offset to
+	 * key a {@link NoteAudioCache}.
+	 *
+	 * <p>The element is compared by instance (it is the same object across buffer
+	 * ticks) and the voicing details by value (voicing, target pitch, position), so
+	 * coincident chord tones sharing a frame offset stay distinct while the same
+	 * note stays equal across ticks. The stereo channel is a separate component
+	 * because {@link ElementVoicingDetails#equals} ignores it, while the rendered
+	 * audio reads channel-specific sample data and a single cache serves both
+	 * channels of a {@link PatternLayerManager}.</p>
+	 *
+	 * @param element       the pattern element the note was rendered from
+	 * @param details       the voicing details of the note
+	 * @param stereoChannel the stereo channel the note was rendered for
+	 */
+	public record Identity(PatternElement element, ElementVoicingDetails details,
+						   ChannelInfo.StereoChannel stereoChannel) {
+		/**
+		 * Creates the identity of the note rendered from the given element with the
+		 * given voicing details, on the stereo channel those details select.
+		 *
+		 * @param element the pattern element
+		 * @param details the voicing details
+		 * @return the note identity
+		 */
+		public static Identity of(PatternElement element, ElementVoicingDetails details) {
+			return new Identity(element, details, details.getStereoChannel());
+		}
+	}
+
 	/** The absolute frame offset in the arrangement. */
 	private int offset;
 
@@ -86,7 +118,7 @@ public class RenderedNoteAudio {
 	 * buffer ticks for the same note and distinct between coincident notes; may be
 	 * {@code null}, in which case the offset alone identifies the cache entry.
 	 */
-	private Object cacheIdentity;
+	private Identity cacheIdentity;
 
 	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
@@ -209,7 +241,7 @@ public class RenderedNoteAudio {
 	 *
 	 * @return the cache identity, or {@code null}
 	 */
-	public Object getCacheIdentity() {
+	public Identity getCacheIdentity() {
 		return cacheIdentity;
 	}
 
@@ -219,7 +251,7 @@ public class RenderedNoteAudio {
 	 *
 	 * @param cacheIdentity the cache identity, or {@code null}
 	 */
-	public void setCacheIdentity(Object cacheIdentity) {
+	public void setCacheIdentity(Identity cacheIdentity) {
 		this.cacheIdentity = cacheIdentity;
 	}
 }

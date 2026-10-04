@@ -196,8 +196,8 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	}
 
 	/**
-	 * The next note position is the earliest later position among elements that
-	 * start at or after the query, including their repetitions, or the pattern
+	 * The next note position is the earliest later onset among elements with an
+	 * onset at or after the query, including their repetitions, or the pattern
 	 * duration when no later note exists.
 	 */
 	@Test(timeout = 60000)
@@ -210,6 +210,21 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 		Assert.assertEquals("the repetition of the element at 1.0", 1.5, plm.nextNotePosition(1.0), 0.0);
 		Assert.assertEquals(3.0, plm.nextNotePosition(1.5), 0.0);
 		Assert.assertEquals("nothing follows the last note", 4.0, plm.nextNotePosition(3.0), 0.0);
+	}
+
+	/**
+	 * A repetition is found even when the element's base position precedes the
+	 * query: from {@code 1.2}, the element at {@code 1.0} repeating at {@code 1.5}
+	 * supplies the next onset, rather than the following element at {@code 3.0}.
+	 */
+	@Test(timeout = 60000)
+	public void nextNotePositionFindsRepetitionOfEarlierElement() {
+		PatternLayerManager plm = manager(List.of(), 4.0, false);
+		plm.setExplicitElements(new NoteAudioChoice("explicit"),
+				List.of(hit(0.0, 1), hit(1.0, 2), hit(3.0, 1)));
+
+		Assert.assertEquals(1.5, plm.nextNotePosition(1.2), 0.0);
+		Assert.assertEquals(3.0, plm.nextNotePosition(1.6), 0.0);
 	}
 
 	/**

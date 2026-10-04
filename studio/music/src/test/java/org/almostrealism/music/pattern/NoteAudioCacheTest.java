@@ -17,6 +17,7 @@
 package org.almostrealism.music.pattern;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -38,6 +39,17 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 	 */
 	private PackedCollection audio(int frames) {
 		return new PackedCollection(shape(frames).traverseEach());
+	}
+
+	/**
+	 * Creates the identity of a note rendered from a fresh element on the LEFT
+	 * channel, distinct from every other identity this method returns.
+	 *
+	 * @return a new note identity
+	 */
+	private static RenderedNoteAudio.Identity identity() {
+		return new RenderedNoteAudio.Identity(new PatternElement(), new ElementVoicingDetails(),
+				ChannelInfo.StereoChannel.LEFT);
 	}
 
 	/** Entries are keyed by note start frame together with the note identity. */
@@ -65,16 +77,18 @@ public class NoteAudioCacheTest extends TestSuiteBase {
 		NoteAudioCache cache = new NoteAudioCache();
 		PackedCollection lower = audio(16);
 		PackedCollection upper = audio(16);
+		RenderedNoteAudio.Identity lowerNote = identity();
+		RenderedNoteAudio.Identity upperNote = identity();
 
-		cache.put(0, "lower", lower);
-		cache.put(0, "upper", upper);
+		cache.put(0, lowerNote, lower);
+		cache.put(0, upperNote, upper);
 
 		Assert.assertEquals(2, cache.size());
-		Assert.assertSame(lower, cache.get(0, "lower"));
-		Assert.assertSame(upper, cache.get(0, "upper"));
+		Assert.assertSame(lower, cache.get(0, lowerNote));
+		Assert.assertSame(upper, cache.get(0, upperNote));
 		Assert.assertFalse("the first coincident note must not be displaced", lower.isDestroyed());
 		Assert.assertFalse(upper.isDestroyed());
-		Assert.assertNull("an unknown identity at the same offset misses", cache.get(0, "other"));
+		Assert.assertNull("an unknown identity at the same offset misses", cache.get(0, identity()));
 	}
 
 	/** Replacing an entry releases the displaced audio but not a re-inserted identical entry. */

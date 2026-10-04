@@ -51,7 +51,7 @@ public class NoteAudioCache {
 	 * @param offset   the note's absolute frame offset
 	 * @param identity the stable per-note identity, or {@code null}
 	 */
-	private record Key(int offset, Object identity) {}
+	private record Key(int offset, RenderedNoteAudio.Identity identity) {}
 
 	/** Map from composite note key to cached audio data. */
 	private final Map<Key, PackedCollection> cache = new HashMap<>();
@@ -64,7 +64,7 @@ public class NoteAudioCache {
 	 * @param identity   the stable per-note identity, or {@code null}
 	 * @return the cached audio, or null
 	 */
-	public PackedCollection get(int noteOffset, Object identity) {
+	public PackedCollection get(int noteOffset, RenderedNoteAudio.Identity identity) {
 		return cache.get(new Key(noteOffset, identity));
 	}
 
@@ -80,7 +80,7 @@ public class NoteAudioCache {
 	 * @param identity   the stable per-note identity, or {@code null}
 	 * @param audio the evaluated audio data
 	 */
-	public void put(int noteOffset, Object identity, PackedCollection audio) {
+	public void put(int noteOffset, RenderedNoteAudio.Identity identity, PackedCollection audio) {
 		PackedCollection previous = cache.put(new Key(noteOffset, identity), audio);
 		if (previous != null && previous != audio) {
 			previous.destroy();
