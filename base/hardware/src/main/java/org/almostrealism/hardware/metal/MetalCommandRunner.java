@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.concurrent.ConfinedExecutor;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
@@ -25,10 +27,6 @@ import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -110,8 +108,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 */
 	public static boolean enableHostSignaledBridges = true;
 
-	/** Single-threaded executor that serializes all command-buffer operations. */
-	private ExecutorService executor;
+	/**
+	 * Confines all command-buffer operations to one thread, running each inside its own
+	 * autorelease pool (see {@link #runInPool}).
+	 */
+	private final ConfinedExecutor executor = new ConfinedExecutor(this::runInPool);
 
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
@@ -172,7 +173,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param queue The {@link MTLCommandQueue} for submitting commands
 	 */
 	public MetalCommandRunner(MTLCommandQueue queue) {
-		this.executor = Executors.newSingleThreadExecutor();
 		this.queue = queue;
 		this.event = queue.getDevice().newSharedEvent();
 	}
@@ -218,7 +218,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 								 Semaphore dependsOn, Runnable onComplete) {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
-		await(executor.submit(() -> runInPool(() -> {
+		executor.run(() -> {
 			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
 					((MetalSemaphore) dependsOn).getRunner() == this;
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
@@ -279,7 +279,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
 				maxOpenCommits++;
 			}
-		})));
+		});
 
 		return result.get(0);
 	}
@@ -306,7 +306,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param requester     metadata of the operation waiting for completion, or {@code null}
 	 */
 	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
-		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer, requester))));
+		executor.run(() -> completeOnExecutor(commandBuffer, requester));
 	}
 
 	/**
@@ -322,7 +322,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param callback      the callback to run after that buffer completes
 	 */
 	public void whenComplete(MTLCommandBuffer commandBuffer, Runnable callback) {
-		await(executor.submit(() -> runInPool(() -> {
+		executor.run(() -> {
 			if (commandBuffer == openBuffer) {
 				openOnComplete.add(callback);
 				return;
@@ -336,7 +336,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 
 			callback.run();
-		})));
+		});
 	}
 
 	/**
@@ -454,6 +454,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	/**
 	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
 	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
+	 *
+	 * <p>Every buffer up to the target is drained through {@link Destroyable#releaseAll} so a drain
+	 * that throws (an aggregated callback failure from one buffer) does not skip the callbacks and
+	 * buffer release of the later committed buffers; the first failure is rethrown once all have
+	 * drained, with any later ones attached as suppressed.</p>
 	 */
 	private void completeOnExecutor(MTLCommandBuffer target, OperationMetadata requester) {
 		if (target == openBuffer && commitOpenOnExecutor()) {
@@ -470,10 +475,13 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 		}
 
-		// Not found means it already completed and was drained by an earlier wait.
-		for (int i = 0; i <= index; i++) {
-			drainOldestCommitted(requester);
+		// Not found (index -1) means the target already completed and was drained by an earlier wait.
+		int count = index + 1;
+		List<Runnable> drains = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			drains.add(() -> drainOldestCommitted(requester));
 		}
+		Destroyable.releaseAll(drains);
 	}
 
 	/**
@@ -501,8 +509,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 					" errorCompletions=" + errorCompletions.get());
 		}
 
-		c.onComplete.forEach(Runnable::run);
-		c.buffer.release();
+		Destroyable.releaseAll(c.onComplete, c.buffer::release);
 	}
 
 	/**
@@ -513,43 +520,25 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	public long getErrorCompletionCount() { return errorCompletions.get(); }
 
 	/**
-	 * Waits for the given executor task to finish, rethrowing any execution failure.
-	 *
-	 * <p>An interrupt (for example a test-framework timeout) abandons the wait while the
-	 * task may still be queued or running; the caller then proceeds as though the GPU
-	 * work finished, so the abandonment is logged rather than silently swallowed.</p>
-	 */
-	private static void await(Future<?> f) {
-		try {
-			f.get();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			Hardware.console.features(MetalCommandRunner.class)
-					.warn("interrupted while awaiting a command runner task; " +
-							"the associated GPU work may not have completed");
-		} catch (ExecutionException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	/**
 	 * Destroys this command runner and releases all resources.
 	 *
-	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, releases the
-	 * timeline event, and shuts down the executor service.</p>
+	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, and releases
+	 * the timeline event, as the confined executor's final task. The per-buffer drains and the
+	 * event release are run through {@link Destroyable#releaseAll} so a drain that throws cannot
+	 * leak the remaining buffers or the shared event; the first failure is rethrown with any later
+	 * ones attached as suppressed. The executor shuts its thread down whether or not that final
+	 * task succeeds, so a failed drain can never leave the thread alive.</p>
 	 */
 	public void destroy() {
-		if (executor != null) {
-			await(executor.submit(() -> runInPool(() -> {
-				if (commitOpenOnExecutor()) destroyCommits++;
-				while (!committed.isEmpty()) {
-					drainOldestCommitted(null);
-				}
-				event.release();
-			})));
-			executor.shutdown();
-		}
-		executor = null;
+		executor.destroy(() -> {
+			if (commitOpenOnExecutor()) destroyCommits++;
+
+			List<Runnable> drains = new ArrayList<>(committed.size());
+			for (int i = committed.size(); i > 0; i--) {
+				drains.add(() -> drainOldestCommitted(null));
+			}
+			Destroyable.releaseAll(drains, event::release);
+		});
 	}
 
 	/** Returns the console for logging. */

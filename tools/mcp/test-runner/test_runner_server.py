@@ -172,6 +172,27 @@ class JmxMonitoringJvmArgsTest(unittest.TestCase):
             config, run_dir=Path(self._tmpdir), run_id="g3")
         self.assertFalse(any("AR_TEST_GROUP" in part for part in cmd))
 
+    def _dtest(self, cmd):
+        for part in cmd:
+            if part.startswith("-Dtest="):
+                return part[len("-Dtest="):]
+        return None
+
+    def test_test_classes_and_methods_merge_into_one_dtest(self):
+        # The validator permits a bounded mix of test_classes and test_methods,
+        # so the command builder must merge both into one -Dtest rather than
+        # letting one silently drop the other.
+        config = server.RunConfig(
+            module="engine/utils",
+            test_classes=["FooTest", "BarTest"],
+            test_methods=[{"class": "BazTest", "method": "qux"}])
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="m1")
+        dtest_parts = [p for p in cmd if p.startswith("-Dtest=")]
+        self.assertEqual(1, len(dtest_parts))
+        selectors = self._dtest(cmd).split(",")
+        self.assertEqual(["FooTest", "BarTest", "BazTest#qux"], selectors)
+
 
 class DegradedConfigTest(unittest.TestCase):
     """Retrying without JMX must change only whether JMX is on.
@@ -648,68 +669,73 @@ class StartTestRunLimitsTest(unittest.TestCase):
         self.assertEqual("run-1", response["run_id"])
 
     def test_multiple_test_classes_is_rejected(self):
-        # test_classes with more than one entry joins into a single
-        # "-Dtest=A,B" that runs several classes together in one JVM --
-        # exactly the broad, multi-test invocation this MCP surface exists
-        # to prevent.
+        # A few classes are now a bounded run and accepted (see
+        # test_multiple_test_classes_within_cap_accepted); what stays rejected
+        # is a selection with no ceiling. Six classes exceed the 5-class cap,
+        # so they still join into one broad invocation this surface prevents.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest#a", "BarTest#b"],
+                "test_classes": [f"FooTest{i}" for i in range(6)],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
-        self.assertIn("At most ONE test per invocation", response["error"])
+        self.assertIn("test classes", response["error"])
 
     def test_multiple_test_methods_is_rejected(self):
+        # A bounded list of methods is accepted now; 41 methods exceed the
+        # 40-method cap, so the selection is still rejected.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_methods": [{"class": "FooTest", "method": "a"}, {"class": "FooTest", "method": "b"}],
+                "test_methods": [{"class": "FooTest", "method": f"m{i}"} for i in range(41)],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
-        self.assertIn("At most ONE test per invocation", response["error"])
+        self.assertIn("test methods", response["error"])
 
     def test_one_class_and_one_method_together_is_rejected(self):
+        # test_classes and test_methods are now honoured together (see
+        # test_mixed_classes_and_methods_accepted), but the combined selection
+        # must still fit the caps: five classes plus a method naming a sixth
+        # distinct class exceeds the 5-class cap.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest#a"],
+                "test_classes": [f"FooTest{i}" for i in range(5)],
                 "test_methods": [{"class": "BarTest", "method": "baz"}],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
-        self.assertIn("At most ONE test per invocation", response["error"])
+        self.assertIn("test classes", response["error"])
 
     def test_bare_test_classes_entry_is_rejected(self):
-        # A bare class name with no "#method" still runs every test in that
-        # class via "-Dtest=FooTest" -- the same bare-class breadth the
-        # manager and controller validators reject.
+        # A single bare class is now a bounded run and accepted (see
+        # test_bare_test_classes_entry_accepted); six bare classes exceed the
+        # 5-class cap, so the selection is still rejected.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": [f"FooTest{i}" for i in range(6)],
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
-        self.assertIn("#method selector", response["error"])
+        self.assertIn("test classes", response["error"])
 
     def test_bare_test_classes_entry_with_jmx_monitoring_is_still_rejected(self):
-        # jmx_monitoring is caller-controlled and cannot authenticate a
-        # JVM-crash reproduction request, so it must never exempt the
-        # bare-class check -- otherwise any caller could widen a
-        # single-test invocation into a whole-class run just by setting
+        # jmx_monitoring is caller-controlled and never buys an exemption from
+        # the caps -- an over-cap selection is rejected whether or not it is
+        # set, so a caller cannot widen a run past the caps with
         # jmx_monitoring:true.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
-                "test_classes": ["FooTest"],
+                "test_classes": [f"FooTest{i}" for i in range(6)],
                 "jmx_monitoring": True,
             })
         mock_start.assert_not_called()
         self.assertIn("error", response)
-        self.assertIn("#method selector", response["error"])
+        self.assertIn("test classes", response["error"])
 
     def test_test_methods_entry_missing_method_field_is_rejected(self):
         with patch.object(server.runner, "start_run") as mock_start:
@@ -731,10 +757,10 @@ class StartTestRunLimitsTest(unittest.TestCase):
         self.assertIn("error", response)
 
     def test_test_classes_entry_with_comma_separated_selectors_is_rejected(self):
-        # A single test_classes entry passes the "at most ONE" length check
-        # even when its own text names multiple Class#method patterns joined
-        # by a comma -- build_maven_command emits that text verbatim as
-        # -Dtest, so Maven still runs both in one invocation.
+        # A single entry may name only one exact selector: its own text naming
+        # multiple Class#method patterns joined by a comma packs an unbounded
+        # list into one entry -- build_maven_command emits that text verbatim
+        # as -Dtest, so Maven runs them all in one invocation.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
@@ -748,7 +774,7 @@ class StartTestRunLimitsTest(unittest.TestCase):
         # A comma embedded in the method field alone is enough to inject a
         # second Surefire pattern into the comma-joined -Dtest value, even
         # though the entry is schema-valid (an object with non-empty class
-        # and method fields) and the selector count is exactly one.
+        # and method fields) -- each entry must name a single exact selector.
         with patch.object(server.runner, "start_run") as mock_start:
             response = self._dispatch({
                 "module": "engine/utils",
@@ -789,6 +815,52 @@ class StartTestRunLimitsTest(unittest.TestCase):
                 "module": "engine/utils",
                 "test_classes": ["FooTest#bar"],
                 "jvm_args": ["-Xmx4g"],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_bare_test_classes_entry_accepted(self):
+        # A single bare class names a bounded number of cases, so it is a
+        # bounded run accepted under the relaxed class/method caps.
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_multiple_test_classes_within_cap_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": [f"FooTest{i}" for i in range(5)],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_multiple_test_methods_within_cap_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_methods": [{"class": "FooTest", "method": f"m{i}"} for i in range(40)],
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_mixed_classes_and_methods_accepted(self):
+        # The validator now honours test_classes and test_methods together, and
+        # build_maven_command merges both into one -Dtest rather than dropping
+        # either, so a bounded mix of the two is accepted.
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest", "BarTest"],
+                "test_methods": [{"class": "BazTest", "method": "qux"}],
             })
         mock_start.assert_called_once()
         self.assertEqual("run-1", response["run_id"])

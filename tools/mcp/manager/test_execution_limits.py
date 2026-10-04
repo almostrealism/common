@@ -16,10 +16,11 @@ if _MANAGER_DIR not in sys.path:
 
 from execution_limits import (  # noqa: E402
     POST_COMPLETION_MAX_TIMEOUT_SECONDS,
-    lint_prompt_for_broad_test_instructions,
+    post_completion_gate_violations,
     validate_post_completion_command,
     validate_post_completion_timeout,
 )
+from prompt_test_lint import lint_prompt_for_broad_test_instructions  # noqa: E402
 
 
 class TestValidatePostCompletionCommandAccepted(unittest.TestCase):
@@ -87,16 +88,37 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("mvn install -pl engine/utils")
         self.assertTrue(violations)
 
-    def test_bare_class_dtest_selector_rejected(self):
+    def test_bare_class_dtest_selector_accepted(self):
+        # A named class is bounded by its own methods, so checking one class
+        # after a change is an ordinary run rather than a suite run.
         violations = validate_post_completion_command(
             "mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest")
-        self.assertTrue(violations, "a bare -Dtest=Class selector must be rejected")
-        self.assertIn("Class#method", " ".join(violations))
+        self.assertFalse(violations, "a bare -Dtest=Class selector names a bounded run")
 
-    def test_mixed_narrow_and_broad_dtest_selector_rejected(self):
+    def test_mixed_class_and_method_dtest_selector_accepted(self):
         violations = validate_post_completion_command(
             "mvn test -Dtest=FooTest#bar,BazTest")
-        self.assertTrue(violations)
+        self.assertFalse(violations)
+
+    def test_bare_class_dtest_selector_rejected(self):
+        # Bare class selectors are bounded only up to the class cap; a sixth
+        # class is the point at which a selection becomes the suite.
+        violations = validate_post_completion_command(
+            "mvn test -Dtest=A,B,C,D,E,F")
+        self.assertTrue(violations,
+                        "a selector naming more classes than the cap must be rejected")
+
+    def test_mixed_narrow_and_broad_dtest_selector_rejected(self):
+        # A wildcard entry has no ceiling, so it makes the whole value broad
+        # even when its sibling entry names a single method.
+        violations = validate_post_completion_command(
+            "mvn test -Dtest=FooTest#bar,Baz*")
+        self.assertTrue(violations,
+                        "a -Dtest value with one unbounded entry must be rejected")
+
+    def test_dtest_selector_at_the_class_cap_accepted(self):
+        violations = validate_post_completion_command("mvn test -Dtest=A,B,C,D,E")
+        self.assertFalse(violations)
 
     def test_ar_test_group_alone_rejected_even_without_test_phase_keyword(self):
         violations = validate_post_completion_command(
@@ -268,15 +290,26 @@ class TestValidatePostCompletionCommandRejected(unittest.TestCase):
         violations = validate_post_completion_command("./mvnw test -pl engine/utils")
         self.assertTrue(violations, "./mvnw test must be rejected like a direct mvn test")
 
-    def test_multiple_method_dtest_selector_rejected(self):
-        # A -Dtest value naming more than one Class#method entry still runs
-        # multiple tests in a single Maven invocation, contradicting the
-        # "one test per invocation" rule -- even though every individual
-        # entry is itself narrow.
+    def test_multiple_method_dtest_selector_accepted(self):
+        # Several named methods are a bounded run, so a -Dtest value listing
+        # them is accepted up to the method cap.
         violations = validate_post_completion_command(
             "mvn -pl engine/utils test -Dtest=FooTest#bar,FooTest#baz")
+        self.assertFalse(violations,
+                         "a -Dtest value naming a few methods names a bounded run")
+
+    def test_multiple_method_dtest_selector_rejected(self):
+        selector = ",".join("FooTest#m%d" % i for i in range(41))
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=" + selector)
         self.assertTrue(violations,
-                         "a -Dtest value naming multiple methods must still be rejected")
+                        "a selector naming more methods than the cap must be rejected")
+
+    def test_dtest_selector_at_the_method_cap_accepted(self):
+        selector = ",".join("FooTest#m%d" % i for i in range(40))
+        violations = validate_post_completion_command(
+            "mvn -pl engine/utils test -Dtest=" + selector)
+        self.assertFalse(violations)
 
     def test_pytest_multiple_node_ids_rejected(self):
         # Even when every positional is an explicit node id, pytest still
@@ -786,31 +819,43 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
             "Please run mvn test to check your change compiles and passes.")
         self.assertTrue(hits)
 
-    def test_bare_dtest_class_mention_rejected(self):
+    def test_bare_dtest_class_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=NotifierRegistryTest to confirm the fix.")
-        self.assertTrue(hits)
+        self.assertEqual([], hits)
 
-    def test_mixed_narrow_and_broad_dtest_mention_rejected(self):
-        # -Dtest=Foo,Bar#baz -- Foo alone is broad even though Bar#baz is
-        # narrow. A single-entry lookahead can find the later "#" and miss
-        # this; every comma-separated entry must be checked individually.
+    def test_mixed_class_and_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=NotifierRegistryTest,OtherTest#testFoo to confirm the fix.")
-        self.assertTrue(hits, "a mixed narrow/broad -Dtest value must still be flagged")
+        self.assertEqual([], hits)
 
     def test_single_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar to confirm the fix.")
         self.assertEqual([], hits)
 
-    def test_multiple_method_dtest_mention_flagged(self):
-        # Every individual entry names a method, but Maven still runs both
-        # in the same invocation -- this is exactly as broad as a bare
-        # class selector for the "one test per invocation" rule.
+    def test_multiple_method_dtest_mention_not_flagged(self):
         hits = lint_prompt_for_broad_test_instructions(
             "Run it with -Dtest=FooTest#bar,BazTest#qux to confirm the fix.")
-        self.assertTrue(hits, "a -Dtest value naming multiple methods must still be flagged")
+        self.assertEqual([], hits)
+
+    def test_bare_dtest_class_mention_rejected(self):
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=A,B,C,D,E,F to confirm the fix.")
+        self.assertTrue(hits, "a mention naming more classes than the cap must be flagged")
+
+    def test_mixed_narrow_and_broad_dtest_mention_rejected(self):
+        # Every comma-separated entry is checked, so a wildcard entry is
+        # caught even when it follows an entry naming a single method.
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=OtherTest#testFoo,Notifier*Test to confirm the fix.")
+        self.assertTrue(hits, "a mixed narrow/broad -Dtest value must still be flagged")
+
+    def test_multiple_method_dtest_mention_flagged(self):
+        selector = ",".join("FooTest#m%d" % i for i in range(41))
+        hits = lint_prompt_for_broad_test_instructions(
+            "Run it with -Dtest=" + selector + " to confirm the fix.")
+        self.assertTrue(hits, "a mention naming more methods than the cap must be flagged")
 
     def test_surefire_plus_method_separator_dtest_mention_flagged(self):
         # "Class#m1+m2" runs both methods in one invocation via Surefire's
@@ -1032,11 +1077,19 @@ class TestLintPromptForBroadTestInstructions(unittest.TestCase):
 
     def test_later_broader_dtest_mention_rejected(self):
         # Only the FIRST -Dtest= occurrence being narrow is not sufficient:
-        # Maven uses the later property value, so a later, broader mention
+        # Maven uses the later property value, so a later, unbounded mention
         # must still be flagged even though the first one alone is narrow.
         hits = lint_prompt_for_broad_test_instructions(
-            "Run mvn test -Dtest=Foo#bar -Dtest=WholeClass to confirm.")
+            "Run mvn test -Dtest=Foo#bar -Dtest=Whole* to confirm.")
         self.assertTrue(hits, "a later, broader -Dtest= mention must still be flagged")
+
+    def test_repeated_bounded_dtest_mention_not_flagged(self):
+        # Whichever value Maven resolves to is bounded, so the mention agrees
+        # with validate_post_completion_command, which accepts the command.
+        command = "mvn test -Dtest=FooTest -Dtest=BarTest"
+        self.assertEqual([], validate_post_completion_command(command))
+        self.assertEqual([], lint_prompt_for_broad_test_instructions(
+            "Run " + command + " to confirm."))
 
 
 class TestTimeoutWrapper(unittest.TestCase):
@@ -1194,6 +1247,68 @@ class TestCiPromptTemplatesLintClean(unittest.TestCase):
             with open(os.path.join(prompts_dir, name), encoding="utf-8") as f:
                 with self.subTest(template=name):
                     self.assertEqual([], lint_prompt_for_broad_test_instructions(f.read()))
+
+
+class TestPostCompletionGateViolations(unittest.TestCase):
+    """The extra post-completion GATE check (``post_completion_gate_violations``)
+    refuses a Maven ``-Dtest`` that names a bare class, even though the shared
+    validator accepts a bounded class selection for interactive surfaces. The
+    gate must see the real ``mvn`` invocation however it is wrapped, so it
+    traverses the same unwrapped/recursive command representation the shared
+    validator uses -- a direct ``mvn test -Dtest=FooTest`` and the same command
+    behind ``timeout``/``env``/``sudo``/``sh -c``/``$VAR`` must all be caught.
+    """
+
+    def test_direct_bare_class_is_flagged(self):
+        violations = post_completion_gate_violations("mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+        self.assertIn("bare", violations[0])
+
+    def test_class_method_selector_is_accepted(self):
+        self.assertEqual(
+            [], post_completion_gate_violations("mvn test -Dtest=FooTest#bar"))
+
+    def test_bounded_class_list_is_still_flagged_for_bare_class(self):
+        # FooTest#bar is fine but BazTest is bare, so the mixed selector is
+        # refused by the stricter gate even though the shared validator counts
+        # it as bounded.
+        violations = post_completion_gate_violations(
+            "mvn test -Dtest=FooTest#bar,BazTest")
+        self.assertEqual(1, len(violations))
+
+    def test_timeout_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "timeout 60 mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+        self.assertIn("bare", violations[0])
+
+    def test_env_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "env FOO=bar mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+
+    def test_sudo_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "sudo mvn test -Dtest=FooTest")
+        self.assertEqual(1, len(violations))
+
+    def test_sh_c_wrapper_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "sh -c 'mvn test -Dtest=FooTest'")
+        self.assertEqual(1, len(violations))
+
+    def test_variable_indirection_does_not_bypass_the_gate(self):
+        violations = post_completion_gate_violations(
+            "cmd='mvn test -Dtest=FooTest'; $cmd")
+        self.assertEqual(1, len(violations))
+
+    def test_wrapped_class_method_selector_is_accepted(self):
+        self.assertEqual([], post_completion_gate_violations(
+            "timeout 60 mvn test -Dtest=FooTest#bar"))
+
+    def test_non_maven_command_clears_the_gate(self):
+        self.assertEqual(
+            [], post_completion_gate_violations("echo done"))
 
 
 if __name__ == "__main__":

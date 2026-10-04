@@ -21,6 +21,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
@@ -255,7 +256,7 @@ public class MetalOperator extends HardwareOperator {
 
 		MetalCommandRunner runner = context.getCommandRunner();
 
-		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
 
 		// Encode this kernel into the runner's command buffer, ordered after dependsOn (the
 		// runner handles both same-runner and foreign dependencies without blocking here). The
@@ -319,7 +320,7 @@ public class MetalOperator extends HardwareOperator {
 				encoder.endEncoding();
 			});
 		}, dependsOn, () -> {
-			KernelMemoryGuard.releaseFor(guard);
+			guard.release();
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
 		});

@@ -83,9 +83,11 @@ def workstream_submit_task(
     RULE, NO BYPASS -- test execution limits: neither ``prompt`` nor
     ``command`` nor ``post_completion_command`` may instruct or run a
     full/whole/entire test suite, a module's whole suite, or a CI shard
-    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select an
-    explicit ``Class#method`` test; a pytest command must select an
-    explicit node id. This is checked mechanically on every submission --
+    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select a
+    bounded set of tests via ``-Dtest`` (at most 5 classes and 40
+    ``Class#method`` tests, no wildcard or other unbounded selector); a
+    pytest command must select one explicit node id. This is checked
+    mechanically on every submission --
     see ``tools/mcp/manager/execution_limits.py`` for the full rule
     and the incident that made it a hard requirement. There is no operator
     escape hatch, unlike ``allow_commit_language`` below.
@@ -95,8 +97,9 @@ def workstream_submit_task(
             default coding-agent job; ignored for a shell-command job. Be
             specific about what files to change, what behavior to implement,
             and any constraints. May not instruct the agent to run a broad
-            test set (see RULE above) -- ask for one narrowly-selected test
-            per invocation instead, or leave verification to CI.
+            test set (see RULE above) -- ask for a bounded selection (a class,
+            a few classes, or named methods up to the caps) instead, or leave
+            verification to CI.
         job_type: The job type to submit. Empty (default) or "coding" submits
             a coding-agent job; "shell" submits a shell-command job that runs
             ``command``. Providing ``command`` implies "shell".
@@ -452,17 +455,38 @@ def workstream_submit_task(
     for field_name, field_value in (("command", command),
                                      ("post_completion_command", post_completion_command)):
         cmd_violations = server.validate_post_completion_command(field_value)
+        # The post-completion command is an unattended gate, so it is held to a
+        # stricter selector rule than a shell job's own command: its Maven
+        # -Dtest must name explicit Class#method tests, not a whole class.
+        # TODO(review): the controller (TestExecutionLimitsSubmissionValidator) has no Java mirror of this gate, so a direct /api/submit can bypass it.
+        if field_name == "post_completion_command":
+            cmd_violations = cmd_violations + server.post_completion_gate_violations(field_value)
         if cmd_violations:
+            # The post-completion command is an unattended gate, so its Maven
+            # -Dtest must name explicit Class#method tests -- a bare class is
+            # not accepted there, even though it is on a shell job's command.
+            if field_name == "post_completion_command":
+                remediation = (
+                    "Rewrite the command to name explicit Class#method tests "
+                    "(Maven: at most 5 classes' worth, 40 Class#method tests "
+                    "total, via -Dtest) or exactly one explicit node id "
+                    "(pytest). A bare class is not accepted for a "
+                    "post_completion_command."
+                )
+            else:
+                remediation = (
+                    "Rewrite the command to select a bounded set of tests "
+                    "(Maven: at most 5 classes and 40 Class#method tests via "
+                    "-Dtest) or exactly one explicit node id (pytest)."
+                )
             return {
                 "ok": False,
                 "error": (
                     "{} would run a broad test set, which agents and job "
                     "submitters may never do -- broad verification belongs to "
                     "CI. There is no bypass for this check.\n\n"
-                    "Violations found:\n  - {}\n\n"
-                    "Rewrite the command to select explicit Class#method tests "
-                    "(Maven) or explicit node ids (pytest), one test per "
-                    "invocation.".format(field_name, "\n  - ".join(cmd_violations))
+                    "Violations found:\n  - {}\n\n{}"
+                    .format(field_name, "\n  - ".join(cmd_violations), remediation)
                 ),
             }
     if post_completion_timeout_seconds:
@@ -471,9 +495,10 @@ def workstream_submit_task(
             return {"ok": False, "error": timeout_err}
     # Broad-test-instruction linter -- rejects prompts that instruct the
     # agent, in English, to run a full/whole/entire suite, a module's
-    # tests, a shard, mvn test without a single-method selector, or
+    # tests, a shard, mvn test without a bounded -Dtest selection, or
     # AR_TEST_GROUP. No bypass flag; unlike allow_commit_language, this
-    # rule has no legitimate exception -- see execution_limits.py.
+    # rule has no legitimate exception -- see execution_limits.py and
+    # prompt_test_lint.py.
     prompt_test_hits = server.lint_prompt_for_broad_test_instructions(prompt)
     if prompt_test_hits:
         lines = []
@@ -483,12 +508,14 @@ def workstream_submit_task(
             "ok": False,
             "error": (
                 "Prompt instructs the agent to run a broad test set. Agents may "
-                "run at most one narrowly-selected test per invocation; broad "
-                "verification (full suites, module suites, CI shards) belongs "
-                "to CI only. There is no bypass for this check.\n\n"
+                "run only a bounded selection per invocation (at most 5 test "
+                "classes and 40 named Class#method tests for Maven, or one "
+                "pytest node id); broad verification (full suites, module "
+                "suites, CI shards) belongs to CI only. There is no bypass for "
+                "this check.\n\n"
                 "Forbidden phrases found:\n" + "\n".join(lines) +
                 "\n\nRewrite the prompt to name the specific failing test(s) to "
-                "run, one at a time."
+                "run as a bounded selection."
             ),
         }
     if max_wall_clock_hours is not None and max_wall_clock_hours < 0:

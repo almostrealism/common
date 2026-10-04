@@ -27,6 +27,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -1690,6 +1691,14 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
+	 * Classpath location of the asset describing parallel (full-sequence) scaled dot-product
+	 * attention: the {@code sdpa_scores} / {@code sdpa_scores_softcapped} and {@code sdpa_context}
+	 * layers the {@link #scaledDotProductAttention} methods build. It is the full-sequence
+	 * counterpart of {@link #ATTENTION_ASSET}'s autoregressive {@code attend} layer.
+	 */
+	String SDPA_ASSET = "/pdsl/sdpa.pdsl";
+
+	/**
 	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
 	 *
 	 * @param batchSize Batch dimension
@@ -1743,13 +1752,22 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
-	 * Computes scaled dot-product attention with optional logit soft-capping and key masking:
-	 * {@code softmax(mask(softcap(Q @ K^T / sqrt(d_k)))) @ V}. Soft-capping squashes the scaled
+	 * Builds scaled dot-product attention over a whole sequence at once from the {@link #SDPA_ASSET}
+	 * asset: {@code softmax(mask(softcap(Q Kᵀ / sqrt(d_k)))) V}. Soft-capping squashes the scaled
 	 * logits to {@code cap * tanh(logit / cap)}; the key mask adds a large negative bias to the
-	 * logits of masked keys so they receive no attention. This is the fully specified overload;
-	 * the others route here with no soft-cap and no mask.
+	 * logits of masked keys so they receive no attention. This is the fully specified overload; the
+	 * others route here with no soft-cap and no mask.
 	 *
-	 * @param batchSize batch dimension
+	 * <p>The structure is not assembled here: the asset's {@code sdpa_scores} (or, when a soft-cap is
+	 * given, {@code sdpa_scores_softcapped}) layer computes the attention weights and its
+	 * {@code sdpa_context} layer their weighted sum of values. This method binds the key and value
+	 * tensors and the mask, selects the plain or soft-capped score layer, and chains the two halves.
+	 * A missing mask is bound as an all-ones mask so the asset's key-mask stage adds zero, which is
+	 * how one asset body serves masked and unmasked callers. When a receptor is supplied the
+	 * attention weights are tapped to it between the two halves, exactly where the Java assembly this
+	 * replaced branched the softmax output.</p>
+	 *
+	 * @param batchSize batch dimension (must be 1)
 	 * @param querySeqLen sequence length for queries
 	 * @param contextSeqLen sequence length for context (keys/values)
 	 * @param heads number of attention heads
@@ -1770,49 +1788,39 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
 
-		TraversalPolicy scoresShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
-		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, dimHead));
+		TraversalPolicy inputShape = shape(batchSize, heads, querySeqLen, dimHead);
+		Producer<PackedCollection> mask =
+				keyMask != null ? keyMask : zeros(shape(batchSize, contextSeqLen)).add(1.0);
 
-		// Q @ K^T: (batch, heads, querySeqLen, dimHead) @ (batch, heads, dimHead, contextSeqLen)
-		//         = (batch, heads, querySeqLen, contextSeqLen)
-		attnBlock.add(layer("qkMatmul",
-				shape(batchSize, heads, querySeqLen, dimHead),
-				scoresShape,
-				q -> scaledDotProduct(c(q), cp(k), true)));
+		Map<String, Object> scoresArgs = new HashMap<>();
+		scoresArgs.put("k", k);
+		scoresArgs.put("key_mask", mask);
+		scoresArgs.put("dim_head", dimHead);
 
-		// Scale by 1/sqrt(dimHead)
-		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
-
+		String scoresLayer;
 		if (logitSoftcap > 0.0) {
-			attnBlock.add(layer("logitSoftcap", scoresShape, scoresShape,
-					logits -> tanh(c(logits).multiply(1.0 / logitSoftcap)).multiply(logitSoftcap)));
+			scoresArgs.put("softcap", logitSoftcap);
+			scoresLayer = "sdpa_scores_softcapped";
+		} else {
+			scoresLayer = "sdpa_scores";
 		}
 
-		if (keyMask != null) {
-			CollectionProducer bias = c(keyMask).add(-1.0).multiply(MASKED_LOGIT_PENALTY);
-			attnBlock.add(layer("keyMask", scoresShape, scoresShape,
-					logits -> add(c(logits), broadcast(scoresShape, 3, bias))));
-		}
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource(SDPA_ASSET);
+		SequentialBlock attention = new SequentialBlock(inputShape);
+		attention.add(loader.buildLayer(program, scoresLayer, inputShape, scoresArgs));
 
-		// Apply softmax over last dimension (key positions) - capture these attention weights
-		SequentialBlock softmaxBlock = new SequentialBlock(scoresShape);
-		softmaxBlock.add(softmax(scoresShape, true));
-
-		// Capture attention weights if requested
+		// Tap the attention weights to the receptor between the score and context halves.
 		if (attentionScores != null) {
-			softmaxBlock.branch().andThen(attentionScores);
+			attention.branch().andThen(attentionScores);
 		}
 
-		attnBlock.add(softmaxBlock);
+		Map<String, Object> contextArgs = new HashMap<>();
+		contextArgs.put("v", v);
+		attention.add(loader.buildLayer(program, "sdpa_context",
+				attention.getOutputShape(), contextArgs));
 
-		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
-		//              = (batch, heads, querySeqLen, dimHead)
-		attnBlock.add(layer("attnValues",
-				scoresShape,
-				shape(batchSize, heads, querySeqLen, dimHead),
-				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
-
-		return attnBlock;
+		return attention;
 	}
 
 	/**

@@ -46,19 +46,101 @@ public class ProjectedGeneTests extends TestSuiteBase {
 		double[] max = { 1.0, 1.0, 7.0, 2.0 };
 
 		PackedCollection source = new PackedCollection(shape(sourceLength));
-		rand(source.getShape()).multiply(2.0).add(-1.0).into(source.traverseEach()).evaluate();
-
 		PackedCollection weights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
+
+		ProjectedGene gene = randomGene(source, weights, min, max);
+		gene.refreshValues();
+		assertMatchesReference(gene, source, weights, min, max);
+	}
+
+	/**
+	 * Tests that the projection kernel {@link ProjectedGene} caches by shape is not
+	 * carried from one compute context into another. A gene of one shape is refreshed
+	 * inside a scoped data context, which is then destroyed; the same shape is then
+	 * refreshed inside a second scoped context and finally under the outer context.
+	 * Each refresh must compile (or reuse) a kernel belonging to a live context and
+	 * produce the reference values, rather than dispatching a kernel compiled under
+	 * the destroyed scope.
+	 */
+	@Test(timeout = 120000)
+	public void refreshValuesAcrossScopedContexts() {
+		double[] min = { -2.0, 0.0, 1.0 };
+		double[] max = { 2.0, 4.0, -1.0 };
+		int sourceLength = 9;
+
+		for (int scope = 0; scope < 3; scope++) {
+			PackedCollection source = new PackedCollection(shape(sourceLength));
+			PackedCollection weights = new PackedCollection(shape(min.length, sourceLength)).traverse(1);
+			ProjectedGene gene = randomGene(source, weights, min, max);
+
+			if (scope < 2) {
+				dc(() -> {
+					gene.refreshValues();
+					return null;
+				});
+			} else {
+				gene.refreshValues();
+			}
+
+			assertMatchesReference(gene, source, weights, min, max);
+		}
+	}
+
+	/**
+	 * Tests that weight initialization, which uses a separately cached normalization
+	 * kernel, also works under a second scoped context after the first one that
+	 * compiled a kernel of the same shape has been destroyed.
+	 */
+	@Test(timeout = 120000)
+	public void initWeightsAcrossScopedContexts() {
+		int factors = 3;
+		int sourceLength = 7;
+
+		PackedCollection firstWeights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
+		ProjectedGene first = new ProjectedGene(new PackedCollection(shape(sourceLength)), firstWeights);
+		dc(() -> {
+			first.initWeights(7L);
+			return null;
+		});
+		assertUnitRows(firstWeights, factors, sourceLength);
+
+		PackedCollection secondWeights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
+		ProjectedGene second = new ProjectedGene(new PackedCollection(shape(sourceLength)), secondWeights);
+		dc(() -> {
+			second.initWeights(11L);
+			return null;
+		});
+		assertUnitRows(secondWeights, factors, sourceLength);
+	}
+
+	/**
+	 * Creates a gene over the given source and weights, both filled with uniformly
+	 * random values in [-1, 1), and applies the given per-factor ranges.
+	 */
+	private ProjectedGene randomGene(PackedCollection source, PackedCollection weights,
+									 double[] min, double[] max) {
+		rand(source.getShape()).multiply(2.0).add(-1.0).into(source.traverseEach()).evaluate();
 		rand(weights.getShape()).multiply(2.0).add(-1.0).into(weights.traverseEach()).evaluate();
 
 		ProjectedGene gene = new ProjectedGene(source, weights);
+		int factors = gene.length();
 		for (int pos = 0; pos < factors; pos++) {
 			gene.setRange(pos, min[pos], max[pos]);
 		}
 
-		gene.refreshValues();
+		return gene;
+	}
 
-		for (int pos = 0; pos < factors; pos++) {
+	/**
+	 * Asserts that every factor of the gene equals the reference formula: the
+	 * source-weights dot product, wrapped by a positive mod into [0, 2), mapped
+	 * through a triangular wave, and scaled into the configured range.
+	 */
+	private void assertMatchesReference(ProjectedGene gene, PackedCollection source,
+										PackedCollection weights, double[] min, double[] max) {
+		int sourceLength = source.getShape().length(0);
+
+		for (int pos = 0; pos < gene.length(); pos++) {
 			double dot = 0.0;
 			for (int i = 0; i < sourceLength; i++) {
 				dot += source.toDouble(i) * weights.valueAt(pos, i);
@@ -71,6 +153,19 @@ public class ProjectedGeneTests extends TestSuiteBase {
 			double expected = min[pos] + value * (max[pos] - min[pos]);
 			double actual = gene.valueAt(pos).getResultant(null).get().evaluate().toDouble(0);
 			assertEquals(expected, actual);
+		}
+	}
+
+	/** Asserts that every row of the weights has unit L2 norm. */
+	private void assertUnitRows(PackedCollection weights, int factors, int sourceLength) {
+		for (int pos = 0; pos < factors; pos++) {
+			double sumSquares = 0.0;
+			for (int i = 0; i < sourceLength; i++) {
+				double w = weights.valueAt(pos, i);
+				sumSquares += w * w;
+			}
+
+			assertEquals(1.0, Math.sqrt(sumSquares));
 		}
 	}
 
@@ -87,16 +182,7 @@ public class ProjectedGeneTests extends TestSuiteBase {
 
 		ProjectedGene gene = new ProjectedGene(source, weights);
 		gene.initWeights(42L);
-
-		for (int pos = 0; pos < factors; pos++) {
-			double sumSquares = 0.0;
-			for (int i = 0; i < sourceLength; i++) {
-				double w = weights.valueAt(pos, i);
-				sumSquares += w * w;
-			}
-
-			assertEquals(1.0, Math.sqrt(sumSquares));
-		}
+		assertUnitRows(weights, factors, sourceLength);
 	}
 
 	/**
