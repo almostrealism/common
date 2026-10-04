@@ -22,6 +22,7 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
@@ -40,6 +41,7 @@ import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -419,7 +421,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * <p>Each perturbed copy is written on the device by an assignment from a snapshot of the
 	 * unperturbed values plus a one-hot step whose position is a device-side counter, so the
 	 * perturbation never computes a value on the host and every kernel is compiled once. The
-	 * original values are restored before returning.</p>
+	 * original values are restored, and the snapshot and compiled perturbations released, before
+	 * returning, including when {@code f} throws.</p>
 	 *
 	 * @param values the collection to perturb, which {@code f} must read
 	 * @param eps    the perturbation step
@@ -439,20 +442,27 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		Runnable minus = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
 		Runnable advance = a(p(position), cp(position).add(1.0)).get();
 
-		double[] result = new double[n];
-		for (int i = 0; i < n; i++) {
-			plus.run();
-			double up = f.getAsDouble();
-			minus.run();
-			double down = f.getAsDouble();
-			result[i] = (up - down) / (2 * eps);
-			advance.run();
-		}
+		try {
+			double[] result = new double[n];
+			for (int i = 0; i < n; i++) {
+				plus.run();
+				double up = f.getAsDouble();
+				minus.run();
+				double down = f.getAsDouble();
+				result[i] = (up - down) / (2 * eps);
+				advance.run();
+			}
 
-		values.setFrom(0, original);
-		original.destroy();
-		position.destroy();
-		return result;
+			return result;
+		} finally {
+			Destroyable.releaseAll(List.<Runnable>of(
+					() -> values.setFrom(0, original),
+					() -> Destroyable.destroy(plus),
+					() -> Destroyable.destroy(minus),
+					() -> Destroyable.destroy(advance),
+					original::destroy,
+					position::destroy));
+		}
 	}
 
 	/**

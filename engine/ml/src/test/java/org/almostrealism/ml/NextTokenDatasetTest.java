@@ -383,6 +383,60 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Destroying a dataset releases its compiled one-hot assignment without disturbing another
+	 * dataset of the same shape, whose assignment is the same kernel and may have been served
+	 * from the instruction cache entry the destroyed dataset compiled: the survivor keeps writing correct targets, both for windows it
+	 * had already started and for windows it builds after the other dataset is gone, and a
+	 * dataset created afterwards compiles and writes correct targets too.
+	 */
+	@Test(timeout = 60000)
+	public void destroyLeavesOtherDatasetsWorking() {
+		int seqLen = 4;
+		NextTokenDataset destroyed = new NextTokenDataset(positions(20), VOCAB, seqLen, seqLen, 0);
+		NextTokenDataset survivor = new NextTokenDataset(positions(40), 10, 30, VOCAB, seqLen, 2, 0);
+
+		destroyed.forEach(window -> { });
+		Iterator<ValueTarget<PackedCollection>> pass = survivor.iterator();
+		assertWindow(survivor, 0, pass.next());
+		destroyed.destroy();
+
+		int w = 1;
+		while (pass.hasNext()) {
+			assertWindow(survivor, w++, pass.next());
+		}
+
+		Assert.assertEquals(survivor.getWindowCount(), w);
+
+		NextTokenDataset later = new NextTokenDataset(positions(20), 3, 20, VOCAB, seqLen, 5, 0);
+		int l = 0;
+		for (ValueTarget<PackedCollection> window : later) {
+			assertWindow(later, l++, window);
+		}
+
+		Assert.assertEquals(later.getWindowCount(), l);
+		survivor.destroy();
+		later.destroy();
+	}
+
+	/**
+	 * Asserts that a window holds the input and one-hot targets of the window of the given index
+	 * of a dataset over position-index tokens: its first input is its start offset, and its first
+	 * and last target rows are the one-hots of the tokens one past the first and last inputs.
+	 *
+	 * @param data   the dataset the window came from
+	 * @param index  the index of the window
+	 * @param window the window to check
+	 */
+	private void assertWindow(NextTokenDataset data, int index, ValueTarget<PackedCollection> window) {
+		int s = data.getWindowStart(index);
+		int seqLen = data.getSeqLen();
+		Assert.assertEquals(s, (int) window.getInput().toDouble(0));
+		Assert.assertEquals(s + seqLen - 1, (int) window.getInput().toDouble(seqLen - 1));
+		Assert.assertEquals(s + 1, hotIndex(window.getExpectedOutput(), 0));
+		Assert.assertEquals(s + seqLen, hotIndex(window.getExpectedOutput(), seqLen - 1));
+	}
+
+	/**
 	 * Returns the sequence {@code 0, 1, ..., length - 1}.
 	 *
 	 * @param length the sequence length

@@ -402,8 +402,9 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 	}
 
 	/**
-	 * Releases every collection this dataset has allocated: the region's tokens, the input and
-	 * output of the one-hot assignment, and the input and target of every window yielded so far.
+	 * Releases everything this dataset has allocated: the region's tokens, the compiled one-hot
+	 * assignment followed by its input and output, and the input and target of every window
+	 * yielded so far.
 	 * Calling this more than once has no further effect, and a pass started afterwards allocates
 	 * and builds its windows again.
 	 */
@@ -417,7 +418,7 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 			}
 		}
 
-		Destroyable.destroy(Arrays.asList(shifted, oneHot, regionTokens));
+		Destroyable.destroy(Arrays.asList(oneHotTarget, shifted, oneHot, regionTokens));
 		slots = null;
 		slotWindows = null;
 		oneHotTarget = null;
