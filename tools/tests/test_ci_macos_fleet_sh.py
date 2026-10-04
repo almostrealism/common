@@ -22,6 +22,7 @@ and the LaunchDaemon template, which must render into a plist that
 every placeholder filled.
 """
 
+import grp
 import os
 import platform
 import plistlib
@@ -236,14 +237,25 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn('DAEMONS_DIR="/Library/LaunchDaemons"', self.src)
 
 
-def _trust_functions():
+    def test_install_screens_every_runner_path_directory(self):
+        """The daemon runs java and mvn from the first RUNNER_PATH directory
+        that has them; finding them there proves nothing about who else could
+        put a program in that directory, so install must walk every entry."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('untrusted_search_path "${RUNNER_USER}" "${RUNNER_PATH}" sudo', install)
+        check = install.find("untrusted_search_path")
+        render = install.find('s|@RUNNER_PATH@|')
+        self.assertLess(check, render, "RUNNER_PATH must be screened before it is rendered into the plist")
+
+
+def _trust_functions(*names):
     """The source of fleet.sh's path-trust helpers, to run outside the script
     (which refuses to run anywhere but macOS)."""
     with open(_MACOS_FLEET) as f:
         src = f.read()
     return "\n".join(
         re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
-        for name in ("untrusted_path", "untrusted_ancestor"))
+        for name in names or ("untrusted_path", "untrusted_ancestor"))
 
 
 class UntrustedAncestorTests(unittest.TestCase):
@@ -331,6 +343,133 @@ untrusted_path() {
 
     def test_repeated_separators_are_ignored(self):
         self.assertEqual("", self._walk(self.dir + "//.env"))
+
+
+class UntrustedSearchPathTests(unittest.TestCase):
+    """Runs ``untrusted_search_path`` against real directories. As in
+    ``UntrustedAncestorTests``, everything above the fixture root is treated as
+    trusted. ``ADMIN_GROUP`` is set to a group the fixture can be given, and
+    ``admin_members`` is replaced so the test decides who the administrators
+    are; the predicate itself runs unchanged.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        functions = _trust_functions("untrusted_ancestor", "untrusted_tool_dir", "untrusted_search_path")
+        functions = functions.replace("untrusted_tool_dir() {", "real_untrusted_tool_dir() {", 1)
+        cls.functions = functions + '''
+untrusted_tool_dir() {
+    case "$2" in
+        "${FIXTURE_ROOT}"|"${FIXTURE_ROOT}"/*) real_untrusted_tool_dir "$@" ;;
+    esac
+}
+admin_members() { echo "${FIXTURE_ADMINS}"; }'''
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+        cls.group = grp.getgrgid(os.getegid()).gr_name
+        cls.other_group = grp.getgrgid(0).gr_name
+
+    def _check(self, search, owner=None, admins="", admin_group=None):
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\n" + self.functions + '\nuntrusted_search_path "$1" "$2"',
+             "_", owner or self.user, search],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, FIXTURE_ROOT=self.root, FIXTURE_ADMINS=admins,
+                     ADMIN_GROUP=admin_group or self.group))
+        if result.returncode != 0:
+            raise AssertionError(result.stderr)
+        return result.stdout.splitlines()
+
+    def setUp(self):
+        # Resolved, so the walk of what an entry resolves to (macOS's /var is
+        # a symlink to /private/var) stays inside the fixture.
+        self.root = os.path.realpath(tempfile.mkdtemp(prefix="fleet-path-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.bin = os.path.join(self.root, "bin")
+        os.mkdir(self.bin)
+        os.chmod(self.bin, 0o755)
+
+    def test_directories_only_root_and_the_runner_can_write_are_trusted(self):
+        self.assertEqual([], self._check(self.bin + ":" + os.path.join(self.root, "missing")))
+
+    def test_a_world_writable_directory_is_reported(self):
+        """The reviewer's case: a /tmp/bin-style entry another account can
+        drop a fake java into."""
+        os.chmod(self.bin, 0o777)
+        self.assertEqual([self.bin], self._check(self.bin, admin_group=self.group))
+
+    def test_group_write_is_allowed_for_the_admin_group_only(self):
+        """Homebrew's bin is group-writable by admin; any other group's write
+        bit lets a non-administrator change it."""
+        os.chmod(self.bin, 0o775)
+        self.assertEqual([], self._check(self.bin, admin_group=self.group))
+        self.assertEqual([self.bin], self._check(self.bin, admin_group=self.other_group))
+
+    def test_a_directory_owned_by_another_account_needs_it_to_be_an_administrator(self):
+        """Owned by neither root nor the runner (the owner passed is root, so
+        the fixture's account is a third one): trusted only when that account
+        is in the admin group, as Homebrew's installing administrator is. The
+        fixture root is that account's too, and is the first component the
+        walk reaches."""
+        self.assertEqual([self.root], self._check(self.bin, owner="root"))
+        self.assertEqual([], self._check(self.bin, owner="root", admins="root " + self.user))
+
+    def test_a_symlinked_entry_is_judged_by_what_it_resolves_to(self):
+        """Homebrew's opt/<formula>/bin entries are symlinks into the Cellar;
+        the link is acceptable, but a link into a writable directory is not."""
+        target = os.path.join(self.root, "cellar")
+        os.mkdir(target)
+        os.chmod(target, 0o755)
+        link = os.path.join(self.root, "opt")
+        os.symlink(target, link)
+        self.assertEqual([], self._check(link))
+        os.chmod(target, 0o777)
+        self.assertEqual([link], self._check(link))
+
+    def test_a_writable_directory_deep_in_a_link_target_is_reported(self):
+        """The entry is a link to cellar/jdk/bin; the link and its final
+        target are both fine, but cellar can be written by others, so the walk
+        of what the entry resolves to must catch it."""
+        cellar = os.path.join(self.root, "cellar")
+        target = os.path.join(cellar, "jdk", "bin")
+        os.makedirs(target)
+        for d in (target, os.path.dirname(target)):
+            os.chmod(d, 0o755)
+        os.chmod(cellar, 0o777)
+        link = os.path.join(self.root, "opt")
+        os.symlink(target, link)
+        self.assertEqual([cellar], self._check(link))
+
+    def test_relative_and_empty_entries_are_reported(self):
+        """They are looked up from whatever directory a job is in."""
+        self.assertEqual(["bin", "(empty entry)"], self._check("bin::" + self.bin))
+
+    def test_every_untrusted_entry_is_reported(self):
+        other = os.path.join(self.root, "other")
+        os.mkdir(other)
+        os.chmod(other, 0o757)
+        os.chmod(self.bin, 0o777)
+        self.assertEqual([self.bin, other], self._check(self.bin + ":" + other))
+
+    def test_a_check_that_cannot_run_reports_rather_than_passes(self):
+        """find refuses an unknown group; that must not read as trusted. The
+        walk stops at the first component, the fixture root."""
+        self.assertEqual([self.root], self._check(self.bin, admin_group="fleet-no-such-group"))
+
+    @unittest.skipUnless(platform.system() == "Darwin", "needs macOS's own directories and admin group")
+    def test_the_host_system_directories_pass_and_tmp_does_not(self):
+        """The real predicate, with the real admin group, on the real host:
+        the system part of the default RUNNER_PATH must pass, or install could
+        never succeed, and /tmp (a symlink to the sticky, world-writable
+        /private/tmp) must not."""
+        functions = _trust_functions("untrusted_path", "untrusted_ancestor", "admin_members",
+                                     "untrusted_tool_dir", "untrusted_search_path")
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\nADMIN_GROUP=admin\n" + functions
+             + '\nuntrusted_search_path "$1" "$2"',
+             "_", self.user, "/usr/bin:/bin:/usr/sbin:/sbin:/tmp/fleet-no-such-bin"],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["/tmp"], result.stdout.splitlines())
 
 
 class ShellSyntaxTests(unittest.TestCase):

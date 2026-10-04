@@ -191,7 +191,7 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 | `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |
-| `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere |
+| `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere. Every entry must be absolute and writable only by root, the runner account and the `admin` group (install refuses e.g. `/tmp/bin`) |
 
 ### "chmod: Unable to change file mode on .../svc.sh: Operation not permitted"
 

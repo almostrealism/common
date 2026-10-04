@@ -71,6 +71,7 @@ PLISTBUDDY="/usr/libexec/PlistBuddy"
 DAEMONS_DIR="/Library/LaunchDaemons"
 LABEL_BASE="com.almostrealism.ci-runner"
 MONITOR_LABEL="com.almostrealism.fleet-collector"
+ADMIN_GROUP="admin"
 ONLINE_TIMEOUT_SECONDS=120
 
 usage() { sed -n '4,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
@@ -204,24 +205,77 @@ untrusted_path() {
 }
 
 # Echoes the first component of the absolute PATH, walking down from / to PATH
-# itself, that untrusted_path flags for OWNER, and nothing when none is. A file
-# is only as safe as the directories above it: whoever can write one of them can
-# rename the file away and put their own in its place. A component that does not
-# exist yet ends the walk, since only the accounts that could write the last
-# existing directory — already checked — can create it. PRIV is as for
-# untrusted_path.
+# itself, that CHECK (default untrusted_path) flags for OWNER, and nothing when
+# none is. A file is only as safe as the directories above it: whoever can write
+# one of them can rename the file away and put their own in its place. A
+# component that does not exist yet ends the walk, since only the accounts that
+# could write the last existing directory — already checked — can create it.
+# PRIV is as for untrusted_path.
 untrusted_ancestor() {
-    local owner="$1" path="$2" priv="${3:-}" prefix="" component
+    local owner="$1" path="$2" priv="${3:-}" check="${4:-untrusted_path}" prefix="" component
     local -a parts
     IFS='/' read -r -a parts <<< "${path#/}"
     for component in "${parts[@]}"; do
         [ -n "${component}" ] || continue
         prefix="${prefix}/${component}"
         ${priv} test -e "${prefix}" -o -L "${prefix}" || return 0
-        if [ -n "$(untrusted_path "${owner}" "${prefix}" "${priv}")" ]; then
+        if [ -n "$("${check}" "${owner}" "${prefix}" "${priv}")" ]; then
             echo "${prefix}"
             return 0
         fi
+    done
+}
+
+# The members of ADMIN_GROUP, one per word. Each can already become root through
+# sudo, so a directory one of them owns is no weaker than one root owns.
+admin_members() {
+    dscl . -read "/Groups/${ADMIN_GROUP}" GroupMembership 2>/dev/null | sed 's/^GroupMembership://'
+}
+
+# Echoes PATH when an account other than root, OWNER or an administrator could
+# change what it holds — it is world-writable, group-writable by a group other
+# than ADMIN_GROUP, or owned by a third account — and nothing otherwise. Looser
+# than untrusted_path on purpose: Homebrew's directories belong to the
+# administrator who installed it and are writable by the admin group, and
+# everyone in that group can already become root. A symlink is judged by the
+# directory it points to (the link itself can only be replaced by whoever can
+# write the directory holding it, which the walk checks first), so an entry under
+# /tmp, a link to the sticky, world-writable /private/tmp, is reported even
+# before it exists. A path the check cannot examine is reported, never passed.
+# PRIV is as for untrusted_path.
+untrusted_tool_dir() {
+    local owner="$1" path="$2" priv="${3:-}" member out
+    local -a owners=(! -user root ! -user "${owner}")
+    for member in $(admin_members); do
+        owners+=(! -user "${member}")
+    done
+    out="$(${priv} find -H "${path}" -maxdepth 0 \
+        \( -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
+           -o \( "${owners[@]}" \) \) -print 2>/dev/null)" || out="${path}"
+    [ -z "${out}" ] || echo "${out}"
+}
+
+# Echoes, one per line, each place on the colon-separated SEARCH path where an
+# account other than root, OWNER or an administrator could put a program: the
+# first untrusted directory on the way to an entry, or to what the entry
+# resolves to, and every entry that is not absolute (an empty or relative entry
+# is looked up from whatever directory a job happens to be in). Nothing when the
+# whole path is safe. PRIV is as for untrusted_path.
+untrusted_search_path() {
+    local owner="$1" search="$2" priv="${3:-}" dir real bad
+    local -a dirs
+    IFS=':' read -r -a dirs <<< "${search}"
+    for dir in "${dirs[@]}"; do
+        case "${dir}" in
+            /*) ;;
+            *) echo "${dir:-(empty entry)}"; continue ;;
+        esac
+        bad="$(untrusted_ancestor "${owner}" "${dir}" "${priv}" untrusted_tool_dir)"
+        if [ -z "${bad}" ]; then
+            real="$(${priv} /bin/sh -c 'cd -P "$1" 2>/dev/null && pwd -P' _ "${dir}" || true)"
+            [ -z "${real}" ] || bad="$(untrusted_ancestor "${owner}" "${real}" "${priv}" untrusted_tool_dir)"
+        fi
+        [ -z "${bad}" ] || echo "${bad}"
     done
 }
 
@@ -402,6 +456,18 @@ cmd_install() {
     else
         echo "  ✓ java, mvn, curl, jq, git, lsof found for ${RUNNER_USER}"
     fi
+
+    # Those tools then run as the runner, from whichever RUNNER_PATH directory
+    # has them first, so finding them is not enough: an entry such as /tmp/bin,
+    # or one another account can write, would let that account put its own java
+    # or mvn ahead of the real one between this check and the next job.
+    local tool_bad
+    # TODO(review): fails open if untrusted_search_path dies (e.g. bash 3.2 set -u on an empty parts array for a "/" entry); the <(...) exit status is never checked.
+    while IFS= read -r tool_bad; do
+        echo "  ✗ ${tool_bad}, on RUNNER_PATH, is not absolute, or can be written by an account other" >&2
+        echo "      than root, ${RUNNER_USER} and the administrators; a program put there would run as ${RUNNER_USER}." >&2
+        errors=$((errors + 1))
+    done < <(untrusted_search_path "${RUNNER_USER}" "${RUNNER_PATH}" sudo)
     if ! xcodebuild -version >/dev/null 2>&1; then
         echo "  ! full Xcode is not selected; jobs that run xcodebuild will fail (see README, Prerequisites)"
     fi
