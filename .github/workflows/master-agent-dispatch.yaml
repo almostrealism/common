@@ -501,9 +501,12 @@ jobs:
   # any fixes.
   #
   # Cadence is shared with the defect hunt via tools/ci/qa-cadence.sh: skip
-  # while a previous round's PR is still open, otherwise run at most once per
-  # MIN_INTERVAL_DAYS. A dispatch with force=true bypasses both; one with this
-  # job's ignore_interval_* input checked bypasses only the interval.
+  # while a round is still in progress (a previous round's PR is open, or its
+  # branch is younger than PR_GRACE_HOURS and has not opened one yet),
+  # otherwise run at most once per MIN_INTERVAL_DAYS. A dispatch with
+  # force=true bypasses all of these; one with this job's ignore_interval_*
+  # input checked bypasses only the interval, so a round still in progress
+  # still holds it off.
   #
   # Intervals: 2 days for the defect hunt, coverage, consolidation and
   # performance rounds; 5 days for the documentation and PDSL rounds.
@@ -549,6 +552,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_docs }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -695,6 +699,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_defect_hunt }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -864,6 +869,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_coverage }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1145,6 +1151,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_consolidation }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1314,6 +1321,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_performance }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1485,6 +1493,7 @@ jobs:
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_pdsl }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

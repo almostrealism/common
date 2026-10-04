@@ -783,9 +783,13 @@ Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
 them also has its own boolean `workflow_dispatch` input,
 `ignore_interval_<job>` (`docs`, `defect_hunt`, `coverage`, `consolidation`,
 `performance`, `pdsl`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
-only the interval: an open PR from the job's previous round still holds it off.
-`force` lifts both. A new QA job gets its own `ignore_interval_*` input;
-`tools/tests/test_master_agent_dispatch.py` checks that each one does.
+only the interval: a round still in progress holds it off either way — a PR from
+the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
+every QA gate) its branch is younger than that window and has not opened one yet.
+Those two checks run before the interval, so they also stop the `Archive previous
+rounds` step from retiring a round whose agent is still working. `force` lifts
+all three. A new QA job gets its own `ignore_interval_*` input and sets
+`PR_GRACE_HOURS`; `tools/tests/test_master_agent_dispatch.py` checks both.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both

@@ -119,6 +119,25 @@ class MasterAgentDispatchTests(unittest.TestCase):
                 seen.append(key)
         self.assertEqual(len(seen), len(set(seen)))
 
+    def test_every_qa_job_sets_a_pr_grace_window(self):
+        """The interval override must not be able to stack on an in-progress round.
+
+        A QA round creates its branch and registers its workstream before its
+        agent opens a PR, so an open-PR check alone cannot see a round that is
+        still working. The interval normally covers that window, but the
+        ignore_interval override lifts it; without PR_GRACE_HOURS the awaiting-PR
+        check (condition 2) is off, so an override would start a duplicate round
+        and the archive step would retire the live one. Each QA gate therefore
+        sets a positive grace window.
+        """
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"]
+                        if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                grace = gate["env"].get("PR_GRACE_HOURS")
+                self.assertIsNotNone(grace, "PR_GRACE_HOURS is not set on the gate")
+                self.assertGreater(int(grace), 0)
+
     def test_every_step_after_the_gate_is_gated(self):
         """An ungated step would run on merges the cadence gate declined."""
         for name, job in self.qa_jobs.items():
