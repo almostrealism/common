@@ -606,6 +606,10 @@ cmd_uninstall() {
 
 # ---------- status / logs ----------
 
+# Describes service $1's launchd state. $2 is the command that would start it,
+# shown when it is installed but stopped; a named instance needs its --instance
+# selector in that command, so the caller passes the right one rather than this
+# printing a bare `start` that would act on the default instance.
 describe_service() {
     local state pid
     read -r state pid <<EOF2
@@ -614,7 +618,7 @@ EOF2
     if [ -n "${state}" ]; then
         echo "  launchd:  ${state}${pid:+, pid ${pid}}"
     elif [ -f "${DAEMONS_DIR}/$1.plist" ]; then
-        echo "  launchd:  stopped (installed; start with: tools/bin/fleet macos start)"
+        echo "  launchd:  stopped (installed; start with: $2)"
     else
         echo "  launchd:  not installed"
     fi
@@ -623,7 +627,7 @@ EOF2
 cmd_status() {
     load_installed
     echo "Runner ${LABEL} (runs as ${RUNNER_USER})"
-    describe_service "${LABEL}"
+    describe_service "${LABEL}" "tools/bin/fleet macos start${INSTANCE:+ --instance ${INSTANCE}}"
     if [ -n "$(runner_processes Listener)" ]; then
         if runner_busy; then
             echo "  activity: running a job"
@@ -648,15 +652,21 @@ cmd_status() {
     echo "  log:      ${LOG_FILE}"
     echo ""
     echo "Monitor ${MONITOR_LABEL}"
-    describe_service "${MONITOR_LABEL}"
+    # The monitor is a single host-wide service, not one per instance, so its
+    # start command carries no --instance selector.
+    describe_service "${MONITOR_LABEL}" "tools/bin/fleet macos start"
 }
 
 cmd_logs() {
     load_installed
+    # The log lives in the runner-owned stage directory, whose home may not be
+    # traversable by the administrator and where the runner could put a symlink
+    # in the log's place. Read it as the runner, the same trust boundary
+    # wait_online uses, rather than following that link as the administrator.
     if [ "${FOLLOW}" = true ]; then
-        exec tail -n 50 -f "${LOG_FILE}"
+        exec sudo -u "${RUNNER_USER}" tail -n 50 -f "${LOG_FILE}"
     fi
-    tail -n 50 "${LOG_FILE}"
+    sudo -u "${RUNNER_USER}" tail -n 50 "${LOG_FILE}"
 }
 
 # ---------- Dispatch ----------

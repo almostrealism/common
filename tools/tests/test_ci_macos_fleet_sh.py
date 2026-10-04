@@ -193,6 +193,38 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn('sudo -u "${RUNNER_USER}" tail -n 30 "${LOG_FILE}"', self.src)
         self.assertNotIn('sudo tail', self.src)
 
+    def test_logs_are_read_as_the_runner(self):
+        """`logs` reads a file in the runner-owned stage directory, whose home
+        may not be traversable by the administrator and where the runner could
+        plant a symlink; both the normal and follow modes must read it as the
+        runner, the same trust boundary wait_online uses."""
+        logs = re.search(r"^cmd_logs\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            logs,
+            r'exec sudo -u "\$\{RUNNER_USER\}" tail -n 50 -f "\$\{LOG_FILE\}"',
+            "the follow mode must tail the log as the runner")
+        self.assertRegex(
+            logs,
+            r'sudo -u "\$\{RUNNER_USER\}" tail -n 50 "\$\{LOG_FILE\}"',
+            "the normal mode must tail the log as the runner")
+        self.assertIsNone(
+            re.search(r'^\s*(exec\s+)?tail -n 50', logs, re.M),
+            "logs must never read the runner-owned log directly as the administrator")
+
+    def test_status_suggests_a_start_command_scoped_to_the_instance(self):
+        """For a non-default instance a stopped runner must be started with its
+        --instance selector; a bare `start` would act on the default instance.
+        The host-wide monitor, which is not per-instance, keeps a bare start."""
+        self.assertRegex(
+            self.src,
+            r'describe_service "\$\{LABEL\}" '
+            r'"tools/bin/fleet macos start\$\{INSTANCE:\+ --instance \$\{INSTANCE\}\}"',
+            "the runner's stopped-start hint must carry the instance selector")
+        self.assertRegex(
+            self.src,
+            r'describe_service "\$\{MONITOR_LABEL\}" "tools/bin/fleet macos start"',
+            "the host-wide monitor's start hint must not carry an instance selector")
+
     def test_start_bootstraps_the_root_owned_installed_plist(self):
         """start must load the root:wheel plist register-daemon.sh installs under
         /Library/LaunchDaemons, never the runner-writable staged copy."""
