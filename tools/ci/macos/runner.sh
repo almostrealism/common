@@ -362,13 +362,38 @@ configure_runner() {
 }
 
 # ---------- Graceful shutdown ----------
+#
+# The agent runs in the background and the loop waits for it, because bash
+# defers a trap until the foreground command returns: with the agent in the
+# foreground, a SIGTERM from `launchctl bootout` would sit pending until the
+# job finished (or launchd gave up and killed everything), and the runner
+# would never deregister. `wait` returns as soon as a trapped signal arrives.
+#
+# RUNNER_MANUALLY_TRAP_SIG makes the agent's run.sh trap SIGTERM and forward
+# it to the listener as the SIGINT it shuts down on. start_agent turns job
+# control on just for the launch: without it, a non-interactive shell starts
+# background commands with SIGINT ignored, the listener inherits that, and
+# the forwarded SIGINT does nothing.
 
+export RUNNER_MANUALLY_TRAP_SIG=1
 RUNNING=true
+RUN_PID=""
+
+start_agent() {
+    set -m
+    ./run.sh &
+    RUN_PID=$!
+    set +m
+}
 
 cleanup() {
     echo ""
     echo "Caught signal, stopping runner..."
     RUNNING=false
+    if [ -n "${RUN_PID}" ] && kill -0 "${RUN_PID}" 2>/dev/null; then
+        kill -TERM "${RUN_PID}" 2>/dev/null || true
+        wait "${RUN_PID}" 2>/dev/null || true
+    fi
     remove_runner
     echo "Runner removed. Exiting."
     exit 0
@@ -402,12 +427,15 @@ while ${RUNNING}; do
         echo "Throttling job to ${RUNNER_CPU_LIMIT} CPUs (${LIMIT_PCT}%)"
         "${SCRIPT_DIR}/cpu-watcher.sh" $$ "${LIMIT_PCT}" &
         WATCHER_PID=$!
-        ./run.sh || true
+        start_agent
+        wait "${RUN_PID}" || true
         kill "${WATCHER_PID}" 2>/dev/null || true
         wait "${WATCHER_PID}" 2>/dev/null || true
     else
-        ./run.sh || true
+        start_agent
+        wait "${RUN_PID}" || true
     fi
+    RUN_PID=""
 
     echo ""
     echo "Job completed. Re-registering for next job..."

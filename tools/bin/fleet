@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─── fleet: one entry point for the self-hosted CI runner fleet ──────
+#
+#   tools/bin/fleet <platform> <command> [options]
+#
+# Platforms:
+#   macos   native runner under launchd       (tools/ci/macos/fleet.sh)
+#           install | uninstall | start | stop | restart | status | logs
+#   rocm    OpenCL runners under systemd/podman (tools/ci/rocm/fleet.sh)
+#           start | stop | restart | status | logs
+#
+# A new Mac, after filling in tools/ci/macos/.env, as an administrator:
+#
+#   tools/bin/fleet macos install --store-from michael@mac-studio
+#
+# `tools/bin/fleet <platform> --help` lists that platform's options.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CI_DIR="$(cd "${SCRIPT_DIR}/../ci" && pwd)"
+
+usage() { sed -n '4,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+PLATFORM="${1:-}"
+case "${PLATFORM}" in
+    ""|-h|--help|help) usage; exit 0 ;;
+    macos|rocm) shift; exec "${CI_DIR}/${PLATFORM}/fleet.sh" "$@" ;;
+    *)
+        echo "Unknown platform: ${PLATFORM}" >&2
+        echo >&2
+        usage >&2
+        exit 2
+        ;;
+esac

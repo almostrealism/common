@@ -418,6 +418,10 @@ under that account when invoked from an admin login, so it works from either:
 ./fleet.sh logs -f          # journal for every instance
 ```
 
+`tools/bin/fleet rocm <command>` is the same thing from the repository root —
+the fleet-wide entry point, which also covers the macOS runner
+(`tools/bin/fleet macos ...`).
+
 `start` delegates to `install-runner.sh --no-build`, so it also refreshes
 `runner.env` and the limits drop-in and applies the memory-headroom check. It
 does not rebuild the image; run `install-runner.sh` for that.

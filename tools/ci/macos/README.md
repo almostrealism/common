@@ -45,22 +45,56 @@ catches up.
 
 ## Quick Start
 
+On a new Mac, as an **administrator** (an account with sudo — not the runner
+account, and not root), from a checkout that account owns:
+
 ```bash
-cd tools/ci/macos
+# 1. Configure: fill in GITHUB_PAT, GITHUB_OWNER, RUNNER_SCOPE/GITHUB_REPO
+cp tools/ci/macos/.env.example tools/ci/macos/.env
+$EDITOR tools/ci/macos/.env
 
-# 1. Configure credentials
-cp .env.example .env
-# Edit .env — fill in GITHUB_PAT, GITHUB_OWNER, GITHUB_REPO
-
-# 2. Start the runner (installs runner agent automatically if needed)
-chmod +x runner.sh
-./runner.sh
+# 2. Install the runner as a LaunchDaemon, and the fleet monitor
+tools/bin/fleet macos install --store-from michael@mac-studio
 ```
 
-The runner registers with GitHub, picks up one job, completes it, then
-re-registers for the next job (ephemeral mode in a loop). If the runner
-dies or its registration is deleted server-side, the script automatically
-removes the local configuration and re-registers.
+That is the whole setup. `install` checks everything before it changes
+anything — the env file, the runner account, the tools the runner needs on
+the PATH the daemon will have, directory ownership, the monitor's credential —
+and reports every problem at once. It then stages `runner.sh` and the env
+file into the runner account's home, registers
+`com.almostrealism.ci-runner` in launchd's system domain (so it starts at
+boot with nobody logged in, and restarts if it dies), waits until GitHub
+lists the runner **online**, and installs the fleet metrics collector
+(`tools/fleet/launchd/install.sh`) as the administrator account.
+
+The runner runs as `worker` unless you pass `--user NAME`. Every job step runs
+as that account too.
+
+`--store-from` names a host that already has the monitor's store credential,
+copied once with `scp`; leave it off on a host where `~/fleet/store-url`
+already exists, or pass `--no-monitor` to install the runner alone.
+
+Day to day:
+
+```bash
+tools/bin/fleet macos status          # launchd state, idle/busy, GitHub registration, monitor
+tools/bin/fleet macos logs [-f]       # the runner's log
+tools/bin/fleet macos stop [--if-idle] # deregister and stop; stays stopped across reboots
+tools/bin/fleet macos start
+tools/bin/fleet macos restart
+tools/bin/fleet macos uninstall       # remove the LaunchDaemon (keeps the runner directory)
+```
+
+**Changing the configuration** — after editing `.env`, or after a `git pull`
+that changes `runner.sh` — means running `install` again. The service runs
+the staged copies under `~worker/ci-runner/`, not your checkout, so neither an
+edit nor a pull reaches it until then; re-installing replaces the running
+service (the old one is stopped and deregistered first).
+
+To run `runner.sh` in the foreground instead, for debugging:
+`./runner.sh [env-file] [runner-dir]`. Do not run it beside the installed
+service with the same runner directory — `install` refuses to, and two
+wrappers would fight over one registration.
 
 ## How It Works
 
@@ -87,8 +121,18 @@ since Docker is not available.
 
 ### Signal Handling
 
-Pressing Ctrl+C (SIGINT) or sending SIGTERM triggers a graceful
-shutdown: the runner deregisters from GitHub before exiting.
+Pressing Ctrl+C (SIGINT) or sending SIGTERM — which is what
+`launchctl bootout`, and so `fleet macos stop`, does — triggers a graceful
+shutdown: the runner agent is stopped and the runner deregisters from GitHub
+before the script exits.
+
+For that to happen promptly, the agent runs in the background while the
+loop `wait`s on it (bash runs a trap only once the foreground command
+returns, so a foreground agent would hold the signal until the job ended),
+in a process group of its own (a background command in a non-interactive
+shell otherwise starts with SIGINT ignored, and the listener stops on
+SIGINT), with `RUNNER_MANUALLY_TRAP_SIG=1` so the agent's own `run.sh`
+turns the SIGTERM it is sent into that SIGINT.
 
 ### Environment
 
@@ -104,116 +148,26 @@ JDK and Maven must already be installed on the system. The
 `actions/setup-java` step in the workflow ensures correct PATH
 configuration.
 
-## Running in the Background
+## Stopping and Restarting
 
-To keep the runner running after closing the terminal:
+`tools/bin/fleet macos stop` boots the service out of launchd. launchd sends
+`runner.sh` SIGTERM; its trap stops the runner agent (which cancels a job in
+progress) and deregisters the runner from GitHub before exiting. Use
+`--if-idle` to stop only when no job is running — runners are ephemeral, so
+waiting for the current job costs nothing. A stopped runner is also disabled
+in launchd, so it stays stopped across reboots until `start`.
 
-```bash
-# Using nohup
-nohup ./runner.sh > runner.log 2>&1 &
+Avoid `pkill` against an installed runner: `KeepAlive` relaunches it at once.
+Avoid `kill -9` in any case — it bypasses the deregister trap and leaves a
+stale offline runner in GitHub. That is not fatal (`runner.sh` clears local
+state before re-registering, and ephemeral runners are cleaned up
+server-side), but a graceful stop is tidier.
 
-# Or using a tmux/screen session
-tmux new-session -d -s ar-runner './runner.sh'
-```
-
-### Restarting After Editing `.env`
-
-`.env` is read **once**, when `runner.sh` starts. The re-registration that
-happens between jobs does **not** re-read it, so changes (e.g. `RUNNER_SCOPE`,
-`RUNNER_CPU_LIMIT`, labels) only take effect after the wrapper script itself is
-restarted — restarting just the runner agent is not enough.
-
-Do this while the runner is **Idle** (not mid-job) so you don't interrupt a build:
-
-```bash
-# 1. See what's running, with PID and parent PID. Match on the script name
-#    (NOT a full path) — when started via `cd ... && nohup ./runner.sh` the
-#    command line is just `bash ./runner.sh`, so a path-prefixed pattern misses
-#    it. Note `runner\.sh` does not match the agent's `run.sh`.
-ps -Ao pid,ppid,command | grep -Ei 'runner\.sh|run\.sh|Runner\.Listener' | grep -v grep
-
-# If more than one `runner.sh` appears you have multiple wrappers running (e.g.
-# nohup was started more than once). Kill them ALL — concurrent wrappers default
-# to the same RUNNER_NAME and clobber each other's registration.
-
-# 2. Stop gracefully — signal BOTH the wrapper loop and the runner agent.
-#    The wrapper's SIGINT trap then deregisters the runner from GitHub.
-pkill -INT -f 'runner\.sh'
-pkill -INT -f 'Runner\.Listener'
-
-# 3. Confirm everything is gone (should print nothing)
-pgrep -fl 'runner\.sh|run\.sh|Runner\.Listener'
-
-# 4. Relaunch ONE instance with the new .env
-nohup ./runner.sh > runner.log 2>&1 &
-
-# 5. Watch startup — the banner echoes the active scope/settings
-tail -f runner.log
-```
-
-Signal **both** processes: the wrapper is normally blocked waiting on the runner
-agent (`Runner.Listener`), so signaling the agent lets that foreground command
-return, after which the wrapper's `cleanup` trap fires and deregisters cleanly.
-Signaling only the agent would just make the loop re-register with the *old*
-in-memory configuration.
-
-A wrapper with parent PID `1` was orphaned by `nohup` (its launching shell
-exited) — that is normal and does **not** mean it is supervised. Only an actual
-launchd service (see below) respawns the runner automatically; if you used
-launchd, stop it with `launchctl bootout` instead of `pkill`, or it will
-relaunch instantly.
-
-Avoid `kill -9` — it bypasses the deregister trap and leaves a stale offline
-runner in GitHub. It is not fatal (the script calls `remove_runner` before
-re-registering, and ephemeral runners are cleaned up server-side), but a graceful
-stop is tidier.
-
-> When switching a runner from repo to org scope (`RUNNER_SCOPE=org`), the
-> graceful stop above deregisters it from its old repo-level registration (the
-> dying process still holds the old env), and the fresh start registers it at the
-> org level. Make sure the runner group grants the relevant repositories access
+> When switching a runner from repo to org scope (`RUNNER_SCOPE=org`),
+> re-running `install` deregisters it from its old repo-level registration
+> (the old process still holds the old env) and registers it at the org
+> level. Make sure the runner group grants the relevant repositories access
 > first, or jobs will queue.
-
-### launchd Service (Auto-Start on Boot)
-
-To start the runner automatically on login, create a launchd plist:
-
-```bash
-cat > ~/Library/LaunchAgents/com.almostrealism.ci-runner.plist << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.almostrealism.ci-runner</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>REPLACE_WITH_FULL_PATH/tools/ci/macos/runner.sh</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/ar-ci-runner.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/ar-ci-runner.log</string>
-</dict>
-</plist>
-PLIST
-
-# Load the service
-launchctl load ~/Library/LaunchAgents/com.almostrealism.ci-runner.plist
-```
-
-This is a LaunchAgent, so it loads when the account logs in and only then. For
-a runner that has to run as an account nobody logs in as — the `worker` runner
-for the native agent — that never happens; use a LaunchDaemon instead, as in
-"Keeping the runner up across reboots" under "Deploying the native macOS
-agent" below.
 
 ## Configuration
 
@@ -230,6 +184,8 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+| `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |
+| `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere |
 
 ### "chmod: Unable to change file mode on .../svc.sh: Operation not permitted"
 
@@ -354,23 +310,29 @@ own identity and its own directory — a second wrapper inheriting the default
 `RUNNER_NAME` would re-register over the first (`config.sh --replace`), leaving
 one runner where you wanted two.
 
-`runner.sh` takes an env file and a runner directory as arguments for exactly
-this:
+`--instance` installs a second, independent service for exactly this — its
+own launchd label (`com.almostrealism.ci-runner-NAME`), env file
+(`tools/ci/macos/NAME.env`), stage directory and runner directory:
 
 ```bash
-# Test runner — the existing setup, unchanged.
-./runner.sh
+# Test runner — the default instance, from .env.
+tools/bin/fleet macos install
 
-# Deploy runner — separate env file, separate directory, separate name.
-cat > ~/.runner-deploy.env <<'ENV'
+# Deploy runner — separate env file, separate name, runs as the Docker account.
+cat > tools/ci/macos/deploy.env <<'ENV'
 GITHUB_PAT=ghp_your_token_here
 GITHUB_OWNER=almostrealism
 GITHUB_REPO=common
 RUNNER_NAME=mac-studio-deploy
 RUNNER_LABELS=self-hosted,macos,ar-deploy
 ENV
-./runner.sh ~/.runner-deploy.env ~/actions-runner-deploy
+tools/bin/fleet macos install --instance deploy --user <docker account> --no-monitor
 ```
+
+Every other command takes the same `--instance deploy`. (`--no-monitor`
+because the monitor is per host, not per runner, and is already installed by
+the first.) `tools/ci/.gitignore` ignores every `*.env` there, so the PAT never
+reaches git.
 
 Confirm the two registrations carry different labels before relying on it:
 
@@ -381,9 +343,8 @@ gh api repos/almostrealism/common/actions/runners \
 
 The deploy runner additionally needs **Docker** available to the runner user
 (`docker compose` v2), plus JDK 17 and Maven, because `rebuild.sh` builds the
-JARs and then composes the images on that host. `.env` is read once at wrapper
-start, so restart the wrapper after changing `RUNNER_LABELS` — re-registration
-between jobs does not re-read it.
+JARs and then composes the images on that host. Re-run `install` after
+changing `RUNNER_LABELS` — the service runs a staged copy of the env file.
 
 ## Deploying the native macOS agent
 
@@ -436,9 +397,9 @@ is "swap the JARs, `kill` the JVM, wait for the new one to connect".
 
 ### Setting up the `worker` runner
 
-Everything below is done **as `worker`** unless it says `sudo`. A
-`sudo su - worker` shell is fine for all of it — nothing here bootstraps into
-worker's own launchd domain.
+Step 1 is done **as `worker`** — a `sudo su - worker` shell is fine, nothing
+here bootstraps into worker's own launchd domain. Steps 2 and 3 are done by
+an administrator.
 
 ```bash
 # as worker
@@ -448,35 +409,32 @@ mkdir -p ~/flowtree-agent
 #    because it holds the Claude Code credential.
 cp /path/to/common/flowtree/runtime/agent/macos/agent.env.example ~/flowtree-agent/agent.env
 $EDITOR ~/flowtree-agent/agent.env    # CLAUDE_CODE_OAUTH_TOKEN, FLOWTREE_ROOT_HOST, FLOWTREE_NODE_ID
+```
 
-# 2. The runner env file. The labels are what route the job here, and the
-#    absolute RUNNER_DIR keeps the runner in worker's home whoever launches it.
-#    Keeping it beside .env in the checkout is fine: tools/ci/.gitignore
-#    ignores every *.env there.
+```bash
+# 2. As the administrator: the runner env file, in your checkout. The labels
+#    are what route the job here.
 cat > /path/to/common/tools/ci/macos/deploy-agent.env <<'ENV'
 GITHUB_PAT=ghp_your_token_here
 GITHUB_OWNER=almostrealism
 GITHUB_REPO=common
 RUNNER_NAME=mac-studio-deploy-agent
 RUNNER_LABELS=self-hosted,macos,ar-deploy-agent
-RUNNER_DIR=/Users/worker/actions-runner-deploy-agent
-RUNNER_WORKDIR=/Users/worker/actions-runner-deploy-agent/_work
 ENV
-
-# 3. Start the runner — as worker, with that env file and directory.
-/path/to/common/tools/ci/macos/runner.sh /path/to/common/tools/ci/macos/deploy-agent.env /Users/worker/actions-runner-deploy-agent
 ```
 
-The startup banner should show `Labels: self-hosted,macos,ar-deploy-agent
-[from .../deploy-agent.env]` and a runner directory under `/Users/worker`. If
-either says `[from built-in default]`, the runner is about to advertise the
-test-lane labels or install into the wrong home; fix the env file before it
-registers.
+```bash
+# 3. Install it as a LaunchDaemon running as worker.
+tools/bin/fleet macos install --instance deploy-agent --no-monitor
+```
 
-The same checkout can run this runner and the `ar-deploy` one (as the Docker
-account, from `.env`) at the same time: `runner.sh` keeps all of a runner's
-state under its `RUNNER_DIR`, and the two carry different labels, so they
-neither collide nor take each other's jobs.
+The preflight prints the labels and the runner directory
+(`/Users/worker/actions-runner-deploy-agent` by default) before it changes
+anything; `install` finishes only once GitHub lists the runner online.
+
+This runner and the `ar-deploy` one can run on the same host at once: each
+instance keeps all of its state under its own `RUNNER_DIR`, and the two carry
+different labels, so they neither collide nor take each other's jobs.
 
 The runner's own account needs, on PATH for a non-interactive shell: JDK 17,
 Maven and `lsof` (ships with macOS). The **agent** it installs additionally
@@ -571,76 +529,20 @@ controller.
 
 ### Keeping the runner up across reboots
 
-The runner has the same problem the agent had — worker has no login session
-in which a LaunchAgent could load — and the same answer. Render a LaunchDaemon
-for it and register it once as an administrator. Unlike the agent's, this
-definition is not generated by any script; keep it where the runner lives.
-It names no `GroupName`: launchd then uses worker's primary group, which is
-also the only value `register-daemon.sh` would accept, so there is nothing
-to get wrong by hand:
+`fleet macos install` already registers the runner as a LaunchDaemon in the
+system domain, which is what a runner for an account with no login session
+needs — the same reason the agent is one. Nothing more to do.
+
+A host set up before `fleet` existed may have a hand-written
+`com.almostrealism.deploy-agent-runner` daemon serving the same runner
+directory. `install` refuses to start beside it (two wrappers would fight over
+one registration); retire it first:
 
 ```bash
-# as worker
-cat > /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.almostrealism.deploy-agent-runner</string>
-    <key>UserName</key>
-    <string>worker</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>/path/to/common/tools/ci/macos/runner.sh</string>
-        <string>/path/to/common/tools/ci/macos/deploy-agent.env</string>
-        <string>/Users/worker/actions-runner-deploy-agent</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <!-- launchd gives a daemon almost no PATH and no HOME. runner.sh
-             needs java, mvn, curl and jq; the job needs git, mvn and lsof.
-             Homebrew's openjdk@17 is keg-only, so its bin is listed
-             explicitly, as the agent's run.sh does; a JDK installed under
-             /Library/Java is found through /usr/bin/java either way. -->
-        <key>PATH</key>
-        <string>/Users/worker/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>HOME</key>
-        <string>/Users/worker</string>
-    </dict>
-    <key>WorkingDirectory</key>
-    <string>/path/to/common</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>ThrottleInterval</key>
-    <integer>30</integer>
-    <key>StandardOutPath</key>
-    <string>/Users/worker/actions-runner-deploy-agent/runner.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/worker/actions-runner-deploy-agent/runner.log</string>
-</dict>
-</plist>
-PLIST
+sudo launchctl bootout system/com.almostrealism.deploy-agent-runner
+sudo rm /Library/LaunchDaemons/com.almostrealism.deploy-agent-runner.plist
+tools/bin/fleet macos install --instance deploy-agent --no-monitor
 ```
-
-```bash
-# as an administrator, from a checkout YOU own — the same script, and the
-# same checks, as for the agent: the plist must run the service as worker
-sudo /path/to/your/common/flowtree/runtime/agent/macos/register-daemon.sh \
-    com.almostrealism.deploy-agent-runner \
-    /Users/worker/actions-runner-deploy-agent/com.almostrealism.deploy-agent-runner.plist
-tail -f /Users/worker/actions-runner-deploy-agent/runner.log
-```
-
-Stop it with `sudo launchctl bootout system/com.almostrealism.deploy-agent-runner`
-(not `pkill`, or `KeepAlive` relaunches it), which also lets the wrapper's
-cleanup trap deregister the runner from GitHub. A runner started by hand
-(step 3 above) and one started this way must not run at once: they share a
-`RUNNER_NAME`, and the second registration replaces the first.
 
 ### Where the agent lives, and how to check on it
 
@@ -748,7 +650,8 @@ gh api repos/almostrealism/common/actions/runners \
 ### Runner doesn't appear in GitHub
 
 - Verify `GITHUB_PAT` has correct scopes (`repo` + `admin:org`)
-- Check terminal output for registration errors
+- `tools/bin/fleet macos status` shows launchd's view and GitHub's;
+  `tools/bin/fleet macos logs` shows registration errors
 - Verify network connectivity to `api.github.com`
 
 ### Jobs don't get picked up
@@ -831,8 +734,12 @@ the `staff` group. See `./sync-music-samples.sh --help` for all options
 ## Files
 
 ```
+tools/bin/fleet             # Entry point: fleet <macos|rocm> <command>
+
 tools/ci/macos/
 ├── .env.example            # Template for environment configuration
+├── fleet.sh                # install/start/stop/status/logs for the LaunchDaemon
+├── com.almostrealism.ci-runner.plist  # LaunchDaemon template fleet.sh renders
 ├── runner.sh               # Setup + run with auto-recovery
 ├── cpu-watcher.sh          # Enforces RUNNER_CPU_LIMIT during a job
 └── README.md               # This file
