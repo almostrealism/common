@@ -17,6 +17,7 @@ that is the directory CI's ``python-tests`` job discovers; it reaches up into
 import importlib.util
 import os
 import sys
+import types
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,21 @@ def _load(relative_path, name):
     spec.loader.exec_module(module)
     return module
 
+
+# ``validate_responses`` imports ``consult`` from the retired consultant
+# ``server`` module, whose import runs live side effects at load time: it
+# instantiates ``DocsRetriever``/``HistoryStore`` (opening the configured
+# history database) and ``create_backend`` (which, under the default ``auto``
+# backend, probes the LLM endpoints over HTTP). The ``from server import
+# consult`` there is guarded only against ``ImportError``, so if the import
+# gets far enough to run those constructors, an unwritable history directory or
+# an unreachable endpoint raises an uncaught error that would abort discovery
+# of the whole common suite. These string-check tests never call ``consult``,
+# so stub the module before loading the script to keep discovery off
+# application storage and live services regardless of what is installed.
+_server_stub = types.ModuleType("server")
+_server_stub.consult = lambda *args, **kwargs: {}
+sys.modules.setdefault("server", _server_stub)
 
 evaluate_dataset = _load("../consultant/scripts/evaluate_dataset.py", "evaluate_dataset")
 validate_responses = _load("../consultant/scripts/validate_responses.py", "validate_responses")
