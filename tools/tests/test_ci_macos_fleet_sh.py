@@ -461,8 +461,7 @@ class MacosFleetSecurityTests(unittest.TestCase):
         """install.sh and the render.sh it calls run with the administrator's
         privileges straight from the checkout, exactly as the register script
         does; a runner-writable one would run as the administrator during the
-        monitor step, so each must be walked before the monitor install runs, and
-        an explicitly set FLEET_PYTHON interpreter held to the same standard."""
+        monitor step, so each must be walked before the monitor install runs."""
         self.assertIn('MONITOR_RENDER="${CHECKOUT}/tools/fleet/launchd/render.sh"', self.src,
                       "the render script path must be defined")
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
@@ -473,8 +472,46 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertNotEqual(-1, walk, "install must walk the monitor code paths")
         self.assertNotEqual(-1, run, "install runs the monitor installer")
         self.assertLess(walk, run, "the code paths must be screened before the monitor install runs")
-        self.assertIn('if [ -n "${FLEET_PYTHON:-}" ]; then', install,
-                      "an explicitly set FLEET_PYTHON interpreter must be screened too")
+
+    def test_the_monitor_home_descendants_are_screened(self):
+        """A trusted FLEET_HOME path does not vouch for what already lives inside
+        it. render.sh writes the rendered plists and the services' logs into
+        ${FLEET_HOME}/launchd and ${FLEET_HOME}/logs and creates the venv under
+        ${FLEET_HOME}/venv, keeping an existing one. A launchd, logs, or venv
+        directory left there from an earlier, looser state that is now a symlink,
+        writable by others, or foreign-owned would let another account redirect
+        what the administrator writes, or run code as the administrator through
+        the venv. Each must be walked before the monitor install runs."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn(
+            'for monitor_dir in "${fleet_home}/launchd" "${fleet_home}/logs" "${fleet_home}/venv"; do',
+            install,
+            "install must screen the launchd, logs and venv descendants of FLEET_HOME")
+        walk = install.find('untrusted_ancestor "${admin_user}" "${monitor_dir}"')
+        self.assertNotEqual(-1, walk, "the descendants must be walked")
+        self.assertLess(walk, install.find('"${MONITOR_INSTALL}" ${STORE_FROM'),
+                        "the descendants must be screened before the monitor install runs")
+
+    def test_the_monitor_interpreter_is_followed_and_screened(self):
+        """install.sh runs ${FLEET_PYTHON:-${FLEET_HOME}/venv/bin/python3} as the
+        administrator. A venv's python3 is a symlink to the base interpreter, so a
+        plain ancestor walk would both falsely reject every real venv and miss a
+        link into attacker-controlled space; the interpreter is followed with
+        untrusted_program, and only once it exists, so a first install (the venv
+        not yet created) is not refused. The effective path covers both an
+        explicit FLEET_PYTHON and the default venv interpreter."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}"', install,
+                      "the interpreter must cover both an explicit FLEET_PYTHON and the default venv")
+        self.assertIn('if sudo test -e "${fleet_python}"; then', install,
+                      "the interpreter must be screened only once it exists, so a first install is not refused")
+        screen = install.find('untrusted_program "${admin_user}" "${fleet_python}" sudo')
+        self.assertNotEqual(-1, screen,
+                            "a venv python3 is a symlink, so the interpreter must be followed, not walked")
+        self.assertIn('*) python_bad="${fleet_python}" ;;', install,
+                      "a relative interpreter path must be refused, not followed from the cwd")
+        self.assertLess(screen, install.find('"${MONITOR_INSTALL}" ${STORE_FROM'),
+                        "the interpreter must be screened before the monitor install runs")
 
     def test_status_refuses_to_source_a_readable_env_file(self):
         """status sources the env file as the invoker just as install does, and

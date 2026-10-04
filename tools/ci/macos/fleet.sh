@@ -858,23 +858,6 @@ EOF
                 errors=$((errors + 1))
             fi
         done
-        # FLEET_PYTHON, when the environment sets it, is the interpreter
-        # install.sh runs as you; the default lives under FLEET_HOME, screened
-        # just below. Hold an explicit one to the same standard — absolute, and
-        # beyond another account's reach to replace.
-        if [ -n "${FLEET_PYTHON:-}" ]; then
-            local python_bad
-            case "${FLEET_PYTHON}" in
-                /*) python_bad="$(untrusted_ancestor "${admin_user}" "${FLEET_PYTHON}")" ;;
-                *) python_bad="${FLEET_PYTHON}" ;;
-            esac
-            if [ -n "${python_bad}" ]; then
-                echo "  ✗ ${python_bad}, on the path to FLEET_PYTHON (${FLEET_PYTHON}), is not absolute, is a" >&2
-                echo "      symlink, is writable by others, or is owned by neither you (${admin_user}) nor root;" >&2
-                echo "      another account could replace the interpreter the monitor install runs as you." >&2
-                errors=$((errors + 1))
-            fi
-        fi
         # install.sh keeps the monitor's database credential in FLEET_HOME and
         # runs FLEET_HOME's Python as you, so a FLEET_HOME the runner account (or
         # any other) could change — one under the runner's home, say — would
@@ -888,6 +871,50 @@ EOF
             echo "  ✗ ${fleet_bad}, on the path to the monitor's FLEET_HOME (${fleet_home}), is not absolute," >&2
             echo "      is a symlink, is writable by others, or is owned by neither you (${admin_user}) nor root;" >&2
             echo "      the monitor's credential kept there would be within another account's reach." >&2
+            errors=$((errors + 1))
+        else
+            # A trusted FLEET_HOME path does not vouch for what already lives
+            # inside it. render.sh writes the rendered plists and the services'
+            # logs into ${FLEET_HOME}/launchd and ${FLEET_HOME}/logs and creates
+            # the venv under ${FLEET_HOME}/venv, keeping an existing one. A
+            # launchd, logs, or venv directory left there from an earlier, looser
+            # state that is now a symlink, writable by others, or owned by another
+            # account would let that account redirect what you write, or (through
+            # the venv) run code as you. Walk each directory the same way;
+            # untrusted_ancestor stops at the first component that does not exist
+            # yet, so a first install passes and render.sh creates them as you.
+            local monitor_dir monitor_dir_bad
+            for monitor_dir in "${fleet_home}/launchd" "${fleet_home}/logs" "${fleet_home}/venv"; do
+                monitor_dir_bad="$(untrusted_ancestor "${admin_user}" "${monitor_dir}")"
+                if [ -n "${monitor_dir_bad}" ]; then
+                    echo "  ✗ ${monitor_dir_bad}, inside FLEET_HOME on the path to ${monitor_dir}, is a symlink, is" >&2
+                    echo "      writable by others, or is owned by neither you (${admin_user}) nor root; another account" >&2
+                    echo "      could redirect what the monitor install writes or run code as you." >&2
+                    errors=$((errors + 1))
+                fi
+            done
+        fi
+        # The interpreter install.sh runs as you is an explicit FLEET_PYTHON, or
+        # ${FLEET_HOME}/venv/bin/python3 by default. A venv's python3 is itself a
+        # symlink to the base interpreter, so this one is not walked like a plain
+        # file: untrusted_program follows the whole link chain and screens every
+        # hop, refusing an interpreter that is writable, or that links into a
+        # place another account controls. It is screened only once it exists — a
+        # first install has yet to create the venv, and render.sh then builds it
+        # as you inside the FLEET_HOME screened above.
+        local fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}" python_bad=""
+        case "${fleet_python}" in
+            /*)
+                if sudo test -e "${fleet_python}"; then
+                    python_bad="$(untrusted_program "${admin_user}" "${fleet_python}" sudo)"
+                fi
+                ;;
+            *) python_bad="${fleet_python}" ;;
+        esac
+        if [ -n "${python_bad}" ]; then
+            echo "  ✗ ${python_bad}, on the path to the monitor interpreter (${fleet_python}), is not absolute, is" >&2
+            echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
+            echo "      another account could replace the interpreter the monitor install runs as you." >&2
             errors=$((errors + 1))
         fi
         # An existing credential is used as it stands, and install.sh restricts
