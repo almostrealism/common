@@ -385,9 +385,10 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	/**
 	 * Destroying a dataset releases its compiled one-hot assignment without disturbing another
 	 * dataset of the same shape, whose assignment is the same kernel and may have been served
-	 * from the instruction cache entry the destroyed dataset compiled: the survivor keeps writing correct targets, both for windows it
-	 * had already started and for windows it builds after the other dataset is gone, and a
-	 * dataset created afterwards compiles and writes correct targets too.
+	 * from the instruction cache entry the destroyed dataset compiled: the survivor keeps writing
+	 * correct targets, both for windows it had already started and for windows it builds after
+	 * the other dataset is gone, and a dataset created afterwards compiles and writes correct
+	 * targets too.
 	 */
 	@Test(timeout = 60000)
 	public void destroyLeavesOtherDatasetsWorking() {
