@@ -458,8 +458,8 @@ dispatch). This is why warm-up runs matter for benchmarking.
 The driver string is parsed by `DriverSelection`
 (`base/hardware/src/main/java/org/almostrealism/hardware/DriverSelection.java`) into two separate sets:
 
-- **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `native`,
-  `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
+- **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `cuda`,
+  `native`, `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
   request: `Hardware` throws a `HardwareException` carrying the offending
   throwable (a `LinkageError` for an unloadable native library, for instance,
   with the library path appearing only in the cause).
@@ -492,7 +492,7 @@ backend must initialize; the wildcard additions are best-effort.
 export AR_HARDWARE_COMPILER_LOGGING=true
 ```
 
-Enables verbose logging of the C/OpenCL/Metal compilation process.
+Enables verbose logging of the C/OpenCL/Metal/CUDA (NVRTC) compilation process.
 
 ### Compilation Timing
 
