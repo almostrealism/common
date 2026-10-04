@@ -307,10 +307,13 @@ class MacosFleetSecurityTests(unittest.TestCase):
         the nearest existing directory when RUNNER_DIR does not exist yet, since
         runner.sh creates it with mkdir -p."""
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('writable_at="$(nearest_existing_dir "${RUNNER_DIR}")"', install,
+                      "install must fall back to the nearest existing directory")
+        helper = re.search(r"^nearest_existing_dir\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertRegex(
-            install,
-            r'while ! sudo test -d "\$\{writable_at\}" && \[ "\$\{writable_at\}" != "/" \]',
-            "the write-access probe must fall back to the nearest existing directory")
+            helper,
+            r'while ! sudo test -d "\$\{dir\}" && \[ "\$\{dir\}" != "/" \]',
+            "nearest_existing_dir must walk up to the nearest existing directory")
         self.assertRegex(
             install,
             r'sudo -u "\$\{RUNNER_USER\}" /bin/sh -c \'test -w "\$1" && test -x "\$1"\'',
@@ -363,6 +366,31 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertLess(check, install.find('echo "  ✓ monitor credential present'),
                         "an exposed credential must not be reported as present")
 
+    def test_an_existing_store_url_must_be_a_regular_file(self):
+        """`test -s` is true for a non-empty directory, so an accidental
+        store-url directory must not be reported as a present credential:
+        install.sh would skip its missing-file branch, chmod the directory, and
+        the collector would fail reading it. A non-regular store-url is refused."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        present = install.find('echo "  ✓ monitor credential present')
+        self.assertIn('elif [ -f "${store_url}" ] && [ -s "${store_url}" ]; then', install,
+                      "a present credential must be a non-empty regular file")
+        self.assertIn('elif [ -e "${store_url}" ] && [ ! -f "${store_url}" ]; then', install,
+                      "an existing non-regular store-url must be refused")
+        self.assertLess(install.find('elif [ -f "${store_url}" ]'), present)
+
+    def test_install_refuses_a_readable_env_file(self):
+        """The env file holds GITHUB_PAT; the ancestor walk permits a readable
+        file, so install must separately refuse one any other account can read,
+        before it is sourced and before anything is staged."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('exposed_secret "${admin_user}" "${ENV_FILE}"')
+        self.assertNotEqual(-1, check, "install must screen the env file for read exposure")
+        self.assertLess(check, install.find('read_env "${ENV_FILE}"'),
+                        "the read-exposure check must run before the env file is sourced")
+        self.assertLess(check, install.find('s|@RUNNER_DIR@|'),
+                        "the env file must be screened before anything is staged")
+
     def test_a_custom_runner_workdir_is_walked_like_the_runner_dir(self):
         """Jobs run as the runner in RUNNER_WORKDIR; one set apart from
         RUNNER_DIR needs the same ancestor walk, and a relative one is refused."""
@@ -374,6 +402,22 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertLess(check, install.find('s|@RUNNER_DIR@|'))
         self.assertIn('*) bad="${ENV_RUNNER_WORKDIR}" ;;', install,
                       "a relative RUNNER_WORKDIR must be refused, not walked from /")
+
+    def test_a_custom_runner_workdir_is_checked_for_runner_write_access(self):
+        """runner.sh runs mkdir -p on RUNNER_WORKDIR unconditionally, so a
+        trusted path the runner cannot create — an existing non-directory, or a
+        missing one under a runner-unwritable parent — must be refused in
+        preflight rather than left to fail after launchd starts retrying."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'sudo test -e "\$\{ENV_RUNNER_WORKDIR\}" && ! sudo test -d "\$\{ENV_RUNNER_WORKDIR\}"',
+            "install must reject a RUNNER_WORKDIR that exists but is not a directory")
+        self.assertIn('workdir_at="$(nearest_existing_dir "${ENV_RUNNER_WORKDIR}")"', install,
+                      "install must probe the nearest existing ancestor of RUNNER_WORKDIR")
+        probe = install.find('nearest_existing_dir "${ENV_RUNNER_WORKDIR}"')
+        self.assertLess(probe, install.find('s|@RUNNER_DIR@|'),
+                        "the write-access probe must run before install proceeds")
 
     def test_runner_dir_scans_stat_through_sudo(self):
         """A RUNNER_DIR under a home the administrator cannot enter reads as

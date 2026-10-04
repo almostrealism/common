@@ -337,6 +337,19 @@ untrusted_search_path() {
     done
 }
 
+# Echoes the nearest existing ancestor of PATH — PATH itself when it exists —
+# descending through directories that do not exist yet. runner.sh creates both
+# RUNNER_DIR and RUNNER_WORKDIR with `mkdir -p`, which needs write and search
+# access on this directory to create the path below it. Stats through sudo so a
+# path under a home the administrator cannot enter still resolves.
+nearest_existing_dir() {
+    local dir="$1"
+    while ! sudo test -d "${dir}" && [ "${dir}" != "/" ]; do
+        dir="$(dirname "${dir}")"
+    done
+    echo "${dir}"
+}
+
 # Echoes the first place on the way to the program at the absolute PATH where an
 # account other than root, OWNER or an administrator could change what runs: a
 # directory or file, judged as untrusted_tool_dir judges them, along PATH itself,
@@ -441,6 +454,9 @@ cmd_install() {
     if [ ! -f "${ENV_FILE}" ]; then
         if [ "${ENV_FILE}" = "${SCRIPT_DIR}/.env" ] && [ -f "${SCRIPT_DIR}/.env.example" ]; then
             cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"
+            # The template becomes the home of GITHUB_PAT once filled in, so
+            # create it owner-only rather than at the copy's default mode.
+            chmod 600 "${ENV_FILE}"
             echo "  Created ${ENV_FILE} from the template. Fill it in and run this again."
         else
             echo "ERROR: ${ENV_FILE} not found. Start from ${SCRIPT_DIR}/.env.example." >&2
@@ -483,6 +499,21 @@ cmd_install() {
         echo "  sourced with your privileges, so anyone else who can change it, or the" >&2
         echo "  directories above it, could run commands as you." >&2
         echo "  Fix: sudo chown ${admin_user} ${env_bad} && chmod go-w ${env_bad}" >&2
+        exit 1
+    fi
+
+    # The walk above keeps another account from *changing* the env file, but it
+    # deliberately allows a readable one. This file holds GITHUB_PAT, the
+    # long-lived registration token, so a group- or world-readable env file (the
+    # mode a plain `cp .env.example .env` leaves behind) lets any local account —
+    # the runner that runs CI jobs among them — read the token straight out of
+    # the checkout, even though the staged copy is written mode 600. Hold the
+    # file itself, not its directories, to the credential standard store-url gets.
+    if [ -n "$(exposed_secret "${admin_user}" "${ENV_FILE}")" ]; then
+        echo "ERROR: ${ENV_FILE} can be read by an account other than you (${admin_user}) and root." >&2
+        echo "  It holds GITHUB_PAT, so any local account — including the runner account that runs CI" >&2
+        echo "  jobs — could read the registration token out of the checkout." >&2
+        echo "  Fix: chmod 600 ${ENV_FILE} (and remove any ACL: chmod -N ${ENV_FILE})." >&2
         exit 1
     fi
 
@@ -687,6 +718,28 @@ EOF
             echo "      another account could change the files jobs run there as ${RUNNER_USER}." >&2
             echo "      Keep RUNNER_WORKDIR under a path only root and ${RUNNER_USER} can write, or unset it." >&2
             errors=$((errors + 1))
+        elif sudo test -e "${ENV_RUNNER_WORKDIR}" && ! sudo test -d "${ENV_RUNNER_WORKDIR}"; then
+            # Exactly as for RUNNER_DIR: runner.sh runs mkdir -p on RUNNER_WORKDIR,
+            # which fails on an existing non-directory, leaving the daemon waiting.
+            echo "  ✗ RUNNER_WORKDIR ${ENV_RUNNER_WORKDIR} exists but is not a directory; runner.sh runs" >&2
+            echo "      mkdir -p there and would fail, leaving the daemon waiting for a runner that never registers." >&2
+            echo "      Fix: remove or relocate ${ENV_RUNNER_WORKDIR}, or set RUNNER_WORKDIR to a directory path." >&2
+            errors=$((errors + 1))
+        else
+            # The ancestor walk proves no other account can swap the path, but not
+            # that the runner can create it. A trusted but runner-unwritable work
+            # directory — or a missing one whose nearest existing ancestor the
+            # runner cannot create in — passes every check above yet breaks the
+            # mkdir -p in runner.sh, exactly as an unwritable RUNNER_DIR does.
+            local workdir_at
+            workdir_at="$(nearest_existing_dir "${ENV_RUNNER_WORKDIR}")"
+            if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${workdir_at}"; then
+                echo "  ✗ ${RUNNER_USER} cannot create RUNNER_WORKDIR ${ENV_RUNNER_WORKDIR}: the nearest existing" >&2
+                echo "      directory ${workdir_at} is not writable by it, so runner.sh's mkdir -p would fail and" >&2
+                echo "      the daemon would wait for a runner that never registers." >&2
+                echo "      Fix: sudo chown ${RUNNER_USER} ${workdir_at}, or choose a RUNNER_WORKDIR it can create." >&2
+                errors=$((errors + 1))
+            fi
         fi
     fi
 
@@ -699,10 +752,8 @@ EOF
     # nearest directory that does exist. Probe as the runner so the answer is
     # the daemon's, not root's; the walk up stats through sudo for the same
     # reason the ownership scan does.
-    local writable_at="${RUNNER_DIR}"
-    while ! sudo test -d "${writable_at}" && [ "${writable_at}" != "/" ]; do
-        writable_at="$(dirname "${writable_at}")"
-    done
+    local writable_at
+    writable_at="$(nearest_existing_dir "${RUNNER_DIR}")"
     if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${writable_at}"; then
         if [ "${writable_at}" = "${RUNNER_DIR}" ]; then
             echo "  ✗ ${RUNNER_USER} cannot write to ${RUNNER_DIR}; runner.sh could not create" >&2
@@ -762,8 +813,16 @@ EOF
             echo "      read or written by another account; CI jobs could take the monitor's credential." >&2
             echo "      Fix: chmod 600 ${store_url} (and remove any ACL: chmod -N ${store_url})" >&2
             errors=$((errors + 1))
-        elif [ -s "${store_url}" ]; then
+        elif [ -f "${store_url}" ] && [ -s "${store_url}" ]; then
             echo "  ✓ monitor credential present (${store_url})"
+        elif [ -e "${store_url}" ] && [ ! -f "${store_url}" ]; then
+            # `test -s` is true for a non-empty directory, so an accidental
+            # store-url directory would otherwise read as a present credential;
+            # install.sh then skips its missing-file branch, chmods the directory,
+            # and the collector fails when it tries to read it as a file.
+            echo "  ✗ ${store_url} exists but is not a regular file; the monitor credential must be a file." >&2
+            echo "      Remove it, or pass --store-from USER@HOST to copy a real credential in." >&2
+            errors=$((errors + 1))
         elif [ -n "${STORE_FROM}" ]; then
             echo "  ✓ monitor credential will be copied from ${STORE_FROM}"
         else

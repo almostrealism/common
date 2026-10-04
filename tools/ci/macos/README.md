@@ -51,6 +51,7 @@ account, and not root), from a checkout that account owns:
 ```bash
 # 1. Configure: fill in GITHUB_PAT, GITHUB_OWNER, RUNNER_SCOPE/GITHUB_REPO
 cp tools/ci/macos/.env.example tools/ci/macos/.env
+chmod 600 tools/ci/macos/.env   # it holds GITHUB_PAT; install refuses a readable one
 $EDITOR tools/ci/macos/.env
 
 # 2. Install the runner as a LaunchDaemon, and the fleet monitor
@@ -185,13 +186,13 @@ All configuration is via the `.env` file (see `.env.example`).
 
 | Variable | Default | Description |
 |---|---|---|
-| `GITHUB_PAT` | *(required)* | GitHub personal access token |
+| `GITHUB_PAT` | *(required)* | GitHub personal access token. The `.env` file holds it, so `fleet macos install` refuses one any account but its owner and root can read (`chmod 600 .env`, and `chmod -N` to drop any ACL) — a readable one would hand the token to every account on the host, the runner account that runs CI jobs among them |
 | `RUNNER_SCOPE` | `repo` | `repo` (single repository) or `org` (shared across the org) |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
 | `GITHUB_REPO` | `common` | Repository name (required for `repo` scope, ignored for `org`) |
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
-| `RUNNER_WORKDIR` | `${RUNNER_DIR}/_work` | Job working directory. Must be absolute; `fleet macos install` refuses one under a directory any account but root and the runner's could change. The `~/actions-runner/_work` in `.env.example` is this default for the default `RUNNER_DIR` |
+| `RUNNER_WORKDIR` | `${RUNNER_DIR}/_work` | Job working directory. Must be absolute; `fleet macos install` refuses one under a directory any account but root and the runner's could change, one that already exists as a non-directory, or one the runner account cannot create (`runner.sh` makes it with `mkdir -p`). The `~/actions-runner/_work` in `.env.example` is this default for the default `RUNNER_DIR` |
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 | `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |
