@@ -88,7 +88,9 @@ def evaluate_record(
 
     params = json.loads(rec.get('input_params', '{}'))
     question = params.get('question', '')
-    response = rec.get('llm_response', '')
+    # An exported history record can carry llm_response: null, so a key default
+    # of '' is not enough; `or ''` normalizes the present-but-null case too.
+    response = rec.get('llm_response') or ''
 
     # Get keywords (provided or heuristic)
     if not keywords:
@@ -150,7 +152,8 @@ def evaluate_with_augmented(
 
     params = json.loads(rec.get('input_params', '{}'))
     question = params.get('question', '')
-    response = rec.get('llm_response', '')
+    # See evaluate_record: normalize a present-but-null llm_response to ''.
+    response = rec.get('llm_response') or ''
 
     keywords = aug.get('curated_keywords', [])
 
