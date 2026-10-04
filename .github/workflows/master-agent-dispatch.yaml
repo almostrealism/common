@@ -60,32 +60,32 @@ on:
         required: false
         default: "false"
       ignore_interval_docs:
-        description: "Run the documentation QA even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the documentation QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
       ignore_interval_defect_hunt:
-        description: "Run the defect hunt even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the defect hunt even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
       ignore_interval_coverage:
-        description: "Run the coverage QA even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the coverage QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
       ignore_interval_consolidation:
-        description: "Run the consolidation QA even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the consolidation QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
       ignore_interval_performance:
-        description: "Run the performance QA even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the performance QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
       ignore_interval_pdsl:
-        description: "Run the PDSL migration QA even if its minimum interval has not passed (an open PR still blocks it)"
+        description: "Run the PDSL migration QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
