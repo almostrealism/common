@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -296,6 +297,41 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 
 		assertEquals(Arrays.toString(new long[] {0, 0}),
 				Arrays.toString(tokenizer.encodeAsLong("<pad><pad>")));
+	}
+
+	/**
+	 * Added-token matching scales with the input and the candidate lengths actually examined, not
+	 * with every prefix substring of the longest candidate. The accepted format permits an added
+	 * token's content to be large, so a non-matching input that merely shares a candidate's first
+	 * character must not trigger a quadratic substring scan; the long token is still matched
+	 * atomically where it genuinely occurs. {@link ByteLevelBPETokenizer#splitAddedTokens} is
+	 * exercised directly here because the concern is independent of any particular vocabulary.
+	 */
+	@Test(timeout = 60000)
+	public void addedTokenMatchingIsNotQuadraticInTokenLength() {
+		StringBuilder token = new StringBuilder();
+		for (int i = 0; i < 500000; i++) token.append('a');
+		Map<String, Integer> added = Collections.singletonMap(token.toString(), 9);
+
+		StringBuilder input = new StringBuilder();
+		for (int i = 0; i < 5000; i++) input.append('a');
+
+		List<Integer> ids = new ArrayList<>();
+		List<String> remainders = new ArrayList<>();
+		ByteLevelBPETokenizer.splitAddedTokens(input.toString(), added, ids, remainders::add);
+
+		assertTrue(ids.isEmpty());
+		assertEquals(1, remainders.size());
+		assertEquals(input.toString(), remainders.get(0));
+
+		List<Integer> matchedIds = new ArrayList<>();
+		List<String> matchedRemainders = new ArrayList<>();
+		ByteLevelBPETokenizer.splitAddedTokens("b" + token + "c", added, matchedIds,
+				matchedRemainders::add);
+
+		assertEquals(Arrays.toString(new Integer[] {9}), Arrays.toString(matchedIds.toArray()));
+		assertEquals(Arrays.toString(new String[] {"b", "c"}),
+				Arrays.toString(matchedRemainders.toArray()));
 	}
 
 	/**

@@ -171,6 +171,14 @@ public abstract class ByteLevelBPETokenizer {
      * matches is handed to {@code remainder}. With no added tokens the whole text is handed on
      * unchanged.
      *
+     * <p>Candidates are indexed by their first character and, within a character, ordered longest
+     * first, so each input position is compared only against the tokens that can begin there and
+     * the leftmost-longest match is the first one found. The comparison uses
+     * {@link String#regionMatches(int, String, int, int)} rather than a per-length substring, so
+     * matching costs the input length plus the actual candidate lengths examined, not every prefix
+     * substring of the window -- a long accepted token no longer makes a non-matching input scan
+     * quadratically or allocate throwaway substrings.</p>
+     *
      * @param text      the text to split
      * @param tokens    added-token content to id; contents must be non-empty
      * @param tokenIds  the destination for matched ids, shared with {@code remainder}
@@ -183,30 +191,37 @@ public abstract class ByteLevelBPETokenizer {
             return;
         }
 
-        int longest = 0;
+        Map<Character, List<String>> byFirstChar = new HashMap<>();
         for (String content : tokens.keySet()) {
-            longest = Math.max(longest, content.length());
+            byFirstChar.computeIfAbsent(content.charAt(0), c -> new ArrayList<>()).add(content);
+        }
+        for (List<String> candidates : byFirstChar.values()) {
+            candidates.sort((a, b) -> Integer.compare(b.length(), a.length()));
         }
 
         int start = 0;
         int i = 0;
         while (i < text.length()) {
-            int length = Math.min(longest, text.length() - i);
-            Integer id = null;
-
-            while (length > 0 && id == null) {
-                id = tokens.get(text.substring(i, i + length));
-                if (id == null) length--;
+            String match = null;
+            List<String> candidates = byFirstChar.get(text.charAt(i));
+            if (candidates != null) {
+                for (String content : candidates) {
+                    if (i + content.length() <= text.length()
+                            && text.regionMatches(i, content, 0, content.length())) {
+                        match = content;
+                        break;
+                    }
+                }
             }
 
-            if (id == null) {
+            if (match == null) {
                 i++;
                 continue;
             }
 
             if (i > start) remainder.accept(text.substring(start, i));
-            tokenIds.add(id);
-            i += length;
+            tokenIds.add(tokens.get(match));
+            i += match.length();
             start = i;
         }
 
