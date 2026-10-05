@@ -778,6 +778,23 @@ built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
+Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
+`consolidation-qa`, `performance-qa`) or 5 (`doc-qa`, `pdsl-qa`). Every one of
+them also has its own boolean `workflow_dispatch` input,
+`ignore_interval_<job>` (`docs`, `defect_hunt`, `coverage`, `consolidation`,
+`performance`, `pdsl`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
+only the interval: a round still in progress holds it off either way — a PR from
+the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
+every QA gate) its branch is younger than that window and has not opened one yet.
+Those two checks run before the interval, so they also stop the `Archive previous
+rounds` step from retiring a round whose agent is still working. `force` lifts
+all three — so, as on the planning jobs, each QA `Archive previous rounds` step
+also carries `reason != 'forced'`: a forced dispatch skips the in-progress
+checks, so it archives nothing rather than retiring a live round beside the one
+it starts. A new QA job gets its own `ignore_interval_*` input, sets
+`PR_GRACE_HOURS`, and guards its archive step against the forced reason;
+`tools/tests/test_master_agent_dispatch.py` checks all three.
+
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
 merge. It runs `qa-cadence.sh` from a step-level env (so the QA-job checks do
@@ -857,7 +874,7 @@ concurrency would couple them — do not add one.
 A `workflow_dispatch` selects a single job via the `agent` input
 (`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
 `consolidation` | `performance` | `pdsl`); `force` is passed through to
-whichever job runs. Each job's
+whichever job runs, and each `ignore_interval_*` input reaches only its own job. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
 to master runs all of them. Adding a job means adding its selector to that
 `options` list as well — a job whose selector is missing can never be dispatched

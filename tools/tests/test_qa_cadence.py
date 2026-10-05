@@ -118,7 +118,7 @@ class _GateTestBase(unittest.TestCase):
         self._git("push", "-q", "origin", name)
 
     def _decide(self, prefix="qa/docs-", interval="7", force="false",
-                grace="0", api=None):
+                grace="0", api=None, ignore_interval="false"):
         """Runs the gate and returns its ``(run, reason)`` outputs.
 
         With ``api`` (a :class:`_PullsStub`) the GitHub queries go to the
@@ -131,6 +131,7 @@ class _GateTestBase(unittest.TestCase):
             "PR_GRACE_HOURS": grace,
             "REMOTE": "origin",
             "FORCE": force,
+            "IGNORE_INTERVAL": ignore_interval,
             # Unset so the open-PR half is skipped; see the module docstring.
             "GITHUB_REPOSITORY": "",
             "GITHUB_TOKEN": "",
@@ -196,6 +197,37 @@ class QaCadenceTests(_GateTestBase):
     def test_force_overrides_a_recent_run(self):
         self._branch("qa/docs-%s-010101" % _stamp(1))
         self.assertEqual(("true", "forced"), self._decide(force="true"))
+
+    def test_interval_override_allows_a_recent_run(self):
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("true", "interval-ignored"),
+                         self._decide(ignore_interval="true"))
+
+    def test_interval_override_does_not_bypass_an_open_pr(self):
+        # Unlike force, the override must never stack a round on an open one.
+        api = _PullsStub(open_heads=["qa/docs-%s-010101" % _stamp(1)])
+        self.addCleanup(api.close)
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "pr-open"),
+                         self._decide(ignore_interval="true", api=api))
+
+    def test_interval_override_does_not_bypass_an_in_progress_round(self):
+        # The override lifts the interval, which on the QA jobs is otherwise
+        # the only spacing. A round whose agent is still working has created
+        # its branch but not opened its PR yet; with a grace window the gate
+        # must still hold off, or the override would start a duplicate and the
+        # archive step that follows run=true would retire the live round.
+        api = _PullsStub()
+        self.addCleanup(api.close)
+        self._branch("qa/docs-" + _full_stamp(1))
+        self.assertEqual(("false", "awaiting-pr"),
+                         self._decide(ignore_interval="true", grace="24", api=api))
+
+    def test_unset_interval_override_keeps_the_interval(self):
+        # A push to master passes the dispatch input through as "".
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "too-recent"),
+                         self._decide(ignore_interval=""))
 
     def test_unparseable_branch_date_does_not_block_forever(self):
         # Erring toward running is right here: a name the gate cannot read
@@ -292,8 +324,11 @@ class AwaitingPrTests(_GateTestBase):
                          self._plan(_PullsStub(open_heads=["qa/docs-20260926-172839"])))
 
     def test_the_condition_is_off_unless_a_window_is_set(self):
-        # The QA jobs do not set PR_GRACE_HOURS; their interval covers the
-        # same window, and their behaviour must not change.
+        # With PR_GRACE_HOURS unset the awaiting-PR condition must not fire at
+        # all: the only query made is the open-PR listing, and a branch without
+        # a PR does not hold the gate off. (The QA jobs do set a window now, so
+        # that the interval override cannot stack on an in-progress round; this
+        # pins the script's behaviour when no window is configured.)
         api = _PullsStub()
         self._branch(self.PREFIX + _full_stamp(0.2))
         self.assertEqual(("true", "due"), self._plan(api, grace="0"))
