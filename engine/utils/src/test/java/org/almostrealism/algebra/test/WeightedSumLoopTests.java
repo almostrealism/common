@@ -23,6 +23,7 @@ import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -32,6 +33,7 @@ import org.junit.Test;
 import java.io.File;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
@@ -51,6 +53,14 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	private boolean loopGeneration;
 
 	/**
+	 * Collections allocated by a test, destroyed after it. {@link MemoryDataAdapter} disables
+	 * finalizer cleanup by default and {@link TestSuiteBase} only clears profiling, so the
+	 * native/device buffers these tests own (for example the 3.6-million-element input of
+	 * {@link #largeOutputLoopMatchesReference()}) are released here rather than left allocated.
+	 */
+	private final List<PackedCollection> allocated = new ArrayList<>();
+
+	/**
 	 * Enables loop generation for these tests, which verify the loop form. The default is off
 	 * (see {@link WeightedSumComputation#enableLoopGeneration}), so it is enabled here and
 	 * restored afterward rather than left on for other tests in the module.
@@ -61,10 +71,31 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		WeightedSumComputation.enableLoopGeneration = true;
 	}
 
-	/** Restores the loop-generation setting changed by {@link #enableLoopGeneration()}. */
+	/**
+	 * Restores the loop-generation setting changed by {@link #enableLoopGeneration()} and
+	 * destroys the collections the test allocated. {@code destroy()} is idempotent, so a
+	 * collection whose memory a computation already released is unaffected.
+	 */
 	@After
 	public void restoreLoopGeneration() {
 		WeightedSumComputation.enableLoopGeneration = loopGeneration;
+
+		for (PackedCollection c : allocated) {
+			c.destroy();
+		}
+		allocated.clear();
+	}
+
+	/**
+	 * Registers a collection for destruction after the test and returns it, so an allocation
+	 * can be tracked inline where it is created.
+	 *
+	 * @param collection  the collection to destroy after the test
+	 * @return the same collection
+	 */
+	private PackedCollection track(PackedCollection collection) {
+		allocated.add(collection);
+		return collection;
 	}
 
 	/**
@@ -79,8 +110,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int kernel = 7;
 		int length = 20;
 
-		PackedCollection input = new PackedCollection(shape(1, 1, channels, length + kernel - 1)).randFill();
-		PackedCollection filter = new PackedCollection(shape(1, filters, channels, kernel)).randFill();
+		PackedCollection input = track(new PackedCollection(shape(1, 1, channels, length + kernel - 1)).randFill());
+		PackedCollection filter = track(new PackedCollection(shape(1, filters, channels, kernel)).randFill());
 
 		double[] in = input.toArray();
 		double[] w = filter.toArray();
@@ -117,8 +148,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 5;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
 		double[] left = a.toArray();
 		double[] right = b.toArray();
@@ -157,8 +188,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int outHeight = height - size + 1;
 		int outWidth = width - size + 1;
 
-		PackedCollection input = new PackedCollection(shape(1, 1, channels, height, width)).randFill();
-		PackedCollection filter = new PackedCollection(shape(1, filters, channels, size, size)).randFill();
+		PackedCollection input = track(new PackedCollection(shape(1, 1, channels, height, width)).randFill());
+		PackedCollection filter = track(new PackedCollection(shape(1, filters, channels, size, size)).randFill());
 
 		double[] in = input.toArray();
 		double[] w = filter.toArray();
@@ -198,8 +229,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	public void loopInsideLargerExpression() {
 		int n = 512;
 
-		PackedCollection a = new PackedCollection(shape(4, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, 3)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(4, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, 3)).randFill());
 
 		double[] left = a.toArray();
 		double[] right = b.toArray();
@@ -211,7 +242,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				cp(a.reshape(1, 4, n, 1)), cp(b.reshape(1, 1, n, 3)));
 		Assert.assertTrue(((WeightedSumComputation) product).isLooped());
 
-		PackedCollection result = product.multiply(2.0).add(1.0).evaluate();
+		PackedCollection result = track(product.multiply(2.0).add(1.0).evaluate());
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -237,8 +268,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 3;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
 		TraversalPolicy resultShape = shape(1, m, 1, p);
 		WeightedSumComputation looped = (WeightedSumComputation) weightedSum("matmul", resultShape,
@@ -273,8 +304,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 3;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n + 1, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n + 1, p)).randFill());
 
 		TraversalPolicy resultShape = shape(1, m, 1, p);
 
@@ -314,8 +345,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 5;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
 		double[] left = a.toArray();
 		double[] right = b.toArray();
@@ -338,7 +369,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		Assert.assertTrue(((WeightedSumComputation) product).isLooped());
 
 		Evaluable<PackedCollection> ev = product.get();
-		PackedCollection destination = new PackedCollection(resultShape);
+		PackedCollection destination = track(new PackedCollection(resultShape));
 		destination.fill(100.0);
 		ev.into(destination).evaluate();
 
@@ -356,8 +387,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 1;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
 		double[] left = a.toArray();
 		double[] right = b.toArray();
@@ -391,8 +422,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		int n = 300;
 		int p = 5;
 
-		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
-		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
 		OperationProfileNode profile = new OperationProfileNode("weighted_sum_loop");
 		Hardware.getLocalHardware().assignProfile(profile);
@@ -404,7 +435,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 					shape(1, 1, n, 1), shape(1, 1, n, 1),
 					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
 			Assert.assertTrue(((WeightedSumComputation) product).isLooped());
-			product.get().evaluate();
+			Evaluable<PackedCollection> ev = product.get();
+			track(ev.evaluate());
 		} finally {
 			Hardware.getLocalHardware().assignProfile(null);
 		}
@@ -421,7 +453,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		CollectionProducer looped = sum.get();
 		Assert.assertTrue(label + " should be summed by a loop",
 				((WeightedSumComputation) looped).isLooped());
-		assertMatches(label + " (loop)", expected, looped.evaluate());
+		assertMatches(label + " (loop)", expected, track(looped.evaluate()));
 
 		int threshold = WeightedSumComputation.loopThreshold;
 		WeightedSumComputation.loopThreshold = Integer.MAX_VALUE;
@@ -430,7 +462,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 			CollectionProducer single = sum.get();
 			Assert.assertFalse(label + " should be summed by a single expression",
 					((WeightedSumComputation) single).isLooped());
-			assertMatches(label + " (single expression)", expected, single.evaluate());
+			assertMatches(label + " (single expression)", expected, track(single.evaluate()));
 		} finally {
 			WeightedSumComputation.loopThreshold = threshold;
 		}
