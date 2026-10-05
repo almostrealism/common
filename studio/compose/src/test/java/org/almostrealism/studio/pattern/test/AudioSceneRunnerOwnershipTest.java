@@ -31,6 +31,7 @@ import org.junit.Test;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Verifies the ownership contract between an {@link AudioScene} and the real-time runners
@@ -167,6 +168,87 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 		} finally {
 			scene.destroy();
 			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * {@link AudioSceneRealtimeRunner#render} must release the runner it built when a later
+	 * construction step fails, not only when the render completes. The runner built here is
+	 * wrapped so that compiling its tick operation throws — after the runner exists and its
+	 * setup operation is compiled, but before rendering starts. The original failure must
+	 * propagate unchanged and the runner must no longer be live. Before the fix the runner
+	 * and compiled operations were created outside the guarded scope, so such a failure left
+	 * the runner tracked (and its buffers, plus the output's timeline buffer, allocated).
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void renderReleasesRunnerWhenConstructionFails() {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = false;
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			applyGenome(scene, 1);
+			AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(scene) {
+				@Override
+				public TemporalCellular create(MultiChannelAudioOutput output,
+											   List<Integer> channels, int bufferSize) {
+					return new FailingTick(super.create(output, channels, bufferSize));
+				}
+			};
+
+			IllegalStateException thrown = null;
+			try {
+				runners.render(0, BUFFER_SIZE, "results/render-construction-failure.wav", BUFFER_SIZE);
+			} catch (IllegalStateException e) {
+				thrown = e;
+			}
+
+			assertTrue("the tick compilation failure should propagate", thrown != null);
+			assertEquals(FailingTick.MESSAGE, thrown.getMessage());
+			assertEquals("a runner whose render failed during construction must be released",
+					0, runners.getLiveRunnerCount());
+		} finally {
+			scene.destroy();
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * Delegates to a real runner except that compiling its tick operation throws. Destroying
+	 * it destroys the real runner, so ownership is observable through the live-runner count.
+	 */
+	private static class FailingTick implements TemporalCellular, Destroyable {
+		/** Message of the simulated tick compilation failure. */
+		static final String MESSAGE = "simulated tick compilation failure";
+
+		/** The real runner. */
+		private final TemporalCellular delegate;
+
+		/**
+		 * Wraps the given runner.
+		 *
+		 * @param delegate the real runner
+		 */
+		FailingTick(TemporalCellular delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public Supplier<Runnable> setup() {
+			return delegate.setup();
+		}
+
+		@Override
+		public Supplier<Runnable> tick() {
+			return () -> {
+				throw new IllegalStateException(MESSAGE);
+			};
+		}
+
+		@Override
+		public void destroy() {
+			Destroyable.destroy(delegate);
 		}
 	}
 

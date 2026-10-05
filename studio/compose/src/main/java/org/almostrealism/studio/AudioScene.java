@@ -41,7 +41,6 @@ import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.studio.generative.GenerationProvider;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
-import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
@@ -1302,13 +1301,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * It builds a real-time runner for the one channel, ticks it for {@code frames}
 	 * frames, and flushes the output file.</p>
 	 *
-	 * <p>The runner built here is owned by this method, not by the caller: when the render
-	 * finishes it destroys the runner (which stops its producer thread and frees its ring,
-	 * model, and argument buffers), the compiled setup/tick/write operations, and the
-	 * {@link WaveOutput}, aggregated through {@link Destroyable#releaseAll(Iterable)} so one
-	 * failing release cannot leak the rest. Without this, repeated renders on a long-lived
-	 * scene would accumulate a runner each in {@link #runnerRealTime}'s live-runner tracker
-	 * until the whole scene is destroyed.</p>
+	 * <p>The runner, its compiled operations, and the output are owned by the render, not by
+	 * the caller, and are released when it finishes or fails (see
+	 * {@link AudioSceneRealtimeRunner#render}), so repeated renders on a long-lived scene do
+	 * not accumulate runners in {@link #runnerRealTime}'s live-runner tracker.</p>
 	 *
 	 * @param channel    the channel index to render
 	 * @param frames     the number of audio frames to render
@@ -1316,30 +1312,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @return {@code outputPath}
 	 */
 	public String renderChannel(int channel, int frames, String outputPath) {
-		WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
-		int bufferSize = DEFAULT_REALTIME_BUFFER_SIZE;
-		TemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
-				List.of(channel), bufferSize);
-		int bufferCount = (frames + bufferSize - 1) / bufferSize;
-
-		Runnable setup = cells.setup().get();
-		Runnable tick = cells.tick().get();
-		Runnable write = out.write().get();
-		try {
-			setup.run();
-			for (int b = 0; b < bufferCount; b++) {
-				tick.run();
-			}
-			write.run();
-		} finally {
-			// Compiled ops read the runner and output buffers, so they are released first.
-			Destroyable.releaseAll(List.of(
-					() -> Destroyable.destroy(setup),
-					() -> Destroyable.destroy(tick),
-					() -> Destroyable.destroy(write),
-					() -> Destroyable.destroy(cells),
-					out::destroy));
-		}
+		realtimeRunners.render(channel, frames, outputPath, DEFAULT_REALTIME_BUFFER_SIZE);
 		return outputPath;
 	}
 

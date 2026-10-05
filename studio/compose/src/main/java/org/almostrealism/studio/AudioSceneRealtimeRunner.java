@@ -21,6 +21,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -37,8 +38,11 @@ import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
+import java.io.File;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -850,5 +854,55 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		Model model = new Model(inputShape);
 		model.add(block);
 		return model.compile(false);
+	}
+
+	/**
+	 * Renders a single channel of the scene's current pattern content to a wav file through
+	 * a runner built by {@link #create}, ticking it for {@code frames} frames and then
+	 * flushing the output.
+	 *
+	 * <p>The runner, its compiled setup/tick/write operations, and the {@link WaveOutput} are
+	 * owned by this method. Each is registered as soon as it exists; when the render finishes
+	 * they are released newest first (compiled ops before the runner and output buffers they
+	 * read) through {@link Destroyable#releaseAll(Iterable)}, so one failing release cannot
+	 * leak the rest. If building the runner, compiling an operation, or rendering fails,
+	 * everything built up to that point is released and the original failure is rethrown
+	 * with any release failures suppressed onto it. The runner therefore never remains in
+	 * the live-runner set after this method returns or throws.</p>
+	 *
+	 * @param channel    the channel index to render
+	 * @param frames     the number of audio frames to render
+	 * @param outputPath the wav file path to write
+	 * @param bufferSize frames per buffer
+	 */
+	public void render(int channel, int frames, String outputPath, int bufferSize) {
+		int bufferCount = (frames + bufferSize - 1) / bufferSize;
+		Deque<Object> owned = new ArrayDeque<>();
+
+		try {
+			WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
+			owned.push(out);
+			TemporalCellular cells = create(new MultiChannelAudioOutput(out), List.of(channel), bufferSize);
+			owned.push(cells);
+			Runnable setup = cells.setup().get();
+			owned.push(setup);
+			Runnable tick = cells.tick().get();
+			owned.push(tick);
+			Runnable write = out.write().get();
+			owned.push(write);
+
+			setup.run();
+			for (int b = 0; b < bufferCount; b++) {
+				tick.run();
+			}
+			write.run();
+		} catch (RuntimeException | Error e) {
+			Destroyable.destroyAll(e, owned);
+			throw e;
+		}
+
+		Destroyable.releaseAll(owned.stream()
+				.map(resource -> (Runnable) () -> Destroyable.destroy(resource))
+				.collect(Collectors.toList()));
 	}
 }
