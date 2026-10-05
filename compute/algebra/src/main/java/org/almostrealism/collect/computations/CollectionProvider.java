@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Multiple;
@@ -23,6 +26,8 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+
+import java.util.Objects;
 
 /**
  * A specialized {@link Provider} for {@link PackedCollection}s that provides efficient
@@ -147,24 +152,96 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * created once and can be evaluated multiple times efficiently.</p>
 	 *
 	 * <p>The destination must be a {@link MemoryData} object (such as {@link PackedCollection})
-	 * with sufficient capacity to hold the source collection's data. The size is determined
-	 * by the source collection's {@link io.almostrealism.collect.TraversalPolicy}.</p>
+	 * with sufficient capacity to hold the source collection's data. Because the copy moves
+	 * backing memory, the number of elements transferred is the source policy's
+	 * {@link TraversalPolicy#getTotalInputSize() total input size} — one element per input
+	 * position — rather than its logical {@link TraversalPolicy#getTotalSize() total size};
+	 * the two agree for a regular shape or a permutation, but a rated or repeated view has
+	 * fewer input elements than it reports as its total size.</p>
 	 *
 	 * <p><strong>Performance:</strong> The copy operation uses direct memory transfer,
 	 * avoiding intermediate buffers and enabling efficient data movement even for large
 	 * collections.</p>
 	 *
+	 * <p><strong>The copy is flat.</strong> It moves the source's backing memory, so it reproduces
+	 * the source's values only where the source reads its memory in order. A provider over a view —
+	 * a collection whose indices map onto someone else's buffer, as a permuted shape, an explicit
+	 * {@link io.almostrealism.collect.TraversalOrdering}, or an ordering inherited from a delegate
+	 * does — is refused rather than copied, because a flat copy of such a source silently yields
+	 * backing-memory order and loses the mapping. A regular shape can still carry such an ordering
+	 * through its {@link MemoryData#getMemOrdering() memory ordering}, so that is inspected in
+	 * addition to the shape.</p>
+	 *
+	 * <p>A destination carrying the identical mapping is accepted <em>only</em> when the mapping is a
+	 * rate or dimension mapping — a rated, repeated, or permuted shape with no
+	 * {@link io.almostrealism.collect.TraversalOrdering}. Such a mapping reads its backing memory as a
+	 * dense run of {@link TraversalPolicy#getTotalInputSize() total input size} elements, so the same
+	 * mapping on both sides preserves the correspondence under a flat copy. A
+	 * {@link io.almostrealism.collect.TraversalOrdering} — whether carried on the shape or inherited
+	 * through the delegate — is refused even when both sides share it, because the ordering can map a
+	 * logical index onto a sparse backing index (for example an explicit order {@code [10, 20]} over a
+	 * two-element shape): a flat transfer of the leading input elements would neither read nor write
+	 * those positions, and a compact ordering can make the transferred length exceed the delegate.
+	 * Identity for the rate/dimension case means matching the traversal ordering and the memory
+	 * ordering as well as the shape, because {@link TraversalPolicy#equals(Object)} compares the
+	 * dimensions, dimension order, rates, and traversal axis, but not the traversal ordering.</p>
+	 *
+	 * <p>The same holds for the destination. The copy writes the destination's backing memory in
+	 * order, so a destination that is itself a view — one carrying a traversal or memory ordering, or
+	 * a rate/dimension mapping the source does not share — is refused: its logical reads would apply
+	 * the mapping to the flat-copied values (an explicit order {@code [2, 0, 3, 1]} would read back
+	 * {@code [source[2], source[0], source[3], source[1]]}), and a rated destination backs fewer
+	 * elements than a regular source transfers.</p>
+	 *
+	 * <p>To move a view's values into regular memory, apply the reordering as a computation rather
+	 * than referencing the view: the permutation then runs as a kernel that writes each destination
+	 * position, which is what reorders the memory.</p>
+	 *
 	 * @param destination The destination {@link MemoryData} buffer (must be a {@link MemoryData} instance)
 	 * @return An {@link Evaluable} that performs the copy and returns the destination
-	 * @throws ClassCastException if destination is not a {@link MemoryData} instance
+	 * @throws ClassCastException       if destination is not a {@link MemoryData} instance
+	 * @throws IllegalArgumentException if the source carries a traversal or memory ordering, or is a
+	 *                                  rate/dimension view whose mapping the destination does not
+	 *                                  share, so a flat copy would discard it; or if the destination
+	 *                                  carries a traversal or memory ordering, or a rate/dimension
+	 *                                  mapping the source does not share
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
+		T value = get();
+		TraversalPolicy shape = shape(value);
+		TraversalPolicy target = destination instanceof Shape ? ((Shape) destination).getShape() : null;
+
+		// equals compares neither the memory ordering nor the traversal ordering, so both are
+		// matched explicitly; a TraversalOrdering is refused even when shared (see javadoc)
+		TraversalOrdering sourceOrder = value.getMemOrdering();
+		TraversalOrdering targetOrder = destination instanceof MemoryData ?
+				((MemoryData) destination).getMemOrdering() : null;
+		boolean sourceOrdersMemory = shape.getOrder() != null || sourceOrder != null;
+		boolean targetOrdersMemory = (target != null && target.getOrder() != null) || targetOrder != null;
+		boolean sharesMapping = shape.equals(target) &&
+				Objects.equals(shape.getOrder(), target.getOrder()) &&
+				Objects.equals(sourceOrder, targetOrder);
+
+		if (sourceOrdersMemory || (!shape.isRegular() && !sharesMapping)) {
+			throw new IllegalArgumentException("A provider of " + shape + " views other memory, so " +
+					"copying it with a flat memory transfer would discard the mapping; " +
+					"apply the reordering as a computation instead of referencing the view");
+		}
+
+		if (targetOrdersMemory || (target != null && !target.isRegular() && !sharesMapping)) {
+			throw new IllegalArgumentException("The destination " + target + " views other memory, so " +
+					"a flat memory transfer into it would be read back through its mapping; " +
+					"copy into regular memory instead of a view");
+		}
+
+		// the copy moves backing memory, so it transfers one element per input position
 		Runnable copy = new MemoryDataCopy("CollectionProvider Evaluate Into",
-				this::get, () -> (MemoryData) destination, shape(get()).getTotalSize()).get();
+				this::get, () -> (MemoryData) destination, shape.getTotalInputSize()).get();
 		return args -> {
 			copy.run();
 			return (T) destination;
 		};
 	}
+
 }
