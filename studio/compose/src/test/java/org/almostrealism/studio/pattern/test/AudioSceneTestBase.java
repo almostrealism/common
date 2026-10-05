@@ -38,6 +38,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -89,10 +90,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * <p>
 	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
 	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
-	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
+	 * hiding the difference between hosts. A GPU runner that declares the library mount via
+	 * {@code AR_RINGS_LIBRARY} (the OpenCL {@code test-media-cl} job) is expected to run the real
+	 * workload; the Metal {@code test-media-mac} job runs the {@link TestUtils#PIPELINE} profile without
+	 * declaring a mount, and the CPU-only Linux runners never have the library. So:
 	 * <ul>
 	 *   <li>library present → return it and run the real workload;</li>
+	 *   <li>library absent on a {@link TestUtils#PIPELINE} profile run that declares no
+	 *       {@code AR_RINGS_LIBRARY} mount → {@code Assume}-skip, matching the curated-library tests
+	 *       that exclude the pipeline profile outright;</li>
 	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
 	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
 	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
@@ -110,6 +116,11 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
 				+ PATTERN_FACTORY + " not available on this host.";
+		boolean pipeline = TestUtils.PIPELINE.equals(TestUtils.getTestProfile());
+		boolean mountDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
+		Assume.assumeFalse(detail + " This is a " + TestUtils.PIPELINE + " profile run whose runner does not"
+				+ " declare a library mount (AR_RINGS_LIBRARY); skipping as the other curated-library tests"
+				+ " excluded from the pipeline profile are.", pipeline && !mountDeclared);
 		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
 				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
 		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
