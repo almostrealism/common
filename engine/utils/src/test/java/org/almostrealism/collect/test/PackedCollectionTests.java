@@ -18,6 +18,7 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.RAM;
@@ -50,6 +51,121 @@ public class PackedCollectionTests extends TestSuiteBase {
 			for (int j = 0; j < 10; j++) {
 				assertEquals(data.valueAt(j, i), transposed.valueAt(i, j));
 			}
+		}
+	}
+
+	/**
+	 * Tests that doubleStream over a permuted (irregular) shape yields elements in logical order,
+	 * for the whole collection, for a range starting and ending mid-row, and for an empty range,
+	 * and that every element agrees with {@link PackedCollection#toDouble(int)}.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamPermutedFollowsLogicalOrder() {
+		// Memory is [3, 4] row-major; the permuted view is [4, 3], so logical (i, j) is memory (j, i).
+		// rowMajor owns the backing allocation; permuted is only a view of it, so closing rowMajor
+		// releases the memory even if an assertion fails partway through.
+		try (PackedCollection rowMajor = pack(
+				0.0, 1.0, 2.0, 3.0,
+				10.0, 11.0, 12.0, 13.0,
+				20.0, 21.0, 22.0, 23.0).reshape(3, 4)) {
+			PackedCollection permuted = rowMajor.reshape(rowMajor.getShape().permute(1, 0));
+			assertFalse(permuted.getShape().isRegular());
+
+			double[] expected = {
+					0.0, 10.0, 20.0,
+					1.0, 11.0, 21.0,
+					2.0, 12.0, 22.0,
+					3.0, 13.0, 23.0};
+
+			double[] all = permuted.doubleStream().toArray();
+			assertEquals(expected.length, all.length);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals(expected[i], all[i]);
+				assertEquals(permuted.toDouble(i), all[i]);
+			}
+
+			double[] middle = permuted.doubleStream(4, 5).toArray();
+			assertEquals(5, middle.length);
+			for (int i = 0; i < middle.length; i++) {
+				assertEquals(expected[4 + i], middle[i]);
+			}
+
+			double[] last = permuted.doubleStream(11, 1).toArray();
+			assertEquals(1, last.length);
+			assertEquals(23.0, last[0]);
+
+			assertEquals(0, permuted.doubleStream(3, 0).count());
+		}
+	}
+
+	/**
+	 * Tests that doubleStream over a short logical range of a sparse permutation &mdash; where the
+	 * requested elements map to backing indices far apart, so their covering span is many times the
+	 * window &mdash; still yields the correct elements in logical order. Such a span exceeds the
+	 * limit at which a single bulk transfer is worthwhile, so the stream reads the window element by
+	 * element rather than allocating and transferring the whole covering span (which for this layout
+	 * would pull the entire backing buffer to return two values). The full stream, whose span equals
+	 * its length, still exercises the bulk-read path and must agree with {@link PackedCollection#toDouble(int)}.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamSparsePermutationBoundsBulkRead() {
+		int cols = 64;
+		int total = 2 * cols;
+
+		// Backing [2, cols] row-major holding 0..total-1; permuted view [cols, 2] maps logical (i, j) to memory (j, i).
+		try (PackedCollection rowMajor = integers(0, total).evaluate().reshape(2, cols)) {
+			PackedCollection permuted = rowMajor.reshape(rowMajor.getShape().permute(1, 0));
+			assertFalse(permuted.getShape().isRegular());
+
+			// Logical indices 0 and 1 map to backing 0 and cols: covering span cols + 1 over a window of two.
+			double expectedFirst = rowMajor.toDouble(0);
+			double expectedSecond = rowMajor.toDouble(cols);
+			double[] firstPair = permuted.doubleStream(0, 2).toArray();
+			assertTrue("a two-element window must return two values", firstPair.length == total / cols);
+			double firstValue = firstPair[0];
+			double secondValue = firstPair[1];
+			assertEquals(expectedFirst, firstValue);
+			assertEquals(expectedSecond, secondValue);
+
+			double[] all = permuted.doubleStream().toArray();
+			assertEquals(total, all.length);
+			for (int i = 0; i < all.length; i++) {
+				assertEquals(permuted.toDouble(i), all[i]);
+			}
+		}
+	}
+
+	/**
+	 * Tests that doubleStream over a rated (repeated) view, whose logical range is far larger than the
+	 * handful of elements its memory backs, streams every logical element in order without first
+	 * materializing one index per logical element. A {@code new TraversalPolicy(3).repeat(0, count)}
+	 * view reports {@code 3 * count} logical elements over only three backing values, so retaining an
+	 * index per logical element would allocate far more than the data it describes. The stream must
+	 * still agree with {@link PackedCollection#toDouble(int)} element for element and, aggregated,
+	 * reproduce each backing value exactly {@code count} times.
+	 */
+	@Test(timeout = 10000)
+	public void doubleStreamRatedViewDoesNotMaterializeIndices() {
+		int count = 300000;
+		TraversalPolicy rated = new TraversalPolicy(3).repeat(0, count);
+
+		try (PackedCollection root = pack(2.0, 3.0, 1.0)) {
+			PackedCollection repeated = new PackedCollection(rated, rated.getTraversalAxis(), root, 0);
+			assertFalse(repeated.getShape().isRegular());
+			assertEquals(3 * count, repeated.getShape().getTotalSize());
+			assertEquals(3, repeated.getMemLength());
+
+			// A prefix must match toDouble, which resolves the same input index per logical element.
+			double[] prefix = repeated.doubleStream(0, 9).toArray();
+			assertEquals(9, prefix.length);
+			for (int i = 0; i < prefix.length; i++) {
+				assertEquals(repeated.toDouble(i), prefix[i]);
+			}
+
+			// The full logical range aggregates to each backing value repeated count times; the stream
+			// completes within the timeout without allocating a per-element index array.
+			double sum = repeated.doubleStream().sum();
+			assertEquals((2.0 + 3.0 + 1.0) * count, sum);
 		}
 	}
 
