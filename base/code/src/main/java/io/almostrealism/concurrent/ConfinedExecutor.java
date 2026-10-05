@@ -24,7 +24,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -123,18 +122,15 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * @param refused the work to run on the calling thread if this executor refuses {@code task}
 	 */
 	public void runOrElse(Runnable task, Runnable refused) {
-		AtomicBoolean started = new AtomicBoolean();
+		Future<?> future = submitIfActive(task);
 
-		try {
-			run(() -> {
-				started.set(true);
-				task.run();
-			});
-		} catch (RuntimeException e) {
-			if (started.get() || isActive()) throw e;
-			if (Thread.currentThread() != confinedThread) awaitTermination();
-			taskScope.accept(refused);
+		if (future != null) {
+			await(future);
+			return;
 		}
+
+		if (Thread.currentThread() != confinedThread) awaitTermination();
+		taskScope.accept(refused);
 	}
 
 	/**
@@ -196,10 +192,28 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 *                               confined thread
 	 */
 	private Future<?> submit(Runnable task) {
+		Future<?> future = submitIfActive(task);
+
+		if (future == null) {
+			throw new IllegalStateException("The executor has been destroyed");
+		}
+
+		return future;
+	}
+
+	/**
+	 * Queues a task on the confined thread, inside the task scope, unless this executor has been
+	 * destroyed. Refusal is decided here, at submission, so a caller never has to infer it from
+	 * how the task later failed.
+	 *
+	 * @param task the work to queue
+	 * @return the queued task, or {@code null} if this executor has been destroyed
+	 * @throws IllegalStateException if called from the confined thread while this executor is
+	 *                               still active
+	 */
+	private Future<?> submitIfActive(Runnable task) {
 		synchronized (submission) {
-			if (destroyed) {
-				throw new IllegalStateException("The executor has been destroyed");
-			}
+			if (destroyed) return null;
 
 			requireOffConfinedThread();
 			return executor.submit(() -> taskScope.accept(task));

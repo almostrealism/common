@@ -156,6 +156,33 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: a submitted task whose task scope fails before ever invoking the task is still
+	 * reported as a failure, even when the executor is destroyed before the caller sees it. The
+	 * task was accepted, so it was not refused, and the fallback must not run in its place.
+	 */
+	@Test(timeout = 10000)
+	public void runOrElseRethrowsScopeFailureAfterDestroy() {
+		AtomicReference<ConfinedExecutor> self = new AtomicReference<>();
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		ConfinedExecutor executor = new ConfinedExecutor(task -> {
+			events.add("scope");
+			self.get().destroy();
+			throw new IllegalStateException("scope failure");
+		});
+		self.set(executor);
+
+		try {
+			executor.runOrElse(() -> events.add("task"), () -> events.add("refused"));
+			Assert.fail("The task scope's failure must be rethrown");
+		} catch (IllegalStateException e) {
+			assertEquals("scope failure", e.getMessage());
+		}
+
+		assertFalse(executor.isActive());
+		assertEquals(List.of("scope"), events);
+	}
+
+	/**
 	 * Once {@link ConfinedExecutor#destroy(Runnable)} has started, work submitted from another
 	 * thread is refused even while the final task is still running, so nothing can run on the
 	 * confined thread after the final task.

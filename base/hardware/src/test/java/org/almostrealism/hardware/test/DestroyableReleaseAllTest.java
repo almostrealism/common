@@ -169,6 +169,46 @@ public class DestroyableReleaseAllTest {
 		Assert.assertEquals(List.of("run", "destroy"), events);
 	}
 
+	/**
+	 * Regression: when both running and destroying a one-shot operation fail, the run failure
+	 * is the one rethrown, with the destroy failure attached as suppressed rather than
+	 * replacing it.
+	 */
+	@Test(timeout = 10000)
+	public void runOnceKeepsRunFailureWhenDestroyAlsoFails() {
+		List<String> events = new ArrayList<>();
+		IllegalStateException runFailure = new IllegalStateException("run failed");
+		IllegalArgumentException destroyFailure = new IllegalArgumentException("destroy failed");
+
+		try {
+			Destroyable.runOnce(new OneShot(events, runFailure, destroyFailure));
+			Assert.fail("The run failure must propagate");
+		} catch (IllegalStateException e) {
+			Assert.assertSame(runFailure, e);
+			Assert.assertEquals(1, e.getSuppressed().length);
+			Assert.assertSame(destroyFailure, e.getSuppressed()[0]);
+		}
+
+		Assert.assertEquals(List.of("run", "destroy"), events);
+	}
+
+	/** A one-shot operation that runs successfully but fails to be destroyed reports the destroy failure. */
+	@Test(timeout = 10000)
+	public void runOnceRethrowsDestroyFailure() {
+		List<String> events = new ArrayList<>();
+		IllegalArgumentException destroyFailure = new IllegalArgumentException("destroy failed");
+
+		try {
+			Destroyable.runOnce(new OneShot(events, null, destroyFailure));
+			Assert.fail("The destroy failure must propagate");
+		} catch (IllegalArgumentException e) {
+			Assert.assertSame(destroyFailure, e);
+			Assert.assertEquals(0, e.getSuppressed().length);
+		}
+
+		Assert.assertEquals(List.of("run", "destroy"), events);
+	}
+
 	/** A one-shot operation that is not {@link Destroyable} is simply run once. */
 	@Test(timeout = 10000)
 	public void runOnceRunsPlainRunnable() {
@@ -183,6 +223,8 @@ public class DestroyableReleaseAllTest {
 		private final List<String> events;
 		/** Thrown by {@link #run()} after it is recorded, or {@code null}. */
 		private final RuntimeException failure;
+		/** Thrown by {@link #destroy()} after it is recorded, or {@code null}. */
+		private final RuntimeException destroyFailure;
 
 		/**
 		 * Creates the operation.
@@ -191,8 +233,20 @@ public class DestroyableReleaseAllTest {
 		 * @param failure thrown by {@link #run()}, or {@code null} to succeed
 		 */
 		private OneShot(List<String> events, RuntimeException failure) {
+			this(events, failure, null);
+		}
+
+		/**
+		 * Creates the operation.
+		 *
+		 * @param events         receives the recorded events
+		 * @param failure        thrown by {@link #run()}, or {@code null} to succeed
+		 * @param destroyFailure thrown by {@link #destroy()}, or {@code null} to succeed
+		 */
+		private OneShot(List<String> events, RuntimeException failure, RuntimeException destroyFailure) {
 			this.events = events;
 			this.failure = failure;
+			this.destroyFailure = destroyFailure;
 		}
 
 		@Override
@@ -204,6 +258,7 @@ public class DestroyableReleaseAllTest {
 		@Override
 		public void destroy() {
 			events.add("destroy");
+			if (destroyFailure != null) throw destroyFailure;
 		}
 	}
 
