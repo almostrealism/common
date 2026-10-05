@@ -454,21 +454,24 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				new TraversalPolicy(config.channels, taps)));
 		args.put("lp_coeffs", new PackedCollection(taps));
 
-		// Static biquad response tables, materialised once and reused by every refresh.
-		args.put("hp_table", biquadResponseTable(true));
-		args.put("lp_table", biquadResponseTable(false));
+		// Static biquad response tables, materialised once and reused by every refresh
+		// and by the wet-filter coefficient gathers below (see wetFilterCoefficients).
+		PackedCollection hpTable = biquadResponseTable(true);
+		PackedCollection lpTable = biquadResponseTable(false);
+		args.put("hp_table", hpTable);
+		args.put("lp_table", lpTable);
 
 		// wet_filter_coeffs: producer([channels, fir_taps])
 		// Mirrors MixdownManager.createCells() — the
 		// FixedFilterChromosome at supplies dynamic IIR filters in
 		// the Java path; the PDSL path renders these as static FIR coefficients
 		// per channel by sampling the gene's HP/LP frequencies at args-build time.
-		args.put("wet_filter_coeffs", wetFilterCoefficients(false));
+		args.put("wet_filter_coeffs", wetFilterCoefficients(false, lpTable));
 
 		// wet_hp_coeffs: producer([channels, fir_taps]) — the high-pass half of the
 		// legacy wet-filter cascade (AudioPassFilter HP then LP); only the
 		// mixdown_master_wet layer declares it, and unknown keys are ignored elsewhere.
-		args.put("wet_hp_coeffs", wetFilterCoefficients(true));
+		args.put("wet_hp_coeffs", wetFilterCoefficients(true, hpTable));
 
 		// transmission: producer([channels, channels])
 		// Mirrors MixdownManager.createEfx():
@@ -745,7 +748,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Prepend y[0] = a1 as the first tap, materialising the table at the build boundary.
 		CollectionProducer response = concat(1, a1.reshape(bins, 1), general);
 		PackedCollection table = new PackedCollection(new TraversalPolicy(bins, taps));
-		runOnce(a(bins * taps, cp(table), response));
+		runOnce(a(bins * taps, cp(table), response), table);
 		return table;
 	}
 
@@ -1015,7 +1018,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				integers(1, reverbTaps + 1).multiply(phiInverse), c(1.0));
 		PackedCollection delays = new PackedCollection(reverbTaps);
 		runOnce(a(reverbTaps, cp(delays),
-				floor(fraction.multiply(hi - lo).add(lo))));
+				floor(fraction.multiply(hi - lo).add(lo))), delays);
 		return delays;
 	}
 
@@ -1047,7 +1050,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		double off = 2.0 / n;
 		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
 		runOnce(a(n * n, cp(matrix),
-				identity(n).multiply(gain).subtract(gain * off)));
+				identity(n).multiply(gain).subtract(gain * off)), matrix);
 		return matrix;
 	}
 
@@ -1262,14 +1265,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * meaningless value that clamped near the floor and left the wet bus over-filtered.
 	 * It also rendered only a low-pass, dropping the cascade's high-pass half.)</p>
 	 *
-	 * @param high {@code true} for the cascade's high-pass half (gene slot 0);
-	 *             {@code false} for the low-pass half (gene slot 1)
+	 * @param high  {@code true} for the cascade's high-pass half (gene slot 0);
+	 *              {@code false} for the low-pass half (gene slot 1)
+	 * @param table the runner-owned biquad response table for this half
+	 *              ({@link #biquadResponseTable(boolean) biquadResponseTable(high)}),
+	 *              reused here rather than re-allocated so it is not leaked on teardown
 	 * @return shape-{@code [channels, fir_taps]} coefficient producer
 	 */
-	private Producer<PackedCollection> wetFilterCoefficients(boolean high) {
+	private Producer<PackedCollection> wetFilterCoefficients(boolean high, PackedCollection table) {
 		final int firTaps = config.filterOrder + 1;
 		FixedFilterChromosome wetFilter = manager.getWetFilter();
-		PackedCollection table = biquadResponseTable(high);
 		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
 			int src = config.channel(ch);
@@ -1432,7 +1437,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				integers(0, channels * layers), c((double) layers));
 		runOnce(a(channels * layers, cp(send),
 				max(c(1.0).subtract(column.multiply(column)),
-						c(0.0))));
+						c(0.0))), send);
 		return send;
 	}
 
@@ -1512,6 +1517,26 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
+	 * Runs a one-shot materialiser (see {@link #runOnce(Supplier)}) that fills the given
+	 * freshly allocated destination collection, releasing that destination if compilation
+	 * or execution throws. The materialisers allocate their destination before running the
+	 * assignment and only hand it to an owner on return, so a throw would otherwise leave it
+	 * with no owner — {@link #buildArgsMap()}'s rollback can only release collections already
+	 * inserted into the map — leaking it on construction failure.
+	 *
+	 * @param operation   the one-shot operation to compile, run, and release
+	 * @param destination the collection the operation fills, released on failure
+	 */
+	private static void runOnce(Supplier<Runnable> operation, PackedCollection destination) {
+		try {
+			runOnce(operation);
+		} catch (RuntimeException | Error e) {
+			destination.destroy();
+			throw e;
+		}
+	}
+
+	/**
 	 * Evaluates a shape-{@code [count]} producer once at argument-build time and returns
 	 * the ceiling of its largest element. Used to size ring state from the current
 	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
@@ -1530,7 +1555,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private int maxEvaluated(Producer<PackedCollection> values, int count) {
 		PackedCollection evaluated = new PackedCollection(count);
-		runOnce(a(count, cp(evaluated), values));
+		runOnce(a(count, cp(evaluated), values), evaluated);
 		double max = 0.0;
 		for (double v : evaluated.toArray(0, count)) {
 			max = Math.max(max, v);
