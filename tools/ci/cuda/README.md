@@ -26,11 +26,17 @@ fleet beside this one. That is safe because the two lanes differ only in
 configuration:
 
 - Both fleets build the same image (`../docker`).
-- Every step of `test` and `test-media` sets `AR_HARDWARE_DRIVER=native`, so no
-  CUDA context is created, and `Hardware.isAvailable(GPU)` reports no GPU. The
-  media tests that require the curated library when a GPU is present (for
-  example `AudioSceneTestBase.requireCuratedLibrary()`) therefore behave exactly
-  as they do on a CPU-only runner.
+- Every step of `test` and `test-media` sets `AR_HARDWARE_DRIVER=native`, so the
+  framework creates no CUDA context and `Hardware.isAvailable(GPU)` reports no
+  GPU. The media tests that require the curated library when a GPU is present
+  (for example `AudioSceneTestBase.requireCuratedLibrary()`) therefore behave
+  exactly as they do on a CPU-only runner.
+- The exception is the CUDA bridge tests in `base/hardware` (`CudaBridgeTest`,
+  `CudaDataContextLifecycleTest`), which use the GPU directly whenever one is
+  present, whatever the driver setting. On these runners they run in `test`
+  as well as `test-cuda`, so the container must be a complete CUDA environment
+  for every job. The preflight checks exactly that, including that NVRTC can
+  find its builtins library through `LD_LIBRARY_PATH`.
 - The CUDA lane is admitted only after `test` and `test-media` finish, so within
   one pipeline the two lanes never compete for these runners. Across concurrent
   pipelines they share them; the cost is queueing, not correctness.

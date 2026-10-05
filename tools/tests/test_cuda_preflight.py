@@ -58,6 +58,8 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
         self.cuda_root = os.path.join(self.tmp, "cuda")
         os.makedirs(os.path.join(self.cuda_root, "lib64"))
         open(os.path.join(self.cuda_root, "lib64", "libnvrtc.so.12"), "w").close()
+        open(os.path.join(self.cuda_root, "lib64", "libnvrtc-builtins.so.12.0"), "w").close()
+        self.library_path = os.path.join(self.cuda_root, "lib64")
         self.samples = os.path.join(self.tmp, "samples")
         os.mkdir(self.samples)
         self.entrypoint = os.path.join(self.tmp, "entrypoint.sh")
@@ -84,6 +86,8 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
             "PREFLIGHT_FAIL_PAUSE_SECONDS": "0",
             "STUB_MARKER": self.marker,
         }
+        if self.library_path is not None:
+            env["LD_LIBRARY_PATH"] = "/opt/other:" + self.library_path
         proc = subprocess.run(["bash", _PREFLIGHT], env=env, capture_output=True,
                               text=True, timeout=60)
         return proc.returncode, proc.stdout + proc.stderr
@@ -144,6 +148,29 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
         code, output = self._run()
         self.assertNotEqual(0, code)
         self.assertIn("NVRTC was not found under " + self.cuda_root, output)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_missing_nvrtc_builtins_does_not_register(self):
+        """NVRTC cannot compile anything without its builtins library."""
+        self._stage()
+        os.remove(os.path.join(self.cuda_root, "lib64", "libnvrtc-builtins.so.12.0"))
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("No readable libnvrtc-builtins", output)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_toolkit_off_the_library_path_does_not_register(self):
+        """NVRTC loads its builtins by name, so their directory must be searchable.
+
+        This is the failure CI hit: libnvrtc itself loaded through the bridge's
+        runpath, but every compile failed with NVRTC_ERROR_BUILTIN_OPERATION_FAILURE
+        because the container's loader could not find libnvrtc-builtins.
+        """
+        self._stage()
+        self.library_path = None
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("is not on LD_LIBRARY_PATH", output)
         self.assertFalse(os.path.exists(self.marker))
 
 

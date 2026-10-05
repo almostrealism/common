@@ -10,7 +10,8 @@ set -euo pipefail
 #
 # Checks, in order:
 #   1. the NVIDIA runtime injected a GPU (nvidia-smi lists one)
-#   2. the host CUDA toolkit is mounted and provides NVRTC
+#   2. the host CUDA toolkit is mounted and provides NVRTC, and NVRTC's
+#      builtins library is reachable through LD_LIBRARY_PATH
 #   3. a staged sample library is readable by the runner user (an unstaged
 #      one only warns, since test-cuda does not need it)
 #
@@ -77,6 +78,32 @@ if [ -z "${NVRTC}" ]; then
     fi
 fi
 echo "NVRTC: ${NVRTC}"
+
+# NVRTC dlopen()s libnvrtc-builtins by bare name when it compiles. The bridge
+# finds libnvrtc itself through its own runpath, but a runpath does not carry
+# over to what that library loads, and the container's loader cache knows
+# nothing about the mounted toolkit (the host's does, through ld.so.conf.d).
+# So the builtins are found only if their directory is on LD_LIBRARY_PATH —
+# without it every compile fails with NVRTC_ERROR_BUILTIN_OPERATION_FAILURE.
+NVRTC_DIR=$(dirname "${NVRTC}")
+BUILTINS=""
+for candidate in "${NVRTC_DIR}"/libnvrtc-builtins.so.*; do
+    if [ -r "${candidate}" ]; then
+        BUILTINS="${candidate}"
+        break
+    fi
+done
+if [ -z "${BUILTINS}" ]; then
+    fail "No readable libnvrtc-builtins was found beside ${NVRTC}." \
+        "NVRTC loads it at compile time; the mounted toolkit is incomplete or unreadable."
+fi
+case ":${LD_LIBRARY_PATH:-}:" in
+    *":${NVRTC_DIR}:"*) ;;
+    *) fail "${NVRTC_DIR} is not on LD_LIBRARY_PATH (${LD_LIBRARY_PATH:-unset})." \
+        "NVRTC loads ${BUILTINS##*/} by name, so every kernel compile would fail." \
+        "The compose file sets LD_LIBRARY_PATH for this; check it has not been removed." ;;
+esac
+echo "NVRTC builtins: ${BUILTINS}"
 
 # A library that is not staged yet is expected while the lane is
 # informational: only the media suites need it, and they say so themselves.

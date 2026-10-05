@@ -662,7 +662,10 @@ job. Unlike the ROCm fleet, a CUDA fleet may *additionally* carry `ar-ci`
 (`RUNNER_EXTRA_LABELS` in `tools/ci/cuda/.env`), so one GPU host can serve the CPU
 lane as well instead of running a separate CPU fleet beside it. That is safe
 because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
-the same image, and because the CUDA lane is admitted only after the CPU lane
+the same image (the CUDA bridge tests in `base/hardware` still use the GPU
+directly when one is present, so on such a host they run in `test` too, and the
+fleet's preflight guarantees a complete CUDA environment for them), and because
+the CUDA lane is admitted only after the CPU lane
 finishes, so within one pipeline the two never compete for those runners. The
 `ar-ci-cl` caveat above still applies: across concurrent pipelines, CUDA jobs can
 queue behind CPU jobs on a shared host.
