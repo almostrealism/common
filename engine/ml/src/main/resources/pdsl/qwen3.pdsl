@@ -1,0 +1,42 @@
+/**
+ * Qwen3 decoder: the whole forward pass of one token, from its embedding to one score per
+ * vocabulary entry.
+ *
+ * The structure is Qwen2's (see qwen2.pdsl) with two differences, both in the attention
+ * stage: the query, key and value projections have no biases, and each projected query and
+ * key head is RMS-normalized before the rotary embedding (QK-norm), which is why each layer is
+ * transformer_qk_norm and reads the q_norm and k_norm weights.
+ *
+ * Arguments:
+ *   settings  dim, layers, heads, kv_heads, seq_len and rope_theta of the checkpoint
+ *   weights   the checkpoint
+ *   position  the index of the current token in the sequence
+ */
+
+import "/pdsl/transformer.pdsl"
+
+model qwen3(settings: model_settings, weights: checkpoint, position: scalar) {
+    let rope = rope_freqs(settings.rope_theta, settings.dim / settings.heads, settings.seq_len)
+
+    for i in 0..settings.layers {
+        transformer_qk_norm(settings.heads, settings.kv_heads, settings.dim / settings.heads,
+                            weights["model.layers.{i}.input_layernorm.weight"],
+                            weights["model.layers.{i}.self_attn.q_proj.weight"],
+                            weights["model.layers.{i}.self_attn.k_proj.weight"],
+                            weights["model.layers.{i}.self_attn.v_proj.weight"],
+                            weights["model.layers.{i}.self_attn.o_proj.weight"],
+                            null, null, null,
+                            weights["model.layers.{i}.self_attn.q_norm.weight"],
+                            weights["model.layers.{i}.self_attn.k_norm.weight"],
+                            rope, position,
+                            weights["model.layers.{i}.post_attention_layernorm.weight"],
+                            weights["model.layers.{i}.mlp.gate_proj.weight"],
+                            weights["model.layers.{i}.mlp.down_proj.weight"],
+                            weights["model.layers.{i}.mlp.up_proj.weight"],
+                            1e-6,
+                            zeros([settings.seq_len, settings.dim]), zeros([settings.seq_len, settings.dim]))
+    }
+
+    rmsnorm(weights["model.norm.weight"], 1e-6)
+    dense(weights["model.embed_tokens.weight"])
+}

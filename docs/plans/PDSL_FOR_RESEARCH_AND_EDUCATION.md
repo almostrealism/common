@@ -1,6 +1,43 @@
 # PDSL for Research and Education
 
-**Status:** Draft for discussion. Nothing here has been implemented.
+**Status:** Direction agreed (see "Decisions"). Nothing here has been implemented.
+
+## Decisions
+
+These were settled with the project owner on 2026-10-04.
+
+1. **Start with Qwen2.5-0.5B-Instruct**, the only checkpoint validated end to end. Qwen3
+   comes in with Phase 4.
+2. **Lean toward putting things in PDSL, but not everything belongs there.**
+   - Runtime settings stay command-line arguments of the runner: device, output directory,
+     sampling temperature, number of tokens.
+   - Bulk inputs such as prompts live in their own files.
+   - Everything about *what the model computes*, including the data an intervention uses,
+     is in PDSL or brought in by `import`.
+3. **Data is imported the same way definitions are.** A steering vector, a probe direction or
+   an adapter is pulled into a PDSL file with an `import` statement that reads and behaves
+   like importing another `.pdsl` file. The imported names are then usable as weights. See
+   "Data imports".
+4. **No library shorthands until one is clearly needed.** The base language stays as small as
+   possible.
+   - A file may open with a short "helpers this model needs" section before the model
+     definition, as long as the helpers stay compact enough that a non-programmer can still
+     read them.
+   - `steer(...)` or `lora_dense(...)` become shared library layers only when repetition
+     across real files demands it.
+5. **Protobuf is the project's data format; safetensors is only read, by a pure Java reader.**
+   - `StateDictionary`'s protobuf format (`engine/ml/src/main/proto/collections.proto`,
+     `CollectionLibraryData`) is the one the project writes and imports. The reasons:
+     - many languages and platforms can read it;
+     - it works over the wire, for an inference or training service;
+     - other people's protobuf specs can include ours. Someone defining their own system that
+       happens to contain steering vectors can import `collections.proto` and reuse the
+       message types.
+   - Safetensors is read only, by a pure Java reader, so getting started does not need Python.
+     A checkpoint is read directly, or converted once to protobuf.
+   - Protobuf stays out of the core modules. Today it is a dependency of `engine/ml`, the
+     module that also holds PDSL, and of `studio/compose`. The plan keeps every protobuf use
+     inside `engine/ml` and adds no new third-party dependencies anywhere.
 
 ## Goal
 
@@ -83,9 +120,9 @@ No shipped `.pdsl` file defines a `model`.
    This is the project's own rule ("Java is orchestration") made visible to the reader.
 2. **Interventions are ordinary PDSL.** Steering is `accum { add(direction, strength) }`, and
    a LoRA projection is `accum_blocks({ dense(w) }, { dense(a); dense(b); scale(s) })`.
-   Neither should be a special mode of the runner. Library layers such as `steer(...)` and
-   `lora_dense(...)` are welcome, but they are themselves PDSL that the reader can open,
-   written in an `interventions.pdsl` asset next to `transformer.pdsl`.
+   Neither should be a special mode of the runner, and neither gets a shorthand until one is
+   clearly needed (Decision 4). The examples write the composition out in full where it is
+   used.
 3. **Names match the literature and the checkpoint.** Weight names follow the Hugging Face
    keys (`model.layers.{i}.self_attn.q_proj.weight`), so a reader can cross-reference the
    model card, a paper or a PyTorch tutorial.
@@ -97,6 +134,16 @@ No shipped `.pdsl` file defines a `model`.
    [896, 4864]. Did you mean `mlp.up_proj.weight`?"*
 6. **Nothing is shown before it works.** Each published claim is backed by a parity test
    against a reference implementation (see "Correctness gates").
+7. **The text looks like the picture.** This is the north star. A diagram of the model's data
+   flow will be generated from the same file. If someone draws the model, the drawing and the
+   text must have the same shape: one box per line that does something, nesting where the
+   boxes nest, and repetition shown as repetition.
+   - The language should make it *hard* to write a file whose function diverges from its
+     form. If it is possible, people will do it.
+   - Constructs that read like programming work against this: index arithmetic, string
+     substitution such as `"model.layers.{i}..."`, and long positional argument lists. The
+     first whole-model files use some of these; see "Form follows the picture".
+   - New features must not add more of them.
 
 ## Target shape of the model file
 
@@ -139,6 +186,85 @@ the ones a published page would highlight:
 Splitting the loop at the layer of interest avoids adding conditionals to the language. The
 split is also the most honest picture of where the intervention sits.
 
+## Form follows the picture
+
+The first whole-model files (`qwen2.pdsl`, `qwen3.pdsl`) work, but they read more like a
+program than a diagram. Each layer is reached through `for i in 0..settings.layers`, its
+weights are named by substituting `{i}` into a string, and a 20-argument call hides which
+weight feeds which stage. These are accepted for now. The following ideas are candidates for
+moving back toward the picture; none is decided.
+
+1. **Repetition without an index.** A `stack` construct over a collection the checkpoint
+   already has: `stack weights.model.layers as layer { transformer(layer) }`.
+   - The count comes from the data, and there is no loop variable to compute with.
+   - It draws as one box marked "× 24".
+   - An intervention between layers splits the stack:
+     `stack layers[..18]`, then `record`, then `stack layers[18..]`. That is exactly the
+     picture of where the intervention sits.
+2. **Hierarchical weights instead of string keys.**
+   - Bind the checkpoint as a tree that follows its own dotted names, so that
+     `layer.self_attn.q_proj.weight` is a path into the data, not a string being assembled.
+   - This removes `{name}` interpolation entirely.
+3. **Layers that take a block of weights, not twenty arguments.**
+   - A layer declares the weight names it reads relative to the block it is given:
+     `transformer(layer)` reads `layer.self_attn.q_proj.weight` itself.
+   - The call site becomes one line, and the diagram's box for the layer shows the same
+     single input.
+4. **Layers as nested boxes.** A called layer is a box that expands into its own body. This
+   is the one kind of indirection a diagram can show faithfully (collapse and expand), so it
+   is the abstraction the language should prefer over every other.
+5. **Make the diagram the check.**
+   - Generate the diagram from the parsed program.
+   - Reject, or warn about, any construct the diagram cannot show faithfully. Candidates:
+     arithmetic on loop indices, computed names, and a call whose arguments do not map to
+     visible inputs.
+   - If the renderer cannot draw it honestly, the language should not accept it.
+6. **Keep settings out of the flow.** Sizes and constants (dim, heads, epsilon) are not
+   boxes. They belong in a header the diagram shows as a legend, not threaded through every
+   call as arguments.
+
+Once 1–3 exist, the `{i}` interpolation and the per-layer `for` in the Qwen files should be
+removed, not kept beside the new forms.
+
+## Data imports
+
+A steering vector arrives the same way a definition does:
+
+```pdsl
+import "/pdsl/transformer.pdsl"
+import "distress_direction.pb" as distress      // data: a CollectionLibraryData file
+
+model qwen_steered(...) {
+    ...
+    accum { add(distress["direction"], strength) }
+    ...
+}
+```
+
+How this should work:
+
+- **A `.pb` import is data, not structure.** Each entry of its `CollectionLibraryData` becomes
+  a named, read-only weight, reached as `alias["key"]`. A library with a single entry may
+  also be used by its alias alone (`add(distress, strength)`). The `.pb` extension, or the
+  file's first bytes, tells the loader which kind of import it is.
+- **The same rules apply as for `.pdsl` imports.** Imports come before definitions, the cache
+  keys on the normalized path, and cycles and duplicate names are errors. The data is loaded
+  once, however many files import it.
+- **Relative paths are needed.** Today's imports are absolute classpath resources
+  (`PdslParser.java:96-104` rejects relative paths), which suits shipped assets. A
+  researcher's own files live next to their experiment, so imports also need paths relative to
+  the importing file on disk. Absolute classpath paths keep meaning shipped assets.
+- **Shape is part of the contract.** An import may declare the shape it expects
+  (`import "d.pb" as distress: [1, 896]`). A mismatch is reported at load time, with the file
+  and line, not at compile time.
+- **A safetensors import** (`import "adapter.safetensors" as lora`) goes through the same
+  path, using the pure Java reader. That lets a PEFT adapter or a published direction be used
+  without conversion. Converting to protobuf stays the recommended way to keep and share data.
+- **The model's own checkpoint is also data.** The `checkpoint` parameter is bound by the
+  runner from `--weights`, not imported. Weights are large and change from run to run, while
+  a steering vector is part of the experiment's definition. That boundary is worth keeping:
+  the file says what is done, and the command line says which model it is done to.
+
 `strength` is a `producer([1])` slot, which already exists for audio automation. Changing it
 therefore needs no recompile, so a sweep over strengths is a list of values and not a list of
 models.
@@ -157,11 +283,17 @@ Each phase ends at a gate. Work does not move to the next phase until its gate i
 2. **`embed(table, token)`**: a general builtin that selects one row of a table by a scalar
    index.
 3. **Model-level `for` over layers**, building each iteration's layer with the weights its
-   keys select. The KV cache stays caller-allocated, as `state attention_cache` already
-   declares, but it is allocated per layer by the runner from the declaration, not by hand
-   in `AttentionFeatures`.
+   keys select.
+   - **Implemented:** the KV cache is now an explicit `key_cache` / `value_cache` parameter
+     of every attention and transformer layer. The model allocates one pair per layer with
+     `zeros([seq_len, dim])`.
+   - The old `state attention_cache` block could not express this, because a called layer is
+     built in the program scope: every layer of one build would have shared one cache.
 4. **A layer signature that takes `config` and a weight prefix,** so the call site inside the
    loop stays one line. The existing long-argument layers remain for Java callers.
+   - **Not done yet.** The shipped files pass each weight by its full Hugging Face name
+     inside the loop. That is long, but every name is visible, and that may be the better
+     teaching form; decide after the first published page.
 5. **`qwen.pdsl`** as a shipped asset, used by `Qwen3` in place of its Java loop. The Java
    class keeps tokenization, weight loading and the generation loop.
 
@@ -183,10 +315,21 @@ uses). All existing Qwen tests pass unchanged.
    arguments (`dense`, `reshape`, `rmsnorm`, `embed`).
 4. **Fix the meaning of `-> [shape]`.** Either rename it to say input shape, or make it
    actually check the output.
-5. **Weights without Python.** Today the checkpoint must be converted to protobuf by
-   `extract_qwen3_weights.py`. Read safetensors directly from Java, or ship a one-command
-   converter, so the first step does not need a Python environment. The setMem ingest rules
-   apply here.
+5. **A pure Java safetensors reader** in `engine/ml`, next to `StateDictionary`.
+   - Today a checkpoint must be converted to protobuf by `extract_qwen3_weights.py`.
+   - The format is simple: an 8-byte little-endian header length, a JSON header naming each
+     tensor's dtype, shape and byte range, then raw bytes. Parse the header with whatever JSON
+     support `engine/ml` already has; add no new dependency.
+   - Decode BF16 and F16 to the framework's precision. Qwen checkpoints ship as BF16.
+   - The reader goes through the sanctioned host-ingest path, following the setMem ingest
+     rules (`SETMEM_INGEST_LAYER.md`), and does no element-wise copying in Java.
+   - It serves two uses: `StateDictionary` loads a Hugging Face directory directly, and
+     `pdsl convert <hf-dir> <out>` writes the protobuf form once.
+
+   `extract_qwen3_weights.py` can then retire, along with the other extractors as each model
+   moves over.
+6. **Data imports** as described in "Data imports": `.pb` and `.safetensors` imports,
+   relative paths, and declared shapes.
 
 **Gate:** someone who did not write the runner (a test participant, or at minimum a fresh
 agent working only from the published instructions) goes from a clean machine to logits for a
@@ -246,26 +389,19 @@ This is the evidence that the language is a research tool, not only a teaching o
 
 ## Open questions
 
-1. **Which model first?** Recommendation: Qwen2.5-0.5B-Instruct for Phases 1 to 3, because it
-   is the only validated checkpoint and it is small enough to run anywhere. Qwen3 comes with
-   Phase 4. The published page could show either; the structural difference is one line (QK-norm).
-2. **Where do experiment settings live?** Options:
-   - (a) runner flags plus a prompts file;
-   - (b) an `experiment` block in PDSL listing prompts, sweeps and records;
-   - (c) a separate small settings file.
-
-   Recommendation: (a) first, then decide between (b) and (c) after seeing what the Phase 3
-   examples actually need. (b) keeps everything on one page, but mixes "what the model is"
-   with "what we do to it".
-3. **What format for results?** CSV is readable in a spreadsheet, but cannot hold a 896-wide
-   vector per token comfortably. NumPy `.npy` needs Python. Possibly both: CSV for scalar
-   reads (probe scores, logit-lens top tokens), `.npy` for raw vectors.
-4. **Distribution.** How does a novice get the runner? Options include a prebuilt jar with a
+1. **What format for results?**
+   - Following Decision 5, every `record(...)` should be written as `CollectionLibraryData`
+     protobuf, so results go back in as imports. A recorded direction from one run can be the
+     steering vector of the next with no conversion; that loop is a strong teaching point.
+   - For people working in a spreadsheet, also write CSV for scalar reads such as probe
+     scores and logit-lens top tokens.
+   - Still open: whether raw vectors also need a format readable without protobuf tooling.
+2. **Distribution.** How does a newcomer get the runner? Options include a prebuilt jar with a
    wrapper script, a container image, or a Homebrew formula. A JDK on the machine is the
    minimum requirement any of these imposes.
-5. **Should library layers such as `steer` and `lora_dense` exist at all,** or should the
-   canonical examples always write the composition out in full? Writing it out teaches more.
-   A library is shorter to read.
-6. **A second architecture for contrast.** GPT-2 (LayerNorm, learned positions, GELU, no
+3. **A second architecture for contrast.** GPT-2 (LayerNorm, learned positions, GELU, no
    gating) would let a reader see what is common to transformers and what is a design
    choice. It needs `layernorm` and learned-position builtins.
+4. **Sweeps.** A strength sweep is a list of values for a `producer([1])` slot. Should that
+   list be a runner argument (`--sweep strength=0,2,4,8`), or an imported data file? Decision 2
+   suggests the runner: the sweep is how the experiment is driven, not what the model computes.

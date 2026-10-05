@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -397,11 +398,27 @@ public class PdslInterpreter {
 	 */
 	public Model buildModel(String name, TraversalPolicy inputShape,
 							Map<String, Object> args) {
+		return buildModel(name, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Model} from a named model definition, applying {@code requirements} to
+	 * every layer the model constructs, as {@link #buildLayer(String, TraversalPolicy, Map,
+	 * ComputeRequirement...)} does for a single layer.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param args         parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape,
+							Map<String, Object> args, ComputeRequirement... requirements) {
 		PdslNode.ModelDef def = modelDefs.get(name);
 		if (def == null) {
 			throw new PdslParseException("Model '" + name + "' not found");
 		}
-		Environment env = new Environment(programScope(args));
+		Environment env = new Environment(programScope(args, requirements));
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
 				throw new PdslParseException(
@@ -412,6 +429,41 @@ public class PdslInterpreter {
 		Model model = new Model(inputShape);
 		interpretModelBody(def.getBody(), model, env);
 		return model;
+	}
+
+	/**
+	 * Build a {@link Model} whose weights come from a {@link StateDictionary}: the dictionary is
+	 * bound to every parameter the model declares with the type {@code checkpoint}, and the
+	 * model body reads each weight from it by name.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param stateDict    weight source
+	 * @param extraArgs    the model's other parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 * @throws PdslParseException if the model does not exist or declares no {@code checkpoint}
+	 *         parameter
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape, StateDictionary stateDict,
+							Map<String, Object> extraArgs, ComputeRequirement... requirements) {
+		PdslNode.ModelDef def = modelDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Model '" + name + "' not found");
+		}
+
+		Map<String, Object> args = new HashMap<>(extraArgs);
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if ("checkpoint".equals(param.getTypeName())) {
+				args.put(param.getName(), stateDict);
+			}
+		}
+		if (args.size() == extraArgs.size()) {
+			throw new PdslParseException("Model '" + name
+					+ "' declares no checkpoint parameter to bind the weights to");
+		}
+
+		return buildModel(name, inputShape, args, requirements);
 	}
 
 	/**
@@ -763,7 +815,7 @@ public class PdslInterpreter {
 		if (expr instanceof PdslNode.NumberLiteral) {
 			return ((PdslNode.NumberLiteral) expr).getValue();
 		} else if (expr instanceof PdslNode.StringLiteral) {
-			return ((PdslNode.StringLiteral) expr).getValue();
+			return env.interpolate(((PdslNode.StringLiteral) expr).getValue(), expr.getLine());
 		} else if (expr instanceof PdslNode.BoolLiteral) {
 			return ((PdslNode.BoolLiteral) expr).getValue();
 		} else if (expr instanceof PdslNode.NullLiteral) {
@@ -786,6 +838,18 @@ public class PdslInterpreter {
 			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
 			Object obj = evaluateExpression(subscript.getObject(), env);
 			Object indexValue = evaluateExpression(subscript.getIndex(), env);
+			if (obj instanceof StateDictionary) {
+				// A checkpoint subscripted by name: weights["model.layers.{i}.mlp.up_proj.weight"]
+				if (!(indexValue instanceof String)) {
+					throw new PdslParseException("A checkpoint is indexed by weight name, such as "
+							+ "weights[\"model.norm.weight\"], at line " + expr.getLine());
+				}
+				try {
+					return ((StateDictionary) obj).require((String) indexValue);
+				} catch (IllegalArgumentException e) {
+					throw new PdslParseException(e.getMessage() + ", at line " + expr.getLine());
+				}
+			}
 			if (indexValue == ALL_CHANNELS
 					&& (obj instanceof PackedCollection || obj instanceof CollectionProducer)) {
 				// Vectorized for-each: the subscript covers every channel at once, so the
@@ -1243,6 +1307,44 @@ public class PdslInterpreter {
 		Environment root() { return parent == null ? this : parent.root(); }
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
+
+		/**
+		 * Replaces each {@code {name}} in a string literal with the value bound to {@code name}
+		 * in this scope, so that a key can name the layer of an enclosing loop:
+		 * {@code "model.layers.{i}.input_layernorm.weight"}. A whole number is written without a
+		 * fractional part, whatever its numeric type, because PDSL arithmetic is done in doubles.
+		 *
+		 * @param text the literal text
+		 * @param line the line of the literal, for error messages
+		 * @return the text with every placeholder replaced
+		 * @throws PdslParseException if a placeholder is unterminated or names nothing in scope
+		 */
+		String interpolate(String text, int line) {
+			int open = text.indexOf('{');
+			if (open < 0) return text;
+
+			StringBuilder result = new StringBuilder();
+			int position = 0;
+			while (open >= 0) {
+				int close = text.indexOf('}', open);
+				if (close < 0) {
+					throw new PdslParseException("Unterminated '{' in \"" + text + "\" at line " + line);
+				}
+				String name = text.substring(open + 1, close).trim();
+				if (!has(name)) {
+					throw new PdslParseException("\"" + text + "\" names {" + name
+							+ "}, which is not defined at line " + line);
+				}
+				Object value = get(name);
+				if (value instanceof Number && ((Number) value).doubleValue() == Math.rint(((Number) value).doubleValue())) {
+					value = ((Number) value).longValue();
+				}
+				result.append(text, position, open).append(value);
+				position = close + 1;
+				open = text.indexOf('{', position);
+			}
+			return result.append(text.substring(position)).toString();
+		}
 	}
 
 	/**

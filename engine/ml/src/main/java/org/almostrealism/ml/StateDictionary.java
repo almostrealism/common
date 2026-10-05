@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -238,6 +239,40 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public PackedCollection get(String key) {
 		return weights.get(key);
+	}
+
+	/**
+	 * Get a weight by key, failing when the dictionary has none by that name. The failure names
+	 * the keys that share the longest leading part with the requested one, so a misspelled or
+	 * misplaced name (a wrong layer index, {@code q_proj} for {@code k_proj}) points at what the
+	 * dictionary actually holds.
+	 *
+	 * @param key Weight key
+	 * @return PackedCollection containing the weight data
+	 * @throws IllegalArgumentException if there is no weight named {@code key}
+	 */
+	public PackedCollection require(String key) {
+		PackedCollection weight = weights.get(key);
+		if (weight != null) return weight;
+
+		int bestShared = -1;
+		List<String> nearest = new ArrayList<>();
+		for (String candidate : weights.keySet()) {
+			int shared = 0;
+			int limit = Math.min(candidate.length(), key.length());
+			while (shared < limit && candidate.charAt(shared) == key.charAt(shared)) shared++;
+			if (shared > bestShared) {
+				bestShared = shared;
+				nearest.clear();
+			}
+			if (shared == bestShared) nearest.add(candidate);
+		}
+
+		java.util.Collections.sort(nearest);
+		throw new IllegalArgumentException("No weight named '" + key + "' among "
+				+ weights.size() + " weights"
+				+ (nearest.isEmpty() ? "" : "; the closest names are "
+						+ String.join(", ", nearest.subList(0, Math.min(3, nearest.size())))));
 	}
 
 	/**

@@ -200,32 +200,27 @@ public class PdslLoader {
 	}
 
 	/**
-	 * Build a {@link Model} from a PDSL model definition, binding
-	 * weight parameters from a {@link StateDictionary}.
+	 * Build a {@link Model} from a PDSL model definition whose weights come from a
+	 * {@link StateDictionary}. The dictionary is bound to every parameter the model declares
+	 * with the type {@code checkpoint}; the model body then reads each weight by name, as in
+	 * {@code weights["model.layers.{i}.self_attn.q_proj.weight"]}.
 	 *
-	 * <p>Weight parameters in the PDSL are matched to StateDictionary
-	 * keys by name convention. Parameters whose names match the pattern
-	 * of StateDictionary keys (e.g., "model.layers.0.self_attn.q_proj.weight")
-	 * are automatically bound.
-	 *
-	 * @param program    the parsed PDSL program
-	 * @param modelName  the name of the model to build
-	 * @param inputShape the input tensor shape
-	 * @param stateDict  weight source
-	 * @param extraArgs  additional non-weight parameters (position, config values, etc.)
+	 * @param program      the parsed PDSL program
+	 * @param modelName    the name of the model to build
+	 * @param inputShape   the input tensor shape
+	 * @param stateDict    weight source
+	 * @param extraArgs    the model's other parameters (position, config values, etc.)
+	 * @param requirements compute requirements applied to every layer the model constructs
 	 * @return the constructed Model
+	 * @throws PdslParseException if the model does not exist or declares no {@code checkpoint}
+	 *         parameter
 	 */
 	public Model buildModel(PdslNode.Program program, String modelName,
 							TraversalPolicy inputShape,
 							StateDictionary stateDict,
-							Map<String, Object> extraArgs) {
-		PdslInterpreter interpreter = newInterpreter(program);
-
-		// Merge state dict weights into args
-		Map<String, Object> args = new HashMap<>(extraArgs);
-		args.put("state_dict", stateDict);
-
-		return interpreter.buildModel(modelName, inputShape, args);
+							Map<String, Object> extraArgs,
+							ComputeRequirement... requirements) {
+		return newInterpreter(program).buildModel(modelName, inputShape, stateDict, extraArgs, requirements);
 	}
 
 	/**

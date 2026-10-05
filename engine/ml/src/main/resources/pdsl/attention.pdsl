@@ -21,9 +21,12 @@
  *             └─ dense(wo)                                                 [1, dim]
  *
  * A branch runs before the path that follows it, so both caches already hold the current
- * token's key and value when the scores are computed. The caches are caller-owned state
- * that persists across forward passes: row `position` is rewritten on every pass and every
- * row up to `position` is read.
+ * token's key and value when the scores are computed. The caches are the key_cache and
+ * value_cache parameters of every attention layer below, each [seq_len, dim]: row s holds
+ * token s's rotated key (or its value) as one head_size slice per query head. They are
+ * caller-owned state that persists across forward passes: row `position` is rewritten on
+ * every pass and every row up to `position` is read. Each attention layer of a model needs
+ * caches of its own, which a model allocates with zeros([seq_len, dim]).
  *
  * Grouped-query attention: the caches hold one key and one value per QUERY head, so a
  * model with kv_heads < heads duplicates each KV head for the heads / kv_heads query heads
@@ -33,15 +36,6 @@
  * Projection biases (bq, bk, bv) are optional weights: a model without them (Llama 2,
  * SkyTNT) binds null and dense() adds nothing.
  */
-
-/**
- * The KV cache. Both entries are [seq_len, dim]: row s holds token s's rotated key (or its
- * value) as one head_size slice per query head.
- */
-state attention_cache {
-    key_cache: weight
-    value_cache: weight
-}
 
 /**
  * Rotary position embedding, one rotation per head: [1, heads * head_size] -> [heads, head_size].
@@ -114,7 +108,8 @@ layer attention(heads: int, kv_heads: int, head_size: int,
                 rms_att_weight: weight,
                 wq: weight, wk: weight, wv: weight, wo: weight,
                 bq: weight, bk: weight, bv: weight,
-                freq_cis: weight, position: scalar, epsilon: float) -> [1, heads * head_size] {
+                freq_cis: weight, position: scalar, epsilon: float,
+                key_cache: weight, value_cache: weight) -> [1, heads * head_size] {
     rmsnorm(rms_att_weight, epsilon)
 
     branch keys {
@@ -157,7 +152,8 @@ layer attention_qk_norm(heads: int, kv_heads: int, head_size: int,
                         wq: weight, wk: weight, wv: weight, wo: weight,
                         bq: weight, bk: weight, bv: weight,
                         qk_norm_q: weight, qk_norm_k: weight,
-                        freq_cis: weight, position: scalar, epsilon: float) -> [1, heads * head_size] {
+                        freq_cis: weight, position: scalar, epsilon: float,
+                        key_cache: weight, value_cache: weight) -> [1, heads * head_size] {
     rmsnorm(rms_att_weight, epsilon)
 
     branch keys {
@@ -198,7 +194,8 @@ layer attention_mra(heads: int, kv_heads: int, head_size: int,
                     rms_att_weight: weight,
                     wq: weight, wk: weight, wv: weight, wo: weight,
                     q_head_groups: rope_groups, kv_head_groups: rope_groups,
-                    position: scalar, epsilon: float) -> [1, heads * head_size] {
+                    position: scalar, epsilon: float,
+                    key_cache: weight, value_cache: weight) -> [1, heads * head_size] {
     rmsnorm(rms_att_weight, epsilon)
 
     branch keys {

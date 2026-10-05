@@ -57,14 +57,13 @@ pass — normalization, projections, rotary embedding, the cache writes, scores,
 softmax, weighted values and the output projection. The Java side,
 `AttentionFeatures.attention(...)`, is a thin loader: `attentionArguments` allocates the
 caches and binds the arguments, `attentionLayer` parses the asset and builds the
-requested layer through `PdslLoader.buildLayer`. The caches are declared in the asset
-as caller-owned state:
+requested layer through `PdslLoader.buildLayer`. The caches are caller-owned state that
+every attention layer of the asset takes as its last two parameters, so a model gives each
+of its layers a pair of its own:
 
 ```
-state attention_cache {
-    key_cache: weight
-    value_cache: weight
-}
+layer attention(..., epsilon: float,
+                key_cache: weight, value_cache: weight) -> [1, heads * head_size] {
 ```
 
 ### Cache Allocation
@@ -75,7 +74,7 @@ heads, not KV heads: row `s` holds token `s`'s key (or value) as one `headSize` 
 per query head.
 
 ```java
-// AttentionFeatures.attentionArguments — bound to the asset's state block
+// AttentionFeatures.attentionArguments — bound to the layer's cache parameters
 args.put("key_cache", new PackedCollection(shape(seqLen, dim)));
 args.put("value_cache", new PackedCollection(shape(seqLen, dim)));
 ```
