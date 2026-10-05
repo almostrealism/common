@@ -271,6 +271,17 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	/**
 	 * Compiles the given model, optionally enabling backpropagation and gradient retrieval.
 	 *
+	 * <p><b>Construction-failure rollback.</b> The compiled {@code setup}, forward, and
+	 * backward operations own native kernels, and the output/gradient buffers own device
+	 * memory, but the {@link CompiledModel} instance whose {@link #destroy()} releases them
+	 * is not built until every allocation and optimization here has succeeded. Several steps
+	 * after {@code setup} is compiled are fallible (graph optimization, the forward/backward
+	 * compiles, the initial {@link #reset()}); a throw from any of them would otherwise leak
+	 * whatever was already allocated, since no owner would exist. Each resource is therefore
+	 * tracked as it is created and released in reverse order if compilation fails, and the
+	 * throwable is rethrown unchanged. The successful path is unchanged — the returned model
+	 * owns these resources and frees them on {@code destroy()}, so there is no double free.</p>
+	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
 	 * @param returnGradient {@code true} to allocate and return the input gradient after backward
@@ -283,70 +294,86 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		model.recordCompilation();
 
 		Runnable setup = Process.optimized(model.setup()).get();
+		PackedCollection output = null;
+		PackedCollection gradOut = null;
+		Runnable forwardOp = null;
+		Runnable backwardOp = null;
+		try {
+			List<InputManager> in = new ArrayList<>();
+			in.add(new InputManager(model.firstBlock().getInputShape()));
+			model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
 
-		List<InputManager> in = new ArrayList<>();
-		in.add(new InputManager(model.firstBlock().getInputShape()));
-		model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
+			InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 
-		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
+			output = new PackedCollection(model.lastBlock().getOutputShape());
+			PackedCollection forwardOutput = output;
+			Receptor<PackedCollection> outputReceptor = out ->
+					Ops.o().a("Model Forward Output", Ops.o().p(forwardOutput), out);
 
-		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
-		Receptor<PackedCollection> outputReceptor = out ->
-				Ops.o().a("Model Forward Output", Ops.o().p(output), out);
+			// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
+			Cell<PackedCollection> lastForward = model.lastBlock().getForward();
+			Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
+			if (existingReceptor != null) {
+				lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
+			} else {
+				lastForward.setReceptor(outputReceptor);
+			}
 
-		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
-		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
-		Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
-		if (existingReceptor != null) {
-			lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
-		} else {
-			lastForward.setReceptor(outputReceptor);
+			if (returnGradient) {
+				gradOut = new PackedCollection(model.firstBlock().getInputShape());
+				PackedCollection backwardGradient = gradOut;
+				model.firstBlock().getBackward().setReceptor(out ->
+						Ops.o().a("Model Backward Output", Ops.o().p(backwardGradient), out));
+			}
+
+			// TODO(review): inference compile disables input tracking on the shared Model
+			// without restoring it; a later compile(true) on the same instance could wire
+			// backward cells to a destroyed input buffer.
+			if (!backprop) {
+				model.setInputTracking(false);
+			}
+
+			List<Cell<PackedCollection>> cells = model.forward();
+			OperationList forward = new OperationList("CompiledModel Forward");
+			for (int i = cells.size() - 1; i >= 0; i--) {
+				forward.add(cells.get(i).push(in.get(i).get()));
+			}
+
+			ParallelProcess<?, Runnable> p = forward.flatten().optimize();
+
+			ParallelProcess<?, Runnable> q;
+
+			if (backprop) {
+				q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
+				if (q instanceof OperationList) q = ((OperationList) q).flatten();
+				q = q.optimize();
+			} else {
+				q = null;
+			}
+
+			if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
+			if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
+
+			forwardOp = p.get();
+			backwardOp = q == null ? null : q.get();
+
+			PackedCollection gradOutput = gradOut;
+			CompiledModel compiled = new CompiledModel(in.stream().map(InputManager::getShape).collect(Collectors.toList()),
+					grad.getShape(),
+					setup, in,
+					() -> forwardOutput, forwardOp, grad,
+					gradOutput == null ? null : () -> gradOutput,
+					backwardOp);
+			compiled.reset();
+			return compiled;
+		} catch (RuntimeException | Error t) {
+			Destroyable.destroy(backwardOp);
+			Destroyable.destroy(forwardOp);
+			Destroyable.destroy(setup);
+			if (gradOut != null) gradOut.destroy();
+			if (output != null) output.destroy();
+			throw t;
 		}
-
-		PackedCollection gradOut;
-
-		if (returnGradient) {
-			gradOut = new PackedCollection(model.firstBlock().getInputShape());
-			model.firstBlock().getBackward().setReceptor(out ->
-					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
-		} else {
-			gradOut = null;
-		}
-
-		// TODO(review): inference compile mutates the shared Model (disables tracking) without restoring it; a later compile(true) on the same instance could leave backward cells wired to a destroyed input buffer.
-		if (!backprop) {
-			model.setInputTracking(false);
-		}
-
-		List<Cell<PackedCollection>> cells = model.forward();
-		OperationList forward = new OperationList("CompiledModel Forward");
-		for (int i = cells.size() - 1; i >= 0; i--) {
-			forward.add(cells.get(i).push(in.get(i).get()));
-		}
-
-		ParallelProcess<?, Runnable> p = forward.flatten().optimize();
-
-		ParallelProcess<?, Runnable> q;
-
-		if (backprop) {
-			q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
-			if (q instanceof OperationList) q = ((OperationList) q).flatten();
-			q = q.optimize();
-		} else {
-			q = null;
-		}
-
-		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
-		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
-
-		CompiledModel compiled = new CompiledModel(in.stream().map(InputManager::getShape).collect(Collectors.toList()),
-				grad.getShape(),
-				setup, in,
-				() -> output, p.get(), grad,
-				gradOut == null ? null : () -> gradOut,
-				q == null ? null : q.get());
-		compiled.reset();
-		return compiled;
 	}
 
 	/**

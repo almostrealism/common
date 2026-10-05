@@ -26,7 +26,6 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -272,19 +271,31 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * output buffers and, when {@code owned} is set, retains the {@link WaveData} so its backing
 	 * buffer is released on {@link #destroy()}.
 	 *
+	 * <p>The channel wiring is built in this constructor body (rather than through chained
+	 * construction) so it can be guarded: an owned {@link WaveData} is released if building the
+	 * channel producers or {@link Writer} cursors throws. Otherwise that initialization happens
+	 * during construction delegation, before ownership is recorded, and a throw there would leak
+	 * the freshly allocated backing buffer with no instance left to destroy it.</p>
+	 *
 	 * @param f     supplier producing the destination WAV file, or null for in-memory capture
 	 * @param bits  bit depth for encoding
 	 * @param data  WaveData providing the underlying channel buffers and sample rate
 	 * @param owned whether this WaveOutput allocated {@code data} itself and must release it
 	 */
 	private WaveOutput(Supplier<File> f, int bits, WaveData data, boolean owned) {
-		this(f, bits, data.getSampleRate(),
-				data.getChannelCount() > 1 ? List.of(
-						CollectionFeatures.getInstance().p(data.getChannelData(0)),
-						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
-				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
-
+		this.file = f;
+		this.bits = bits;
+		this.sampleRate = data.getSampleRate();
 		if (owned) this.ownedData = data;
+
+		try {
+			initChannels(data.getChannelCount() > 1 ?
+					List.of(p(data.getChannelData(0)), p(data.getChannelData(1))) :
+					List.of(p(data.getChannelData(0))));
+		} catch (RuntimeException | Error t) {
+			if (owned) data.destroy();
+			throw t;
+		}
 	}
 
 	/**
@@ -299,7 +310,18 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		this.file = f;
 		this.bits = bits;
 		this.sampleRate = sampleRate;
-		this.data = data.stream()
+		initChannels(data);
+	}
+
+	/**
+	 * Wraps the given per-channel data producers as the traversable channel buffers and
+	 * builds the per-channel {@link Writer} receptors. Shared by the {@link WaveData}-backed
+	 * and producer-list constructors.
+	 *
+	 * @param channelData per-channel audio data producers
+	 */
+	private void initChannels(List<Producer<PackedCollection>> channelData) {
+		this.data = channelData.stream()
 				.map(this::c)
 				.map(CollectionProducer::traverseEach)
 				.toList();

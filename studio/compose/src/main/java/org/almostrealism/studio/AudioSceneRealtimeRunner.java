@@ -221,6 +221,14 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * contents change on {@link AudioScene#assignGenome}, so the runner can be reused
 	 * without recompilation.</p>
 	 *
+	 * <p><b>Construction-failure rollback.</b> The per-buffer frame index and the
+	 * {@link CellList} built here are owned by the returned {@link TemporalCellular} and
+	 * freed by its {@code destroy()}, but that owner is not constructed until both have been
+	 * allocated. A throw from {@link AudioScene#getCells} or {@link CellList#tick()} would
+	 * otherwise leak whatever was already allocated, so each resource is tracked as it is
+	 * created and released in reverse order if construction fails; the throwable is rethrown
+	 * unchanged.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -230,9 +238,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 											List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 
+		// Construction-failure rollback for runner-owned resources; see method javadoc.
+		List<Object> allocated = new ArrayList<>();
+		try {
 		// Per-buffer frame index for WaveCell external frame control; tracks position
 		// 0 to bufferSize-1 within each buffer.
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
+		allocated.add(bufferFrameIndex);
 		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
@@ -240,6 +252,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
 				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
 				bufferFrameProducer);
+		allocated.add(cells);
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
@@ -310,6 +323,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		}
 
 		return new CellListRunner();
+		} catch (RuntimeException | Error t) {
+			for (int i = allocated.size() - 1; i >= 0; i--) {
+				Destroyable.destroy(allocated.get(i));
+			}
+			throw t;
+		}
 	}
 
 	/**

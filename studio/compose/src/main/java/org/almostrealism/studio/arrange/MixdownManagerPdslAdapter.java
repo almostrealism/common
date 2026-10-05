@@ -17,6 +17,7 @@
 package org.almostrealism.studio.arrange;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -474,7 +475,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Initialise the automation slots with their current (clock-position) values so
 		// direct consumers of this map (tests, single-shot renders) see live gene values
 		// even if they never run the per-buffer refresh.
-		automationRefresh(args, null).get().run();
+		runOnce(automationRefresh(args, null));
 
 		return args;
 	}
@@ -714,7 +715,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Prepend y[0] = a1 as the first tap, materialising the table at the build boundary.
 		CollectionProducer response = concat(1, a1.reshape(bins, 1), general);
 		PackedCollection table = new PackedCollection(new TraversalPolicy(bins, taps));
-		a(bins * taps, cp(table), response).get().run();
+		runOnce(a(bins * taps, cp(table), response));
 		return table;
 	}
 
@@ -940,7 +941,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("stem_reverb", new PackedCollection(shape(1, config.signalSize)));
 
 		// Initialise the efx-layer automation slots (see the matching call in the base map).
-		automationRefresh(args, efx).get().run();
+		runOnce(automationRefresh(args, efx));
 
 		return args;
 	}
@@ -984,8 +985,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		CollectionProducer fraction = mod(
 				integers(1, reverbTaps + 1).multiply(phiInverse), c(1.0));
 		PackedCollection delays = new PackedCollection(reverbTaps);
-		a(reverbTaps, cp(delays),
-				floor(fraction.multiply(hi - lo).add(lo))).get().run();
+		runOnce(a(reverbTaps, cp(delays),
+				floor(fraction.multiply(hi - lo).add(lo))));
 		return delays;
 	}
 
@@ -1016,8 +1017,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
 		double off = 2.0 / n;
 		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		a(n * n, cp(matrix),
-				identity(n).multiply(gain).subtract(gain * off)).get().run();
+		runOnce(a(n * n, cp(matrix),
+				identity(n).multiply(gain).subtract(gain * off)));
 		return matrix;
 	}
 
@@ -1400,9 +1401,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		PackedCollection send = new PackedCollection(new TraversalPolicy(channels, layers));
 		CollectionProducer column = mod(
 				integers(0, channels * layers), c((double) layers));
-		a(channels * layers, cp(send),
+		runOnce(a(channels * layers, cp(send),
 				max(c(1.0).subtract(column.multiply(column)),
-						c(0.0))).get().run();
+						c(0.0))));
 		return send;
 	}
 
@@ -1455,6 +1456,29 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
+	 * Compiles the given one-shot operation, runs it exactly once, and releases the
+	 * compiled native kernels it owns.
+	 *
+	 * <p>The build-time argument fills in this adapter — the automation-slot
+	 * initialisation in {@link #baseArgsMap()} and {@link #wetArgsMap()}, and the
+	 * constant-table/matrix materialisers (filter response table, reverb tap delays,
+	 * Householder matrix, bus-send matrix) plus {@link #maxEvaluated} — each materialise a
+	 * {@link PackedCollection} by running a compiled assignment once. Retaining the compiled
+	 * {@link Runnable} only to discard it would leak one operation's kernels per build, and
+	 * because the real-time runner compiles a fresh mixdown per render
+	 * ({@code AudioSceneRealtimeRunner.createPdsl}) that leak accumulates across renders.
+	 * Destroying the runnable immediately after it runs frees those kernels while leaving the
+	 * target collection — the operation's output, retained by the caller — untouched.</p>
+	 *
+	 * @param operation the one-shot operation to compile, run, and release
+	 */
+	private static void runOnce(Supplier<Runnable> operation) {
+		Runnable compiled = operation.get();
+		compiled.run();
+		Destroyable.destroy(compiled);
+	}
+
+	/**
 	 * Evaluates a shape-{@code [count]} producer once at argument-build time and returns
 	 * the ceiling of its largest element. Used to size ring state from the current
 	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
@@ -1473,7 +1497,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private int maxEvaluated(Producer<PackedCollection> values, int count) {
 		PackedCollection evaluated = new PackedCollection(count);
-		a(count, cp(evaluated), values).get().run();
+		runOnce(a(count, cp(evaluated), values));
 		double max = 0.0;
 		for (double v : evaluated.toArray(0, count)) {
 			max = Math.max(max, v);
