@@ -175,8 +175,9 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		if (!safetensors.isEmpty()) {
 			// A published checkpoint directory also holds its configuration and tokenizer;
 			// only the safetensors files hold weights.
+			Map<String, File> shards = new HashMap<>();
 			for (File file : safetensors) {
-				log("Located " + locateSafetensors(file) + " weight tensors in " + file.getName());
+				log("Located " + locateSafetensors(file, shards) + " weight tensors in " + file.getName());
 			}
 			logLoaded(safetensors.size(), "safetensors");
 			return;
@@ -253,12 +254,28 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * something reads them, unless {@link #enableMaterializeWeights} asks for them to be copied
 	 * into freshly allocated memory now.
 	 *
-	 * @param file the safetensors file
+	 * <p>A sharded checkpoint assigns each tensor to exactly one shard, and the order the shards
+	 * are read in is not part of that contract. A name that a shard read earlier already defined
+	 * is therefore rejected, before any tensor of this file is added, rather than letting the
+	 * filesystem's ordering decide which of the two definitions survives.</p>
+	 *
+	 * @param file   the safetensors file
+	 * @param shards the shard each tensor read so far came from, updated with this file's tensors
 	 * @return the number of tensors located
 	 * @throws IOException if the file cannot be read
+	 * @throws IllegalArgumentException if a tensor in the file is also defined by an earlier shard
 	 */
-	private int locateSafetensors(File file) throws IOException {
+	private int locateSafetensors(File file, Map<String, File> shards) throws IOException {
 		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(file);
+		for (String key : tensors.keySet()) {
+			File earlier = shards.get(key);
+			if (earlier != null) {
+				throw new IllegalArgumentException("The tensor " + key + " is defined by both "
+						+ earlier.getName() + " and " + file.getName());
+			}
+		}
+
+		tensors.keySet().forEach(key -> shards.put(key, file));
 		tensors.forEach((key, reference) ->
 				weights.put(key, CollectionEncoder.decode(reference, file, enableMaterializeWeights)));
 		return tensors.size();

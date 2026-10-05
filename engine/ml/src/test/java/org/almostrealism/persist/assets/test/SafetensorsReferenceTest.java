@@ -449,6 +449,71 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		Assert.assertTrue(SafetensorsReference.locate(writeFile("{\"__metadata__\":{}}", 0)).isEmpty());
 	}
 
+	/** The tensors of every shard in a checkpoint directory are read into one dictionary. */
+	@Test(timeout = 60000)
+	public void readsEveryShard() throws IOException {
+		Path directory = writeShards(
+				"{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 1.5f,
+				"{\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", -2.0f);
+
+		StateDictionary weights = new StateDictionary(directory.toString());
+		Assert.assertEquals(2, weights.size());
+		Assert.assertArrayEquals(new double[] { 1.5 }, weights.get("a").toArray(), 0.0);
+		Assert.assertArrayEquals(new double[] { -2.0 }, weights.get("b").toArray(), 0.0);
+	}
+
+	/**
+	 * A tensor defined by two shards is rejected, naming both, rather than letting the order the
+	 * shards happen to be read in decide which definition is kept; this holds whether or not the
+	 * two definitions agree.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsTensorDefinedByTwoShards() throws IOException {
+		String header = "{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}";
+
+		for (float second : new float[] { 3.0f, 1.5f }) {
+			Path directory = writeShards(header, 1.5f, header, second);
+			try {
+				new StateDictionary(directory.toString());
+				Assert.fail("A tensor defined by two shards should be rejected");
+			} catch (IllegalArgumentException e) {
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("The tensor a is defined by both"));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("model-00001-of-00002.safetensors"));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("model-00002-of-00002.safetensors"));
+			}
+		}
+	}
+
+	/**
+	 * Writes a checkpoint directory of two single-value shards, named as a published sharded
+	 * checkpoint names them.
+	 *
+	 * @param firstHeader  the JSON header of the first shard
+	 * @param firstValue   the single F32 value of the first shard
+	 * @param secondHeader the JSON header of the second shard
+	 * @param secondValue  the single F32 value of the second shard
+	 * @return the checkpoint directory
+	 */
+	private Path writeShards(String firstHeader, float firstValue,
+							 String secondHeader, float secondValue) throws IOException {
+		Path directory = Files.createTempDirectory("safetensors");
+		Files.copy(writeFile(firstHeader, floatBytes(firstValue)).toPath(),
+				directory.resolve("model-00001-of-00002.safetensors"));
+		Files.copy(writeFile(secondHeader, floatBytes(secondValue)).toPath(),
+				directory.resolve("model-00002-of-00002.safetensors"));
+		return directory;
+	}
+
+	/**
+	 * Encodes a single value as little-endian F32 tensor data.
+	 *
+	 * @param value the value
+	 * @return its four bytes
+	 */
+	private byte[] floatBytes(float value) {
+		return ByteBuffer.allocate(Float.BYTES).order(ByteOrder.LITTLE_ENDIAN).putFloat(value).array();
+	}
+
 	/**
 	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
 	 * tensor data.
