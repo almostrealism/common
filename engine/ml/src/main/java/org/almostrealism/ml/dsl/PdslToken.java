@@ -52,6 +52,13 @@ public class PdslToken {
 		FOR,
 		/** {@code in} keyword in {@code for ... in ...} iteration syntax. */
 		IN,
+		/**
+		 * {@code stack} keyword: {@code stack group as name { body }} repeats the body once for
+		 * each member of a weight group, in order, with no index the body can compute with.
+		 */
+		STACK,
+		/** {@code as} keyword naming the member of a {@code stack} each repetition reads. */
+		AS,
 		/** {@code branch} keyword for multi-way conditional dispatch. */
 		BRANCH,
 		/** {@code accum} keyword for accumulation expressions. */

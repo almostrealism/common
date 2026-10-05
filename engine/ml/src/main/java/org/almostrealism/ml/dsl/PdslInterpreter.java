@@ -638,6 +638,11 @@ public class PdslInterpreter {
 					loopEnv.set(forStmt.getVariable(), i);
 					interpretModelBody(forStmt.getBody(), model, loopEnv);
 				}
+			} else if (stmt instanceof PdslNode.StackStatement) {
+				PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+				for (Environment memberEnv : stackMembers(stack, env)) {
+					interpretModelBody(stack.getBody(), model, memberEnv);
+				}
 			} else {
 				throw new PdslParseException(
 						"Unsupported statement in model body: " + stmt.getClass().getSimpleName());
@@ -681,6 +686,11 @@ public class PdslInterpreter {
 				loopEnv.set(forStmt.getVariable(), i);
 				interpretBody(forStmt.getBody(), block, loopEnv);
 			}
+		} else if (stmt instanceof PdslNode.StackStatement) {
+			PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+			for (Environment memberEnv : stackMembers(stack, env)) {
+				interpretBody(stack.getBody(), block, memberEnv);
+			}
 		} else if (stmt instanceof PdslNode.ReturnStatement) {
 			// Return is handled by evaluating and adding the final expression
 			Object result = evaluateExpression(
@@ -690,6 +700,40 @@ public class PdslInterpreter {
 			throw new PdslParseException(
 					"Unsupported statement: " + stmt.getClass().getSimpleName());
 		}
+	}
+
+	/**
+	 * Evaluates the weight group of a {@code stack} statement and returns one scope per member,
+	 * in the group's {@link StateDictionary#members() order}, each binding the statement's name
+	 * to that member's weights. The body is interpreted once in each scope.
+	 *
+	 * @param stack The stack statement
+	 * @param env   The scope the statement appears in
+	 * @return one scope per member of the group
+	 * @throws PdslParseException if the group is not a weight group, or has no members
+	 */
+	private List<Environment> stackMembers(PdslNode.StackStatement stack, Environment env) {
+		Object group = evaluateExpression(stack.getGroup(), env);
+		if (!(group instanceof StateDictionary)) {
+			throw new PdslParseException("stack repeats over a group of weights, such as "
+					+ "weights.model.layers, but was given "
+					+ (group == null ? "null" : group.getClass().getSimpleName())
+					+ " at line " + stack.getLine());
+		}
+
+		StateDictionary weights = (StateDictionary) group;
+		List<String> members = weights.members();
+		if (members.isEmpty()) {
+			throw new PdslParseException("stack was given a group with no weights at line " + stack.getLine());
+		}
+
+		List<Environment> scopes = new ArrayList<>();
+		for (String member : members) {
+			Environment memberEnv = new Environment(env);
+			memberEnv.set(stack.getName(), weights.group(member));
+			scopes.add(memberEnv);
+		}
+		return scopes;
 	}
 
 	/**
@@ -815,7 +859,7 @@ public class PdslInterpreter {
 		if (expr instanceof PdslNode.NumberLiteral) {
 			return ((PdslNode.NumberLiteral) expr).getValue();
 		} else if (expr instanceof PdslNode.StringLiteral) {
-			return env.interpolate(((PdslNode.StringLiteral) expr).getValue(), expr.getLine());
+			return ((PdslNode.StringLiteral) expr).getValue();
 		} else if (expr instanceof PdslNode.BoolLiteral) {
 			return ((PdslNode.BoolLiteral) expr).getValue();
 		} else if (expr instanceof PdslNode.NullLiteral) {
@@ -838,18 +882,6 @@ public class PdslInterpreter {
 			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
 			Object obj = evaluateExpression(subscript.getObject(), env);
 			Object indexValue = evaluateExpression(subscript.getIndex(), env);
-			if (obj instanceof StateDictionary) {
-				// A checkpoint subscripted by name: weights["model.layers.{i}.mlp.up_proj.weight"]
-				if (!(indexValue instanceof String)) {
-					throw new PdslParseException("A checkpoint is indexed by weight name, such as "
-							+ "weights[\"model.norm.weight\"], at line " + expr.getLine());
-				}
-				try {
-					return ((StateDictionary) obj).require((String) indexValue);
-				} catch (IllegalArgumentException e) {
-					throw new PdslParseException(e.getMessage() + ", at line " + expr.getLine());
-				}
-			}
 			if (indexValue == ALL_CHANNELS
 					&& (obj instanceof PackedCollection || obj instanceof CollectionProducer)) {
 				// Vectorized for-each: the subscript covers every channel at once, so the
@@ -1025,6 +1057,19 @@ public class PdslInterpreter {
 	private Object evaluateFieldAccess(PdslNode.FieldAccess access,
 									   Environment env) {
 		Object obj = evaluateExpression(access.getObject(), env);
+		if (obj instanceof StateDictionary) {
+			// A path into a checkpoint: weights.model.norm.weight is the tensor of that name,
+			// and weights.model.layers is the group of everything under it.
+			StateDictionary weights = (StateDictionary) obj;
+			if (weights.containsKey(access.getField())) return weights.get(access.getField());
+			StateDictionary group = weights.group(access.getField());
+			if (group.size() > 0) return group;
+			try {
+				return weights.require(access.getField());
+			} catch (IllegalArgumentException e) {
+				throw new PdslParseException(e.getMessage() + ", at line " + access.getLine());
+			}
+		}
 		if (obj instanceof Map) {
 			Object value = ((Map<String, Object>) obj).get(access.getField());
 			if (value == null) {
@@ -1307,44 +1352,6 @@ public class PdslInterpreter {
 		Environment root() { return parent == null ? this : parent.root(); }
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
-
-		/**
-		 * Replaces each {@code {name}} in a string literal with the value bound to {@code name}
-		 * in this scope, so that a key can name the layer of an enclosing loop:
-		 * {@code "model.layers.{i}.input_layernorm.weight"}. A whole number is written without a
-		 * fractional part, whatever its numeric type, because PDSL arithmetic is done in doubles.
-		 *
-		 * @param text the literal text
-		 * @param line the line of the literal, for error messages
-		 * @return the text with every placeholder replaced
-		 * @throws PdslParseException if a placeholder is unterminated or names nothing in scope
-		 */
-		String interpolate(String text, int line) {
-			int open = text.indexOf('{');
-			if (open < 0) return text;
-
-			StringBuilder result = new StringBuilder();
-			int position = 0;
-			while (open >= 0) {
-				int close = text.indexOf('}', open);
-				if (close < 0) {
-					throw new PdslParseException("Unterminated '{' in \"" + text + "\" at line " + line);
-				}
-				String name = text.substring(open + 1, close).trim();
-				if (!has(name)) {
-					throw new PdslParseException("\"" + text + "\" names {" + name
-							+ "}, which is not defined at line " + line);
-				}
-				Object value = get(name);
-				if (value instanceof Number && ((Number) value).doubleValue() == Math.rint(((Number) value).doubleValue())) {
-					value = ((Number) value).longValue();
-				}
-				result.append(text, position, open).append(value);
-				position = close + 1;
-				open = text.indexOf('{', position);
-			}
-			return result.append(text.substring(position)).toString();
-		}
 	}
 
 	/**

@@ -6,11 +6,15 @@
  * caller looks up. Everything after that is here:
  *
  *   x                                                       [1, dim]   the residual stream
- *   for each layer i:
+ *   stack, once per block of model.layers:
  *     x = x + attention(rmsnorm(x))                         [1, dim]   reads earlier tokens
  *     x = x + swiglu_ffn(rmsnorm(x))                        [1, dim]
  *   rmsnorm(x)                                              [1, dim]
  *   dense(embedding table)                                  [1, vocab] one score per token
+ *
+ * The stack repeats the decoder layer once for each block of weights under model.layers in the
+ * checkpoint, in order; block names the weights of the current repetition, so
+ * block.self_attn.q_proj.weight is model.layers.N.self_attn.q_proj.weight of the Nth block.
  *
  * rope holds the rotation angle of every position, shared by the rotary embeddings of all
  * layers. Each layer gets its own memory of the keys and values of every earlier token (its
@@ -18,7 +22,7 @@
  * projection reuses the embedding table: the score of each vocabulary entry is how closely its
  * embedding matches the final residual stream.
  *
- * Every weight is read from the checkpoint by its Hugging Face name, so each line can be
+ * Every weight is read from the checkpoint by its Hugging Face path, so each line can be
  * matched against the model card or a PyTorch implementation. The layers it calls are written
  * out in transformer.pdsl, attention.pdsl and feed_forward.pdsl.
  *
@@ -33,25 +37,25 @@ import "/pdsl/transformer.pdsl"
 model qwen2(settings: model_settings, weights: checkpoint, position: scalar) {
     let rope = rope_freqs(settings.rope_theta, settings.dim / settings.heads, settings.seq_len)
 
-    for i in 0..settings.layers {
+    stack weights.model.layers as block {
         transformer(settings.heads, settings.kv_heads, settings.dim / settings.heads,
-                    weights["model.layers.{i}.input_layernorm.weight"],
-                    weights["model.layers.{i}.self_attn.q_proj.weight"],
-                    weights["model.layers.{i}.self_attn.k_proj.weight"],
-                    weights["model.layers.{i}.self_attn.v_proj.weight"],
-                    weights["model.layers.{i}.self_attn.o_proj.weight"],
-                    weights["model.layers.{i}.self_attn.q_proj.bias"],
-                    weights["model.layers.{i}.self_attn.k_proj.bias"],
-                    weights["model.layers.{i}.self_attn.v_proj.bias"],
+                    block.input_layernorm.weight,
+                    block.self_attn.q_proj.weight,
+                    block.self_attn.k_proj.weight,
+                    block.self_attn.v_proj.weight,
+                    block.self_attn.o_proj.weight,
+                    block.self_attn.q_proj.bias,
+                    block.self_attn.k_proj.bias,
+                    block.self_attn.v_proj.bias,
                     rope, position,
-                    weights["model.layers.{i}.post_attention_layernorm.weight"],
-                    weights["model.layers.{i}.mlp.gate_proj.weight"],
-                    weights["model.layers.{i}.mlp.down_proj.weight"],
-                    weights["model.layers.{i}.mlp.up_proj.weight"],
+                    block.post_attention_layernorm.weight,
+                    block.mlp.gate_proj.weight,
+                    block.mlp.down_proj.weight,
+                    block.mlp.up_proj.weight,
                     1e-6,
                     zeros([settings.seq_len, settings.dim]), zeros([settings.seq_len, settings.dim]))
     }
 
-    rmsnorm(weights["model.norm.weight"], 1e-6)
-    dense(weights["model.embed_tokens.weight"])
+    rmsnorm(weights.model.norm.weight, 1e-6)
+    dense(weights.model.embed_tokens.weight)
 }

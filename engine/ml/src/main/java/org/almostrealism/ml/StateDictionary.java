@@ -38,10 +38,12 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * {@link StateDictionary} provides access to model weights stored in protobuf format.
@@ -273,6 +275,45 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 				+ weights.size() + " weights"
 				+ (nearest.isEmpty() ? "" : "; the closest names are "
 						+ String.join(", ", nearest.subList(0, Math.min(3, nearest.size())))));
+	}
+
+	/**
+	 * Returns the weights under one name of this dictionary's dotted hierarchy, as a dictionary
+	 * of its own whose keys omit that name: in a checkpoint, {@code group("model")} holds
+	 * {@code layers.0.mlp.up_proj.weight} for {@code model.layers.0.mlp.up_proj.weight}. The
+	 * group shares this dictionary's tensors rather than copying them, so destroying either
+	 * destroys the weights of both.
+	 *
+	 * @param name a name, or dotted path of names, within this dictionary
+	 * @return the weights under {@code name}; empty if there are none
+	 */
+	public StateDictionary group(String name) {
+		String prefix = name + ".";
+		Map<String, PackedCollection> members = new HashMap<>();
+		weights.forEach((key, weight) -> {
+			if (key.startsWith(prefix)) members.put(key.substring(prefix.length()), weight);
+		});
+		return new StateDictionary(members);
+	}
+
+	/**
+	 * Returns the names at the top of this dictionary's dotted hierarchy, in order: the
+	 * {@link #group} names that, with the weights named directly, make up the dictionary. Names
+	 * that are all whole numbers, such as the layers of a checkpoint's {@code model.layers}, are
+	 * in numeric order ({@code 2} before {@code 10}); any other names are in alphabetical order.
+	 *
+	 * @return the distinct first segments of this dictionary's keys
+	 */
+	public List<String> members() {
+		List<String> names = new ArrayList<>(weights.keySet().stream()
+				.map(key -> key.contains(".") ? key.substring(0, key.indexOf('.')) : key)
+				.collect(Collectors.toSet()));
+		if (names.stream().allMatch(n -> n.matches("\\d+"))) {
+			names.sort(Comparator.comparingInt(Integer::parseInt));
+		} else {
+			java.util.Collections.sort(names);
+		}
+		return names;
 	}
 
 	/**

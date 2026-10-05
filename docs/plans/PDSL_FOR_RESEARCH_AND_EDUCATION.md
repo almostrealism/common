@@ -123,9 +123,9 @@ No shipped `.pdsl` file defines a `model`.
    Neither should be a special mode of the runner, and neither gets a shorthand until one is
    clearly needed (Decision 4). The examples write the composition out in full where it is
    used.
-3. **Names match the literature and the checkpoint.** Weight names follow the Hugging Face
-   keys (`model.layers.{i}.self_attn.q_proj.weight`), so a reader can cross-reference the
-   model card, a paper or a PyTorch tutorial.
+3. **Names match the literature and the checkpoint.** Weight paths follow the Hugging Face
+   keys (`block.self_attn.q_proj.weight` within `model.layers`), so a reader can
+   cross-reference the model card, a paper or a PyTorch tutorial.
 4. **Shapes are always visible.** Every line of the canonical files carries its shape. The
    tooling can print a shape trace of any file without running it.
 5. **Errors are for people.** Every error names a file, a line, a column and the shapes
@@ -142,30 +142,28 @@ No shipped `.pdsl` file defines a `model`.
      form. If it is possible, people will do it.
    - Constructs that read like programming work against this: index arithmetic, string
      substitution such as `"model.layers.{i}..."`, and long positional argument lists. The
-     first whole-model files use some of these; see "Form follows the picture".
+     first whole-model files used the first two and still use the third; see "Form follows
+     the picture".
    - New features must not add more of them.
 
 ## Target shape of the model file
 
-This is a sketch to anchor the discussion. The syntax for weight access and per-layer keys
-is proposed here, and the language does not support it yet.
+This is the target. `stack` and weight paths exist (see `qwen2.pdsl`); `embed` and a
+`transformer` that takes one block of weights do not yet.
 
 ```pdsl
 import "/pdsl/transformer.pdsl"
 
 /** Qwen2.5 / Qwen3 decoder: one token in, one row of vocabulary logits out. */
-model qwen(config: qwen_config, weights: checkpoint, token: scalar, position: scalar) {
-    // The token's row of the embedding table: the start of the residual stream.  [1, 896]
-    embed(weights["model.embed_tokens.weight"], token)
+model qwen(settings: model_settings, weights: checkpoint, token: scalar, position: scalar) {
+    embed(weights.model.embed_tokens.weight, token)                              // [1, 896]
 
-    // 24 identical layers, each reading and writing the residual stream.          [1, 896]
-    for i in 0..config.layers {
-        let layer = weights.prefix("model.layers.{i}.")
-        transformer(config, layer, position)
+    stack weights.model.layers as block {                                        // × 24
+        transformer(block, position)                                             // [1, 896]
     }
 
-    rmsnorm(weights["model.norm.weight"], config.epsilon)                       // [1, 896]
-    dense(weights["lm_head.weight"])                                            // [1, 151936]
+    rmsnorm(weights.model.norm.weight, 1e-6)                                     // [1, 896]
+    dense(weights.model.embed_tokens.weight)                                     // [1, 151936]
 }
 ```
 
@@ -173,38 +171,34 @@ The same file with a recorded residual stream and a steering vector. The changed
 the ones a published page would highlight:
 
 ```pdsl
-    for i in 0..18 {
-        transformer(config, weights.prefix("model.layers.{i}."), position)
-    }
+    stack weights.model.layers[..18] as block { transformer(block, position) }
     record("residual_18")                                // read the stream here
     accum { add(direction, strength) }                   // steer it here
-    for i in 18..config.layers {
-        transformer(config, weights.prefix("model.layers.{i}."), position)
-    }
+    stack weights.model.layers[18..] as block { transformer(block, position) }
 ```
 
-Splitting the loop at the layer of interest avoids adding conditionals to the language. The
-split is also the most honest picture of where the intervention sits.
+Splitting the stack at the layer of interest avoids adding conditionals to the language. The
+split is also the most honest picture of where the intervention sits. Slicing a group
+(`[..18]`) is not implemented yet.
 
 ## Form follows the picture
 
-The first whole-model files (`qwen2.pdsl`, `qwen3.pdsl`) work, but they read more like a
-program than a diagram. Each layer is reached through `for i in 0..settings.layers`, its
-weights are named by substituting `{i}` into a string, and a 20-argument call hides which
-weight feeds which stage. These are accepted for now. The following ideas are candidates for
-moving back toward the picture; none is decided.
+The first whole-model files (`qwen2.pdsl`, `qwen3.pdsl`) read more like a program than a
+diagram. Ideas 1 and 2 below are now implemented, and the `for i` loop and `{i}` string
+substitution they replace have been removed. The 20-argument call that hides which weight
+feeds which stage remains (idea 3). The other ideas are candidates; none is decided.
 
-1. **Repetition without an index.** A `stack` construct over a collection the checkpoint
-   already has: `stack weights.model.layers as layer { transformer(layer) }`.
+1. **Repetition without an index** (implemented, except slicing). A `stack` construct over
+   a collection the checkpoint already has: `stack weights.model.layers as block { ... }`.
    - The count comes from the data, and there is no loop variable to compute with.
    - It draws as one box marked "× 24".
    - An intervention between layers splits the stack:
      `stack layers[..18]`, then `record`, then `stack layers[18..]`. That is exactly the
      picture of where the intervention sits.
-2. **Hierarchical weights instead of string keys.**
-   - Bind the checkpoint as a tree that follows its own dotted names, so that
-     `layer.self_attn.q_proj.weight` is a path into the data, not a string being assembled.
-   - This removes `{name}` interpolation entirely.
+2. **Hierarchical weights instead of string keys** (implemented).
+   - The checkpoint is a tree that follows its own dotted names, so that
+     `block.self_attn.q_proj.weight` is a path into the data, not a string being assembled.
+   - Neither `{name}` interpolation nor string keys remain in the language.
 3. **Layers that take a block of weights, not twenty arguments.**
    - A layer declares the weight names it reads relative to the block it is given:
      `transformer(layer)` reads `layer.self_attn.q_proj.weight` itself.
@@ -223,8 +217,8 @@ moving back toward the picture; none is decided.
    boxes. They belong in a header the diagram shows as a legend, not threaded through every
    call as arguments.
 
-Once 1–3 exist, the `{i}` interpolation and the per-layer `for` in the Qwen files should be
-removed, not kept beside the new forms.
+The general `for i in a..b` statement still exists for other uses. Whether model files should
+be allowed to use it at all is a question for idea 5.
 
 ## Data imports
 
@@ -275,15 +269,16 @@ Each phase ends at a gate. Work does not move to the next phase until its gate i
 
 ### Phase 1: the whole model in PDSL
 
-1. **Weight binding.** A `checkpoint` parameter type is bound to a `StateDictionary`. It
-   supports `weights["key"]`, `weights.prefix("...")` and `{i}` interpolation from the
-   enclosing `for` variable. This replaces the unused `weight("key")` and `state_dict` stubs.
+1. **Weight binding** (implemented). A `checkpoint` parameter is bound to a
+   `StateDictionary` and read by path (`weights.model.norm.weight`). A path that ends at a
+   group (`weights.model.layers`) is that group, which `stack` repeats over. This replaces
+   the unused `state_dict` stub.
    It is general (any model with keyed weights) and belongs in the interpreter, not in a
    Qwen-specific registrar.
 2. **`embed(table, token)`**: a general builtin that selects one row of a table by a scalar
    index.
-3. **Model-level `for` over layers**, building each iteration's layer with the weights its
-   keys select.
+3. **Model-level repetition over layers** (implemented as `stack`), building each layer
+   with the weights of its block.
    - **Implemented:** the KV cache is now an explicit `key_cache` / `value_cache` parameter
      of every attention and transformer layer. The model allocates one pair per layer with
      `zeros([seq_len, dim])`.
