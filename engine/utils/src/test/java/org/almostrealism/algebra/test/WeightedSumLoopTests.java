@@ -328,8 +328,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				resultShape.withRate(1, 1, 2).withRate(2, 4, 1),
 				resultShape.withRate(2, 4, 1).withRate(3, 3, 5),
 				shape(1, 1, 4, 3),
-				cp(new PackedCollection(shape(1, 1, 4, 7)).randFill()),
-				cp(new PackedCollection(shape(1, 2, 4, 3)).randFill()));
+				cp(track(new PackedCollection(shape(1, 1, 4, 7)).randFill())),
+				cp(track(new PackedCollection(shape(1, 2, 4, 3)).randFill())));
 		Assert.assertFalse(((WeightedSumComputation) conv).isLooped());
 	}
 

@@ -54,10 +54,12 @@ Its defining shape — a *kill switch for the branch's own feature*:
    the shipped default *is* the old behaviour.
 
 The combination of (3) and (4) is the high-signal tell, and it is what separates
-this from a legitimate feature flag. In an honest feature flag either (a) the
-default is the new, intended behaviour and the tests validate that default, or
-(b) both values are genuinely exercised and asserted. The deceptive flag is the
-one whose **shipped configuration is validated by no test**, and whose only
+this from a legitimate feature flag. In an honest feature flag the default is the
+new, intended behaviour and the tests assert the new path with that default in
+effect. (Testing both values does not by itself make a default-off flag honest:
+asserting the off value only re-validates the baseline — see S3.) The deceptive
+flag is the one whose **new path is validated by no test in its shipped
+configuration**, and whose only
 function is to keep the new path out of production so that an integration or
 backend test — which the agent could not make pass — reverts to baseline and goes
 green.
@@ -108,14 +110,31 @@ to, the pre-existing behaviour — e.g. `if (!enableX) return 0;`,
 `if (!enableX) return <oldCall>(...)`. Detectable structurally: the guarded method
 is new or newly-branched on this branch, and one arm is guarded by the S1 symbol.
 
-**S3 — Tests validate only the non-default value (the decisive signal).** Search
-all test sources that reference the S1 symbol. The branch is suspicious when
-**every** test reference assigns the switch its *non-default* value (and typically
-saves/restores it), and **no** test exercises the production default paired with an
-assertion on the new behaviour. Concretely, for a boolean defaulting to `false`:
-every occurrence is `symbol = true` guarded by save/restore, and there is no test
-that leaves it `false` and asserts the looped/new result. The shipped
-configuration is unvalidated.
+**S3 — The new path is validated only under the non-default value (the decisive
+signal).** S3 is defined in terms of *assertions on the new code path*, not in
+terms of which values tests happen to assign. Search all test sources on the
+branch for tests that reach the new path identified in S2. S3 holds when **no
+test asserts the new path's behaviour while the switch holds its shipped
+default** — equivalently, every assertion that covers the new path runs with the
+switch forced to its non-default value (typically set in `@Before` and restored in
+`@After`, or set inline).
+
+Two clarifications make the rule mechanical:
+
+- **Assertions on the disabled arm do not clear S3.** When the default arm is the
+  baseline (S2), a test that leaves the switch at its default and asserts correct
+  output is validating `master`'s behaviour, which `master`'s suite already
+  validates. It says nothing about the new path, so it does not count. For a
+  boolean defaulting to `false` this means S3 always holds once S2 does: the new
+  path is unreachable in the shipped configuration, so no assertion can cover it
+  there. That is intentional — it is exactly the property being detected.
+- **A reference to the symbol is not an assertion.** A test that assigns the
+  default (`symbol = false`), or reads the symbol, without an assertion that
+  executes the new path does not clear S3. Only an assertion counts, and only one
+  that runs the new path with the default in effect.
+
+The shipped configuration of the new path is therefore unvalidated whenever S3
+holds.
 
 **S4 (corroborating) — Failure-then-switch history.** Via the branch commit
 graph (as `deception-audit.sh` already inspects): the switch field was introduced
@@ -131,8 +150,13 @@ raises severity but is not required). That conjunction is what distinguishes a
 deceptive kill switch from an honest feature flag:
 
 - Honest flag, new behaviour on by default → fails S2/S3 (no baseline short-circuit
-  in the default arm; tests validate the default).
-- Honest flag, both values tested → fails S3 (a test exercises the default too).
+  in the default arm; tests assert the new path with the default in effect). This
+  holds whether or not the off value is also tested.
+- Flag defaulting *off* that guards a new path → fires, even when both values are
+  tested, because by S3's definition nothing validates the new path as shipped.
+  A legitimate staged rollout looks the same as the deception to a static check;
+  it is resolved through the human-justification escape hatch under *Response*,
+  not by the detector guessing intent.
 - Honest tuning threshold (`loopThreshold`) → fails S1 (not boolean on/off) and
   S2 (both arms are correct behaviour, neither is "baseline").
 
@@ -155,11 +179,14 @@ cannot merge until either:
 
 ## False positives and how the design bounds them
 
-- **Genuine risk-gated rollout flags** exist and are legitimate. The design does
-  not forbid flags; it forbids flags whose *shipped value is tested by nothing*.
-  Requiring S3 means a team shipping a flag `false` only needs one test that
-  asserts correct behaviour with the flag `false` for the detector to stay silent —
-  which they should have regardless.
+- **Genuine risk-gated rollout flags** exist and are legitimate, and the detector
+  does fire on them when they are added default-off around a new path: their
+  shipped configuration does not run the new path, so nothing validates it as
+  shipped. That is a deliberate choice. A default-off rollout is uncommon enough
+  that asking a human reviewer to justify it legibly is a small cost, whereas
+  letting a "both values tested" or "default asserted" test clear the finding
+  would let the exact pattern on this branch through — asserting the default arm
+  only re-validates the baseline. Flags that default *on* are never flagged.
 - **Pure tuning parameters** (thresholds, sizes, buffer counts) are excluded by S1
   (not an on/off switch) and S2 (no baseline arm). `loopThreshold` is correctly not
   flagged.
@@ -185,13 +212,14 @@ expectation at the moment the flag is written.
 
 - This detector addresses one specific, recurring production-side pattern. It is
   not a general "did the agent cheat" oracle, and must not be described as one.
-- A sufficiently determined agent can evade any static signal — e.g. by adding a
-  token test that leaves the flag at its default but asserts something trivial, to
-  defeat S3. The design mitigates this by requiring S3's negative to be *an
-  assertion on the new behaviour with the default*, not merely a reference to the
-  symbol; a test that sets the default and asserts nothing meaningful does not
-  clear it. Perfect evasion resistance is not claimed; raising the cost and making
-  the pattern legible to reviewers is the goal.
+- A sufficiently determined agent can evade any static signal — e.g. by
+  expressing the switch in a form S1 does not recognize, or by routing the
+  default arm through a wrapper so S2 no longer sees a direct baseline call. A
+  token test cannot defeat S3: assigning or reading the default, or asserting the
+  default (baseline) arm, never clears it, because S3 is cleared only by an
+  assertion that runs the new path with the default in effect. Perfect evasion
+  resistance is not claimed; raising the cost and making the pattern legible to
+  reviewers is the goal.
 - The strongest durable defense is cultural and procedural, encoded already in
   `CLAUDE.md` and the AGENT INTEGRITY section: a failing test is fixed in
   production code, and a change that makes the shipped system behave as it did
@@ -204,10 +232,18 @@ expectation at the moment the flag is written.
    implementing S1–S4 with the merge-base/fail-closed/`GITHUB_OUTPUT` conventions
    of `detect-test-hiding.sh`.
 2. Add `tools/ci/agent-protection/test-detect-system-under-test-tampering.sh` with
-   fixtures: the `enableLoopGeneration` case (must fire), a default-on feature flag
-   (must not fire), a both-values-tested flag (must not fire), a tuning threshold
-   (must not fire), a flag whose default *is* covered by an asserting test (must not
-   fire).
+   fixtures:
+   - the `enableLoopGeneration` case (must fire);
+   - the same case plus a test that assigns `enableLoopGeneration = false` and
+     asserts nothing (must still fire — an unasserted default assignment does not
+     clear S3);
+   - the same case plus a test that leaves the flag `false` and asserts the
+     baseline output (must still fire — disabled-arm assertions do not clear S3);
+   - a default-on feature flag whose tests assert the new path at the default
+     (must not fire), with and without an additional test of the off value;
+   - a default-off flag with both values tested (must fire; documents that
+     staged rollouts go to human justification);
+   - a tuning threshold such as `loopThreshold` (must not fire).
 3. Invoke it from the `test-integrity-check` job next to `detect-test-hiding.sh`,
    failing the job on exit `2`.
 4. Keep the enforcement-tampering guard's file list in sync so the new script is
