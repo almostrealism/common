@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -74,7 +75,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @see BatchedPatternRenderer
  * @see PatternLayerManager#enableBatched
  */
-public final class BatchedPatternLayerRenderer implements PatternFeatures {
+public final class BatchedPatternLayerRenderer implements PatternFeatures, Destroyable {
 
 	/**
 	 * Note-count buckets used to share compiled batched kernels across ticks
@@ -283,24 +284,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		long genStart = System.nanoTime();
 		List<RenderedNoteAudio> destinations;
 		if (melodic) {
-			// Melodic note sources are stable raw sample references (resolveSourceAndRatio uses
-			// wave.getChannelData directly, with no per-gather copy), so the gathered destinations
-			// are safe to memoize across ticks within a cache epoch — removing the dominant
-			// per-buffer gather cost on the dense melodic channels. Cleared when the cache epoch
-			// advances (genome/arrangement swap), the same staleness contract as the note-audio cache.
-			int epoch = PatternLayerManager.currentCacheEpoch();
-			if (epoch != gatherEpoch) {
-				gatherCache.clear();
-				gatherEpoch = epoch;
-			}
-			ChannelInfo.Voicing voicing = audioContext.getVoicing();
-			ChannelInfo.StereoChannel channel = audioContext.getAudioChannel();
-			destinations = elements.stream()
-					.map(e -> gatherCache.computeIfAbsent(
-							new GatherKey(e, offset, voicing, channel),
-							k -> e.getNoteDestinations(true, offset, sceneContext, audioContext)))
-					.flatMap(List::stream)
-					.toList();
+			destinations = gatherMelodic(elements, offset, sceneContext, audioContext);
 		} else {
 			// Percussion builds per-gather fit() source copies that are freed between ticks, so its
 			// destinations cannot be cached. Re-gather fresh, skipping (future-side, provably safe)
@@ -662,5 +646,82 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 */
 	private void copyRow(PackedCollection dest, int frameOffset, PackedCollection src, int length) {
 		dest.setFrom(frameOffset, src, 0, length);
+	}
+
+	/**
+	 * Gathers and memoizes the melodic destinations for the given elements.
+	 *
+	 * <p>Melodic note sources are stable raw sample references (the gather uses
+	 * {@code wave.getChannelData} directly, with no per-gather copy), so the gathered
+	 * destinations are safe to memoize across ticks within a cache epoch — removing
+	 * the dominant per-buffer gather cost on the dense melodic channels. The cache is
+	 * discarded when the cache epoch advances (genome/arrangement swap), the same
+	 * staleness contract as the note-audio cache; {@link #clearGatherCache()} releases
+	 * the per-note offset arguments it owns as it does so.</p>
+	 *
+	 * <p>Package-private so tests can populate the gather cache without a full render
+	 * dispatch and then verify its teardown.</p>
+	 *
+	 * @param elements     the elements to gather
+	 * @param offset       the repetition measure offset
+	 * @param sceneContext the scene context
+	 * @param audioContext the note audio context (supplies the voicing and channel)
+	 * @return the flattened melodic destinations
+	 */
+	List<RenderedNoteAudio> gatherMelodic(List<PatternElement> elements, double offset,
+										  AudioSceneContext sceneContext,
+										  NoteAudioContext audioContext) {
+		int epoch = PatternLayerManager.currentCacheEpoch();
+		if (epoch != gatherEpoch) {
+			clearGatherCache();
+			gatherEpoch = epoch;
+		}
+		ChannelInfo.Voicing voicing = audioContext.getVoicing();
+		ChannelInfo.StereoChannel channel = audioContext.getAudioChannel();
+		return elements.stream()
+				.map(e -> gatherCache.computeIfAbsent(
+						new GatherKey(e, offset, voicing, channel),
+						k -> e.getNoteDestinations(true, offset, sceneContext, audioContext)))
+				.flatMap(List::stream)
+				.toList();
+	}
+
+	/**
+	 * Releases the memoized melodic gathers, destroying the per-note offset arguments
+	 * they own before dropping the entries.
+	 *
+	 * <p>Each memoized {@link RenderedNoteAudio} owns a single-element offset-argument
+	 * {@link PackedCollection}; nothing else references it, so without this release it
+	 * would survive until the renderer is garbage collected, recreating across scene
+	 * churn the retention the teardown path exists to prevent. The notes' batched
+	 * sources are stable raw sample references the notes do not own and are left
+	 * untouched (see {@link RenderedNoteAudio#destroy()}).</p>
+	 */
+	private void clearGatherCache() {
+		gatherCache.values().forEach(notes -> notes.forEach(RenderedNoteAudio::destroy));
+		gatherCache.clear();
+	}
+
+	/**
+	 * Returns the number of memoized melodic gather entries. Package-private so tests
+	 * can verify that {@link #destroy()} and an epoch advance release them, without
+	 * widening the public surface.
+	 *
+	 * @return the number of entries in the melodic gather cache
+	 */
+	int gatherCacheSize() {
+		return gatherCache.size();
+	}
+
+	/**
+	 * Releases the native memory this renderer owns by clearing its melodic gather
+	 * cache (see {@link #clearGatherCache()}). The JVM-wide compiled-renderer cache
+	 * ({@link #rendererCache}) is deliberately not torn down here: it is shared across
+	 * every pattern, scene, and genome and outlives any single renderer. Idempotent: a
+	 * repeated call finds an empty cache.
+	 */
+	@Override
+	public void destroy() {
+		clearGatherCache();
 	}
 }

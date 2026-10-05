@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.data.ChannelInfo;
@@ -60,7 +61,7 @@ import java.util.function.IntFunction;
  *
  * @author Michael Murray
  */
-public class RenderedNoteAudio {
+public class RenderedNoteAudio implements Destroyable {
 	/**
 	 * Stable identity of a rendered note, used together with its frame offset to
 	 * key a {@link NoteAudioCache}.
@@ -73,22 +74,31 @@ public class RenderedNoteAudio {
 	 * audio reads channel-specific sample data and a single cache serves both
 	 * channels of a {@link PatternLayerManager}.</p>
 	 *
+	 * <p>{@link #of} snapshots the supplied voicing details into a private copy, so
+	 * the identity never aliases a details instance the render path might later
+	 * mutate. Because the copy is unreachable outside the identity, the key's hash
+	 * is stable for the lifetime of a {@link NoteAudioCache} entry and a mutation of
+	 * the caller's details cannot strand the cached buffer under a changed hash.</p>
+	 *
 	 * @param element       the pattern element the note was rendered from
-	 * @param details       the voicing details of the note
+	 * @param details       the snapshotted voicing details of the note
 	 * @param stereoChannel the stereo channel the note was rendered for
 	 */
 	public record Identity(PatternElement element, ElementVoicingDetails details,
 						   ChannelInfo.StereoChannel stereoChannel) {
 		/**
 		 * Creates the identity of the note rendered from the given element with the
-		 * given voicing details, on the stereo channel those details select.
+		 * given voicing details, on the stereo channel those details select. The
+		 * details are snapshotted (see the class-level note) so the identity is a
+		 * stable key regardless of later mutation of the caller's details.
 		 *
 		 * @param element the pattern element
-		 * @param details the voicing details
+		 * @param details the voicing details to snapshot
 		 * @return the note identity
 		 */
 		public static Identity of(PatternElement element, ElementVoicingDetails details) {
-			return new Identity(element, details, details.getStereoChannel());
+			return new Identity(element, new ElementVoicingDetails(details),
+					details.getStereoChannel());
 		}
 	}
 
@@ -253,5 +263,24 @@ public class RenderedNoteAudio {
 	 */
 	public void setCacheIdentity(Identity cacheIdentity) {
 		this.cacheIdentity = cacheIdentity;
+	}
+
+	/**
+	 * Releases the native memory this note owns.
+	 *
+	 * <p>The only native allocation a {@code RenderedNoteAudio} owns is its
+	 * {@link #getOffsetArg() offset argument}, a single-element {@link PackedCollection}
+	 * created per note. It is destroyed and the reference cleared, so a repeated call
+	 * is a no-op. The {@link #getBatchedInputs() batched inputs} are deliberately not
+	 * touched: a memoized melodic note's batched sources are stable raw sample
+	 * references the note does not own, so destroying them here would free memory
+	 * still owned by the sample library.</p>
+	 */
+	@Override
+	public void destroy() {
+		if (offsetArg != null) {
+			offsetArg.destroy();
+			offsetArg = null;
+		}
 	}
 }

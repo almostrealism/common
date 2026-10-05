@@ -86,7 +86,9 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		RenderedNoteAudio.Identity identity = RenderedNoteAudio.Identity.of(element, left);
 		Assert.assertEquals(ChannelInfo.StereoChannel.LEFT, identity.stereoChannel());
 		Assert.assertSame(element, identity.element());
-		Assert.assertSame(left, identity.details());
+		Assert.assertEquals("the snapshot equals the details it was taken from", left, identity.details());
+		Assert.assertNotSame("the identity snapshots the details rather than aliasing them",
+				left, identity.details());
 
 		RenderedNoteAudio.Identity same = RenderedNoteAudio.Identity.of(element, leftAgain);
 		Assert.assertEquals("equal details of the same element give an equal identity", identity, same);
@@ -97,5 +99,37 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		Assert.assertNotEquals(identity, RenderedNoteAudio.Identity.of(element, wet));
 		Assert.assertNotEquals("an equal-valued but distinct element is a different note",
 				identity, RenderedNoteAudio.Identity.of(new PatternElement(), leftAgain));
+
+		// The snapshot isolates the key from later mutation of the caller's details, so
+		// the key's value and hash stay stable for the lifetime of a cache entry.
+		int before = identity.hashCode();
+		left.setPosition(99.0);
+		Assert.assertEquals("mutating the original details does not change the snapshot",
+				1.0, identity.details().getPosition(), 0.0);
+		Assert.assertEquals("the snapshot keeps a stable hash after a mutation of the original",
+				before, identity.hashCode());
+	}
+
+	/**
+	 * A rendered note owns the single-element offset argument used to pass its start
+	 * frame to producers; teardown destroys it and clears the reference, and a
+	 * repeated teardown (or a note with no offset argument) is a harmless no-op.
+	 */
+	@Test(timeout = 10000)
+	public void destroyReleasesOffsetArg() {
+		RenderedNoteAudio note = new RenderedNoteAudio(0, 0);
+		PackedCollection offsetArg = new PackedCollection(1);
+		note.setOffsetArg(offsetArg);
+
+		note.destroy();
+		Assert.assertTrue("teardown destroys the owned offset argument", offsetArg.isDestroyed());
+		Assert.assertNull("the offset argument reference is cleared", note.getOffsetArg());
+
+		note.destroy();
+		Assert.assertNull("a repeated teardown is a no-op", note.getOffsetArg());
+
+		RenderedNoteAudio noArg = new RenderedNoteAudio(0, 0);
+		noArg.destroy();
+		Assert.assertNull("a note with no offset argument tears down without fault", noArg.getOffsetArg());
 	}
 }

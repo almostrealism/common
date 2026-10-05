@@ -199,11 +199,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 
 	/**
 	 * Manager-owned automation parameter collections, one allocated per {@link #layer}
-	 * call and shared by that layer's elements. They back native memory, so they are
-	 * released in {@link #clear()} (when the layers that reference them are removed) and
-	 * in {@link #destroy()}. Externally supplied elements installed by
-	 * {@link #setExplicitElements} never carry a manager-allocated collection, so they
-	 * are not tracked here and are left untouched.
+	 * call and shared by that layer's elements. They back native memory, so each is
+	 * released on every path that detaches the layer that referenced it:
+	 * {@link #removeLayer()} frees the layer's own collection, {@link #clear()} frees the
+	 * whole generation (so a {@link #refresh()} does not leak the prior one),
+	 * {@link #setExplicitElements} frees any genome-generated collections before
+	 * installing external content, and {@link #destroy()} frees whatever remains.
+	 * Externally supplied elements installed by {@link #setExplicitElements} never carry
+	 * a manager-allocated collection, so they are not tracked here and are left untouched.
 	 */
 	private final List<PackedCollection> automationParameterData = new ArrayList<>();
 
@@ -292,6 +295,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		Destroyable.super.destroy();
 		noteAudioCache.clear();
 		releaseAutomationParameterData();
+
+		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+		if (renderer != null) {
+			renderer.destroy();
+		}
 	}
 
 	/**
@@ -748,10 +756,20 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		increment();
 	}
 
-	/** Removes the most recently added layer from the hierarchy. */
+	/**
+	 * Removes the most recently added layer from the hierarchy, releasing the
+	 * manager-owned automation parameter collection that layer referenced.
+	 *
+	 * <p>Each {@link #layer} call allocates one collection shared only by the elements
+	 * of the layer it creates, and detaching that layer removes the last reference to
+	 * it, so it is destroyed here rather than left tracked until teardown. The release
+	 * keeps {@link #automationParameterData} aligned with the active layers across
+	 * every detachment path, not only {@link #clear()} and {@link #destroy()}.</p>
+	 */
 	public void removeLayer() {
 		layerParams.remove(layerParams.size() - 1);
 		decrement();
+		releaseLastAutomationParameterData();
 
 		if (depth() <= 0) return;
 		if (depth() <= 1) {
@@ -760,6 +778,18 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		}
 
 		roots.forEach(layer -> layer.getLastParent().setChild(null));
+	}
+
+	/**
+	 * Destroys and removes the most recently tracked automation parameter collection,
+	 * if any. The deepest layer's collection is the last appended, so a
+	 * {@link #removeLayer()} releases exactly the collection that layer referenced.
+	 * Guarded against an empty list so a detachment with no tracked collection (for
+	 * example after {@link #setExplicitElements}) is a no-op rather than a fault.
+	 */
+	private void releaseLastAutomationParameterData() {
+		if (automationParameterData.isEmpty()) return;
+		automationParameterData.remove(automationParameterData.size() - 1).destroy();
 	}
 
 	/**
@@ -790,6 +820,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * @param elements the pattern elements to install (copied defensively)
 	 */
 	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
+		releaseAutomationParameterData();
 		roots.clear();
 		layerParams.clear();
 		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));

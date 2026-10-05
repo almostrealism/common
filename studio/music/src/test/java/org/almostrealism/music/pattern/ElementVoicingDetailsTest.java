@@ -92,6 +92,34 @@ public class ElementVoicingDetailsTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The copy constructor snapshots every field, including the stereo channel that
+	 * equality ignores, and the copy is independent of the original: mutating the
+	 * original afterwards does not change the copy. This is what lets
+	 * {@code RenderedNoteAudio.Identity.of} hold a stable cache key.
+	 */
+	@Test(timeout = 10000)
+	public void copyConstructorSnapshotsAllFields() {
+		ElementVoicingDetails original = reference();
+		original.setStereoChannel(ChannelInfo.StereoChannel.RIGHT);
+
+		ElementVoicingDetails copy = new ElementVoicingDetails(original);
+		Assert.assertNotSame(original, copy);
+		Assert.assertEquals(original, copy);
+		Assert.assertEquals(original.hashCode(), copy.hashCode());
+		Assert.assertEquals("the channel is copied even though equality ignores it",
+				ChannelInfo.StereoChannel.RIGHT, copy.getStereoChannel());
+
+		original.setPosition(2.5);
+		original.setVoicing(ChannelInfo.Voicing.WET);
+		original.setTarget(WesternChromatic.D4);
+		Assert.assertEquals("the copy is isolated from later mutation of the original",
+				0.5, copy.getPosition(), 0.0);
+		Assert.assertEquals(ChannelInfo.Voicing.MAIN, copy.getVoicing());
+		Assert.assertEquals(WesternChromatic.C4, copy.getTarget());
+		Assert.assertNotEquals(original, copy);
+	}
+
+	/**
 	 * The stereo channel is deliberately excluded from {@link ElementVoicingDetails}
 	 * equality and hash code. The LEFT and RIGHT renders of a note are kept distinct
 	 * in {@link org.almostrealism.music.pattern.NoteAudioCache} not by these details

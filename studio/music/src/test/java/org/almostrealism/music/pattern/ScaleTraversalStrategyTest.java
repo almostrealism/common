@@ -23,6 +23,7 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.NoteAudioContext;
@@ -262,6 +263,54 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			Assert.assertEquals("Sequence step should produce one destination",
 					1, destinations.size());
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * The batched renderer memoizes its melodic gathers, and each gathered
+	 * {@link RenderedNoteAudio} owns a single-element offset-argument
+	 * {@link PackedCollection}. Tearing down the owning {@link PatternLayerManager}
+	 * must clear the renderer's gather cache and destroy those offset arguments, so
+	 * the native allocations do not survive scene churn until garbage collection.
+	 */
+	@Test(timeout = 120000)
+	public void batchedRendererTeardownReleasesGatheredOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+			PatternNote note = element.getNote(ChannelInfo.Voicing.MAIN);
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			List<RenderedNoteAudio> gathered = renderer.gatherMelodic(List.of(element), 0.0,
+					context(scale), audioContext(note));
+			Assert.assertTrue("the chord gathers one destination per tone", gathered.size() == 3);
+			Assert.assertTrue("the gather is memoized under a single key", renderer.gatherCacheSize() == 1);
+
+			List<PackedCollection> offsetArgs = gathered.stream()
+					.map(RenderedNoteAudio::getOffsetArg)
+					.toList();
+			offsetArgs.forEach(arg -> {
+				Assert.assertNotNull("each gathered note owns an offset argument", arg);
+				Assert.assertFalse("a live note's offset argument is not destroyed", arg.isDestroyed());
+			});
+
+			plm.destroy();
+
+			Assert.assertTrue("teardown clears the renderer's gather cache", renderer.gatherCacheSize() == 0);
+			offsetArgs.forEach(arg -> Assert.assertTrue(
+					"teardown destroys each gathered note's offset argument", arg.isDestroyed()));
+
+			plm.destroy();
+			Assert.assertTrue("a repeated teardown is a no-op", renderer.gatherCacheSize() == 0);
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}

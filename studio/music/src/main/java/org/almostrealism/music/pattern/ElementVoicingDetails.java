@@ -116,6 +116,23 @@ public class ElementVoicingDetails {
 		this.nextNotePosition = nextNotePosition;
 	}
 
+	/**
+	 * Creates a copy of the given voicing details.
+	 *
+	 * <p>This is a defensive snapshot: {@code ElementVoicingDetails} is mutable (it
+	 * exposes setters) and its {@link #equals}/{@link #hashCode} are computed from
+	 * those fields, so retaining a live instance as part of a hash key is fragile.
+	 * {@link RenderedNoteAudio.Identity#of} snapshots the caller's details through
+	 * this constructor so a later mutation of the original cannot change the hash of
+	 * a key already stored in a {@link NoteAudioCache}.</p>
+	 *
+	 * @param details the voicing details to copy; must not be {@code null}
+	 */
+	public ElementVoicingDetails(ElementVoicingDetails details) {
+		this(details.voicing, details.stereoChannel, details.melodic, details.target,
+				details.position, details.nextNotePosition);
+	}
+
 	/** Returns the signal path voicing. */
 	public ChannelInfo.Voicing getVoicing() {
 		return voicing;

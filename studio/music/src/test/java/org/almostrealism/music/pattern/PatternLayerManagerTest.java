@@ -332,6 +332,61 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	}
 
 	/**
+	 * Detaching the deepest layer with {@code removeLayer()} releases exactly that
+	 * layer's automation parameter collection, leaving the surviving layer's collection
+	 * tracked and live, so every detachment path keeps the tracking list aligned with
+	 * the active layers rather than deferring the release to teardown.
+	 */
+	@Test(timeout = 120000)
+	public void removeLayerReleasesDetachedAutomationParameterData() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		plm.setLayerCount(2);
+		List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+		Assert.assertTrue("one automation parameter collection is allocated per layer",
+				allocated.size() == 2);
+
+		plm.removeLayer();
+		Assert.assertTrue("removing a layer drops exactly its tracked collection",
+				plm.getAutomationParameterData().size() == 1);
+		Assert.assertTrue("the detached layer's automation parameters are released",
+				allocated.get(1).isDestroyed());
+		Assert.assertFalse("the surviving layer's automation parameters are retained",
+				allocated.get(0).isDestroyed());
+		Assert.assertSame("the surviving collection stays tracked",
+				allocated.get(0), plm.getAutomationParameterData().get(0));
+
+		plm.removeLayer();
+		Assert.assertTrue("removing the last layer drops its collection too",
+				plm.getAutomationParameterData().isEmpty());
+		allocated.forEach(c -> Assert.assertTrue("every detached collection is released",
+				c.isDestroyed()));
+	}
+
+	/**
+	 * Installing explicit elements discards any genome-generated layers, so it releases
+	 * the automation parameter collections those layers allocated before replacing the
+	 * hierarchy. The explicit content carries no manager-allocated collection of its own.
+	 */
+	@Test(timeout = 120000)
+	public void setExplicitElementsReleasesGeneratedAutomationParameterData() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		plm.setLayerCount(2);
+		List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+		Assert.assertTrue("one automation parameter collection is allocated per layer",
+				allocated.size() == 2);
+
+		plm.setExplicitElements(new NoteAudioChoice("explicit"), List.of(hit(0.0, 1)));
+
+		Assert.assertTrue("installing explicit elements releases the generated collections",
+				plm.getAutomationParameterData().isEmpty());
+		allocated.forEach(c -> Assert.assertTrue("each generated collection is released",
+				c.isDestroyed()));
+		Assert.assertEquals("explicit content installs a single root layer", 1, plm.getLayerCount());
+	}
+
+	/**
 	 * With every selection function fixed, the first layer seeds one root per
 	 * measure and the second layer adds a note half a measure either side of every
 	 * seed, discarding those before the start of the pattern. Every element carries
