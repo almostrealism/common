@@ -20,6 +20,14 @@ import java.util.Map;
  * layer, then the final RMSNorm and the output projection. {@link Qwen3} builds the same model
  * from its PDSL file. Both run the same synthetic checkpoint over several token positions, so
  * the KV caches and the rotary embedding are exercised, and their logits must agree.
+ *
+ * <p>The comparison is not independent of PDSL below the model level:
+ * {@link AttentionFeatures#transformer} itself builds each layer from {@code transformer.pdsl}.
+ * What it checks is everything the model files took over from Java — iterating the layers,
+ * binding each layer's weights by checkpoint path, giving each layer its own KV caches, the
+ * rotary table built from {@code rope_theta}, the final RMSNorm and the tied output
+ * projection. The numerics of the layer itself are the subject of the attention and
+ * transformer layer tests.</p>
  */
 public class QwenModelFileTest extends TestSuiteBase implements AttentionFeatures {
 

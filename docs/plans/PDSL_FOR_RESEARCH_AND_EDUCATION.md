@@ -82,7 +82,7 @@ The current state was surveyed on 2026-10-04. Citations are against that tree.
 
 - **One transformer layer for Llama-style models.**
   - `engine/ml/src/main/resources/pdsl/transformer.pdsl` defines `transformer`, `transformer_qk_norm` (Qwen3) and `transformer_mra`.
-  - The attention stage is in `attention.pdsl`. It has a KV cache declared as `state attention_cache`, grouped-query attention via `repeat_each`, RoPE and per-head QK-norm.
+  - The attention stage is in `attention.pdsl`. It had a KV cache declared as `state attention_cache` (since replaced by `key_cache`/`value_cache` parameters on each attention layer, so every layer gets caches of its own), grouped-query attention via `repeat_each`, RoPE and per-head QK-norm.
   - The SwiGLU MLP is in `feed_forward.pdsl`.
 - **The header comments are already teaching material.** Each stage is annotated with its shape (for example `[heads, seq_len]`). That style is the right one for this audience.
 - **Composition is readable.** `accum { ... }` is a residual connection, `branch { ... }` is a side path whose result the main path does not consume, and `product(a, b)` is an element-wise gate.

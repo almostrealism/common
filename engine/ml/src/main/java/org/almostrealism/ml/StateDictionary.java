@@ -36,6 +36,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -340,7 +341,9 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Returns the names at the top of this dictionary's dotted hierarchy, in order: the
 	 * {@link #group} names that, with the weights named directly, make up the dictionary. Names
 	 * that are all whole numbers, such as the layers of a checkpoint's {@code model.layers}, are
-	 * in numeric order ({@code 2} before {@code 10}); any other names are in alphabetical order.
+	 * in numeric order ({@code 2} before {@code 10}), whatever their magnitude, with names of
+	 * equal value ({@code 1} and {@code 01}) in alphabetical order; any other names are in
+	 * alphabetical order.
 	 *
 	 * @return the distinct first segments of this dictionary's keys
 	 */
@@ -349,7 +352,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 				.map(key -> key.contains(".") ? key.substring(0, key.indexOf('.')) : key)
 				.collect(Collectors.toSet()));
 		if (names.stream().allMatch(n -> n.matches("\\d+"))) {
-			names.sort(Comparator.comparingInt(Integer::parseInt));
+			names.sort(Comparator.comparing((String n) -> new BigInteger(n)).thenComparing(Comparator.naturalOrder()));
 		} else {
 			java.util.Collections.sort(names);
 		}

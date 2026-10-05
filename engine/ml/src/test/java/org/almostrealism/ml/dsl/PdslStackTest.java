@@ -76,6 +76,21 @@ public class PdslStackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Numbered members too large for an {@code int} or {@code long} are still in numeric order
+	 * rather than failing to parse, and names of equal value ({@code 1} and {@code 01}) are both
+	 * kept, in alphabetical order.
+	 */
+	@Test(timeout = 60000)
+	public void numberedMembersBeyondIntegerRangeAreInNumericOrder() {
+		Map<String, PackedCollection> weights = new HashMap<>();
+		for (String name : new String[] { "99999999999999999999", "3000000000", "1", "01", "0" }) {
+			weights.put(name + ".weight", new PackedCollection(1));
+		}
+		Assert.assertEquals(List.of("0", "01", "1", "3000000000", "99999999999999999999"),
+				new StateDictionary(weights).members());
+	}
+
+	/**
 	 * Names that are not all numbers are in alphabetical order, and a weight named directly is a
 	 * member alongside the groups.
 	 */

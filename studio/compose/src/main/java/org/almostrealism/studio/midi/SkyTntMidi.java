@@ -541,10 +541,10 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 *
 	 * <p>That decomposed stage takes its key and value caches as the {@code key_cache} and
 	 * {@code value_cache} parameters of {@code skytnt_block}, so this method allocates one
-	 * cleared {@code [seqLen, hiddenSize]} pair per layer and binds them under those names. They are caller-owned state that persists
-	 * across forward passes — row {@code position} is rewritten on every pass and every row up
-	 * to {@code position} is read — replacing the caches the {@code attention} built-in used to
-	 * allocate internally.</p>
+	 * cleared {@code [seqLen, hiddenSize]} pair per layer and binds them under those names.
+	 * They are caller-owned state that persists across forward passes — row {@code position}
+	 * is rewritten on every pass and every row up to {@code position} is read — replacing the
+	 * caches the {@code attention} built-in used to allocate internally.</p>
 	 *
 	 * @param prefix        weight key prefix ({@code "net"} or {@code "net_token"})
 	 * @param stateDict     weight source
