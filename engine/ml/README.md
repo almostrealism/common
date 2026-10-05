@@ -678,8 +678,10 @@ sa3.setTextGuidance(scale, "negative prompt");   // text counterpart of setGuida
 PackedCollection audio = sa3.generateFromText(seed, "a prompt", seconds).evaluate();
 ```
 
-`generateFromText` and `setTextGuidance` require a tokenizer to have been set; without one they
-reject the call and ask for `setTokenizer` or pre-tokenized ids.
+`generateFromText` and `setTextGuidance` require a tokenizer to have been set when given a
+non-empty prompt; without one such a call is rejected, asking for `setTokenizer` or pre-tokenized
+ids. A `null` or empty prompt needs no tokenizer — it yields no tokens and selects the
+unconditional prompt.
 
 Other Stable Audio 3 building blocks:
 - **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
