@@ -17,6 +17,7 @@
 package org.almostrealism.studio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -248,7 +249,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
 		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
-		return new TemporalCellular() {
+		/**
+		 * The CellList-path real-time runner. Owns the compiled per-frame {@link CellList}
+		 * and the per-buffer frame index, and releases them on {@code destroy()}.
+		 */
+		class CellListRunner implements TemporalCellular, Destroyable {
 			@Override
 			public Supplier<Runnable> setup() {
 				return cells.setup();
@@ -286,7 +291,24 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				cells.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
-		};
+
+			/**
+			 * Releases the native memory this runner owns: the compiled per-frame
+			 * {@link CellList} (and its cells) and the per-buffer frame index. Without this
+			 * a caller that builds a runner per render — as the real-time render tests do —
+			 * accumulates a runner's worth of device buffers for every render in the JVM,
+			 * exhausting native memory (an {@code OutOfMemoryError} on a CPU host, silent
+			 * output once the device allocator is starved on a GPU host). The scene's own
+			 * render buffers are left for the scene to manage.
+			 */
+			@Override
+			public void destroy() {
+				Destroyable.destroy(cells);
+				bufferFrameIndex.destroy();
+			}
+		}
+
+		return new CellListRunner();
 	}
 
 	/**
@@ -475,7 +497,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			}
 		}
 
-		return new TemporalCellular() {
+		/**
+		 * The Block-forward PDSL-path real-time runner. Owns the render-ahead
+		 * {@link PatternRenderStream} (and its producer thread), the compiled mixdown
+		 * {@link CompiledModel}, and the per-buffer frame index, and releases them on
+		 * {@code destroy()}.
+		 */
+		class PdslRunner implements TemporalCellular, Destroyable {
 			/**
 			 * One-time preparation: the render-cell setup from
 			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer
@@ -555,7 +583,27 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				adapter.resetState(args);
 				scene.getTimeManager().getClock().setFrame(0);
 			}
-		};
+
+			/**
+			 * Releases the native memory this runner owns: the render-ahead
+			 * {@link PatternRenderStream} (which stops its producer thread and frees the
+			 * ring), the compiled mixdown {@link CompiledModel}, and the per-buffer frame
+			 * index. Without this a caller that builds a runner per render — as the
+			 * real-time render tests do — accumulates a render-ahead ring, a producer
+			 * thread, and a compiled model for every render in the JVM, exhausting native
+			 * memory (an {@code OutOfMemoryError} on a CPU host, silent output once the
+			 * device allocator is starved on a GPU host). The scene's consolidated render
+			 * buffer and the model's own output buffer are left to their owners.
+			 */
+			@Override
+			public void destroy() {
+				renderStream.destroy();
+				Destroyable.destroy(compiled);
+				bufferFrameIndex.destroy();
+			}
+		}
+
+		return new PdslRunner();
 	}
 
 	/**
