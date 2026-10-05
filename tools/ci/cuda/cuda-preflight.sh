@@ -11,9 +11,19 @@ set -euo pipefail
 # Checks, in order:
 #   1. the NVIDIA runtime injected a GPU (nvidia-smi lists one)
 #   2. the host CUDA toolkit is mounted and provides NVRTC
+#   3. a staged sample library is readable by the runner user (an unstaged
+#      one only warns, since test-cuda does not need it)
 #
 # On success it execs the shared entrypoint, so signal handling and
 # deregistration are exactly as on the CPU fleet.
+#
+# The paths default to the compose file's mounts; the PREFLIGHT_* overrides
+# exist so tools/tests/test_cuda_preflight.py can run the script on any host.
+
+CUDA_ROOT="${PREFLIGHT_CUDA_ROOT:-/usr/local/cuda}"
+SAMPLES_ROOT="${PREFLIGHT_SAMPLES_ROOT:-/opt/ar-samples}"
+RUNNER_ENTRYPOINT="${PREFLIGHT_RUNNER_ENTRYPOINT:-/home/runner/entrypoint.sh}"
+FAIL_PAUSE_SECONDS="${PREFLIGHT_FAIL_PAUSE_SECONDS:-60}"
 
 fail() {
     echo "CUDA PREFLIGHT FAILED: $1" >&2
@@ -21,7 +31,7 @@ fail() {
     for line in "$@"; do echo "  $line" >&2; done
     echo "Not registering this runner." >&2
     # Pause before exiting so `restart: unless-stopped` does not spin.
-    sleep 60
+    sleep "${FAIL_PAUSE_SECONDS}"
     exit 1
 }
 
@@ -39,12 +49,29 @@ if ! GPUS=$(nvidia-smi -L 2>&1) || [ -z "${GPUS}" ]; then
 fi
 echo "GPU: ${GPUS}"
 
-NVRTC=$(ls /usr/local/cuda/lib64/libnvrtc.so.* 2>/dev/null | head -1 || true)
+NVRTC=$(ls "${CUDA_ROOT}"/lib64/libnvrtc.so.* 2>/dev/null | head -1 || true)
 if [ -z "${NVRTC}" ]; then
-    fail "NVRTC was not found under /usr/local/cuda/lib64." \
+    fail "NVRTC was not found under ${CUDA_ROOT}/lib64." \
         "The host CUDA toolkit is bind-mounted at /usr/local/cuda; check" \
         "CUDA_HOME_HOST in .env points at a toolkit that contains NVRTC."
 fi
 echo "NVRTC: ${NVRTC}"
 
-exec /home/runner/entrypoint.sh "$@"
+# A library that is not staged yet is expected while the lane is
+# informational: only the media suites need it, and they say so themselves.
+# A library that is staged but unreadable is a fleet misconfiguration, and
+# would fail every media job for a reason unrelated to the code under test.
+if [ -r "${SAMPLES_ROOT}/pattern-factory.json" ] \
+        && [ -r "${SAMPLES_ROOT}/Samples" ] && [ -x "${SAMPLES_ROOT}/Samples" ]; then
+    echo "Sample library: ${SAMPLES_ROOT}"
+elif [ -r "${SAMPLES_ROOT}" ] && [ -x "${SAMPLES_ROOT}" ] \
+        && [ ! -e "${SAMPLES_ROOT}/pattern-factory.json" ] && [ ! -e "${SAMPLES_ROOT}/Samples" ]; then
+    echo "WARNING: no sample library is staged at ${SAMPLES_ROOT}; the media suites will fail." >&2
+else
+    fail "The sample library at ${SAMPLES_ROOT} is not readable by uid $(id -u) (groups: $(id -G))." \
+        "Both Samples/ and pattern-factory.json must be readable. sync-music-samples.sh" \
+        "makes the tree readable by its --group only; AR_CI_SAMPLES_GID in .env must be" \
+        "that group's numeric id, or empty so that fleet.sh reads it from the directory."
+fi
+
+exec "${RUNNER_ENTRYPOINT}" "$@"

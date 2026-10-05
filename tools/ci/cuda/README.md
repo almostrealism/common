@@ -77,8 +77,9 @@ runner count well below the host's memory.
 
 Each runner container:
 
-1. Runs `cuda-preflight.sh`, which checks that `nvidia-smi` lists a GPU and that
-   NVRTC is present in the mounted toolkit. If either check fails it explains the
+1. Runs `cuda-preflight.sh`, which checks that `nvidia-smi` lists a GPU, that
+   NVRTC is present in the mounted toolkit, and that a staged sample library is
+   readable. If any check fails it explains the
    likely cause and exits **without registering**. A runner that cannot see the
    GPU would otherwise take CUDA jobs and report results that measure nothing.
 2. Hands over to the CPU fleet's entrypoint, which claims the lowest free
@@ -119,6 +120,19 @@ the host behind your back. Stage it with `tools/ci/sync-music-samples.sh` (see
 the ROCm README's *Test Data*). Until it is staged, the tests that call
 `AudioSceneTestBase.requireCuratedLibrary()` fail. That is expected while the
 lane is informational.
+
+`sync-music-samples.sh` makes the tree readable by its `--group` only, and the
+image's `runner` user belongs to no host group. So `fleet.sh up` reads the
+numeric group that owns `AR_CI_SAMPLES_DIR` and the compose file adds it to every
+runner with `group_add`. If the tree is owned by a different group, pin the gid
+by adding a line `AR_CI_SAMPLES_GID=<numeric gid>` to `.env`. The template does
+not list this setting, and leaving it out (or empty) means "use the group that
+owns `AR_CI_SAMPLES_DIR`". Because the group is read from the directory,
+stage the library **before** running `fleet.sh up`. A directory still owned by
+the root group (gid 0), for example one just created with `sudo mkdir`, is
+refused instead of adding the root group to the runner. The preflight refuses to
+register a runner that cannot read a library that is staged, and logs a
+warning when no library has been staged yet.
 
 ## Operations
 

@@ -32,6 +32,11 @@ services:
     # The GPU preflight runs first and only then hands over to the shared
     # entrypoint, so a runner that cannot see the GPU never registers.
     entrypoint: ["/opt/ar-ci-cuda/cuda-preflight.sh"]
+    # The sample library is readable only by its host group (see
+    # sync-music-samples.sh), and the image's runner user belongs to no host
+    # group, so that group's numeric id is added to the runner explicitly.
+    group_add:
+      - "${AR_CI_SAMPLES_GID:?Run ./fleet.sh up, which resolves AR_CI_SAMPLES_GID}"
     environment:
       - GITHUB_PAT=${GITHUB_PAT:?GITHUB_PAT must be set in .env}
       - RUNNER_SCOPE=${RUNNER_SCOPE:-org}
