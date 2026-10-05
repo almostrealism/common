@@ -225,7 +225,11 @@ public class RenderedNoteAudio implements Destroyable {
 	 * current allocation untouched.</p>
 	 */
 	public void setOffsetArg(PackedCollection offsetArg) {
-		if (this.offsetArg != null && this.offsetArg != offsetArg) {
+		if (offsetArg == this.offsetArg || offsetArg == null) {
+			return;
+		}
+
+		if (this.offsetArg != null) {
 			this.offsetArg.destroy();
 		}
 		this.offsetArg = offsetArg;

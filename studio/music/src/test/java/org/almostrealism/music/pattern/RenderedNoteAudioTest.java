@@ -194,4 +194,23 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		note.destroy();
 		Assert.assertTrue("teardown releases the current offset argument", second.isDestroyed());
 	}
+
+	/**
+	 * Clearing the offset argument with {@code null} is a documented no-op: it must leave
+	 * the note's current allocation live and still referenced, because the note alone owns
+	 * that argument and only {@link RenderedNoteAudio#destroy()} may release it.
+	 */
+	@Test(timeout = 10000)
+	public void setOffsetArgNullLeavesCurrentAllocationUntouched() {
+		RenderedNoteAudio note = new RenderedNoteAudio(0, 0);
+		PackedCollection current = new PackedCollection(1);
+
+		note.setOffsetArg(current);
+		note.setOffsetArg(null);
+		Assert.assertFalse("passing null does not release the current argument", current.isDestroyed());
+		Assert.assertSame("passing null does not clear the current reference", current, note.getOffsetArg());
+
+		note.destroy();
+		Assert.assertTrue("teardown still releases the retained offset argument", current.isDestroyed());
+	}
 }
