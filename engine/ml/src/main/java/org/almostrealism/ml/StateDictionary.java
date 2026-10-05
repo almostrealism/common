@@ -87,6 +87,15 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	private Map<String, PackedCollection> weights;
 
 	/**
+	 * Whether this dictionary owns the native memory of its tensors. A dictionary that loads its
+	 * weights from files or is constructed with its own map owns them, so {@link #destroy()}
+	 * releases them. A {@link #group} shares another dictionary's tensors rather than copying them,
+	 * so it is non-owning: destroying a group clears its own view without touching the shared
+	 * weights the root dictionary (and any sibling group) still rely on.
+	 */
+	private final boolean owning;
+
+	/**
 	 * Create a {@link StateDictionary} by loading weights from the specified directory.
 	 *
 	 * @param weightsDirectory Directory containing protobuf weight files
@@ -94,6 +103,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(String weightsDirectory) throws IOException {
 		super(weightsDirectory);
+		this.owning = true;
 		init();
 	}
 
@@ -105,6 +115,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(AssetGroupInfo assets) throws IOException {
 		super(assets);
+		this.owning = true;
 		init();
 	}
 
@@ -116,16 +127,31 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(List<Asset> assets) throws IOException {
 		super(assets);
+		this.owning = true;
 		init();
 	}
 
 	/**
-	 * Create a {@link StateDictionary} with manually provided weights (for testing).
+	 * Create a {@link StateDictionary} with manually provided weights (for testing). The dictionary
+	 * owns the supplied tensors, so {@link #destroy()} releases them.
 	 *
 	 * @param weights Map of weight names to PackedCollections
 	 */
 	public StateDictionary(Map<String, PackedCollection> weights) {
+		this(weights, true);
+	}
+
+	/**
+	 * Create a {@link StateDictionary} over the given weight map, owning or sharing them. A sharing
+	 * (non-owning) dictionary is the backing of {@link #group}: it exposes tensors held by another
+	 * dictionary without taking responsibility for their native memory.
+	 *
+	 * @param weights Map of weight names to PackedCollections
+	 * @param owning  whether this dictionary owns the tensors' native memory
+	 */
+	private StateDictionary(Map<String, PackedCollection> weights, boolean owning) {
 		this.weights = weights;
+		this.owning = owning;
 	}
 
 	/**
@@ -322,8 +348,9 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Returns the weights under one name of this dictionary's dotted hierarchy, as a dictionary
 	 * of its own whose keys omit that name: in a checkpoint, {@code group("model")} holds
 	 * {@code layers.0.mlp.up_proj.weight} for {@code model.layers.0.mlp.up_proj.weight}. The
-	 * group shares this dictionary's tensors rather than copying them, so destroying either
-	 * destroys the weights of both.
+	 * group shares this dictionary's tensors rather than copying them, and is a non-owning view:
+	 * destroying a group releases nothing and leaves the root dictionary (and any sibling group)
+	 * intact, while destroying the root releases the weights every group drew from.
 	 *
 	 * @param name a name, or dotted path of names, within this dictionary
 	 * @return the weights under {@code name}; empty if there are none
@@ -334,7 +361,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		weights.forEach((key, weight) -> {
 			if (key.startsWith(prefix)) members.put(key.substring(prefix.length()), weight);
 		});
-		return new StateDictionary(members);
+		return new StateDictionary(members, false);
 	}
 
 	/**
@@ -465,14 +492,17 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	}
 
 	/**
-	 * Destroy all loaded weight data.
+	 * Destroy all loaded weight data this dictionary owns. A {@link #group} is a non-owning view,
+	 * so destroying one clears its own view of the shared tensors without releasing them — the
+	 * root dictionary and any sibling group keep working — while destroying an owning dictionary
+	 * releases the tensors every group drew from.
 	 *
 	 * @see PackedCollection#destroy()
 	 */
 	@Override
 	public void destroy() {
 		if (weights != null) {
-			weights.values().forEach(PackedCollection::destroy);
+			if (owning) weights.values().forEach(PackedCollection::destroy);
 			weights.clear();
 			weights = null;
 		}

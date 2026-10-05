@@ -130,6 +130,33 @@ public class PdslStackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A group is a non-owning view of the dictionary it comes from: destroying the group releases
+	 * none of the shared tensors, so the root dictionary keeps working, while destroying the owning
+	 * root releases the weights every group drew from.
+	 */
+	@Test(timeout = 60000)
+	public void destroyingGroupLeavesRootWeightsIntact() {
+		PackedCollection shared = new PackedCollection(shape(DIM));
+		shared.fill(1.0, 2.0, 3.0, 4.0);
+		Map<String, PackedCollection> weights = new HashMap<>();
+		weights.put("layers.0.weight", shared);
+		StateDictionary dict = new StateDictionary(weights);
+
+		StateDictionary group = dict.group("layers");
+		Assert.assertSame(shared, group.get("0.weight"));
+
+		// Destroying the non-owning group must not release the tensor the root still holds.
+		group.destroy();
+		Assert.assertNotNull("shared tensor released by group.destroy()", shared.getMem());
+		Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0 },
+				dict.get("layers.0.weight").toArray(), 0.0);
+
+		// Destroying the owning root releases the shared tensor.
+		dict.destroy();
+		Assert.assertNull("shared tensor not released by owning dict.destroy()", shared.getMem());
+	}
+
+	/**
 	 * {@link StateDictionary#require} returns a weight that exists, and for one that does not,
 	 * names the keys sharing the longest leading part with it, at most three of them.
 	 */
