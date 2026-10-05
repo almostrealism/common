@@ -29,8 +29,9 @@ ever produced a single byte of text. Both gaps are recorded honestly in the code
    the success criterion of the last cycle is unmet.
 
 2. **The model has never generated text.** The general autoregressive sampling infrastructure
-   exists (`AutoregressiveModel`, with device-resident position, temperature/greedy sampling, and
-   a reusable token loader), but `CausalLanguageModel` only knows how to build the full-sequence
+   exists (`AutoregressiveModel`, with device-resident position, temperature/greedy sampling, a
+   static `sampleToken` with top-p, and a reusable `tokenLoader`), but `CausalLanguageModel` only
+   knows how to build the full-sequence
    `(seqLen) → (seqLen, vocab)` *training* model. There is no path that takes the trained weights
    and emits text. The platform has not yet "spoken" about itself.
 
@@ -78,7 +79,8 @@ helps change it).
 
 ## Scope
 
-Two deliverables, in order. The first is the hard requirement; the second is the payoff.
+Three deliverables, in order. The first is the hard requirement, the second is the payoff, and the
+third records both in the training documentation.
 
 ### Deliverable 1 — Beat the unigram baseline (honestly)
 
@@ -88,24 +90,51 @@ weakening the test. The assertion, the baseline source (`scoredTargetEntropyBits
 apples-to-apples contract (model loss and unigram baseline must cover the *same* scored bytes) are
 the specification and must be preserved or strengthened, never loosened.
 
-Evidenced levers, to be applied and measured (the implementer chooses the combination that clears
-the bar with margin; all must keep the comparison honest):
+**Precondition — representative held-out measurement (required, not a lever).** Score every
+held-out window at the current stride (≈82: the held-out region is the last 10% of 52,812 bytes,
+windowed at stride 64), versus the current cap of 12 (`HELD_OUT_WINDOWS` in the test, passed as
+`maxWindows` to the held-out `NextTokenDataset`; a non-positive `maxWindows` removes the cap).
+`scoredTargetEntropyBits()` recomputes over exactly the targets those windows score, so the
+comparison stays apples-to-apples, and the estimate describes the whole held-out region instead of
+a 12-window sample. This is strictly more evaluation, not a loosening — but it is **not** a way to
+pass: it moves both sides of the comparison, and the existing evidence suggests the rest of the
+region is harder than the 12 scored windows (in-sample unigram 4.907 on the whole region vs 4.600
+on the scored targets; training-fitted unigram 5.15 vs 4.78). The model's all-window number may
+therefore end up further from or closer to its baseline than the 12-window gap; reproduce it before
+tuning anything.
 
-1. **Representative held-out measurement.** Score every held-out window at the current stride
-   (≈82, versus the current cap of 12) by removing/raising the `maxWindows` cap on the held-out
-   `NextTokenDataset`. `scoredTargetEntropyBits()` recomputes over the same larger target set, so
-   the comparison stays apples-to-apples; this makes the held-out estimate representative of the
-   whole held-out region instead of a 12-window sample. This is a measurement-fidelity improvement
-   (strictly more evaluation), not a loosening.
-2. **Train further / better schedule.** More epochs and/or a tuned learning-rate schedule, within
+Two costs to plan for:
+- **Runtime.** Today validation runs at every epoch boundary (`ModelOptimizer` with
+  `setValidationDataset`), so 82 windows instead of 12 adds 70 forward passes per epoch. The warm
+  rate is ~386 s per epoch for 122 windows; even if a validation window costs only a third of a
+  training step, five epochs gain several minutes, and at full step cost they gain ~18 minutes —
+  past the test's 38-minute timeout. A cheap way to keep the fidelity without the cost: keep a small
+  per-epoch validation set for the progress curve and score the full held-out set once, at the end,
+  with `ModelOptimizer.evaluate(...)` (already used by the reload check), asserting against that
+  set's `scoredTargetEntropyBits()`.
+- **The baseline used by the assertion must come from the same dataset whose loss is asserted.** If
+  the per-epoch and final sets differ, the assertion compares the final-set loss with the final-set
+  baseline; the per-epoch numbers are reporting only.
+
+Evidenced levers, to be applied and measured on that representative measurement (the implementer
+chooses the combination that clears the bar with margin; all must keep the comparison honest):
+
+1. **Train further / better schedule.** More epochs and/or a tuned learning-rate schedule, within
    the step budget the timing allows. The doc already found that rotating through the whole training
    region at a decaying rate is what moved held-out loss below the region's unigram rate; push that
    further without tripping the `ModelOptimizer` memorization guard.
-3. **More capacity or more corpus, within the memory budget.** The feed-forward input-projection
+2. **More capacity or more corpus, within the memory budget.** The feed-forward input-projection
    Jacobian dominates device memory (grows with the square of the FF width), which is why width is
-   128 today. Prefer adding corpus (more `docs/internals` pages) and/or modest depth/context before
-   widening the feed-forward. Any configuration change must stay within `AR_HARDWARE_MEMORY_SCALE=6`
-   and a total test runtime under the 40-minute cap (the current run is ~34 min; keep headroom).
+   128 today. Prefer adding corpus (more `docs/internals` pages, listed in the test's `CORPUS`
+   array) and/or modest depth/context before widening the feed-forward. Adding corpus changes the
+   90/10 split, so the held-out region and its baseline change too; the 4.691/4.600 starting point
+   is not comparable across corpora, and the doc must report the new baseline alongside the new
+   loss. Any configuration change must stay within `AR_HARDWARE_MEMORY_SCALE=6` and the test's
+   existing timeout: `trainOnDocumentation` is annotated `timeout = 38 * 60000` today, and the
+   current run is ~34 min, so the real headroom is about four minutes, not six. Raising the timeout
+   to the 40-minute per-invocation cap is the most it could ever move, and any raise is a timeout
+   change that review will scrutinise; a recipe that needs more time than that has to buy it back
+   elsewhere (fewer validation passes, as above, or cheaper steps).
 
 **Target:** held-out bits/byte **comfortably below** the unigram baseline on the representative
 (all-window) measurement — not a hairline pass. The bigram reference (~3.85) is the north star for
@@ -122,21 +151,48 @@ Give `CausalLanguageModel` a generation path and prove it produces text.
    (the type that owns the weights and architecture), not a new utility/exporter class. Two honest
    implementation shapes are acceptable; the implementer picks based on what the attention seam
    already supports and consults before deciding:
-   - **Single-position KV-cache decode** via the `causalMask` single-position attention variant the
-     training doc describes, wired through `AutoregressiveModel.of(...)` (device-resident position,
-     greedy/temperature sampling). Preferred if the trained weights are directly compatible with the
-     single-position causal path.
+   - **Single-position KV-cache decode** via the `AttentionFeatures.attention(...)` family (the
+     `/pdsl/attention.pdsl` asset with its `causal_mask(position)` stage, backed by
+     `AttentionFeatures.causalMask`; see `docs/internals/ml-inference-pipeline.md`, not the training
+     page, which describes only the full-sequence `causalLogitMask`). Preferred in the long run, but
+     the trained weights are **not** directly compatible as stored: `CausalLanguageModel` keeps one
+     fused `qkv` weight of shape `(3 * dim, dim)` per block and the rotary inverse frequencies
+     (`rope_inv_freq`), while the single-position `attention(...)` overloads take separate `wq`,
+     `wk`, `wv` and their own rotary inputs. This path needs the fused weight split into views (not
+     copies, so training and generation share one `StateDictionary`), the rotary inputs derived from
+     `rope_inv_freq`, and a check that the single-position rotation convention matches the
+     full-sequence one the model was trained with. It also needs the token embedding applied
+     outside the model, which is what `AutoregressiveModel.of(...)` expects.
    - **Full-sequence sliding-window decode** that reuses the existing full-sequence model, feeds the
-     growing prefix window, and reads the last position's logits. Simpler and provably consistent
-     with the trained forward pass; acceptable as the first generation path if the KV-cache variant
-     needs core work. If this path is taken, note the KV-cache follow-up explicitly.
-   Reuse `AutoregressiveModel` and `ByteTokenizer`; do not duplicate sampling or tokenization logic.
+     growing prefix window, and reads the log-probabilities at the last filled position. Simpler and
+     provably consistent with the trained forward pass: the causal mask means positions after the
+     prefix (padding) cannot affect earlier rows, and once the text exceeds `seqLen` the window
+     slides, which matches training (every window was scored with positions `0..seqLen-1`
+     regardless of its offset in the corpus). Each generated byte costs one full `seqLen` forward
+     pass. Acceptable as the first generation path if the KV-cache variant needs core work; if this
+     path is taken, note the KV-cache follow-up explicitly.
+
+   Reuse `AutoregressiveModel` and `ByteTokenizer`; do not duplicate sampling or tokenization
+   logic. Note that the convenience factory `AutoregressiveModel.of(CompiledModel, position,
+   tokenEmbed)` does not fit this model as built today: it assumes the compiled model takes one
+   token's *embedding* as input and that the model's whole output is one vocabulary row
+   (`vocabSize = model.getOutputShape().getTotalSize()`), whereas `CausalLanguageModel.buildModel`
+   takes `(seqLen)` token ids, embeds them internally, and outputs `(seqLen, vocabSize)`. The
+   sliding-window path therefore goes through the general `AutoregressiveModel` constructor (token
+   consumer, forward supplier, sample function), not `of(...)`. The output is log-probabilities
+   rather than raw logits; greedy argmax and temperature sampling are unaffected by that shift.
 
 2. **A generation test** (long-running, excluded from the CI pipeline profile, same as the training
    run; or a fast test if a tiny deterministic fixture is feasible). Load trained weights (or train
    briefly), seed with a short documentation prompt, generate **greedily** (deterministic) for a
    fixed number of bytes, and assert:
-   - the output decodes as valid UTF-8 (via `ByteTokenizer` round-trip semantics), and
+   - the output is valid UTF-8, checked with a strict decoder (a `CharsetDecoder` for UTF-8 with
+     `CodingErrorAction.REPORT` for malformed and unmappable input). `ByteTokenizer.decodeAsLong`
+     is **not** such a check: it decodes with standard replacement, turning a malformed sequence
+     into `U+FFFD` instead of failing (its class javadoc says so, and
+     `ByteTokenizerTest.malformedDecode` pins that behaviour), so a decode or round trip through it
+     succeeds on invalid bytes. See "Open questions" on whether this should be an assertion at all,
+     and
    - the output is non-trivial (not a constant byte / not the prompt echoed), and
    - a reproducibility check: the same weights + prompt + greedy decode produce identical bytes.
    Optionally, a weak quality signal: greedy continuation of a held-out prefix matches more next
@@ -165,9 +221,9 @@ identifiers.
    point on this environment before changing anything.
 3. **Deliverable 1:** apply the representative-measurement change, then iterate on
    schedule/epochs/corpus/capacity, re-measuring each change. Record the curve. Stop when held-out
-   is comfortably below baseline with runtime headroom under 40 min.
-4. **Deliverable 2:** add the generation builder and test; verify greedy determinism and valid
-   decode; capture a sample.
+   is comfortably below baseline with headroom under the test's existing 38-minute timeout.
+4. **Deliverable 2:** add the generation builder and test; verify greedy determinism (and, if
+   asserted, strict UTF-8 validity); capture a sample.
 5. **Deliverable 3:** rewrite the measured-curve and configuration sections of the training doc and
    add the generation section.
 6. **Verify** with the targeted tests (see Success Criteria) and the build validator before
@@ -184,12 +240,14 @@ optimization in this task.
 
 - `CausalLanguageModelTest.trainOnDocumentation` **passes** its existing `finalBits < unigramBits`
   assertion on the representative (all-window) held-out measurement, with the model comfortably
-  below the unigram baseline — achieved by improving the model/measurement, with **no** weakening of
-  the assertion, tolerance, dimensions, `@TestDepth`, or timeout (beyond the 40-min cap), and no
-  `@Disabled`.
+  below the unigram baseline — achieved by improving the model, with **no** weakening of the
+  assertion, tolerance, dimensions, `@TestDepth`, or timeout (today `38 * 60000`; never above the
+  40-minute per-invocation cap), and no `@Disabled`. The asserted loss and the asserted baseline
+  come from the same held-out dataset object.
 - A new generation path on `CausalLanguageModel` plus a generation test that: loads/produces trained
-  weights, generates greedily and deterministically from a documentation prompt, asserts valid-UTF-8
-  decode, non-triviality, and reproducibility; and logs a readable generated sample.
+  weights, generates greedily and deterministically from a documentation prompt, asserts
+  non-triviality and reproducibility (and strict-decoder UTF-8 validity, if the open question below
+  is settled in favour of asserting it); and logs a readable generated sample.
 - `training-a-language-model.md` updated with the new curve, configuration, representative baseline,
   and a generation section (stable identifiers only, no line numbers).
 - No code duplication (reuses `AutoregressiveModel`, `ByteTokenizer`, `NextTokenDataset`); the
@@ -208,6 +266,8 @@ would fail `test-integrity-check` and review:
   mismatch the last cycle explicitly corrected).
 - Raising `@TestDepth`, inflating the timeout past the cap, shrinking model dimensions to make the
   test trivial, or `@Disabled`.
+- Removing the `TODO(review)` comment above the assertion without the assertion actually passing;
+  that comment records the known failure and goes only when the failure does.
 - Claiming "beats baseline" from a non-representative or mismatched measurement.
 
 The only acceptable way to turn this test green is to make the model genuinely predict held-out
@@ -219,15 +279,53 @@ revised plan — **not** a green test.
 ## Hardware
 
 The end-to-end training run and its measured curve are validated on Apple-silicon **Metal** (FP32),
-with `AR_HARDWARE_MEMORY_SCALE=6` and a cold-step/warm-step timing profile that fits the 40-minute
-test cap (~34 min today). Tuning the training recipe and measuring generation need that same
-backend to reproduce the numbers the plan is judged against. Hence the workstream requires a macOS
-node (`requiredLabels: platform: macos`).
+with `AR_HARDWARE_MEMORY_SCALE=6` and a cold-step/warm-step timing profile that fits the test's
+38-minute timeout (~34 min today; the per-invocation cap is 40 minutes). Tuning the training
+recipe and measuring generation need that same backend to reproduce the numbers the plan is judged
+against. Hence the workstream requires a macOS node (`requiredLabels: platform: macos`).
 
 ## Dependencies
 
 None beyond `master`. All prerequisite primitives (causal sequence attention, trainable embedding,
 byte tokenizer, next-token dataset, multi-row cross-entropy, `AutoregressiveModel`,
-`StateDictionary` checkpointing) already landed in PR #596. This task does not touch the in-flight
-PDSL-for-research / Qwen interpretability track (PR #615); it is the continuation of the
-from-scratch self-hosted LM track.
+`StateDictionary` checkpointing) already landed in PR #596. This task does not touch the
+PDSL-for-research / Qwen interpretability track (PR #615, already merged to `master`); it is the
+continuation of the from-scratch self-hosted LM track. The previous plan for this track is
+[`PLAN-20260930-self-hosted-tiny-lm.md`](PLAN-20260930-self-hosted-tiny-lm.md); no other plan in
+`docs/plans/` covers generation from `CausalLanguageModel` or the unigram-baseline gap.
+
+## Open questions
+
+These are for the person approving the plan; the implementer should not settle them silently.
+
+1. **Is "comfortably below" achievable inside the budget?** The only evidence of headroom is the
+   count-based bigram (~3.85 on the held-out region). A 115k-parameter model trained for 550 steps
+   of batch 1 has seen ~35k target bytes — less than one pass over the 47.5k-byte training region —
+   and the run is already within four minutes of its timeout. More epochs are the cheapest lever
+   but the most time-bound one. If the honest outcome is a hairline pass or a miss, the plan's own
+   rule applies (an evidenced finding, not a green test); the approver may prefer to state up front
+   what margin counts as "comfortable" (for example a fixed number of bits/byte below the
+   all-window baseline) so the result is not judged after the fact.
+2. **Should the training run stay one test?** Training, checkpointing, the baseline assertion and
+   now generation all depend on one ~34-minute run. The generation test either retrains (another
+   long run plus the ~113 s cold first step) or loads `results/causal-language-model/weights.pb`,
+   which `trainOnDocumentation` writes but which is not committed and does not exist on a fresh
+   checkout, so a test that loads it depends on test ordering. The approver should choose: train
+   briefly inside the generation test (weights quality irrelevant to the determinism checks), or
+   accept an ordering dependency and say so.
+3. **Should UTF-8 validity be asserted?** It is a property of what the model chooses to emit, not
+   of the generation code: a byte-level model can legitimately pick a lone continuation byte, and
+   the corpus contains multi-byte characters (em dashes and box-drawing characters). Greedy
+   decoding of a weak model will usually stay in ASCII, but an assertion that can fail on a
+   correct implementation is brittle. An alternative is to report validity (and the number of malformed sequences) in the
+   logged sample and assert only determinism and non-triviality.
+4. **Greedy degeneration.** A small byte model decoded greedily commonly falls into a short
+   repeating loop (`"the the the "`). "Not a constant byte and not the prompt echoed" will pass on
+   such output, so it proves the path runs, not that the text is good. That is acceptable for a
+   first path, but the plan should not present the sample as evidence of quality; the optional
+   "beats unigram-argmax next-byte accuracy" signal is the only quality check proposed.
+5. **Which generation shape?** The sliding-window path is cheap to build and provably consistent
+   with training; the KV-cache path needs a weight split, a rotary-input derivation and a
+   rotation-convention check (see Deliverable 2) and is core work in its own right. The approver
+   may prefer to fix the first path to sliding-window now and leave KV-cache decoding for the
+   follow-up named in `MANAGER_LOG.md`, rather than leave the choice to the implementer.

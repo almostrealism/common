@@ -94,11 +94,16 @@ by-product, keeping the cycle focused.
 
 #### What comes next
 
-1. This plan executes: representative all-window held-out measurement, a tuned training recipe that
-   clears the baseline with margin, a generation path on `CausalLanguageModel` with a deterministic
-   generation test, and a rewritten training doc with a generation section.
-2. **Sampling quality and longer generation** once the first path works (temperature/top-p already
-   exist in `AutoregressiveModel`); a proper KV-cache decode if the first path was sliding-window.
+1. This plan, if approved: representative all-window held-out measurement, a tuned training recipe
+   that clears the baseline with margin, a generation path on `CausalLanguageModel` with a
+   deterministic generation test, and a rewritten training doc with a generation section. The plan's
+   "Open questions" record the risks a reviewer added: the run is ~34 min against a 38-min test
+   timeout, scoring all 82 held-out windows every epoch could exceed it, and the margin needed to
+   call the result "comfortable" is not yet fixed.
+2. **Sampling quality and longer generation** once the first path works (temperature sampling exists
+   in `AutoregressiveModel`; top-p exists in its static `sampleToken` but is not exposed by the
+   `of(...)` factory); a proper KV-cache decode if the first path was sliding-window (that needs the
+   fused `qkv` weight split into Q/K/V views and the rotary inputs derived from `rope_inv_freq`).
 3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context/depth, and whichever per-step
    backward cost the training-run profile names (the standing small-reduction native-compile lever).
 4. A later cycle: let a trained model read the platform's own *source*, the deeper self-understanding
