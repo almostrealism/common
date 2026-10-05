@@ -14,9 +14,9 @@
  *   attention, attention_qk_norm, attention_mra     /pdsl/attention.pdsl
  *   swiglu_ffn                                      /pdsl/feed_forward.pdsl
  *
- * The attention stage writes the key and value caches declared by the attention_cache state
- * block of attention.pdsl; the caller allocates them and binds them as key_cache and
- * value_cache, and they persist across forward passes.
+ * The attention stage writes the key and value caches each layer takes as its key_cache and
+ * value_cache parameters; the caller allocates them, one pair per layer, and they persist
+ * across forward passes.
  *
  * Data flow of one forward pass. The input is one token's residual-stream vector:
  *
@@ -49,11 +49,12 @@ layer transformer(heads: int, kv_heads: int, head_size: int,
                   bq: weight, bk: weight, bv: weight,
                   freq_cis: weight, position: scalar,
                   rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
-                  epsilon: float) -> [1, heads * head_size] {
+                  epsilon: float, key_cache: weight, value_cache: weight)
+        -> [1, heads * head_size] {
     // Residual self-attention: the stream plus attention over its normalized copy.
     accum {
         attention(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
-                  bq, bk, bv, freq_cis, position, epsilon)
+                  bq, bk, bv, freq_cis, position, epsilon, key_cache, value_cache)
     }
 
     // Residual feed-forward: the stream plus the SwiGLU network over its normalized copy.
@@ -76,11 +77,13 @@ layer transformer_qk_norm(heads: int, kv_heads: int, head_size: int,
                           qk_norm_q: weight, qk_norm_k: weight,
                           freq_cis: weight, position: scalar,
                           rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
-                          epsilon: float) -> [1, heads * head_size] {
+                          epsilon: float, key_cache: weight, value_cache: weight)
+        -> [1, heads * head_size] {
     // Residual self-attention with QK-norm.
     accum {
         attention_qk_norm(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
-                          bq, bk, bv, qk_norm_q, qk_norm_k, freq_cis, position, epsilon)
+                          bq, bk, bv, qk_norm_q, qk_norm_k, freq_cis, position, epsilon,
+                          key_cache, value_cache)
     }
 
     // Residual feed-forward.
@@ -103,11 +106,12 @@ layer transformer_mra(heads: int, kv_heads: int, head_size: int,
                       q_head_groups: rope_groups, kv_head_groups: rope_groups,
                       position: scalar,
                       rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
-                      epsilon: float) -> [1, heads * head_size] {
+                      epsilon: float, key_cache: weight, value_cache: weight)
+        -> [1, heads * head_size] {
     // Residual self-attention with per-head-group rotation.
     accum {
         attention_mra(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
-                      q_head_groups, kv_head_groups, position, epsilon)
+                      q_head_groups, kv_head_groups, position, epsilon, key_cache, value_cache)
     }
 
     // Residual feed-forward.

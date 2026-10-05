@@ -10,8 +10,8 @@
  * projection are all written out there and resolved into this program by the import. Before this
  * migration the stage was the `attention` built-in, which hid that structure inside
  * AttentionFeatures.attention and allocated the caches in Java; the caches are now the
- * attention_cache state declared by attention.pdsl, allocated and bound by the SkyTNT loader
- * (SkyTntMidi.buildTransformerModel), exactly as the transformer.pdsl layers already do it.
+ * key_cache and value_cache parameters of the block, allocated and bound by the SkyTNT loader
+ * (SkyTntMidi.buildTransformerModel), exactly as the transformer.pdsl layers take them.
  *
  * SkyTNT attention is plain multi-head attention with no grouped-query sharing (kv_heads == heads)
  * and no projection biases (bq, bk, bv are null), so the call names those directly.
@@ -69,8 +69,8 @@ layer skytnt_ffn(
  *
  * The attention call passes heads for kv_heads (multi-head, no GQA) and null for the three
  * projection biases (SkyTNT has none), and forwards epsilon so the attention RMSNorm uses the
- * same epsilon as the feed-forward RMSNorm. key_cache and value_cache are the attention_cache
- * state of the imported attention.pdsl, bound by the caller and persistent across forward passes.
+ * same epsilon as the feed-forward RMSNorm. key_cache and value_cache are the block's KV cache,
+ * allocated by the caller (one pair per block) and persistent across forward passes.
  */
 layer skytnt_block(
     heads: int,
@@ -86,12 +86,14 @@ layer skytnt_block(
     gate_proj: weight,
     up_proj: weight,
     down_proj: weight,
-    epsilon: float
+    epsilon: float,
+    key_cache: weight,
+    value_cache: weight
 ) -> [1, heads * head_size] {
     // Residual self-attention: the stream plus attention over its normalized copy.
     accum {
         attention(heads, heads, head_size, rms_att_weight, wq, wk, wv, wo,
-                  null, null, null, freq_cis, position, epsilon)
+                  null, null, null, freq_cis, position, epsilon, key_cache, value_cache)
     }
 
     // Residual feed-forward: the stream plus the SwiGLU network over its normalized copy.

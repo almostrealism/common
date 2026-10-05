@@ -21,6 +21,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.protobuf.Collections;
 
+import java.nio.ByteBuffer;
+
 /**
  * Collection data that is known to be in a file, and has not been read.
  *
@@ -96,6 +98,22 @@ public class CollectionDataReference {
 
 	/** Returns how many bytes the values occupy. */
 	public long getValueLength() { return (long) count * precision.bytes(); }
+
+	/**
+	 * Reads one value from a buffer holding the whole file this reference was resolved
+	 * against, decoding it from the form it is stored in.
+	 *
+	 * <p>Protobuf collection data is stored as little-endian FP64 or FP32, which the buffer's
+	 * own accessors decode. A file format that stores values in another form overrides this.</p>
+	 *
+	 * @param buffer the file's bytes, in the order the values were written
+	 * @param index  the position of the value among this reference's values
+	 * @return the value
+	 */
+	protected double valueAt(ByteBuffer buffer, int index) {
+		int at = (int) (valueOffset + (long) index * precision.bytes());
+		return precision == Precision.FP64 ? buffer.getDouble(at) : buffer.getFloat(at);
+	}
 
 	/**
 	 * Locates collection data within a message, descending the given path of
