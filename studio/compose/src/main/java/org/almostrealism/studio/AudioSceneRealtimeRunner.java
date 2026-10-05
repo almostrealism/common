@@ -560,8 +560,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 
 		// Register the stable output handle for rollback before the fallible throwaway pass:
 		// a throw from forward() must not leak a buffer CompiledModel.destroy() cannot reclaim.
+		// It is placed ahead of the model so the reverse-order rollback releases the compiled
+		// operations before the output buffer they write, the same order as destroy().
 		PackedCollection masterOutput = compiled.getOutput();
-		allocated.add(masterOutput);
+		allocated.add(allocated.indexOf(compiled), masterOutput);
 		compiled.forward(pdslInput);
 
 		// The mixdown renders one signal per frame; a stereo destination receives it

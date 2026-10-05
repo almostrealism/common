@@ -20,7 +20,9 @@ import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
@@ -50,6 +52,9 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 
 	/** Frames per buffer for the runners built here. */
 	private static final int BUFFER_SIZE = 1024;
+
+	/** Message of the simulated master-output wiring failure. */
+	private static final String MASTER_FAILURE = "simulated master output wiring failure";
 
 	/**
 	 * Builds a PDSL runner, starts its producer thread through {@code setup()}, never
@@ -210,6 +215,64 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 					0, runners.getLiveRunnerCount());
 		} finally {
 			scene.destroy();
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * A PDSL runner build that fails after the mixdown model is compiled and its throwaway
+	 * forward pass has run — here while wiring the master output — must roll back every
+	 * resource it allocated (the compiled model and its output buffer among them, released
+	 * model first) and rethrow the original failure unchanged. The scene's own buffers must
+	 * be left intact: a second build on the same scene succeeds and is tracked normally.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslRunnerBuildFailureRollsBackModelAndOutput() {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = true;
+		List<WaveOutput> outputs = new ArrayList<>();
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			applyGenome(scene, 1);
+			AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(scene);
+			int threads = producerThreadCount();
+
+			WaveOutput failingOut = new WaveOutput(
+					() -> new File("results/ownership-pdsl-failure.wav"), 24, true);
+			outputs.add(failingOut);
+			MultiChannelAudioOutput failing = new MultiChannelAudioOutput(failingOut) {
+				@Override
+				public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
+					throw new IllegalStateException(MASTER_FAILURE);
+				}
+			};
+
+			IllegalStateException thrown = null;
+			try {
+				runners.create(failing, null, BUFFER_SIZE);
+			} catch (IllegalStateException e) {
+				thrown = e;
+			}
+
+			assertTrue("the output wiring failure should propagate", thrown != null);
+			assertEquals(MASTER_FAILURE, thrown.getMessage());
+			assertEquals(0, thrown.getSuppressed().length);
+			assertEquals("a failed build must not leave a runner tracked",
+					0, runners.getLiveRunnerCount());
+			assertEquals("a failed build must not start a producer thread",
+					threads, producerThreadCount());
+
+			TemporalCellular runner = runners.create(output("ownership-pdsl-retry", outputs),
+					null, BUFFER_SIZE);
+			assertEquals("the scene must remain usable after a rolled-back build",
+					1, runners.getLiveRunnerCount());
+			((Destroyable) runner).destroy();
+			assertEquals(0, runners.getLiveRunnerCount());
+		} finally {
+			scene.destroy();
+			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
 		}
 	}
