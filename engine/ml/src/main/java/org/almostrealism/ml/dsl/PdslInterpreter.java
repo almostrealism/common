@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -397,11 +398,27 @@ public class PdslInterpreter {
 	 */
 	public Model buildModel(String name, TraversalPolicy inputShape,
 							Map<String, Object> args) {
+		return buildModel(name, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Model} from a named model definition, applying {@code requirements} to
+	 * every layer the model constructs, as {@link #buildLayer(String, TraversalPolicy, Map,
+	 * ComputeRequirement...)} does for a single layer.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param args         parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape,
+							Map<String, Object> args, ComputeRequirement... requirements) {
 		PdslNode.ModelDef def = modelDefs.get(name);
 		if (def == null) {
 			throw new PdslParseException("Model '" + name + "' not found");
 		}
-		Environment env = new Environment(programScope(args));
+		Environment env = new Environment(programScope(args, requirements));
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
 				throw new PdslParseException(
@@ -412,6 +429,43 @@ public class PdslInterpreter {
 		Model model = new Model(inputShape);
 		interpretModelBody(def.getBody(), model, env);
 		return model;
+	}
+
+	/**
+	 * Build a {@link Model} whose weights come from a {@link StateDictionary}: the dictionary is
+	 * bound to every parameter the model declares with the type {@code checkpoint}, and the
+	 * model body reads each weight from it by name.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param stateDict    weight source
+	 * @param extraArgs    the model's other parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 * @throws PdslParseException if the model does not exist or declares no {@code checkpoint}
+	 *         parameter
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape, StateDictionary stateDict,
+							Map<String, Object> extraArgs, ComputeRequirement... requirements) {
+		PdslNode.ModelDef def = modelDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Model '" + name + "' not found");
+		}
+
+		Map<String, Object> args = new HashMap<>(extraArgs);
+		boolean bound = false;
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if ("checkpoint".equals(param.getTypeName())) {
+				args.put(param.getName(), stateDict);
+				bound = true;
+			}
+		}
+		if (!bound) {
+			throw new PdslParseException("Model '" + name
+					+ "' declares no checkpoint parameter to bind the weights to");
+		}
+
+		return buildModel(name, inputShape, args, requirements);
 	}
 
 	/**
@@ -586,6 +640,11 @@ public class PdslInterpreter {
 					loopEnv.set(forStmt.getVariable(), i);
 					interpretModelBody(forStmt.getBody(), model, loopEnv);
 				}
+			} else if (stmt instanceof PdslNode.StackStatement) {
+				PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+				for (Environment memberEnv : stackMembers(stack, env)) {
+					interpretModelBody(stack.getBody(), model, memberEnv);
+				}
 			} else {
 				throw new PdslParseException(
 						"Unsupported statement in model body: " + stmt.getClass().getSimpleName());
@@ -629,6 +688,11 @@ public class PdslInterpreter {
 				loopEnv.set(forStmt.getVariable(), i);
 				interpretBody(forStmt.getBody(), block, loopEnv);
 			}
+		} else if (stmt instanceof PdslNode.StackStatement) {
+			PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+			for (Environment memberEnv : stackMembers(stack, env)) {
+				interpretBody(stack.getBody(), block, memberEnv);
+			}
 		} else if (stmt instanceof PdslNode.ReturnStatement) {
 			// Return is handled by evaluating and adding the final expression
 			Object result = evaluateExpression(
@@ -638,6 +702,40 @@ public class PdslInterpreter {
 			throw new PdslParseException(
 					"Unsupported statement: " + stmt.getClass().getSimpleName());
 		}
+	}
+
+	/**
+	 * Evaluates the weight group of a {@code stack} statement and returns one scope per member,
+	 * in the group's {@link StateDictionary#members() order}, each binding the statement's name
+	 * to that member's weights. The body is interpreted once in each scope.
+	 *
+	 * @param stack The stack statement
+	 * @param env   The scope the statement appears in
+	 * @return one scope per member of the group
+	 * @throws PdslParseException if the group is not a weight group, or has no members
+	 */
+	private List<Environment> stackMembers(PdslNode.StackStatement stack, Environment env) {
+		Object group = evaluateExpression(stack.getGroup(), env);
+		if (!(group instanceof StateDictionary)) {
+			throw new PdslParseException("stack repeats over a group of weights, such as "
+					+ "weights.model.layers, but was given "
+					+ (group == null ? "null" : group.getClass().getSimpleName())
+					+ " at line " + stack.getLine());
+		}
+
+		StateDictionary weights = (StateDictionary) group;
+		List<String> members = weights.members();
+		if (members.isEmpty()) {
+			throw new PdslParseException("stack was given a group with no weights at line " + stack.getLine());
+		}
+
+		List<Environment> scopes = new ArrayList<>();
+		for (String member : members) {
+			Environment memberEnv = new Environment(env);
+			memberEnv.set(stack.getName(), weights.group(member));
+			scopes.add(memberEnv);
+		}
+		return scopes;
 	}
 
 	/**
@@ -961,6 +1059,19 @@ public class PdslInterpreter {
 	private Object evaluateFieldAccess(PdslNode.FieldAccess access,
 									   Environment env) {
 		Object obj = evaluateExpression(access.getObject(), env);
+		if (obj instanceof StateDictionary) {
+			// A path into a checkpoint: weights.model.norm.weight is the tensor of that name,
+			// and weights.model.layers is the group of everything under it.
+			StateDictionary weights = (StateDictionary) obj;
+			if (weights.containsKey(access.getField())) return weights.get(access.getField());
+			StateDictionary group = weights.group(access.getField());
+			if (group.size() > 0) return group;
+			try {
+				return weights.require(access.getField());
+			} catch (IllegalArgumentException e) {
+				throw new PdslParseException(e.getMessage() + ", at line " + access.getLine());
+			}
+		}
 		if (obj instanceof Map) {
 			Object value = ((Map<String, Object>) obj).get(access.getField());
 			if (value == null) {

@@ -29,6 +29,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
@@ -49,7 +50,7 @@ import java.util.function.Supplier;
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
  * causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt, attention,
- * shape, range). {@link PdslInterpreter} evaluates a call's
+ * shape, range, zeros, rope_freqs). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
  * {@link PdslInterpreter#registerPrimitive} instead of extending this class.
@@ -111,6 +112,8 @@ final class PdslBuiltins {
 			case "attention": return callAttention(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
+			case "zeros": return callZeros(args);
+			case "rope_freqs": return callRopeFreqs(args);
 			default: return null;
 		}
 	}
@@ -1058,6 +1061,43 @@ final class PdslBuiltins {
 		throw new PdslParseException(
 				"range() expects 3 arguments (source, shape, offset), got " + args.size());
 	}
+
+	/**
+	 * Allocates a new collection of the given shape with every element zero: the storage a
+	 * stateful layer writes on one forward pass and reads on later ones, such as the key and
+	 * value caches of autoregressive attention. Each call allocates a distinct collection, so a
+	 * model that calls {@code zeros} once per layer gives every layer its own state.
+	 *
+	 * @param args [shape: TraversalPolicy]
+	 * @return the zero-filled collection
+	 */
+	private static PackedCollection callZeros(List<Object> args) {
+		if (args.size() != 1 || !(args.get(0) instanceof TraversalPolicy)) {
+			throw new PdslParseException("zeros() expects one shape argument, such as zeros([rows, size])");
+		}
+		PackedCollection storage = new PackedCollection((TraversalPolicy) args.get(0));
+		storage.clear();
+		return storage;
+	}
+
+	/**
+	 * Builds the rotary position embedding table: for each position up to {@code seq_len}, the
+	 * rotation angle of each of the {@code head_size / 2} frequency pairs, as
+	 * {@link RotationFeatures#computeRopeFreqs} defines it. The result is
+	 * the {@code freq_cis} table that {@code rope_rotation} reads.
+	 *
+	 * @param args [theta: number, head_size: int, seq_len: int]
+	 * @return the frequency table producer, shape {@code [seq_len, head_size / 2, 2]}
+	 */
+	private static CollectionProducer callRopeFreqs(List<Object> args) {
+		if (args.size() != 3) {
+			throw new PdslParseException(
+					"rope_freqs() expects 3 arguments (theta, head_size, seq_len), got " + args.size());
+		}
+		return RotationFeatures.computeRopeFreqs(
+				toDouble(args.get(0)), toInt(args.get(1)), toInt(args.get(2)));
+	}
+
 	// ---- Type conversion helpers ----
 
 

@@ -178,6 +178,8 @@ These three rules are non-negotiable. Every violation wastes developer time. The
 mcp__ar-manager__consult question:"..." keywords:["SpecificClass", "method", "term"]
 ```
 
+The ar-manager tools may surface as `mcp__ar-manager__*` or `mcp__claude_ai_ar-manager__*`; use whichever exists.
+
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
 
 **Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.

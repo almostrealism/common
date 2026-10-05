@@ -41,6 +41,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -537,35 +538,31 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * Releases the per-channel writers, the per-channel data producers, and the backing
 	 * buffer this output allocated for itself.
 	 *
-	 * <p>The three groups are independently owned, so each is run as its own best-effort
-	 * release action through {@link Destroyable#releaseAll(Iterable)}: a failure while
-	 * destroying a writer or channel producer must not leave the large self-allocated
-	 * timeline buffer ({@code ownedData}) allocated. The first failure is rethrown once
-	 * all actions have run. The channel producers are range views into {@code ownedData},
-	 * so they do not free it; only a buffer this output allocated itself is released, and a
-	 * caller-supplied buffer is left to its owner.</p>
+	 * <p>Every writer, every channel producer, and the self-allocated timeline buffer
+	 * ({@code ownedData}) is registered as its own best-effort release action and run through
+	 * {@link Destroyable#releaseAll(Iterable)}, so a failure destroying one resource releases
+	 * neither the others nor the large backing buffer. The fields are detached up front, so a
+	 * failing release still leaves this output cleared. The first failure is rethrown once all
+	 * actions have run. The channel producers are range views into {@code ownedData}, so they do
+	 * not free it; only a buffer this output allocated itself is released, and a caller-supplied
+	 * buffer is left to its owner.</p>
 	 */
 	@Override
 	public void destroy() {
-		Destroyable.releaseAll(List.of(
-				() -> {
-					if (channels != null) {
-						channels.forEach(Writer::destroy);
-						channels = null;
-					}
-				},
-				() -> {
-					if (data != null) {
-						data.forEach(CollectionProducer::destroy);
-						data = null;
-					}
-				},
-				() -> {
-					if (ownedData != null) {
-						ownedData.destroy();
-						ownedData = null;
-					}
-				}));
+		List<Writer> channels = this.channels;
+		List<CollectionProducer> data = this.data;
+		WaveData ownedData = this.ownedData;
+
+		this.channels = null;
+		this.data = null;
+		this.ownedData = null;
+
+		List<Runnable> releases = new ArrayList<>();
+		if (channels != null) channels.forEach(writer -> releases.add(writer::destroy));
+		if (data != null) data.forEach(producer -> releases.add(producer::destroy));
+		if (ownedData != null) releases.add(ownedData::destroy);
+
+		Destroyable.releaseAll(releases);
 	}
 
 	@Override
