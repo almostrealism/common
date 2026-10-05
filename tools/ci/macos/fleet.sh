@@ -1100,11 +1100,14 @@ EOF
         # hop, refusing an interpreter that is writable, or that links into a
         # place another account controls. It is screened only once it exists — a
         # first install has yet to create the venv, and render.sh then builds it
-        # as you inside the FLEET_HOME screened above.
+        # as you inside the FLEET_HOME screened above. A dangling link counts as
+        # existing: its target could be created or repointed later, so it is
+        # handed to untrusted_program, which refuses a link it cannot follow.
+        # TODO(review): a venv left dangling by a Python upgrade is now refused (render.sh would have rebuilt it); say "remove ${fleet_home}/venv" in the error.
         local fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}" python_bad=""
         case "${fleet_python}" in
             /*)
-                if sudo test -e "${fleet_python}"; then
+                if sudo test -e "${fleet_python}" -o -L "${fleet_python}"; then
                     python_bad="$(untrusted_program "${admin_user}" "${fleet_python}" sudo)"
                 fi
                 ;;
@@ -1139,13 +1142,14 @@ EOF
         # date (PyYAML). So an existing ${FLEET_HOME}/venv/bin/pip is a code path
         # the monitor install executes as you, just like the interpreter; screen
         # it the same way — followed with untrusted_program, and only once it
-        # exists, so a first install (the venv not yet created) is not refused. A
+        # exists (a dangling link included, as for the interpreter), so a first
+        # install (the venv not yet created) is not refused. A
         # venv created freshly by render.sh lives inside the FLEET_HOME screened
         # above, so only a pre-existing one needs this.
         local fleet_pip="${fleet_home}/venv/bin/pip" pip_bad=""
         case "${fleet_pip}" in
             /*)
-                if sudo test -e "${fleet_pip}"; then
+                if sudo test -e "${fleet_pip}" -o -L "${fleet_pip}"; then
                     pip_bad="$(untrusted_program "${admin_user}" "${fleet_pip}" sudo)"
                 fi
                 ;;

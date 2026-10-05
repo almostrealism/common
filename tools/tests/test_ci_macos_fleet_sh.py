@@ -544,7 +544,7 @@ class MacosFleetSecurityTests(unittest.TestCase):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertIn('fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}"', install,
                       "the interpreter must cover both an explicit FLEET_PYTHON and the default venv")
-        self.assertIn('if sudo test -e "${fleet_python}"; then', install,
+        self.assertIn('if sudo test -e "${fleet_python}" -o -L "${fleet_python}"; then', install,
                       "the interpreter must be screened only once it exists, so a first install is not refused")
         screen = install.find('untrusted_program "${admin_user}" "${fleet_python}" sudo')
         self.assertNotEqual(-1, screen,
@@ -653,7 +653,7 @@ class MacosFleetSecurityTests(unittest.TestCase):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertIn('fleet_pip="${fleet_home}/venv/bin/pip"', install,
                       "install must screen the venv pip render.sh may run")
-        self.assertIn('if sudo test -e "${fleet_pip}"; then', install,
+        self.assertIn('if sudo test -e "${fleet_pip}" -o -L "${fleet_pip}"; then', install,
                       "the pip must be screened only once it exists, so a first install is not refused")
         screen = install.find('untrusted_program "${admin_user}" "${fleet_pip}" sudo')
         self.assertNotEqual(-1, screen,
