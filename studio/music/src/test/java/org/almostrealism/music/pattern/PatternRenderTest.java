@@ -82,15 +82,29 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 
 	/**
 	 * Creates a pattern system with one percussive one-measure pattern on channel 0
-	 * holding {@code hits} identical, coincident hits at a quarter measure.
+	 * holding {@code hits} identical, coincident hits at a quarter measure, each
+	 * backed by a {@link #SAMPLE_SECONDS}-long sample.
 	 *
 	 * @param hits the number of coincident hits
 	 * @return the pattern system
 	 */
 	private PatternSystemManager system(int hits) {
+		return system(hits, SAMPLE_SECONDS);
+	}
+
+	/**
+	 * Creates a pattern system with one percussive one-measure pattern on channel 0
+	 * holding {@code hits} identical, coincident hits at a quarter measure, each
+	 * backed by a {@code sampleSeconds}-long sample.
+	 *
+	 * @param hits the number of coincident hits
+	 * @param sampleSeconds the duration of the generated sample in seconds
+	 * @return the pattern system
+	 */
+	private PatternSystemManager system(int hits, double sampleSeconds) {
 		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
-				new FileNoteSource(getNamedTestWavPath("render_hit.wav", 330.0, SAMPLE_SECONDS, true),
-						WesternChromatic.C1), 0, 9, false);
+				new FileNoteSource(getNamedTestWavPath("render_hit_" + sampleSeconds + ".wav",
+						330.0, sampleSeconds, true), WesternChromatic.C1), 0, 9, false);
 		choice.setTuning(new DefaultKeyboardTuning());
 
 		PatternSystemManager psm = new PatternSystemManager(List.of(choice),
@@ -255,6 +269,55 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 			double[] quiet = renderInBuffers(psm);
 			for (int i = 0; i < TOTAL_FRAMES; i++) {
 				Assert.assertEquals("frame " + i, 0.5 * whole[i], quiet[i], 1e-6);
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A non-persistent note-audio cache is released once a buffered render reaches the
+	 * end of the arrangement. The sample here spans the whole arrangement, so the note's
+	 * cached audio never ends before a buffer start and {@link NoteAudioCache#evictBefore}
+	 * never removes it; only the end-of-render release empties the cache. The cache
+	 * therefore still holds the note while the buffers before the end render, and is
+	 * empty once the final buffer — the one that reaches the arrangement end — has run.
+	 * This guards against a completed one-shot render retaining its final window until the
+	 * next frame-0 clear or teardown.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void nonPersistentCacheReleasedAtRenderEnd() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system(1, 1.5)) {
+			NoteAudioCache cache = psm.getPatterns().get(0).getNoteAudioCache();
+
+			AudioSceneContext context = context(null);
+			int[] frame = { 0 };
+			PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context, CHANNEL,
+					BUFFER_SIZE, () -> frame[0]);
+
+			try {
+				Runnable tick = buffer.prepareBatch().get();
+				int lastStart = ((TOTAL_FRAMES - 1) / BUFFER_SIZE) * BUFFER_SIZE;
+
+				for (int start = 0; start < lastStart; start += BUFFER_SIZE) {
+					frame[0] = start;
+					tick.run();
+				}
+
+				Assert.assertTrue("the spanning note is cached while the buffers before the end render",
+						cache.size() >= 1);
+
+				frame[0] = lastStart;
+				tick.run();
+
+				Assert.assertEquals("the note-audio cache is released once the render reaches the end",
+						0, cache.size());
+			} finally {
+				buffer.getOutputBuffer().destroy();
 			}
 		} finally {
 			PatternLayerManager.enableBatched = batched;
