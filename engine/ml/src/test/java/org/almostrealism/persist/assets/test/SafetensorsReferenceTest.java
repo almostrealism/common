@@ -1,6 +1,7 @@
 package org.almostrealism.persist.assets.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.FileMapping;
 import org.almostrealism.io.Bits;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.persist.assets.SafetensorsReference;
@@ -482,6 +483,45 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 				Assert.assertTrue(e.getMessage(), e.getMessage().contains("model-00002-of-00002.safetensors"));
 			}
 		}
+	}
+
+	/**
+	 * A checkpoint that fails to load part way through releases the shards it had already mapped:
+	 * the dictionary is never returned to a caller who could destroy it, so nothing else would.
+	 * This holds whether the later shard is rejected for redefining a tensor or for being malformed.
+	 */
+	@Test(timeout = 60000)
+	public void failedLoadReleasesMappedShards() throws IOException {
+		String first = "{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}";
+		String[] seconds = {
+				first,
+				"{\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,8]}}"
+		};
+
+		for (String second : seconds) {
+			Path directory = writeShards(first, 1.5f, second, 3.0f);
+			int mapped = FileMapping.getMappedFileCount();
+			try {
+				new StateDictionary(directory.toString());
+				Assert.fail("The second shard should be rejected");
+			} catch (IllegalArgumentException e) {
+				Assert.assertEquals(e.getMessage(), mapped, FileMapping.getMappedFileCount());
+			}
+		}
+	}
+
+	/** Destroying a dictionary read from shards releases every shard it mapped. */
+	@Test(timeout = 60000)
+	public void destroyReleasesMappedShards() throws IOException {
+		Path directory = writeShards(
+				"{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 1.5f,
+				"{\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", -2.0f);
+
+		int mapped = FileMapping.getMappedFileCount();
+		StateDictionary weights = new StateDictionary(directory.toString());
+		Assert.assertEquals(mapped + 2, FileMapping.getMappedFileCount());
+		weights.destroy();
+		Assert.assertEquals(mapped, FileMapping.getMappedFileCount());
 	}
 
 	/**

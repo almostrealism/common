@@ -44,6 +44,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -161,15 +162,35 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
-		loadWeights();
+
+		try {
+			loadWeights();
+		} catch (IOException | RuntimeException e) {
+			// The dictionary is never returned to a caller who could destroy it, so the
+			// tensors located before the failure would otherwise keep their files mapped.
+			destroy();
+			throw e;
+		}
 	}
 
 	/**
-	 * Load weights from protobuf {@link org.almostrealism.persist.assets.Asset}s.
+	 * Load weights from the {@link org.almostrealism.persist.assets.Asset}s: the safetensors
+	 * files among them if there are any, and otherwise every file as a protobuf library.
+	 *
+	 * <p>Each asset's file is resolved once. Resolving an asset verifies its checksum and may
+	 * download it, which is too costly to repeat for each pass over the files.</p>
+	 *
+	 * @throws IOException if a safetensors file cannot be read
+	 * @throws IllegalArgumentException if a safetensors file is malformed, or a tensor is defined
+	 *         by more than one of them
 	 */
 	private void loadWeights() throws IOException {
-		List<File> safetensors = files()
+		List<File> available = files()
+				.filter(Objects::nonNull)
 				.filter(File::exists)
+				.collect(Collectors.toList());
+
+		List<File> safetensors = available.stream()
 				.filter(f -> f.getName().endsWith(SAFETENSORS_EXTENSION))
 				.collect(Collectors.toList());
 		if (!safetensors.isEmpty()) {
@@ -183,8 +204,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			return;
 		}
 
-		int total = files()
-				.filter(File::exists)
+		int total = available.stream()
 				.filter(f -> !f.getName().startsWith("."))
 				.mapToInt(weightFile -> {
 			try {
