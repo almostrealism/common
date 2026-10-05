@@ -9,7 +9,7 @@ This module exists to:
 1. **Load Transformer Models** - Support for loading weights from HuggingFace/protobuf formats
 2. **Implement Attention Mechanisms** - Multi-head, grouped-query, and cross-attention
 3. **Enable Text Generation** - Autoregressive token generation with sampling strategies
-4. **Provide Tokenization** - Byte-level BPE tokenizers for text encoding/decoding
+4. **Provide Tokenization** - Byte-level and SentencePiece BPE tokenizers for text encoding/decoding
 5. **Support Hardware Acceleration** - GPU/CPU execution via ar-hardware backends
 
 ## What It Provides
@@ -665,7 +665,21 @@ PackedCollection audio = sa3.generate(seed, tokenIds, seconds).evaluate();  // [
 The transformer and decoder are compiled once for the longest clip the instance generates; a
 shorter request is generated at that length with the padding mask covering the requested duration
 plus headroom, then truncated. Classifier-free guidance is off by default and is enabled with
-`setGuidance(scale, negativePrompt)`.
+`setGuidance(scale, negativePrompt)`, whose negative prompt is pre-tokenized ids.
+
+`generate` takes pre-tokenized prompt ids. To generate directly from prompt text, supply a
+`Tokenizer` (the released models use a SentencePiece BPE tokenizer from
+`org.almostrealism.ml.tokenization`) and call `generateFromText`, which encodes the text and
+delegates to `generate`:
+
+```java
+sa3.setTokenizer(tokenizer);
+sa3.setTextGuidance(scale, "negative prompt");   // text counterpart of setGuidance
+PackedCollection audio = sa3.generateFromText(seed, "a prompt", seconds).evaluate();
+```
+
+`generateFromText` and `setTextGuidance` require a tokenizer to have been set; without one they
+reject the call and ask for `setTokenizer` or pre-tokenized ids.
 
 Other Stable Audio 3 building blocks:
 - **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
