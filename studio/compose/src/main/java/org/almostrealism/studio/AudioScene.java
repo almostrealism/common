@@ -75,6 +75,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
@@ -335,8 +336,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** Consolidated pattern-render storage and render-cell tracking for runner builds. */
 	private final PatternRenderBuffers renderBuffers = new PatternRenderBuffers();
 
-	/** The active cell list produced by the most recent {@code getCells} call. */
-	private CellList activeCells;
+	/**
+	 * The active cell list produced by the most recent {@code getCells} call. Held in an
+	 * {@link AtomicReference} so that replacing it (a scene rebuild) and releasing it (a
+	 * runner teardown on another thread) are compare-and-set operations that cannot
+	 * interleave into a double free or clobber a newer list.
+	 */
+	// TODO(review): getCells replaces this with an unconditional set(), not a CAS; only releases are CAS-guarded.
+	private final AtomicReference<CellList> activeCells = new AtomicReference<>();
 
 	/** Builds this scene's real-time runners and releases any still live on {@link #destroy()}. */
 	private final AudioSceneRealtimeRunner realtimeRunners = new AudioSceneRealtimeRunner(this);
@@ -1023,7 +1030,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			destroyActiveCells(activeCells);
+			destroyActiveCells(activeCells.get());
 
 			CellList cells = cells(
 					getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
@@ -1032,7 +1039,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 							bufferSize, frameSupplier, setup, waveCellFrame));
 
 			cells.addSetup(() -> setup);
-			activeCells = cells;
+			activeCells.set(cells);
 			return cells.addRequirement(time::tick);
 		} finally {
 			getCellsTime.addEntry(System.nanoTime() - start);
@@ -1048,7 +1055,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * returned by {@link #getCells}: the runner and the scene refer to the same instance.
 	 * {@link CellList#destroy()} traverses the cell graph on every call, so releasing that
 	 * instance twice would double-free its children. Routing the runner's release through
-	 * this method makes the release atomic with clearing {@code activeCells}, so whichever
+	 * this method makes the release atomic with clearing {@code activeCells} (a
+	 * compare-and-set, so a concurrent rebuild or release cannot also claim the same list
+	 * or have its newer list cleared by a delayed release of an old one), so whichever
 	 * of the runner or the scene tears down first frees the cells exactly once. A cell list
 	 * that a later {@link #getCells} already replaced (and therefore destroyed) is no longer
 	 * {@code activeCells}, so this is a no-op for it too.</p>
@@ -1060,8 +1069,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @param cells the cell list to release; ignored when it is not the current active cells
 	 */
 	public void destroyActiveCells(CellList cells) {
-		if (cells != null && activeCells == cells) {
-			activeCells = null;
+		if (cells != null && activeCells.compareAndSet(cells, null)) {
 			cells.destroy();
 		}
 	}
@@ -1102,7 +1110,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			destroyActiveCells(activeCells);
+			destroyActiveCells(activeCells.get());
 
 			// WET cells are created only when efx is enabled — mirrors getPatternCells,
 			// which omits the WET voicing on the fast path.
@@ -1398,7 +1406,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		Destroyable.releaseAll(List.of(
 				realtimeRunners::destroy,
 				() -> getSectionManager().destroy(),
-				() -> destroyActiveCells(activeCells),
+				() -> destroyActiveCells(activeCells.get()),
 				renderBuffers::destroy,
 				efx::destroyConsolidatedBuffers,
 				() -> activeInstances.remove(this)));

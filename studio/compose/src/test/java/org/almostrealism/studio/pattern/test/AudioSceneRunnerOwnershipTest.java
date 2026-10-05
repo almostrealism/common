@@ -33,9 +33,12 @@ import org.junit.Test;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -393,12 +396,18 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 		}, "scene-teardown");
 		teardown.start();
 
-		assertFalse("teardown must not return while a runner release is in progress",
-				teardownDone.await(500, TimeUnit.MILLISECONDS));
-		assertEquals("a runner being released must still count as live",
-				1, runners.getLiveRunnerCount());
+		// Unblock before asserting so a regression fails instead of hanging.
+		boolean returnedEarly;
+		int liveDuringRelease;
+		try {
+			returnedEarly = teardownDone.await(500, TimeUnit.MILLISECONDS);
+			liveDuringRelease = runners.getLiveRunnerCount();
+		} finally {
+			proceed.release();
+		}
 
-		proceed.release();
+		assertFalse("teardown must not return while a runner release is in progress", returnedEarly);
+		assertEquals("a runner being released must still count as live", 1, liveDuringRelease);
 		assertTrue("teardown must return once the release finishes",
 				teardownDone.await(30, TimeUnit.SECONDS));
 		caller.join(30_000);
@@ -475,10 +484,15 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			}, "scene-teardown");
 			teardown.start();
 
-			assertFalse("teardown must not return while a runner build is in progress",
-					teardownDone.await(500, TimeUnit.MILLISECONDS));
+			// Unblock before asserting so a regression fails instead of hanging.
+			boolean returnedEarly;
+			try {
+				returnedEarly = teardownDone.await(500, TimeUnit.MILLISECONDS);
+			} finally {
+				proceed.release();
+			}
 
-			proceed.release();
+			assertFalse("teardown must not return while a runner build is in progress", returnedEarly);
 			assertTrue("teardown must return once the build finishes",
 					teardownDone.await(60, TimeUnit.SECONDS));
 			builder.join(60_000);
@@ -638,6 +652,90 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			frame.destroy();
 			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * Concurrent releases of the scene's cell lists must free the active list exactly once and
+	 * must never clear a newer list through a stale release of an older one. The scene builds
+	 * list {@code A} and then rebuilds list {@code B} (which releases {@code A}); several threads
+	 * then race, half releasing the stale {@code A} and half releasing the active {@code B}.
+	 * Exactly one release of {@code B} must be observed, and the scene's own teardown must not
+	 * release it again. Before the check-and-clear was a compare-and-set, two releasers could
+	 * both pass the {@code activeCells == cells} check and free the graph twice.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the releasing threads
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void concurrentActiveCellsReleaseFreesActiveListOnce() throws InterruptedException {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = false;
+		List<WaveOutput> outputs = new ArrayList<>();
+		PackedCollection frame = new PackedCollection(1);
+		CountingCollection counting = new CountingCollection();
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+		boolean sceneDestroyed = false;
+
+		try {
+			applyGenome(scene, 1);
+			CellList stale = (CellList) scene.getCells(output("ownership-stale", outputs),
+					List.of(0), BUFFER_SIZE, () -> 0, cp(frame));
+			CellList active = (CellList) scene.getCells(output("ownership-rebuilt", outputs),
+					List.of(0), BUFFER_SIZE, () -> 0, cp(frame));
+			active.addData(counting);
+
+			int releasers = 8;
+			CyclicBarrier start = new CyclicBarrier(releasers);
+			List<Thread> threads = new ArrayList<>();
+			for (int i = 0; i < releasers; i++) {
+				CellList target = i % 2 == 0 ? stale : active;
+				Thread t = new Thread(() -> {
+					try {
+						start.await(30, TimeUnit.SECONDS);
+					} catch (InterruptedException | BrokenBarrierException | TimeoutException e) {
+						return;
+					}
+					scene.destroyActiveCells(target);
+				}, "active-cells-release-" + i);
+				t.setDaemon(true);
+				threads.add(t);
+				t.start();
+			}
+
+			for (Thread t : threads) {
+				t.join(60_000);
+			}
+
+			assertEquals("the active list must be released exactly once across racing releasers",
+					1, counting.destroyCount.get());
+
+			sceneDestroyed = true;
+			scene.destroy();
+			assertEquals("scene.destroy() must not release an active list a releaser already freed",
+					1, counting.destroyCount.get());
+		} finally {
+			if (!sceneDestroyed) scene.destroy();
+			frame.destroy();
+			Destroyable.destroy(outputs);
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/** A {@link PackedCollection} whose release counts invocations, safe across threads. */
+	private static class CountingCollection extends PackedCollection {
+		/** Number of times {@link #destroy()} has been called. */
+		private final AtomicInteger destroyCount = new AtomicInteger();
+
+		/** Creates a single-element collection. */
+		CountingCollection() {
+			super(1);
+		}
+
+		@Override
+		public void destroy() {
+			destroyCount.incrementAndGet();
+			super.destroy();
 		}
 	}
 

@@ -1505,18 +1505,14 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * because the real-time runner compiles a fresh mixdown per render
 	 * ({@code AudioSceneRealtimeRunner.createPdsl}) that leak accumulates across renders.
 	 * Destroying the runnable immediately after it runs frees those kernels while leaving the
-	 * target collection — the operation's output, retained by the caller — untouched.</p>
+	 * target collection — the operation's output, retained by the caller — untouched.
+	 * The release runs even when the run throws, and a release failure is suppressed onto
+	 * the run failure rather than replacing it (see {@link Destroyable#runOnce(Runnable)}).</p>
 	 *
 	 * @param operation the one-shot operation to compile, run, and release
 	 */
 	private static void runOnce(Supplier<Runnable> operation) {
-		Runnable compiled = operation.get();
-		try {
-			compiled.run();
-		} finally {
-			// Release even if the run throws, or the leak this helper prevents returns.
-			Destroyable.destroy(compiled);
-		}
+		Destroyable.runOnce(operation.get());
 	}
 
 	/**

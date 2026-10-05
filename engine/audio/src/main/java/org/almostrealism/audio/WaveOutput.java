@@ -293,7 +293,8 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 					List.of(p(data.getChannelData(0)), p(data.getChannelData(1))) :
 					List.of(p(data.getChannelData(0))));
 		} catch (RuntimeException | Error t) {
-			if (owned) data.destroy();
+			// Suppress a release failure onto the initialization error rather than masking it.
+			if (owned) Destroyable.destroyAll(t, data);
 			throw t;
 		}
 	}
