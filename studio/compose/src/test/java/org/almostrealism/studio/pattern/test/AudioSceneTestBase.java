@@ -38,6 +38,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -93,6 +94,12 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
 	 * <ul>
 	 *   <li>library present → return it and run the real workload;</li>
+	 *   <li>library absent under the {@link TestUtils#PIPELINE} profile → {@code Assume}-skip (the CI
+	 *       media runner that does not mount the library, e.g. the Metal {@code test-media-mac} job;
+	 *       this mirrors the {@code @TestProperties(excludeProfiles = TestUtils.PIPELINE)} every other
+	 *       curated test carries, centralized here so the two callers that cannot declare it inline are
+	 *       excluded too — the OpenCL {@code test-media-cl} runner mounts the library and so takes the
+	 *       library-present path above and still runs the real workload);</li>
 	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
 	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
 	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
@@ -110,6 +117,10 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
 				+ PATTERN_FACTORY + " not available on this host.";
+		Assume.assumeTrue(detail + " Running under the '" + TestUtils.PIPELINE + "' test profile, whose"
+				+ " media runner does not mount the curated library; skipping, as every other curated-library"
+				+ " test does via @TestProperties(excludeProfiles = TestUtils.PIPELINE).",
+				!TestUtils.PIPELINE.equals(TestUtils.getTestProfile()));
 		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
 				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
 		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
