@@ -444,6 +444,28 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertNotEqual(-1, run, "install runs the register script through sudo")
         self.assertLess(walk, run, "the path must be screened before it runs as root")
 
+    def test_the_staged_source_files_are_screened_before_they_are_staged(self):
+        """runner.sh and cpu-watcher.sh are read from the checkout and staged into
+        STAGE_DIR, where the runner runs them under launchd with the staged
+        GITHUB_PAT beside them; the ci-runner plist template is read here and
+        installed, rendered, as root by register-daemon.sh. All three are in the
+        register script's position: a runner- or ACL-writable one, or a symlink on
+        the path, lets another account swap it between preflight and staging — a
+        swapped runner.sh could exfiltrate the credential, a swapped template could
+        inject launchd keys that run as root. install must walk each with the
+        root/administrator trust boundary before it is staged."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'for staged_source in "\$\{SCRIPT_DIR\}/runner\.sh" '
+            r'"\$\{SCRIPT_DIR\}/cpu-watcher\.sh" "\$\{TEMPLATE\}"; do',
+            "install must screen runner.sh, cpu-watcher.sh and the plist template")
+        walk = install.find('untrusted_ancestor "${admin_user}" "${staged_source}"')
+        self.assertNotEqual(-1, walk, "install must walk each staged source path")
+        stage = install.find('stage_file "${STAGE_DIR}/bin/${script}" 755 < "${SCRIPT_DIR}/${script}"')
+        self.assertNotEqual(-1, stage, "install stages runner.sh and cpu-watcher.sh")
+        self.assertLess(walk, stage, "the sources must be screened before they are staged")
+
     def test_the_env_file_path_is_screened_before_the_template_is_copied(self):
         """When the default .env is missing, cmd_install copies .env.example into
         place with the administrator's cp, which follows a symlink at the target;

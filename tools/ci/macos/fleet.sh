@@ -851,6 +851,28 @@ EOF
         fi
     fi
 
+    # runner.sh and cpu-watcher.sh are read from the checkout and staged into
+    # STAGE_DIR, where the runner account runs them under launchd with runner.env
+    # — the staged GITHUB_PAT — beside them; the ci-runner plist template is read
+    # here and handed, rendered, to register-daemon.sh, which installs it as
+    # root. All three sit in the same position as the register script: a symlink,
+    # an other-writable component, or an owner that is neither you nor root
+    # anywhere on the path lets another account swap the file between this
+    # preflight and the staging step. A swapped runner.sh or cpu-watcher.sh could
+    # exfiltrate the staged credential when the runner runs it; a swapped
+    # template could inject launchd keys that register-daemon.sh installs as
+    # root. Walk each the same way the register script is walked.
+    local staged_source staged_bad
+    for staged_source in "${SCRIPT_DIR}/runner.sh" "${SCRIPT_DIR}/cpu-watcher.sh" "${TEMPLATE}"; do
+        staged_bad="$(untrusted_ancestor "${admin_user}" "${staged_source}")"
+        if [ -n "${staged_bad}" ]; then
+            echo "  ✗ ${staged_bad}, on the path to ${staged_source}, is a symlink, is writable by" >&2
+            echo "      others, or is owned by neither you (${admin_user}) nor root; another account could" >&2
+            echo "      replace a file fleet stages and runs as the runner, or installs as root." >&2
+            errors=$((errors + 1))
+        fi
+    done
+
     if [ "${MONITOR}" = true ]; then
         # install.sh, and the render.sh it calls, both run with your privileges
         # (no sudo), straight from the checkout — exactly the position the
