@@ -387,7 +387,10 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 		TemporalCellular runner = runners.create(null, null, BUFFER_SIZE);
 		Thread caller = new Thread(((Destroyable) runner)::destroy, "runner-release");
 		caller.start();
-		assertTrue(releasing.await(30, TimeUnit.SECONDS));
+		// Release on failure so the non-daemon caller cannot block forever on acquire.
+		boolean releaseStarted = releasing.await(30, TimeUnit.SECONDS);
+		if (!releaseStarted) proceed.release();
+		assertTrue("the runner release must begin", releaseStarted);
 
 		CountDownLatch teardownDone = new CountDownLatch(1);
 		Thread teardown = new Thread(() -> {
@@ -474,8 +477,10 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 				}
 			}, "runner-build");
 			builder.start();
-			assertTrue("the build should reach the paused output wiring",
-					building.await(120, TimeUnit.SECONDS));
+			// Release on failure so the non-daemon builder cannot block forever on acquire.
+			boolean buildPaused = building.await(120, TimeUnit.SECONDS);
+			if (!buildPaused) proceed.release();
+			assertTrue("the build should reach the paused output wiring", buildPaused);
 
 			CountDownLatch teardownDone = new CountDownLatch(1);
 			Thread teardown = new Thread(() -> {

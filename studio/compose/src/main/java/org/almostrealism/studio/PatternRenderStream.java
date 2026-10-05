@@ -148,9 +148,19 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	 * the producer never blocks on the ring before {@code prefill} (at most {@link #slots})
 	 * buffers are rendered.</p>
 	 *
+	 * <p>A second {@code start()} without an intervening {@link #stop()} first stops the
+	 * producer already running, rather than replacing {@link #producer} and leaving the old
+	 * thread alive. An orphaned producer would keep rendering into the ring and running the
+	 * borrowed render operation after a later {@code stop()}/{@code destroy()} — which only
+	 * joins and frees through the newer thread — freed them (a use-after-free).</p>
+	 *
 	 * @param prefill number of buffers to render before returning (clamped to {@link #slots})
 	 */
 	public synchronized void start(int prefill) {
+		if (producer != null) {
+			stop();
+		}
+
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;

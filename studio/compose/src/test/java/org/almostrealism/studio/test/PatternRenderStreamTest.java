@@ -134,4 +134,41 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 			input.destroy();
 		}
 	}
+
+	/**
+	 * A second {@code start()} without an intervening {@code stop()} must not leave the first
+	 * producer thread alive beside the second: it must stop the running producer before
+	 * launching the new one. An orphaned first producer would keep rendering into the ring and
+	 * running the borrowed render operation after a later {@code stop()}/{@code destroy()} freed
+	 * them. The test counts live producer threads after the restart; the first must be gone, so
+	 * exactly one remains.
+	 */
+	@Test(timeout = 60_000)
+	public void secondStartReplacesProducerWithoutOrphaning() {
+		PackedCollection input = new PackedCollection(CHANNELS, BUFFER_SIZE);
+		PatternRenderStream stream = new PatternRenderStream(() -> { }, new long[1],
+				input, SLOTS, CHANNELS, BUFFER_SIZE);
+
+		try {
+			stream.start(SLOTS);
+			assertEquals("first start must launch exactly one producer", 1, liveProducers());
+
+			// Restart without an intervening stop(); the first producer must be stopped first.
+			stream.start(SLOTS);
+			assertEquals("a second start must leave exactly one producer, not orphan the first",
+					1, liveProducers());
+			assertTrue("the second start must reach its prefill", stream.buffersRendered() >= SLOTS);
+		} finally {
+			stream.destroy();
+			input.destroy();
+		}
+	}
+
+	/** Counts live threads named like {@link PatternRenderStream}'s producer. */
+	private static long liveProducers() {
+		return Thread.getAllStackTraces().keySet().stream()
+				.filter(Thread::isAlive)
+				.filter(t -> "pattern-render-ahead".equals(t.getName()))
+				.count();
+	}
 }
