@@ -341,6 +341,13 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 				"malformed shape");
 	}
 
+	/** A numeric string is not a JSON integer, so a quoted axis is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsNumericStringAxis() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[\"1\"],\"data_offsets\":[0,4]}}", 4,
+				"malformed shape");
+	}
+
 	/** An axis longer than any collection can be is rejected rather than truncated. */
 	@Test(timeout = 60000)
 	public void rejectsAxisBeyondIntRange() throws IOException {
@@ -361,6 +368,13 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,null]}}", 4,
 				"malformed data_offsets");
 		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,3.5]}}", 4,
+				"malformed data_offsets");
+	}
+
+	/** A quoted offset is not a JSON integer and is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsNumericStringDataOffsets() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[\"0\",\"4\"]}}", 4,
 				"malformed data_offsets");
 	}
 

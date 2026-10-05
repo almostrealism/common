@@ -20,6 +20,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.io.Bits;
@@ -235,7 +236,9 @@ public class SafetensorsReference extends CollectionDataReference {
 	}
 
 	/**
-	 * Reads a JSON array of integers.
+	 * Reads a JSON array of integers. An element must be a JSON number with no fractional part;
+	 * a numeric string such as {@code "4"} is not a JSON integer and is rejected, so a header that
+	 * quotes its shape or offsets does not pass as a well-formed one.
 	 *
 	 * @param element the array
 	 * @return its values
@@ -246,7 +249,11 @@ public class SafetensorsReference extends CollectionDataReference {
 		JsonArray array = element.getAsJsonArray();
 		long[] values = new long[array.size()];
 		for (int i = 0; i < values.length; i++) {
-			values[i] = array.get(i).getAsJsonPrimitive().getAsBigDecimal().longValueExact();
+			JsonPrimitive value = array.get(i).getAsJsonPrimitive();
+			if (!value.isNumber()) {
+				throw new IllegalArgumentException("element " + i + " (" + value + ") is not an integer");
+			}
+			values[i] = value.getAsBigDecimal().longValueExact();
 		}
 		return values;
 	}
