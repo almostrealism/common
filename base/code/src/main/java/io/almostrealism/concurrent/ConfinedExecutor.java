@@ -177,6 +177,12 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * is rethrown afterwards. Destroying an executor that has already been destroyed does
 	 * nothing.</p>
 	 *
+	 * <p>An interrupt never abandons the wait for the final task, since destruction is cleanup
+	 * the caller owes regardless and a failure of that cleanup must not be lost: the caller
+	 * waits until the final task has finished, and its interrupt status, whether set before the
+	 * call or received during it, is restored afterwards, as by
+	 * {@link #runOrElseUninterruptibly}.</p>
+	 *
 	 * <p>A final task cannot be run by a call made from the confined thread itself: the final
 	 * task would be queued behind the task making the call, which would then wait for it
 	 * forever. Such a call is rejected before anything changes, so the executor stays active.
@@ -201,7 +207,7 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 			}
 		}
 
-		if (last != null) await(last, true);
+		if (last != null) await(last, false);
 	}
 
 	/**

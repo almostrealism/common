@@ -628,7 +628,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 *
 	 * <p>Destruction is not abandoned when the caller is interrupted, unlike {@link #complete}:
 	 * neither the wait for the GPU nor any of the commit, drain and withdrawal tasks it
-	 * coordinates with the executor (see {@link ConfinedExecutor#runOrElseUninterruptibly}).
+	 * coordinates with the executor (see {@link ConfinedExecutor#runOrElseUninterruptibly}),
+	 * nor the executor's final drain, whose failure is rethrown rather than lost.
 	 * Proceeding before such a task had run would let a round see no committed buffer that is
 	 * really there, stop the executor, and leave the final task to wait on the executor's thread,
 	 * which is exactly the stall described above. An interrupt pending on entry, or arriving at
@@ -706,7 +707,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * executor that is already destroyed does nothing.
 	 */
 	private void destroyExecutor() {
-		// TODO(review): executor.destroy awaits this final task interruptibly, so an interrupt restored during destroy() rounds abandons the wait and loses a final-drain failure
 		executor.destroy(() -> {
 			if (commitOpenOnExecutor()) destroyCommits++;
 

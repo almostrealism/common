@@ -488,6 +488,62 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#destroy(Runnable)} keeps waiting for its final task through an
+	 * interrupt pending on entry and another arriving during the wait, rethrows the final task's
+	 * failure instead of losing it, and restores the caller's interrupt status afterwards.
+	 */
+	@Test(timeout = 10000)
+	public void destroyWaitsForFinalTaskThroughInterrupts() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch finalStarted = new CountDownLatch(1);
+		CountDownLatch releaseFinal = new CountDownLatch(1);
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+		AtomicBoolean interruptedAfter = new AtomicBoolean();
+
+		Thread destroyer = new Thread(() -> {
+			Thread.currentThread().interrupt();
+
+			try {
+				executor.destroy(() -> {
+					finalStarted.countDown();
+					awaitLatch(releaseFinal);
+					events.add("final");
+					throw new IllegalStateException("final failure");
+				});
+			} catch (RuntimeException e) {
+				failure.set(e);
+			}
+
+			events.add("returned");
+			interruptedAfter.set(Thread.currentThread().isInterrupted());
+		});
+
+		try {
+			destroyer.start();
+			assertTrue(finalStarted.await(5, TimeUnit.SECONDS));
+
+			destroyer.join(300);
+			assertTrue("An interrupt pending on entry must not abandon the wait", destroyer.isAlive());
+			destroyer.interrupt();
+			destroyer.join(300);
+			assertTrue("An interrupt arriving during the wait must not abandon it", destroyer.isAlive());
+			assertEquals(List.of(), events);
+		} finally {
+			releaseFinal.countDown();
+			destroyer.join(5000);
+		}
+
+		assertFalse(destroyer.isAlive());
+		assertFalse(executor.isActive());
+		assertEquals(List.of("final", "returned"), events);
+		assertTrue("Expected IllegalStateException but got " + failure.get(),
+				failure.get() instanceof IllegalStateException);
+		assertEquals("final failure", failure.get().getMessage());
+		assertTrue("The caller's interrupt status must be restored", interruptedAfter.get());
+	}
+
+	/**
 	 * Waits for a latch, failing the calling task if interrupted.
 	 *
 	 * @param latch the latch to wait for
