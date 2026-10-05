@@ -61,8 +61,9 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 		PdslLoader loader = new PdslLoader();
 		Model model = new Model(inputShape);
 		model.add(loader.buildLayer(loader.parseResource(FIXTURE), layer, inputShape, args));
-		CompiledModel compiled = model.compile(false);
-		return compiled.forward(input).doubleStream().toArray();
+		try (CompiledModel compiled = model.compile(false)) {
+			return compiled.forward(input).doubleStream().toArray();
+		}
 	}
 
 	/**
@@ -224,7 +225,7 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 
 	/** {@code layernorm(w, null, eps)} normalizes and scales every run without shifting it. */
 	@Test(timeout = 120000)
-	public void layernormWithoutBiassesOnlyScales() {
+	public void layernormWithoutBiasesOnlyScales() {
 		assertNormalizes("row_layernorm", true, false);
 	}
 

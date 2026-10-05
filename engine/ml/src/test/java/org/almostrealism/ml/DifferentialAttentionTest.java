@@ -21,11 +21,13 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -186,6 +188,39 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 		log("unnormalized differential(lambda=0) vs standard difference = " + diff);
 		assertTrue("Differential attention without query/key normalization must equal standard attention"
 				+ " without it", diff < 1e-5);
+	}
+
+	/**
+	 * Query/key normalization is applied to both or neither: supplying only the query weight, or only
+	 * the key weight, is rejected rather than silently normalizing one side or normalizing the other
+	 * side's whole tensor as a single group. This pins the {@code (qNormWeight == null) !=
+	 * (kNormWeight == null)} guard independently of {@link AttentionFeatures#sequenceAttention}.
+	 */
+	@Test(timeout = 120000)
+	public void differentialRejectsOneSidedQueryKeyNormalizationWeights() {
+		Weights w = new Weights();
+
+		try {
+			differentialSequenceAttention(BATCH, SEQ_LEN, DIM, HEADS,
+					w.toQkv5, w.toOut,
+					w.qNormWeight, w.qNormBias, null, null,
+					w.invFreq, lambda(0.0), ProjectionFactory.dense(),
+					NormalizationType.LAYER, null);
+			Assert.fail("differential attention should reject a query normalization without a key normalization");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			differentialSequenceAttention(BATCH, SEQ_LEN, DIM, HEADS,
+					w.toQkv5, w.toOut,
+					null, null, w.kNormWeight, w.kNormBias,
+					w.invFreq, lambda(0.0), ProjectionFactory.dense(),
+					NormalizationType.LAYER, null);
+			Assert.fail("differential attention should reject a key normalization without a query normalization");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 
 	/**

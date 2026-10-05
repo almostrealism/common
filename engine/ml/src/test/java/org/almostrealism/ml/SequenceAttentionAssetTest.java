@@ -154,21 +154,21 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	@Test(timeout = 300000)
 	public void keyAndValueStoresAreRewrittenOnEveryForwardPass() {
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
-		CompiledModel compiled = compile(w.feature(ProjectionFactory.dense(), null, null, 0.0));
+		try (CompiledModel compiled = compile(w.feature(ProjectionFactory.dense(), null, null, 0.0))) {
+			PackedCollection first = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+			PackedCollection second = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+			double[] firstOutput = compiled.forward(first).doubleStream().toArray();
+			double[] secondOutput = compiled.forward(second).doubleStream().toArray();
+			double[] firstAgain = compiled.forward(first).doubleStream().toArray();
 
-		PackedCollection first = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
-		PackedCollection second = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
-		double[] firstOutput = compiled.forward(first).doubleStream().toArray();
-		double[] secondOutput = compiled.forward(second).doubleStream().toArray();
-		double[] firstAgain = compiled.forward(first).doubleStream().toArray();
-
-		double[] firstExpected = w.hostReference(first.doubleStream().toArray(), null, null, 0.0);
-		double[] secondExpected = w.hostReference(second.doubleStream().toArray(), null, null, 0.0);
-		assertClose("first pass", firstExpected, firstOutput, HOST_TOLERANCE);
-		assertClose("second pass", secondExpected, secondOutput, HOST_TOLERANCE);
-		assertClose("third pass", firstExpected, firstAgain, HOST_TOLERANCE);
-		assertTrue("the two sequences must attend differently",
-				maxDifference(firstOutput, secondOutput) > 1e-3);
+			double[] firstExpected = w.hostReference(first.doubleStream().toArray(), null, null, 0.0);
+			double[] secondExpected = w.hostReference(second.doubleStream().toArray(), null, null, 0.0);
+			assertClose("first pass", firstExpected, firstOutput, HOST_TOLERANCE);
+			assertClose("second pass", secondExpected, secondOutput, HOST_TOLERANCE);
+			assertClose("third pass", firstExpected, firstAgain, HOST_TOLERANCE);
+			assertTrue("the two sequences must attend differently",
+					maxDifference(firstOutput, secondOutput) > 1e-3);
+		}
 	}
 
 	/**
@@ -186,22 +186,23 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 				.targets(AdapterConfig.TargetLayer.SELF_ATTENTION_QKV,
 						AdapterConfig.TargetLayer.SELF_ATTENTION_OUT), adapters);
 
-		CompiledModel compiled = compile(w.feature(adapted, null, null, 0.0));
-		assertEquals("one adapter per projection", 2, adapters.size());
-		assertEquals("the fused projection is adapted first", 3 * DIM,
-				adapters.get(0).getOutputShape().getTotalSize() / SEQ_LEN);
-		assertEquals("the output projection is adapted second", DIM,
-				adapters.get(1).getOutputShape().getTotalSize() / SEQ_LEN);
+		try (CompiledModel compiled = compile(w.feature(adapted, null, null, 0.0))) {
+			assertEquals("one adapter per projection", 2, adapters.size());
+			assertEquals("the fused projection is adapted first", 3 * DIM,
+					adapters.get(0).getOutputShape().getTotalSize() / SEQ_LEN);
+			assertEquals("the output projection is adapted second", DIM,
+					adapters.get(1).getOutputShape().getTotalSize() / SEQ_LEN);
 
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
-		double[] untrained = compiled.forward(input).doubleStream().toArray();
-		double[] dense = run(w.feature(ProjectionFactory.dense(), null, null, 0.0), input);
-		assertClose("adapters with zero B", dense, untrained, ASSEMBLY_TOLERANCE);
+			PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+			double[] untrained = compiled.forward(input).doubleStream().toArray();
+			double[] dense = run(w.feature(ProjectionFactory.dense(), null, null, 0.0), input);
+			assertClose("adapters with zero B", dense, untrained, ASSEMBLY_TOLERANCE);
 
-		adapters.get(0).getLoraB().fill(0.05);
-		double[] trained = compiled.forward(input).doubleStream().toArray();
-		assertTrue("a non-zero adapter must change the attention",
-				maxDifference(untrained, trained) > 1e-4);
+			adapters.get(0).getLoraB().fill(0.05);
+			double[] trained = compiled.forward(input).doubleStream().toArray();
+			assertTrue("a non-zero adapter must change the attention",
+					maxDifference(untrained, trained) > 1e-4);
+		}
 	}
 
 	/**
@@ -301,7 +302,9 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	 * @return the output, flattened
 	 */
 	private double[] run(Block block, PackedCollection input) {
-		return compile(block).forward(input).doubleStream().toArray();
+		try (CompiledModel compiled = compile(block)) {
+			return compiled.forward(input).doubleStream().toArray();
+		}
 	}
 
 	/**
