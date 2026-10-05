@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.ml.t5gemma.T5GemmaConfig;
 import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
 import org.almostrealism.model.CompiledModel;
@@ -121,6 +122,9 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	/** Token ids of the negative prompt used by guidance; empty by default. */
 	private long[] negativePrompt = new long[0];
 
+	/** Turns prompt text into token ids; {@code null} until one is supplied. */
+	private Tokenizer tokenizer;
+
 	/** Whether generation progress is logged. */
 	private boolean verbose = true;
 
@@ -218,18 +222,38 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	public static StableAudio3 small(StateDictionary transformerWeights, StateDictionary conditionerWeights,
 									 StateDictionary promptEncoderWeights, StateDictionary autoencoderWeights,
 									 double maxSeconds) {
+		T5GemmaConfig config = T5GemmaConfig.baseUl2();
+
+		return new StableAudio3(smallTransformer(config.getHiddenSize(), config.getMaxLength() + 1),
+				transformerWeights, smallConditioner(conditionerWeights, promptEncoderWeights),
+				SAMEAutoEncoder.small(autoencoderWeights),
+				SAMPLE_RATE, maxSeconds, HEADROOM_SECONDS);
+	}
+
+	/**
+	 * The released conditioner: the T5Gemma prompt encoder, the learned embedding substituted at
+	 * padded prompt positions, and the exponential Fourier duration embedder, which together produce
+	 * the cross-attention context and the global conditioning the transformer reads.
+	 *
+	 * <p>Separate from {@link #small} so the conditioner can be built, and compared against a
+	 * reference, without also loading the transformer and the autoencoder.</p>
+	 *
+	 * @param conditionerWeights   the conditioner weights, as extracted with the
+	 *                             {@code conditioner} target
+	 * @param promptEncoderWeights the T5Gemma encoder weights
+	 * @return the conditioner
+	 */
+	public static StableAudio3Conditioner smallConditioner(StateDictionary conditionerWeights,
+														   StateDictionary promptEncoderWeights) {
 		T5GemmaEncoder encoder = new T5GemmaEncoder(T5GemmaConfig.baseUl2(), promptEncoderWeights);
 		int hidden = encoder.getConfig().getHiddenSize();
 		NumberConditioner duration = NumberConditioner.expo(0.0, MAX_CONDITIONED_SECONDS, hidden,
 				DURATION_FOURIER_DIM, DURATION_MIN_FREQ, DURATION_MAX_FREQ,
 				conditionerWeights.get("conditioner.conditioners.seconds_total.embedder.embedding.1.weight"),
 				conditionerWeights.get("conditioner.conditioners.seconds_total.embedder.embedding.1.bias"));
-		StableAudio3Conditioner conditioner = new StableAudio3Conditioner(encoder,
-				conditionerWeights.get("conditioner.conditioners.prompt.padding_embedding"), duration);
 
-		return new StableAudio3(smallTransformer(hidden, encoder.getConfig().getMaxLength() + 1),
-				transformerWeights, conditioner, SAMEAutoEncoder.small(autoencoderWeights),
-				SAMPLE_RATE, maxSeconds, HEADROOM_SECONDS);
+		return new StableAudio3Conditioner(encoder,
+				conditionerWeights.get("conditioner.conditioners.prompt.padding_embedding"), duration);
 	}
 
 	/**
@@ -286,6 +310,38 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	}
 
 	/**
+	 * Supplies the tokenizer that {@link #generateFromText(long, String, double)} and
+	 * {@link #setTextGuidance(double, String)} use to turn prompt text into token ids. For the
+	 * released model this is the exported T5Gemma tokenizer, read by
+	 * {@link org.almostrealism.ml.tokenization.SentencePieceBPETokenizer}; the prompt encoder
+	 * was trained on that tokenizer's ids, so any other one produces conditioning the model has
+	 * never seen.
+	 *
+	 * @param tokenizer the tokenizer, or {@code null} to accept only token ids
+	 * @return this generator
+	 */
+	public StableAudio3 setTokenizer(Tokenizer tokenizer) {
+		this.tokenizer = tokenizer;
+		return this;
+	}
+
+	/**
+	 * Enables classifier-free guidance against a negative prompt given as text. This is named
+	 * apart from {@link #setGuidance(double, long[])} so that {@code setGuidance(scale, null)}
+	 * keeps selecting the unconditional prompt unambiguously.
+	 *
+	 * @param scale          the guidance scale; must be finite
+	 * @param negativePrompt the negative prompt; empty or {@code null} for the unconditional prompt
+	 * @return this generator
+	 * @throws IllegalStateException if {@code negativePrompt} is non-null and non-empty and no
+	 *                               tokenizer has been supplied; a {@code null} or empty prompt
+	 *                               selects the unconditional prompt without needing one
+	 */
+	public StableAudio3 setTextGuidance(double scale, String negativePrompt) {
+		return setGuidance(scale, encodePrompt(negativePrompt));
+	}
+
+	/**
 	 * Sets whether generation progress is logged.
 	 *
 	 * @param verbose whether to log
@@ -331,6 +387,43 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	}
 
 	/**
+	 * Generates a clip from prompt text, tokenizing it with the tokenizer supplied to
+	 * {@link #setTokenizer(Tokenizer)}. This is named apart from {@link #generate(long, long[], double)}
+	 * so that {@code generate(seed, null, seconds)} keeps selecting the unconditional prompt
+	 * unambiguously rather than becoming an ambiguous call between {@code String} and {@code long[]}.
+	 *
+	 * @param seed    seed of the initial noise and the ping-pong noise injections
+	 * @param prompt  the prompt; empty or {@code null} for the unconditional prompt
+	 * @param seconds the duration in seconds, at most the duration this instance was built for
+	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
+	 * @throws IllegalStateException if {@code prompt} is non-null and non-empty and no tokenizer has
+	 *                               been supplied; a {@code null} or empty prompt selects the
+	 *                               unconditional prompt without needing one
+	 */
+	public CollectionProducer generateFromText(long seed, String prompt, double seconds) {
+		return generate(seed, encodePrompt(prompt), seconds);
+	}
+
+	/**
+	 * Tokenizes prompt text.
+	 *
+	 * @param prompt the prompt; {@code null} or empty yields no tokens
+	 * @return the token ids
+	 * @throws IllegalStateException if the prompt is non-null and non-empty and no tokenizer has
+	 *                               been supplied
+	 */
+	protected long[] encodePrompt(String prompt) {
+		if (prompt == null || prompt.isEmpty()) return new long[0];
+
+		if (tokenizer == null) {
+			throw new IllegalStateException("A prompt given as text requires a tokenizer; " +
+					"supply one with setTokenizer, or pass token ids instead");
+		}
+
+		return tokenizer.encodeAsLong(prompt);
+	}
+
+	/**
 	 * Generates a clip: the sampling loop and the decoder run here, and the clamp and truncation
 	 * of the decoded audio are returned as a producer for the caller to evaluate.
 	 *
@@ -338,7 +431,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * must be evaluated before the next generation.</p>
 	 *
 	 * @param seed    seed of the initial noise and the ping-pong noise injections
-	 * @param prompt  token ids of the prompt
+	 * @param prompt  token ids of the prompt; {@code null} or empty selects the unconditional prompt
 	 * @param seconds the duration in seconds, at most the duration this instance was built for and
 	 *                spanning at least one sample at {@link #getSampleRate()}
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
@@ -347,6 +440,8 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		if (!Double.isFinite(seconds) || seconds <= 0.0 || seconds > maxSeconds) {
 			throw new IllegalArgumentException("Duration " + seconds + " is outside (0, " + maxSeconds + "]");
 		}
+
+		long[] promptIds = prompt == null ? new long[0] : prompt;
 
 		if (seconds(seconds) < 1) {
 			throw new IllegalArgumentException("Duration " + seconds + " at " + sampleRate +
@@ -374,7 +469,7 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 		try {
 			// getCrossAttentionMask() is intentionally not read here; see the constructor's
 			// @param conditioner javadoc for why this generator does not need it.
-			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(prompt, seconds);
+			AudioAttentionConditioner.ConditionerOutput positive = conditioner.runConditioners(promptIds, seconds);
 			context = positive.getCrossAttentionInput().clone();
 			global = positive.getGlobalCond().clone();
 

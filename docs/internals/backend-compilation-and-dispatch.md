@@ -3,7 +3,7 @@
 ## Overview
 
 This document explains how optimized process trees compile to native code and execute
-on hardware backends (JNI/C, OpenCL, Metal). This is the final stage of the compilation
+on hardware backends (JNI/C, OpenCL, Metal, and the opt-in CUDA backend). This is the final stage of the compilation
 pipeline — it takes a `Scope` (the computation AST) and produces an executable kernel.
 
 For how process trees are constructed, see
@@ -29,7 +29,8 @@ Scope (computation AST)
   │     Backend-specific compilation
   │     ├── NativeComputeContext  →  C source → clang → .so → JNI
   │     ├── CLComputeContext      →  OpenCL source → cl_program → cl_kernel
-  │     └── MetalComputeContext   →  Metal source → MTLLibrary → MTLFunction
+  │     ├── MetalComputeContext   →  Metal source → MTLLibrary → MTLFunction
+  │     └── CudaComputeContext    →  CUDA C++ source → NVRTC → CUModule → CUFunction  (opt-in)
   │
   └── InstructionSet → Execution
         Cached compiled kernel, ready to dispatch
@@ -183,6 +184,7 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 | `native` | JNI only (C compilation via clang) |
 | `cl` | OpenCL only |
 | `mtl` | Metal only (macOS) |
+| `cuda` | CUDA only (NVIDIA GPU; opt-in — never loaded by `*`/unset auto-detect; Linux/aarch64 bridge only) |
 | `cpu` | CPU-optimized backend |
 | `gpu` | GPU-optimized backend |
 | `*` or unset | Auto-detect best available |
@@ -457,8 +459,8 @@ dispatch). This is why warm-up runs matter for benchmarking.
 The driver string is parsed by `DriverSelection`
 (`base/hardware/src/main/java/org/almostrealism/hardware/DriverSelection.java`) into two separate sets:
 
-- **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `native`,
-  `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
+- **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `cuda`,
+  `native`, `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
   request: `Hardware` throws a `HardwareException` carrying the offending
   throwable (a `LinkageError` for an unloadable native library, for instance,
   with the library path appearing only in the cause).
@@ -491,7 +493,9 @@ backend must initialize; the wildcard additions are best-effort.
 export AR_HARDWARE_COMPILER_LOGGING=true
 ```
 
-Enables verbose logging of the C/OpenCL/Metal compilation process.
+Enables verbose logging of the C/OpenCL/Metal compilation process. (The CUDA/NVRTC
+path does not read this variable; its generated kernel source is logged under
+`AR_HARDWARE_KERNEL_LOG` instead.)
 
 ### Compilation Timing
 
@@ -535,6 +539,7 @@ reduce memory usage.
 - `HardwareDataContext.java` (`base/hardware/src/.../ctx/`) — Memory management
 - `CLOperator.java` (`base/hardware/src/.../hardware/cl/`) — OpenCL dispatch
 - `MetalOperator.java` (`base/hardware/src/.../hardware/metal/`) — Metal dispatch
+- `CudaProgram.java` (`base/hardware/src/.../hardware/cuda/`) — CUDA C++/NVRTC compilation (opt-in; Linux/aarch64 bridge only)
 - `NativeCompiler.java` (`base/hardware/src/.../hardware/jni/`) — C/JNI compilation
 
 ## See Also
