@@ -900,6 +900,16 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * Uses the {@link NoteAudioCache} to avoid re-evaluating notes that span
 	 * multiple buffers.</p>
 	 *
+	 * <p>When caching is not persistent and the rendered range reaches the end of
+	 * the arrangement, the note-audio cache is released after the render: a later
+	 * pass restarts at frame 0 (which clears the cache) and a one-shot render never
+	 * asks for these frames again, so the final window's entries — standalone copies
+	 * already summed into the destination and referenced by nothing else — are freed
+	 * now rather than left reachable until the next frame-0 clear or teardown. This
+	 * bounds the native memory a completed render retains in a renderer shared across
+	 * arrangements, matching the per-tick eviction done mid-render. {@code cachePersist}
+	 * deliberately keeps the audio for looped reuse and is left untouched.</p>
+	 *
 	 * @param context Supplier for AudioSceneContext with destination buffer
 	 * @param voicing Target voicing (MAIN or WET)
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
@@ -934,6 +944,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 						}
 					}
 					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
+
+					// Release the final window's note audio once a non-persistent render
+					// reaches the arrangement end (see method javadoc).
+					if (!cachePersist && frame + frameCount >= ctx.getFrames()) {
+						noteAudioCache.clear();
+					}
 				});
 	}
 
