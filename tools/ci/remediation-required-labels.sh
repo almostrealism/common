@@ -57,7 +57,10 @@ FAILED_JOBS=$(gh api --paginate \
 while IFS= read -r name; do
     case "$name" in
         # test-mac, test-media-mac, and matrix entries such as "test-mac (2)".
-        test-*mac|test-*mac\ *)
+        # Named exactly: a new Metal lane is added here deliberately, not
+        # picked up because its name happens to end in "mac".
+        # TODO(review): no test checks these names still match job ids in analysis.yaml; a rename silently unpins.
+        test-mac|test-media-mac|"test-mac "*|"test-media-mac "*)
             echo "::notice::Metal lane failed ($name) — the agent must run on a macOS Node"
             emit "$MACOS_LABELS"
             exit 0

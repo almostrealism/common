@@ -92,6 +92,13 @@ class RemediationRequiredLabelsTests(unittest.TestCase):
     def test_a_lane_merely_named_like_mac_is_not_a_metal_lane(self):
         self.assertEqual((0, ""), self._labels(["test-machine", "mac-test"]))
 
+    def test_only_the_named_metal_lanes_count(self):
+        """A lane whose name merely ends in "mac" is not a Metal lane."""
+        self.assertEqual((0, ""),
+                         self._labels(["test-hmac", "test-cl-mac",
+                                       "test-cl-mac (1)", "test-macos",
+                                       "xtest-mac"]))
+
     def test_the_decision_is_written_to_github_output(self):
         out = os.path.join(self.tmp, "output")
         self.assertEqual((0, _MACOS),
