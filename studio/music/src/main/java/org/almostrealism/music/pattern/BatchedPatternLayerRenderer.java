@@ -82,9 +82,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * <h2>Gather and envelopes</h2>
  *
  * <p>Melodic gathers are memoized ({@link #gatherCache}) because their note
- * sources are stable raw sample references. Percussion is not cached — each
- * gather builds {@code fit()} source copies that are freed between ticks — so
- * percussion re-gathers fresh on every tick with a future-side window filter.
+ * sources are stable raw sample references. Percussion is not cached — it is
+ * re-gathered fresh on every tick with a future-side window filter, and its
+ * transient destinations are owned by the {@link #render} call (each note's
+ * offset argument is released after dispatch). Both paths hold the library-owned
+ * raw channel buffers directly (no per-gather copy), so neither owns sample data.
  * Per-row ADSR envelopes are generated in-kernel from {@code [N]} ADSR scalar
  * columns (filter and volume); there are no per-sample envelope inputs.</p>
  *
@@ -142,8 +144,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * Melodic gathers depend only on element, repetition offset, voicing and stereo channel
 	 * (scale/automation geometry is constant within an epoch), and their note sources are
 	 * stable raw sample references (no per-gather copy), so they are safe to memoize across
-	 * ticks. Percussion is excluded — it builds per-gather {@code fit()} source copies that are
-	 * freed between ticks, so caching them would dangle.
+	 * ticks. Percussion is excluded — it is re-gathered fresh each tick and its transient
+	 * destinations are owned by the render call, so it is not keyed here.
 	 *
 	 * @param element the source pattern element (identity-compared)
 	 * @param offset  the repetition measure offset
@@ -280,9 +282,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * per-note from its within-note sampling offset.</p>
 	 *
 	 * <p>Melodic destinations are memoized by the gather cache and owned by it;
-	 * percussion builds per-gather {@code fit()} source copies that are freed
-	 * between ticks, so it cannot be cached and is re-gathered fresh each call,
-	 * skipping (future-side, provably safe) elements whose earliest note begins
+	 * percussion destinations are transient — re-gathered fresh each call rather than
+	 * cached — skipping (future-side, provably safe) elements whose earliest note begins
 	 * at or after the window — an element's earliest note is at measure
 	 * {@code offset + getPosition()} and its repeats only move later, so skipping
 	 * it cannot drop an overlapping note; the one-buffer margin absorbs frame

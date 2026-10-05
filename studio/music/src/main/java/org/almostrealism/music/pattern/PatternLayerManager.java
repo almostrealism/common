@@ -765,11 +765,19 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * it, so it is destroyed here rather than left tracked until teardown. The release
 	 * keeps {@link #automationParameterData} aligned with the active layers across
 	 * every detachment path, not only {@link #clear()} and {@link #destroy()}.</p>
+	 *
+	 * <p>Detaching a layer also drops the {@link PatternElement} instances that the
+	 * render caches are keyed by, so {@link #releaseRenderCaches()} is invoked here as
+	 * well. Without it a direct {@code removeLayer()} after rendering would strand the
+	 * melodic gather's offset arguments (and, under persistent caching, the note audio)
+	 * until an epoch advance or teardown, unlike {@link #clear()} and
+	 * {@link #setExplicitElements}.</p>
 	 */
 	public void removeLayer() {
 		layerParams.remove(layerParams.size() - 1);
 		decrement();
 		releaseLastAutomationParameterData();
+		releaseRenderCaches();
 
 		if (depth() <= 0) return;
 		if (depth() <= 1) {
@@ -808,13 +816,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * instances, so detaching the layer hierarchy does not strand them.
 	 *
 	 * <p>Both the per-manager {@link #noteAudioCache} and the batched renderer's memoized
-	 * melodic gather cache are keyed by the pattern elements. A {@link #refresh()} or
-	 * {@link #setExplicitElements} replaces those elements without advancing the global
-	 * {@link #cacheEpoch}, so the entries from the previous hierarchy would otherwise never
-	 * be hit again and would accumulate (one native offset-argument allocation per gathered
-	 * note, plus a cached audio copy per note) until an epoch advance or teardown. Clearing
-	 * them here bounds the retention to the live hierarchy. Idempotent: a repeated call finds
-	 * empty caches, and the renderer may not have been materialised yet.</p>
+	 * melodic gather cache are keyed by the pattern elements. A {@link #removeLayer()},
+	 * {@link #refresh()} or {@link #setExplicitElements} drops those elements without
+	 * advancing the global {@link #cacheEpoch}, so the entries from the detached hierarchy
+	 * would otherwise never be hit again and would accumulate (one native offset-argument
+	 * allocation per gathered note, plus a cached audio copy per note) until an epoch advance
+	 * or teardown. Clearing them here bounds the retention to the live hierarchy. Idempotent:
+	 * a repeated call finds empty caches, and the renderer may not have been materialised
+	 * yet.</p>
 	 */
 	private void releaseRenderCaches() {
 		noteAudioCache.clear();
