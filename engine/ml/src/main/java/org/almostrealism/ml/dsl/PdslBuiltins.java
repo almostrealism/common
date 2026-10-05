@@ -28,6 +28,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
@@ -47,7 +48,7 @@ import java.util.function.Supplier;
  * reshape, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
- * causal_mask, weighted_values, sqrt, attention,
+ * causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt, attention,
  * shape, range). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -103,7 +104,9 @@ final class PdslBuiltins {
 			case "merge_half_rope": return callMergeHalfRope(args);
 			case "attention_scores": return callAttentionScores(producerArg(args, 0, 1, "attention_scores"));
 			case "causal_mask": return callCausalMask(args);
+			case "key_mask": return callKeyMask(args);
 			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
+			case "scaled_dot_product": return callScaledDotProduct(args);
 			case "sqrt": return callSqrt(args);
 			case "attention": return callAttention(args);
 			case "shape": return callShape(args);
@@ -719,6 +722,111 @@ final class PdslBuiltins {
 	 */
 	private static Function<TraversalPolicy, Block> callWeightedValues(CollectionProducer values) {
 		return inputShape -> FEATURES.weightedValues(inputShape, values);
+	}
+
+	/**
+	 * Builds the additive key-mask stage of parallel (full-sequence) attention: on a
+	 * {@code [batch, heads, queries, keys]} score tensor, every key position marked invalid by the
+	 * mask receives a large negative bias so its softmax weight underflows to zero, and every valid
+	 * key is left unchanged. The mask is one validity value per key, {@code [batch, keys]}, with one
+	 * for a key that may be attended and zero for one that may not; it is broadcast across the head
+	 * and query axes. An all-ones mask leaves every score unchanged (adds zero), which is how a
+	 * caller with no padding disables the stage.
+	 *
+	 * <p>This is the full-sequence counterpart of {@code causal_mask}, which masks by position for
+	 * single-query autoregressive attention; here the masked positions are named by a data-driven
+	 * validity mask instead.</p>
+	 *
+	 * <p>The mask's shape is checked against the score shape when the layer is built: it must be
+	 * {@code [batch, keys]} with batch and key extents equal to the score shape's axes 0 and 3, so a
+	 * mismatched mask is rejected rather than silently reshaped by the broadcast.</p>
+	 *
+	 * @param args one argument: the {@code [batch, keys]} validity mask (a bound tensor or a producer)
+	 * @return a factory that creates the key-mask layer for a {@code [batch, heads, queries, keys]}
+	 *         score shape
+	 * @see org.almostrealism.ml.AttentionFeatures#MASKED_LOGIT_PENALTY
+	 */
+	private static Function<TraversalPolicy, Block> callKeyMask(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"key_mask() expects 1 argument (mask), got " + args.size());
+		}
+		CollectionProducer mask = PdslInterpreter.normalizeToProducer(args.get(0), null, "key_mask() mask");
+		TraversalPolicy maskShape = FEATURES.shape(mask);
+		// bias = (mask - 1) * penalty: zero where a key is valid (mask == 1), -penalty where masked.
+		CollectionProducer bias = mask.add(-1.0).multiply(AttentionFeatures.MASKED_LOGIT_PENALTY);
+		return scoresShape -> {
+			if (scoresShape.getDimensions() != 4) {
+				throw new PdslParseException(
+						"key_mask() expects a [batch, heads, queries, keys] score shape, got " + scoresShape);
+			}
+			// Reject a mask the broadcast below would otherwise silently reshape.
+			if (maskShape.getDimensions() != 2
+					|| maskShape.length(0) != scoresShape.length(0)
+					|| maskShape.length(1) != scoresShape.length(3)) {
+				throw new PdslParseException("key_mask() expects a [batch, keys] mask matching the "
+						+ "[batch, heads, queries, keys] score shape " + scoresShape + ", got " + maskShape);
+			}
+			return FEATURES.layer("keyMask", scoresShape, scoresShape,
+					logits -> FEATURES.add(FEATURES.c(logits), FEATURES.broadcast(scoresShape, 3, bias)));
+		};
+	}
+
+	/**
+	 * Builds a batched matrix product of the stage's {@code [batch, heads, queries, dim]} input with
+	 * a second {@code [batch, heads, keys, dim]} operand, the two multiplications parallel (full-
+	 * sequence) attention is built from: the query-key scores {@code Q Kᵀ} (with {@code transpose}
+	 * true, contracting the shared {@code dim} axis to give {@code [batch, heads, queries, keys]})
+	 * and the context {@code A V} (with {@code transpose} false, the input being the attention
+	 * weights {@code [batch, heads, queries, keys]} and the operand the values, contracting the key
+	 * axis to give {@code [batch, heads, queries, dim]}).
+	 *
+	 * @param args two arguments: the second operand (a bound tensor or producer) and the boolean
+	 *             {@code transpose}, true to transpose the operand's last two axes before the product
+	 * @return a factory that creates the batched-product layer for a 4-D input shape
+	 * @see org.almostrealism.algebra.MatrixFeatures#scaledDotProduct
+	 */
+	private static Function<TraversalPolicy, Block> callScaledDotProduct(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"scaled_dot_product() expects 2 arguments (other, transpose), got " + args.size());
+		}
+		if (!(args.get(1) instanceof Boolean)) {
+			throw new PdslParseException("scaled_dot_product() transpose must be a boolean, got "
+					+ (args.get(1) == null ? "null" : args.get(1).getClass().getSimpleName()));
+		}
+		CollectionProducer other =
+				PdslInterpreter.normalizeToProducer(args.get(0), null, "scaled_dot_product() other");
+		boolean transpose = (Boolean) args.get(1);
+		TraversalPolicy otherShape = FEATURES.shape(other);
+		if (otherShape.getDimensions() != 4) {
+			throw new PdslParseException(
+					"scaled_dot_product() other must be [batch, heads, seq, dim], got " + otherShape);
+		}
+		int cols = transpose ? otherShape.length(2) : otherShape.length(3);
+		// The input's last axis is the extent contracted against other: dim for a Q Kᵀ product
+		// (transpose true) and keys for an A V product (transpose false).
+		String expectedInput = transpose
+				? "[batch, heads, queries, dim]"
+				: "[batch, heads, queries, keys]";
+		return inputShape -> {
+			if (inputShape.getDimensions() != 4) {
+				throw new PdslParseException("scaled_dot_product() expects a " + expectedInput
+						+ " input shape, got " + inputShape);
+			}
+			// Batch/head axes and the contracted axis must agree rather than being reinterpreted.
+			int contracted = transpose ? otherShape.length(3) : otherShape.length(2);
+			if (inputShape.length(0) != otherShape.length(0)
+					|| inputShape.length(1) != otherShape.length(1)
+					|| inputShape.length(3) != contracted) {
+				throw new PdslParseException("scaled_dot_product() input " + inputShape
+						+ " is incompatible with other " + otherShape + " for transpose=" + transpose);
+			}
+			TraversalPolicy outputShape = FEATURES.shape(inputShape.length(0), inputShape.length(1),
+					inputShape.length(2), cols);
+			return FEATURES.layer("scaledDotProduct", inputShape, outputShape,
+					input -> FEATURES.scaledDotProduct(FEATURES.c(input), other, transpose));
+		};
 	}
 
 	/**

@@ -1,5 +1,6 @@
 package org.almostrealism.ml.tokenization;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -39,6 +40,27 @@ import java.util.List;
  * @see ByteLevelBPETokenizer
  */
 public interface PreTokenizer {
+
+    /**
+     * Yields the text unchanged, as a single segment.
+     *
+     * <p>This is the correct pre-tokenization for a SentencePiece-style tokenizer, whose
+     * normalization has already marked word boundaries within the text: because no boundary
+     * remains for the pre-tokenizer to split on, merges are free to span what were once
+     * separate words, which is what produces that family's runs of boundary markers. Splitting
+     * such text into segments would forbid those merges and change the tokenization.</p>
+     */
+    PreTokenizer WHOLE_TEXT = new PreTokenizer() {
+        @Override
+        public List<String> preTokenize(String text) {
+            return Collections.singletonList(text);
+        }
+
+        @Override
+        public String getDescription() {
+            return "whole text, unsplit";
+        }
+    };
 
     /**
      * Split text into pre-tokenization segments.

@@ -95,6 +95,68 @@ class MasterAgentDispatchTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertGreaterEqual(int(job["env"]["MIN_INTERVAL_DAYS"]), 1)
 
+    def test_qa_intervals_match_the_documented_cadence(self):
+        """The per-job intervals are documented in .github/CLAUDE.md and the workflow header.
+
+        A changed interval that is not reflected there leaves the next reader
+        planning around a cadence the workflow no longer has; a QA job added
+        without an entry here fails, so its interval is chosen deliberately.
+        """
+        expected = {
+            "doc-qa": 5,
+            "defect-hunt": 2,
+            "coverage-qa": 2,
+            "consolidation-qa": 2,
+            "performance-qa": 2,
+            "pdsl-qa": 5,
+        }
+        actual = {name: int(job["env"]["MIN_INTERVAL_DAYS"])
+                  for name, job in self.qa_jobs.items()}
+        self.assertEqual(expected, actual)
+
+    def test_every_qa_job_has_its_own_interval_override(self):
+        """Each interval-bound job needs a dispatch input that lifts only its own interval.
+
+        A missing input leaves no way to run that job early short of force,
+        which also bypasses the open-PR check; a shared input would lift the
+        interval of jobs nobody asked to run early.
+        """
+        inputs = self.workflow[_ON]["workflow_dispatch"]["inputs"]
+        seen = []
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"]
+                        if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                match = re.fullmatch(
+                    r"\$\{\{ github\.event\.inputs\.(ignore_interval_[a-z_]+) \}\}",
+                    gate["env"].get("IGNORE_INTERVAL", ""))
+                self.assertIsNotNone(match, "IGNORE_INTERVAL is not wired to an input")
+                key = match.group(1)
+                self.assertIn(key, inputs)
+                self.assertEqual("boolean", inputs[key]["type"])
+                self.assertIs(False, inputs[key]["default"])
+                seen.append(key)
+        self.assertEqual(len(seen), len(set(seen)))
+
+    def test_every_qa_job_sets_a_pr_grace_window(self):
+        """The interval override must not be able to stack on an in-progress round.
+
+        A QA round creates its branch and registers its workstream before its
+        agent opens a PR, so an open-PR check alone cannot see a round that is
+        still working. The interval normally covers that window, but the
+        ignore_interval override lifts it; without PR_GRACE_HOURS the awaiting-PR
+        check (condition 2) is off, so an override would start a duplicate round
+        and the archive step would retire the live one. Each QA gate therefore
+        sets a positive grace window.
+        """
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"]
+                        if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                grace = gate["env"].get("PR_GRACE_HOURS")
+                self.assertIsNotNone(grace, "PR_GRACE_HOURS is not set on the gate")
+                self.assertGreater(int(grace), 0)
+
     def test_every_step_after_the_gate_is_gated(self):
         """An ungated step would run on merges the cadence gate declined."""
         for name, job in self.qa_jobs.items():
@@ -108,6 +170,26 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         "steps.decide.outputs.run == 'true'" in condition
                         or condition == "always()",
                         "ungated: " + step["name"])
+
+    def test_qa_rounds_do_not_archive_on_a_forced_run(self):
+        """A forced QA dispatch must not retire a round that is still in progress.
+
+        The open-PR and awaiting-PR checks run before the interval, so a
+        scheduled or ignore_interval dispatch only reaches the archive step once
+        no round of this prefix is in progress. A forced dispatch skips every
+        check, so its run=true carries reason=forced while a previous round may
+        still be live (branch and workstream registered, agent working, PR not
+        yet opened). Archiving then retires that live round and a duplicate
+        starts beside it. Each QA archive step therefore excludes the forced
+        reason, exactly as the planning jobs do.
+        """
+        for name, job in self.qa_jobs.items():
+            archive = next(s for s in job["steps"]
+                           if "archive-stale-workstreams.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                condition = archive.get("if", "")
+                self.assertIn("steps.decide.outputs.run == 'true'", condition)
+                self.assertIn("steps.decide.outputs.reason != 'forced'", condition)
 
     def test_setup_python_provisioning_is_best_effort(self):
         """A setup-python failure must not abort before the fallback fetch step.

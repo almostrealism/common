@@ -21,8 +21,11 @@ import sys
 import time
 from pathlib import Path
 
-# Add parent directory to path for imports
+# Add the consultant directory and the shared tools/mcp/common directory to
+# the path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(1, str(Path(__file__).parent.parent.parent / "common"))
+from inference import has_speculation
 
 try:
     from server import consult
@@ -31,26 +34,6 @@ try:
 except ImportError as e:
     print(f"Warning: Could not import consultant modules: {e}")
     CONSULTANT_AVAILABLE = False
-
-
-# Speculation phrases (same as evaluate_dataset.py)
-SPECULATION_PHRASES = [
-    "does not contain",
-    "does not specifically",
-    "not mentioned",
-    "speculative",
-    "hypothetical",
-    "based on typical",
-    "I can infer",
-    "you may need to refer",
-    "not covered in",
-]
-
-
-def has_speculation(response: str) -> bool:
-    """Check if response contains speculation phrases."""
-    response_lower = response.lower()
-    return any(phrase in response_lower for phrase in SPECULATION_PHRASES)
 
 
 def run_question(question: str, keywords: list[str]) -> dict:

@@ -24,7 +24,11 @@ import org.almostrealism.ml.TransformerResamplingShapeTest;
 import org.almostrealism.ml.t5gemma.T5GemmaConfig;
 import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
 import org.almostrealism.ml.t5gemma.T5GemmaWeightFixture;
+import org.almostrealism.ml.tokenization.SentencePieceTokenizerFixture;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.io.IOException;
 
 import java.util.Random;
 
@@ -85,6 +89,120 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 			model.generate(7, new long[]{5, 7, 9}, 0.05).evaluate();
 			assertEquals(1.0, mask.toDouble(3), 0.0);
 			assertEquals(0.0, mask.toDouble(4), 0.0);
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * A prompt given as text is tokenized and generates a clip of the requested duration, the same
+	 * as the equivalent token ids would. This covers the path a caller actually uses — the
+	 * tokenizer, the conditioner, the transformer and the decoder — without released weights, so it
+	 * runs wherever the rest of this class does.
+	 *
+	 * @throws IOException if the fixture tokenizer cannot be written or read
+	 */
+	@Test(timeout = 240000)
+	public void generatesFromTextWhenGivenATokenizer() throws IOException {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+
+		try {
+			model.setTokenizer(new SentencePieceTokenizerFixture().tokenizer());
+
+			try (PackedCollection audio =
+						model.generateFromText(7, SentencePieceTokenizerFixture.PROMPT, 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+
+				for (int i = 0; i < audio.getShape().getTotalSize(); i++) {
+					double value = audio.toDouble(i);
+					assertTrue("sample " + i + " is " + value, Double.isFinite(value));
+					assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * Prompt text without a tokenizer is refused, naming what to supply, rather than generating
+	 * from nothing.
+	 */
+	@Test(timeout = 240000)
+	public void textWithoutATokenizerIsRejected() {
+		StableAudio3 model = smallModel().setVerbose(false);
+
+		try {
+			model.generateFromText(7, "a prompt", 0.15);
+			Assert.fail("text was accepted without a tokenizer");
+		} catch (IllegalStateException expected) {
+			assertTrue(expected.getMessage().contains("setTokenizer"));
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * A {@code null} text prompt selects the unconditional prompt and is not tokenized, so
+	 * {@link StableAudio3#setTextGuidance(double, String)} accepts it on a model that was never given
+	 * a tokenizer -- the contrast with {@link #textWithoutATokenizerIsRejected()}, where a non-null
+	 * prompt on the same tokenizer-less model is refused. This pins the documented contract that the
+	 * null branch is taken before the tokenizer is consulted.
+	 */
+	@Test(timeout = 240000)
+	public void nullPromptNeedsNoTokenizer() {
+		StableAudio3 model = smallModel().setVerbose(false);
+
+		try {
+			Assert.assertSame(model, model.setTextGuidance(3.0, null));
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * A {@code null} token-id prompt selects the unconditional prompt: {@link StableAudio3#generate}
+	 * normalizes it to an empty array rather than passing {@code null} into the conditioner, where the
+	 * prompt encoder would dereference it. The clip has the requested shape and its samples are finite
+	 * and within the clamp, so the unconditional path runs end to end.
+	 */
+	@Test(timeout = 240000)
+	public void nullTokenPromptSelectsUnconditional() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try {
+			try (PackedCollection audio = model.generate(7, (long[]) null, 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+				for (int i = 0; i < audio.getShape().getTotalSize(); i++) {
+					double value = audio.toDouble(i);
+					assertTrue("sample " + i + " is " + value, Double.isFinite(value));
+					assertTrue("sample " + i + " outside the clamp: " + value, Math.abs(value) <= 1.0);
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * An empty text prompt selects the unconditional prompt and is not tokenized, so
+	 * {@link StableAudio3#generateFromText(long, String, double)} accepts it on a model that was never
+	 * given a tokenizer -- the same contract {@link #nullPromptNeedsNoTokenizer()} pins for a
+	 * {@code null} prompt, and the contrast with {@link #textWithoutATokenizerIsRejected()}. The clip
+	 * has the requested shape, so the empty branch runs end to end without a tokenizer.
+	 */
+	@Test(timeout = 240000)
+	public void emptyTextPromptNeedsNoTokenizer() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try {
+			try (PackedCollection audio = model.generateFromText(7, "", 0.15).evaluate()) {
+				assertEquals(2, audio.getShape().getDimensions());
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+			}
 		} finally {
 			model.destroy();
 		}

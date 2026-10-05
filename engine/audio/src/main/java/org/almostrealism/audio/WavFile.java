@@ -8,6 +8,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
@@ -1019,6 +1020,72 @@ public class WavFile implements AutoCloseable {
 	 */
 	public int writeFrames(double[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
+	}
+
+	/**
+	 * Writes an audio collection, shaped {@code [channels, frames]} or {@code [frames]} when there
+	 * is one channel. This is how a collection produced on a device reaches a file: each channel is
+	 * read with one bulk transfer rather than sample by sample.
+	 *
+	 * <p>What does not fit, and what is not laid out as it reads, are both refused rather than
+	 * quietly accommodated. A collection with more frames than {@link #getFramesRemaining()} is
+	 * rejected instead of having its tail dropped, because a caller who miscounted is better served
+	 * by being told than by a short file; the {@code double[][]} overloads stop at capacity and
+	 * report how far they got, and a caller who wants that can use them.</p>
+	 *
+	 * <p>A collection that reads its memory through a mapping — a permuted or otherwise reordered
+	 * {@link TraversalPolicy}, or a {@link org.almostrealism.hardware.MemoryData#getMemOrdering()
+	 * memory ordering} inherited from a delegate even when its outer shape is regular — is likewise
+	 * rejected. Rearranging it here would mean walking the mapping on the host, one element at a
+	 * time, to assemble an order the device can produce in a single pass, defeating this overload's
+	 * bulk-transfer guarantee. The caller applies the reordering as a computation that writes a
+	 * collection of its own shape, which does the rearranging in a kernel, and hands the result
+	 * here. Wrapping the view in a provider and copying it into a destination does not work for
+	 * this: {@link org.almostrealism.collect.computations.CollectionProvider#into(Object)} refuses
+	 * a flat copy of a view for the same reason this method does.</p>
+	 *
+	 * @param audio the samples, in the range the file's bit depth can represent
+	 * @return the number of frames written, which is every frame of the collection
+	 * @throws IOException              if this file is not open for writing, or writing fails; the
+	 *                                  state is checked before any sample is copied off the device
+	 * @throws IllegalArgumentException if the collection's channel count does not match the file's,
+	 *                                  if it has more frames than the file has room for, if its
+	 *                                  shape is a view of other memory, or if its shape is neither
+	 *                                  one- nor two-dimensional
+	 */
+	public int writeFrames(PackedCollection audio) throws IOException {
+		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
+
+		TraversalPolicy shape = audio.getShape();
+
+		if (shape.getDimensions() < 1 || shape.getDimensions() > 2) {
+			throw new IllegalArgumentException("Audio must be [channels, frames] or [frames], not " + shape);
+		}
+
+		int channels = shape.getDimensions() == 2 ? shape.length(0) : 1;
+		int frames = shape.length(shape.getDimensions() - 1);
+
+		if (channels != getNumChannels()) {
+			throw new IllegalArgumentException("Audio has " + channels + " channel(s) but the file has "
+					+ getNumChannels());
+		}
+
+		if (frames > getFramesRemaining()) {
+			throw new IllegalArgumentException("Audio has " + frames + " frame(s) but the file has room for "
+					+ getFramesRemaining());
+		}
+
+		if (!shape.isRegular() || audio.getMemOrdering() != null) {
+			throw new IllegalArgumentException("Audio " + shape + " is a view of other memory; apply the " +
+					"reordering as a computation that writes a collection of its own shape, then write that");
+		}
+
+		double[][] samples = new double[channels][];
+		for (int c = 0; c < channels; c++) {
+			samples[c] = audio.toArray(c * frames, frames);
+		}
+
+		return writeFrames(samples, frames);
 	}
 
 	/**

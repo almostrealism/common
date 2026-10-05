@@ -134,6 +134,32 @@ CollectionFeatures` to a class gives it 40+ factory methods like `cp()`, \
 `c()`, `scalar()` without inheritance per features-pattern.md:1."
 """
 
+# Hedging phrases that indicate an answer is guessing rather than grounded in
+# the documentation, which SYSTEM_PROMPT forbids. Lower-case, because
+# has_speculation matches them against the lower-cased answer.
+SPECULATION_PHRASES = (
+    "does not contain",
+    "does not specifically",
+    "not mentioned",
+    "speculative",
+    "hypothetical",
+    "based on typical",
+    "i can infer",
+    "you may need to refer",
+    "not covered in",
+    "might be",
+    "could be",
+)
+
+
+def has_speculation(text: Optional[str]) -> bool:
+    """True when an answer contains any of the SPECULATION_PHRASES.
+
+    Matching is case-insensitive; a missing answer (``None``) has none.
+    """
+    low = (text or "").lower()
+    return any(phrase in low for phrase in SPECULATION_PHRASES)
+
 
 # ---------------------------------------------------------------------------
 # Abstract backend
