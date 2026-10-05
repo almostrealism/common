@@ -31,6 +31,8 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Records an operation profile of the first Oobleck decoder block (a Snake activation, a 16x
@@ -55,20 +57,35 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 	/** Upsampling stride of the first decoder block. */
 	private static final int STRIDE = 16;
 
-	// TODO(review): diagnostic-only test (asserts output size only) runs in every CI shard; guard with skipLongTests/@TestDepth or fold into OobleckComponentTests
+	/**
+	 * Weight tensors allocated by {@link #weights(int...)}, tracked so they can be released
+	 * after the profile is taken. Weight normalization allocates new tensors rather than
+	 * transferring ownership of its source g/v tensors to the model, so destroying the model
+	 * does not release them; the test releases every tensor it allocated itself.
+	 */
+	private final List<PackedCollection> allocated = new ArrayList<>();
+
 	/**
 	 * Builds the first decoder block with random weights, compiles and runs it twice with a
-	 * profile attached, and saves the profile.
+	 * profile attached, and saves the profile. The block holds over 58 million weight elements,
+	 * so the test is skipped in quick runs and releases the model, the compiled operations and
+	 * every weight tensor it allocated once the profile has been taken.
 	 *
 	 * @throws IOException if the profile cannot be written
 	 */
 	@Test(timeout = 10 * 60000)
 	public void profileDecoderBlock1() throws IOException {
+		if (skipLongTests) return;
+
 		int padding = (STRIDE - 1) / 2;
 		int outLength = (LENGTH - 1) * STRIDE - 2 * padding + STRIDE + (STRIDE - 1);
 
 		OperationProfileNode profile = new OperationProfileNode("oobleck_decoder_block1");
 		Hardware.getLocalHardware().assignProfile(profile);
+
+		Model model = null;
+		CompiledModel compiled = null;
+		PackedCollection input = null;
 
 		try {
 			SequentialBlock block = new SequentialBlock(shape(1, IN_CHANNELS, LENGTH));
@@ -80,11 +97,11 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 				block.add(residualUnit(OUT_CHANNELS, outLength));
 			}
 
-			Model model = new Model(shape(1, IN_CHANNELS, LENGTH));
+			model = new Model(shape(1, IN_CHANNELS, LENGTH));
 			model.add(block);
-			CompiledModel compiled = model.compile(false, profile);
+			compiled = model.compile(false, profile);
 
-			PackedCollection input = new PackedCollection(1, IN_CHANNELS, LENGTH).randFill();
+			input = new PackedCollection(1, IN_CHANNELS, LENGTH).randFill();
 
 			long start = System.nanoTime();
 			PackedCollection first = compiled.forward(input);
@@ -98,6 +115,11 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 			Assert.assertEquals((long) OUT_CHANNELS * outLength, first.getShape().getTotalSizeLong());
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
+			if (compiled != null) compiled.destroy();
+			if (model != null) model.destroy();
+			if (input != null) input.destroy();
+			allocated.forEach(PackedCollection::destroy);
+			allocated.clear();
 		}
 
 		Files.createDirectories(Path.of("results"));
@@ -120,8 +142,13 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 		return residual(main);
 	}
 
-	/** Returns a tensor of uniform random values in {@code [0, 1)}, generated on the device. */
+	/**
+	 * Returns a tensor of uniform random values in {@code [0, 1)}, generated on the device, and
+	 * tracks it so it can be released once the profile has been taken.
+	 */
 	private PackedCollection weights(int... dims) {
-		return new PackedCollection(dims).randFill();
+		PackedCollection weights = new PackedCollection(dims).randFill();
+		allocated.add(weights);
+		return weights;
 	}
 }

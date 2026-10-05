@@ -144,6 +144,38 @@ public class WeightedSumComputation
 								  TraversalPolicy weightGroupShape,
 								  Producer<PackedCollection> input,
 								  Producer<PackedCollection> weights) {
+		this(resultShape, inputPositions, weightPositions,
+				inputGroupShape, weightGroupShape, input, weights,
+				unrolledLoopMembers(inputGroupShape));
+	}
+
+	/**
+	 * Creates a new weighted sum computation with an explicit loop decision. This is the form
+	 * {@link #generate(List)} uses, so that optimization preserves the number of members each
+	 * loop iteration sums - and hence the kernel form and {@link #signature() signature} - of
+	 * the sum it regenerates, rather than rereading the mutable {@link #loopThreshold}, which a
+	 * concurrently constructed sum may have changed.
+	 *
+	 * @param resultShape  the shape of the result
+	 * @param inputPositions  traversal policy defining how to position input elements
+	 * @param weightPositions  traversal policy defining how to position weight elements
+	 * @param inputGroupShape  group shape for input (dimensions to sum over)
+	 * @param weightGroupShape  group shape for weights (dimensions to sum over)
+	 * @param input  producer for input values
+	 * @param weights  producer for weight values
+	 * @param loopMembers  the number of group members summed by each loop iteration, or zero
+	 *                     when the group is summed by a single expression
+	 * @throws IllegalArgumentException if the traversal policies have incompatible dimensions,
+	 *                                  or the input and weight groups have different total sizes
+	 */
+	private WeightedSumComputation(TraversalPolicy resultShape,
+								   TraversalPolicy inputPositions,
+								   TraversalPolicy weightPositions,
+								   TraversalPolicy inputGroupShape,
+								   TraversalPolicy weightGroupShape,
+								   Producer<PackedCollection> input,
+								   Producer<PackedCollection> weights,
+								   int loopMembers) {
 		super("weightedSum", resultShape.traverseEach(), input, weights);
 		this.resultShape = resultShape;
 		this.inputPositions = inputPositions;
@@ -152,7 +184,7 @@ public class WeightedSumComputation
 		this.weightGroupShape = weightGroupShape;
 		this.inShape = shape(input);
 		this.weightShape = shape(weights);
-		this.loopMembers = unrolledLoopMembers();
+		this.loopMembers = loopMembers;
 
 		if (inputPositions.getDimensions() != resultShape.getDimensions() ||
 				weightPositions.getDimensions() != resultShape.getDimensions()) {
@@ -162,6 +194,11 @@ public class WeightedSumComputation
 			throw new IllegalArgumentException();
 		} else if (weightPositions.getDimensions() != weightShape.getDimensions() ||
 				weightGroupShape.getDimensions() != weightShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		} else if (weightGroupShape.getTotalSizeLong() != inputGroupShape.getTotalSizeLong()) {
+			// The loop form sums the input group against the weight traversal without
+			// constructing a SubsetTraversalWeightedSumExpression, so the equal-group-size
+			// contract that expression enforces is applied here for both kernel forms.
 			throw new IllegalArgumentException();
 		}
 
@@ -270,9 +307,10 @@ public class WeightedSumComputation
 	 * {@link #maxUnrolledMembers}, so the position of each member within the group is a
 	 * constant offset from the position of the iteration.
 	 *
+	 * @param inputGroupShape  the shape of one group (the dimensions summed over)
 	 * @return the members summed by each iteration, or zero for a single expression
 	 */
-	private int unrolledLoopMembers() {
+	private static int unrolledLoopMembers(TraversalPolicy inputGroupShape) {
 		long size = inputGroupShape.getTotalSizeLong();
 		if (size < loopThreshold) return 0;
 
@@ -348,7 +386,8 @@ public class WeightedSumComputation
 				inputPositions, weightPositions,
 				inputGroupShape, weightGroupShape,
 				(Producer) children.get(1),
-				(Producer) children.get(2));
+				(Producer) children.get(2),
+				loopMembers);
 	}
 
 	/**

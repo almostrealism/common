@@ -24,6 +24,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.function.Supplier;
 
 /**
@@ -194,6 +195,70 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				Assert.assertEquals(2.0 * sum + 1.0, result.toDouble(i * 3 + j),
 						TOLERANCE * Math.max(1.0, 2.0 * sum + 1.0));
 			}
+		}
+	}
+
+	/**
+	 * The loop decision made when a sum is constructed is preserved through
+	 * {@link WeightedSumComputation#generate(java.util.List)}, so optimization cannot change
+	 * the kernel form (and signature) of a looped sum by rereading a since-changed
+	 * {@link WeightedSumComputation#loopThreshold}.
+	 */
+	@Test(timeout = 30000)
+	public void generatePreservesLoopDecision() {
+		int m = 4;
+		int n = 300;
+		int p = 3;
+
+		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
+		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+
+		TraversalPolicy resultShape = shape(1, m, 1, p);
+		WeightedSumComputation looped = (WeightedSumComputation) weightedSum("matmul", resultShape,
+				resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+				shape(1, 1, n, 1), shape(1, 1, n, 1),
+				cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+		Assert.assertTrue(looped.isLooped());
+		String signature = looped.signature();
+
+		int threshold = WeightedSumComputation.loopThreshold;
+		WeightedSumComputation.loopThreshold = Integer.MAX_VALUE;
+
+		try {
+			WeightedSumComputation regenerated = (WeightedSumComputation)
+					looped.generate(new ArrayList<>(looped.getChildren()));
+			Assert.assertTrue("generate must preserve the loop decision", regenerated.isLooped());
+			Assert.assertEquals("generate must preserve the signature",
+					signature, regenerated.signature());
+		} finally {
+			WeightedSumComputation.loopThreshold = threshold;
+		}
+	}
+
+	/**
+	 * A weighted sum whose input and weight groups have different total sizes is rejected when
+	 * it is constructed, so the loop form cannot silently sum mismatched groups that the
+	 * single-expression form rejects.
+	 */
+	@Test(timeout = 30000)
+	public void mismatchedGroupSizesRejected() {
+		int m = 4;
+		int n = 300;
+		int p = 3;
+
+		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
+		PackedCollection b = new PackedCollection(shape(n + 1, p)).randFill();
+
+		TraversalPolicy resultShape = shape(1, m, 1, p);
+
+		try {
+			weightedSum("matmul", resultShape,
+					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+					shape(1, 1, n, 1), shape(1, 1, n + 1, 1),
+					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n + 1, p)));
+			Assert.fail("mismatched group sizes must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// Equal-total-size contract enforced by the constructor for both kernel forms
 		}
 	}
 
