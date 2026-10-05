@@ -655,8 +655,17 @@ baseline. Making it required means wiring it into every place listed at the end
 of the previous section, and `tools/tests/test_auto_resolve_test_job_coverage.py`
 fails until all of them are done.
 
-`ar-ci-cuda` is deliberately distinct from `ar-ci` and `ar-ci-cl`, for the reason
-given for `ar-ci-cl` above.
+`ar-ci-cuda` is a **capability** label, distinct from `ar-ci` and `ar-ci-cl`: the
+CUDA jobs require it, and only the CUDA fleet carries it, after its preflight has
+proved the GPU. A Linux host without an NVIDIA GPU therefore never receives a CUDA
+job. Unlike the ROCm fleet, a CUDA fleet may *additionally* carry `ar-ci`
+(`RUNNER_EXTRA_LABELS` in `tools/ci/cuda/.env`), so one GPU host can serve the CPU
+lane as well instead of running a separate CPU fleet beside it. That is safe
+because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
+the same image, and because the CUDA lane is admitted only after the CPU lane
+finishes, so within one pipeline the two never compete for those runners. The
+`ar-ci-cl` caveat above still applies: across concurrent pipelines, CUDA jobs can
+queue behind CPU jobs on a shared host.
 
 ### What the `docker-build` job covers
 

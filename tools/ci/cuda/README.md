@@ -11,6 +11,34 @@ The lane is currently **informational**: it is not in `analysis.needs`,
 `all-checks` or `auto-resolve`, so a failure does not block a merge. It joins
 the gate once it has a passing baseline.
 
+## Labels: CUDA Is a Capability, the CPU Lane Is Optional
+
+Every runner in this fleet carries `ar-ci-cuda`, and the CUDA jobs require it.
+Only this fleet adds that label, and only after its preflight has proved the GPU,
+so CUDA jobs never land on a machine without an NVIDIA GPU. An arm64 or x86 host
+without one runs the plain CPU fleet (`../docker`, label `ar-ci`) and is never
+offered a CUDA job.
+
+`RUNNER_EXTRA_LABELS` adds further labels. With `ar-ci` (the default in
+`.env.example`), these runners also take the CPU lane, `test` and `test-media`, so
+a GPU host can serve both lanes with one set of runners instead of running a CPU
+fleet beside this one. That is safe because the two lanes differ only in
+configuration:
+
+- Both fleets build the same image (`../docker`).
+- Every step of `test` and `test-media` sets `AR_HARDWARE_DRIVER=native`, so no
+  CUDA context is created, and `Hardware.isAvailable(GPU)` reports no GPU. The
+  media tests that require the curated library when a GPU is present (for
+  example `AudioSceneTestBase.requireCuratedLibrary()`) therefore behave exactly
+  as they do on a CPU-only runner.
+- The CUDA lane is admitted only after `test` and `test-media` finish, so within
+  one pipeline the two lanes never compete for these runners. Across concurrent
+  pipelines they share them; the cost is queueing, not correctness.
+
+When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
+the CPU lane in the runner count and the memory limit: `test` runs up to four
+groups at once, so with three runners it simply queues the fourth.
+
 ## Design: Nothing Installed on the Host
 
 The target host is an NVIDIA DGX Spark (GB10, aarch64) running NVIDIA's own OS

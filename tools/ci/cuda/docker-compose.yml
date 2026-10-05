@@ -44,7 +44,12 @@ services:
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-dgx-spark}
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
-      - RUNNER_LABELS=ar-ci-cuda
+      # ar-ci-cuda is the capability label: the CUDA jobs require it, and only
+      # this fleet (which proves the GPU in its preflight) carries it.
+      # RUNNER_EXTRA_LABELS lets a GPU host also serve other lanes; set to ar-ci,
+      # these runners also take the CPU lane (test, test-media), which runs with
+      # AR_HARDWARE_DRIVER=native and so never touches the GPU.
+      - RUNNER_LABELS=ar-ci-cuda${RUNNER_EXTRA_LABELS:+,${RUNNER_EXTRA_LABELS}}
       - RUNNER_DISABLE_UPDATE=true
       - RUNNER_SLOT_DIR=/var/lock/ar-ci-slots
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
