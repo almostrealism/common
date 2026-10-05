@@ -433,7 +433,13 @@ while ${RUNNING}; do
     if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
         LIMIT_PCT=$(( RUNNER_CPU_LIMIT * 100 ))
         echo "Throttling job to ${RUNNER_CPU_LIMIT} CPUs (${LIMIT_PCT}%)"
-        "${SCRIPT_DIR}/cpu-watcher.sh" $$ "${LIMIT_PCT}" &
+        # /bin/bash by absolute path, not through cpu-watcher.sh's own
+        # `/usr/bin/env bash` shebang: the daemon runs this under RUNNER_PATH,
+        # which install screens for the job's tools but need not contain the
+        # directory bash lives in, so resolving the interpreter through it could
+        # leave the watcher unstarted and the CPU limit silently unenforced. The
+        # LaunchDaemon plist launches runner.sh the same way, by absolute path.
+        /bin/bash "${SCRIPT_DIR}/cpu-watcher.sh" $$ "${LIMIT_PCT}" &
         WATCHER_PID=$!
         start_agent
         wait "${RUN_PID}" || true

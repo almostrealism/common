@@ -949,6 +949,20 @@ EOF
     done
 
     if [ "${MONITOR}" = true ]; then
+        # STORE_FROM is forwarded to install.sh, which hands
+        # "${STORE_FROM}:fleet/store-url" to scp as you. scp reads a leading-dash
+        # operand as an option, so a value such as -oProxyCommand=... would run a
+        # command as you during the credential copy. Hold it to a strict
+        # USER@HOST — the only shape a tailnet copy needs — with no leading dash
+        # and none of the characters a host or user name never contains, before
+        # it is forwarded.
+        if [ -n "${STORE_FROM}" ] \
+                && ! [[ "${STORE_FROM}" =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*@[A-Za-z0-9._-]+$ ]]; then
+            echo "  ✗ --store-from must be USER@HOST (got '${STORE_FROM}'); a leading dash or any" >&2
+            echo "      character outside a user or host name is refused, so it cannot reach scp as" >&2
+            echo "      an option. Pass something like worker@mac-studio." >&2
+            errors=$((errors + 1))
+        fi
         # install.sh, and the render.sh it calls, both run with your privileges
         # (no sudo), straight from the checkout — exactly the position the
         # register script is in before it runs as root. render.sh also reads the
@@ -1006,6 +1020,24 @@ EOF
                     errors=$((errors + 1))
                 fi
             done
+            # A trusted FLEET_HOME path still has to be one you can write.
+            # render.sh and install.sh create FLEET_HOME and its launchd, logs
+            # and venv subdirectories with mkdir -p as you; a pre-existing
+            # root-owned or read-only (mode 0555) home passes the walks above but
+            # fails that mkdir -p — after the runner is already registered,
+            # leaving the one-command install half done. Probe write and search
+            # access on the home, or the nearest existing ancestor of one that
+            # does not exist yet, before anything is registered. The probe runs
+            # as you (this install's account), the account that creates them.
+            local fleet_write_at
+            fleet_write_at="$(nearest_existing_dir "${fleet_home}")"
+            if ! { test -w "${fleet_write_at}" && test -x "${fleet_write_at}"; }; then
+                echo "  ✗ you (${admin_user}) cannot create the monitor's FLEET_HOME (${fleet_home}): ${fleet_write_at}," >&2
+                echo "      the nearest existing directory, is not writable by you, so the monitor install's" >&2
+                echo "      mkdir -p there would fail after the runner is already registered." >&2
+                echo "      Fix: sudo mkdir -p ${fleet_home} && sudo chown ${admin_user} ${fleet_home}" >&2
+                errors=$((errors + 1))
+            fi
         fi
         # The interpreter install.sh runs as you is an explicit FLEET_PYTHON, or
         # ${FLEET_HOME}/venv/bin/python3 by default. A venv's python3 is itself a
