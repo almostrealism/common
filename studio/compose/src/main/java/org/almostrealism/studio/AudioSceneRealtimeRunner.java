@@ -587,15 +587,21 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			/**
 			 * Releases the native memory this runner owns: the render-ahead
 			 * {@link PatternRenderStream} (which stops its producer thread and frees the
-			 * ring), the compiled mixdown {@link CompiledModel}, the per-buffer frame
-			 * index, and the mixdown argument buffers built by
+			 * ring), the compiled pattern render operation that drives the stream, the
+			 * compiled mixdown {@link CompiledModel}, the per-buffer frame index, and the
+			 * mixdown argument buffers built by
 			 * {@link MixdownManagerPdslAdapter#buildArgsMap()} (delay, feedback, bus,
 			 * reverb, automation, and stem collections). PDSL supplies those buffers to
 			 * the model as external collection providers, so {@link CompiledModel#destroy()}
-			 * does not reclaim them; they are released here and the map is cleared. Without
-			 * this a caller that builds a runner per render — as the real-time render tests
-			 * do — accumulates a render-ahead ring, a producer thread, a compiled model, and
-			 * a full argument map for every render in the JVM, exhausting native memory (an
+			 * does not reclaim them; they are released here and the map is cleared. The
+			 * render operation is a compiled {@link OperationList} owning its own native
+			 * kernels; {@link PatternRenderStream} runs it but treats it as borrowed (it
+			 * frees only the ring and slot copies it allocates itself), so it is destroyed
+			 * here — after the stream has stopped its producer thread, so the kernels are
+			 * no longer in use. Without this a caller that builds a runner per render — as
+			 * the real-time render tests do — accumulates a render-ahead ring, a producer
+			 * thread, a render operation, a compiled model, and a full argument map for
+			 * every render in the JVM, exhausting native memory (an
 			 * {@code OutOfMemoryError} on a CPU host, silent output once the device allocator
 			 * is starved on a GPU host). The scene's consolidated render buffer and the
 			 * model's own output buffer are left to their owners.
@@ -603,6 +609,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			@Override
 			public void destroy() {
 				renderStream.destroy();
+				Destroyable.destroy(renderOp);
 				Destroyable.destroy(compiled);
 				bufferFrameIndex.destroy();
 				for (Object value : args.values()) {

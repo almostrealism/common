@@ -146,6 +146,15 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Channel audio data buffers, one per channel. */
 	private List<CollectionProducer> data;
 
+	/**
+	 * The {@link WaveData} whose backing buffer this WaveOutput allocated itself and must
+	 * therefore release on {@link #destroy()}; {@code null} when the audio data was supplied
+	 * by the caller (who then owns its lifecycle). The per-channel entries in {@link #data}
+	 * are range views into this buffer, so destroying them does not free it — the buffer is
+	 * released here.
+	 */
+	private WaveData ownedData;
+
 	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
@@ -226,7 +235,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		this(f, bits, new WaveData(
 				stereo ? 2 : 1,
 				maxFrames <= 0 ? defaultTimelineFrames : maxFrames,
-				Math.toIntExact(sampleRate)));
+				Math.toIntExact(sampleRate)), true);
 	}
 
 	/**
@@ -255,11 +264,27 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * @param data WaveData providing the underlying channel buffers and sample rate
 	 */
 	public WaveOutput(Supplier<File> f, int bits, WaveData data) {
+		this(f, bits, data, false);
+	}
+
+	/**
+	 * Primary {@link WaveData}-backed constructor. Wraps the data's per-channel ranges as the
+	 * output buffers and, when {@code owned} is set, retains the {@link WaveData} so its backing
+	 * buffer is released on {@link #destroy()}.
+	 *
+	 * @param f     supplier producing the destination WAV file, or null for in-memory capture
+	 * @param bits  bit depth for encoding
+	 * @param data  WaveData providing the underlying channel buffers and sample rate
+	 * @param owned whether this WaveOutput allocated {@code data} itself and must release it
+	 */
+	private WaveOutput(Supplier<File> f, int bits, WaveData data, boolean owned) {
 		this(f, bits, data.getSampleRate(),
 				data.getChannelCount() > 1 ? List.of(
 						CollectionFeatures.getInstance().p(data.getChannelData(0)),
 						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
 				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
+
+		if (owned) this.ownedData = data;
 	}
 
 	/**
@@ -482,6 +507,13 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		if (data != null) {
 			data.forEach(CollectionProducer::destroy);
 			data = null;
+		}
+
+		if (ownedData != null) {
+			// The channel producers above are range views into this buffer, so they do not
+			// free it; the buffer this WaveOutput allocated itself is released here.
+			ownedData.destroy();
+			ownedData = null;
 		}
 	}
 

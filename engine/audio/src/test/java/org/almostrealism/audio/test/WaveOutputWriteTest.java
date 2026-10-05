@@ -233,4 +233,46 @@ public class WaveOutputWriteTest extends TestSuiteBase implements CellFeatures {
 			in.close();
 		}
 	}
+
+	/**
+	 * A caller that supplies its own backing buffer keeps ownership of it: destroying the
+	 * {@link WaveOutput} must not release the caller's collection, because the per-channel entries
+	 * the output holds are only range views into it (and destroying a delegated view does not free
+	 * the root it delegates to). The caller's own {@code destroy()} afterwards is the single,
+	 * correct release.
+	 */
+	@Test(timeout = 60000)
+	public void callerSuppliedBufferIsNotReleasedByOutput() {
+		PackedCollection buffer = new PackedCollection(1024);
+		Assert.assertFalse("a freshly allocated collection should have live memory",
+				buffer.isDestroyed());
+
+		WaveOutput output = new WaveOutput(buffer);
+		output.destroy();
+
+		Assert.assertFalse("caller-owned buffer must survive WaveOutput.destroy()",
+				buffer.isDestroyed());
+
+		// The caller's own release is the one that frees the buffer.
+		buffer.destroy();
+		Assert.assertTrue("caller's own destroy() should free the buffer",
+				buffer.isDestroyed());
+	}
+
+	/**
+	 * A {@link WaveOutput} that allocates its own timeline buffer owns it and releases it on
+	 * {@link WaveOutput#destroy()}; a second destroy must be a safe no-op. This exercises the
+	 * owned-buffer release path that keeps per-render output buffers from accumulating across
+	 * repeated real-time renders.
+	 */
+	@Test(timeout = 60000)
+	public void ownedTimelineBufferDestroyIsSafeAndIdempotent() {
+		WaveOutput output = new WaveOutput(() -> null, 24, 1024, true);
+		Assert.assertEquals("a stereo output should expose two channels before destroy",
+				2, output.getChannelCount());
+
+		// The output owns the WaveData it allocated; destroy() releases it and a repeat is safe.
+		output.destroy();
+		output.destroy();
+	}
 }

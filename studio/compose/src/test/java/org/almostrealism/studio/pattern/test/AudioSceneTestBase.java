@@ -38,6 +38,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -180,6 +181,28 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 	/** Minimum peak amplitude below which a rendered signal is considered silent. */
 	protected static final double SILENCE_THRESHOLD = 1e-4;
+
+	/**
+	 * Releases every {@link AudioScene} still alive at the end of each test method.
+	 *
+	 * <p>Each scene created by {@link #createBaselineScene(File, int)} registers itself in
+	 * {@link AudioScene}'s active-instance registry and holds native memory (its cell graph,
+	 * consolidated render buffers, and delay-line collections). The real-time tests create a
+	 * scene per method but never destroy it, and surefire reuses a single JVM across every
+	 * test in the module (no {@code reuseForks=false}), so without this the scenes accumulate
+	 * across the run and exhaust the hardware allocator — an {@link OutOfMemoryError} on the
+	 * direct-buffer limit on a CPU host, silent output once a GPU device allocator is starved.
+	 * {@link AudioScene#destroyAll()} destroys exactly the scenes that have not already been
+	 * released (a scene's own {@code destroy()} removes it from the registry, so a scene the
+	 * helper already freed — e.g. the seed-search scene — is not touched again).</p>
+	 *
+	 * <p>JUnit runs this subclass {@code @After} before {@code TestSuiteBase}'s own teardown,
+	 * so the scenes are freed while the backend this test used is still the active one.</p>
+	 */
+	@After
+	public void destroyScenes() {
+		AudioScene.destroyAll();
+	}
 
 	/**
 	 * Creates a baseline AudioScene with the default source count (6 channels).
