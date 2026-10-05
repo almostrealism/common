@@ -379,6 +379,77 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Double-precision values are read eight bytes at a time, with their encoding recorded. The
+	 * values are exactly representable in single precision too, so they read back exactly
+	 * whatever precision the collection is held in.
+	 */
+	@Test(timeout = 60000)
+	public void readsDoublePrecision() throws IOException {
+		byte[] data = ByteBuffer.allocate(2 * Double.BYTES).order(ByteOrder.LITTLE_ENDIAN)
+				.putDouble(0.375).putDouble(-1024.5).array();
+		File file = writeFile("{\"d\":{\"dtype\":\"F64\",\"shape\":[2],\"data_offsets\":[0,16]}}", data);
+
+		SafetensorsReference reference = SafetensorsReference.locate(file).get("d");
+		Assert.assertEquals(SafetensorsReference.Encoding.F64, reference.getEncoding());
+		Assert.assertEquals(2, reference.getCount());
+
+		Path directory = Files.createTempDirectory("safetensors");
+		Files.copy(file.toPath(), directory.resolve("model.safetensors"));
+		StateDictionary weights = new StateDictionary(directory.toString());
+		Assert.assertArrayEquals(new double[] { 0.375, -1024.5 }, weights.get("d").toArray(), 0.0);
+	}
+
+	/**
+	 * Two tensors whose byte ranges overlap are rejected, so the same bytes are never exposed as
+	 * two different weights; this includes two names given the very same range.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsOverlappingRanges() throws IOException {
+		assertRejected("{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]},"
+				+ "\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[2,6]}}", 6, "overlap a");
+		assertRejected("{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]},"
+				+ "\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 4, "overlap");
+		assertRejected("{\"a\":{\"dtype\":\"F32\",\"shape\":[2],\"data_offsets\":[0,8]},"
+				+ "\"e\":{\"dtype\":\"F32\",\"shape\":[0],\"data_offsets\":[4,4]}}", 8, "4..4, which overlap a");
+	}
+
+	/** Bytes between two tensors that belong to neither are rejected. */
+	@Test(timeout = 60000)
+	public void rejectsGapBetweenRanges() throws IOException {
+		assertRejected("{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]},"
+				+ "\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[8,12]}}", 12, "bytes 4..8");
+		assertRejected("{\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[4,8]}}", 8, "bytes 0..4");
+	}
+
+	/** Tensor data that continues past the last tensor is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsTrailingBytes() throws IOException {
+		assertRejected("{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 5, "bytes 4..5");
+		assertRejected("{\"__metadata__\":{}}", 1, "bytes 0..1");
+	}
+
+	/**
+	 * Ranges that tile the data are accepted whatever order the header lists them in, and the
+	 * tensors keep the header's order.
+	 */
+	@Test(timeout = 60000)
+	public void acceptsTiledRangesInAnyOrder() throws IOException {
+		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(writeFile("{"
+				+ "\"second\":{\"dtype\":\"F32\",\"shape\":[2],\"data_offsets\":[4,12]},"
+				+ "\"empty\":{\"dtype\":\"F32\",\"shape\":[0],\"data_offsets\":[4,4]},"
+				+ "\"first\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 12));
+		Assert.assertEquals(List.of("second", "first"), List.copyOf(tensors.keySet()));
+		Assert.assertEquals(2, tensors.get("second").getCount());
+		Assert.assertEquals(1, tensors.get("first").getCount());
+	}
+
+	/** A header listing no tensors is accepted when there is no tensor data. */
+	@Test(timeout = 60000)
+	public void acceptsHeaderWithNoTensors() throws IOException {
+		Assert.assertTrue(SafetensorsReference.locate(writeFile("{\"__metadata__\":{}}", 0)).isEmpty());
+	}
+
+	/**
 	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
 	 * tensor data.
 	 *
@@ -387,10 +458,21 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	 * @return the file
 	 */
 	private File writeFile(String header, int dataBytes) throws IOException {
+		return writeFile(header, new byte[dataBytes]);
+	}
+
+	/**
+	 * Writes a safetensors file with the given header followed by the given tensor data.
+	 *
+	 * @param header the JSON header
+	 * @param data   the tensor data after the header
+	 * @return the file
+	 */
+	private File writeFile(String header, byte[] data) throws IOException {
 		byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
-		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES + headerBytes.length + dataBytes)
+		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES + headerBytes.length + data.length)
 				.order(ByteOrder.LITTLE_ENDIAN);
-		bytes.putLong(headerBytes.length).put(headerBytes);
+		bytes.putLong(headerBytes.length).put(headerBytes).put(data);
 
 		Path file = Files.createTempFile("tensors", ".safetensors");
 		Files.write(file, bytes.array());

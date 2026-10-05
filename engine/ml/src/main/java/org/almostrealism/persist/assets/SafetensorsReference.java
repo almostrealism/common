@@ -30,7 +30,10 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -150,8 +153,9 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @throws IOException if the file cannot be read
 	 * @throws IllegalArgumentException if the file is too short to hold a header, the header is
 	 *         longer than {@link #MAX_HEADER_LENGTH}, the header is malformed, names an element type other
-	 *         than BF16, F16, F32 or F64, or gives a tensor a byte range that is reversed, lies
-	 *         outside the file's tensor data, or does not match its shape
+	 *         than BF16, F16, F32 or F64, gives a tensor a byte range that is reversed, lies
+	 *         outside the file's tensor data, or does not match its shape, or the tensors' byte
+	 *         ranges do not tile the tensor data exactly (see {@link #requireTiled})
 	 */
 	public static Map<String, SafetensorsReference> locate(File file) throws IOException {
 		JsonObject header;
@@ -189,6 +193,7 @@ public class SafetensorsReference extends CollectionDataReference {
 		}
 
 		Map<String, SafetensorsReference> tensors = new LinkedHashMap<>();
+		List<Range> ranges = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> entry : header.entrySet()) {
 			if ("__metadata__".equals(entry.getKey())) continue;
 
@@ -201,10 +206,58 @@ public class SafetensorsReference extends CollectionDataReference {
 			}
 
 			SafetensorsReference tensor = locateTensor(file, entry.getKey(),
-					tensorEntry, dataStart, dataLength);
+					tensorEntry, dataStart, dataLength, ranges);
 			if (tensor != null) tensors.put(entry.getKey(), tensor);
 		}
+
+		requireTiled(file, ranges, dataLength);
 		return tensors;
+	}
+
+	/**
+	 * The byte range a tensor occupies within a file's tensor data.
+	 *
+	 * @param name  the tensor's name, for error messages
+	 * @param begin position of its first byte
+	 * @param end   position just past its last byte
+	 */
+	private record Range(String name, long begin, long end) { }
+
+	/**
+	 * Requires the tensors' byte ranges to tile the tensor data exactly, as the safetensors format
+	 * does: taken in order of position, each range begins where the previous one ended, the first
+	 * begins at zero and the last ends at the end of the file. A range that overlaps another would
+	 * expose the same bytes as two different tensors, and bytes that belong to no tensor are not
+	 * part of a well-formed file, so either is rejected rather than read.
+	 *
+	 * @param file       the file, for error messages
+	 * @param ranges     every tensor's byte range, including those of tensors with no values
+	 * @param dataLength number of bytes of tensor data in the file
+	 * @throws IllegalArgumentException if two ranges overlap, or some bytes belong to no range
+	 */
+	private static void requireTiled(File file, List<Range> ranges, long dataLength) {
+		ranges.sort(Comparator.comparingLong(Range::begin).thenComparingLong(Range::end));
+
+		long position = 0;
+		String previous = null;
+		for (Range range : ranges) {
+			if (range.begin() < position) {
+				throw new IllegalArgumentException(range.name() + " in " + file + " occupies bytes "
+						+ range.begin() + ".." + range.end() + ", which overlap " + previous
+						+ ", ending at byte " + position);
+			} else if (range.begin() > position) {
+				throw new IllegalArgumentException("bytes " + position + ".." + range.begin()
+						+ " of the tensor data in " + file + " belong to no tensor");
+			}
+
+			position = range.end();
+			previous = range.name();
+		}
+
+		if (position != dataLength) {
+			throw new IllegalArgumentException("bytes " + position + ".." + dataLength
+					+ " of the tensor data in " + file + " belong to no tensor");
+		}
 	}
 
 	/**
@@ -266,6 +319,7 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param entry     its header entry: {@code dtype}, {@code shape} and {@code data_offsets}
 	 * @param dataStart  byte position where the tensors' data begins
 	 * @param dataLength number of bytes from {@code dataStart} to the end of the file
+	 * @param ranges     receives the tensor's byte range, for {@link #requireTiled}
 	 * @return the reference, or {@code null} if the tensor holds no values
 	 * @throws IllegalArgumentException if the entry is missing {@code dtype}, {@code shape} or
 	 *         {@code data_offsets} or gives one of them a value of the wrong JSON type (a
@@ -274,7 +328,8 @@ public class SafetensorsReference extends CollectionDataReference {
 	 *         is not a {@code [begin, end]} pair within the file's tensor data for its shape
 	 */
 	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
-													 long dataStart, long dataLength) {
+													 long dataStart, long dataLength,
+													 List<Range> ranges) {
 		Encoding encoding;
 		String dtype = require(file, name, "dtype", entry, e -> e.getAsJsonPrimitive().getAsString());
 		try {
@@ -307,6 +362,7 @@ public class SafetensorsReference extends CollectionDataReference {
 			throw new IllegalArgumentException(name + " in " + file + " occupies bytes " + begin + ".." + end
 					+ ", which is not a range within the file's " + dataLength + " bytes of tensor data");
 		}
+		ranges.add(new Range(name, begin, end));
 
 		// A tensor with a zero-length axis holds no values and is left out, but its range is
 		// still validated above and must itself be empty, so a malformed entry is not accepted.
