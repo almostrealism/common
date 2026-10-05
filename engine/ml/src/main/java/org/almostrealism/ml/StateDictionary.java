@@ -151,7 +151,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			for (File file : safetensors) {
 				log("Located " + locateSafetensors(file) + " weight tensors in " + file.getName());
 			}
-			logLoaded(safetensors.size());
+			logLoaded(safetensors.size(), "safetensors");
 			return;
 		}
 
@@ -172,7 +172,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			}
 		}).sum();
 
-		logLoaded(total);
+		logLoaded(total, "protobuf");
 	}
 
 	/**
@@ -265,11 +265,12 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	/**
 	 * Reports what was loaded, and from how many files.
 	 *
-	 * @param total the number of files read
+	 * @param total  the number of files read
+	 * @param format the name of the on-disk format the files are in, for the diagnostic message
 	 */
-	private void logLoaded(int total) {
+	private void logLoaded(int total, String format) {
 		log("StateDictionary loaded " + weights.size() +
-				" total weight tensors from " + total + " protobuf files");
+				" total weight tensors from " + total + " " + format + " files");
 	}
 
 	/**

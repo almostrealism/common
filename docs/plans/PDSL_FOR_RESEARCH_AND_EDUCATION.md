@@ -323,7 +323,10 @@ uses). All existing Qwen tests pass unchanged.
        checkpoint's `tokenizer.json` / `vocab.json`.
      - The real-weight gate has not been run, because no Hugging Face checkpoint is on the
        development machine.
-   - Today a checkpoint must be converted to protobuf by `extract_qwen3_weights.py`.
+   - Converting a checkpoint to protobuf with `extract_qwen3_weights.py` is now optional: it
+     is no longer required to load weights (`new StateDictionary(hfDirectory)` reads the
+     safetensors directly), and remains only as the way to write the protobuf form a program
+     keeps or shares.
    - The format is simple: an 8-byte little-endian header length, a JSON header naming each
      tensor's dtype, shape and byte range, then raw bytes. Parse the header with whatever JSON
      support `engine/ml` already has; add no new dependency.

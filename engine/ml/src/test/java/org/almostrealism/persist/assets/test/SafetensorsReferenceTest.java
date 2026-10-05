@@ -204,6 +204,49 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 				"100..100");
 	}
 
+	/** A tensor entry missing its {@code dtype} is rejected with a message naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsMissingDtype() throws IOException {
+		assertRejected("{\"w\":{\"shape\":[1],\"data_offsets\":[0,4]}}", 4, "no dtype");
+	}
+
+	/** A tensor entry missing its {@code shape} is rejected with a message naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsMissingShape() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"data_offsets\":[0,4]}}", 4, "no shape");
+	}
+
+	/** A tensor entry missing its {@code data_offsets} is rejected with a message naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsMissingDataOffsets() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1]}}", 4, "no data_offsets");
+	}
+
+	/** A {@code data_offsets} that is not a two-element [begin, end] range is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsDataOffsetsWrongLength() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4,8]}}", 8,
+				"3 data offsets");
+	}
+
+	/** A header that is not a JSON object is rejected as not a safetensors file. */
+	@Test(timeout = 60000)
+	public void rejectsNonObjectHeader() throws IOException {
+		assertRejected("[1,2,3]", 4, "not a JSON object");
+	}
+
+	/** Syntactically invalid JSON in the header is rejected as not a safetensors file. */
+	@Test(timeout = 60000)
+	public void rejectsMalformedJsonHeader() throws IOException {
+		assertRejected("{not json", 4, "not a JSON object");
+	}
+
+	/** A tensor described by something other than a JSON object is rejected, naming the tensor. */
+	@Test(timeout = 60000)
+	public void rejectsNonObjectTensorEntry() throws IOException {
+		assertRejected("{\"w\":42}", 4, "is not described by a JSON object");
+	}
+
 	/**
 	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
 	 * tensor data.

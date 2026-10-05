@@ -161,7 +161,11 @@ public class SafetensorsReference extends CollectionDataReference {
 
 			byte[] headerBytes = new byte[(int) headerLength];
 			in.readFully(headerBytes);
-			header = JsonParser.parseString(new String(headerBytes, StandardCharsets.UTF_8)).getAsJsonObject();
+			try {
+				header = JsonParser.parseString(new String(headerBytes, StandardCharsets.UTF_8)).getAsJsonObject();
+			} catch (RuntimeException e) {
+				throw new IllegalArgumentException(file + " is not a safetensors file: its header is not a JSON object", e);
+			}
 			dataStart = Long.BYTES + headerLength;
 			dataLength = in.length() - dataStart;
 		}
@@ -170,11 +174,38 @@ public class SafetensorsReference extends CollectionDataReference {
 		for (Map.Entry<String, JsonElement> entry : header.entrySet()) {
 			if ("__metadata__".equals(entry.getKey())) continue;
 
+			JsonObject tensorEntry;
+			try {
+				tensorEntry = entry.getValue().getAsJsonObject();
+			} catch (RuntimeException e) {
+				throw new IllegalArgumentException(entry.getKey() + " in " + file
+						+ " is not described by a JSON object", e);
+			}
+
 			SafetensorsReference tensor = locateTensor(file, entry.getKey(),
-					entry.getValue().getAsJsonObject(), dataStart, dataLength);
+					tensorEntry, dataStart, dataLength);
 			if (tensor != null) tensors.put(entry.getKey(), tensor);
 		}
 		return tensors;
+	}
+
+	/**
+	 * Returns a required header field, failing with a message that names the tensor and file when
+	 * the field is absent.
+	 *
+	 * @param file  the file, for error messages
+	 * @param name  the tensor's name, for error messages
+	 * @param field the name of the required field
+	 * @param entry the tensor's header entry
+	 * @return the field's value
+	 * @throws IllegalArgumentException if {@code entry} has no such field
+	 */
+	private static JsonElement require(File file, String name, String field, JsonObject entry) {
+		JsonElement value = entry.get(field);
+		if (value == null) {
+			throw new IllegalArgumentException(name + " in " + file + " has no " + field);
+		}
+		return value;
 	}
 
 	/**
@@ -186,11 +217,14 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param dataStart  byte position where the tensors' data begins
 	 * @param dataLength number of bytes from {@code dataStart} to the end of the file
 	 * @return the reference, or {@code null} if the tensor holds no values
+	 * @throws IllegalArgumentException if the entry is missing {@code dtype}, {@code shape} or
+	 *         {@code data_offsets}, names an unreadable element type, or gives a byte range that
+	 *         is not a {@code [begin, end]} pair within the file's tensor data for its shape
 	 */
 	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
 													 long dataStart, long dataLength) {
 		Encoding encoding;
-		String dtype = entry.get("dtype").getAsString();
+		String dtype = require(file, name, "dtype", entry).getAsString();
 		try {
 			encoding = Encoding.valueOf(dtype);
 		} catch (IllegalArgumentException e) {
@@ -198,7 +232,7 @@ public class SafetensorsReference extends CollectionDataReference {
 					+ "; only BF16, F16, F32 and F64 tensors can be read", e);
 		}
 
-		JsonArray dims = entry.getAsJsonArray("shape");
+		JsonArray dims = require(file, name, "shape", entry).getAsJsonArray();
 		boolean empty = false;
 		int[] shape = new int[Math.max(1, dims.size())];
 		shape[0] = 1;
@@ -210,7 +244,11 @@ public class SafetensorsReference extends CollectionDataReference {
 			if (shape[i] == 0) empty = true;
 		}
 
-		JsonArray offsets = entry.getAsJsonArray("data_offsets");
+		JsonArray offsets = require(file, name, "data_offsets", entry).getAsJsonArray();
+		if (offsets.size() != 2) {
+			throw new IllegalArgumentException(name + " in " + file + " has " + offsets.size()
+					+ " data offsets, but a tensor occupies a single [begin, end] byte range");
+		}
 		long begin = offsets.get(0).getAsLong();
 		long end = offsets.get(1).getAsLong();
 		if (begin < 0 || end < begin || end > dataLength) {
