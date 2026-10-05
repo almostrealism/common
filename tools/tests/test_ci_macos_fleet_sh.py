@@ -874,6 +874,26 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertLess(scan, run, "the Python tree must be screened before the monitor install runs")
 
 
+    def test_the_daemon_path_keeps_the_trusted_system_directories(self):
+        """runner.sh and cpu-watcher.sh resolve system commands (find, ps, awk,
+        renice, dirname, ...) on the daemon's RUNNER_PATH, not only the job tools
+        the preflight checks. A custom RUNNER_PATH that lists those tools but
+        omits the system directories would pass install and then fail to start
+        the runner (or start it with the CPU watcher silently dead), so install
+        appends any missing trusted system directory to RUNNER_PATH before it is
+        rendered into the daemon's plist."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn("for sysdir in /usr/bin /bin /usr/sbin /sbin", install,
+                      "install must iterate the trusted system directories")
+        self.assertIn('RUNNER_PATH="${RUNNER_PATH}:${sysdir}"', install,
+                      "a missing trusted system directory must be appended to RUNNER_PATH")
+        anchor = install.find("for sysdir in /usr/bin /bin /usr/sbin /sbin")
+        render = install.find("s|@RUNNER_PATH@|")
+        self.assertNotEqual(-1, render, "the plist render must fill @RUNNER_PATH@")
+        self.assertLess(anchor, render,
+                        "RUNNER_PATH must keep the system directories before it is rendered")
+
+
 class ShellSyntaxTests(unittest.TestCase):
     """`bash -n` catches a syntax error in any of the installer scripts without
     needing macOS; it runs anywhere and guards every future edit to them."""

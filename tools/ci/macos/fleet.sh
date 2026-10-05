@@ -350,26 +350,28 @@ untrusted_tool_dir() {
     [ -z "${out}" ] || echo "${out}"
 }
 
-# Echoes the first file or directory anywhere in the tree at DIR, links aside,
-# that an account other than root, OWNER or an administrator could change — one
-# untrusted_tool_dir would flag by its mode or owner, or one a write-granting
-# ACL entry exposes — and nothing when the whole tree is safe. This is
+# Echoes the first file or directory anywhere in the tree at DIR that an account
+# other than root, OWNER or an administrator could change — one
+# untrusted_tool_dir would flag by its mode or owner, one a write-granting ACL
+# entry exposes, or a symlink — and nothing when the whole tree is safe. This is
 # untrusted_tool_dir applied to every entry at once: the monitor install
 # imports and runs the Python under tools/fleet as the administrator, so a
 # single writable module anywhere in that tree is a code path that runs as
-# them. Links are skipped as the runner-tree scan skips them — their own mode
-# bits mean nothing, and a link can only be planted by whoever can write the
-# directory holding it, which the scan reaches on its own. A scan that cannot
-# run reports DIR rather than passing it, as acl_write_grant_tree does.
-# PRIV is as for untrusted_path.
+# them. A symlink is reported rather than skipped: Python import follows it and
+# runs whatever it resolves to, so a pre-existing admin-owned link whose target
+# a CI job can write would execute that job's code as the administrator even
+# though the link itself — and the directory holding it — is trusted. The real
+# tools/fleet holds no links, so rejecting any is fail-closed, not a hardship.
+# A scan that cannot run reports DIR rather than passing it, as
+# acl_write_grant_tree does. PRIV is as for untrusted_path.
 untrusted_tool_tree() {
     local owner="$1" dir="$2" priv="${3:-}" member out
     local -a owners=(! -user root ! -user "${owner}")
     for member in $(admin_members); do
         owners+=(! -user "${member}")
     done
-    out="$(${priv} find -H "${dir}" ! -type l \
-        \( -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
+    out="$(${priv} find -H "${dir}" \
+        \( -type l -o -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
            -o \( "${owners[@]}" \) \) -print -quit 2>/dev/null)" || out="${dir}"
     [ -n "${out}" ] || out="$(acl_write_grant_tree "${dir}" "" "${priv}")"
     [ -z "${out}" ] || echo "${out}"
@@ -682,6 +684,24 @@ cmd_install() {
     RUNNER_DIR="${ENV_RUNNER_DIR:-${RUNNER_HOME}/actions-runner${SUFFIX}}"
     ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}"
     RUNNER_PATH="${ENV_RUNNER_PATH:-${RUNNER_HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+    # The REQUIRED_TOOLS check above only proves java, mvn, curl, jq, git and
+    # lsof resolve on this PATH, but runner.sh and cpu-watcher.sh run it under
+    # the daemon's RUNNER_PATH and resolve the system commands they need by name
+    # too — dirname, hostname, find, ps, awk, sleep, renice, id, ls, sed and the
+    # rest. A custom RUNNER_PATH that lists the job tools but omits the system
+    # directories would pass install and then fail to start the runner, or start
+    # it with the CPU watcher silently dead and the limit unenforced. Keep the
+    # trusted system directories on the daemon PATH so those commands always
+    # resolve; they are appended, not prepended, so a custom entry still takes
+    # precedence for java and mvn, and only the ones not already present are
+    # added, so the default PATH (which lists them) renders unchanged.
+    local sysdir
+    for sysdir in /usr/bin /bin /usr/sbin /sbin; do
+        case ":${RUNNER_PATH}:" in
+            *":${sysdir}:"*) ;;
+            *) RUNNER_PATH="${RUNNER_PATH}:${sysdir}" ;;
+        esac
+    done
     LOG_FILE="${STAGE_DIR}/runner.log"
 
     echo "  Service:      ${LABEL}, runs as ${RUNNER_USER}"
@@ -1034,9 +1054,9 @@ EOF
         local monitor_py_bad
         monitor_py_bad="$(untrusted_tool_tree "${admin_user}" "${CHECKOUT}/tools/fleet")"
         if [ -n "${monitor_py_bad}" ]; then
-            echo "  ✗ ${monitor_py_bad}, under ${CHECKOUT}/tools/fleet, is writable by others or is owned by" >&2
-            echo "      neither you (${admin_user}) nor root; the monitor install imports and runs the Python" >&2
-            echo "      there as you. Keep the checkout under a path only you, root and the administrators can write." >&2
+            echo "  ✗ ${monitor_py_bad}, under ${CHECKOUT}/tools/fleet, is a symlink, is writable by others, or is" >&2
+            echo "      owned by neither you (${admin_user}) nor root; the monitor install imports and runs the" >&2
+            echo "      Python there as you. Keep the checkout under a path only you, root and the administrators can write." >&2
             errors=$((errors + 1))
         fi
         # install.sh keeps the monitor's database credential in FLEET_HOME and

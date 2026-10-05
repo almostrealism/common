@@ -573,6 +573,15 @@ class UntrustedToolTreeTests(unittest.TestCase):
         self.assertEqual("", self._scan(admin_group=self.group))
         self.assertEqual(self.module, self._scan(admin_group=self.other_group))
 
+    def test_a_symlinked_entry_is_reported(self):
+        """A symlink is rejected rather than skipped: Python import follows it
+        and runs whatever it resolves to, so a pre-existing admin-owned link
+        whose target a CI job can write would execute that job's code as the
+        administrator even though the link and its directory are trusted."""
+        link = os.path.join(self.root, "shortcut.py")
+        os.symlink("/tmp/anywhere.py", link)
+        self.assertEqual(link, self._scan())
+
     def test_a_scan_that_cannot_run_reports_the_tree(self):
         """A find that cannot run must read as untrusted, never pass."""
         self.assertEqual(self.root, self._scan(find_fails=True))
