@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.music.notes.SimplePatternNote;
@@ -416,6 +417,100 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			plm.destroy();
 			Assert.assertTrue("a repeated teardown is a no-op", renderer.gatherCacheSize() == 0);
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * Detaching the layer hierarchy with {@link PatternLayerManager#clear()} — the path a
+	 * {@link PatternLayerManager#refresh()} or {@link PatternLayerManager#setLayerCount}
+	 * takes — drops the {@link PatternElement} instances the renderer's memoized melodic
+	 * gathers are keyed by. Such a detach does not advance the global cache epoch, so those
+	 * gathers would otherwise never be hit again and would accumulate one native
+	 * offset-argument allocation per gathered note until an epoch advance or teardown.
+	 * {@code clear()} must release them.
+	 */
+	@Test(timeout = 120000)
+	public void clearReleasesMemoizedGatherOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+			PatternNote note = element.getNote(ChannelInfo.Voicing.MAIN);
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			List<RenderedNoteAudio> gathered = renderer.gatherMelodic(List.of(element), 0.0,
+					context(scale), audioContext(note));
+			Assert.assertTrue("the gather is memoized under a single key", renderer.gatherCacheSize() == 1);
+
+			List<PackedCollection> offsetArgs = gathered.stream()
+					.map(RenderedNoteAudio::getOffsetArg)
+					.toList();
+			offsetArgs.forEach(arg -> {
+				Assert.assertNotNull("each gathered note owns an offset argument", arg);
+				Assert.assertFalse("a live gathered note's offset argument is not destroyed",
+						arg.isDestroyed());
+			});
+
+			plm.clear();
+
+			Assert.assertTrue("clear() releases the renderer's gather cache",
+					renderer.gatherCacheSize() == 0);
+			offsetArgs.forEach(arg -> Assert.assertTrue(
+					"clear() destroys each memoized note's offset argument", arg.isDestroyed()));
+
+			plm.destroy();
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * {@link PatternLayerManager#setExplicitElements} replaces the layer hierarchy with
+	 * externally supplied content, dropping the previous {@link PatternElement} instances
+	 * without advancing the cache epoch. Like {@link PatternLayerManager#clear()} it must
+	 * release the renderer's memoized melodic gathers keyed by the discarded elements so a
+	 * one-shot render scene does not strand their offset arguments.
+	 */
+	@Test(timeout = 120000)
+	public void setExplicitElementsReleasesMemoizedGatherOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+			PatternNote note = element.getNote(ChannelInfo.Voicing.MAIN);
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			List<RenderedNoteAudio> gathered = renderer.gatherMelodic(List.of(element), 0.0,
+					context(scale), audioContext(note));
+			Assert.assertTrue("the gather is memoized under a single key", renderer.gatherCacheSize() == 1);
+
+			List<PackedCollection> offsetArgs = gathered.stream()
+					.map(RenderedNoteAudio::getOffsetArg)
+					.toList();
+
+			plm.setExplicitElements(new NoteAudioChoice("explicit"), List.of(element));
+
+			Assert.assertTrue("setExplicitElements releases the renderer's gather cache",
+					renderer.gatherCacheSize() == 0);
+			offsetArgs.forEach(arg -> Assert.assertTrue(
+					"setExplicitElements destroys each memoized note's offset argument",
+					arg.isDestroyed()));
+
+			plm.destroy();
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}

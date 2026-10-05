@@ -800,6 +800,29 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	public void clear() {
 		while (depth() > 0) removeLayer();
 		releaseAutomationParameterData();
+		releaseRenderCaches();
+	}
+
+	/**
+	 * Releases the render caches keyed by this manager's current {@link PatternElement}
+	 * instances, so detaching the layer hierarchy does not strand them.
+	 *
+	 * <p>Both the per-manager {@link #noteAudioCache} and the batched renderer's memoized
+	 * melodic gather cache are keyed by the pattern elements. A {@link #refresh()} or
+	 * {@link #setExplicitElements} replaces those elements without advancing the global
+	 * {@link #cacheEpoch}, so the entries from the previous hierarchy would otherwise never
+	 * be hit again and would accumulate (one native offset-argument allocation per gathered
+	 * note, plus a cached audio copy per note) until an epoch advance or teardown. Clearing
+	 * them here bounds the retention to the live hierarchy. Idempotent: a repeated call finds
+	 * empty caches, and the renderer may not have been materialised yet.</p>
+	 */
+	private void releaseRenderCaches() {
+		noteAudioCache.clear();
+
+		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+		if (renderer != null) {
+			renderer.clearGatherCache();
+		}
 	}
 
 	/**
@@ -821,6 +844,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 */
 	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
 		releaseAutomationParameterData();
+		releaseRenderCaches();
 		roots.clear();
 		layerParams.clear();
 		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));

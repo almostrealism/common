@@ -357,4 +357,27 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		buffer.reset();
 		Assert.assertEquals(0.0, peak(buffer.getOutputBuffer().toArray(0, BUFFER_SIZE), 0, BUFFER_SIZE), 0.0);
 	}
+
+	/**
+	 * Warming the note cache allocates a scratch destination per pattern to satisfy
+	 * {@link PatternLayerManager#updateDestination}; it exists only for the warm-up.
+	 * It must be released when the warm-up returns so repeated scene warm-ups do not
+	 * retain one native destination per pattern until garbage collection. The destination
+	 * remains tracked in the manager's destination map (replaced by the real destination on
+	 * the first render), so the test reads it back from there and asserts it is destroyed.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void warmNoteCacheReleasesScratchDestinations() {
+		PatternSystemManager psm = system();
+		psm.setVolume(0.5);
+
+		psm.warmNoteCache(channel -> context(null));
+
+		PatternLayerManager plm = psm.getPatterns().get(0);
+		List<PackedCollection> destinations = new ArrayList<>(plm.getDestination().values());
+		Assert.assertTrue("warm-up tracks exactly one scratch destination", destinations.size() == 1);
+		Assert.assertTrue("the warm-up scratch destination is released after warmNoteCache",
+				destinations.get(0).isDestroyed());
+	}
 }

@@ -545,7 +545,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * single-element offset-argument {@link PackedCollection} nothing else references, so
 	 * they are {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after
 	 * evaluation and the evaluation runs in a {@link Heap} stage, so repeated scene
-	 * warm-ups do not accumulate native allocations until garbage collection.</p>
+	 * warm-ups do not accumulate native allocations until garbage collection. The scratch
+	 * destination allocated for each pattern is likewise released in a {@code finally}; it
+	 * exists only to satisfy {@link PatternLayerManager#updateDestination} during warm-up
+	 * and is replaced by the real destination on the first render.</p>
 	 *
 	 * @param contextProvider a function that creates an {@link AudioSceneContext} for a channel
 	 * @return the number of notes successfully evaluated during warmup
@@ -563,47 +566,51 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 			ctx.setDestination(warmDest);
 			plm.updateDestination(ctx);
 
-			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
-					plm.getAllElementsByChoice(0.0, plm.getDuration());
+			try {
+				Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+						plm.getAllElementsByChoice(0.0, plm.getDuration());
 
-			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
-					elementsByChoice.entrySet()) {
-				NoteAudioChoice choice = entry.getKey();
-				List<PatternElement> elements = entry.getValue();
+				for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+						elementsByChoice.entrySet()) {
+					NoteAudioChoice choice = entry.getKey();
+					List<PatternElement> elements = entry.getValue();
 
-				NoteAudioContext audioContext =
-						new NoteAudioContext(
-								ChannelInfo.Voicing.MAIN,
-								ChannelInfo.StereoChannel.LEFT,
-								choice.getValidPatternNotes(),
-								pos -> pos + 1.0);
+					NoteAudioContext audioContext =
+							new NoteAudioContext(
+									ChannelInfo.Voicing.MAIN,
+									ChannelInfo.StereoChannel.LEFT,
+									choice.getValidPatternNotes(),
+									pos -> pos + 1.0);
 
-				for (PatternElement element : elements) {
-					List<RenderedNoteAudio> notes =
-							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
+					for (PatternElement element : elements) {
+						List<RenderedNoteAudio> notes =
+								element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
 
-					try {
-						for (RenderedNoteAudio note : notes) {
-							if (note.getExpectedFrameCount() <= 0) continue;
+						try {
+							for (RenderedNoteAudio note : notes) {
+								if (note.getExpectedFrameCount() <= 0) continue;
 
-							try {
-								boolean[] rendered = {false};
-								Heap.stage(() -> {
-									Producer<PackedCollection> producer =
-											note.getProducer(note.getExpectedFrameCount());
-									rendered[0] = traverse(1, producer).get().evaluate() != null;
-								});
-								if (rendered[0]) {
-									notesEvaluated++;
+								try {
+									boolean[] rendered = {false};
+									Heap.stage(() -> {
+										Producer<PackedCollection> producer =
+												note.getProducer(note.getExpectedFrameCount());
+										rendered[0] = traverse(1, producer).get().evaluate() != null;
+									});
+									if (rendered[0]) {
+										notesEvaluated++;
+									}
+								} catch (Exception e) {
+									// Skip notes that fail evaluation during warmup
 								}
-							} catch (Exception e) {
-								// Skip notes that fail evaluation during warmup
 							}
+						} finally {
+							notes.forEach(RenderedNoteAudio::destroy);
 						}
-					} finally {
-						notes.forEach(RenderedNoteAudio::destroy);
 					}
 				}
+			} finally {
+				warmDest.destroy();
 			}
 		}
 

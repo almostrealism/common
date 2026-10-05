@@ -723,8 +723,13 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * churn the retention the teardown path exists to prevent. The notes' batched
 	 * sources are stable raw sample references the notes do not own and are left
 	 * untouched (see {@link RenderedNoteAudio#destroy()}).</p>
+	 *
+	 * <p>Package-private so the owning {@link PatternLayerManager} can release the
+	 * memoized gathers when it detaches its layer hierarchy (a {@code refresh()} or
+	 * {@code setExplicitElements()}), which drops the {@link PatternElement} instances
+	 * these entries are keyed by without advancing the cache epoch.</p>
 	 */
-	private void clearGatherCache() {
+	void clearGatherCache() {
 		gatherCache.values().forEach(notes -> notes.forEach(RenderedNoteAudio::destroy));
 		gatherCache.clear();
 	}
