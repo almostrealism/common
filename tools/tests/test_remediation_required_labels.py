@@ -31,11 +31,13 @@ class RemediationRequiredLabelsTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
-    def _labels(self, failed_jobs, gh_fails=False):
+    def _labels(self, failed_jobs, gh_fails=False, github_output=None, drop=()):
         """Runs the script with ``gh`` reporting ``failed_jobs`` as failed.
 
         The stub prints the names as the real ``gh api --jq`` call would after
         its filter, so it exercises the script's own name matching.
+        ``github_output`` is a path exported as ``GITHUB_OUTPUT``; ``drop``
+        names required variables to leave unset.
         """
         gh = os.path.join(self.tmp, "gh")
         with open(gh, "w") as f:
@@ -55,6 +57,10 @@ class RemediationRequiredLabelsTests(unittest.TestCase):
             "RUN_ATTEMPT": "3",
         })
         env.pop("GITHUB_OUTPUT", None)
+        if github_output is not None:
+            env["GITHUB_OUTPUT"] = github_output
+        for name in drop:
+            env.pop(name, None)
         result = subprocess.run(["bash", _SCRIPT], env=env,
                                 capture_output=True, text=True)
         out = [line for line in result.stdout.splitlines()
@@ -83,6 +89,27 @@ class RemediationRequiredLabelsTests(unittest.TestCase):
         self.assertNotEqual(0, code)
         self.assertIsNone(labels)
 
+    def test_a_lane_merely_named_like_mac_is_not_a_metal_lane(self):
+        self.assertEqual((0, ""), self._labels(["test-machine", "mac-test"]))
+
+    def test_the_decision_is_written_to_github_output(self):
+        out = os.path.join(self.tmp, "output")
+        self.assertEqual((0, _MACOS),
+                         self._labels(["test-media-mac (1)"], github_output=out))
+        with open(out) as f:
+            self.assertEqual("required_labels=" + _MACOS + "\n", f.read())
+
+    def test_an_open_decision_is_written_to_github_output_as_empty(self):
+        out = os.path.join(self.tmp, "output")
+        self.assertEqual((0, ""), self._labels(["test"], github_output=out))
+        with open(out) as f:
+            self.assertEqual("required_labels=\n", f.read())
+
+    def test_a_missing_run_attempt_is_an_error(self):
+        code, labels = self._labels(["test-mac"], drop=("RUN_ATTEMPT",))
+        self.assertNotEqual(0, code)
+        self.assertIsNone(labels)
+
 
 class AutoResolveSubmitWiringTests(unittest.TestCase):
     """The decided labels must reach the submission."""
@@ -99,6 +126,14 @@ class AutoResolveSubmitWiringTests(unittest.TestCase):
         self.assertEqual(
             "${{ steps.%s.outputs.required_labels }}" % steps[decide]["id"],
             steps[submit]["env"]["REQUIRED_LABELS"])
+
+    def test_the_labels_are_chosen_only_when_a_request_was_staged(self):
+        """A run with nothing to submit must not fail on the jobs query."""
+        with open(_WORKFLOW) as f:
+            steps = yaml.safe_load(f)["jobs"]["submit"]["steps"]
+        decide = next(s for s in steps
+                      if "remediation-required-labels.sh" in s.get("run", ""))
+        self.assertIn("auto-resolve-request/submit.env", decide["if"])
 
 
 if __name__ == "__main__":

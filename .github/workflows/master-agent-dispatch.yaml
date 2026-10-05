@@ -1402,8 +1402,8 @@ jobs:
       # REQUIRED_LABELS repeats the workstream's labels as a job-level
       # override, so this first job is pinned even if the workstream
       # predates them; the controller matches it against the Node's
-      # auto-detected platform label. "effort": "max" is the Claude Code --effort level, the
-      # top of the runner's accepted range.
+      # auto-detected platform label. "effort": "max" is the Claude Code
+      # --effort level, the top of the runner's accepted range.
       - name: Submit performance agent job
         if: steps.decide.outputs.run == 'true'
         env:
