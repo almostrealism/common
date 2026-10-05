@@ -386,6 +386,108 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#runOrElse} abandons the wait for an accepted task when the caller
+	 * is interrupted, while {@link ConfinedExecutor#runOrElseUninterruptibly} keeps waiting until
+	 * the task has finished, through an interrupt pending on entry and another arriving during
+	 * the wait, and restores the caller's interrupt status afterwards.
+	 */
+	@Test(timeout = 10000)
+	public void runOrElseUninterruptiblyWaitsThroughInterrupts() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch taskStarted = new CountDownLatch(1);
+		CountDownLatch releaseTask = new CountDownLatch(1);
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+		try {
+			AtomicBoolean interruptibleReturned = new AtomicBoolean();
+			Thread interruptible = new Thread(() -> {
+				Thread.currentThread().interrupt();
+				executor.runOrElse(() -> {
+					awaitLatch(releaseTask);
+					events.add("interruptibleTask");
+				}, () -> events.add("refused"));
+				interruptibleReturned.set(events.isEmpty());
+			});
+			interruptible.start();
+			interruptible.join(5000);
+			assertFalse(interruptible.isAlive());
+			assertTrue("runOrElse must abandon the wait when interrupted", interruptibleReturned.get());
+
+			AtomicBoolean interruptedAfter = new AtomicBoolean();
+			Thread caller = new Thread(() -> {
+				Thread.currentThread().interrupt();
+				executor.runOrElseUninterruptibly(() -> {
+					taskStarted.countDown();
+					awaitLatch(releaseTask);
+					events.add("task");
+				}, () -> events.add("refused"));
+				events.add("returned");
+				interruptedAfter.set(Thread.currentThread().isInterrupted());
+			});
+			caller.start();
+
+			// The first task occupies the thread, so this one is still queued here
+			caller.join(200);
+			assertTrue("An interrupt pending on entry must not abandon the wait", caller.isAlive());
+			caller.interrupt();
+			caller.join(200);
+			assertTrue("An interrupt arriving during the wait must not abandon it", caller.isAlive());
+
+			releaseTask.countDown();
+			assertTrue(taskStarted.await(5, TimeUnit.SECONDS));
+			caller.join(5000);
+
+			assertFalse(caller.isAlive());
+			assertEquals(List.of("interruptibleTask", "task", "returned"), events);
+			assertTrue("The caller's interrupt status must be restored", interruptedAfter.get());
+		} finally {
+			releaseTask.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * A failure of the task waited for by {@link ConfinedExecutor#runOrElseUninterruptibly} is
+	 * rethrown to an interrupted caller rather than lost, the fallback does not run, and the
+	 * caller's interrupt status survives the failure.
+	 */
+	@Test(timeout = 10000)
+	public void runOrElseUninterruptiblyRethrowsTaskFailure() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+		AtomicBoolean interruptedAfter = new AtomicBoolean();
+
+		try {
+			Thread caller = new Thread(() -> {
+				Thread.currentThread().interrupt();
+
+				try {
+					executor.runOrElseUninterruptibly(() -> {
+						events.add("task");
+						throw new IllegalStateException("task failure");
+					}, () -> events.add("refused"));
+				} catch (RuntimeException e) {
+					failure.set(e);
+				}
+
+				interruptedAfter.set(Thread.currentThread().isInterrupted());
+			});
+			caller.start();
+			caller.join(5000);
+
+			assertFalse(caller.isAlive());
+			assertTrue("Expected IllegalStateException but got " + failure.get(),
+					failure.get() instanceof IllegalStateException);
+			assertEquals("task failure", failure.get().getMessage());
+			assertEquals(List.of("task"), events);
+			assertTrue("The caller's interrupt status must be restored", interruptedAfter.get());
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
 	 * Waits for a latch, failing the calling task if interrupted.
 	 *
 	 * @param latch the latch to wait for

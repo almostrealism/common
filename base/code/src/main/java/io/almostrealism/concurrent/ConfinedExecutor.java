@@ -101,7 +101,7 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 *                               never finish waiting for work queued behind itself
 	 */
 	public void run(Runnable task) {
-		await(submit(task));
+		await(submit(task), true);
 	}
 
 	/**
@@ -122,10 +122,39 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * @param refused the work to run on the calling thread if this executor refuses {@code task}
 	 */
 	public void runOrElse(Runnable task, Runnable refused) {
+		runOrElse(task, refused, true);
+	}
+
+	/**
+	 * Behaves as {@link #runOrElse(Runnable, Runnable)}, except that an interrupt never abandons
+	 * the wait for {@code task}: the caller always waits until the task has finished, and its
+	 * interrupt status, whether it was set before the call or arrived during it, is restored
+	 * afterwards.
+	 *
+	 * <p>This is for coordination whose next step depends on what the task did — reading state
+	 * the task recorded, or deciding from it whether the executor can be shut down — and which
+	 * would act on a stale view if an interrupt let it proceed before the task ran.</p>
+	 *
+	 * @param task    the work to run on the confined thread
+	 * @param refused the work to run on the calling thread if this executor refuses {@code task}
+	 */
+	public void runOrElseUninterruptibly(Runnable task, Runnable refused) {
+		runOrElse(task, refused, false);
+	}
+
+	/**
+	 * Runs {@code task} on the confined thread, or {@code refused} on the calling thread if this
+	 * executor is destroyed, as described by {@link #runOrElse(Runnable, Runnable)}.
+	 *
+	 * @param task          the work to run on the confined thread
+	 * @param refused       the work to run on the calling thread if this executor refuses {@code task}
+	 * @param interruptible whether an interrupt abandons the wait for an accepted {@code task}
+	 */
+	private void runOrElse(Runnable task, Runnable refused, boolean interruptible) {
 		Future<?> future = submitIfActive(task);
 
 		if (future != null) {
-			await(future);
+			await(future, interruptible);
 			return;
 		}
 
@@ -172,7 +201,7 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 			}
 		}
 
-		if (last != null) await(last);
+		if (last != null) await(last, true);
 	}
 
 	/**
@@ -261,19 +290,37 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	/**
 	 * Waits for a submitted task, rethrowing its failure.
 	 *
-	 * @param future the submitted task
+	 * <p>When {@code interruptible}, an interrupt abandons the wait with a warning, leaving the
+	 * caller's interrupt status set. Otherwise the wait continues until the task has finished,
+	 * and an interrupt received meanwhile is restored once it has.</p>
+	 *
+	 * @param future        the submitted task
+	 * @param interruptible whether an interrupt abandons the wait
 	 */
-	private void await(Future<?> future) {
+	private void await(Future<?> future, boolean interruptible) {
+		boolean interrupted = false;
+
 		try {
-			future.get();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			warn("Interrupted while awaiting a confined task; the work it performs may not have completed");
-		} catch (ExecutionException e) {
-			Throwable cause = e.getCause();
-			if (cause instanceof RuntimeException) throw (RuntimeException) cause;
-			if (cause instanceof Error) throw (Error) cause;
-			throw new RuntimeException(cause);
+			while (true) {
+				try {
+					future.get();
+					return;
+				} catch (InterruptedException e) {
+					interrupted = true;
+
+					if (interruptible) {
+						warn("Interrupted while awaiting a confined task; the work it performs may not have completed");
+						return;
+					}
+				} catch (ExecutionException e) {
+					Throwable cause = e.getCause();
+					if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+					if (cause instanceof Error) throw (Error) cause;
+					throw new RuntimeException(cause);
+				}
+			}
+		} finally {
+			if (interrupted) Thread.currentThread().interrupt();
 		}
 	}
 }

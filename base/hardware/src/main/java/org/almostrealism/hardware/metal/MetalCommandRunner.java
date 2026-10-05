@@ -626,11 +626,14 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * the remaining buffers or the shared event, and the thread is shut down whether or not that
 	 * task succeeds.</p>
 	 *
-	 * <p>The wait for the GPU is not abandoned when the caller is interrupted, unlike
-	 * {@link #complete}: abandoning it would leave the final task to wait on the executor's
-	 * thread, which is exactly the stall described above. An interrupt pending on entry is
-	 * cleared for the duration of destruction and restored afterwards. Destroying a runner that
-	 * is already destroyed does nothing.</p>
+	 * <p>Destruction is not abandoned when the caller is interrupted, unlike {@link #complete}:
+	 * neither the wait for the GPU nor any of the commit, drain and withdrawal tasks it
+	 * coordinates with the executor (see {@link ConfinedExecutor#runOrElseUninterruptibly}).
+	 * Proceeding before such a task had run would let a round see no committed buffer that is
+	 * really there, stop the executor, and leave the final task to wait on the executor's thread,
+	 * which is exactly the stall described above. An interrupt pending on entry, or arriving at
+	 * any point during destruction, is restored afterwards. Destroying a runner that is already
+	 * destroyed does nothing.</p>
 	 *
 	 * @throws IllegalStateException if called from a task running on the runner's own thread,
 	 *                               such as a completion callback
@@ -648,7 +651,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		try {
 			while (awaitLastCommittedOrDestroy(last)) {
 				Waiter pending = last.get();
-				executor.runOrElse(() -> drainThrough(pending, null), pending::withdraw);
+				executor.runOrElseUninterruptibly(() -> drainThrough(pending, null), pending::withdraw);
 			}
 		} finally {
 			try {
@@ -656,7 +659,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			} finally {
 				// The executor is gone by now, so this runs on the calling thread once every
 				// queued task has run, including a registration whose wait was abandoned
-				executor.runOrElse(withdrawal, withdrawal);
+				executor.runOrElseUninterruptibly(withdrawal, withdrawal);
 				if (interrupted) Thread.currentThread().interrupt();
 			}
 		}
@@ -680,7 +683,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	private boolean awaitLastCommittedOrDestroy(AtomicReference<Waiter> last) {
 		synchronized (admission) {
 			last.set(null);
-			executor.runOrElse(() -> {
+			executor.runOrElseUninterruptibly(() -> {
 				if (commitOpenOnExecutor()) destroyCommits++;
 				if (!committed.isEmpty()) {
 					last.set(new Waiter(committed.get(committed.size() - 1)));
@@ -703,6 +706,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * executor that is already destroyed does nothing.
 	 */
 	private void destroyExecutor() {
+		// TODO(review): executor.destroy awaits this final task interruptibly, so an interrupt restored during destroy() rounds abandons the wait and loses a final-drain failure
 		executor.destroy(() -> {
 			if (commitOpenOnExecutor()) destroyCommits++;
 

@@ -490,6 +490,85 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: an interrupt that reaches {@code destroy()} while it waits for a held buffer
+	 * off the runner's thread must not cut short the rounds that follow, so a bridged dispatch
+	 * submitted during that wait is still waited for off the runner's thread and its foreign
+	 * work can keep using the runner; the interrupt is restored when destruction returns.
+	 *
+	 * <p>Only an interrupt pending on entry used to be cleared. One arriving during the GPU wait
+	 * made the next round's commit task return before it ran, so the round saw no committed
+	 * buffer, stopped the executor, and left the final task waiting for the late bridged buffer
+	 * on the runner's only thread, where the foreign work's wait on the runner was refused.</p>
+	 */
+	@Test(timeout = 60000)
+	public void destroyInterruptedDuringWaitStillWaitsOffThread() throws InterruptedException {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandQueue queue = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner runner = new MetalCommandRunner(queue);
+		DefaultLatchSemaphore hold = new DefaultLatchSemaphore(
+				new OperationMetadata("holdingWork", "holds the first waited buffer on the GPU"), 1);
+		DefaultLatchSemaphore lateBridge = new DefaultLatchSemaphore(
+				new OperationMetadata("compositeWork", "waits for the runner's own dispatch"), 1);
+
+		try {
+			MetalSemaphore first = runner.submit(null, buffer -> { }, null, null);
+			AtomicBoolean ranHeld = new AtomicBoolean();
+			runner.submit(null, buffer -> { }, hold, () -> ranHeld.set(true));
+
+			AtomicBoolean interruptedAfter = new AtomicBoolean();
+			Thread destroyer = new Thread(() -> {
+				runner.destroy();
+				interruptedAfter.set(Thread.currentThread().isInterrupted());
+			});
+			destroyer.start();
+			Thread.sleep(200);
+			assertTrue("destroy() must wait for the held buffer", destroyer.isAlive());
+
+			AtomicBoolean ranLate = new AtomicBoolean();
+			MetalSemaphore late = runner.submit(null, buffer -> { }, lateBridge, () -> ranLate.set(true));
+			destroyer.interrupt();
+			hold.countDown();
+			Thread.sleep(200);
+			assertTrue("An interrupted destroy() must still wait for the buffer submitted during its wait",
+					destroyer.isAlive());
+
+			List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+			Thread foreignWork = new Thread(() -> {
+				try {
+					first.waitFor();
+					lateBridge.countDown();
+				} catch (Throwable t) {
+					failures.add(t);
+				}
+			});
+			foreignWork.start();
+			foreignWork.join(10000);
+			destroyer.join(10000);
+
+			assertFalse(destroyer.isAlive());
+			assertTrue("The foreign work must be able to wait on the runner during an interrupted "
+					+ "destroy(), but got " + failures, failures.isEmpty());
+			assertTrue("The held buffer's completion callbacks must run", ranHeld.get());
+			assertTrue("The late bridged buffer's completion callbacks must run", ranLate.get());
+			assertTrue("destroy() must restore an interrupt received during destruction", interruptedAfter.get());
+			assertEquals(0.0, (double) runner.getErrorCompletionCount());
+			assertEquals(0.0, (double) runner.getLateBridgeSignalCount());
+			assertTrue("The late bridged command buffer must be released by destroy()",
+					late.getCommandBuffer().isReleased());
+		} finally {
+			hold.countDown();
+			lateBridge.countDown();
+			runner.destroy();
+			queue.release();
+		}
+	}
+
+	/**
 	 * A completion callback running on the runner's own thread cannot submit work to the runner:
 	 * the submission is rejected with an {@link IllegalStateException} rather than waiting for a
 	 * task queued behind the callback, and the runner keeps working afterwards.
