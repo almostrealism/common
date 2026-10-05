@@ -74,22 +74,46 @@ public class RenderedNoteAudio implements Destroyable {
 	 * audio reads channel-specific sample data and a single cache serves both
 	 * channels of a {@link PatternLayerManager}.</p>
 	 *
-	 * <p>{@link #of} snapshots the supplied voicing details into a private copy, so
-	 * the identity never aliases a details instance the render path might later
-	 * mutate. Because the copy is unreachable outside the identity, the key's hash
-	 * is stable for the lifetime of a {@link NoteAudioCache} entry and a mutation of
-	 * the caller's details cannot strand the cached buffer under a changed hash.</p>
+	 * <p>The voicing details are snapshotted on the way in and on the way out, so the
+	 * identity never shares a details instance with code outside it: the canonical
+	 * constructor copies its argument into a private instance, and {@link #details()}
+	 * returns a fresh copy rather than that instance. Because the stored copy is
+	 * unreachable, the key's hash is stable for the lifetime of a
+	 * {@link NoteAudioCache} entry and a mutation of the caller's details (before or
+	 * after construction) cannot strand the cached buffer under a changed hash.</p>
 	 *
 	 * @param element       the pattern element the note was rendered from
-	 * @param details       the snapshotted voicing details of the note
+	 * @param details       the voicing details of the note (snapshotted on construction)
 	 * @param stereoChannel the stereo channel the note was rendered for
 	 */
 	public record Identity(PatternElement element, ElementVoicingDetails details,
 						   ChannelInfo.StereoChannel stereoChannel) {
 		/**
+		 * Canonical constructor that snapshots the voicing details (see the
+		 * record-level note) so the identity cannot alias a mutable details instance
+		 * supplied by the caller.
+		 */
+		public Identity {
+			details = new ElementVoicingDetails(details);
+		}
+
+		/**
+		 * Returns a snapshot of this identity's voicing details rather than the
+		 * stored instance, so a caller cannot mutate the key through the accessor.
+		 * The returned value is equal to the stored details, so cache equality and
+		 * hashing (which read the backing field directly) are unaffected.
+		 *
+		 * @return a fresh copy of the voicing details
+		 */
+		@Override
+		public ElementVoicingDetails details() {
+			return new ElementVoicingDetails(details);
+		}
+
+		/**
 		 * Creates the identity of the note rendered from the given element with the
 		 * given voicing details, on the stereo channel those details select. The
-		 * details are snapshotted (see the class-level note) so the identity is a
+		 * details are snapshotted by the canonical constructor so the identity is a
 		 * stable key regardless of later mutation of the caller's details.
 		 *
 		 * @param element the pattern element
@@ -97,8 +121,7 @@ public class RenderedNoteAudio implements Destroyable {
 		 * @return the note identity
 		 */
 		public static Identity of(PatternElement element, ElementVoicingDetails details) {
-			return new Identity(element, new ElementVoicingDetails(details),
-					details.getStereoChannel());
+			return new Identity(element, details, details.getStereoChannel());
 		}
 	}
 

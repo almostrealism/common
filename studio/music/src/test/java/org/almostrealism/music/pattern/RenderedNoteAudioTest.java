@@ -111,6 +111,41 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The identity is immutable as a cache key regardless of how it is built or read:
+	 * the canonical constructor snapshots the details it is handed directly, and the
+	 * {@code details()} accessor returns a fresh copy, so neither the caller's original
+	 * details nor the accessor's result can mutate the stored key's value or hash.
+	 */
+	@Test(timeout = 10000)
+	public void identitySnapshotsDetailsOnConstructionAndAccess() {
+		PatternElement element = new PatternElement();
+		ElementVoicingDetails details = new ElementVoicingDetails(ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT, false, null, 1.0, 2.0);
+
+		// The canonical constructor (not just the of() factory) snapshots the details.
+		RenderedNoteAudio.Identity identity = new RenderedNoteAudio.Identity(element, details,
+				ChannelInfo.StereoChannel.LEFT);
+		Assert.assertNotSame("the canonical constructor snapshots the details rather than aliasing them",
+				details, identity.details());
+
+		int before = identity.hashCode();
+		details.setPosition(99.0);
+		Assert.assertEquals("mutating the constructor argument does not change the key",
+				1.0, identity.details().getPosition(), 0.0);
+		Assert.assertEquals("the key keeps a stable hash after a mutation of the constructor argument",
+				before, identity.hashCode());
+
+		// The accessor returns a copy, so mutating it cannot corrupt the stored key.
+		ElementVoicingDetails exposed = identity.details();
+		exposed.setPosition(-5.0);
+		Assert.assertNotSame("each access returns a distinct snapshot", exposed, identity.details());
+		Assert.assertEquals("mutating the accessor result does not change the key",
+				1.0, identity.details().getPosition(), 0.0);
+		Assert.assertEquals("the key keeps a stable hash after a mutation of an accessor result",
+				before, identity.hashCode());
+	}
+
+	/**
 	 * A rendered note owns the single-element offset argument used to pass its start
 	 * frame to producers; teardown destroys it and clears the reference, and a
 	 * repeated teardown (or a note with no offset argument) is a harmless no-op.
