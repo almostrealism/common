@@ -235,13 +235,12 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		model.add(silu());
 
 		CompiledModel compiled = model.compile(false);
-		try {
-			PackedCollection handle = compiled.getOutput();
+		PackedCollection handle = compiled.getOutput();
+		try (PackedCollection input = new PackedCollection(shape(size))) {
 			assertNotNull("getOutput() before forward", handle);
 			assertEquals(size, handle.getShape().getTotalSize());
 			assertEquals(compiled.getOutputShape().getTotalSize(), handle.getShape().getTotalSize());
 
-			PackedCollection input = new PackedCollection(shape(size));
 			rand(input.getShape()).add(-0.5).multiply(4.0).into(input.traverseEach()).evaluate();
 
 			PackedCollection output = compiled.forward(input);
@@ -249,6 +248,9 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 			assertTrue("output handle stable across calls", compiled.getOutput() == handle);
 		} finally {
 			compiled.destroy();
+			if (handle != null) {
+				handle.destroy();
+			}
 		}
 	}
 
