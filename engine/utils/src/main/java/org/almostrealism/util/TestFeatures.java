@@ -22,6 +22,7 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
@@ -39,11 +40,14 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -406,6 +410,62 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 		if (nonFinite > 0.0) {
 			throw new AssertionError(msg + " (" + (int) nonFinite + " of " + len + ")");
+		}
+	}
+
+	/**
+	 * Returns the central finite difference of a scalar function with respect to every element
+	 * of {@code values}: element {@code i} of the result is
+	 * {@code (f(values + eps e_i) - f(values - eps e_i)) / (2 eps)}, where {@code e_i} is the
+	 * {@code i}-th basis vector in memory order.
+	 *
+	 * <p>Each perturbed copy is written on the device by an assignment from a snapshot of the
+	 * unperturbed values plus a one-hot step whose position is a device-side counter, so the
+	 * perturbation never computes a value on the host and every kernel is compiled once. The
+	 * original values are restored, and the snapshot and compiled perturbations released, before
+	 * returning, including when {@code f} throws or a perturbation fails to compile.</p>
+	 *
+	 * @param values the collection to perturb, which {@code f} must read
+	 * @param eps    the perturbation step
+	 * @param f      evaluates the function at the current contents of {@code values}
+	 * @return the numeric derivative with respect to each element, in memory order
+	 */
+	default double[] centralDifferences(PackedCollection values, double eps, DoubleSupplier f) {
+		int n = values.getMemLength();
+		TraversalPolicy flat = shape(n);
+		PackedCollection original = new PackedCollection(flat);
+		original.setFrom(0, values);
+		PackedCollection position = new PackedCollection(1);
+		position.clear();
+
+		List<Runnable> compiled = new ArrayList<>();
+
+		try {
+			CollectionProducer step = oneHot(n, cp(position)).multiply(eps);
+			Runnable plus = a(p(values.reshape(flat)), cp(original).add(step)).get();
+			compiled.add(plus);
+			Runnable minus = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
+			compiled.add(minus);
+			Runnable advance = a(p(position), cp(position).add(1.0)).get();
+			compiled.add(advance);
+
+			double[] result = new double[n];
+			for (int i = 0; i < n; i++) {
+				plus.run();
+				double up = f.getAsDouble();
+				minus.run();
+				double down = f.getAsDouble();
+				result[i] = (up - down) / (2 * eps);
+				advance.run();
+			}
+
+			return result;
+		} finally {
+			Destroyable.releaseAll(List.<Runnable>of(
+					() -> values.setFrom(0, original),
+					() -> Destroyable.destroy(compiled),
+					original::destroy,
+					position::destroy));
 		}
 	}
 

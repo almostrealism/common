@@ -67,4 +67,46 @@ public class BitsTest {
 	public void fullWidthFieldPreservesAllBits() {
 		Assert.assertEquals(-1, Bits.put(0, 32, -1));
 	}
+
+	/**
+	 * Values exactly representable in half precision round-trip through both conversions.
+	 * The comparison is on raw {@code float} bits so that {@code -0.0} is distinguished from
+	 * {@code 0.0}.
+	 */
+	@Test(timeout = 10000)
+	public void halfPrecisionRoundTripsExactValues() {
+		float[] exact = new float[] { 0.0f, -0.0f, 0.5f, -1.25f, 1.0f, 2.0f, 65504.0f, -65504.0f };
+		for (float value : exact) {
+			float decoded = Bits.float16ToFloat(Bits.floatToFloat16(value));
+			Assert.assertTrue(Float.floatToIntBits(value) == Float.floatToIntBits(decoded));
+		}
+	}
+
+	/** The smallest positive half subnormal decodes to {@code 2^-24} exactly. */
+	@Test(timeout = 10000)
+	public void halfPrecisionDecodesSmallestSubnormal() {
+		float smallest = Math.scalb(1.0f, -24);
+		float decoded = Bits.float16ToFloat((short) 0x0001);
+		Assert.assertTrue(Float.floatToIntBits(smallest) == Float.floatToIntBits(decoded));
+		Assert.assertEquals(0x0001, Bits.floatToFloat16(smallest) & 0xFFFF);
+	}
+
+	/** Infinities, zero and NaN are carried across the conversion. */
+	@Test(timeout = 10000)
+	public void halfPrecisionCarriesSpecialValues() {
+		Assert.assertEquals(0x7C00, Bits.floatToFloat16(Float.POSITIVE_INFINITY) & 0xFFFF);
+		Assert.assertEquals(0xFC00, Bits.floatToFloat16(Float.NEGATIVE_INFINITY) & 0xFFFF);
+		Assert.assertEquals(0x8000, Bits.floatToFloat16(-0.0f) & 0xFFFF);
+		Assert.assertTrue(Float.POSITIVE_INFINITY == Bits.float16ToFloat((short) 0x7C00));
+		Assert.assertTrue(Float.isNaN(Bits.float16ToFloat((short) 0x7E00)));
+		Assert.assertTrue(Float.isNaN(Bits.float16ToFloat(Bits.floatToFloat16(Float.NaN))));
+	}
+
+	/** A value beyond the half-precision range saturates to a signed infinity. */
+	@Test(timeout = 10000)
+	public void halfPrecisionOverflowsToInfinity() {
+		float beyond = Math.scalb(1.0f, 20);
+		Assert.assertEquals(0x7C00, Bits.floatToFloat16(beyond) & 0xFFFF);
+		Assert.assertEquals(0xFC00, Bits.floatToFloat16(-beyond) & 0xFFFF);
+	}
 }

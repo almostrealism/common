@@ -95,7 +95,7 @@ services:
               count: all
               capabilities: [gpu]
         limits:
-          memory: ${RUNNER_MEMORY_LIMIT:-48g}
+          memory: ${RUNNER_MEMORY_LIMIT:-32g}
           cpus: "${RUNNER_CPU_LIMIT:-12}"
     logging:
       driver: json-file
