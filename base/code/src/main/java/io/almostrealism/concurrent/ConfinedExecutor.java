@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -45,8 +46,12 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	/** How every task is run on the confined thread. */
 	private final Consumer<Runnable> taskScope;
 
-	/** The single thread all work is confined to, or {@code null} once destroyed. */
-	private ExecutorService executor;
+	/**
+	 * The single thread all work is confined to, or {@code null} once destroyed. Volatile so a
+	 * caller on any thread that is refused work after {@link #destroy(Runnable)} also observes
+	 * {@link #isActive()} as false.
+	 */
+	private volatile ExecutorService executor;
 
 	/**
 	 * Creates an executor that runs each task as is.
@@ -74,6 +79,8 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 *
 	 * @param task the work to run
 	 * @throws IllegalStateException if this executor has been destroyed
+	 * @throws java.util.concurrent.RejectedExecutionException if it is destroyed while the task
+	 *         is being submitted
 	 */
 	public void run(Runnable task) {
 		ExecutorService current = executor;
@@ -82,6 +89,34 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 		}
 
 		await(current.submit(() -> taskScope.accept(task)));
+	}
+
+	/**
+	 * Runs a task on the confined thread and waits for it to finish, or, if this executor is
+	 * destroyed before the task can start, runs {@code refused} on the calling thread instead,
+	 * inside the same task scope.
+	 *
+	 * <p>This is for cleanup a caller owes the confined state whether or not the executor
+	 * still exists — for example withdrawing a registration that the executor's final task has
+	 * already finished with. Once {@link #destroy(Runnable)} has run its final task nothing
+	 * else runs on the confined thread, so {@code refused} cannot race confined work. A failure
+	 * of {@code task} itself is rethrown as by {@link #run(Runnable)}.</p>
+	 *
+	 * @param task    the work to run on the confined thread
+	 * @param refused the work to run on the calling thread if this executor refuses {@code task}
+	 */
+	public void runOrElse(Runnable task, Runnable refused) {
+		AtomicBoolean started = new AtomicBoolean();
+
+		try {
+			run(() -> {
+				started.set(true);
+				task.run();
+			});
+		} catch (RuntimeException e) {
+			if (started.get() || isActive()) throw e;
+			taskScope.accept(refused);
+		}
 	}
 
 	/**
@@ -109,8 +144,8 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 				await(current.submit(() -> taskScope.accept(finalTask)));
 			}
 		} finally {
-			current.shutdown();
 			executor = null;
+			current.shutdown();
 		}
 	}
 

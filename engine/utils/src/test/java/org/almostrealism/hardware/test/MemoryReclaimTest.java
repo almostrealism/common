@@ -23,10 +23,12 @@ import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
+import org.jocl.cl_mem;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -41,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -133,6 +136,55 @@ public class MemoryReclaimTest extends TestSuiteBase {
 	public void oversizedClAllocationRejectedWithoutReclaim() {
 		CLMemoryProvider provider = clProvider();
 		assertOversizedRejected(provider::allocate, provider::getAllocatedMemory);
+	}
+
+	/**
+	 * A Metal allocation whose native buffer is created just before the provider is destroyed
+	 * is refused at registration, and that refusal releases the native buffer and returns its
+	 * reservation, so neither the buffer nor its bytes stay charged against the ceiling.
+	 */
+	@Test(timeout = 60000)
+	public void destroyDuringMetalAllocationReleasesBuffer() {
+		MetalDataContext context = dataContext(ComputeRequirement.MTL, MetalDataContext.class);
+		Assume.assumeTrue("requires the Metal backend", context != null);
+
+		AtomicReference<MTLBuffer> created = new AtomicReference<>();
+		MetalMemoryProvider provider = new MetalMemoryProvider(context, 4, CEILING) {
+			@Override
+			protected MTLBuffer buffer(int len) {
+				MTLBuffer buffer = super.buffer(len);
+				created.set(buffer);
+				destroy();
+				return buffer;
+			}
+		};
+
+		assertDestroyDuringAllocationRefused(provider::allocate, provider::getAllocatedMemory);
+		Assert.assertNotNull(created.get());
+		Assert.assertTrue("the unregistered Metal buffer must be released", created.get().isReleased());
+	}
+
+	/**
+	 * An OpenCL allocation whose native buffer is created just before the provider is destroyed
+	 * is refused at registration, and that refusal releases the {@code cl_mem} and returns its
+	 * reservation (the reservation is returned only after the release succeeds).
+	 */
+	@Test(timeout = 60000)
+	public void destroyDuringClAllocationReleasesBuffer() {
+		CLDataContext context = dataContext(ComputeRequirement.CL, CLDataContext.class);
+		Assume.assumeTrue("requires the OpenCL backend", context != null);
+
+		CLMemoryProvider provider = new CLMemoryProvider(context, null, 4, CEILING,
+				CLMemoryProvider.Location.DEVICE) {
+			@Override
+			protected cl_mem buffer(int len) {
+				cl_mem mem = super.buffer(len);
+				destroy();
+				return mem;
+			}
+		};
+
+		assertDestroyDuringAllocationRefused(provider::allocate, provider::getAllocatedMemory);
 	}
 
 	/**
@@ -253,6 +305,25 @@ public class MemoryReclaimTest extends TestSuiteBase {
 		Assert.assertEquals(0, used.get());
 		Assert.assertEquals(Long.valueOf(CEILING), provider.allocate(used, CEILING, () -> CEILING));
 		Assert.assertEquals(CEILING, used.get());
+	}
+
+	/**
+	 * Allocates one block from a provider that is destroyed between creating the native buffer
+	 * and registering it, and checks that the allocation is refused and its bytes are no longer
+	 * charged.
+	 *
+	 * @param allocate  allocates a block of the given number of elements
+	 * @param allocated the provider's current usage in bytes
+	 */
+	private void assertDestroyDuringAllocationRefused(IntFunction<?> allocate, LongSupplier allocated) {
+		try {
+			allocate.apply(BLOCK_ELEMENTS);
+			Assert.fail("an allocation registered after destroy() was accepted");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("destroyed"));
+		}
+
+		Assert.assertEquals(0, allocated.getAsLong());
 	}
 
 	/**

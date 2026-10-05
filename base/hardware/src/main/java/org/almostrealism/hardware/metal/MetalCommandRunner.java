@@ -27,6 +27,7 @@ import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -317,28 +318,36 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * waiter registration may still be queued at that point, so its withdrawal is queued behind
 	 * it rather than skipped, and the buffer is released once some later wait drains it.</p>
 	 *
+	 * <p>{@link #destroy()} may run while a caller is still waiting here. Its final task drains
+	 * every committed buffer, including the one being waited for, but leaves it retained for the
+	 * waiter; the executor is then gone, so the waiter withdraws itself on its own thread (see
+	 * {@link ConfinedExecutor#runOrElse}) and the buffer is released there. The caller returns
+	 * normally.</p>
+	 *
 	 * @param commandBuffer the dispatch's command buffer
 	 * @param requester     metadata of the operation waiting for completion, or {@code null}
 	 */
 	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
-		AtomicReference<CommittedBuffer> registered = new AtomicReference<>();
+		AtomicReference<Waiter> registered = new AtomicReference<>();
 		executor.run(() -> registered.set(commitForWait(commandBuffer, requester)));
 
 		if (Thread.currentThread().isInterrupted()) {
-			executor.run(() -> {
-				CommittedBuffer abandoned = registered.get();
-				if (abandoned != null) abandoned.removeWaiter();
-			});
+			// TODO(review): if destroy() finishes before this withdrawal is submitted, the fallback may read registered before the still-queued commitForWait sets it, leaking that waiter
+			Runnable withdrawal = () -> {
+				Waiter abandoned = registered.get();
+				if (abandoned != null) abandoned.withdraw();
+			};
+			executor.runOrElse(withdrawal, withdrawal);
 			return;
 		}
 
-		CommittedBuffer pending = registered.get();
+		Waiter pending = registered.get();
 		if (pending == null) return;
 
 		try {
-			pending.buffer.waitUntilCompleted();
+			pending.getBuffer().waitUntilCompleted();
 		} finally {
-			executor.run(() -> drainThrough(pending, requester));
+			executor.runOrElse(() -> drainThrough(pending, requester), pending::withdraw);
 		}
 	}
 
@@ -491,10 +500,10 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 *
 	 * @param target    the buffer to wait for
 	 * @param requester metadata of the operation waiting for completion, or {@code null}
-	 * @return the committed record of the target, or {@code null} if it has already completed
+	 * @return the waiter registered on the target, or {@code null} if it has already completed
 	 *         and been drained by an earlier wait
 	 */
-	private CommittedBuffer commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
+	private Waiter commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
 		if (target == openBuffer && commitOpenOnExecutor()) {
 			hostCompleteCommits++;
 			hostCompleteRequesters.addEntry(
@@ -503,8 +512,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 		for (CommittedBuffer c : committed) {
 			if (c.buffer == target) {
-				c.waiters++;
-				return c;
+				return new Waiter(c);
 			}
 		}
 
@@ -512,7 +520,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	}
 
 	/**
-	 * Drains every committed buffer up to and including {@code waited}, which has completed,
+	 * Drains every committed buffer up to and including {@code waiter}'s, which has completed,
 	 * running their callbacks in order, and then withdraws the waiter registered by
 	 * {@link #commitForWait}. Must run on the executor thread.
 	 *
@@ -523,16 +531,16 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * one buffer) does not skip the callbacks and buffer release of the later ones; the first
 	 * failure is rethrown once all have drained, with any later ones attached as suppressed.</p>
 	 *
-	 * @param waited    the committed buffer the caller has finished waiting for
+	 * @param waiter    the waiter whose buffer the caller has finished waiting for
 	 * @param requester metadata of the operation that waited, or {@code null}
 	 */
-	private void drainThrough(CommittedBuffer waited, OperationMetadata requester) {
-		int count = committed.indexOf(waited) + 1;
+	private void drainThrough(Waiter waiter, OperationMetadata requester) {
+		int count = committed.indexOf(waiter.committed) + 1;
 		List<Runnable> drains = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			drains.add(() -> drainOldestCommitted(requester));
 		}
-		Destroyable.releaseAll(drains, waited::removeWaiter);
+		Destroyable.releaseAll(drains, waiter::withdraw);
 	}
 
 	/**
@@ -581,7 +589,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * task succeeds, so a failed drain can never leave the thread alive.</p>
 	 */
 	public void destroy() {
-		// TODO(review): a complete() still waiting off-thread when this runs keeps waiters > 0, and its drainThrough then fails on the destroyed executor, so that buffer is never released
 		executor.destroy(() -> {
 			if (commitOpenOnExecutor()) destroyCommits++;
 
@@ -602,7 +609,9 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 *
 	 * <p>Threads waiting for the buffer off the executor thread (see {@link #complete}) are
 	 * counted, and the native buffer is released only once it has been drained and no such
-	 * thread is still waiting on it. All state is executor-thread only.</p>
+	 * thread is still waiting on it. The list and callbacks are executor-thread only; the
+	 * waiter count and drained flag are guarded by this record's monitor, because a waiter
+	 * outliving a destroyed executor withdraws on its own thread.</p>
 	 */
 	private static final class CommittedBuffer {
 		/** The committed command buffer. */
@@ -626,13 +635,18 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		}
 
 		/** Records that the buffer has been drained, releasing it unless a thread still waits on it. */
-		private void drained() {
+		private synchronized void drained() {
 			drained = true;
 			releaseIfUnused();
 		}
 
+		/** Registers one waiter, keeping the buffer retained until it is withdrawn. */
+		private synchronized void addWaiter() {
+			waiters++;
+		}
+
 		/** Withdraws one waiter, releasing the buffer if it was the last and the buffer is drained. */
-		private void removeWaiter() {
+		private synchronized void removeWaiter() {
 			waiters--;
 			releaseIfUnused();
 		}
@@ -640,6 +654,42 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		/** Releases the native buffer once it is drained and no thread waits on it. */
 		private void releaseIfUnused() {
 			if (drained && waiters == 0) buffer.release();
+		}
+	}
+
+	/**
+	 * One thread's registration as a waiter on a {@link CommittedBuffer}, withdrawn exactly once.
+	 *
+	 * <p>Withdrawal can be requested from more than one path — the drain after the wait, the
+	 * queued withdrawal of an interrupted caller, or the calling thread itself once the executor
+	 * has been destroyed — so it is guarded to take effect only the first time.</p>
+	 */
+	private static final class Waiter {
+		/** The committed buffer this waiter is registered on. */
+		private final CommittedBuffer committed;
+		/** Whether this registration has already been withdrawn. */
+		private final AtomicBoolean withdrawn = new AtomicBoolean();
+
+		/**
+		 * Registers a waiter on the given committed buffer.
+		 *
+		 * @param committed the committed buffer to wait on
+		 */
+		private Waiter(CommittedBuffer committed) {
+			this.committed = committed;
+			committed.addWaiter();
+		}
+
+		/**
+		 * Returns the command buffer being waited on.
+		 *
+		 * @return the committed command buffer
+		 */
+		private MTLCommandBuffer getBuffer() { return committed.buffer; }
+
+		/** Withdraws this registration, unless it has already been withdrawn. */
+		private void withdraw() {
+			if (withdrawn.compareAndSet(false, true)) committed.removeWaiter();
 		}
 	}
 }

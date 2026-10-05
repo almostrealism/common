@@ -33,11 +33,15 @@ import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MTLCommandQueue;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
+import org.almostrealism.hardware.metal.MetalSemaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -211,6 +215,78 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 				(double) errors, (double) runner.getErrorCompletionCount());
 		assertEquals("The bridge must be signaled before its buffer completes",
 				(double) lateSignals, (double) runner.getLateBridgeSignalCount());
+	}
+
+	/**
+	 * Regression: destroying a runner while threads are still waiting for one of its command
+	 * buffers off the runner's thread must neither fail those waits nor leak the buffer.
+	 *
+	 * <p>The waited buffer is held on the GPU by a foreign bridge until {@code destroy()} is
+	 * already in progress, so destruction drains it while every waiter is still registered.
+	 * A waiter that woke after the runner's executor had shut down could not withdraw its
+	 * registration: its wait failed with "The executor has been destroyed" and the native
+	 * command buffer was never released. Several waiters are used so that some of them wake
+	 * after the executor has gone.</p>
+	 */
+	@Test(timeout = 60000)
+	public void destroyWhileWaitingReleasesBuffer() throws InterruptedException {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandQueue queue = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner runner = new MetalCommandRunner(queue);
+		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore(
+				new OperationMetadata("foreignWork", "holds the waited buffer on the GPU"), 1);
+
+		try {
+			AtomicBoolean ran = new AtomicBoolean();
+			MetalSemaphore dispatch = runner.submit(null, buffer -> { }, foreign, () -> ran.set(true));
+
+			int waiterCount = 8;
+			List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+			List<Thread> waiters = new ArrayList<>();
+			for (int i = 0; i < waiterCount; i++) {
+				Thread waiter = new Thread(() -> {
+					try {
+						dispatch.waitFor();
+					} catch (Throwable t) {
+						failures.add(t);
+					}
+				});
+				waiters.add(waiter);
+				waiter.start();
+			}
+
+			// Every waiter registers on the runner's thread before the bridge can be signaled
+			Thread.sleep(500);
+			assertEquals(1.0, (double) runner.getHostCompleteCommitCount());
+
+			Thread destroyer = new Thread(runner::destroy);
+			destroyer.start();
+			Thread.sleep(200);
+			assertTrue("destroy() must wait for the bridged buffer", destroyer.isAlive());
+
+			foreign.countDown();
+			destroyer.join(10000);
+			for (Thread waiter : waiters) {
+				waiter.join(10000);
+			}
+
+			assertFalse(destroyer.isAlive());
+			assertTrue("Waiters must return normally when the runner is destroyed, but got " + failures,
+					failures.isEmpty());
+			assertTrue("The buffer's completion callbacks must run", ran.get());
+			assertEquals(0.0, (double) runner.getErrorCompletionCount());
+			assertTrue("The command buffer must be released once every waiter has withdrawn",
+					dispatch.getCommandBuffer().isReleased());
+		} finally {
+			foreign.countDown();
+			runner.destroy();
+			queue.release();
+		}
 	}
 
 	/**
