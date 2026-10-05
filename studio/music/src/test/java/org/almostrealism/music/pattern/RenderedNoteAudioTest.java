@@ -167,4 +167,31 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		noArg.destroy();
 		Assert.assertNull("a note with no offset argument tears down without fault", noArg.getOffsetArg());
 	}
+
+	/**
+	 * Because a rendered note owns its offset argument, replacing it with a different
+	 * instance releases the previous allocation rather than stranding it, while setting
+	 * the same instance again is a no-op that leaves it live.
+	 */
+	@Test(timeout = 10000)
+	public void setOffsetArgReleasesReplacedAllocation() {
+		RenderedNoteAudio note = new RenderedNoteAudio(0, 0);
+		PackedCollection first = new PackedCollection(1);
+		PackedCollection second = new PackedCollection(1);
+
+		note.setOffsetArg(first);
+		Assert.assertSame(first, note.getOffsetArg());
+
+		note.setOffsetArg(first);
+		Assert.assertFalse("setting the same instance does not release it", first.isDestroyed());
+		Assert.assertSame(first, note.getOffsetArg());
+
+		note.setOffsetArg(second);
+		Assert.assertTrue("replacing a different instance releases the previous one", first.isDestroyed());
+		Assert.assertFalse("the replacement stays live", second.isDestroyed());
+		Assert.assertSame(second, note.getOffsetArg());
+
+		note.destroy();
+		Assert.assertTrue("teardown releases the current offset argument", second.isDestroyed());
+	}
 }

@@ -217,8 +217,17 @@ public class RenderedNoteAudio implements Destroyable {
 	 * Sets the note-owned PackedCollection used to pass the start frame offset to
 	 * producers. The note takes ownership of its native memory and releases it in
 	 * {@link #destroy()}.
+	 *
+	 * <p>Because the note owns the allocation, replacing an existing offset argument
+	 * with a different instance releases the previous one: it was the note's to free,
+	 * and overwriting the only reference to it would otherwise strand it until GC.
+	 * Setting the same instance again, or clearing it with {@code null}, leaves the
+	 * current allocation untouched.</p>
 	 */
 	public void setOffsetArg(PackedCollection offsetArg) {
+		if (this.offsetArg != null && this.offsetArg != offsetArg) {
+			this.offsetArg.destroy();
+		}
 		this.offsetArg = offsetArg;
 	}
 

@@ -130,7 +130,9 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		plm.updateDestination(context);
 		plm.sum(() -> context, CHANNEL.getVoicing(), CHANNEL.getAudioChannel(),
 				() -> 0, TOTAL_FRAMES).get().run();
-		return destination.toArray(0, TOTAL_FRAMES);
+		double[] rendered = destination.toArray(0, TOTAL_FRAMES);
+		destination.destroy();
+		return rendered;
 	}
 
 	/**
