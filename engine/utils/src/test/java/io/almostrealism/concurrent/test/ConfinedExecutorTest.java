@@ -240,6 +240,94 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A task on the confined thread that destroys the executor with a final task is refused
+	 * instead of deadlocking: the final task would queue behind the calling task, which would
+	 * then wait for it forever. The refusal happens before any state changes, so the executor
+	 * remains active and a later destruction from another thread still runs its final task.
+	 */
+	@Test(timeout = 10000)
+	public void destroyWithFinalTaskFromConfinedThreadIsRejected() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+
+		try {
+			executor.run(() -> {
+				try {
+					executor.destroy(() -> events.add("rejectedFinal"));
+				} catch (RuntimeException e) {
+					failure.set(e);
+				}
+			});
+
+			assertTrue("Expected IllegalStateException but got " + failure.get(),
+					failure.get() instanceof IllegalStateException);
+			assertTrue(executor.isActive());
+			assertEquals(List.of(), events);
+
+			executor.run(() -> events.add("stillAccepted"));
+		} finally {
+			executor.destroy(() -> events.add("final"));
+		}
+
+		assertFalse(executor.isActive());
+		assertEquals(List.of("stillAccepted", "final"), events);
+	}
+
+	/**
+	 * A task on the confined thread that runs further work on the same executor is refused
+	 * instead of deadlocking, and the nested work never runs.
+	 */
+	@Test(timeout = 10000)
+	public void runFromConfinedThreadIsRejected() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+
+		try {
+			executor.run(() -> {
+				try {
+					executor.runOrElse(() -> events.add("nested"), () -> events.add("refused"));
+				} catch (RuntimeException e) {
+					failure.set(e);
+				}
+			});
+
+			assertTrue("Expected IllegalStateException but got " + failure.get(),
+					failure.get() instanceof IllegalStateException);
+			assertEquals(List.of(), events);
+			assertTrue(executor.isActive());
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * Destroying without a final task waits for nothing, so it is allowed from the confined
+	 * thread: the executor stops accepting work and the calling task completes normally.
+	 */
+	@Test(timeout = 10000)
+	public void destroyWithoutFinalTaskFromConfinedThreadSucceeds() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		AtomicBoolean completed = new AtomicBoolean();
+
+		executor.run(() -> {
+			executor.destroy();
+			completed.set(true);
+		});
+
+		assertTrue(completed.get());
+		assertFalse(executor.isActive());
+
+		try {
+			executor.run(() -> { });
+			Assert.fail("A destroyed executor must refuse work");
+		} catch (IllegalStateException expected) {
+			assertFalse(executor.isActive());
+		}
+	}
+
+	/**
 	 * Waits for a latch, failing the calling task if interrupted.
 	 *
 	 * @param latch the latch to wait for

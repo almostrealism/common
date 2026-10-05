@@ -97,7 +97,9 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * so the abandonment is logged rather than silently swallowed.</p>
 	 *
 	 * @param task the work to run
-	 * @throws IllegalStateException if this executor has been destroyed
+	 * @throws IllegalStateException if this executor has been destroyed, or if called from a
+	 *                               task already running on the confined thread, which could
+	 *                               never finish waiting for work queued behind itself
 	 */
 	public void run(Runnable task) {
 		await(submit(task));
@@ -150,13 +152,21 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * is rethrown afterwards. Destroying an executor that has already been destroyed does
 	 * nothing.</p>
 	 *
+	 * <p>A final task cannot be run by a call made from the confined thread itself: the final
+	 * task would be queued behind the task making the call, which would then wait for it
+	 * forever. Such a call is rejected before anything changes, so the executor stays active.
+	 * Destroying without a final task waits for nothing and is allowed from any thread.</p>
+	 *
 	 * @param finalTask the last work to run on the confined thread, or {@code null} for none
+	 * @throws IllegalStateException if {@code finalTask} is given and this is called from the
+	 *                               confined thread while the executor is still active
 	 */
 	public void destroy(Runnable finalTask) {
 		Future<?> last;
 
 		synchronized (submission) {
 			if (destroyed) return;
+			if (finalTask != null) requireOffConfinedThread();
 			destroyed = true;
 
 			try {
@@ -182,7 +192,8 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 *
 	 * @param task the work to queue
 	 * @return the queued task
-	 * @throws IllegalStateException if this executor has been destroyed
+	 * @throws IllegalStateException if this executor has been destroyed, or if called from the
+	 *                               confined thread
 	 */
 	private Future<?> submit(Runnable task) {
 		synchronized (submission) {
@@ -190,7 +201,22 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 				throw new IllegalStateException("The executor has been destroyed");
 			}
 
+			requireOffConfinedThread();
 			return executor.submit(() -> taskScope.accept(task));
+		}
+	}
+
+	/**
+	 * Rejects a call that would wait on the confined thread for work queued behind the task
+	 * that is making the call. The single confined thread can never run that work, so the wait
+	 * would never end.
+	 *
+	 * @throws IllegalStateException if called from the confined thread
+	 */
+	private void requireOffConfinedThread() {
+		if (Thread.currentThread() == confinedThread) {
+			throw new IllegalStateException(
+					"A task on the confined thread cannot wait for work queued behind itself");
 		}
 	}
 

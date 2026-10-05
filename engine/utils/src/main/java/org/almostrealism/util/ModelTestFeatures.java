@@ -103,10 +103,12 @@ public interface ModelTestFeatures extends TestFeatures {
 
 	/**
 	 * Returns a {@link ParameterUpdate} that leaves every weight unchanged and instead records
-	 * the gradient it receives. On each backward pass, the gradient for a weight is copied into a
-	 * collection of that weight's shape; one such collection is appended to {@code recorded} for
-	 * every weight the update is applied to, in the order the model wires its layers. This makes
-	 * the analytic gradient of a model available for comparison against finite differences.
+	 * the gradient it receives. When the model wires each weight's update, one collection of that
+	 * weight's shape is appended to {@code recorded}, in the order the model wires its layers.
+	 * Each backward pass then copies the weight's gradient into that same collection, overwriting
+	 * what the previous pass recorded, so the list always holds the gradients of the most recent
+	 * pass rather than a history. This makes the analytic gradient of a model available for
+	 * comparison against finite differences.
 	 *
 	 * @param recorded the list receiving one gradient collection per weight
 	 * @return a parameter update that records gradients rather than applying them

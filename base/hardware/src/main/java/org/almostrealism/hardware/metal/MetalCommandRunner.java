@@ -583,23 +583,68 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	/**
 	 * Destroys this command runner and releases all resources.
 	 *
-	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, and releases
-	 * the timeline event, as the confined executor's final task. The per-buffer drains and the
-	 * event release are run through {@link Destroyable#releaseAll} so a drain that throws cannot
-	 * leak the remaining buffers or the shared event; the first failure is rethrown with any later
-	 * ones attached as suppressed. The executor shuts its thread down whether or not that final
-	 * task succeeds, so a failed drain can never leave the thread alive.</p>
+	 * <p>Destruction is separated the same way {@link #complete} is: the open buffer is committed
+	 * on the executor's thread, the wait for the GPU happens on the calling thread, and only the
+	 * drain of already-completed buffers runs on the executor's thread. A committed buffer can be
+	 * held on the GPU by a host-signaled bridge whose foreign work itself needs this runner — to
+	 * wait for one of its earlier dispatches, as a composite completion does. Waiting for that
+	 * buffer on the executor's single thread, or after the executor has stopped accepting work,
+	 * would leave the foreign work unable to finish, so the bridge would never be signaled and
+	 * the buffer would stall until the GPU watchdog killed it. The executor therefore keeps
+	 * accepting work until the last buffer committed here has completed.</p>
+	 *
+	 * <p>The confined executor's final task then commits anything submitted meanwhile, drains
+	 * every committed buffer running its callbacks, and releases the timeline event. The
+	 * per-buffer drains and the event release are run through {@link Destroyable#releaseAll} so a
+	 * drain that throws cannot leak the remaining buffers or the shared event; the first failure
+	 * is rethrown with any later ones attached as suppressed. The executor shuts its thread down
+	 * whether or not that final task succeeds, so a failed drain can never leave the thread
+	 * alive.</p>
+	 *
+	 * <p>An interrupted caller skips the off-thread wait, as {@link #complete} does, and leaves
+	 * the final task to wait for the GPU. Destroying a runner that is already destroyed does
+	 * nothing.</p>
+	 *
+	 * @throws IllegalStateException if called from a task running on the runner's own thread,
+	 *                               such as a completion callback
 	 */
 	public void destroy() {
-		executor.destroy(() -> {
-			if (commitOpenOnExecutor()) destroyCommits++;
+		AtomicReference<Waiter> last = new AtomicReference<>();
+		Runnable withdrawal = () -> {
+			Waiter registered = last.get();
+			if (registered != null) registered.withdraw();
+		};
 
-			List<Runnable> drains = new ArrayList<>(committed.size());
-			for (int i = committed.size(); i > 0; i--) {
-				drains.add(() -> drainOldestCommitted(null));
+		try {
+			executor.runOrElse(() -> {
+				if (commitOpenOnExecutor()) destroyCommits++;
+				if (!committed.isEmpty()) {
+					last.set(new Waiter(committed.get(committed.size() - 1)));
+				}
+			}, () -> { });
+
+			Waiter pending = last.get();
+			if (pending != null && !Thread.currentThread().isInterrupted()) {
+				pending.getBuffer().waitUntilCompleted();
 			}
-			Destroyable.releaseAll(drains, event::release);
-		});
+		} finally {
+			try {
+				executor.destroy(() -> {
+					if (commitOpenOnExecutor()) destroyCommits++;
+
+					List<Runnable> drains = new ArrayList<>(committed.size());
+					for (int i = committed.size(); i > 0; i--) {
+						drains.add(() -> drainOldestCommitted(null));
+					}
+					Destroyable.releaseAll(drains, event::release);
+				});
+			} finally {
+				// The executor is gone by now, so this runs on the calling thread once every
+				// queued task has run, including the registration above even if this caller
+				// was interrupted before it ran
+				executor.runOrElse(withdrawal, withdrawal);
+			}
+		}
 	}
 
 	/** Returns the console for logging. */

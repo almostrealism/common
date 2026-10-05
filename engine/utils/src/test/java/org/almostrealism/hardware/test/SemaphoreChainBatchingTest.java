@@ -290,6 +290,69 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: destroying a runner whose last buffer is held on the GPU by a bridge must let
+	 * the bridge's foreign work keep using the runner, so the bridge is signaled and destruction
+	 * finishes without a watchdog kill.
+	 *
+	 * <p>The foreign work waits for one of the runner's own earlier dispatches, as a composite
+	 * completion does, and only reaches the runner after {@code destroy()} has begun. When
+	 * destruction marked the executor inactive and then waited for the bridged buffer on the
+	 * executor's only thread, that wait was refused, the foreign work never completed, the bridge
+	 * was never signaled, and the buffer stalled until the GPU watchdog killed it.</p>
+	 */
+	@Test(timeout = 60000)
+	public void destroyLetsBridgedForeignWorkUseRunner() throws InterruptedException {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandQueue queue = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner runner = new MetalCommandRunner(queue);
+		DefaultLatchSemaphore bridge = new DefaultLatchSemaphore(
+				new OperationMetadata("compositeWork", "waits for the runner's own dispatch"), 1);
+
+		try {
+			MetalSemaphore first = runner.submit(null, buffer -> { }, null, null);
+			AtomicBoolean ran = new AtomicBoolean();
+			MetalSemaphore bridged = runner.submit(null, buffer -> { }, bridge, () -> ran.set(true));
+			assertEquals(1.0, (double) runner.getBridgeCommitCount());
+
+			Thread destroyer = new Thread(runner::destroy);
+			destroyer.start();
+			Thread.sleep(200);
+			assertTrue("destroy() must wait for the bridged buffer", destroyer.isAlive());
+
+			List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+			Thread foreignWork = new Thread(() -> {
+				try {
+					first.waitFor();
+					bridge.countDown();
+				} catch (Throwable t) {
+					failures.add(t);
+				}
+			});
+			foreignWork.start();
+			foreignWork.join(10000);
+			destroyer.join(10000);
+
+			assertFalse(destroyer.isAlive());
+			assertTrue("The foreign work must be able to wait on the runner during destroy(), but got "
+					+ failures, failures.isEmpty());
+			assertTrue("The bridged buffer's completion callbacks must run", ran.get());
+			assertEquals(0.0, (double) runner.getErrorCompletionCount());
+			assertEquals(0.0, (double) runner.getLateBridgeSignalCount());
+			assertTrue("The bridged command buffer must be released by destroy()",
+					bridged.getCommandBuffer().isReleased());
+		} finally {
+			bridge.countDown();
+			runner.destroy();
+			queue.release();
+		}
+	}
+
+	/**
 	 * Verifies commit-cause attribution: a host wait that forces a commit increments
 	 * {@link MetalCommandRunner#getHostCompleteCommitCount()} and records the requesting
 	 * operation in {@link MetalCommandRunner#hostCompleteRequesters}, while a repeated wait
