@@ -686,10 +686,12 @@ accum {
 ```
 
 Each `accum` adds its stage's output to the residual stream, implementing the standard
-pre-norm transformer pattern `x = x + sublayer(norm(x))`. The `transformer()` methods of
-`AttentionFeatures` only bind the arguments (`attentionArguments` allocates the key and
-value caches) and build one of those layers from the three assets parsed into one program
-(`PdslLoader.parseResources`); the model classes loop over their layers in Java.
+pre-norm transformer pattern `x = x + sublayer(norm(x))`. `transformer.pdsl` declares its
+dependency on `attention.pdsl` and `feed_forward.pdsl` with `import` statements, so the
+`transformer()` methods of `AttentionFeatures` only bind the arguments (`attentionArguments`
+allocates the key and value caches) and build one of those layers from the single asset
+(`PdslLoader.parseResource`), whose imports pull the other two into the same program; the
+model classes loop over their layers in Java.
 
 ---
 
@@ -832,7 +834,11 @@ Unlike autoregressive attention which processes one token at a time with KV cach
 `ProjectionFactory` and a selectable query/key `NormalizationType`):
 
 - Processes all positions simultaneously with fused QKV projection
-- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
+- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed); like the
+  autoregressive block, its structure lives in a PDSL asset
+  (`engine/ml/src/main/resources/pdsl/sdpa.pdsl`), and `scaledDotProductAttention` is a thin
+  loader that binds the key and value tensors and chains the asset's `sdpa_scores`/`sdpa_context`
+  layers
 - Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
   single-position `ropeRotation`
 - No KV cache — the full K and V tensors are computed and stored for each forward pass
