@@ -113,9 +113,21 @@ public class SafetensorsReference extends CollectionDataReference {
 
 	/**
 	 * The longest header that can be read: the header is decoded from a single array, which
-	 * cannot be longer than this.
+	 * cannot be longer than this. This is the format's technical ceiling, not a limit a genuine
+	 * checkpoint approaches; {@link #MAX_SAFE_HEADER_LENGTH} is the much smaller length this reader
+	 * is willing to allocate for an untrusted file.
 	 */
 	public static final long MAX_HEADER_LENGTH = Integer.MAX_VALUE - 8;
+
+	/**
+	 * The largest header this reader will allocate a buffer for. The declared header length is read
+	 * from the file before any of the header is parsed, so an untrusted file can name a length of
+	 * nearly {@link #MAX_HEADER_LENGTH} and, if the file is long enough (a sparse file costs almost
+	 * no disk), force a multi-gigabyte allocation that exhausts the heap before a single byte is
+	 * validated. A header is a small JSON object naming each tensor; no genuine checkpoint comes
+	 * near this cap, which matches the reference safetensors implementation's 100&nbsp;MB limit.
+	 */
+	public static final long MAX_SAFE_HEADER_LENGTH = 100_000_000L;
 
 	/** How this tensor's values are stored. */
 	private final Encoding encoding;
@@ -152,7 +164,8 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @return the tensors by name, in the order the header lists them
 	 * @throws IOException if the file cannot be read
 	 * @throws IllegalArgumentException if the file is too short to hold a header, the header is
-	 *         longer than {@link #MAX_HEADER_LENGTH}, the header is malformed, names an element type other
+	 *         longer than {@link #MAX_HEADER_LENGTH} or than the {@link #MAX_SAFE_HEADER_LENGTH}
+	 *         this reader will allocate, the header is malformed, names an element type other
 	 *         than BF16, F16, F32 or F64, gives a tensor a byte range that is reversed, lies
 	 *         outside the file's tensor data, or does not match its shape, or the tensors' byte
 	 *         ranges do not tile the tensor data exactly (see {@link #requireTiled})
@@ -179,6 +192,10 @@ public class SafetensorsReference extends CollectionDataReference {
 			} else if (headerLength > MAX_HEADER_LENGTH) {
 				throw new IllegalArgumentException(file + " has a header of " + headerLength
 						+ " bytes, but a header can be at most " + MAX_HEADER_LENGTH + " bytes");
+			} else if (headerLength > MAX_SAFE_HEADER_LENGTH) {
+				throw new IllegalArgumentException(file + " has a header of " + headerLength
+						+ " bytes, which exceeds the " + MAX_SAFE_HEADER_LENGTH
+						+ "-byte limit this reader will allocate for a checkpoint header");
 			}
 
 			byte[] headerBytes = new byte[(int) headerLength];

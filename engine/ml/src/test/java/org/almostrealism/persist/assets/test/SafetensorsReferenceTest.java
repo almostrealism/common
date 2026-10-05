@@ -240,6 +240,36 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A header that fits in the file and is within {@link SafetensorsReference#MAX_HEADER_LENGTH},
+	 * but exceeds the smaller {@link SafetensorsReference#MAX_SAFE_HEADER_LENGTH} this reader will
+	 * allocate, is rejected before the buffer is allocated. The file is sparse, so it occupies
+	 * almost no disk space despite declaring a header larger than the heap could hold.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsHeaderBeyondSafetyCap() throws IOException {
+		long headerLength = SafetensorsReference.MAX_SAFE_HEADER_LENGTH + 1;
+		Assert.assertTrue(headerLength <= SafetensorsReference.MAX_HEADER_LENGTH);
+		Path file = Files.createTempFile("unsafe", ".safetensors");
+
+		try {
+			try (RandomAccessFile out = new RandomAccessFile(file.toFile(), "rw")) {
+				out.write(ByteBuffer.allocate(Long.BYTES).order(ByteOrder.LITTLE_ENDIAN)
+						.putLong(headerLength).array());
+				out.setLength(Long.BYTES + headerLength);
+			}
+
+			SafetensorsReference.locate(file.toFile());
+			Assert.fail("A header of " + headerLength + " bytes should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("header of " + headerLength + " bytes"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(
+					SafetensorsReference.MAX_SAFE_HEADER_LENGTH + "-byte limit"));
+		} finally {
+			Files.delete(file);
+		}
+	}
+
 	/** A tensor with an axis of length zero holds no values and is left out; the others are kept. */
 	@Test(timeout = 60000)
 	public void omitsEmptyTensor() throws IOException {
