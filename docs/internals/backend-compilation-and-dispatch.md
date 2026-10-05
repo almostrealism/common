@@ -493,7 +493,9 @@ backend must initialize; the wildcard additions are best-effort.
 export AR_HARDWARE_COMPILER_LOGGING=true
 ```
 
-Enables verbose logging of the C/OpenCL/Metal/CUDA (NVRTC) compilation process.
+Enables verbose logging of the C/OpenCL/Metal compilation process. (The CUDA/NVRTC
+path does not read this variable; its generated kernel source is logged under
+`AR_HARDWARE_KERNEL_LOG` instead.)
 
 ### Compilation Timing
 
