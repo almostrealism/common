@@ -1,0 +1,6 @@
+# Workstream settings for branch project/plan-20261005-185050.
+# The self-hosted LM training run and its measured bits/byte curve are validated on
+# Apple-silicon Metal (FP32, AR_HARDWARE_MEMORY_SCALE=6, ~34 min, under the 40-min test cap).
+# Reproducing and improving those numbers, and measuring generation, require that backend.
+requiredLabels:
+  platform: macos
