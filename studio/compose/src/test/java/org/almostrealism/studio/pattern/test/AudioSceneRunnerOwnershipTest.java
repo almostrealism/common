@@ -139,6 +139,38 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * {@link AudioScene#renderChannel} builds a real-time runner internally; it must destroy
+	 * that runner when the render finishes rather than leave it in the scene's live-runner
+	 * tracker. Two successive renders on the same long-lived scene must therefore each leave
+	 * the live runner count at zero. Before the fix the method only {@code reset()} the
+	 * runner, so every render accumulated a runner (and its ring, model, and argument
+	 * buffers) until the whole scene was destroyed.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void renderChannelReleasesRunnerEachCall() {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = false;
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			applyGenome(scene, 1);
+			assertEquals(0, scene.getLiveRunnerCount());
+
+			scene.renderChannel(0, BUFFER_SIZE, "results/render-channel-ownership.wav");
+			assertEquals("renderChannel must destroy the runner it builds",
+					0, scene.getLiveRunnerCount());
+
+			scene.renderChannel(0, BUFFER_SIZE, "results/render-channel-ownership.wav");
+			assertEquals("a second renderChannel must not accumulate a runner",
+					0, scene.getLiveRunnerCount());
+		} finally {
+			scene.destroy();
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
 	 * {@link AudioScene#destroyActiveCells} must release a cell list only when it is the
 	 * scene's current active list. A list the scene does not currently track — one a later
 	 * {@link AudioScene#getCells} already replaced, or a CellList runner's cells after the

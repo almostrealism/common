@@ -1279,6 +1279,18 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
+	 * Returns the number of real-time runners built by {@link #runnerRealTime} that the
+	 * caller has not yet destroyed. Each such runner is held until it is explicitly
+	 * destroyed or this scene is destroyed, so a caller that renders repeatedly must
+	 * destroy each runner to keep this from growing (see {@link #renderChannel}).
+	 *
+	 * @return the live runner count
+	 */
+	public int getLiveRunnerCount() {
+		return realtimeRunners.getLiveRunnerCount();
+	}
+
+	/**
 	 * Renders the scene's <em>current</em> pattern content for a single channel
 	 * to a wav file, without assigning or deriving a genome.
 	 *
@@ -1289,6 +1301,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * {@link org.almostrealism.music.pattern.PatternLayerManager#setExplicitElements}.
 	 * It builds a real-time runner for the one channel, ticks it for {@code frames}
 	 * frames, and flushes the output file.</p>
+	 *
+	 * <p>The runner built here is owned by this method, not by the caller: when the render
+	 * finishes it destroys the runner (which stops its producer thread and frees its ring,
+	 * model, and argument buffers), the compiled setup/tick/write operations, and the
+	 * {@link WaveOutput}, aggregated through {@link Destroyable#releaseAll(Iterable)} so one
+	 * failing release cannot leak the rest. Without this, repeated renders on a long-lived
+	 * scene would accumulate a runner each in {@link #runnerRealTime}'s live-runner tracker
+	 * until the whole scene is destroyed.</p>
 	 *
 	 * @param channel    the channel index to render
 	 * @param frames     the number of audio frames to render
@@ -1304,15 +1324,21 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		Runnable setup = cells.setup().get();
 		Runnable tick = cells.tick().get();
+		Runnable write = out.write().get();
 		try {
 			setup.run();
 			for (int b = 0; b < bufferCount; b++) {
 				tick.run();
 			}
-			out.write().get().run();
+			write.run();
 		} finally {
-			out.reset();
-			cells.reset();
+			// Compiled ops read the runner and output buffers, so they are released first.
+			Destroyable.releaseAll(List.of(
+					() -> Destroyable.destroy(setup),
+					() -> Destroyable.destroy(tick),
+					() -> Destroyable.destroy(write),
+					() -> Destroyable.destroy(cells),
+					out::destroy));
 		}
 		return outputPath;
 	}
