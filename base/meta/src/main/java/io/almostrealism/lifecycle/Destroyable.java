@@ -167,6 +167,26 @@ public interface Destroyable extends AutoCloseable {
 	}
 
 	/**
+	 * Runs a one-shot operation and then destroys it if it is {@link Destroyable}, whether or
+	 * not running it succeeds.
+	 *
+	 * <p>Failures are aggregated as by {@link #releaseAll(Iterable)}: if both running and
+	 * destroying fail, the run failure is rethrown with the destroy failure attached as
+	 * suppressed, so the reason the operation failed is never replaced by a cleanup failure.</p>
+	 *
+	 * <p>A compiled operation that is run exactly once — initializing a weight, for example —
+	 * otherwise keeps its argument and native resources until it is garbage collected:</p>
+	 * <pre>{@code
+	 * Destroyable.runOnce(a(cp(weight.each()), values.each()).get());
+	 * }</pre>
+	 *
+	 * @param operation the operation to run and then destroy
+	 */
+	static void runOnce(Runnable operation) {
+		releaseAll(List.of(operation), () -> destroy(operation));
+	}
+
+	/**
 	 * Destroys all {@link Destroyable} elements in the given iterable.
 	 *
 	 * @param targets the iterable of objects to destroy

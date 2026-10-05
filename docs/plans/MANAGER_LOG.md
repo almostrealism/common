@@ -28,6 +28,88 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs
+
+**Category:** Proof of Value
+**Branch:** `project/plan-20260930-180401`
+**Plan:** [`PLAN-20260930-self-hosted-tiny-lm.md`](PLAN-20260930-self-hosted-tiny-lm.md)
+
+#### What changed since last cycle
+
+The fine-tuning re-baseline landed (PR #582) and changed the picture more than expected.
+`FINE_TUNE_FAIL.md` no longer says "infeasible". The cold first training step of a 1–3-block LoRA
+`DiffusionTransformer` is now 13.6–20.8 s across embed 8 → 256 (February: 8 to over 44 min). It
+does not grow with embed, and each block adds about 1 s. The February `delta()` scope-error blocker
+no longer reproduces. Getting there also fixed two outright training failures (a
+`DiffusionTrainingDataset` shape check and an instruction-cache collision at embed ≥ 64) and one
+dominant analysis cost (`ExpressionMatrix.uniqueNonZeroOffset`).
+
+#### Category assessment (priority order)
+
+- **Documentation.** Still excellent. The one catalogued gap (the ONNX-pressure note) is a
+  low-priority research item. Moved on.
+- **Code quality.** Strong, and owned daily by the QA pipeline. The `io.almostrealism.collect`
+  split remains minor. One thing did show up: `AttentionFeatures.java` is 1826 lines, above the
+  1500-line recommendation. The plan requires that the new work not grow it and invites moving the
+  sequence-attention family into its own mixin. That fixes the problem where the change is made,
+  without spending a cycle on it.
+- **Performance.** The re-baseline names one evidenced lever: 13 small reductions compiled as
+  native kernels at about 250 ms each, roughly 3 s of a 7.9 s cold backward. It is real but it is a
+  one-time cost of seconds per JVM, and it no longer stands between the platform and any workload.
+  Whether it matters for a real training run is best learned by *running* one. So I deferred it
+  to follow the proof-of-value run rather than lead it.
+- **Proof of value.** This is where the cycle goes. It is the step the log has promised since March
+  ("if the verdict flips toward feasible, scope the minimal end-to-end self-hosted training run"),
+  and the verdict has flipped.
+
+#### What the survey found
+
+Performance no longer blocks a self-hosted LM; missing capability does. The platform has never
+trained a transformer language model from scratch, and the pieces next-token training needs are
+missing or unverified. Full-sequence attention (`sequenceAttention` /
+`scaledDotProductAttention`) has **no causal mask**; `causalMask` is the single-position KV-cache
+variant. `sequenceAttention` routes K and V through fixed buffers read back as constants, so
+**gradients may reach only the Q slice** of the QKV weight, and nothing has tested this per slice.
+There is **no trainable embedding layer** (`rows()` gradients are untested; Qwen3 looks embeddings
+up on the host). There is **no byte tokenizer**: the text tokenizers need an external model
+vocabulary (SentencePiece, Qwen3 BPE, or arrays passed to `BPE`), and the fixed-mapping MIDI
+tokenizers do not handle text. There is also **no text dataset**. Cross-entropy (`logSoftmax` +
+`NegativeLogLikelihood`) is **not quite ready** for a `(seqLen, vocab)` output:
+`NegativeLogLikelihood.loss` averages over rows but its `gradient` is the unnormalized `-target`,
+so backpropagation would follow the summed loss (64× the reported loss's gradient at context 64).
+Existing users train single-row outputs, where this does not show; the plan adds the `1 / rows`
+normalization and a multi-row gradient test as a prerequisite of the training run.
+`StateDictionary` checkpointing is ready.
+
+#### Why this task
+
+It turns "training is feasible" into "the platform trained a language model on itself," which is
+the first concrete artifact of the self-understanding goal. It puts the risky gradient checks
+(K/V slices, embedding table) first, so the plan either proceeds or pauses early at a precise,
+evidenced finding that goes back for a revised plan. The primitives it adds (causal sequence
+attention, trainable embedding, byte tokenizer, text dataset) are general, and every later
+LM-training step reuses them. The bar is modest and falsifiable: held-out bits-per-byte below the
+unigram baseline, weights round-tripped through `StateDictionary`.
+
+#### Balance across categories
+
+Three of the last four cycles went to documentation and performance measurement. That was the
+right foundation, but proof of value has been deferred since March. This cycle spends the
+compile-time win on the platform's actual reason for existing. The foundation categories stay
+covered by the continuous QA pipeline.
+
+#### What comes next
+
+1. This plan executes, gradient checks first. If K/V gradients need core autodiff work near
+   `feature/lora-gradients`, the recommended path is to split that fix into its own plan.
+2. **Sampling:** wrap the trained weights in `AutoregressiveModel` and generate text, the first
+   time the platform "speaks" about itself.
+3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context and depth, and whichever
+   per-step cost the training-run profile names. The small-reduction native-compile lever is the
+   standing candidate.
+4. Still open: the ONNX-pressure documentation note; the `io.almostrealism.collect` package split;
+   a feasibility threshold for production-scale fine-tuning.
+
 ### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling
 
 **Category:** Performance

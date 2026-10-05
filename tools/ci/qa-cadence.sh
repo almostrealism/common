@@ -46,8 +46,10 @@
 #   MIN_INTERVAL_DAYS   - minimum days between runs (default: 7)
 #   PR_GRACE_HOURS      - hours a branch without any PR still counts as
 #                         an open round (default: 0, condition 2 off)
-#   IGNORE_INTERVAL     - "true" bypasses condition 3 only; an open or
-#                         in-progress round still holds the job off
+#   IGNORE_INTERVAL     - "true" bypasses condition 3 only; conditions 1
+#                         and 2 still apply, so a round still in progress
+#                         (open PR, or a branch within PR_GRACE_HOURS that
+#                         has not opened one yet) still holds the job off
 #   FORCE               - "true" bypasses every condition
 #   GITHUB_REPOSITORY   - owner/repo, for the open-PR query
 #   GITHUB_TOKEN        - token for the open-PR query
@@ -218,7 +220,10 @@ fi
 # IGNORE_INTERVAL lifts only this condition. It is the narrower override a
 # manual dispatch reaches for when a round is wanted sooner than the
 # schedule allows: unlike FORCE, it never stacks a round on top of one that
-# is still open.
+# is still open. This check comes after conditions 1 and 2, so an open PR
+# or an in-progress round (within PR_GRACE_HOURS, no PR yet) has already
+# returned run=false before it is reached — which is also what keeps the
+# archive step that follows run=true from retiring a live round.
 
 if [ "${IGNORE_INTERVAL:-false}" = "true" ]; then
     echo "::notice::Interval override — skipping the ${MIN_INTERVAL_DAYS}-day minimum interval"
