@@ -68,12 +68,42 @@ public class AddressReuseDuringReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A handle to a released block stays released once its address has been handed to a new
+	 * block, and releasing it again does not free the new block that now occupies the address.
+	 */
+	@Test(timeout = 30000)
+	public void staleHandleDoesNotResolveToReusedBlock() {
+		ReusingProvider provider = new ReusingProvider();
+		FakeRam released = new FakeRam(provider);
+		provider.register(released);
+
+		provider.deallocate((int) SIZE, released);
+		Assert.assertNotNull("the release should have reused the address for a new block",
+				provider.reused);
+		Assert.assertEquals(1, provider.releases);
+
+		Assert.assertTrue("the released block must not appear live because its address was reused",
+				provider.isReleased(released));
+
+		provider.deallocate((int) SIZE, released);
+		Assert.assertEquals("releasing the stale handle must not free the block at the reused address",
+				1, provider.releases);
+		Assert.assertNotNull("the block at the reused address must still be tracked",
+				provider.trackedRef(provider.reused));
+		Assert.assertFalse("the block at the reused address must not be reported as released",
+				provider.isReleased(provider.reused));
+	}
+
+	/**
 	 * A provider whose native release simulates the allocator handing the freed address
 	 * straight to a new allocation, before the release has removed the old entry.
 	 */
 	private static class ReusingProvider extends HardwareMemoryProvider<RAM> {
 		/** The block registered at the freed address during the release, once it has been. */
 		private FakeRam reused;
+
+		/** How many blocks the native release has freed. */
+		private int releases;
 
 		/**
 		 * Registers a block as allocated.
@@ -97,6 +127,8 @@ public class AddressReuseDuringReleaseTest extends TestSuiteBase {
 
 		@Override
 		protected void deallocate(NativeRef<RAM> ref) {
+			releases++;
+
 			if (reused == null) {
 				reused = new FakeRam(this);
 				register(reused);
