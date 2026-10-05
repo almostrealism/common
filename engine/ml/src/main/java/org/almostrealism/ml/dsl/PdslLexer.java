@@ -45,6 +45,8 @@ public class PdslLexer {
 		KEYWORDS.put("else", PdslToken.Type.ELSE);
 		KEYWORDS.put("for", PdslToken.Type.FOR);
 		KEYWORDS.put("in", PdslToken.Type.IN);
+		KEYWORDS.put("stack", PdslToken.Type.STACK);
+		KEYWORDS.put("as", PdslToken.Type.AS);
 		KEYWORDS.put("branch", PdslToken.Type.BRANCH);
 		KEYWORDS.put("accum", PdslToken.Type.ACCUM);
 		KEYWORDS.put("product", PdslToken.Type.PRODUCT);
@@ -59,6 +61,16 @@ public class PdslLexer {
 		KEYWORDS.put("true", PdslToken.Type.TRUE);
 		KEYWORDS.put("false", PdslToken.Type.FALSE);
 		KEYWORDS.put("null", PdslToken.Type.NULL_LITERAL);
+	}
+
+	/**
+	 * Returns whether {@code word} is a reserved word of the language.
+	 *
+	 * @param word the word to check
+	 * @return true if the lexer reads {@code word} as a keyword rather than an identifier
+	 */
+	public static boolean isKeyword(String word) {
+		return KEYWORDS.containsKey(word);
 	}
 
 	/** The complete PDSL source text being lexed. */

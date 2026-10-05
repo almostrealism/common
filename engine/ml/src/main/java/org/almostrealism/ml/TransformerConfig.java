@@ -17,6 +17,8 @@
 package org.almostrealism.ml;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Base configuration class for transformer language models.
@@ -102,5 +104,25 @@ public class TransformerConfig {
 		this.seqLen = seqLen;
 		this.sharedWeights = sharedWeights;
 		this.headSize = dim / headCount;
+	}
+
+	/**
+	 * Returns this configuration as the {@code settings} argument of a PDSL model, which reads
+	 * each entry as {@code settings.<name>}: {@code dim}, {@code hidden_dim}, {@code layers},
+	 * {@code heads}, {@code kv_heads}, {@code vocab_size} and {@code seq_len}. Subclasses add
+	 * the entries of their own architecture.
+	 *
+	 * @return a mutable map from PDSL entry name to value
+	 */
+	public Map<String, Object> toPdslSettings() {
+		Map<String, Object> config = new HashMap<>();
+		config.put("dim", dim);
+		config.put("hidden_dim", hiddenDim);
+		config.put("layers", layerCount);
+		config.put("heads", headCount);
+		config.put("kv_heads", kvHeadCount);
+		config.put("vocab_size", vocabSize);
+		config.put("seq_len", seqLen);
+		return config;
 	}
 }
