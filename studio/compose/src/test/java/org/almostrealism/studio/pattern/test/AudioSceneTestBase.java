@@ -72,6 +72,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
 
 	/**
+	 * Whether this host explicitly declares a curated-library mount by setting
+	 * {@code AR_RINGS_LIBRARY}. A runner that declares a mount (e.g. the OpenCL
+	 * {@code test-media-cl} job) is expected to have the library, so a miss there is a
+	 * misconfiguration even under the {@link TestUtils#PIPELINE} profile.
+	 */
+	protected static final boolean LIBRARY_MOUNT_DECLARED =
+			SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
+
+	/**
 	 * Returns the Samples directory if it exists, or {@code null} if it
 	 * does not. When the directory is absent, {@link #addChoices} will
 	 * generate synthetic fallback samples automatically.
@@ -90,16 +99,18 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * <p>
 	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
 	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
-	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
+	 * hiding the difference between hosts. A GPU runner that declares the mount (the OpenCL
+	 * {@code test-media-cl} job, via {@code AR_RINGS_LIBRARY}) is expected to run the real workload;
+	 * the Metal {@code test-media-mac} job and the CPU-only Linux runners do not mount it. So:
 	 * <ul>
 	 *   <li>library present → return it and run the real workload;</li>
-	 *   <li>library absent under the {@link TestUtils#PIPELINE} profile → {@code Assume}-skip (the CI
-	 *       media runner that does not mount the library, e.g. the Metal {@code test-media-mac} job;
-	 *       this mirrors the {@code @TestProperties(excludeProfiles = TestUtils.PIPELINE)} every other
-	 *       curated test carries, centralized here so the two callers that cannot declare it inline are
-	 *       excluded too — the OpenCL {@code test-media-cl} runner mounts the library and so takes the
-	 *       library-present path above and still runs the real workload);</li>
+	 *   <li>library absent under the {@link TestUtils#PIPELINE} profile on a runner that does not
+	 *       declare a mount ({@link #LIBRARY_MOUNT_DECLARED} is false, e.g. the Metal
+	 *       {@code test-media-mac} job) → {@code Assume}-skip; this mirrors the
+	 *       {@code @TestProperties(excludeProfiles = TestUtils.PIPELINE)} every other curated test
+	 *       carries, centralized here so the two callers that cannot declare it inline are excluded
+	 *       too. A pipeline runner that declares the mount via {@code AR_RINGS_LIBRARY} (the OpenCL
+	 *       {@code test-media-cl} job) is not skipped here, so losing its mount still fails below;</li>
 	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
 	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
 	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
@@ -117,10 +128,10 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
 				+ PATTERN_FACTORY + " not available on this host.";
-		Assume.assumeTrue(detail + " Running under the '" + TestUtils.PIPELINE + "' test profile, whose"
-				+ " media runner does not mount the curated library; skipping, as every other curated-library"
+		Assume.assumeTrue(detail + " Running under the '" + TestUtils.PIPELINE + "' test profile on a"
+				+ " runner that does not declare AR_RINGS_LIBRARY; skipping, as every other curated-library"
 				+ " test does via @TestProperties(excludeProfiles = TestUtils.PIPELINE).",
-				!TestUtils.PIPELINE.equals(TestUtils.getTestProfile()));
+				LIBRARY_MOUNT_DECLARED || !TestUtils.PIPELINE.equals(TestUtils.getTestProfile()));
 		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
 				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
 		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
