@@ -41,9 +41,12 @@ import java.util.List;
  * of kernel-7 and pointwise weight-normalized convolutions) while it is compiled and run, so
  * the time its forward pass takes can be attributed to the operations that spend it.
  *
- * <p>The first forward pass compiles every kernel and the second only runs them; both are
- * timed separately, and the profile is written to {@code results/oobleck_decoder_block1.xml}
- * for inspection with the profile analyzer.</p>
+ * <p>{@link Model#compile(boolean, io.almostrealism.profile.OperationProfile)} compiles and
+ * loads the block's operations, so the compilation cost is measured around that call rather
+ * than around the first forward pass. The two forward passes that follow are timed separately
+ * as warm execution timings - the first is not a cold-compile timing - and the profile is
+ * written to {@code results/oobleck_decoder_block1.xml} for inspection with the profile
+ * analyzer.</p>
  */
 public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 	/** Input channels of the first decoder block. */
@@ -105,11 +108,14 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 
 			model = new Model(shape(1, IN_CHANNELS, LENGTH));
 			model.add(block);
+
+			long start = System.nanoTime();
 			compiled = model.compile(false, profile);
+			long compileMs = (System.nanoTime() - start) / 1000000;
 
 			input = new PackedCollection(1, IN_CHANNELS, LENGTH).randFill();
 
-			long start = System.nanoTime();
+			start = System.nanoTime();
 			PackedCollection first = compiled.forward(input);
 			long firstMs = (System.nanoTime() - start) / 1000000;
 
@@ -117,7 +123,7 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 			compiled.forward(input);
 			long secondMs = (System.nanoTime() - start) / 1000000;
 
-			log("firstForwardMs=" + firstMs + " secondForwardMs=" + secondMs);
+			log("compileMs=" + compileMs + " firstForwardMs=" + firstMs + " secondForwardMs=" + secondMs);
 			Assert.assertEquals((long) OUT_CHANNELS * outLength, first.getShape().getTotalSizeLong());
 		} finally {
 			WeightedSumComputation.enableLoopGeneration = loopGeneration;
