@@ -327,6 +327,19 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	public int getChannelCount() { return data.size(); }
 
 	/**
+	 * Returns the backing buffer this output allocated for itself and releases on
+	 * {@link #destroy()}, or {@code null} when the audio buffers were supplied by the caller
+	 * (who retains their lifecycle). The per-channel producers are range views into this
+	 * buffer, so this is the single allocation whose destruction frees the output's memory;
+	 * exposing it lets a caller confirm the ownership and release contract.
+	 *
+	 * @return the owned backing collection, or {@code null} if the buffers are caller-supplied
+	 */
+	public PackedCollection getOwnedBuffer() {
+		return ownedData == null ? null : ownedData.getData();
+	}
+
+	/**
 	 * Enables circular buffer mode where the cursor wraps at buffer size.
 	 * Use this for continuous audio processing with BufferedOutputScheduler.
 	 */

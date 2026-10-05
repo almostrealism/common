@@ -271,8 +271,16 @@ public class WaveOutputWriteTest extends TestSuiteBase implements CellFeatures {
 		Assert.assertEquals("a stereo output should expose two channels before destroy",
 				2, output.getChannelCount());
 
-		// The output owns the WaveData it allocated; destroy() releases it and a repeat is safe.
+		PackedCollection owned = output.getOwnedBuffer();
+		Assert.assertNotNull("a self-allocating output must own its backing buffer", owned);
+		Assert.assertFalse("the owned backing buffer must be live before destroy",
+				owned.isDestroyed());
+
+		// The output owns the WaveData it allocated; destroy() releases its backing buffer.
 		output.destroy();
+		Assert.assertTrue("destroy() must free the owned backing buffer", owned.isDestroyed());
+
+		// A second destroy must be a safe no-op.
 		output.destroy();
 	}
 }

@@ -251,16 +251,29 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	/**
 	 * Stops the producer thread and resets the ring to empty so the stream can be restarted via
 	 * {@link #start(int)}. The backing storage is retained.
+	 *
+	 * <p>This waits for the producer thread to actually terminate before returning, rather than
+	 * abandoning it after a bounded join. Clearing {@code running} and interrupting unblocks the
+	 * producer from {@link Semaphore#acquire()}, so it exits after at most one more render
+	 * iteration; the wait is therefore bounded in practice by a single buffer render. Termination
+	 * must be confirmed here because {@link #destroy()} frees the ring and {@link #slotCopies}
+	 * next, and callers free the render operation the producer runs — a producer still alive would
+	 * use those buffers and kernels after they are released (a use-after-free), and {@link #start(int)}
+	 * would otherwise be able to spawn a second producer alongside a lingering one.</p>
 	 */
 	public void stop() {
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
-			try {
-				producer.join(2000);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
+			boolean interrupted = false;
+			while (producer.isAlive()) {
+				try {
+					producer.join();
+				} catch (InterruptedException e) {
+					interrupted = true;
+				}
 			}
+			if (interrupted) Thread.currentThread().interrupt();
 			producer = null;
 		}
 		writeIndex.set(0);

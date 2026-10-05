@@ -463,6 +463,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Whole buffers per tick, not per-frame pushes in the output loop, which
 		// multiplied the loop's operation count enough to break the realtime budget
 		OperationList stemAppends = new OperationList("PDSL Stem Appends");
+		PackedCollection fxStem = null;
 		if (output.isStemsActive()) {
 			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
 			if (stemChannels != null) {
@@ -478,15 +479,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
 
 				if (stemEfx != null && stemReverb != null) {
-					// Summed once per tick, so the writers push plain memory
-					PackedCollection fx = new PackedCollection(bufferSize);
+					// Summed once per tick, so the writers push plain memory. Retained
+					// as runner-owned state (fxStem) and released on destroy().
+					fxStem = new PackedCollection(bufferSize);
 					stemAppends.add(a("PDSL FX Stem Sum",
-							cp(fx).each(),
+							cp(fxStem).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
 									.add(cp(stemReverb.range(
 											new TraversalPolicy(bufferSize), 0)))
 									.each()));
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fx));
+					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fxStem));
 				} else if (stemEfx != null) {
 					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
 							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
@@ -504,6 +506,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		 * {@code destroy()}.
 		 */
 		class PdslRunner implements TemporalCellular, Destroyable {
+			/**
+			 * The combined-effects stems buffer this runner allocated (see {@code fxStem}
+			 * in {@link #createPdsl}), or {@code null} when stems summing is not active. It
+			 * is not an argument-map value, so {@link #destroy()} releases it directly.
+			 */
+			private PackedCollection ownedFxStem;
+
 			/**
 			 * One-time preparation: the render-cell setup from
 			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer
@@ -603,23 +612,36 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			 * thread, a render operation, a compiled model, and a full argument map for
 			 * every render in the JVM, exhausting native memory (an
 			 * {@code OutOfMemoryError} on a CPU host, silent output once the device allocator
-			 * is starved on a GPU host). The scene's consolidated render buffer and the
-			 * model's own output buffer are left to their owners.
+			 * is starved on a GPU host).
+			 *
+			 * <p>Also released: the compiled model's output collection
+			 * ({@code masterOutput}), which {@link CompiledModel#compile} allocates and
+			 * {@link CompiledModel#destroy()} does not reclaim (that destroys only the
+			 * compiled operations), and the combined-effects stems buffer
+			 * ({@link #ownedFxStem}) when stems summing is active. {@code masterOutput} is
+			 * freed after the compiled model, and both are read only by the output-loop
+			 * operations compiled into the tick — which the caller destroys before the
+			 * runner — so they are no longer in use here. The scene's consolidated render
+			 * buffer is left to its owner.</p>
 			 */
 			@Override
 			public void destroy() {
 				renderStream.destroy();
 				Destroyable.destroy(renderOp);
 				Destroyable.destroy(compiled);
+				Destroyable.destroy(masterOutput);
 				bufferFrameIndex.destroy();
 				for (Object value : args.values()) {
 					Destroyable.destroy(value);
 				}
 				args.clear();
+				Destroyable.destroy(ownedFxStem);
 			}
 		}
 
-		return new PdslRunner();
+		PdslRunner runner = new PdslRunner();
+		runner.ownedFxStem = fxStem;
+		return runner;
 	}
 
 	/**

@@ -267,8 +267,11 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 				return null;
 			}
 
-			WaveData data = WaveData.load(file);
-			return AudioStats.fromWaveData(data, SAMPLE_RATE);
+			// Release the loaded buffer once statistics are read so repeated analyses
+			// do not accumulate one decoded timeline each in native memory.
+			try (WaveData data = WaveData.load(file)) {
+				return AudioStats.fromWaveData(data, SAMPLE_RATE);
+			}
 		} catch (IOException e) {
 			log("Failed to analyze audio: " + e.getMessage());
 			return null;
