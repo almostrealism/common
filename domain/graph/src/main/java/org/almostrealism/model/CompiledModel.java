@@ -231,11 +231,20 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * reused or recompiled afterward — a later compilation would wire its backward pass
 	 * to released memory and fail with a {@link NullPointerException}. Build a fresh
 	 * {@link Model} if another compilation is needed.</p>
+	 *
+	 * <p>The one-time {@link #setup} operation is released alongside the forward and
+	 * backward passes: {@link #compile(Model, boolean, boolean, OperationProfile)}
+	 * compiles it from {@link Model#setup()} into a {@link Runnable} that owns its own
+	 * native kernels, and this instance is its only lifecycle owner. {@link #reset()} is
+	 * the only caller of {@code setup} and the model must not be used after destruction,
+	 * so releasing it here reclaims those kernels — significant for callers that compile
+	 * a fresh model per unit of work.</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.destroy(forward);
 		Destroyable.destroy(backward);
+		Destroyable.destroy(setup);
 	}
 
 	/**

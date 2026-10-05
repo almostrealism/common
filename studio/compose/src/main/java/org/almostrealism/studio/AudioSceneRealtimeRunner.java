@@ -37,6 +37,7 @@ import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -381,6 +382,17 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * (advancing the cursor) and {@code WaveOutput.write} gates on the minimum frame count
 	 * across channels, so the mono master is pushed to both stereo writers each frame.</p>
 	 *
+	 * <p><b>Construction-failure rollback.</b> The native resources built here (the
+	 * frame index, the render operation, the render-ahead {@link PatternRenderStream}
+	 * ring, the mixdown argument buffers, the compiled model, its output buffer, and the
+	 * combined-effects stems buffer) are owned by the returned {@link TemporalCellular}
+	 * and freed by its {@code destroy()} — but that owner is not constructed until every
+	 * allocation has succeeded. A throw before then (PDSL parse or compile, the throwaway
+	 * {@code forward()}, or output/stem wiring) would otherwise leak everything already
+	 * allocated, since no owner would exist to release it. Each resource is therefore
+	 * tracked as it is created and released in reverse order if construction fails, so a
+	 * failed build leaks nothing; the throwable is rethrown unchanged.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -392,8 +404,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		final long[] renderFrame = {0};
 		int channelCount = channels.size();
 
-		// Frame index within the current buffer, driven by the output-streaming loop
+		// Construction-failure rollback for runner-owned resources; see method javadoc.
+		List<Object> allocated = new ArrayList<>();
+		try {
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
+		allocated.add(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
@@ -423,19 +438,24 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
 		Runnable renderOp = renderOps.get();
+		allocated.add(renderOp);
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+		allocated.add(renderStream);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
 		Map<String, Object> args = adapter.buildArgsMap();
+		allocated.addAll(args.values());
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
+		allocated.add(compiled);
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
 		// Throwaway pass to capture the stable output handle the streaming loop reads
 		PackedCollection masterOutput = compiled.forward(pdslInput);
+		allocated.add(masterOutput);
 
 		// The mixdown renders one signal per frame; a stereo destination receives it
 		// on both channels, while a mono destination (or one with the master disabled)
@@ -482,6 +502,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 					// Summed once per tick, so the writers push plain memory. Retained
 					// as runner-owned state (fxStem) and released on destroy().
 					fxStem = new PackedCollection(bufferSize);
+					allocated.add(fxStem);
 					stemAppends.add(a("PDSL FX Stem Sum",
 							cp(fxStem).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
@@ -642,6 +663,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		PdslRunner runner = new PdslRunner();
 		runner.ownedFxStem = fxStem;
 		return runner;
+		} catch (RuntimeException | Error t) {
+			for (int i = allocated.size() - 1; i >= 0; i--) {
+				Destroyable.destroy(allocated.get(i));
+			}
+			throw t;
+		}
 	}
 
 	/**
