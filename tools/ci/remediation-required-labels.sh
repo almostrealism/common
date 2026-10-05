@@ -58,8 +58,10 @@ while IFS= read -r name; do
     case "$name" in
         # test-mac, test-media-mac, and matrix entries such as "test-mac (2)".
         # Named exactly: a new Metal lane is added here deliberately, not
-        # picked up because its name happens to end in "mac".
-        # TODO(review): no test checks these names still match job ids in analysis.yaml; a rename silently unpins.
+        # picked up because its name happens to end in "mac". test_the_named_
+        # metal_lanes_are_the_macos_jobs (test_remediation_required_labels.py)
+        # keeps this list and analysis.yaml's macOS jobs in step, so a rename
+        # of either job fails CI instead of silently unpinning.
         test-mac|test-media-mac|"test-mac "*|"test-media-mac "*)
             echo "::notice::Metal lane failed ($name) — the agent must run on a macOS Node"
             emit "$MACOS_LABELS"

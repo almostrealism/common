@@ -20,6 +20,42 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "remediation-required-labels.sh")
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "auto-resolve-submit.yaml")
+_ANALYSIS = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
+
+
+def _named_metal_lanes():
+    """The exact job ids the script's ``case`` pins to macOS.
+
+    Parses the one ``case`` pattern line in
+    ``remediation-required-labels.sh`` and returns the alternatives that
+    name a job id exactly (the glob entries covering matrix suffixes are
+    anchored on these same ids, so they are left out).
+    """
+    with open(_SCRIPT) as f:
+        lines = f.read().splitlines()
+    pattern = next(line for line in lines
+                   if "test-mac" in line and line.rstrip().endswith(")")
+                   and "case" not in line)
+    pattern = pattern.strip().rstrip(")")
+    lanes = set()
+    for token in pattern.split("|"):
+        token = token.strip().strip('"')
+        if token and "*" not in token:
+            lanes.add(token)
+    return lanes
+
+
+def _macos_job_ids():
+    """Job ids in analysis.yaml whose ``runs-on`` targets macOS."""
+    with open(_ANALYSIS) as f:
+        jobs = yaml.safe_load(f)["jobs"]
+    ids = set()
+    for job_id, job in jobs.items():
+        runs_on = job.get("runs-on")
+        labels = runs_on if isinstance(runs_on, list) else [runs_on]
+        if any("macos" in str(label).lower() for label in labels):
+            ids.add(job_id)
+    return ids
 
 _MACOS = '{"platform":"macos"}'
 
@@ -141,6 +177,36 @@ class AutoResolveSubmitWiringTests(unittest.TestCase):
         decide = next(s for s in steps
                       if "remediation-required-labels.sh" in s.get("run", ""))
         self.assertIn("auto-resolve-request/submit.env", decide["if"])
+
+
+class MetalLaneWiringTests(unittest.TestCase):
+    """The script's Metal lane names must track the macOS jobs in analysis.yaml.
+
+    The script matches jobs by the display name the GitHub API reports, which
+    equals the job id when the job sets no ``name:``. These tests derive the
+    lanes the script names and the macOS jobs the workflow defines and require
+    them to be the same set, so renaming (or giving a ``name:`` to) either
+    Metal job fails CI here instead of silently submitting an unpinned job.
+    """
+
+    def test_the_named_metal_lanes_are_the_macos_jobs(self):
+        self.assertEqual(_named_metal_lanes(), _macos_job_ids())
+
+    def test_each_named_lane_is_a_macos_job_with_no_display_name(self):
+        with open(_ANALYSIS) as f:
+            jobs = yaml.safe_load(f)["jobs"]
+        for lane in _named_metal_lanes():
+            self.assertIn(lane, jobs,
+                          "%s is matched by the script but is not a job id" % lane)
+            runs_on = jobs[lane].get("runs-on")
+            labels = runs_on if isinstance(runs_on, list) else [runs_on]
+            self.assertTrue(
+                any("macos" in str(label).lower() for label in labels),
+                "%s does not run on macOS: %r" % (lane, runs_on))
+            self.assertIsNone(
+                jobs[lane].get("name"),
+                "%s sets a display name, so the API name no longer equals the "
+                "job id the script matches" % lane)
 
 
 if __name__ == "__main__":
