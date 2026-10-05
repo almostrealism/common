@@ -188,6 +188,12 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	 * starved. The returned statistics are read back from the written WAV, so neither resource
 	 * is needed after the render completes.</p>
 	 *
+	 * <p>The compiled setup, tick, and write runnables are destroyed too. Each is produced by
+	 * {@link org.almostrealism.hardware.OperationList#get()}, which returns a compiled operation
+	 * (an {@code AcceleratedOperation} or {@code OperationListRunner}) owning native kernels. The
+	 * runner does not retain those runnables, so destroying the runner alone would leak them; they
+	 * are held in locals and destroyed in the same {@code finally} as the runner.</p>
+	 *
 	 * @param scene           the AudioScene to render
 	 * @param bufferSize      frames per buffer
 	 * @param durationSeconds how many seconds to render
@@ -205,15 +211,21 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 			TemporalCellular runner = scene.runnerRealTime(
 					new MultiChannelAudioOutput(output), bufferSize);
 
+			// Compiled runnables the runner does not retain; destroyed with it below.
+			Runnable setupRunnable = null;
+			Runnable tick = null;
+			Runnable writeOp = null;
+
 			try {
-				runner.setup().get().run();
+				setupRunnable = runner.setup().get();
+				setupRunnable.run();
 
 				int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
 				int numBuffers = totalFrames / bufferSize;
 				double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
 
 				List<Long> bufferTimings = new ArrayList<>();
-				Runnable tick = runner.tick().get();
+				tick = runner.tick().get();
 
 				long startTime = System.nanoTime();
 				for (int buf = 0; buf < numBuffers; buf++) {
@@ -223,13 +235,17 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 				}
 				long totalTime = System.nanoTime() - startTime;
 
-				output.write().get().run();
+				writeOp = output.write().get();
+				writeOp.run();
 
 				TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
 				AudioStats stats = analyzeAudio(outputFile);
 
 				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 			} finally {
+				Destroyable.destroy(writeOp);
+				Destroyable.destroy(tick);
+				Destroyable.destroy(setupRunnable);
 				Destroyable.destroy(runner);
 			}
 		} finally {
