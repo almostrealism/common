@@ -477,6 +477,25 @@ cmd_install() {
                 echo "  the env file there. Fix that component, or create a trusted ${ENV_FILE} yourself." >&2
                 exit 1
             fi
+            # The destination walk above keeps the cp from being redirected, but
+            # the template it reads from is a trust input of its own: its
+            # contents become ${ENV_FILE}, which a later invocation sources with
+            # the administrator's privileges. A .env.example that is a symlink,
+            # sits under a parent another account can write, or is owned by
+            # neither you nor root is attacker-controlled — it could carry shell
+            # commands that read_env then runs as you, and the owner-only mode
+            # 600 .env this copy leaves behind sails through every later check.
+            # Screen the source the same way the staged sources are, before cp
+            # ever reads it.
+            local template_bad
+            template_bad="$(untrusted_ancestor "${admin_user}" "${SCRIPT_DIR}/.env.example")"
+            if [ -n "${template_bad}" ]; then
+                echo "ERROR: ${template_bad}, on the path to ${SCRIPT_DIR}/.env.example, is a symlink, is" >&2
+                echo "  writable by others, or is owned by neither you (${admin_user}) nor root; its" >&2
+                echo "  contents would be sourced as you out of the ${ENV_FILE} this creates. Fix that" >&2
+                echo "  component, or create a trusted ${ENV_FILE} yourself." >&2
+                exit 1
+            fi
             cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"
             # The template becomes the home of GITHUB_PAT once filled in, so
             # create it owner-only rather than at the copy's default mode.
@@ -1054,7 +1073,22 @@ EOF
     if [ "${MONITOR}" = true ]; then
         echo ""
         echo "Installing the fleet metrics collector"
-        "${MONITOR_INSTALL}" ${STORE_FROM:+--store-from "${STORE_FROM}"}
+        # The runner is registered and online by this point. A failure in the
+        # monitor install (an scp from --store-from, a first sample) must not be
+        # reported as an install that changed nothing and failed: the runner is
+        # up and taking jobs, and booting it out to match the failure would throw
+        # away the working half to make the state tidy. Report the partial state
+        # and how to finish the monitor instead, then exit non-zero so the
+        # failure is not mistaken for success. Re-running install retries only
+        # the monitor, since the runner registration is idempotent.
+        if ! "${MONITOR_INSTALL}" ${STORE_FROM:+--store-from "${STORE_FROM}"}; then
+            echo "" >&2
+            echo "ERROR: ${LABEL} is installed and online, but the metrics collector failed to install." >&2
+            echo "  The runner is taking jobs; only monitoring is missing. Re-run this install to retry" >&2
+            echo "  the monitor (the runner registration is idempotent), or install it directly with" >&2
+            echo "  ${MONITOR_INSTALL}." >&2
+            exit 1
+        fi
     fi
 
     echo ""

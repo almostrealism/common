@@ -672,6 +672,44 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertLess(disable, fail, "the service must be disabled before the install fails")
         self.assertLess(bootout, fail, "the service must be booted out before the install fails")
 
+    def test_the_env_template_source_is_screened_before_it_is_copied(self):
+        """The destination walk keeps the cp from being redirected, but
+        .env.example is a trust input in its own right: its contents become the
+        owner-only .env a later invocation sources as the administrator. A
+        symlinked, other-writable, or foreign-owned template could carry shell
+        commands that read_env then runs as you, with the mode-600 copy passing
+        every later check. The source must be walked with the same trust
+        boundary, before the cp reads it."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        walk = install.find(
+            'template_bad="$(untrusted_ancestor "${admin_user}" "${SCRIPT_DIR}/.env.example")"')
+        copy = install.find('cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"')
+        self.assertNotEqual(-1, walk, "install must walk the .env.example source path")
+        self.assertNotEqual(-1, copy)
+        self.assertLess(walk, copy, "the template source must be screened before it is copied")
+
+    def test_a_failed_monitor_install_keeps_the_online_runner(self):
+        """By the monitor step the runner is registered and online. A monitor
+        failure must not read as an install that changed nothing and failed, and
+        must not boot the working runner out to make the state tidy: the runner
+        is the deliverable and is taking jobs. install must catch the failure,
+        report the partial state, and exit non-zero without rolling the runner
+        back."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertRegex(
+            install,
+            r'if ! "\$\{MONITOR_INSTALL\}" \$\{STORE_FROM:\+--store-from "\$\{STORE_FROM\}"\}; then',
+            "the monitor install must be run in a condition so its failure is caught")
+        guard = install.find('if ! "${MONITOR_INSTALL}"')
+        self.assertNotEqual(-1, guard, "install must guard the monitor install")
+        tail = install[guard:]
+        self.assertIn("is installed and online, but the metrics collector failed", tail,
+                      "the failure must report the runner is up and only monitoring is missing")
+        self.assertIn("exit 1", tail,
+                      "a monitor failure must still exit non-zero")
+        self.assertNotIn('launchctl bootout "system/${LABEL}"', tail,
+                         "a monitor failure must not boot the online runner out")
+
 
 def _trust_functions(*names):
     """The source of fleet.sh's path-trust helpers, to run outside the script
