@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -146,6 +147,28 @@ public class FileStager implements ConsoleFeatures {
             }
             return executeWithOutput(args);
         }
+
+        /**
+         * Runs a git command that prints one path per line (such as
+         * {@code diff --name-only}) and returns those paths, or {@code null}
+         * if the command failed; see {@link #executeOrNull}.
+         *
+         * @param args the git subcommand and its arguments
+         * @return the listed paths in output order, or {@code null} on failure
+         * @throws IOException if the process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default Set<String> executeForPaths(String... args) throws IOException, InterruptedException {
+            String output = executeOrNull(args);
+            if (output == null) {
+                return null;
+            }
+            Set<String> paths = new LinkedHashSet<>();
+            for (String line : output.split("\n")) {
+                if (!line.isEmpty()) paths.add(line);
+            }
+            return paths;
+        }
     }
 
     /**
@@ -173,6 +196,15 @@ public class FileStager implements ConsoleFeatures {
      * exist at the merge-base (a branch-new test is allowed), at test-method
      * granularity for Java sources.</p>
      *
+     * <p>While a merge the harness started is in progress (see
+     * {@link #trustedMergeParent}), a file whose working-tree state is exactly
+     * its state in the merged base-branch commit is not an agent edit: the merge
+     * carried it in, and it is staged without passing through the guardrails,
+     * which judge the agent's work. Protected test methods are judged against
+     * that commit rather than the older merge-base, so the base branch's own
+     * changes are never mistaken for the agent's. A file that differs from the
+     * merged commit is judged exactly as it would be outside a merge.</p>
+     *
      * @param changedFiles     the list of changed file paths (relative to
      *                         the working directory)
      * @param config           the staging configuration with guardrail rules
@@ -185,16 +217,28 @@ public class FileStager implements ConsoleFeatures {
         List<String> stagedFiles = new ArrayList<>();
         List<String> skippedFiles = new ArrayList<>();
         TestMethodProtection testMethodProtection = new TestMethodProtection();
-        String mergeBase = config.isProtectTestFiles() || config.isProtectCiFiles()
+        String mergeParent = trustedMergeParent(config, gitOps);
+        String mergeBase = mergeParent != null ? mergeParent
+                : config.isProtectTestFiles() || config.isProtectCiFiles()
                 ? testMethodProtection.resolveMergeBase(config.getBaseBranch(), gitOps)
                 : null;
         Set<String> mergeBaseFiles = mergeBase != null
                 ? testMethodProtection.resolveMergeBaseFiles(mergeBase, gitOps)
                 : null;
+        Set<String> differFromParent = mergeParent != null
+                ? filesDifferingFrom(mergeParent, gitOps)
+                : null;
 
         for (String file : changedFiles) {
             File f = new File(workingDirectory, file);
             boolean isDeleted = !f.exists();
+
+            if (isMergeCarried(file, isDeleted, mergeBaseFiles, differFromParent)) {
+                log("Staging (merge-carried from "
+                        + TestMethodProtection.shortSha(mergeParent) + "): " + file);
+                stagedFiles.add(file);
+                continue;
+            }
 
             // Guardrail 1: Pattern exclusion
             if (matchesAnyPattern(file, config.getExcludedPatterns())) {
@@ -262,6 +306,82 @@ public class FileStager implements ConsoleFeatures {
             + stagedFiles.size() + " staged, " + skippedFiles.size() + " skipped");
 
         return new StagingResult(stagedFiles, skippedFiles);
+    }
+
+    /**
+     * Returns the merge parent recorded in {@code config} if, and only if, the
+     * merge in progress is still that one: {@code MERGE_HEAD} resolves to the
+     * same commit.
+     *
+     * <p>The recorded parent is the harness's own note of the merge it started
+     * (see {@link FileStagingConfig#getMergeParent()}); {@code MERGE_HEAD} alone
+     * is never trusted, since the agent can write it. Requiring the two to agree
+     * keeps the merge-carried exemption from outliving the merge: once the
+     * agent aborts it, content copied from the base branch is an ordinary edit
+     * again.</p>
+     *
+     * @param config the staging configuration
+     * @param gitOps git operations for the working tree
+     * @return the merge parent's SHA, or {@code null} when no harness merge is
+     *         in progress
+     */
+    static String trustedMergeParent(FileStagingConfig config, GitOperations gitOps) {
+        String recorded = config.getMergeParent();
+        if (recorded == null || recorded.isEmpty()) {
+            return null;
+        }
+        try {
+            String mergeHead = gitOps.executeOrNull("rev-parse", "--verify", "--quiet", "MERGE_HEAD");
+            return mergeHead != null && mergeHead.trim().equals(recorded) ? recorded : null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Lists the tracked paths whose working-tree state differs from
+     * {@code commit}, in one {@code git diff --name-only} rather than one
+     * comparison per file. A merge can bring in thousands of base-branch files.
+     *
+     * @param commit the commit to compare the working tree against
+     * @param gitOps git operations for the working tree
+     * @return the differing paths, or {@code null} if git could not answer
+     *         (no file is then treated as merge-carried)
+     */
+    private static Set<String> filesDifferingFrom(String commit, GitOperations gitOps) {
+        try {
+            return gitOps.executeForPaths("diff", "--name-only", "--no-renames", commit, "--");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns whether {@code file}'s working-tree state is exactly its state in
+     * the trusted merge parent: identical content, or absent from both. An
+     * untracked file never appears in {@code differFromParent}, so it is
+     * carried only when the parent lacks it too and it is gone from disk.
+     * Answers {@code false} whenever either listing is unavailable.
+     *
+     * @param file             the repository-relative path
+     * @param isDeleted        whether the file is absent from the working tree
+     * @param parentFiles      the files present in the merge parent, or {@code null}
+     * @param differFromParent the tracked paths that differ from the merge
+     *                         parent, or {@code null}
+     * @return {@code true} when the merge carried the file in unchanged
+     */
+    private static boolean isMergeCarried(String file, boolean isDeleted,
+                                          Set<String> parentFiles, Set<String> differFromParent) {
+        if (parentFiles == null || differFromParent == null || differFromParent.contains(file)) {
+            return false;
+        }
+        return parentFiles.contains(file) != isDeleted;
     }
 
     /**
