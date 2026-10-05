@@ -128,6 +128,16 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
         self.assertIn("is not readable", output)
         self.assertFalse(os.path.exists(self.marker))
 
+    @unittest.skipIf(os.geteuid() == 0, "root reads the library regardless of its mode")
+    def test_unreadable_nvrtc_does_not_register(self):
+        self._stage()
+        os.chmod(os.path.join(self.cuda_root, "lib64", "libnvrtc.so.12"), 0o000)
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("NVRTC under " + os.path.join(self.cuda_root, "lib64"), output)
+        self.assertIn("is not readable", output)
+        self.assertFalse(os.path.exists(self.marker))
+
     def test_missing_nvrtc_still_fails_first(self):
         self._stage()
         os.remove(os.path.join(self.cuda_root, "lib64", "libnvrtc.so.12"))

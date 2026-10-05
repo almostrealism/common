@@ -49,11 +49,32 @@ if ! GPUS=$(nvidia-smi -L 2>&1) || [ -z "${GPUS}" ]; then
 fi
 echo "GPU: ${GPUS}"
 
-NVRTC=$(ls "${CUDA_ROOT}"/lib64/libnvrtc.so.* 2>/dev/null | head -1 || true)
+# NVRTC must be present AND readable by the runner user. Listing the pathname
+# only needs the directory's r-x bits, but the CUDA JNI bridge dlopen()s the
+# library file itself; a toolkit whose libnvrtc.so is not readable by the
+# non-root runner would otherwise pass preflight and then fail to load NVRTC
+# in every job. Select the first candidate that is actually readable.
+NVRTC=""
+NVRTC_FOUND=0
+for candidate in "${CUDA_ROOT}"/lib64/libnvrtc.so.*; do
+    [ -e "${candidate}" ] || continue
+    NVRTC_FOUND=1
+    if [ -r "${candidate}" ]; then
+        NVRTC="${candidate}"
+        break
+    fi
+done
 if [ -z "${NVRTC}" ]; then
-    fail "NVRTC was not found under ${CUDA_ROOT}/lib64." \
-        "The host CUDA toolkit is bind-mounted at /usr/local/cuda; check" \
-        "CUDA_HOME_HOST in .env points at a toolkit that contains NVRTC."
+    if [ "${NVRTC_FOUND}" -eq 1 ]; then
+        fail "NVRTC under ${CUDA_ROOT}/lib64 is not readable by uid $(id -u) (groups: $(id -G))." \
+            "The host CUDA toolkit is bind-mounted at /usr/local/cuda, but its" \
+            "libnvrtc.so is not readable by the runner user, so the CUDA JNI bridge" \
+            "cannot dlopen it. Make the toolkit readable by the runner on the host."
+    else
+        fail "NVRTC was not found under ${CUDA_ROOT}/lib64." \
+            "The host CUDA toolkit is bind-mounted at /usr/local/cuda; check" \
+            "CUDA_HOME_HOST in .env points at a toolkit that contains NVRTC."
+    fi
 fi
 echo "NVRTC: ${NVRTC}"
 
