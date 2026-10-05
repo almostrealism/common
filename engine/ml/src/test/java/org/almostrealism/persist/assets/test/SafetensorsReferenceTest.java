@@ -1,6 +1,7 @@
 package org.almostrealism.persist.assets.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Bits;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.persist.assets.SafetensorsReference;
 import org.almostrealism.util.TestSuiteBase;
@@ -52,8 +53,8 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		}
 
 		// F16 [0.5, -1.25]
-		file.putShort(Float.floatToFloat16(0.5f));
-		file.putShort(Float.floatToFloat16(-1.25f));
+		file.putShort(Bits.floatToFloat16(0.5f));
+		file.putShort(Bits.floatToFloat16(-1.25f));
 
 		// F32 [0.1, 0.2, 0.3] and the scalar 7.0
 		file.putFloat(0.1f).putFloat(0.2f).putFloat(0.3f);

@@ -22,6 +22,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.io.Bits;
 
 import java.io.File;
 import java.io.IOException;
@@ -62,7 +63,7 @@ public class SafetensorsReference extends CollectionDataReference {
 		F16(Precision.FP16) {
 			@Override
 			double decode(ByteBuffer buffer, int at) {
-				return Float.float16ToFloat(buffer.getShort(at));
+				return Bits.float16ToFloat(buffer.getShort(at));
 			}
 		},
 		/** IEEE single precision. */
