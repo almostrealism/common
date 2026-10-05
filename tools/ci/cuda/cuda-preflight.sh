@@ -11,7 +11,8 @@ set -euo pipefail
 # Checks, in order:
 #   1. the NVIDIA runtime injected a GPU (nvidia-smi lists one)
 #   2. the host CUDA toolkit is mounted and provides NVRTC, and NVRTC's
-#      builtins library is reachable through LD_LIBRARY_PATH
+#      builtins library resolves through the container's loader cache, which
+#      this script registers the toolkit in
 #   3. a staged sample library is readable by the runner user (an unstaged
 #      one only warns, since test-cuda does not need it)
 #
@@ -81,10 +82,13 @@ echo "NVRTC: ${NVRTC}"
 
 # NVRTC dlopen()s libnvrtc-builtins by bare name when it compiles. The bridge
 # finds libnvrtc itself through its own runpath, but a runpath does not carry
-# over to what that library loads, and the container's loader cache knows
-# nothing about the mounted toolkit (the host's does, through ld.so.conf.d).
-# So the builtins are found only if their directory is on LD_LIBRARY_PATH —
-# without it every compile fails with NVRTC_ERROR_BUILTIN_OPERATION_FAILURE.
+# over to what that library loads, so the builtins are found only through
+# LD_LIBRARY_PATH or the loader cache. LD_LIBRARY_PATH cannot be relied on:
+# some workflow steps overwrite it (the CPU lane sets it to ar_libs alone). So
+# the toolkit is registered in this container's loader cache, exactly as the
+# host registers it through ld.so.conf.d. Without this, every compile fails
+# with NVRTC_ERROR_BUILTIN_OPERATION_FAILURE. Only the container's own /etc is
+# written; nothing on the host changes.
 NVRTC_DIR=$(dirname "${NVRTC}")
 BUILTINS=""
 for candidate in "${NVRTC_DIR}"/libnvrtc-builtins.so.*; do
@@ -97,13 +101,26 @@ if [ -z "${BUILTINS}" ]; then
     fail "No readable libnvrtc-builtins was found beside ${NVRTC}." \
         "NVRTC loads it at compile time; the mounted toolkit is incomplete or unreadable."
 fi
-case ":${LD_LIBRARY_PATH:-}:" in
-    *":${NVRTC_DIR}:"*) ;;
-    *) fail "${NVRTC_DIR} is not on LD_LIBRARY_PATH (${LD_LIBRARY_PATH:-unset})." \
-        "NVRTC loads ${BUILTINS##*/} by name, so every kernel compile would fail." \
-        "The compose file sets LD_LIBRARY_PATH for this; check it has not been removed." ;;
-esac
-echo "NVRTC builtins: ${BUILTINS}"
+
+LD_CONF="${PREFLIGHT_LD_CONF:-/etc/ld.so.conf.d/ar-ci-cuda.conf}"
+LDCONFIG="${PREFLIGHT_LDCONFIG:-ldconfig}"
+SUDO="${PREFLIGHT_SUDO-sudo}"
+LIB_DIR=$(readlink -f "${NVRTC_DIR}")
+# -X: update only the cache, never the soname links in the scanned
+# directories; the toolkit is mounted read-only.
+if ! printf '%s\n' "${LIB_DIR}" | ${SUDO} tee "${LD_CONF}" >/dev/null \
+        || ! ${SUDO} "${LDCONFIG}" -X; then
+    fail "Could not register ${LIB_DIR} in the container's loader cache." \
+        "The runner user needs passwordless sudo for tee and ldconfig (the shared image grants it)."
+fi
+# Captured rather than piped into `grep -q`: under pipefail, grep exiting at
+# its first match leaves ldconfig to die of SIGPIPE, failing a check that passed.
+CACHE=$("${LDCONFIG}" -p || true)
+if [[ "${CACHE}" != *"${LIB_DIR}/libnvrtc-builtins.so"* ]]; then
+    fail "The loader cache does not resolve libnvrtc-builtins from ${LIB_DIR}." \
+        "NVRTC loads ${BUILTINS##*/} by name, so every kernel compile would fail."
+fi
+echo "NVRTC builtins: ${BUILTINS} (registered in the loader cache from ${LIB_DIR})"
 
 # A library that is not staged yet is expected while the lane is
 # informational: only the media suites need it, and they say so themselves.

@@ -55,11 +55,9 @@ services:
       - RUNNER_DISABLE_UPDATE=true
       - RUNNER_SLOT_DIR=/var/lock/ar-ci-slots
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      # NVRTC dlopen()s libnvrtc-builtins by name, which only the loader search
-      # path can resolve: the mounted toolkit is not in the image's loader cache.
-      # Job steps prepend to LD_LIBRARY_PATH rather than replace it, so this
-      # reaches every test JVM. cuda-preflight.sh refuses to register without it.
-      - LD_LIBRARY_PATH=/usr/local/cuda/lib64
+      # No LD_LIBRARY_PATH here: some workflow steps overwrite it. NVRTC finds
+      # libnvrtc-builtins through the container's loader cache instead, which
+      # cuda-preflight.sh registers the mounted toolkit in at startup.
     volumes:
       # Shared by every replica: each holds a lock on its <prefix>-N slot, so
       # "fleet.sh up N" cannot start two runners under the same name.

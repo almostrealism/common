@@ -35,8 +35,11 @@ configuration:
   `CudaDataContextLifecycleTest`), which use the GPU directly whenever one is
   present, whatever the driver setting. On these runners they run in `test`
   as well as `test-cuda`, so the container must be a complete CUDA environment
-  for every job. The preflight checks exactly that, including that NVRTC can
-  find its builtins library through `LD_LIBRARY_PATH`.
+  for every job, whatever a step does to `LD_LIBRARY_PATH` (the CPU lane's steps
+  overwrite it). NVRTC loads `libnvrtc-builtins` by bare name, so the preflight
+  registers the mounted toolkit in the container's loader cache (`ldconfig`, as
+  the host does through `/etc/ld.so.conf.d`) and refuses to register the runner
+  unless the cache resolves it. Only the container's own `/etc` is written.
 - The CUDA lane is admitted only after `test` and `test-media` finish, so within
   one pipeline the two lanes never compete for these runners. Across concurrent
   pipelines they share them; the cost is queueing, not correctness.
