@@ -116,6 +116,12 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 */
 	private final ConfinedExecutor executor = new ConfinedExecutor(this::runInPool);
 
+	/**
+	 * Held while a dispatch is encoded, and by {@link #destroy()} while it decides the runner is
+	 * idle and stops the executor, so no dispatch can be encoded between those two steps.
+	 */
+	private final Object admission = new Object();
+
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
 
@@ -220,6 +226,26 @@ public class MetalCommandRunner implements ConsoleFeatures {
 								 Semaphore dependsOn, Runnable onComplete) {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
+		executor.requireOffConfinedThread();
+		synchronized (admission) {
+			encode(requester, command, dependsOn, onComplete, result);
+		}
+
+		return result.get(0);
+	}
+
+	/**
+	 * Encodes one dispatch on the executor's thread for {@link #submit}, adding its completion
+	 * semaphore to {@code result}.
+	 *
+	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}
+	 * @param command    encodes the kernel into the supplied command buffer
+	 * @param dependsOn  a prior {@link Semaphore} this dispatch depends on, or {@code null}
+	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
+	 * @param result     receives the dispatch's completion semaphore
+	 */
+	private void encode(OperationMetadata requester, MetalCommand command,
+						Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
 		executor.run(() -> {
 			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
 					((MetalSemaphore) dependsOn).getRunner() == this;
@@ -282,8 +308,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 				maxOpenCommits++;
 			}
 		});
-
-		return result.get(0);
 	}
 
 	/**
@@ -591,24 +615,30 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * buffer on the executor's single thread, or after the executor has stopped accepting work,
 	 * would leave the foreign work unable to finish, so the bridge would never be signaled and
 	 * the buffer would stall until the GPU watchdog killed it. The executor therefore keeps
-	 * accepting work until the last buffer committed here has completed.</p>
+	 * accepting work until every buffer committed has completed.</p>
 	 *
-	 * <p>The confined executor's final task then commits anything submitted meanwhile, drains
-	 * every committed buffer running its callbacks, and releases the timeline event. The
-	 * per-buffer drains and the event release are run through {@link Destroyable#releaseAll} so a
-	 * drain that throws cannot leak the remaining buffers or the shared event; the first failure
-	 * is rethrown with any later ones attached as suppressed. The executor shuts its thread down
-	 * whether or not that final task succeeds, so a failed drain can never leave the thread
-	 * alive.</p>
+	 * <p>Work submitted while that wait is in progress may commit newer buffers, so destruction
+	 * repeats the commit-and-wait until a round finds nothing committed. Only then, atomically
+	 * with that finding (see {@link #awaitLastCommittedOrDestroy}), does the executor stop
+	 * accepting work; its final task releases the timeline event and has no buffer left to wait
+	 * for. If a drain fails, the executor is destroyed anyway: the final task commits and drains
+	 * whatever remains through {@link Destroyable#releaseAll}, so a drain that throws cannot leak
+	 * the remaining buffers or the shared event, and the thread is shut down whether or not that
+	 * task succeeds.</p>
 	 *
-	 * <p>An interrupted caller skips the off-thread wait, as {@link #complete} does, and leaves
-	 * the final task to wait for the GPU. Destroying a runner that is already destroyed does
-	 * nothing.</p>
+	 * <p>The wait for the GPU is not abandoned when the caller is interrupted, unlike
+	 * {@link #complete}: abandoning it would leave the final task to wait on the executor's
+	 * thread, which is exactly the stall described above. An interrupt pending on entry is
+	 * cleared for the duration of destruction and restored afterwards. Destroying a runner that
+	 * is already destroyed does nothing.</p>
 	 *
 	 * @throws IllegalStateException if called from a task running on the runner's own thread,
 	 *                               such as a completion callback
 	 */
 	public void destroy() {
+		executor.requireOffConfinedThread();
+
+		boolean interrupted = Thread.interrupted();
 		AtomicReference<Waiter> last = new AtomicReference<>();
 		Runnable withdrawal = () -> {
 			Waiter registered = last.get();
@@ -616,6 +646,40 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		};
 
 		try {
+			while (awaitLastCommittedOrDestroy(last)) {
+				Waiter pending = last.get();
+				executor.runOrElse(() -> drainThrough(pending, null), pending::withdraw);
+			}
+		} finally {
+			try {
+				destroyExecutor();
+			} finally {
+				// The executor is gone by now, so this runs on the calling thread once every
+				// queued task has run, including a registration whose wait was abandoned
+				executor.runOrElse(withdrawal, withdrawal);
+				if (interrupted) Thread.currentThread().interrupt();
+			}
+		}
+	}
+
+	/**
+	 * One round of {@link #destroy()}: commits the open buffer and, if any committed buffer
+	 * remains, waits for the last of them on the calling thread while the executor still accepts
+	 * work; otherwise stops accepting work and destroys the executor.
+	 *
+	 * <p>The check for remaining buffers and the destruction happen while holding
+	 * {@link #admission}, which {@link #submit} also holds, so no dispatch can be encoded between
+	 * the runner being found idle and the executor refusing further work. The wait itself happens
+	 * without holding it, so work that the waited buffer's bridge depends on can still be
+	 * submitted.</p>
+	 *
+	 * @param last receives the waiter registered on the last committed buffer, or {@code null}
+	 * @return true if a buffer was waited for and must now be drained, false once the executor
+	 *         has been destroyed
+	 */
+	private boolean awaitLastCommittedOrDestroy(AtomicReference<Waiter> last) {
+		synchronized (admission) {
+			last.set(null);
 			executor.runOrElse(() -> {
 				if (commitOpenOnExecutor()) destroyCommits++;
 				if (!committed.isEmpty()) {
@@ -623,28 +687,31 @@ public class MetalCommandRunner implements ConsoleFeatures {
 				}
 			}, () -> { });
 
-			Waiter pending = last.get();
-			if (pending != null && !Thread.currentThread().isInterrupted()) {
-				pending.getBuffer().waitUntilCompleted();
-			}
-		} finally {
-			try {
-				executor.destroy(() -> {
-					if (commitOpenOnExecutor()) destroyCommits++;
-
-					List<Runnable> drains = new ArrayList<>(committed.size());
-					for (int i = committed.size(); i > 0; i--) {
-						drains.add(() -> drainOldestCommitted(null));
-					}
-					Destroyable.releaseAll(drains, event::release);
-				});
-			} finally {
-				// The executor is gone by now, so this runs on the calling thread once every
-				// queued task has run, including the registration above even if this caller
-				// was interrupted before it ran
-				executor.runOrElse(withdrawal, withdrawal);
+			if (last.get() == null) {
+				destroyExecutor();
+				return false;
 			}
 		}
+
+		last.get().getBuffer().waitUntilCompleted();
+		return true;
+	}
+
+	/**
+	 * Destroys the executor with a final task that commits anything still open, drains every
+	 * committed buffer running its callbacks, and releases the timeline event. Destroying an
+	 * executor that is already destroyed does nothing.
+	 */
+	private void destroyExecutor() {
+		executor.destroy(() -> {
+			if (commitOpenOnExecutor()) destroyCommits++;
+
+			List<Runnable> drains = new ArrayList<>(committed.size());
+			for (int i = committed.size(); i > 0; i--) {
+				drains.add(() -> drainOldestCommitted(null));
+			}
+			Destroyable.releaseAll(drains, event::release);
+		});
 	}
 
 	/** Returns the console for logging. */

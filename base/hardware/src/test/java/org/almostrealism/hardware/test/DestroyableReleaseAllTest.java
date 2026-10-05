@@ -26,7 +26,8 @@ import java.util.List;
 
 /**
  * Validates {@link Destroyable#releaseAll(Iterable)}: every release action runs even when earlier
- * ones fail, and the first failure is rethrown with the later ones attached as suppressed.
+ * ones fail, and the first failure is rethrown with the later ones attached as suppressed. Also
+ * validates {@link Destroyable#runOnce(Runnable)}, which destroys a one-shot operation after it runs.
  *
  * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}:
  * that class lives in the engine layer, which sits above this module.</p>
@@ -141,6 +142,68 @@ public class DestroyableReleaseAllTest {
 			Assert.assertSame(first, e);
 			Assert.assertEquals(1, e.getSuppressed().length);
 			Assert.assertSame(second, e.getSuppressed()[0]);
+		}
+	}
+
+	/** A one-shot operation that is {@link Destroyable} is run once and then destroyed. */
+	@Test(timeout = 10000)
+	public void runOnceRunsThenDestroys() {
+		List<String> events = new ArrayList<>();
+		Destroyable.runOnce(new OneShot(events, null));
+		Assert.assertEquals(List.of("run", "destroy"), events);
+	}
+
+	/** Regression: a one-shot operation whose run fails is still destroyed, and the failure propagates. */
+	@Test(timeout = 10000)
+	public void runOnceDestroysWhenRunFails() {
+		List<String> events = new ArrayList<>();
+		IllegalStateException failure = new IllegalStateException("run failed");
+
+		try {
+			Destroyable.runOnce(new OneShot(events, failure));
+			Assert.fail("The run failure must propagate");
+		} catch (IllegalStateException e) {
+			Assert.assertSame(failure, e);
+		}
+
+		Assert.assertEquals(List.of("run", "destroy"), events);
+	}
+
+	/** A one-shot operation that is not {@link Destroyable} is simply run once. */
+	@Test(timeout = 10000)
+	public void runOnceRunsPlainRunnable() {
+		List<String> events = new ArrayList<>();
+		Destroyable.runOnce(() -> events.add("run"));
+		Assert.assertEquals(List.of("run"), events);
+	}
+
+	/** A {@link Destroyable} operation that records when it is run and destroyed. */
+	private static final class OneShot implements Runnable, Destroyable {
+		/** Receives "run" and "destroy" as they happen. */
+		private final List<String> events;
+		/** Thrown by {@link #run()} after it is recorded, or {@code null}. */
+		private final RuntimeException failure;
+
+		/**
+		 * Creates the operation.
+		 *
+		 * @param events  receives the recorded events
+		 * @param failure thrown by {@link #run()}, or {@code null} to succeed
+		 */
+		private OneShot(List<String> events, RuntimeException failure) {
+			this.events = events;
+			this.failure = failure;
+		}
+
+		@Override
+		public void run() {
+			events.add("run");
+			if (failure != null) throw failure;
+		}
+
+		@Override
+		public void destroy() {
+			events.add("destroy");
 		}
 	}
 

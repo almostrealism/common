@@ -303,6 +303,37 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#requireOffConfinedThread()} rejects a call from the confined thread
+	 * and accepts one from any other thread, without changing the executor's state either way.
+	 */
+	@Test(timeout = 10000)
+	public void requireOffConfinedThreadRejectsOnlyTheConfinedThread() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+
+		try {
+			executor.requireOffConfinedThread();
+			executor.run(() -> {
+				try {
+					executor.requireOffConfinedThread();
+				} catch (RuntimeException e) {
+					failure.set(e);
+				}
+			});
+
+			assertTrue("Expected IllegalStateException but got " + failure.get(),
+					failure.get() instanceof IllegalStateException);
+			assertTrue(executor.isActive());
+
+			List<String> events = Collections.synchronizedList(new ArrayList<>());
+			executor.run(() -> events.add("after"));
+			assertEquals(List.of("after"), events);
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
 	 * Destroying without a final task waits for nothing, so it is allowed from the confined
 	 * thread: the executor stops accepting work and the calling task completes normally.
 	 */

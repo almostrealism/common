@@ -211,9 +211,14 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * that is making the call. The single confined thread can never run that work, so the wait
 	 * would never end.
 	 *
+	 * <p>{@link #run} and {@link #destroy(Runnable)} perform this check themselves. A caller
+	 * that must take a lock of its own before submitting work calls it first, so a call from the
+	 * confined thread is rejected instead of blocking on a lock held by a thread that is waiting
+	 * for the confined thread.</p>
+	 *
 	 * @throws IllegalStateException if called from the confined thread
 	 */
-	private void requireOffConfinedThread() {
+	public void requireOffConfinedThread() {
 		if (Thread.currentThread() == confinedThread) {
 			throw new IllegalStateException(
 					"A task on the confined thread cannot wait for work queued behind itself");

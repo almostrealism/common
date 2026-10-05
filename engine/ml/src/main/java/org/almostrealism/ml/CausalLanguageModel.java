@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
@@ -339,14 +340,15 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 		Map<String, TraversalPolicy> normal = getRandomWeightShapes();
 		normal.keySet().stream().sorted().forEach(key -> {
 			PackedCollection weight = new PackedCollection(normal.get(key));
-			a(cp(weight.each()), randn(weight.getShape(), 0.0, INIT_STD, random).each()).get().run();
+			Destroyable.runOnce(a(cp(weight.each()),
+					randn(weight.getShape(), 0.0, INIT_STD, random).each()).get());
 			weights.put(key, weight);
 		});
 
 		getScaleWeightShapes().forEach((key, shape) -> weights.put(key, new PackedCollection(shape).fill(1.0)));
 
 		PackedCollection invFreq = new PackedCollection(getWeightShapes().get(INV_FREQ_KEY));
-		a(cp(invFreq.each()), invFreqValues.each()).get().run();
+		Destroyable.runOnce(a(cp(invFreq.each()), invFreqValues.each()).get());
 		weights.put(INV_FREQ_KEY, invFreq);
 	}
 }
