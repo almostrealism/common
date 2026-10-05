@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -169,6 +170,72 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 			Assert.fail("A header longer than the file should be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("not a safetensors file"));
+		}
+	}
+
+	/**
+	 * A file too short to hold the 8-byte header length is rejected as not a safetensors file,
+	 * rather than escaping as an {@link java.io.EOFException}; one byte short of the length is
+	 * rejected just as an empty file is.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsFileShorterThanHeaderLength() throws IOException {
+		for (int length : new int[] { 0, 1, Long.BYTES - 1 }) {
+			Path file = Files.createTempFile("short", ".safetensors");
+			Files.write(file, new byte[length]);
+
+			try {
+				SafetensorsReference.locate(file.toFile());
+				Assert.fail("A file of " + length + " bytes should be rejected");
+			} catch (IllegalArgumentException e) {
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("its " + length + " bytes cannot hold"));
+			} finally {
+				Files.delete(file);
+			}
+		}
+	}
+
+	/** A file holding exactly the header length and nothing else is rejected for its header length. */
+	@Test(timeout = 60000)
+	public void rejectsFileWithOnlyHeaderLength() throws IOException {
+		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+		bytes.putLong(2);
+		Path file = Files.createTempFile("lengthOnly", ".safetensors");
+		Files.write(file, bytes.array());
+
+		try {
+			SafetensorsReference.locate(file.toFile());
+			Assert.fail("A file with no header after its header length should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("header length 2 does not fit"));
+		} finally {
+			Files.delete(file);
+		}
+	}
+
+	/**
+	 * A header length that fits in the file but is longer than any header that can be decoded is
+	 * rejected before the header is read, rather than overflowing the array allocated for it. The
+	 * file is sparse, so it occupies almost no disk space despite its length.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsHeaderBeyondMaximumLength() throws IOException {
+		long headerLength = SafetensorsReference.MAX_HEADER_LENGTH + 1;
+		Path file = Files.createTempFile("huge", ".safetensors");
+
+		try {
+			try (RandomAccessFile out = new RandomAccessFile(file.toFile(), "rw")) {
+				out.write(ByteBuffer.allocate(Long.BYTES).order(ByteOrder.LITTLE_ENDIAN)
+						.putLong(headerLength).array());
+				out.setLength(Long.BYTES + headerLength);
+			}
+
+			SafetensorsReference.locate(file.toFile());
+			Assert.fail("A header of " + headerLength + " bytes should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("header of " + headerLength + " bytes"));
+		} finally {
+			Files.delete(file);
 		}
 	}
 

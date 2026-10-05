@@ -107,6 +107,12 @@ public class SafetensorsReference extends CollectionDataReference {
 		abstract double decode(ByteBuffer buffer, int at);
 	}
 
+	/**
+	 * The longest header that can be read: the header is decoded from a single array, which
+	 * cannot be longer than this.
+	 */
+	public static final long MAX_HEADER_LENGTH = Integer.MAX_VALUE - 8;
+
 	/** How this tensor's values are stored. */
 	private final Encoding encoding;
 
@@ -141,7 +147,8 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param file the safetensors file
 	 * @return the tensors by name, in the order the header lists them
 	 * @throws IOException if the file cannot be read
-	 * @throws IllegalArgumentException if the header is malformed, names an element type other
+	 * @throws IllegalArgumentException if the file is too short to hold a header, the header is
+	 *         longer than {@link #MAX_HEADER_LENGTH}, the header is malformed, names an element type other
 	 *         than BF16, F16, F32 or F64, or gives a tensor a byte range that is reversed, lies
 	 *         outside the file's tensor data, or does not match its shape
 	 */
@@ -151,13 +158,22 @@ public class SafetensorsReference extends CollectionDataReference {
 		long dataLength;
 
 		try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
+			long fileLength = in.length();
+			if (fileLength < Long.BYTES) {
+				throw new IllegalArgumentException(file + " is not a safetensors file: its " + fileLength
+						+ " bytes cannot hold the " + Long.BYTES + "-byte header length");
+			}
+
 			byte[] lengthBytes = new byte[Long.BYTES];
 			in.readFully(lengthBytes);
 			long headerLength = ByteBuffer.wrap(lengthBytes)
 					.order(CollectionDataMemoryProvider.VALUE_ORDER).getLong();
-			if (headerLength <= 0 || headerLength > in.length() - Long.BYTES) {
+			if (headerLength <= 0 || headerLength > fileLength - Long.BYTES) {
 				throw new IllegalArgumentException(file + " is not a safetensors file: its header length "
-						+ headerLength + " does not fit in its " + in.length() + " bytes");
+						+ headerLength + " does not fit in its " + fileLength + " bytes");
+			} else if (headerLength > MAX_HEADER_LENGTH) {
+				throw new IllegalArgumentException(file + " has a header of " + headerLength
+						+ " bytes, but a header can be at most " + MAX_HEADER_LENGTH + " bytes");
 			}
 
 			byte[] headerBytes = new byte[(int) headerLength];
@@ -168,7 +184,7 @@ public class SafetensorsReference extends CollectionDataReference {
 				throw new IllegalArgumentException(file + " is not a safetensors file: its header is not a JSON object", e);
 			}
 			dataStart = Long.BYTES + headerLength;
-			dataLength = in.length() - dataStart;
+			dataLength = fileLength - dataStart;
 		}
 
 		Map<String, SafetensorsReference> tensors = new LinkedHashMap<>();
