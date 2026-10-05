@@ -231,6 +231,56 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@link PatternElement} whose note lookup succeeds once and then throws, so the
+	 * batched-input gather that follows a note's construction fails after the note
+	 * already owns its offset argument.
+	 */
+	private static final class BatchGatherFailingElement extends PatternElement {
+		/** The number of note lookups made so far. */
+		private int noteLookups;
+
+		/**
+		 * Creates an element with the given notes and position.
+		 *
+		 * @param notes the notes keyed by voicing
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		BatchGatherFailingElement(Map<ChannelInfo.Voicing, PatternNote> notes, double position) {
+			super(notes, position);
+		}
+
+		@Override
+		public PatternNote getNote(ChannelInfo.Voicing voicing) {
+			noteLookups++;
+			if (noteLookups > 1) {
+				throw new GatherFailure();
+			}
+
+			return super.getNote(voicing);
+		}
+	}
+
+	/**
+	 * A list that remembers every note ever added to it, so a test can inspect notes
+	 * that a failed gather appended and then removed.
+	 */
+	private static final class AddRecordingList extends ArrayList<RenderedNoteAudio> {
+		/** Every note added, in order, including ones later removed. */
+		private final List<RenderedNoteAudio> added = new ArrayList<>();
+
+		@Override
+		public boolean add(RenderedNoteAudio note) {
+			added.add(note);
+			return super.add(note);
+		}
+
+		/** Returns every note added so far. */
+		List<RenderedNoteAudio> getAdded() {
+			return added;
+		}
+	}
+
+	/**
 	 * Creates an {@link AudioSceneContext} whose scale is fixed at every position.
 	 *
 	 * @param scale the scale to return at all positions
@@ -878,6 +928,108 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			note.destroy();
 			Assert.assertTrue(replacement.isDestroyed());
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * A gather that fails partway through an element's repetitions must release the
+	 * notes it already created, since they never reach a caller that could destroy
+	 * them, and must remove them from the destination list. Entries already in the
+	 * list before the gather are left untouched, and a gather that succeeds appends
+	 * live notes after them.
+	 */
+	@Test(timeout = 120000)
+	public void gatherFailureMidTraversalReleasesGatheredNotes() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		RenderedNoteAudio existing = new RenderedNoteAudio(0, 0);
+		existing.setOffsetArg(new PackedCollection(1));
+		List<RenderedNoteAudio> succeeded = new ArrayList<>();
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			PatternElement element = renderableElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5), 3);
+			NoteAudioContext audio = audioContext(element.getNote(ChannelInfo.Voicing.MAIN));
+
+			succeeded.add(existing);
+			ScaleTraversalStrategy.CHORD.gatherNoteDestinations(
+					element, true, 0.0, context(scale), audio, succeeded);
+			Assert.assertTrue("two chord tones for each of three repetitions follow the existing entry",
+					succeeded.size() == 7);
+			Assert.assertSame(existing, succeeded.get(0));
+			for (RenderedNoteAudio note : succeeded) {
+				Assert.assertNotNull("a successful gather leaves every note live", note.getOffsetArg());
+			}
+
+			AudioSceneContext failing = context(scale);
+			failing.setScaleForPosition(pos -> {
+				if (pos >= 0.25) throw new GatherFailure();
+				return scale;
+			});
+
+			AddRecordingList destinations = new AddRecordingList();
+			destinations.add(existing);
+
+			try {
+				ScaleTraversalStrategy.CHORD.gatherNoteDestinations(
+						element, true, 0.0, failing, audio, destinations);
+				Assert.fail("the second repetition's scale lookup should fail the gather");
+			} catch (GatherFailure expected) {
+				// The failure propagates after the cleanup runs.
+			}
+
+			Assert.assertTrue("the first repetition's two notes were gathered before the failure",
+					destinations.getAdded().size() == 3);
+			for (RenderedNoteAudio gathered : destinations.getAdded().subList(1, 3)) {
+				Assert.assertNull("a note gathered before the failure is released",
+						gathered.getOffsetArg());
+			}
+
+			Assert.assertEquals("only the pre-existing entry remains", List.of(existing), destinations);
+			Assert.assertNotNull("the pre-existing entry is not released", existing.getOffsetArg());
+			Assert.assertFalse(existing.getOffsetArg().isDestroyed());
+		} finally {
+			succeeded.forEach(RenderedNoteAudio::destroy);
+			existing.destroy();
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * When the batched-input gather fails after a note has been constructed, the
+	 * interrupted note already owns its offset argument and must be released rather
+	 * than stranded, and the public gather must propagate the failure.
+	 */
+	@Test(timeout = 120000)
+	public void batchedInputFailureReleasesInterruptedNote() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		try {
+			PatternNote note = buildNote();
+			BatchGatherFailingElement element = new BatchGatherFailingElement(
+					Map.of(ChannelInfo.Voicing.MAIN, note), 0.0);
+			configureElement(element, ScaleTraversalStrategy.CHORD, List.of(0.0), 1);
+
+			AddRecordingList destinations = new AddRecordingList();
+
+			try {
+				ScaleTraversalStrategy.CHORD.gatherNoteDestinations(element, true, 0.0,
+						context(Scale.of(WesternChromatic.C4)), audioContext(note), destinations);
+				Assert.fail("the batched-input note lookup should fail the gather");
+			} catch (GatherFailure expected) {
+				// The failure propagates after the cleanup runs.
+			}
+
+			Assert.assertTrue("the note was constructed before its batched inputs were gathered",
+					destinations.getAdded().size() == 1);
+			Assert.assertNull("the interrupted note's offset argument is released",
+					destinations.getAdded().get(0).getOffsetArg());
+			Assert.assertTrue("the interrupted note is not left in the list", destinations.isEmpty());
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}

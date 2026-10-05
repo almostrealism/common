@@ -136,7 +136,9 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
-	 * Renders the arrangement buffer by buffer and concatenates the buffers.
+	 * Renders the arrangement buffer by buffer and concatenates the buffers. The
+	 * output buffer the {@link PatternAudioBuffer} allocates is released once the
+	 * frames have been copied out.
 	 *
 	 * @param psm the pattern system
 	 * @return the rendered frames
@@ -146,24 +148,29 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		AudioSceneContext context = context(null);
 		PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context, CHANNEL,
 				BUFFER_SIZE, () -> frame[0]);
-		Assert.assertEquals(BUFFER_SIZE, buffer.getBufferSize());
-		Assert.assertSame(CHANNEL, buffer.getChannel());
-		Assert.assertNotNull(buffer.getOutputProducer());
 
-		Runnable tick = buffer.prepareBatch().get();
-		double[] result = new double[TOTAL_FRAMES];
-		for (int start = 0; start < TOTAL_FRAMES; start += BUFFER_SIZE) {
-			frame[0] = start;
-			tick.run();
+		try {
+			Assert.assertEquals(BUFFER_SIZE, buffer.getBufferSize());
+			Assert.assertSame(CHANNEL, buffer.getChannel());
+			Assert.assertNotNull(buffer.getOutputProducer());
 
-			int length = Math.min(BUFFER_SIZE, TOTAL_FRAMES - start);
-			double[] out = buffer.getOutputBuffer().toArray(0, length);
-			for (int i = 0; i < length; i++) {
-				result[start + i] = out[i];
+			Runnable tick = buffer.prepareBatch().get();
+			double[] result = new double[TOTAL_FRAMES];
+			for (int start = 0; start < TOTAL_FRAMES; start += BUFFER_SIZE) {
+				frame[0] = start;
+				tick.run();
+
+				int length = Math.min(BUFFER_SIZE, TOTAL_FRAMES - start);
+				double[] out = buffer.getOutputBuffer().toArray(0, length);
+				for (int i = 0; i < length; i++) {
+					result[start + i] = out[i];
+				}
 			}
-		}
 
-		return result;
+			return result;
+		} finally {
+			buffer.getOutputBuffer().destroy();
+		}
 	}
 
 	/**
@@ -212,8 +219,8 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
 
-		try {
-			assertHitPlacement(renderAtOnce(system()));
+		try (PatternSystemManager psm = system()) {
+			assertHitPlacement(renderAtOnce(psm));
 		} finally {
 			PatternLayerManager.enableBatched = batched;
 		}
@@ -230,8 +237,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
 
-		try {
-			PatternSystemManager psm = system();
+		try (PatternSystemManager psm = system()) {
 			double[] whole = renderAtOnce(psm);
 			double[] buffered = renderInBuffers(psm);
 			assertHitPlacement(buffered);
@@ -259,8 +265,7 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
 
-		try {
-			PatternSystemManager psm = system();
+		try (PatternSystemManager psm = system()) {
 			BatchedPatternLayerRenderer.resetCounters();
 			double[] whole = renderAtOnce(psm);
 			assertHitPlacement(whole);
@@ -293,16 +298,17 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
 
-		try {
-			int hits = BatchedPatternLayerRenderer.maxBucket() + 88;
+		int hits = BatchedPatternLayerRenderer.maxBucket() + 88;
 
+		try (PatternSystemManager singleSystem = system();
+			 PatternSystemManager manySystem = system(hits)) {
 			BatchedPatternLayerRenderer.resetCounters();
-			double[] single = renderAtOnce(system());
+			double[] single = renderAtOnce(singleSystem);
 			long singleDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
 			Assert.assertTrue("the single-hit render must dispatch", singleDispatches > 0);
 
 			BatchedPatternLayerRenderer.resetCounters();
-			double[] many = renderAtOnce(system(hits));
+			double[] many = renderAtOnce(manySystem);
 			long manyDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
 			Assert.assertTrue("the batched renderer must dispatch", manyDispatches > 0);
 			Assert.assertTrue("an oversized batch records multiple dispatches", manyDispatches >= 2);
@@ -327,17 +333,18 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	 */
 	@Test(timeout = 120000)
 	public void channelWithoutPatternsIsSilent() {
-		PatternSystemManager psm = system();
-		psm.setVolume(0.5);
+		try (PatternSystemManager psm = system();
+			 PackedCollection destination = new PackedCollection(BUFFER_SIZE).fill(1.0)) {
+			psm.setVolume(0.5);
 
-		PackedCollection destination = new PackedCollection(BUFFER_SIZE).fill(1.0);
-		AudioSceneContext context = context(destination);
-		psm.sum(() -> context, new ChannelInfo(7, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT),
-				() -> 0, BUFFER_SIZE).get().run();
+			AudioSceneContext context = context(destination);
+			psm.sum(() -> context, new ChannelInfo(7, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT),
+					() -> 0, BUFFER_SIZE).get().run();
 
-		double[] out = destination.toArray(0, BUFFER_SIZE);
-		for (int i = 0; i < BUFFER_SIZE; i++) {
-			Assert.assertEquals("frame " + i, 1.0, out[i], 0.0);
+			double[] out = destination.toArray(0, BUFFER_SIZE);
+			for (int i = 0; i < BUFFER_SIZE; i++) {
+				Assert.assertEquals("frame " + i, 1.0, out[i], 0.0);
+			}
 		}
 	}
 
@@ -348,16 +355,18 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void warmNoteCacheEvaluatesEveryNote() {
-		PatternSystemManager psm = system();
-		psm.setVolume(0.5);
+		try (PatternSystemManager psm = system();
+			 PackedCollection output = new PackedCollection(BUFFER_SIZE).fill(2.0)) {
+			psm.setVolume(0.5);
 
-		int evaluated = psm.warmNoteCache(channel -> context(null));
-		Assert.assertEquals(1, evaluated);
+			int evaluated = psm.warmNoteCache(channel -> context(null));
+			Assert.assertEquals(1, evaluated);
 
-		PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context(null), CHANNEL,
-				BUFFER_SIZE, () -> 0, new PackedCollection(BUFFER_SIZE).fill(2.0));
-		buffer.reset();
-		Assert.assertEquals(0.0, peak(buffer.getOutputBuffer().toArray(0, BUFFER_SIZE), 0, BUFFER_SIZE), 0.0);
+			PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context(null), CHANNEL,
+					BUFFER_SIZE, () -> 0, output);
+			buffer.reset();
+			Assert.assertEquals(0.0, peak(buffer.getOutputBuffer().toArray(0, BUFFER_SIZE), 0, BUFFER_SIZE), 0.0);
+		}
 	}
 
 	/**
@@ -371,15 +380,16 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void warmNoteCacheReleasesScratchDestinations() {
-		PatternSystemManager psm = system();
-		psm.setVolume(0.5);
+		try (PatternSystemManager psm = system()) {
+			psm.setVolume(0.5);
 
-		psm.warmNoteCache(channel -> context(null));
+			psm.warmNoteCache(channel -> context(null));
 
-		PatternLayerManager plm = psm.getPatterns().get(0);
-		List<PackedCollection> destinations = new ArrayList<>(plm.getDestination().values());
-		Assert.assertTrue("warm-up tracks exactly one scratch destination", destinations.size() == 1);
-		Assert.assertTrue("the warm-up scratch destination is released after warmNoteCache",
-				destinations.get(0).isDestroyed());
+			PatternLayerManager plm = psm.getPatterns().get(0);
+			List<PackedCollection> destinations = new ArrayList<>(plm.getDestination().values());
+			Assert.assertTrue("warm-up tracks exactly one scratch destination", destinations.size() == 1);
+			Assert.assertTrue("the warm-up scratch destination is released after warmNoteCache",
+					destinations.get(0).isDestroyed());
+		}
 	}
 }

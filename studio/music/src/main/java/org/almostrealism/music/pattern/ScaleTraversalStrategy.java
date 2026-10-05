@@ -102,7 +102,52 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 													   AudioSceneContext context,
 													   NoteAudioContext audioContext) {
 		List<RenderedNoteAudio> destinations = new ArrayList<>();
+		gatherNoteDestinations(element, melodic, offset, context, audioContext, destinations);
+		return destinations;
+	}
 
+	/**
+	 * Appends the renderable note audio destinations of a pattern element to
+	 * {@code destinations}.
+	 *
+	 * <p>Each gathered note owns a native offset argument, so a gather that fails
+	 * partway must not strand the notes it already created: they are unreachable
+	 * by any caller once the exception propagates. On failure, every note this
+	 * call appended (including one whose construction was interrupted) is
+	 * {@link RenderedNoteAudio#destroy() destroyed} and removed before the
+	 * exception is rethrown. Entries already in {@code destinations} before the
+	 * call are left untouched.</p>
+	 *
+	 * @param element      the pattern element to render
+	 * @param melodic      whether the pattern is melodic
+	 * @param offset       the measure offset for this pattern repetition
+	 * @param context      the audio scene context
+	 * @param audioContext the note audio context
+	 * @param destinations the list the gathered notes are appended to
+	 */
+	void gatherNoteDestinations(PatternElement element, boolean melodic, double offset,
+								AudioSceneContext context, NoteAudioContext audioContext,
+								List<RenderedNoteAudio> destinations) {
+		int start = destinations.size();
+
+		try {
+			appendNoteDestinations(element, melodic, offset, context, audioContext, destinations);
+		} catch (RuntimeException | Error e) {
+			List<RenderedNoteAudio> gathered = destinations.subList(start, destinations.size());
+			gathered.forEach(RenderedNoteAudio::destroy);
+			gathered.clear();
+			throw e;
+		}
+	}
+
+	/**
+	 * Traverses the repetitions of a pattern element and appends one
+	 * {@link RenderedNoteAudio} per selected key to {@code destinations}, without
+	 * any failure cleanup (see {@link #gatherNoteDestinations}).
+	 */
+	private void appendNoteDestinations(PatternElement element, boolean melodic, double offset,
+										AudioSceneContext context, NoteAudioContext audioContext,
+										List<RenderedNoteAudio> destinations) {
 		for (int i = 0; i < element.getRepeatCount(); i++) {
 			double relativePosition = element.getPosition() + i * element.getRepeatDuration();
 			double actualPosition = offset + relativePosition;
@@ -124,8 +169,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(0), relativePosition);
-				destinations.add(createRenderedNote(element, details,
-						relativeAutomationLevel, audioContext, context, actualPosition));
+				addRenderedNote(destinations, element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition);
 			} else if (this == CHORD) {
 				p: for (double p : element.getScalePositions()) {
 					if (keys.isEmpty()) break;
@@ -134,8 +179,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					ElementVoicingDetails details =
 							audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-					destinations.add(createRenderedNote(element, details,
-							relativeAutomationLevel, audioContext, context, actualPosition));
+					addRenderedNote(destinations, element, details,
+							relativeAutomationLevel, audioContext, context, actualPosition);
 
 					keys.remove(keyIndex);
 				}
@@ -147,14 +192,12 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
-				destinations.add(createRenderedNote(element, details,
-						relativeAutomationLevel, audioContext, context, actualPosition));
+				addRenderedNote(destinations, element, details,
+						relativeAutomationLevel, audioContext, context, actualPosition);
 			} else {
 				throw new UnsupportedOperationException("Unknown ScaleTraversalStrategy (" + this + ")");
 			}
 		}
-
-		return destinations;
 	}
 
 	/**
@@ -315,27 +358,33 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	}
 
 	/**
-	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing details.
+	 * Creates a single {@link RenderedNoteAudio} for the given element and voicing
+	 * details and appends it to {@code destinations}.
 	 *
 	 * <p>The note's cache identity is {@link RenderedNoteAudio.Identity#of the
 	 * identity} of the element and voicing details, which keeps a
 	 * {@link NoteAudioCache} from conflating coincident notes or the LEFT and RIGHT
 	 * renders of one note.</p>
 	 *
+	 * <p>The note is appended as soon as it owns its offset argument, before the
+	 * batched inputs are gathered, so a failure in that gather leaves the note
+	 * reachable by the cleanup in {@link #gatherNoteDestinations}.</p>
+	 *
+	 * @param destinations    the list the created note is appended to
 	 * @param element         the pattern element
 	 * @param details         the voicing details for this note
 	 * @param automationLevel the automation level factor
 	 * @param audioContext    the note audio context
 	 * @param context         the audio scene context
 	 * @param actualPosition  the actual measure position (offset + element position + repetition)
-	 * @return the rendered note audio
 	 */
-	private RenderedNoteAudio createRenderedNote(PatternElement element,
-												 ElementVoicingDetails details,
-												 Factor<PackedCollection> automationLevel,
-												 NoteAudioContext audioContext,
-												 AudioSceneContext context,
-												 double actualPosition) {
+	private void addRenderedNote(List<RenderedNoteAudio> destinations,
+								 PatternElement element,
+								 ElementVoicingDetails details,
+								 Factor<PackedCollection> automationLevel,
+								 NoteAudioContext audioContext,
+								 AudioSceneContext context,
+								 double actualPosition) {
 		int frameOffset = context.frameForPosition(actualPosition);
 		double durationSec = element.getEffectiveDuration(
 				details, audioContext.getAudioSelection(),
@@ -344,6 +393,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		RenderedNoteAudio note = new RenderedNoteAudio(frameOffset, expectedFrameCount);
 		note.setCacheIdentity(RenderedNoteAudio.Identity.of(element, details));
 		note.setOffsetArg(new PackedCollection(1));
+		destinations.add(note);
 
 		// The offset argument is resolved from the note on each invocation rather
 		// than captured, so a replacement via setOffsetArg (which releases the
@@ -357,7 +407,6 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		if (PatternLayerManager.enableBatched) {
 			note.setBatchedInputs(gatherBatchedInputs(element, details, durationSec, audioContext));
 		}
-		return note;
 	}
 
 	/**
