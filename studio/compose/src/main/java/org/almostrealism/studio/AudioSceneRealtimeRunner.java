@@ -74,10 +74,17 @@ import java.util.stream.IntStream;
  * keep the scene model focused on state and to give the two runner strategies a single,
  * coherent home.</p>
  *
+ * <p><b>Runner ownership.</b> Every runner built by {@link #create} is tracked until it is
+ * destroyed, and {@link #destroy()} releases whichever are still live. The scene destroys
+ * this collaborator before its own render cells and consolidated buffers, so a runner a
+ * caller never released has its producer thread stopped (and joined) before the buffers
+ * that thread renders into are freed. A runner's {@code destroy()} is idempotent: a runner
+ * the caller already released is not released again.</p>
+ *
  * @see AudioScene#runnerRealTime(MultiChannelAudioOutput, java.util.List, int)
  * @see MixdownManagerPdslAdapter
  */
-public class AudioSceneRealtimeRunner implements CellFeatures {
+public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 
 	/** Classpath resource holding the PDSL program that declares {@code mixdown_master}. */
 	private static final String MIXDOWN_PDSL_RESOURCE = "/pdsl/audio/mixdown_manager.pdsl";
@@ -143,12 +150,67 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private final AudioScene<?> scene;
 
 	/**
+	 * Runners built by {@link #create} that have not been destroyed yet, in creation order.
+	 * A runner removes itself on {@code destroy()}; membership is also what makes that
+	 * {@code destroy()} idempotent.
+	 */
+	private final List<Destroyable> liveRunners = new ArrayList<>();
+
+	/**
 	 * Creates a runner for the given scene.
 	 *
 	 * @param scene the scene to drive in real time
 	 */
 	public AudioSceneRealtimeRunner(AudioScene<?> scene) {
 		this.scene = scene;
+	}
+
+	/**
+	 * Returns the number of runners built by {@link #create} that have not been destroyed.
+	 *
+	 * @return the live runner count
+	 */
+	public synchronized int getLiveRunnerCount() {
+		return liveRunners.size();
+	}
+
+	/**
+	 * Registers a newly built runner as live.
+	 *
+	 * @param runner the runner to track
+	 */
+	private synchronized void track(Destroyable runner) {
+		liveRunners.add(runner);
+	}
+
+	/**
+	 * Removes a runner from the live set.
+	 *
+	 * @param runner the runner being destroyed
+	 * @return true if the runner was live (and its resources must now be released), false if
+	 *         it had already been destroyed
+	 */
+	private synchronized boolean untrack(Destroyable runner) {
+		return liveRunners.remove(runner);
+	}
+
+	/**
+	 * Destroys every runner built by {@link #create} that is still live, newest first, so
+	 * each stops its producer thread and frees the native memory it owns. Every runner is
+	 * attempted even when an earlier one fails; the first failure is rethrown afterwards
+	 * with later ones suppressed. Called by {@link AudioScene#destroy()} before the scene
+	 * frees the render cells and consolidated buffers those runners read.
+	 */
+	@Override
+	public void destroy() {
+		List<Destroyable> runners;
+		synchronized (this) {
+			runners = new ArrayList<>(liveRunners);
+		}
+
+		Collections.reverse(runners);
+		Destroyable.releaseAll(runners.stream()
+				.map(r -> (Runnable) r::destroy).collect(Collectors.toList()));
 	}
 
 	/**
@@ -318,12 +380,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			 */
 			@Override
 			public void destroy() {
+				if (!untrack(this)) return;
 				Destroyable.destroy(cells);
 				bufferFrameIndex.destroy();
 			}
 		}
 
-		return new CellListRunner();
+		CellListRunner runner = new CellListRunner();
+		track(runner);
+		return runner;
 		} catch (RuntimeException | Error t) {
 			// Release in reverse allocation order, best-effort; a release that throws neither
 			// aborts the remaining releases nor masks the original construction failure.
@@ -671,6 +736,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			 */
 			@Override
 			public void destroy() {
+				if (!untrack(this)) return;
 				renderStream.destroy();
 				Destroyable.destroy(renderOp);
 				Destroyable.destroy(compiled);
@@ -686,6 +752,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 		PdslRunner runner = new PdslRunner();
 		runner.ownedFxStem = fxStem;
+		track(runner);
 		return runner;
 		} catch (RuntimeException | Error t) {
 			// Release in reverse allocation order, best-effort; a release that throws neither

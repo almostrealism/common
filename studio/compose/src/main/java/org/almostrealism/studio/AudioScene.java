@@ -339,6 +339,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** The active cell list produced by the most recent {@code getCells} call. */
 	private CellList activeCells;
 
+	/** Builds this scene's real-time runners and releases any still live on {@link #destroy()}. */
+	private final AudioSceneRealtimeRunner realtimeRunners = new AudioSceneRealtimeRunner(this);
+
 	/** Cached automation level function built lazily from the automation manager. */
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
 
@@ -1240,6 +1243,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * of the genome — only the {@link PackedCollection} contents change on
 	 * {@link #assignGenome}, so the runner can be reused without recompilation.</p>
 	 *
+	 * <p>The caller may destroy the runner when done with it; any runner still live when
+	 * this scene is destroyed is destroyed by {@link #destroy()}.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
@@ -1248,7 +1254,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
-		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize);
+		return realtimeRunners.create(output, channels, bufferSize);
 	}
 
 	/**
@@ -1353,8 +1359,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				DEFAULT_DURATION), libraryProvider, progress);
 	}
 
+	/**
+	 * Releases this scene's native memory. Real-time runners built by
+	 * {@link #runnerRealTime} that the caller has not destroyed are destroyed first, so
+	 * their producer threads stop before the render cells and consolidated buffers they
+	 * render into are freed.
+	 */
 	@Override
 	public void destroy() {
+		realtimeRunners.destroy();
 		Destroyable.super.destroy();
 		getSectionManager().destroy();
 
