@@ -156,6 +156,38 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 		}
 	}
 
+	/** Marker exception thrown by {@link ThrowingElement} to simulate a gather failure. */
+	private static final class GatherFailure extends RuntimeException {
+		/** Creates the marker gather failure with a fixed message. */
+		GatherFailure() {
+			super("simulated gather failure");
+		}
+	}
+
+	/**
+	 * A {@link PatternElement} whose {@link #getNoteDestinations} always throws, used to
+	 * simulate a gather that fails partway through a multi-element render so a test can
+	 * verify the notes gathered from earlier elements are still released.
+	 */
+	private static final class ThrowingElement extends PatternElement {
+		/**
+		 * Creates a throwing element with the given notes and position.
+		 *
+		 * @param notes the notes keyed by voicing
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		ThrowingElement(Map<ChannelInfo.Voicing, PatternNote> notes, double position) {
+			super(notes, position);
+		}
+
+		@Override
+		public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double offset,
+														   AudioSceneContext context,
+														   NoteAudioContext audioContext) {
+			throw new GatherFailure();
+		}
+	}
+
 	/**
 	 * Creates an {@link AudioSceneContext} whose scale is fixed at every position.
 	 *
@@ -515,6 +547,99 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 			plm.destroy();
 			offsetArgs.forEach(arg -> Assert.assertTrue(
 					"teardown releases the memoized offset arguments", arg.isDestroyed()));
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * {@link PatternFeatures#renderPerNote} gathers the notes of every element inside its
+	 * protected scope, so a gather that fails partway still releases the transient notes
+	 * produced by earlier elements. A recording element gathers first, then a throwing
+	 * element aborts the gather; the recording element's offset arguments must be released.
+	 */
+	@Test(timeout = 120000)
+	public void renderPerNoteReleasesTransientOffsetArgsOnPartialGatherFailure() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			RecordingElement recording = recordingElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+			ThrowingElement throwing = new ThrowingElement(
+					Map.of(ChannelInfo.Voicing.MAIN, buildNote()), 0.0);
+
+			AudioSceneContext ctx = context(scale);
+			ctx.setDestination(new PackedCollection(1));
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer features = plm.getBatchedLayerRenderer();
+
+			boolean threw = false;
+			try {
+				features.renderPerNote(
+						ctx, audioContext(recording.getNote(ChannelInfo.Voicing.MAIN)),
+						List.<PatternElement>of(recording, throwing), true, 0.0, 50_000_000, 1, null);
+			} catch (GatherFailure e) {
+				threw = true;
+			}
+			Assert.assertTrue("the partial gather aborts with the simulated failure", threw);
+
+			Assert.assertEquals("the recording element gathered one note per tone",
+					3, recording.getRecorded().size());
+			recording.getRecorded().forEach(note -> Assert.assertNull(
+					"a partial gather still releases the earlier notes' offset arguments",
+					note.getOffsetArg()));
+
+			plm.destroy();
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * {@link BatchedPatternLayerRenderer#render} gathers transient percussion destinations
+	 * inside its protected scope, so a gather that fails partway still releases the notes
+	 * produced by earlier elements rather than leaking their offset arguments.
+	 */
+	@Test(timeout = 120000)
+	public void batchedPercussionRenderReleasesTransientOffsetArgsOnPartialGatherFailure() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4);
+			RecordingElement recording = recordingElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0), 1);
+			ThrowingElement throwing = new ThrowingElement(
+					Map.of(ChannelInfo.Voicing.MAIN, buildNote()), 0.0);
+
+			AudioSceneContext ctx = context(scale);
+			ctx.setDestination(new PackedCollection(1));
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			boolean threw = false;
+			try {
+				renderer.render(
+						ctx, audioContext(recording.getNote(ChannelInfo.Voicing.MAIN)),
+						List.<PatternElement>of(recording, throwing), false, 0.0, 50_000_000, 1, null);
+			} catch (GatherFailure e) {
+				threw = true;
+			}
+			Assert.assertTrue("the partial gather aborts with the simulated failure", threw);
+
+			Assert.assertEquals("the recording element gathered one destination",
+					1, recording.getRecorded().size());
+			recording.getRecorded().forEach(note -> Assert.assertNull(
+					"a partial percussion gather still releases the earlier notes' offset arguments",
+					note.getOffsetArg()));
+
+			plm.destroy();
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}

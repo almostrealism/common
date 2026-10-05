@@ -33,6 +33,7 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
@@ -540,6 +541,12 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * and discards the result. Call this after construction and genome assignment, before
 	 * starting the real-time loop, to populate the {@code FrequencyCache} upfront.</p>
 	 *
+	 * <p>The notes gathered for each element are transient to this warm-up: each owns a
+	 * single-element offset-argument {@link PackedCollection} nothing else references, so
+	 * they are {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after
+	 * evaluation and the evaluation runs in a {@link Heap} stage, so repeated scene
+	 * warm-ups do not accumulate native allocations until garbage collection.</p>
+	 *
 	 * @param contextProvider a function that creates an {@link AudioSceneContext} for a channel
 	 * @return the number of notes successfully evaluated during warmup
 	 */
@@ -575,21 +582,26 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 					List<RenderedNoteAudio> notes =
 							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
 
-					for (RenderedNoteAudio note : notes) {
-						if (note.getExpectedFrameCount() <= 0) continue;
+					try {
+						for (RenderedNoteAudio note : notes) {
+							if (note.getExpectedFrameCount() <= 0) continue;
 
-						Producer<PackedCollection> producer =
-								note.getProducer(note.getExpectedFrameCount());
-						if (producer != null) {
 							try {
-								PackedCollection audio = traverse(1, producer).get().evaluate();
-								if (audio != null) {
+								boolean[] rendered = {false};
+								Heap.stage(() -> {
+									Producer<PackedCollection> producer =
+											note.getProducer(note.getExpectedFrameCount());
+									rendered[0] = traverse(1, producer).get().evaluate() != null;
+								});
+								if (rendered[0]) {
 									notesEvaluated++;
 								}
 							} catch (Exception e) {
 								// Skip notes that fail evaluation during warmup
 							}
 						}
+					} finally {
+						notes.forEach(RenderedNoteAudio::destroy);
 					}
 				}
 			}

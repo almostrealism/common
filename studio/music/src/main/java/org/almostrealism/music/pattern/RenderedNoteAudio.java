@@ -30,8 +30,10 @@ import java.util.function.IntFunction;
  * and serves as the bridge between pattern elements and actual audio rendering. Each instance
  * contains:</p>
  * <ul>
- *   <li><strong>offsetArg</strong>: A caller-owned {@link PackedCollection} for passing the start
- *       frame offset to the producer factory</li>
+ *   <li><strong>offsetArg</strong>: A note-owned {@link PackedCollection} for passing the start
+ *       frame offset to the producer factory. The note owns this native allocation and releases
+ *       it in {@link #destroy()}; a render caller writes the start frame into it before each
+ *       {@link #getProducer(int)} call but does not free it</li>
  *   <li><strong>producerFactory</strong>: A function that creates a {@link Producer} for a given
  *       frame count, using the offset stored in {@code offsetArg}</li>
  *   <li><strong>offset</strong>: The absolute frame position where this note should be rendered
@@ -196,10 +198,11 @@ public class RenderedNoteAudio implements Destroyable {
 	}
 
 	/**
-	 * Returns the caller-owned {@link PackedCollection} used to pass the
-	 * start frame offset to producers. The caller sets the value
+	 * Returns the note-owned {@link PackedCollection} used to pass the
+	 * start frame offset to producers. A render caller sets the value
 	 * via {@code getOffsetArg().setMem(0, startFrame)} before calling
-	 * {@link #getProducer(int)}.
+	 * {@link #getProducer(int)}, but the note owns the allocation and releases
+	 * it in {@link #destroy()}; the caller must not free it.
 	 *
 	 * <p>Because the same {@link PackedCollection} instance is reused across
 	 * calls, the {@link org.almostrealism.collect.computations.CollectionProviderProducer}
@@ -210,7 +213,11 @@ public class RenderedNoteAudio implements Destroyable {
 		return offsetArg;
 	}
 
-	/** Sets the caller-owned PackedCollection used to pass the start frame offset to producers. */
+	/**
+	 * Sets the note-owned PackedCollection used to pass the start frame offset to
+	 * producers. The note takes ownership of its native memory and releases it in
+	 * {@link #destroy()}.
+	 */
 	public void setOffsetArg(PackedCollection offsetArg) {
 		this.offsetArg = offsetArg;
 	}

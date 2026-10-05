@@ -275,7 +275,20 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * {@link BatchedPatternRenderer#buildBatchedSssChainPlacedFromScalars},
 	 * percussion via
 	 * {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}) — see
-	 * the class javadoc.</p>
+	 * the class javadoc. A note carrying a melodic-SSS record that starts in this
+	 * window is batched; a note continuing from an earlier tick is rendered
+	 * per-note from its within-note sampling offset.</p>
+	 *
+	 * <p>Melodic destinations are memoized by the gather cache and owned by it;
+	 * percussion builds per-gather {@code fit()} source copies that are freed
+	 * between ticks, so it cannot be cached and is re-gathered fresh each call,
+	 * skipping (future-side, provably safe) elements whose earliest note begins
+	 * at or after the window — an element's earliest note is at measure
+	 * {@code offset + getPosition()} and its repeats only move later, so skipping
+	 * it cannot drop an overlapping note; the one-buffer margin absorbs frame
+	 * rounding. The transient percussion notes are gathered within a protected
+	 * scope and {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally}
+	 * even if a later element's gather fails, so a partial gather does not leak.</p>
 	 *
 	 * @param sceneContext scene context containing the destination buffer
 	 * @param audioContext note audio context
@@ -298,33 +311,26 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 		int endFrame = startFrame + frameCount;
 
 		long genStart = System.nanoTime();
-		List<RenderedNoteAudio> destinations;
 		// Percussion destinations are owned here; melodic ones by the gather cache.
 		boolean transientDestinations = !melodic;
-		if (melodic) {
-			destinations = gatherMelodic(elements, offset, sceneContext, audioContext);
-		} else {
-			// Percussion builds per-gather fit() source copies that are freed between ticks, so its
-			// destinations cannot be cached. Re-gather fresh, skipping (future-side, provably safe)
-			// elements whose earliest note begins at/after this window: an element's earliest note
-			// is at measure (offset + getPosition()) and repeats only move later, so skipping it
-			// cannot drop an overlapping note. The one-buffer margin absorbs frame rounding.
-			long futureCutoff = (long) endFrame + frameCount;
-			destinations = elements.stream()
-					.filter(e -> sceneContext.frameForPosition(offset + e.getPosition()) < futureCutoff)
-					.map(e -> e.getNoteDestinations(false, offset, sceneContext, audioContext))
-					.flatMap(List::stream)
-					.toList();
-		}
-		gatherNanos.addAndGet(System.nanoTime() - genStart);
+		List<RenderedNoteAudio> destinations = new ArrayList<>();
 
-		// Collect notes overlapping [startFrame, endFrame). The batched path can
-		// dispatch when every overlapping note carries a melodic-SSS input record;
-		// a note continuing from an earlier tick is rendered from its within-note
-		// sampling offset (computed per note in dispatchBatched).
 		List<RenderedNoteAudio> batchNow = new ArrayList<>();
 		List<RenderedNoteAudio> perNote = new ArrayList<>();
 		try {
+			if (melodic) {
+				destinations = gatherMelodic(elements, offset, sceneContext, audioContext);
+			} else {
+				long futureCutoff = (long) endFrame + frameCount;
+				for (PatternElement element : elements) {
+					if (sceneContext.frameForPosition(offset + element.getPosition()) < futureCutoff) {
+						destinations.addAll(
+								element.getNoteDestinations(false, offset, sceneContext, audioContext));
+					}
+				}
+			}
+			gatherNanos.addAndGet(System.nanoTime() - genStart);
+
 			for (RenderedNoteAudio note : destinations) {
 				int noteStart = note.getOffset();
 				if (note.getExpectedFrameCount() > 0) {

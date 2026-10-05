@@ -242,10 +242,10 @@ public interface PatternFeatures extends CodeFeatures {
 							   List<PatternElement> elements, boolean melodic, double offset,
 							   int startFrame, int frameCount, NoteAudioCache cache) {
 		List<RenderedNoteAudio> notes = new ArrayList<>();
-		for (PatternElement element : elements) {
-			notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
-		}
 		try {
+			for (PatternElement element : elements) {
+				notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
+			}
 			renderNotes(sceneContext, notes, startFrame, frameCount, cache);
 		} finally {
 			notes.forEach(RenderedNoteAudio::destroy);
