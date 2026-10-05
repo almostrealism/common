@@ -228,13 +228,25 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 	public void refresh() { values = null; }
 
 	/**
-	 * Returns an {@link Evaluable} that produces {@link PackedCollection}s filled with random values.
-	 * 
-	 * <p>The returned evaluable creates destinations with the appropriate shape and fills them
-	 * with random values according to the configured distribution. Values are generated lazily
-	 * and cached until {@link #refresh()} is called.</p>
-	 * 
-	 * @return an Evaluable that generates PackedCollection instances filled with random values
+	 * Returns an {@link Evaluable} over the random values produced by this generator.
+	 * Values are generated lazily and cached until {@link #refresh()} is called.
+	 *
+	 * <p>The two evaluation paths deliver those cached values differently:</p>
+	 * <ul>
+	 *   <li>{@code evaluate(Object...)} returns the held cache directly, without copying it
+	 *       into a fresh destination on each call. It is a read-only handle onto this
+	 *       generator's internal state: repeated evaluations return the same instance, and
+	 *       callers must not mutate or {@link io.almostrealism.lifecycle.Destroyable destroy}
+	 *       it, as that would corrupt the cache returned by subsequent evaluations (and by
+	 *       {@link #into(Object)}). Returning the cache directly avoids allocating and copying
+	 *       a full-size buffer per evaluation, which doubles peak native memory when large
+	 *       random collections are materialized.</li>
+	 *   <li>{@code into(destination)} copies the cached values into the caller-owned
+	 *       {@code destination} and returns it. Callers that need an isolated, mutable result
+	 *       must use this path and supply their own destination.</li>
+	 * </ul>
+	 *
+	 * @return an Evaluable that provides this generator's random values
 	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
