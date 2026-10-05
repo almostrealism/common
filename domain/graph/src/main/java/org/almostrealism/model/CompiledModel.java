@@ -180,6 +180,23 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	/**
+	 * Returns the stable output collection this model writes on each forward pass.
+	 *
+	 * <p>The buffer is allocated once during {@link #compile(Model, boolean, boolean, OperationProfile)}
+	 * and reused for every {@link #forward(PackedCollection, PackedCollection...)} call — the value
+	 * returned here is the same object {@code forward} returns, available before the first forward
+	 * pass has run. {@link #destroy()} does not reclaim it (it destroys only the compiled
+	 * operations), so the caller owns the buffer's lifecycle. Exposing the handle lets a caller that
+	 * tracks resources for construction-failure rollback register the output buffer <em>before</em>
+	 * running the fallible forward pass, so a throw from that pass cannot leak it.</p>
+	 *
+	 * @return the output collection, or {@code null} if this model has no output supplier
+	 */
+	public PackedCollection getOutput() {
+		return retrieveOutput == null ? null : retrieveOutput.get();
+	}
+
+	/**
 	 * Executes the forward pass with the given inputs.
 	 *
 	 * @param input the primary input data

@@ -475,9 +475,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
-		// Throwaway pass to capture the stable output handle the streaming loop reads
-		PackedCollection masterOutput = compiled.forward(pdslInput);
+		// Register the stable output handle for rollback before the fallible throwaway pass:
+		// a throw from forward() must not leak a buffer CompiledModel.destroy() cannot reclaim.
+		PackedCollection masterOutput = compiled.getOutput();
 		allocated.add(masterOutput);
+		compiled.forward(pdslInput);
 
 		// The mixdown renders one signal per frame; a stereo destination receives it
 		// on both channels, while a mono destination (or one with the master disabled)

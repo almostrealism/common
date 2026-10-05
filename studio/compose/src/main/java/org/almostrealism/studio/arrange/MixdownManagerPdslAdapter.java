@@ -1534,7 +1534,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		try {
 			runOnce(operation);
 		} catch (RuntimeException | Error e) {
-			destination.destroy();
+			// Suppress a release failure onto the original throwable rather than letting it
+			// replace the compilation/execution error that triggered the rollback.
+			Destroyable.destroyAll(e, destination);
 			throw e;
 		}
 	}
