@@ -24,13 +24,18 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Tests {@link ConfinedExecutor#runOrElse(Runnable, Runnable)}: work runs on the confined
  * thread while the executor is active, falls back to the calling thread (inside the task
  * scope) once the executor has been destroyed, and a failure of the confined work itself is
- * never mistaken for a refusal.
+ * never mistaken for a refusal. Also tests that {@link ConfinedExecutor#destroy(Runnable)}
+ * never lets work be queued behind its final task, and that a refused fallback waits for the
+ * work queued before destruction.
  */
 public class ConfinedExecutorTest extends TestSuiteBase {
 
@@ -148,5 +153,105 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 
 		assertFalse(executor.isActive());
 		assertEquals(List.of("task"), events);
+	}
+
+	/**
+	 * Once {@link ConfinedExecutor#destroy(Runnable)} has started, work submitted from another
+	 * thread is refused even while the final task is still running, so nothing can run on the
+	 * confined thread after the final task.
+	 */
+	@Test(timeout = 10000)
+	public void destroyRefusesWorkWhileFinalTaskRuns() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch finalStarted = new CountDownLatch(1);
+		CountDownLatch releaseFinal = new CountDownLatch(1);
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+		Thread destroyer = new Thread(() -> executor.destroy(() -> {
+			finalStarted.countDown();
+			awaitLatch(releaseFinal);
+			events.add("final");
+		}));
+		destroyer.start();
+		assertTrue(finalStarted.await(5, TimeUnit.SECONDS));
+
+		try {
+			executor.run(() -> events.add("late"));
+			Assert.fail("Work submitted after destroy began must be refused");
+		} catch (IllegalStateException expected) {
+			assertFalse(executor.isActive());
+		} finally {
+			releaseFinal.countDown();
+			destroyer.join(5000);
+		}
+
+		assertFalse(destroyer.isAlive());
+		assertEquals(List.of("final"), events);
+	}
+
+	/**
+	 * A fallback refused by a destroyed executor runs only after the confined thread has
+	 * finished every task queued before destruction, including the final task, even when the
+	 * calling thread is already interrupted; the caller's interrupt status is preserved. This
+	 * is what lets a withdrawal observe a registration made by work that was still queued when
+	 * the executor was destroyed.
+	 */
+	@Test(timeout = 10000)
+	public void runOrElseFallbackWaitsForQueuedWork() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch queuedStarted = new CountDownLatch(1);
+		CountDownLatch releaseQueued = new CountDownLatch(1);
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+
+		Thread worker = new Thread(() -> executor.run(() -> {
+			queuedStarted.countDown();
+			awaitLatch(releaseQueued);
+			events.add("queued");
+		}));
+		worker.start();
+		assertTrue(queuedStarted.await(5, TimeUnit.SECONDS));
+
+		Thread destroyer = new Thread(() -> executor.destroy(() -> events.add("final")));
+		destroyer.start();
+		while (executor.isActive()) {
+			Thread.sleep(1);
+		}
+
+		AtomicBoolean interruptedAfter = new AtomicBoolean();
+		Thread caller = new Thread(() -> {
+			Thread.currentThread().interrupt();
+			executor.runOrElse(() -> events.add("task"), () -> events.add("refused"));
+			interruptedAfter.set(Thread.currentThread().isInterrupted());
+		});
+		caller.start();
+
+		caller.join(300);
+		assertTrue("The fallback must wait for work queued before destruction", caller.isAlive());
+		assertEquals(List.of(), events);
+
+		releaseQueued.countDown();
+		caller.join(5000);
+		worker.join(5000);
+		destroyer.join(5000);
+
+		assertFalse(caller.isAlive());
+		assertEquals(List.of("queued", "final", "refused"), events);
+		assertTrue(interruptedAfter.get());
+	}
+
+	/**
+	 * Waits for a latch, failing the calling task if interrupted.
+	 *
+	 * @param latch the latch to wait for
+	 */
+	private static void awaitLatch(CountDownLatch latch) {
+		try {
+			if (!latch.await(5, TimeUnit.SECONDS)) {
+				throw new IllegalStateException("Timed out waiting for the test to release the task");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException(e);
+		}
 	}
 }

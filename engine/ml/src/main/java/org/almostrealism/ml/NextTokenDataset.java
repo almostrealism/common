@@ -179,6 +179,26 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 	}
 
 	/**
+	 * Creates a dataset over the region {@code [start, end)} of another dataset's tokens, with the
+	 * same vocabulary size, window length, stride and window cap. The token array is shared rather
+	 * than copied: it is owned by the datasets, never modified, and was validated over the parent's
+	 * region, which contains this one.
+	 *
+	 * @param parent the dataset whose tokens and configuration are shared
+	 * @param start  the first token of the region, within the parent's region
+	 * @param end    the end (exclusive) of the region, within the parent's region
+	 */
+	private NextTokenDataset(NextTokenDataset parent, int start, int end) {
+		this.tokens = parent.tokens;
+		this.start = start;
+		this.end = end;
+		this.vocabSize = parent.vocabSize;
+		this.seqLen = parent.seqLen;
+		this.stride = parent.stride;
+		this.maxWindows = parent.maxWindows;
+	}
+
+	/**
 	 * Returns the first token of this dataset's region.
 	 *
 	 * @return the region start
@@ -262,17 +282,23 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 	/**
 	 * Splits the source region into two disjoint contiguous regions, the first holding the given
 	 * fraction of the tokens, and forms windows separately within each. No window of either part
-	 * reads any token of the other part; see the class documentation.
+	 * reads any token of the other part; see the class documentation. Both parts share this
+	 * dataset's token array instead of copying it.
 	 *
 	 * @param ratio the fraction of the region's tokens assigned to the first part
 	 * @return the first-part dataset followed by the second-part dataset
+	 * @throws IllegalArgumentException if {@code ratio} is not within {@code [0, 1]}
 	 */
 	@Override
 	public List<Dataset<PackedCollection>> split(double ratio) {
+		if (ratio < 0 || ratio > 1) {
+			throw new IllegalArgumentException("Split ratio " + ratio + " is not within [0, 1]");
+		}
+
 		int seam = start + (int) Math.round((end - start) * ratio);
 		List<Dataset<PackedCollection>> parts = new ArrayList<>();
-		parts.add(new NextTokenDataset(tokens, start, seam, vocabSize, seqLen, stride, maxWindows));
-		parts.add(new NextTokenDataset(tokens, seam, end, vocabSize, seqLen, stride, maxWindows));
+		parts.add(new NextTokenDataset(this, start, seam));
+		parts.add(new NextTokenDataset(this, seam, end));
 		return parts;
 	}
 

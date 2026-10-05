@@ -108,6 +108,52 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * The parts of a split keep the parent's window length, stride and window cap, read the tokens
+	 * the parent copied at construction rather than the caller's later-modified array, and can be
+	 * split again into regions nested within their own.
+	 */
+	@Test(timeout = 60000)
+	public void splitPartsShareParentConfigurationAndTokens() {
+		int[] tokens = positions(40);
+		NextTokenDataset data = new NextTokenDataset(tokens, VOCAB, 4, 2, 3);
+		tokens[1] = VOCAB - 1;
+		tokens[26] = VOCAB - 1;
+
+		List<Dataset<PackedCollection>> parts = data.split(0.5);
+		NextTokenDataset first = (NextTokenDataset) parts.get(0);
+		NextTokenDataset second = (NextTokenDataset) parts.get(1);
+		Assert.assertEquals(0, first.getStart());
+		Assert.assertEquals(20, first.getEnd());
+		Assert.assertEquals(20, second.getStart());
+		Assert.assertEquals(40, second.getEnd());
+		Assert.assertEquals(4, first.getSeqLen());
+		Assert.assertEquals(8, first.getAvailableWindowCount());
+		Assert.assertEquals(3, first.getWindowCount());
+		Assert.assertEquals(List.of(0, 2, 4), passStarts(first));
+		Assert.assertEquals(List.of(20, 22, 24), passStarts(second));
+
+		ValueTarget<PackedCollection> window = first.iterator().next();
+		Assert.assertEquals(1, (int) window.getInput().toDouble(1));
+		Assert.assertEquals(1, hotIndex(window.getExpectedOutput(), 0));
+
+		List<Dataset<PackedCollection>> nested = second.split(0.25);
+		NextTokenDataset inner = (NextTokenDataset) nested.get(1);
+		Assert.assertEquals(25, ((NextTokenDataset) nested.get(0)).getEnd());
+		Assert.assertEquals(25, inner.getStart());
+		Assert.assertEquals(40, inner.getEnd());
+		Assert.assertEquals(List.of(25, 27, 29), passStarts(inner));
+
+		ValueTarget<PackedCollection> innerWindow = inner.iterator().next();
+		Assert.assertEquals(26, (int) innerWindow.getInput().toDouble(1));
+		Assert.assertEquals(26, hotIndex(innerWindow.getExpectedOutput(), 0));
+
+		first.destroy();
+		second.destroy();
+		inner.destroy();
+		((NextTokenDataset) nested.get(0)).destroy();
+	}
+
 	/** A window cap limits the window count; a region too short for one window yields none. */
 	@Test(timeout = 60000)
 	public void windowCapAndShortRegion() {

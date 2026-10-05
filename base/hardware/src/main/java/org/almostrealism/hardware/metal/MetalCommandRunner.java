@@ -316,7 +316,10 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 *
 	 * <p>An interrupted caller abandons the wait, as {@link ConfinedExecutor#run} does. The
 	 * waiter registration may still be queued at that point, so its withdrawal is queued behind
-	 * it rather than skipped, and the buffer is released once some later wait drains it.</p>
+	 * it rather than skipped, and the buffer is released once some later wait drains it. If the
+	 * runner is destroyed before the withdrawal can be queued, the withdrawal runs on the calling
+	 * thread only after the executor has run every queued task, so the registration it withdraws
+	 * has been made by then.</p>
 	 *
 	 * <p>{@link #destroy()} may run while a caller is still waiting here. Its final task drains
 	 * every committed buffer, including the one being waited for, but leaves it retained for the
@@ -332,7 +335,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		executor.run(() -> registered.set(commitForWait(commandBuffer, requester)));
 
 		if (Thread.currentThread().isInterrupted()) {
-			// TODO(review): if destroy() finishes before this withdrawal is submitted, the fallback may read registered before the still-queued commitForWait sets it, leaking that waiter
 			Runnable withdrawal = () -> {
 				Waiter abandoned = registered.get();
 				if (abandoned != null) abandoned.withdraw();
