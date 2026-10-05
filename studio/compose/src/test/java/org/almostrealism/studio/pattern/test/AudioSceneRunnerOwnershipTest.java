@@ -19,6 +19,7 @@ package org.almostrealism.studio.pattern.test;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
@@ -163,6 +164,68 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			assertEquals(0, notActive.destroyCount);
 		} finally {
 			scene.destroy();
+		}
+	}
+
+	/**
+	 * A release of the active cell list that throws part-way must still detach the list from
+	 * the scene, so the scene's own teardown does not traverse it a second time. The active
+	 * list built by {@link AudioScene#getCells} is given a data buffer whose release throws;
+	 * {@link CellList#destroy()} stops at that throw without clearing its data, so a second
+	 * traversal would release the same buffer again. Exactly one release must be observed
+	 * across the failing {@link AudioScene#destroyActiveCells} and the subsequent
+	 * {@link AudioScene#destroy()}.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void failedActiveCellsReleaseIsNotRepeatedBySceneDestroy() {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = false;
+		List<WaveOutput> outputs = new ArrayList<>();
+		PackedCollection frame = new PackedCollection(1);
+		ThrowingCollection failing = new ThrowingCollection();
+
+		try {
+			AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+			applyGenome(scene, 1);
+			CellList active = (CellList) scene.getCells(output("ownership-active", outputs),
+					List.of(0), BUFFER_SIZE, () -> 0, cp(frame));
+			active.addData(failing);
+
+			IllegalStateException thrown = null;
+			try {
+				scene.destroyActiveCells(active);
+			} catch (IllegalStateException e) {
+				thrown = e;
+			}
+			assertTrue("the failing data release should propagate", thrown != null);
+			assertEquals(1, failing.destroyCount);
+
+			scene.destroy();
+			assertEquals("scene.destroy() must not traverse an active list whose release already ran",
+					1, failing.destroyCount);
+		} finally {
+			frame.destroy();
+			Destroyable.destroy(outputs);
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/** A {@link PackedCollection} whose release counts invocations and then throws. */
+	private static class ThrowingCollection extends PackedCollection {
+		/** Number of times {@link #destroy()} has been called. */
+		private int destroyCount;
+
+		/** Creates a single-element collection. */
+		ThrowingCollection() {
+			super(1);
+		}
+
+		@Override
+		public void destroy() {
+			destroyCount++;
+			super.destroy();
+			throw new IllegalStateException("simulated release failure");
 		}
 	}
 

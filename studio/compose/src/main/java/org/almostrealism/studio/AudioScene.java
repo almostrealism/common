@@ -1024,10 +1024,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			if (activeCells != null) {
-				activeCells.destroy();
-				activeCells = null;
-			}
+			destroyActiveCells(activeCells);
 
 			CellList cells = cells(
 					getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
@@ -1057,12 +1054,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * that a later {@link #getCells} already replaced (and therefore destroyed) is no longer
 	 * {@code activeCells}, so this is a no-op for it too.</p>
 	 *
+	 * <p>The reference is cleared before {@link CellList#destroy()} runs, so a release that
+	 * throws part-way still leaves the scene without the list; a later call (such as the
+	 * scene's own teardown after a failed runner release) does not traverse it again.</p>
+	 *
 	 * @param cells the cell list to release; ignored when it is not the current active cells
 	 */
 	public void destroyActiveCells(CellList cells) {
 		if (cells != null && activeCells == cells) {
-			activeCells.destroy();
 			activeCells = null;
+			cells.destroy();
 		}
 	}
 
@@ -1102,10 +1103,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			if (activeCells != null) {
-				activeCells.destroy();
-				activeCells = null;
-			}
+			destroyActiveCells(activeCells);
 
 			// WET cells are created only when efx is enabled — mirrors getPatternCells,
 			// which omits the WET voicing on the fast path.

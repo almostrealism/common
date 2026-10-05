@@ -315,7 +315,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
 				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
 				bufferFrameProducer);
-		allocated.add(cells);
+		// The cells are the scene's activeCells, so roll back through the scene to clear
+		// its reference too; destroying the list directly would leave the scene holding it.
+		allocated.add(new Destroyable() {
+			@Override
+			public void destroy() { scene.destroyActiveCells(cells); }
+		});
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
