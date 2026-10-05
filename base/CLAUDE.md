@@ -43,11 +43,12 @@ above this layer depends on it; nothing here depends on higher layers.
 
 A native object (an `id<MTLBuffer>`, an `MTLSharedEvent`, a `cl_event`, a device pointer, …) is
 represented by a **Java object** of a type that means that thing — e.g. `MTLBuffer`, `MTLEvent`,
-`MTLCommandBuffer`, `CLSemaphore`, or a CUDA `CUObject` subtype (`CUStream`, `CUModule`,
-`CUDeviceBuffer`, …). The raw `long`/`int` native pointer lives **only** inside the
-thin JNI binding class (`MTL`, `CL`, `CU`) as the argument/return type of the `native` methods — for
-the CUDA bridge it is held by `CUObject` and passed to `CU` from within the `cuda` package alone; it
-does **not** leak into any higher-level code. Never carry native objects around as bare `long`s, never
+`MTLCommandBuffer`, `CLSemaphore`, or a CUDA wrapper — a context-bound `CUObject` subtype
+(`CUStream`, `CUModule`, `CUDeviceBuffer`, …) or the context-free `CUDevice`. The raw
+`long`/`int` native pointer lives **only** inside the thin JNI binding class (`MTL`, `CL`, `CU`) as
+the argument/return type of the `native` methods — for the CUDA bridge each wrapper holds its own
+handle (a `CUObject` holds a `long`, a `CUDevice` the device `int`) and exposes it to `CU` from
+within the `cuda` package alone; it does **not** leak into any higher-level code. Never carry native objects around as bare `long`s, never
 key collections on them (`Set<Long>`, `Map<Long, …>`), and never compare or store native addresses
 outside the wrapper. If you need identity or bookkeeping for a native object, hold the wrapper
 object and use it. The fact that a value crosses JNI does not make it acceptable to stop caring
