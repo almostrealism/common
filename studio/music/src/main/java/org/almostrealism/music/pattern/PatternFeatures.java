@@ -221,6 +221,14 @@ public interface PatternFeatures extends CodeFeatures {
 	 *   <li><strong>destOffset</strong>: {@code overlapStart - startFrame} (position in destination)</li>
 	 * </ul>
 	 *
+	 * <p>The gathered notes are freshly created on every tick (this path has no gather
+	 * memoization), so each owns a single-element offset-argument {@link PackedCollection}
+	 * that nothing else references once the dispatch returns. They are
+	 * {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after rendering so
+	 * long-running per-note rendering does not accumulate native allocations until GC. The
+	 * cached note audio is a separate copy owned by the {@link NoteAudioCache}, so releasing
+	 * the notes does not disturb it.</p>
+	 *
 	 * @param sceneContext scene context containing destination buffer
 	 * @param audioContext note audio context
 	 * @param elements elements to render
@@ -237,7 +245,11 @@ public interface PatternFeatures extends CodeFeatures {
 		for (PatternElement element : elements) {
 			notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
 		}
-		renderNotes(sceneContext, notes, startFrame, frameCount, cache);
+		try {
+			renderNotes(sceneContext, notes, startFrame, frameCount, cache);
+		} finally {
+			notes.forEach(RenderedNoteAudio::destroy);
+		}
 	}
 
 	/**

@@ -51,6 +51,22 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link PatternFeatures} to access that path and the batched-output
  * accumulation boundary, per the standard {@code Features} mixin convention.</p>
  *
+ * <p>Only notes that start in the current window (sampling offset {@code == 0}) are
+ * batched: their per-window kernel shape is fixed, so the compiled kernel is reused
+ * across ticks. A note continuing from an earlier window reads from a growing
+ * within-note offset; batching it bloats the shared per-dispatch source length (every
+ * row pays the longest continuation's read), which measured a net loss, so continuing
+ * notes are rendered per-note (once, then cached).</p>
+ *
+ * <h2>Transient note ownership</h2>
+ *
+ * <p>Percussion destinations are freshly gathered every tick and owned by the
+ * {@link #render} call, so each note's offset-argument {@link PackedCollection} is
+ * {@link RenderedNoteAudio#destroy() destroyed} after dispatch rather than left for GC.
+ * Melodic destinations are memoized and owned by the {@link #gatherCache gather cache},
+ * which releases them via {@link #clearGatherCache()}, so they are not destroyed per
+ * tick.</p>
+ *
  * <h2>Shared compiled kernel</h2>
  *
  * <p>The compiled batched kernel is fixed-shape at construction time. To share
@@ -283,6 +299,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 
 		long genStart = System.nanoTime();
 		List<RenderedNoteAudio> destinations;
+		// Percussion destinations are owned here; melodic ones by the gather cache.
+		boolean transientDestinations = !melodic;
 		if (melodic) {
 			destinations = gatherMelodic(elements, offset, sceneContext, audioContext);
 		} else {
@@ -306,32 +324,35 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 		// sampling offset (computed per note in dispatchBatched).
 		List<RenderedNoteAudio> batchNow = new ArrayList<>();
 		List<RenderedNoteAudio> perNote = new ArrayList<>();
-		for (RenderedNoteAudio note : destinations) {
-			int noteStart = note.getOffset();
-			if (note.getExpectedFrameCount() > 0) {
-				int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
-				if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) continue;
-			} else if (noteStart >= endFrame) {
-				continue;
+		try {
+			for (RenderedNoteAudio note : destinations) {
+				int noteStart = note.getOffset();
+				if (note.getExpectedFrameCount() > 0) {
+					int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
+					if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) continue;
+				} else if (noteStart >= endFrame) {
+					continue;
+				}
+				// Batch only notes that start in this window (sampling offset == 0); a
+				// continuing note is rendered per-note. See the class javadoc for why.
+				if (note.getBatchedInputs() != null && noteStart >= startFrame) {
+					batchNow.add(note);
+				} else {
+					perNote.add(note);
+				}
 			}
-			// Batch only notes that START in this window (sampling offset == 0): their per-window
-			// kernel shape is fixed, so the compiled kernel is reused across ticks. A note continuing
-			// from an earlier window reads from a growing within-note offset; batching it bloats the
-			// shared per-dispatch source length (every row pays the longest continuation's read),
-			// which measured a net loss, so continuing notes are rendered per-note (once, then cached).
-			if (note.getBatchedInputs() != null && noteStart >= startFrame) {
-				batchNow.add(note);
-			} else {
-				perNote.add(note);
-			}
-		}
 
-		if (!batchNow.isEmpty()) {
-			dispatchBatched(batchNow, startFrame, frameCount, destination);
-		}
-		if (!perNote.isEmpty()) {
-			fallbackCount.incrementAndGet();
-			renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			if (!batchNow.isEmpty()) {
+				dispatchBatched(batchNow, startFrame, frameCount, destination);
+			}
+			if (!perNote.isEmpty()) {
+				fallbackCount.incrementAndGet();
+				renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			}
+		} finally {
+			if (transientDestinations) {
+				destinations.forEach(RenderedNoteAudio::destroy);
+			}
 		}
 	}
 

@@ -33,6 +33,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -65,22 +66,94 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 	 */
 	private PatternElement renderableElement(ScaleTraversalStrategy strategy,
 											 List<Double> positions, int repeatCount) {
+		PatternElement element = new PatternElement(
+				Map.of(ChannelInfo.Voicing.MAIN, buildNote()), 0.0);
+		configureElement(element, strategy, positions, repeatCount);
+		return element;
+	}
+
+	/**
+	 * Builds a {@link RecordingElement} that captures the destinations it produces,
+	 * configured identically to {@link #renderableElement}.
+	 *
+	 * @param strategy the traversal strategy to apply
+	 * @param positions the scale positions to traverse
+	 * @param repeatCount the number of repetitions
+	 * @return a renderable, recording pattern element
+	 */
+	private RecordingElement recordingElement(ScaleTraversalStrategy strategy,
+											  List<Double> positions, int repeatCount) {
+		RecordingElement element = new RecordingElement(
+				Map.of(ChannelInfo.Voicing.MAIN, buildNote()), 0.0);
+		configureElement(element, strategy, positions, repeatCount);
+		return element;
+	}
+
+	/**
+	 * Builds a small in-memory {@link PatternNote} so destinations can be produced
+	 * without loading audio assets.
+	 *
+	 * @return the note
+	 */
+	private PatternNote buildNote() {
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 		PackedCollection source = new PackedCollection(1024);
 		NoteAudioProvider provider = NoteAudioProvider.create(() -> source, WesternChromatic.C1);
 		provider.setTuning(tuning);
+		return new PatternNote(new SimplePatternNote(provider), null);
+	}
 
-		PatternNote note = new PatternNote(new SimplePatternNote(provider), null);
-
-		PatternElement element = new PatternElement(
-				Map.of(ChannelInfo.Voicing.MAIN, note), 0.0);
+	/**
+	 * Applies the shared traversal, duration, and repeat configuration to an element.
+	 *
+	 * @param element the element to configure
+	 * @param strategy the traversal strategy to apply
+	 * @param positions the scale positions to traverse
+	 * @param repeatCount the number of repetitions
+	 */
+	private void configureElement(PatternElement element, ScaleTraversalStrategy strategy,
+								  List<Double> positions, int repeatCount) {
 		element.setScaleTraversalStrategy(strategy);
 		element.setScalePosition(positions);
 		element.setDurationStrategy(NoteDurationStrategy.FIXED);
 		element.setNoteDurationSelection(0.25);
 		element.setRepeatCount(repeatCount);
 		element.setRepeatDuration(0.25);
-		return element;
+	}
+
+	/**
+	 * A {@link PatternElement} that records the {@link RenderedNoteAudio} instances it
+	 * returns from {@link #getNoteDestinations}, so a test can inspect the lifecycle of
+	 * the transient notes a render path gathers.
+	 */
+	private static final class RecordingElement extends PatternElement {
+		/** The destinations this element has produced, across every gather call. */
+		private final List<RenderedNoteAudio> recorded = new ArrayList<>();
+
+		/**
+		 * Creates a recording element with the given notes and position.
+		 *
+		 * @param notes the notes keyed by voicing
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		RecordingElement(Map<ChannelInfo.Voicing, PatternNote> notes, double position) {
+			super(notes, position);
+		}
+
+		@Override
+		public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double offset,
+														   AudioSceneContext context,
+														   NoteAudioContext audioContext) {
+			List<RenderedNoteAudio> result =
+					super.getNoteDestinations(melodic, offset, context, audioContext);
+			recorded.addAll(result);
+			return result;
+		}
+
+		/** Returns every destination produced so far. */
+		List<RenderedNoteAudio> getRecorded() {
+			return recorded;
+		}
 	}
 
 	/**
@@ -311,6 +384,137 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			plm.destroy();
 			Assert.assertTrue("a repeated teardown is a no-op", renderer.gatherCacheSize() == 0);
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * The per-note render path gathers fresh {@link RenderedNoteAudio} on every tick (it
+	 * does not memoize), and each owns a single-element offset-argument
+	 * {@link PackedCollection} nothing else references once the dispatch returns.
+	 * {@link PatternFeatures#renderPerNote} must release those offset arguments so a
+	 * long-running per-note render does not accumulate native allocations until GC.
+	 *
+	 * <p>A render window past every note's estimated end makes {@code renderNotes} skip
+	 * them all, so the finally-release under test is exercised without compiling or
+	 * evaluating a kernel. A released note has its offset argument destroyed and its
+	 * reference nulled by {@link RenderedNoteAudio#destroy()}.</p>
+	 */
+	@Test(timeout = 120000)
+	public void renderPerNoteReleasesTransientOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			RecordingElement element = recordingElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+
+			AudioSceneContext ctx = context(scale);
+			ctx.setDestination(new PackedCollection(1));
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer features = plm.getBatchedLayerRenderer();
+
+			features.renderPerNote(ctx, audioContext(element.getNote(ChannelInfo.Voicing.MAIN)),
+					List.<PatternElement>of(element), true, 0.0, 50_000_000, 1, null);
+
+			Assert.assertTrue("the chord gathered one note per tone",
+					element.getRecorded().size() == 3);
+			Assert.assertTrue("the per-note path does not memoize", features.gatherCacheSize() == 0);
+			element.getRecorded().forEach(note -> Assert.assertNull(
+					"a transient note's offset argument is released after dispatch",
+					note.getOffsetArg()));
+
+			plm.destroy();
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * The batched renderer's percussion path gathers fresh destinations on every tick
+	 * (percussion is not memoized), so {@link BatchedPatternLayerRenderer#render} owns
+	 * them and must release their offset arguments after the dispatch returns.
+	 */
+	@Test(timeout = 120000)
+	public void batchedPercussionRenderReleasesTransientOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4);
+			RecordingElement element = recordingElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0), 1);
+
+			AudioSceneContext ctx = context(scale);
+			ctx.setDestination(new PackedCollection(1));
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			renderer.render(ctx, audioContext(element.getNote(ChannelInfo.Voicing.MAIN)),
+					List.<PatternElement>of(element), false, 0.0, 50_000_000, 1, null);
+
+			Assert.assertTrue("percussion gathered one destination",
+					element.getRecorded().size() == 1);
+			Assert.assertTrue("percussion destinations are not memoized",
+					renderer.gatherCacheSize() == 0);
+			element.getRecorded().forEach(note -> Assert.assertNull(
+					"a transient percussion note's offset argument is released after dispatch",
+					note.getOffsetArg()));
+
+			plm.destroy();
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * The batched renderer's melodic path memoizes its destinations, so
+	 * {@link BatchedPatternLayerRenderer#render} must leave them intact after a tick —
+	 * the gather cache owns them and releases them only on an epoch advance or teardown.
+	 * Destroying them per tick would strand the cache's live references.
+	 */
+	@Test(timeout = 120000)
+	public void batchedMelodicRenderRetainsMemoizedOffsetArgs() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
+			RecordingElement element = recordingElement(
+					ScaleTraversalStrategy.CHORD, List.of(0.0, 0.5, 1.0), 1);
+
+			AudioSceneContext ctx = context(scale);
+			ctx.setDestination(new PackedCollection(1));
+
+			PatternLayerManager plm = new PatternLayerManager(List.of(),
+					new ProjectedGenome(8).addChromosome(), 0, 4.0, true);
+			BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
+
+			renderer.render(ctx, audioContext(element.getNote(ChannelInfo.Voicing.MAIN)),
+					List.<PatternElement>of(element), true, 0.0, 50_000_000, 1, null);
+
+			Assert.assertTrue("the melodic gather is memoized under a single key",
+					renderer.gatherCacheSize() == 1);
+
+			List<PackedCollection> offsetArgs = element.getRecorded().stream()
+					.map(RenderedNoteAudio::getOffsetArg)
+					.toList();
+			Assert.assertTrue("the chord gathered one note per tone", offsetArgs.size() == 3);
+			offsetArgs.forEach(arg -> {
+				Assert.assertNotNull("a memoized note keeps its offset argument after a tick", arg);
+				Assert.assertFalse("a memoized note's offset argument is not released per tick",
+						arg.isDestroyed());
+			});
+
+			plm.destroy();
+			offsetArgs.forEach(arg -> Assert.assertTrue(
+					"teardown releases the memoized offset arguments", arg.isDestroyed()));
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}
