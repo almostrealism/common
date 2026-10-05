@@ -287,6 +287,38 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * For a fully traversed policy the insertion point {@code getDimensions()} equals the traversal
+	 * axis, so {@link TraversalPolicy#insertDimension(int, long)} (and the single-argument
+	 * {@link TraversalPolicy#insertDimension(long)}, which inserts at the traversal axis) shift the
+	 * axis and keep the policy fully traversed, while {@link TraversalPolicy#appendDimension(int)}
+	 * keeps the axis so the new dimension becomes the item. Both must produce the same dimensions.
+	 */
+	@Test(timeout = 10000)
+	public void trailingInsertDiffersFromAppendWhenFullyTraversed() {
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3).traverseEach();
+		assertEquals(2, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy inserted = fullyTraversed.insertDimension(2, 4);
+		TraversalPolicy insertedAtAxis = fullyTraversed.insertDimension(4L);
+		TraversalPolicy appended = fullyTraversed.appendDimension(4);
+
+		assertEquals(3, inserted.getTraversalAxis());
+		assertEquals(3, insertedAtAxis.getTraversalAxis());
+		assertEquals(2, appended.getTraversalAxis());
+
+		long totalSize = fullyTraversed.getTotalSizeLong() * 4;
+		assertEquals(totalSize, inserted.getCountLong());
+		assertEquals(0, inserted.item().getDimensions());
+		assertEquals(fullyTraversed.getTotalSizeLong(), appended.getCountLong());
+		assertEquals(4, appended.item().getTotalSizeLong());
+
+		for (int i = 0; i < 3; i++) {
+			assertEquals(inserted.length(i), appended.length(i));
+			assertEquals(inserted.length(i), insertedAtAxis.length(i));
+		}
+	}
+
+	/**
 	 * Tests permute with 4 dimensions.
 	 */
 	@Test(timeout = 10000)

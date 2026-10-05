@@ -848,8 +848,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * at the end. The traversal axis is never shifted: the new dimension is added past every
 	 * existing axis, so for a fully traversed policy ({@code traversalAxis == getDimensions()})
 	 * the appended dimension becomes the item shape rather than part of the traversal count.
-	 * This restores the axis that {@link #insertDimension(int, long)} would otherwise shift in
-	 * the fully traversed case, keeping append behaviorally identical to a trailing insertion.
+	 * In that case this differs from {@code insertDimension(getDimensions(), size)}, which
+	 * shifts the axis because the insertion point equals it.
 	 *
 	 * @param size the size of the new trailing dimension
 	 * @return the extended policy
@@ -901,7 +901,9 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns a copy of this policy with a new dimension of the given size inserted at
-	 * the specified axis.
+	 * the specified axis. Inserting at or before the traversal axis shifts the traversal
+	 * axis one position to the right so it keeps tracking the same logical dimension,
+	 * mirroring the adjustment {@link #subset(int)} makes when leading dimensions are dropped.
 	 *
 	 * @param axis the position at which to insert the new dimension
 	 * @param size the size of the new dimension
@@ -929,9 +931,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false, newDims, newDimsOrder,
 				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
-		// Inserting a dimension at or before the traversal axis shifts the axis it
-		// tracks one position to the right, mirroring the adjustment subset(int) makes
-		// when leading dimensions are dropped.
 		p.traversalAxis = axis <= traversalAxis ? traversalAxis + 1 : traversalAxis;
 		return p;
 	}
