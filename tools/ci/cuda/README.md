@@ -41,6 +41,8 @@ Already present on a DGX Spark as shipped:
 
 - Docker with the compose plugin, and the NVIDIA Container Toolkit
 - The CUDA toolkit at `/usr/local/cuda` (with NVRTC)
+- `curl` and `jq` on the host — `fleet.sh up` uses them to resolve the current
+  `actions/runner` release (skipped only when `RUNNER_VERSION` is pinned in `.env`)
 
 You need to provide:
 

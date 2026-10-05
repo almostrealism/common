@@ -3191,6 +3191,11 @@ jobs:
            -DAR_TEST_GROUPS=8
 
       # Not yet read by auto-resolve (the lane is informational); kept for assessing a baseline.
+      # TODO(review): this name matches the broad `surefire-media-*` arm in the
+      # "Filter to resolvable surefire reports" step, so a test-media-cuda failure IS kept
+      # and parsed by auto-resolve, contrary to the comment above (surefire-cuda-group-* is
+      # correctly dropped). Add an explicit drop arm for surefire-media-cuda-group-* before
+      # the keep arms, or narrow surefire-media-* to the test-media groups.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
