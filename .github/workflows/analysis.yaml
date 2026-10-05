@@ -3191,11 +3191,6 @@ jobs:
            -DAR_TEST_GROUPS=8
 
       # Not yet read by auto-resolve (the lane is informational); kept for assessing a baseline.
-      # TODO(review): this name matches the broad `surefire-media-*` arm in the
-      # "Filter to resolvable surefire reports" step, so a test-media-cuda failure IS kept
-      # and parsed by auto-resolve, contrary to the comment above (surefire-cuda-group-* is
-      # correctly dropped). Add an explicit drop arm for surefire-media-cuda-group-* before
-      # the keep arms, or narrow surefire-media-* to the test-media groups.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -3930,15 +3925,17 @@ jobs:
           # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
           # which fails a new test lane until it is added here):
           #   surefire-utils-group-*, surefire-ml-group-* (test),
-          #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
+          #   surefire-media-[0-9]* (test-media), surefire-flowtree (test-flowtree),
           #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac),
           #   surefire-cl-group-* (test-cl), surefire-media-cl-group-* (test-media-cl)
-          # Remove anything else.
+          # Remove anything else — including the informational CUDA lane's
+          # surefire-cuda-group-* and surefire-media-cuda-group-*. test-media's arm is
+          # anchored on the group digit so it cannot match another lane's media artifact.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*)
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media-[0-9]*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
