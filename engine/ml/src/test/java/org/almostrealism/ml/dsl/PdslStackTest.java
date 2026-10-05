@@ -167,6 +167,32 @@ public class PdslStackTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * The checkpoint is bound even when {@code extraArgs} already holds an entry under the
+	 * checkpoint parameter's own name: binding is recognised by a parameter being found, not by
+	 * the argument map growing, so a colliding entry does not make the model look like it declares
+	 * no checkpoint parameter.
+	 */
+	@Test(timeout = 120000)
+	public void checkpointBoundOverCollidingExtraArg() {
+		Map<String, Object> extraArgs = new HashMap<>();
+		extraArgs.put("weights", "ignored");
+
+		PdslLoader loader = new PdslLoader();
+		Model model = loader.buildModel(loader.parse(STACK_SOURCE), "scaled",
+				new TraversalPolicy(1, DIM), scaledIdentities(1.0, 2.0, 3.0), extraArgs);
+
+		CompiledModel compiled = model.compile(false);
+		PackedCollection input = new PackedCollection(shape(1, DIM));
+		input.fill(1.0, 2.0, 3.0, 4.0);
+
+		double[] output = compiled.forward(input).toArray();
+		for (int i = 0; i < DIM; i++) {
+			Assert.assertEquals("element " + i, (1.0 + i) * 6.0, output[i], 1e-6);
+		}
+		compiled.destroy();
+	}
+
 	/** A stack over a group that holds no weights is rejected. */
 	@Test(timeout = 60000)
 	public void stackRejectsEmptyGroup() {

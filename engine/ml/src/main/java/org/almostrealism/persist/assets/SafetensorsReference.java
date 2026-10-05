@@ -199,6 +199,7 @@ public class SafetensorsReference extends CollectionDataReference {
 		}
 
 		JsonArray dims = entry.getAsJsonArray("shape");
+		boolean empty = false;
 		int[] shape = new int[Math.max(1, dims.size())];
 		shape[0] = 1;
 		for (int i = 0; i < dims.size(); i++) {
@@ -206,9 +207,8 @@ public class SafetensorsReference extends CollectionDataReference {
 			if (shape[i] < 0) {
 				throw new IllegalArgumentException(name + " in " + file + " has an axis of length " + shape[i]);
 			}
-			if (shape[i] == 0) return null;
+			if (shape[i] == 0) empty = true;
 		}
-		TraversalPolicy policy = new TraversalPolicy(shape);
 
 		JsonArray offsets = entry.getAsJsonArray("data_offsets");
 		long begin = offsets.get(0).getAsLong();
@@ -218,6 +218,17 @@ public class SafetensorsReference extends CollectionDataReference {
 					+ ", which is not a range within the file's " + dataLength + " bytes of tensor data");
 		}
 
+		// A tensor with a zero-length axis holds no values and is left out, but its range is
+		// still validated above and must itself be empty, so a malformed entry is not accepted.
+		if (empty) {
+			if (end != begin) {
+				throw new IllegalArgumentException(name + " in " + file + " occupies " + (end - begin)
+						+ " bytes, but a tensor with a zero-length axis holds no values");
+			}
+			return null;
+		}
+
+		TraversalPolicy policy = new TraversalPolicy(shape);
 		long expected = policy.getTotalSizeLong() * encoding.getWidth().bytes();
 		if (end - begin != expected) {
 			throw new IllegalArgumentException(name + " in " + file + " occupies " + (end - begin)

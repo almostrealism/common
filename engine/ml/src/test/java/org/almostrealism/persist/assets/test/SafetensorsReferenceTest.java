@@ -188,6 +188,23 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An empty tensor whose range is not itself empty is rejected rather than silently omitted:
+	 * a zero-length axis does not excuse a malformed {@code data_offsets}.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsEmptyTensorWithNonEmptyRange() throws IOException {
+		assertRejected("{\"empty\":{\"dtype\":\"F32\",\"shape\":[0,3],\"data_offsets\":[0,4]}}", 4,
+				"holds no values");
+	}
+
+	/** An empty tensor whose range falls outside the data region is rejected, not omitted. */
+	@Test(timeout = 60000)
+	public void rejectsEmptyTensorWithOutOfRangeOffsets() throws IOException {
+		assertRejected("{\"empty\":{\"dtype\":\"F32\",\"shape\":[0,3],\"data_offsets\":[100,100]}}", 4,
+				"100..100");
+	}
+
+	/**
 	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
 	 * tensor data.
 	 *

@@ -453,12 +453,14 @@ public class PdslInterpreter {
 		}
 
 		Map<String, Object> args = new HashMap<>(extraArgs);
+		boolean bound = false;
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if ("checkpoint".equals(param.getTypeName())) {
 				args.put(param.getName(), stateDict);
+				bound = true;
 			}
 		}
-		if (args.size() == extraArgs.size()) {
+		if (!bound) {
 			throw new PdslParseException("Model '" + name
 					+ "' declares no checkpoint parameter to bind the weights to");
 		}

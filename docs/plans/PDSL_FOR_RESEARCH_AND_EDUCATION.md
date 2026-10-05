@@ -1,6 +1,9 @@
 # PDSL for Research and Education
 
-**Status:** Direction agreed (see "Decisions"). Nothing here has been implemented.
+**Status:** Direction agreed (see "Decisions") and partially implemented. The `stack`
+construct, hierarchical weight binding, explicit KV-cache parameters and the pure-Java
+safetensors reader (`SafetensorsReference`) have landed; the per-item notes below mark what
+is done and what remains.
 
 ## Decisions
 
