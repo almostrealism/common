@@ -83,7 +83,11 @@ Each runner container:
    GPU would otherwise take CUDA jobs and report results that measure nothing.
 2. Hands over to the CPU fleet's entrypoint, which claims the lowest free
    `<prefix>-N` name and registers as an **ephemeral** runner with
-   `--disableupdate`.
+   `--disableupdate`. The name is claimed with a lock in a volume that every
+   replica shares (`RUNNER_SLOT_DIR`), not by asking GitHub which names are online.
+   Replicas that start together therefore cannot pick the same name, and the
+   registration's `--replace` cannot evict a live sibling. The lock is host-local,
+   so give each host its own `RUNNER_PREFIX`.
 3. Runs one job, exits, and is restarted by Docker, which registers it afresh.
 
 ### Why `--disableupdate`, and why `fleet.sh up` resolves the agent version

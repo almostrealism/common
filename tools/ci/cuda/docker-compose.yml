@@ -41,8 +41,14 @@ services:
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
       - RUNNER_LABELS=ar-ci-cuda
       - RUNNER_DISABLE_UPDATE=true
+      - RUNNER_SLOT_DIR=/var/lock/ar-ci-slots
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
+      # Shared by every replica: each holds a lock on its <prefix>-N slot, so
+      # "fleet.sh up N" cannot start two runners under the same name.
+      - type: volume
+        source: runner-slots
+        target: /var/lock/ar-ci-slots
       - type: bind
         source: ./cuda-preflight.sh
         target: /opt/ar-ci-cuda/cuda-preflight.sh
@@ -80,3 +86,14 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+
+volumes:
+  # In-memory, world-writable with the sticky bit (like /tmp), so the
+  # non-root runner user can create lock files without the image changing.
+  # Held locks die with their containers; nothing persists across a reboot.
+  runner-slots:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=1m,mode=1777"
