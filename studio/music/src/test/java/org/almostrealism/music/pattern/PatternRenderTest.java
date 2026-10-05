@@ -16,6 +16,8 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
@@ -26,7 +28,9 @@ import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
+import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.PatternNoteAudio;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -34,6 +38,8 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.DoubleFunction;
+import java.util.function.DoubleUnaryOperator;
 
 /**
  * End-to-end rendering tests for a percussive pattern built from explicit
@@ -390,6 +396,85 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 			Assert.assertTrue("warm-up tracks exactly one scratch destination", destinations.size() == 1);
 			Assert.assertTrue("the warm-up scratch destination is released after warmNoteCache",
 					destinations.get(0).isDestroyed());
+		}
+	}
+
+	/**
+	 * A note whose producer factory yields no audio is skipped by the warm-up rather
+	 * than counted, and the transient notes gathered for the warm-up are still
+	 * released afterwards.
+	 */
+	@Test(timeout = 120000)
+	public void warmNoteCacheSkipsNotesWithoutAudio() {
+		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
+				new FileNoteSource(getNamedTestWavPath("render_hit.wav", 330.0, SAMPLE_SECONDS, true),
+						WesternChromatic.C1), 0, 9, false);
+		choice.setTuning(new DefaultKeyboardTuning());
+		SilentElement element = new SilentElement(new PatternNote(0.1, 0.5, 0.9), 0.25);
+
+		try (PatternSystemManager psm = new PatternSystemManager(List.of(choice),
+				PatternSystemManagerTest.chromosomes(1))) {
+			psm.init();
+			psm.addPattern(0, 1.0, false).setExplicitElements(choice, List.of(element));
+
+			Assert.assertEquals("a note without audio is not counted as evaluated",
+					0, psm.warmNoteCache(channel -> context(null)));
+			Assert.assertTrue("the warm-up gathered the element's note",
+					element.getGathered().size() == 1);
+			Assert.assertTrue("the producer factory was consulted", element.getAudioRequests() == 1);
+			Assert.assertNull("the gathered note's offset argument is released",
+					element.getGathered().get(0).getOffsetArg());
+		}
+	}
+
+	/**
+	 * A {@link PatternElement} whose note audio is absent ({@code null}), recording the
+	 * destinations it gathers and how many times its audio was requested.
+	 */
+	private static final class SilentElement extends PatternElement {
+		/** The destinations this element has produced, across every gather call. */
+		private final List<RenderedNoteAudio> gathered = new ArrayList<>();
+
+		/** The number of {@link #getNoteAudio} calls made so far. */
+		private int audioRequests;
+
+		/**
+		 * Creates a silent element with the given note and position.
+		 *
+		 * @param note     the main-voicing note
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		SilentElement(PatternNote note, double position) {
+			super(note, position);
+		}
+
+		@Override
+		public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double offset,
+														   AudioSceneContext context,
+														   NoteAudioContext audioContext) {
+			List<RenderedNoteAudio> result = super.getNoteDestinations(melodic, offset, context, audioContext);
+			gathered.addAll(result);
+			return result;
+		}
+
+		@Override
+		public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
+													   Factor<PackedCollection> automationLevel,
+													   DoubleFunction<PatternNoteAudio> audioSelection,
+													   DoubleUnaryOperator timeForDuration,
+													   PackedCollection offset, int frameCount) {
+			audioRequests++;
+			return null;
+		}
+
+		/** Returns every destination produced so far. */
+		List<RenderedNoteAudio> getGathered() {
+			return gathered;
+		}
+
+		/** Returns the number of note audio requests made so far. */
+		int getAudioRequests() {
+			return audioRequests;
 		}
 	}
 }

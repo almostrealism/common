@@ -595,6 +595,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 									Heap.stage(() -> {
 										Producer<PackedCollection> producer =
 												note.getProducer(note.getExpectedFrameCount());
+										if (producer == null) return;
 										rendered[0] = traverse(1, producer).get().evaluate() != null;
 									});
 									if (rendered[0]) {
