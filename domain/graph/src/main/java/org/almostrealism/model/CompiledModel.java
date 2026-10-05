@@ -282,6 +282,16 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * throwable is rethrown unchanged. The successful path is unchanged — the returned model
 	 * owns these resources and frees them on {@code destroy()}, so there is no double free.</p>
 	 *
+	 * <p><b>A failed compilation invalidates the source {@link Model}.</b> Compilation mutates
+	 * the model before it can fail — it records the attempt, installs the output (and optional
+	 * gradient) receptors on the model's terminal blocks, and may disable input tracking — and
+	 * none of that is reverted on failure. The rollback additionally frees the output/gradient
+	 * buffers those just-installed receptors capture. The model is therefore single-use per
+	 * compile attempt: a second {@link #compile(Model, boolean, boolean, OperationProfile)} on
+	 * the same instance would chain a stale receptor over released memory. This mirrors the
+	 * post-{@link #destroy()} contract — build a fresh {@link Model} if another compilation is
+	 * needed.</p>
+	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
 	 * @param returnGradient {@code true} to allocate and return the input gradient after backward

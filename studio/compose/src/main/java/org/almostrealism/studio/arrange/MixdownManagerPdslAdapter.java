@@ -336,6 +336,14 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * the {@code mixdown_master_wet} layer when an {@link EfxManager} was supplied,
 	 * the base {@code mixdown_master} layer otherwise.
 	 *
+	 * <p>This method owns the map it returns: the slot builders it delegates to allocate
+	 * {@link PackedCollection} values incrementally, so if one of those allocations (or the
+	 * build-time automation refresh) throws part-way — plausible under the native-memory
+	 * pressure this adapter's one-shot release addresses — the collections already inserted
+	 * would have no owner to free them. The build therefore runs inside a try that releases
+	 * every collection in the partially built map before rethrowing. On success the caller
+	 * takes ownership and frees the values on teardown, so there is no double free.</p>
+	 *
 	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 * @throws IllegalStateException if the adapter was constructed without a manager
 	 */
@@ -345,7 +353,20 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 					"this adapter was constructed for structural constants only;"
 							+ " building an argument map requires a MixdownManager");
 		}
-		return efx == null ? baseArgsMap() : wetArgsMap();
+
+		Map<String, Object> args = new HashMap<>();
+		try {
+			if (efx == null) {
+				baseArgsMap(args);
+			} else {
+				wetArgsMap(args);
+			}
+			return args;
+		} catch (RuntimeException | Error t) {
+			// Release the collections already inserted into the partial map.
+			Destroyable.destroy(args.values());
+			throw t;
+		}
 	}
 
 	/**
@@ -394,10 +415,17 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
 	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
-	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
+	 * <p>The {@code hp_table}/{@code lp_table} biquad response tables (see
+	 * {@link #biquadResponseTable(boolean)}) are also placed in the map here. They depend
+	 * only on the static {@link Config}, so they are materialised once and reused by every
+	 * {@link #automationRefresh} — build-time and per-buffer — rather than re-tabulated (and
+	 * re-allocated) on each call; as argument-map entries they share the runner's ownership,
+	 * released with the rest of {@code args} on teardown and on construction failure.</p>
+	 *
+	 * @param args the argument map to populate; its owner (see {@link #buildArgsMap()})
+	 *             releases every collection added here on failure or teardown
 	 */
-	private Map<String, Object> baseArgsMap() {
-		Map<String, Object> args = new HashMap<>();
+	private void baseArgsMap(Map<String, Object> args) {
 		args.put("channels", config.channels);
 		args.put("signal_size", config.signalSize);
 		args.put("fir_taps", config.filterOrder + 1);
@@ -425,6 +453,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("hp_coeffs", new PackedCollection(
 				new TraversalPolicy(config.channels, taps)));
 		args.put("lp_coeffs", new PackedCollection(taps));
+
+		// Static biquad response tables, materialised once and reused by every refresh.
+		args.put("hp_table", biquadResponseTable(true));
+		args.put("lp_table", biquadResponseTable(false));
 
 		// wet_filter_coeffs: producer([channels, fir_taps])
 		// Mirrors MixdownManager.createCells() — the
@@ -476,8 +508,6 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// direct consumers of this map (tests, single-shot renders) see live gene values
 		// even if they never run the per-buffer refresh.
 		runOnce(automationRefresh(args, null));
-
-		return args;
 	}
 
 	/**
@@ -505,7 +535,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Builds the refresh operation over an explicit effects manager — {@code null} while
-	 * {@link #baseArgsMap()} initialises a map that does not carry the efx-layer slots
+	 * {@link #baseArgsMap(Map)} initialises a map that does not carry the efx-layer slots
 	 * yet, the constructed {@link #efx} otherwise.
 	 *
 	 * @param args the argument map being initialised or refreshed
@@ -562,8 +592,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// subtrees — an exponential expression tree), so the responses are tabulated once
 		// at build time over log-spaced cutoff bins and each refresh SELECTS a row with a
 		// device-side gather: bin = round((bins-1) * ln(cutoff/10) / ln(20000/10)).
-		PackedCollection hpTable = biquadResponseTable(true);
-		PackedCollection lpTable = biquadResponseTable(false);
+		PackedCollection hpTable = (PackedCollection) args.get("hp_table");
+		PackedCollection lpTable = (PackedCollection) args.get("lp_table");
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(a(taps,
 					cp(hpCoeffs.reshape(shape(config.channels, taps)).traverse(1).get(ch)),
@@ -747,7 +777,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	/**
 	 * Builds the argument map for the {@code mixdown_master_wet} layer, adding the
 	 * per-channel {@link EfxManager} parameters and the bus-line network on top of the
-	 * mixdown parameters from {@link #baseArgsMap()}.
+	 * mixdown parameters from {@link #baseArgsMap(Map)}.
 	 *
 	 * <p>The added arguments render the two distinct legacy regeneration structures:
 	 * {@link EfxManager#apply}'s per-channel echo (gene-chosen filter, wet level,
@@ -757,10 +787,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * send into the first line, {@code delay}-chromosome line lengths with per-line
 	 * drift, unscaled genome transmission recirculation, {@code wetOut} output taps).</p>
 	 *
-	 * @return populated argument map for {@code PdslLoader.buildLayer(..., "mixdown_master_wet", ...)}
+	 * @param args the argument map to populate; its owner (see {@link #buildArgsMap()})
+	 *             releases every collection added here on failure or teardown
 	 */
-	private Map<String, Object> wetArgsMap() {
-		Map<String, Object> args = baseArgsMap();
+	private void wetArgsMap(Map<String, Object> args) {
+		baseArgsMap(args);
 
 		// mixdown_master_wet renders the legacy mixdown-bus delay layer as the SHARED
 		// bus-line network below (bus_* arguments), not as the base map's per-channel
@@ -942,8 +973,6 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 		// Initialise the efx-layer automation slots (see the matching call in the base map).
 		runOnce(automationRefresh(args, efx));
-
-		return args;
 	}
 
 	/**
@@ -1460,7 +1489,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * compiled native kernels it owns.
 	 *
 	 * <p>The build-time argument fills in this adapter — the automation-slot
-	 * initialisation in {@link #baseArgsMap()} and {@link #wetArgsMap()}, and the
+	 * initialisation in {@link #baseArgsMap(Map)} and {@link #wetArgsMap(Map)}, and the
 	 * constant-table/matrix materialisers (filter response table, reverb tap delays,
 	 * Householder matrix, bus-send matrix) plus {@link #maxEvaluated} — each materialise a
 	 * {@link PackedCollection} by running a compiled assignment once. Retaining the compiled
@@ -1474,8 +1503,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private static void runOnce(Supplier<Runnable> operation) {
 		Runnable compiled = operation.get();
-		compiled.run();
-		Destroyable.destroy(compiled);
+		try {
+			compiled.run();
+		} finally {
+			// Release even if the run throws, or the leak this helper prevents returns.
+			Destroyable.destroy(compiled);
+		}
 	}
 
 	/**
