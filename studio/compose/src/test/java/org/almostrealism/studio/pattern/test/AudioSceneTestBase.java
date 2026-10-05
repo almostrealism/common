@@ -89,15 +89,19 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * <p>
 	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
 	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
-	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
+	 * hiding the difference between hosts. A host declares that it provides the curated library by
+	 * setting {@code AR_RINGS_LIBRARY} (the OpenCL {@code test-media-cl} job points it at the
+	 * bind-mounted library); a host that does not set it is not provisioned for the curated workload —
+	 * neither the CPU-only Linux runners nor the macOS media fleet ({@code test-media-mac}, which runs
+	 * under a GPU driver but does not mount the library). So:
 	 * <ul>
 	 *   <li>library present → return it and run the real workload;</li>
-	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
-	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
-	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
-	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
-	 *       false pass).</li>
+	 *   <li>library absent on a host that did not declare {@code AR_RINGS_LIBRARY}, or on a host with
+	 *       <em>no</em> GPU driver → {@code Assume}-skip (a host not expected to run the curated
+	 *       workload: the CPU-only Linux jobs, or the macOS media fleet that never mounts the library);</li>
+	 *   <li>library absent but {@code AR_RINGS_LIBRARY} <em>is</em> declared and a GPU driver <em>is</em>
+	 *       available → {@link Assert#fail} (a provisioned GPU host whose declared mount is missing; a
+	 *       real misconfiguration that must not report a false pass).</li>
 	 * </ul>
 	 *
 	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
@@ -108,12 +112,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 			return library;
 		}
 
+		boolean libraryDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
 		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
 				+ PATTERN_FACTORY + " not available on this host.";
-		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
-				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
-		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
-				+ " library; failing rather than reporting a false pass for a workload it did not run.");
+		Assume.assumeTrue(detail + " This host did not declare a curated library mount (AR_RINGS_LIBRARY"
+				+ " is unset) or has no GPU driver, so it is not expected to run the curated workload;"
+				+ " skipping rather than failing.", isGpuAvailable() && libraryDeclared);
+		Assert.fail(detail + " AR_RINGS_LIBRARY declares this host should mount the curated library and a"
+				+ " GPU driver IS available, so the missing library is a real misconfiguration that must"
+				+ " not report a false pass for a workload it did not run.");
 		return library;
 	}
 
@@ -133,10 +140,11 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 	/**
 	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
-	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
-	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
-	 * the library).
+	 * {@link #requireCuratedLibrary()} together with the {@code AR_RINGS_LIBRARY} declaration to decide
+	 * whether a missing sample library is an expected skip (a CPU-only host such as the {@code native}
+	 * Linux runners, or a GPU host that never declared a curated mount, such as the Metal
+	 * {@code test-media-mac} fleet) or a genuine failure (a GPU host that declared {@code AR_RINGS_LIBRARY}
+	 * — the OpenCL {@code test-media-cl} runner — whose declared mount is missing).
 	 *
 	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
 	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
