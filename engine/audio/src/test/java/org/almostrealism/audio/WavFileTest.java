@@ -16,6 +16,9 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -60,6 +63,289 @@ public class WavFileTest extends TestSuiteBase {
 		File f = File.createTempFile("ar-wavfile-test", ".wav");
 		f.deleteOnExit();
 		return f;
+	}
+
+	/**
+	 * A {@code [channels, frames]} collection is written channel by channel, in the layout the
+	 * {@code double[][]} overload uses, and reads back as the same samples.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripCollectionStereo() throws IOException {
+		File file = tempWav();
+		double[][] out = {
+				{0.0, 0.5, -0.5, 0.999, -0.999},
+				{0.25, -0.25, 0.75, -0.75, 0.1}
+		};
+
+		try (PackedCollection audio = pack(
+				0.0, 0.5, -0.5, 0.999, -0.999,
+				0.25, -0.25, 0.75, -0.75, 0.1).reshape(2, 5)) {
+			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+				Assert.assertEquals(5, wav.writeFrames(audio));
+			}
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(2, wav.getNumChannels());
+			Assert.assertEquals(5, wav.getNumFrames());
+
+			double[][] in = new double[2][5];
+			Assert.assertEquals(5, wav.readFrames(in, 5));
+
+			for (int c = 0; c < 2; c++) {
+				for (int f = 0; f < 5; f++) {
+					Assert.assertEquals("channel " + c + " frame " + f,
+							out[c][f], in[c][f], TOL_16);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Samples held frame-major are written in logical channel/frame order by reordering them with a
+	 * kernel first. The buffer is a {@code [frames, channels]} memory layout, so a contiguous read
+	 * would interleave the channels; applying the permutation as a computation produces a
+	 * {@code [channels, frames]} collection whose memory is restructured, which is what the writer
+	 * accepts.
+	 *
+	 * <p>The reordering is applied to the regular source, not to a permuted view of it. Wrapping a
+	 * view in a provider and copying it into a destination is refused by {@code CollectionProvider.into},
+	 * because a flat copy would move the view's backing memory in its own order and discard the
+	 * reordering, so the permutation belongs in the computation.</p>
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripPermutedCollectionRespectsLogicalOrder() throws IOException {
+		File file = tempWav();
+		double[][] out = {
+				{0.0, 0.1, 0.2, 0.3, 0.4},
+				{-0.1, -0.2, -0.3, -0.4, -0.5}
+		};
+
+		try (PackedCollection frameMajor = pack(
+				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2);
+			 PackedCollection audio = new PackedCollection(shape(2, 5))) {
+			cp(frameMajor).permute(1, 0).get().into(audio).evaluate();
+			Assert.assertTrue("the materialized collection should be regular",
+					audio.getShape().isRegular());
+
+			try (WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+				Assert.assertEquals(5, wav.writeFrames(audio));
+			}
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(2, wav.getNumChannels());
+			Assert.assertEquals(5, wav.getNumFrames());
+
+			double[][] in = new double[2][5];
+			Assert.assertEquals(5, wav.readFrames(in, 5));
+
+			for (int c = 0; c < 2; c++) {
+				for (int f = 0; f < 5; f++) {
+					Assert.assertEquals("channel " + c + " frame " + f,
+							out[c][f], in[c][f], TOL_16);
+				}
+			}
+		}
+	}
+
+	/**
+	 * A one-dimensional collection is written as a single channel.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test(timeout = 60000)
+	public void roundTripCollectionMono() throws IOException {
+		File file = tempWav();
+		try (PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25);
+			 WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(4, wav.writeFrames(audio));
+		}
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			Assert.assertEquals(1, wav.getNumChannels());
+
+			double[][] in = new double[1][4];
+			Assert.assertEquals(4, wav.readFrames(in, 4));
+			Assert.assertEquals(0.5, in[0][1], TOL_16);
+			Assert.assertEquals(-0.5, in[0][2], TOL_16);
+		}
+	}
+
+	/**
+	 * A collection whose channel count disagrees with the file's is rejected rather than written
+	 * into the wrong layout.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void collectionChannelMismatchIsRejected() throws IOException {
+		File file = tempWav();
+		PackedCollection audio = pack(0.0, 0.5, -0.5, 0.25).reshape(2, 2);
+
+		try (WavFile wav = WavFile.newWavFile(file, 1, 2, 16, SAMPLE_RATE)) {
+			wav.writeFrames(audio);
+			Assert.fail("a two-channel collection was written to a one-channel file");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("channel"));
+		} finally {
+			audio.destroy();
+		}
+	}
+
+	/**
+	 * A collection with more frames than the file has remaining is rejected, and rejected before
+	 * anything is written, so a caller who miscounted gets an error rather than a short file. The
+	 * {@code double[][]} overloads remain available to a caller who wants to write what fits and be
+	 * told how far it got.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void oversizedCollectionIsRejected() throws IOException {
+		File file = tempWav();
+
+		try (PackedCollection audio = pack(
+				0.1, 0.2, 0.3, 0.4, 0.5,
+				-0.1, -0.2, -0.3, -0.4, -0.5).reshape(2, 5);
+			 WavFile wav = WavFile.newWavFile(file, 2, 3, 16, SAMPLE_RATE)) {
+			try {
+				wav.writeFrames(audio);
+				Assert.fail("a five-frame collection was written to a three-frame file");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("room for"));
+			}
+
+			Assert.assertEquals("nothing should have been written", 3, wav.getFramesRemaining());
+		}
+	}
+
+	/**
+	 * A collection that views other memory through a reordering shape is rejected, naming what to do
+	 * instead, rather than being rearranged one element at a time on the host.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void viewOfOtherMemoryIsRejected() throws IOException {
+		File file = tempWav();
+
+		try (PackedCollection frameMajor = pack(
+				0.0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3, -0.4, 0.4, -0.5).reshape(5, 2);
+			 WavFile wav = WavFile.newWavFile(file, 2, 5, 16, SAMPLE_RATE)) {
+			PackedCollection view = frameMajor.reshape(frameMajor.getShape().permute(1, 0));
+			Assert.assertFalse("permuted shape should be irregular", view.getShape().isRegular());
+
+			try {
+				wav.writeFrames(view);
+				Assert.fail("a view of other memory was written");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("view of other memory"));
+			}
+		}
+	}
+
+	/**
+	 * A collection whose outer shape is regular but which reads its memory through a
+	 * {@link org.almostrealism.hardware.MemoryData#getMemOrdering() memory ordering} inherited from a
+	 * delegate is rejected, just as an irregularly shaped view is. Checking only
+	 * {@link TraversalPolicy#isRegular()} would admit it and then fall back to one device read per
+	 * sample while writing backing-memory order, so the memory ordering is inspected as well.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void inheritedMemoryOrderingIsRejected() throws IOException {
+		File file = tempWav();
+
+		try (PackedCollection values = pack(0.0, 0.1, 0.2, 0.3);
+			 PackedCollection indices = pack(2, 0, 3, 1);
+			 WavFile wav = WavFile.newWavFile(file, 1, 4, 16, SAMPLE_RATE)) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection view = new PackedCollection(shape(4), 0, ordered, 0);
+
+			Assert.assertTrue("the view's outer shape should be regular", view.getShape().isRegular());
+			Assert.assertNotNull("the view should inherit the delegate's memory ordering",
+					view.getMemOrdering());
+
+			try {
+				wav.writeFrames(view);
+				Assert.fail("a collection with an inherited memory ordering was written");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("view of other memory"));
+			}
+		}
+	}
+
+	/**
+	 * Writing a collection to a file opened for reading is rejected by the writer-state check before
+	 * anything about the collection is examined or copied: a collection whose channel count also
+	 * disagrees with the file's still fails with the state error, not the channel error.
+	 *
+	 * @throws IOException if the file cannot be created or opened
+	 */
+	@Test(timeout = 60000)
+	public void collectionWriteToReaderIsRejected() throws IOException {
+		File file = tempWav();
+		try (PackedCollection mono = pack(0.0, 0.5);
+			 WavFile wav = WavFile.newWavFile(file, 1, 2, 16, SAMPLE_RATE)) {
+			Assert.assertEquals(2, wav.writeFrames(mono));
+		}
+
+		PackedCollection stereo = pack(0.0, 0.5, -0.5, 0.25).reshape(2, 2);
+
+		try (WavFile wav = WavFile.openWavFile(file)) {
+			wav.writeFrames(stereo);
+			Assert.fail("a collection was written to a file opened for reading");
+		} catch (IOException expected) {
+			Assert.assertTrue(expected.getMessage().contains("Cannot write"));
+		} finally {
+			stereo.destroy();
+		}
+	}
+
+	/**
+	 * Returns a one-element collection that reports a shape with no dimensions. A backing
+	 * {@link PackedCollection} cannot hold a zero-dimensional shape (its size would be zero), so
+	 * the shape is reported by overriding {@link PackedCollection#getShape()}.
+	 *
+	 * @return a collection whose shape has no dimensions
+	 */
+	private static PackedCollection shapelessCollection() {
+		return new PackedCollection(1) {
+			@Override
+			public TraversalPolicy getShape() {
+				return new TraversalPolicy(true);
+			}
+		};
+	}
+
+	/**
+	 * A collection whose shape has no dimensions is neither {@code [channels, frames]} nor
+	 * {@code [frames]}, so it is rejected with the documented shape error rather than reaching a
+	 * {@code length(-1)} lookup on an empty shape. The collection comes from
+	 * {@link #shapelessCollection()}, which is enough to drive the guard.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void collectionWithoutDimensionsIsRejected() throws IOException {
+		File file = tempWav();
+		PackedCollection audio = shapelessCollection();
+
+		try (WavFile wav = WavFile.newWavFile(file, 1, 1, 16, SAMPLE_RATE)) {
+			wav.writeFrames(audio);
+			Assert.fail("a zero-dimensional collection was accepted");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("[channels, frames] or [frames]"));
+		} finally {
+			audio.destroy();
+		}
 	}
 
 	/**
