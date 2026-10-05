@@ -28,7 +28,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Tests for the Producer DSL parser, interpreter, and loader.
@@ -436,7 +438,14 @@ public class PdslLoaderTest extends TestSuiteBase {
 			Assert.assertTrue("combined program should define '" + layer + "'",
 					interpreter.getLayerNames().contains(layer));
 		}
-		Assert.assertTrue(interpreter.getStateDefNames().contains("attention_cache"));
+		PdslNode.LayerDef attention = program.getDefinitions().stream()
+				.filter(def -> def instanceof PdslNode.LayerDef && "attention".equals(def.getName()))
+				.map(def -> (PdslNode.LayerDef) def)
+				.findFirst().orElseThrow();
+		Assert.assertTrue("attention should take its KV cache as parameters",
+				attention.getParameters().stream().map(PdslNode.Parameter::getName)
+						.collect(Collectors.toList())
+						.containsAll(List.of("key_cache", "value_cache")));
 	}
 
 	/**

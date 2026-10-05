@@ -197,8 +197,7 @@ public class SkyTntPdslTest extends TestSuiteBase {
 	 *
 	 * <p>Since {@code skytnt_block.pdsl} now imports {@code /pdsl/attention.pdsl} and calls its
 	 * decomposed {@code attention} layer, the block also needs the {@code head_size} it passes to
-	 * that layer and the {@code key_cache}/{@code value_cache} of the imported
-	 * {@code attention_cache} state, allocated here.</p>
+	 * that layer and its {@code key_cache}/{@code value_cache} parameters, allocated here.</p>
 	 *
 	 * @param heads    number of attention heads
 	 * @param headSize attention head dimension

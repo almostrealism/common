@@ -1,25 +1,24 @@
 package org.almostrealism.ml.qwen3;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
-import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -319,90 +318,39 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 	}
 
 	/**
-	 * Build the Qwen3 transformer model.
-	 *
-	 * This creates the full transformer stack with:
-	 * - Token embeddings
-	 * - 36 transformer layers with QK-Norm attention and SwiGLU FFN
-	 * - Final RMSNorm
-	 * - Output projection (shared with embeddings)
+	 * Build the transformer from its PDSL model file: {@code /pdsl/qwen3.pdsl} for a checkpoint
+	 * with QK-norm weights, {@code /pdsl/qwen2.pdsl} (Qwen2 and Qwen2.5) otherwise. The file
+	 * describes everything from the token's embedding to the vocabulary logits: every decoder
+	 * layer, the final RMSNorm and the output projection, which reuses the embedding table. This
+	 * method binds the checkpoint, the configuration and the position, compiles the result, and
+	 * looks up each token's embedding row as the model's input.
 	 *
 	 * @param profile Operation profile for performance tracking
 	 * @param requirements Compute requirements for hardware acceleration
 	 * @return Autoregressive model ready for inference
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
-		Model transformer = new Model(shape(1, config.dim));
+		if (!config.sharedWeights) {
+			throw new UnsupportedOperationException("The Qwen model files read the output projection"
+					+ " from the embedding table; a checkpoint with a separate lm_head.weight needs a"
+					+ " model file that names it");
+		}
 
 		// Placeholder for the index of the current step (position in sequence)
 		this.position = new PackedCollection(1);
 
-		int dim = config.dim;
-
-		// Get token embeddings and output weights
 		PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
-		PackedCollection wcls = config.sharedWeights ? tokenEmbeddings :
-				stateDict.get("lm_head.weight");
-		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 
-		// Compute RoPE frequencies (not stored in state dict)
-		CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
-				config.ropeTheta, config.headSize, config.seqLen);
+		Map<String, Object> args = new HashMap<>();
+		args.put("settings", config.toPdslSettings());
+		args.put("position", p(position));
 
-		// Build transformer stack: 36 layers for Qwen3-4B
-		for (int i = 0; i < config.layerCount; i++) {
-			// Each layer consists of:
-			// 1. RMSNorm + Multi-Head Attention with QK-Norm + Residual
-			// 2. RMSNorm + SwiGLU FFN + Residual
-
-			// Load weights directly from StateDictionary
-			String prefix = String.format("model.layers.%d", i);
-
-			PackedCollection layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
-			PackedCollection layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
-
-			// Attention weights
-			PackedCollection layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
-			PackedCollection layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
-			PackedCollection layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
-			PackedCollection layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
-
-			// Attention biases (Qwen2.5 has biases for Q/K/V but not O)
-			PackedCollection layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
-			PackedCollection layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
-			PackedCollection layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
-
-			// QK-Norm weights
-			PackedCollection layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
-			PackedCollection layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
-
-			// FFN weights
-			PackedCollection layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
-			PackedCollection layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
-			PackedCollection layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
-
-			// Add complete transformer layer
-			// Qwen3 uses epsilon=1e-6 for RMSNorm (not default 1e-5)
-			transformer.add(transformer(
-					config.headCount,     // 32 query heads
-					config.kvHeadCount,   // 8 KV heads (GQA)
-					layerRmsAtt,          // Pre-attention norm
-					layerWk, layerWv, layerWq, layerWo,  // Attention projections
-					layerBk, layerBv, layerBq,  // Attention biases
-					layerQkNormQ, layerQkNormK,           // QK-Norm weights
-					freqCis,              // RoPE frequencies
-					layerRmsFfn,          // Pre-FFN norm
-					layerW1, layerW2, layerW3,  // FFN projections (SwiGLU)
-					p(position),  // Current position
-					1e-6,                 // Qwen3 RMSNorm epsilon
-					requirements));
-		}
-
-		// Final RMS Norm (also uses epsilon=1e-6)
-		transformer.add(rmsnorm(shape(1, dim), rmsFinalWeight, 1e-6));
-
-		// Output logits projection (shared with token embeddings)
-		transformer.add(dense(wcls));
+		// Qwen3 normalizes each query and key head (QK-norm); Qwen2 and Qwen2.5 do not, and
+		// have projection biases instead. Each architecture is one model file.
+		String modelName = stateDict.containsKey("model.layers.0.self_attn.q_norm.weight") ? "qwen3" : "qwen2";
+		PdslLoader loader = new PdslLoader();
+		Model transformer = loader.buildModel(loader.parseResource("/pdsl/" + modelName + ".pdsl"),
+				modelName, shape(1, config.dim), stateDict, args, requirements);
 
 		// Compile the transformer and store for testing
 		this.compiledModel = transformer.compile(false, profile);
