@@ -17,6 +17,7 @@
 package org.almostrealism.studio.pattern.test;
 
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.studio.AudioScene;
@@ -133,6 +134,47 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 		} finally {
 			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * {@link AudioScene#destroyActiveCells} must release a cell list only when it is the
+	 * scene's current active list. A list the scene does not currently track — one a later
+	 * {@link AudioScene#getCells} already replaced, or a CellList runner's cells after the
+	 * scene itself was torn down — must be left untouched: {@link CellList#destroy()}
+	 * traverses the cell graph on every call, so a second traversal of a shared list would
+	 * double-free its child resources. A real-time CellList runner shares its cells with the
+	 * scene, and routing the runner's release through this method is what keeps the scene's
+	 * own teardown from freeing the same graph twice.
+	 */
+	@Test(timeout = 120_000)
+	public void destroyActiveCellsSkipsListThatIsNotActive() {
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			CountingCellList notActive = new CountingCellList();
+
+			scene.destroyActiveCells(notActive);
+			assertEquals("a cell list that is not the scene's active list must not be destroyed",
+					0, notActive.destroyCount);
+
+			// The null guard must also be a no-op rather than throwing.
+			scene.destroyActiveCells(null);
+			assertEquals(0, notActive.destroyCount);
+		} finally {
+			scene.destroy();
+		}
+	}
+
+	/** A {@link CellList} that records how many times it has been destroyed. */
+	private static class CountingCellList extends CellList {
+		/** Number of times {@link #destroy()} has been called. */
+		private int destroyCount;
+
+		@Override
+		public void destroy() {
+			destroyCount++;
+			super.destroy();
 		}
 	}
 

@@ -1044,6 +1044,29 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
+	 * Releases the given cell list only when it is still this scene's current
+	 * {@link #activeCells}, clearing the reference so the scene's own {@link #destroy()}
+	 * does not release it a second time.
+	 *
+	 * <p>A real-time runner built by {@link #runnerRealTime} shares ownership of the cells
+	 * returned by {@link #getCells}: the runner and the scene refer to the same instance.
+	 * {@link CellList#destroy()} traverses the cell graph on every call, so releasing that
+	 * instance twice would double-free its children. Routing the runner's release through
+	 * this method makes the release atomic with clearing {@code activeCells}, so whichever
+	 * of the runner or the scene tears down first frees the cells exactly once. A cell list
+	 * that a later {@link #getCells} already replaced (and therefore destroyed) is no longer
+	 * {@code activeCells}, so this is a no-op for it too.</p>
+	 *
+	 * @param cells the cell list to release; ignored when it is not the current active cells
+	 */
+	public void destroyActiveCells(CellList cells) {
+		if (cells != null && activeCells == cells) {
+			activeCells.destroy();
+			activeCells = null;
+		}
+	}
+
+	/**
 	 * Prepares pattern-audio rendering for the PDSL runner <em>without</em> building the
 	 * Java mixdown {@link CellList}.
 	 *
@@ -1376,12 +1399,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		Destroyable.releaseAll(List.of(
 				realtimeRunners::destroy,
 				() -> getSectionManager().destroy(),
-				() -> {
-					if (activeCells != null) {
-						activeCells.destroy();
-						activeCells = null;
-					}
-				},
+				() -> destroyActiveCells(activeCells),
 				renderBuffers::destroy,
 				efx::destroyConsolidatedBuffers,
 				() -> activeInstances.remove(this)));

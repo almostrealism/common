@@ -377,6 +377,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 * exhausting native memory (an {@code OutOfMemoryError} on a CPU host, silent
 			 * output once the device allocator is starved on a GPU host). The scene's own
 			 * render buffers are left for the scene to manage.
+			 *
+			 * <p>The {@link CellList} is the scene's {@code activeCells} (the same instance
+			 * {@link AudioScene#getCells} returned), so it is released through
+			 * {@link AudioScene#destroyActiveCells} rather than destroyed directly: that
+			 * clears the scene's reference atomically with the release, so the scene's own
+			 * {@link AudioScene#destroy()} does not double-free the cell graph.</p>
 			 */
 			@Override
 			public void destroy() {
@@ -384,7 +390,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				// Best-effort: a release that throws must not leave the remaining resources
 				// allocated, since this runner is already untracked and destroy() is now a no-op.
 				Destroyable.releaseAll(List.of(
-						() -> Destroyable.destroy(cells),
+						() -> scene.destroyActiveCells(cells),
 						bufferFrameIndex::destroy));
 			}
 		}
@@ -715,7 +721,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 * {@link MixdownManagerPdslAdapter#buildArgsMap()} (delay, feedback, bus,
 			 * reverb, automation, and stem collections). PDSL supplies those buffers to
 			 * the model as external collection providers, so {@link CompiledModel#destroy()}
-			 * does not reclaim them; they are released here and the map is cleared. The
+			 * does not reclaim them; each is released as its own best-effort action so a
+			 * value whose {@code destroy()} throws cannot skip the remaining buffers, and
+			 * the map is cleared last. The
 			 * render operation is a compiled {@link OperationList} owning its own native
 			 * kernels; {@link PatternRenderStream} runs it but treats it as borrowed (it
 			 * frees only the ring and slot copies it allocates itself), so it is destroyed
@@ -743,19 +751,18 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				// Best-effort: a release that throws must not leave the remaining resources
 				// allocated, since this runner is already untracked and destroy() is now a no-op.
 				// The stream is stopped first so the render op's kernels are no longer in use.
-				Destroyable.releaseAll(List.of(
-						renderStream::destroy,
-						() -> Destroyable.destroy(renderOp),
-						() -> Destroyable.destroy(compiled),
-						() -> Destroyable.destroy(masterOutput),
-						bufferFrameIndex::destroy,
-						() -> {
-							for (Object value : args.values()) {
-								Destroyable.destroy(value);
-							}
-							args.clear();
-						},
-						() -> Destroyable.destroy(ownedFxStem)));
+				List<Runnable> releases = new ArrayList<>();
+				releases.add(renderStream::destroy);
+				releases.add(() -> Destroyable.destroy(renderOp));
+				releases.add(() -> Destroyable.destroy(compiled));
+				releases.add(() -> Destroyable.destroy(masterOutput));
+				releases.add(bufferFrameIndex::destroy);
+				for (Object value : args.values()) {
+					releases.add(() -> Destroyable.destroy(value));
+				}
+				releases.add(args::clear);
+				releases.add(() -> Destroyable.destroy(ownedFxStem));
+				Destroyable.releaseAll(releases);
 			}
 		}
 

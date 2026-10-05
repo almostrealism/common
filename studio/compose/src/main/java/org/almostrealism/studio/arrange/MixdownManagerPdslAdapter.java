@@ -506,8 +506,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		int ffFrames = (config.delaySamples + 2 * config.signalSize - 1) / config.signalSize;
 		int ffRing = ffFrames * config.signalSize;
 		PackedCollection buffers = new PackedCollection(config.channels * ffRing);
-		PackedCollection heads = new PackedCollection(config.channels);
 		args.put("buffers", buffers);
+		PackedCollection heads = new PackedCollection(config.channels);
 		args.put("heads", heads);
 
 		// Initialise the automation slots with their current (clock-position) values so
@@ -960,8 +960,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// longest tap keeps every tap inside that band. One write head per tap.
 		int reverbRing = reverbRingFrames() * config.signalSize;
 		PackedCollection reverbBuffers = new PackedCollection(reverbTaps * reverbRing);
-		PackedCollection reverbHeads = new PackedCollection(reverbTaps);
 		args.put("reverb_buffers", reverbBuffers);
+		PackedCollection reverbHeads = new PackedCollection(reverbTaps);
 		args.put("reverb_heads", reverbHeads);
 
 		// Diagnostic per-arm isolation gains (default 1.0). Mutable so a bisection test can zero

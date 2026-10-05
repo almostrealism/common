@@ -532,24 +532,39 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		channels.forEach(Writer::reset);
 	}
 
+	/**
+	 * Releases the per-channel writers, the per-channel data producers, and the backing
+	 * buffer this output allocated for itself.
+	 *
+	 * <p>The three groups are independently owned, so each is run as its own best-effort
+	 * release action through {@link Destroyable#releaseAll(Iterable)}: a failure while
+	 * destroying a writer or channel producer must not leave the large self-allocated
+	 * timeline buffer ({@code ownedData}) allocated. The first failure is rethrown once
+	 * all actions have run. The channel producers are range views into {@code ownedData},
+	 * so they do not free it; only a buffer this output allocated itself is released, and a
+	 * caller-supplied buffer is left to its owner.</p>
+	 */
 	@Override
 	public void destroy() {
-		if (channels != null) {
-			channels.forEach(Writer::destroy);
-			channels = null;
-		}
-
-		if (data != null) {
-			data.forEach(CollectionProducer::destroy);
-			data = null;
-		}
-
-		if (ownedData != null) {
-			// The channel producers above are range views into this buffer, so they do not
-			// free it; the buffer this WaveOutput allocated itself is released here.
-			ownedData.destroy();
-			ownedData = null;
-		}
+		Destroyable.releaseAll(List.of(
+				() -> {
+					if (channels != null) {
+						channels.forEach(Writer::destroy);
+						channels = null;
+					}
+				},
+				() -> {
+					if (data != null) {
+						data.forEach(CollectionProducer::destroy);
+						data = null;
+					}
+				},
+				() -> {
+					if (ownedData != null) {
+						ownedData.destroy();
+						ownedData = null;
+					}
+				}));
 	}
 
 	@Override
