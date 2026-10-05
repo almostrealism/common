@@ -214,6 +214,25 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 	}
 
 	/**
+	 * The per-axis {@code scale} rejects factors whose total count matches but whose shape is not
+	 * exactly {@code [batch, length(axis)]}, rather than letting the broadcast reshape them and
+	 * silently assign factors to the wrong batch/position pairs. For a {@code [2, _, 4, _]} input
+	 * the factors must be {@code [2, 4]}; a transposed {@code [4, 2]} or a flat {@code [8]} tensor
+	 * has the same eight elements but a different layout and must be refused.
+	 */
+	@Test(timeout = 60000)
+	public void axisScaleRejectsFactorsOfTheWrongShape() {
+		assertRejected("position_scale", shape(2, 2, 4, 3),
+				args("factors", PackedCollection.of(
+						1.0, 0.0, 0.5, -2.0, 1.0, 0.0, 0.5, -2.0).reshape(shape(4, 2))),
+				"scale(factors, axis) should reject transposed [4, 2] factors for a [2, 4] layout");
+		assertRejected("position_scale", shape(2, 2, 4, 3),
+				args("factors", PackedCollection.of(
+						1.0, 0.0, 0.5, -2.0, 1.0, 0.0, 0.5, -2.0).reshape(shape(8))),
+				"scale(factors, axis) should reject a flat [8] factor tensor for a [2, 4] layout");
+	}
+
+	/**
 	 * {@code layernorm(w, b, eps)} normalizes every run of {@code len(w)} features to zero mean and
 	 * unit variance (the population variance, with {@code eps} added), then scales by {@code w} and
 	 * shifts by {@code b}.

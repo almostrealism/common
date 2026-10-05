@@ -224,16 +224,19 @@ final class PdslBuiltins {
 		CollectionProducer factors = PdslInterpreter.normalizeToProducer(args.get(0), null,
 				"scale() factors");
 		int axis = toInt(args.get(1));
-		long factorCount = FEATURES.shape(factors).getTotalSizeLong();
+		TraversalPolicy factorShape = FEATURES.shape(factors);
 		return inputShape -> {
 			if (axis <= 0 || axis >= inputShape.getDimensions()) {
 				throw new PdslParseException("scale() axis " + axis
 						+ " is not a non-batch axis of the input shape " + inputShape);
 			}
-			if (factorCount != (long) inputShape.length(0) * inputShape.length(axis)) {
-				throw new PdslParseException("scale() expects one factor per batch entry and position"
-						+ " of axis " + axis + " of " + inputShape + ", [" + inputShape.length(0) + ", "
-						+ inputShape.length(axis) + "], got " + factorCount + " factors");
+			if (factorShape.getDimensions() != 2
+					|| factorShape.length(0) != inputShape.length(0)
+					|| factorShape.length(1) != inputShape.length(axis)) {
+				throw new PdslParseException("scale() expects factors shaped ["
+						+ inputShape.length(0) + ", " + inputShape.length(axis)
+						+ "] (one per batch entry and position of axis " + axis + " of "
+						+ inputShape + "), got " + factorShape);
 			}
 			return FEATURES.scale(inputShape, axis, factors);
 		};
