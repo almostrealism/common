@@ -1028,6 +1028,32 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a trainable token embedding: each input value is a row index into {@code table}
+	 * and is replaced by that row, so an input of {@code n} token ids becomes an output of
+	 * {@code (n, dim)} embedding vectors. The rows are gathered with
+	 * {@link #rows(TraversalPolicy, io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)},
+	 * and the table is a learnable weight of the layer, so the backward pass accumulates the
+	 * output gradient of every position into the row that position selected.
+	 *
+	 * @param inputShape   the shape of the token ids
+	 * @param table        the embedding table, shape {@code (vocabSize, dim)}
+	 * @param requirements optional compute requirements
+	 * @return the embedding {@link CellularLayer}, whose output shape is {@code inputShape}
+	 *         with a trailing {@code dim} axis
+	 * @throws IllegalArgumentException if the table is not two-dimensional
+	 */
+	default CellularLayer embedding(TraversalPolicy inputShape, PackedCollection table,
+									ComputeRequirement... requirements) {
+		if (table.getShape().getDimensions() != 2) {
+			throw new IllegalArgumentException("Embedding table must be (vocabSize, dim), not " + table.getShape());
+		}
+
+		TraversalPolicy outputShape = inputShape.appendDimension(table.getShape().length(1));
+		return layer("embedding", inputShape, outputShape,
+				ids -> rows(outputShape, p(table), ids), List.of(table), requirements);
+	}
+
+	/**
 	 * Creates a scalar scaling layer factory that multiplies every element of the input
 	 * by the given constant.
 	 *
