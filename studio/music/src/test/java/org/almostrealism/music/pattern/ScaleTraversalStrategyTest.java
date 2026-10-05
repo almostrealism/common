@@ -16,6 +16,8 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
@@ -29,6 +31,7 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.PatternNoteAudio;
 import org.almostrealism.music.notes.SimplePatternNote;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -37,6 +40,8 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleFunction;
+import java.util.function.DoubleUnaryOperator;
 
 /**
  * Tests for {@link ScaleTraversalStrategy#getNoteDestinations}, the live pattern
@@ -154,6 +159,42 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 		/** Returns every destination produced so far. */
 		List<RenderedNoteAudio> getRecorded() {
 			return recorded;
+		}
+	}
+
+	/**
+	 * A {@link PatternElement} that records the offset argument passed to each
+	 * {@link #getNoteAudio} call and returns a constant producer, so a test can verify
+	 * which offset collection a rendered note's producer factory supplies without
+	 * building or evaluating the real note audio graph.
+	 */
+	private static final class OffsetRecordingElement extends PatternElement {
+		/** The offset arguments received, in call order. */
+		private final List<PackedCollection> offsets = new ArrayList<>();
+
+		/**
+		 * Creates an offset-recording element with the given notes and position.
+		 *
+		 * @param notes the notes keyed by voicing
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		OffsetRecordingElement(Map<ChannelInfo.Voicing, PatternNote> notes, double position) {
+			super(notes, position);
+		}
+
+		@Override
+		public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
+													   Factor<PackedCollection> automationLevel,
+													   DoubleFunction<PatternNoteAudio> audioSelection,
+													   DoubleUnaryOperator timeForDuration,
+													   PackedCollection offset, int frameCount) {
+			offsets.add(offset);
+			return c(0.0);
+		}
+
+		/** Returns every offset argument received so far. */
+		List<PackedCollection> getOffsets() {
+			return offsets;
 		}
 	}
 
@@ -788,6 +829,55 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 					note.getOffsetArg()));
 
 			plm.destroy();
+		} finally {
+			PatternLayerManager.enableBatched = previousBatched;
+		}
+	}
+
+	/**
+	 * A rendered note's producer factory must supply the note's current offset argument,
+	 * not the one it was created with: replacing the argument releases the previous
+	 * allocation, so a factory that captured it would hand a destroyed collection to the
+	 * note audio. A zero frame count still requests full evaluation with no offset.
+	 */
+	@Test(timeout = 120000)
+	public void producerFactoryUsesCurrentOffsetArgAfterReplacement() {
+		boolean previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try {
+			Scale<?> scale = Scale.of(WesternChromatic.C4);
+			OffsetRecordingElement element = new OffsetRecordingElement(
+					Map.of(ChannelInfo.Voicing.MAIN, buildNote()), 0.0);
+			configureElement(element, ScaleTraversalStrategy.CHORD, List.of(0.0), 1);
+
+			List<RenderedNoteAudio> destinations = element.getNoteDestinations(
+					true, 0.0, context(scale), audioContext(element.getNote(ChannelInfo.Voicing.MAIN)));
+			Assert.assertEquals(1, destinations.size());
+
+			RenderedNoteAudio note = destinations.get(0);
+			PackedCollection original = note.getOffsetArg();
+			Assert.assertNotNull(original);
+
+			note.getProducer(64);
+			Assert.assertSame("the factory supplies the note's offset argument",
+					original, element.getOffsets().get(0));
+
+			PackedCollection replacement = new PackedCollection(1);
+			note.setOffsetArg(replacement);
+			Assert.assertTrue("replacement releases the original argument", original.isDestroyed());
+
+			note.getProducer(64);
+			Assert.assertSame("the factory supplies the replacement, not the destroyed original",
+					replacement, element.getOffsets().get(1));
+			Assert.assertFalse(element.getOffsets().get(1).isDestroyed());
+
+			note.getProducer(0);
+			Assert.assertNull("a zero frame count requests full evaluation with no offset",
+					element.getOffsets().get(2));
+
+			note.destroy();
+			Assert.assertTrue(replacement.isDestroyed());
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}

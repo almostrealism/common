@@ -343,13 +343,16 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
 		RenderedNoteAudio note = new RenderedNoteAudio(frameOffset, expectedFrameCount);
 		note.setCacheIdentity(RenderedNoteAudio.Identity.of(element, details));
-		PackedCollection offsetArg = new PackedCollection(1);
-		note.setOffsetArg(offsetArg);
+		note.setOffsetArg(new PackedCollection(1));
+
+		// The offset argument is resolved from the note on each invocation rather
+		// than captured, so a replacement via setOffsetArg (which releases the
+		// previous allocation) is honored instead of leaving a destroyed reference.
 		note.setProducerFactory((frameCount) ->
 				element.getNoteAudio(details, automationLevel,
 						audioContext.getAudioSelection(),
 						context.getTimeForDuration(),
-						frameCount > 0 ? offsetArg : null, frameCount));
+						frameCount > 0 ? note.getOffsetArg() : null, frameCount));
 
 		if (PatternLayerManager.enableBatched) {
 			note.setBatchedInputs(gatherBatchedInputs(element, details, durationSec, audioContext));

@@ -244,6 +244,10 @@ public class RenderedNoteAudio implements Destroyable {
 	 * before invoking the factory. This design keeps the computation signature
 	 * independent of the actual start frame value.</p>
 	 *
+	 * <p>A factory must read {@link #getOffsetArg()} when it is invoked rather than
+	 * capturing the instance at construction, because {@link #setOffsetArg} may
+	 * replace the argument and release the previous allocation.</p>
+	 *
 	 * @param factory function mapping frameCount to a Producer
 	 */
 	public void setProducerFactory(IntFunction<Producer<PackedCollection>> factory) {
