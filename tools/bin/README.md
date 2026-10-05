@@ -28,6 +28,23 @@ Group membership takes effect at each account's next login.
 
 ---
 
+## fleet
+
+Machine setup, not code navigation: one entry point for the self-hosted CI
+runner fleet, `fleet <platform> <command>`. On a new Mac, after filling in
+`tools/ci/macos/.env`, as an administrator:
+
+```bash
+tools/bin/fleet macos install --store-from michael@mac-studio   # runner LaunchDaemon + fleet monitor
+tools/bin/fleet macos status | start | stop [--if-idle] | restart | logs [-f] | uninstall
+tools/bin/fleet rocm start | stop | status | logs                # Linux OpenCL fleet
+```
+
+It dispatches to `tools/ci/<platform>/fleet.sh`; see `tools/ci/macos/README.md`
+and `tools/ci/rocm/README.md`.
+
+---
+
 ## ar-find-method
 
 Find a Java method by name and return its full body with file path and line numbers.
