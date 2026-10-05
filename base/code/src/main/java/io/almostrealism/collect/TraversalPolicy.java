@@ -845,15 +845,19 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns a copy of this policy with one additional dimension of the given size appended
-	 * at the end.
+	 * at the end. The traversal axis is never shifted: the new dimension is added past every
+	 * existing axis, so for a fully traversed policy ({@code traversalAxis == getDimensions()})
+	 * the appended dimension becomes the item shape rather than part of the traversal count.
+	 * This restores the axis that {@link #insertDimension(int, long)} would otherwise shift in
+	 * the fully traversed case, keeping append behaviorally identical to a trailing insertion.
 	 *
 	 * @param size the size of the new trailing dimension
 	 * @return the extended policy
 	 */
 	public TraversalPolicy appendDimension(int size) {
-		// TODO(review): insertDimension's new axis-shift changes appendDimension behavior
-		// when traversalAxis == getDimensions() (fully traversed); this path is untested.
-		return insertDimension(getDimensions(), size);
+		TraversalPolicy p = insertDimension(getDimensions(), size);
+		p.traversalAxis = traversalAxis;
+		return p;
 	}
 
 	/**

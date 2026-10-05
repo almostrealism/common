@@ -259,7 +259,10 @@ public class TraversalPolicyTests extends TestSuiteBase {
 
 	/**
 	 * {@link TraversalPolicy#appendDimension(int)} inserts past every existing axis, so the traversal
-	 * axis is never shifted by it. This pins the append side of the shared insertion build.
+	 * axis is never shifted by it. This pins the append side of the shared insertion build, including
+	 * the fully traversed case ({@code traversalAxis == getDimensions()}), where
+	 * {@link TraversalPolicy#insertDimension(int, long)}'s at-or-before-axis shift would otherwise move
+	 * the axis and turn the appended dimension from an item dimension into part of the traversal count.
 	 */
 	@Test(timeout = 10000)
 	public void appendDimensionLeavesTraversalAxisUnchanged() {
@@ -270,6 +273,17 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		assertEquals(4, appended.getDimensions());
 		assertEquals(5, appended.length(3));
 		assertEquals(1, appended.getTraversalAxis());
+
+		// A fully traversed policy must stay anchored to the same axis, so the appended
+		// dimension becomes the item shape rather than being folded into the count.
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3, 4).traverseEach();
+		assertEquals(3, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy appendedFull = fullyTraversed.appendDimension(5);
+		assertEquals(4, appendedFull.getDimensions());
+		assertEquals(5, appendedFull.length(3));
+		assertEquals(3, appendedFull.getTraversalAxis());
+		assertEquals(5, appendedFull.item().getTotalSizeLong());
 	}
 
 	/**
