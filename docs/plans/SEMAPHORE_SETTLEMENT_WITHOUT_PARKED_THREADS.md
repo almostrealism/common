@@ -63,4 +63,11 @@ never. Two separate stalls were found:
   depends on needs that thread (stall 1 above). This is a latent defect even with parked
   threads; fix it on its own with a regression test that bridges a dispatch on `Semaphore.all`
   of two of the runner's own dispatches.
+  **Done, with parked threads still in place:** `MetalCommandRunner.complete` waits for the GPU
+  on the calling thread and only commits and drains on the confined thread. The eager member
+  waiters had been winning this race most of the time, but not always: a finite-difference
+  gradient test on test-mac lost it, and the watchdog-killed buffer silently dropped its
+  copies. The regression test is `SemaphoreChainBatchingTest#bridgedDependencyOnOwnDispatchCompletes`,
+  whose foreign dependency reaches the runner only after the host wait has started, so it
+  fails deterministically without the fix.
 - Keep MetalSemaphore batching: no host-forced commit per `whenSettled` registration.
