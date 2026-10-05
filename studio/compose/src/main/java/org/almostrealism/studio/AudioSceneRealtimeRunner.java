@@ -381,8 +381,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			@Override
 			public void destroy() {
 				if (!untrack(this)) return;
-				Destroyable.destroy(cells);
-				bufferFrameIndex.destroy();
+				// Best-effort: a release that throws must not leave the remaining resources
+				// allocated, since this runner is already untracked and destroy() is now a no-op.
+				Destroyable.releaseAll(List.of(
+						() -> Destroyable.destroy(cells),
+						bufferFrameIndex::destroy));
 			}
 		}
 
@@ -737,16 +740,22 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			@Override
 			public void destroy() {
 				if (!untrack(this)) return;
-				renderStream.destroy();
-				Destroyable.destroy(renderOp);
-				Destroyable.destroy(compiled);
-				Destroyable.destroy(masterOutput);
-				bufferFrameIndex.destroy();
-				for (Object value : args.values()) {
-					Destroyable.destroy(value);
-				}
-				args.clear();
-				Destroyable.destroy(ownedFxStem);
+				// Best-effort: a release that throws must not leave the remaining resources
+				// allocated, since this runner is already untracked and destroy() is now a no-op.
+				// The stream is stopped first so the render op's kernels are no longer in use.
+				Destroyable.releaseAll(List.of(
+						renderStream::destroy,
+						() -> Destroyable.destroy(renderOp),
+						() -> Destroyable.destroy(compiled),
+						() -> Destroyable.destroy(masterOutput),
+						bufferFrameIndex::destroy,
+						() -> {
+							for (Object value : args.values()) {
+								Destroyable.destroy(value);
+							}
+							args.clear();
+						},
+						() -> Destroyable.destroy(ownedFxStem)));
 			}
 		}
 

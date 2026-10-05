@@ -259,9 +259,12 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 */
 	@Override
 	public void destroy() {
-		Destroyable.destroy(forward);
-		Destroyable.destroy(backward);
-		Destroyable.destroy(setup);
+		// Best-effort release: a throw from one operation must not leak the others, which
+		// own independent native kernels (first failure rethrown, the rest suppressed onto it).
+		Destroyable.releaseAll(List.of(
+				() -> Destroyable.destroy(forward),
+				() -> Destroyable.destroy(backward),
+				() -> Destroyable.destroy(setup)));
 	}
 
 	/**

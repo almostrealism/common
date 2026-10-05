@@ -27,6 +27,7 @@ import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -60,14 +61,17 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	public void sceneDestroyStopsUndestroyedRunner() {
 		boolean pdsl = MixdownManager.enablePdslMixdown;
 		MixdownManager.enablePdslMixdown = true;
+		List<WaveOutput> outputs = new ArrayList<>();
+		Runnable setup = null;
 
 		try {
 			AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
 			applyGenome(scene, 1);
 			int before = producerThreadCount();
 
-			TemporalCellular runner = scene.runnerRealTime(output("ownership-scene"), BUFFER_SIZE);
-			runner.setup().get().run();
+			TemporalCellular runner = scene.runnerRealTime(output("ownership-scene", outputs), BUFFER_SIZE);
+			setup = runner.setup().get();
+			setup.run();
 			assertEquals("setup() should start exactly one producer thread",
 					before + 1, producerThreadCount());
 
@@ -80,6 +84,10 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			((Destroyable) runner).destroy();
 			assertEquals(before, producerThreadCount());
 		} finally {
+			// setup().get() compiles native kernels the runner does not retain; release them
+			// before the outputs they wrote into (the scene already stopped the producer).
+			Destroyable.destroy(setup);
+			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
 		}
 	}
@@ -94,6 +102,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	@TestDepth(2)
 	public void liveRunnersAreTrackedUntilDestroyed() {
 		boolean pdsl = MixdownManager.enablePdslMixdown;
+		List<WaveOutput> outputs = new ArrayList<>();
 
 		try {
 			AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
@@ -102,11 +111,11 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			assertEquals(0, runners.getLiveRunnerCount());
 
 			MixdownManager.enablePdslMixdown = true;
-			TemporalCellular pdslRunner = runners.create(output("ownership-pdsl"), null, BUFFER_SIZE);
+			TemporalCellular pdslRunner = runners.create(output("ownership-pdsl", outputs), null, BUFFER_SIZE);
 			assertEquals(1, runners.getLiveRunnerCount());
 
 			MixdownManager.enablePdslMixdown = false;
-			TemporalCellular cellListRunner = runners.create(output("ownership-celllist"),
+			TemporalCellular cellListRunner = runners.create(output("ownership-celllist", outputs),
 					List.of(0), BUFFER_SIZE);
 			assertEquals(2, runners.getLiveRunnerCount());
 
@@ -122,20 +131,26 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			((Destroyable) pdslRunner).destroy();
 			assertEquals(0, runners.getLiveRunnerCount());
 		} finally {
+			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
 		}
 	}
 
 	/**
-	 * Returns a fresh output writing to a WAV file under {@code results/}.
+	 * Returns a fresh output writing to a WAV file under {@code results/}. The underlying
+	 * {@link WaveOutput} self-allocates a full timeline buffer (hundreds of MB) that no runner
+	 * or scene owns, so it is registered in {@code cleanup} for the caller to destroy in a
+	 * {@code finally}; otherwise it leaks into the shared test JVM — the out-of-memory mode
+	 * this branch exists to close.
 	 *
-	 * @param name file name stem
+	 * @param name    file name stem
+	 * @param cleanup collection the created {@link WaveOutput} is added to for later release
 	 * @return the output
 	 */
-	// TODO(review): each WaveOutput here self-allocates a ~162 MB timeline buffer that no test destroys; release them in a finally.
-	private static MultiChannelAudioOutput output(String name) {
-		return new MultiChannelAudioOutput(
-				new WaveOutput(() -> new File("results/" + name + ".wav"), 24, true));
+	private static MultiChannelAudioOutput output(String name, List<WaveOutput> cleanup) {
+		WaveOutput out = new WaveOutput(() -> new File("results/" + name + ".wav"), 24, true);
+		cleanup.add(out);
+		return new MultiChannelAudioOutput(out);
 	}
 
 	/**

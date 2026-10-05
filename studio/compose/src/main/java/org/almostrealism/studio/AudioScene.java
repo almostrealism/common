@@ -1364,21 +1364,27 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * {@link #runnerRealTime} that the caller has not destroyed are destroyed first, so
 	 * their producer threads stop before the render cells and consolidated buffers they
 	 * render into are freed.
+	 *
+	 * <p>Every release is aggregated through {@link Destroyable#releaseAll(Iterable)} so a
+	 * runner-cleanup failure (which {@link AudioSceneRealtimeRunner#destroy()} rethrows after
+	 * attempting every runner) cannot skip the scene's own teardown or its removal from
+	 * {@code activeInstances}. The first failure is rethrown once all actions have run.</p>
 	 */
 	@Override
 	public void destroy() {
-		realtimeRunners.destroy();
 		Destroyable.super.destroy();
-		getSectionManager().destroy();
-
-		if (activeCells != null) {
-			activeCells.destroy();
-			activeCells = null;
-		}
-
-		renderBuffers.destroy();
-		efx.destroyConsolidatedBuffers();
-		activeInstances.remove(this);
+		Destroyable.releaseAll(List.of(
+				realtimeRunners::destroy,
+				() -> getSectionManager().destroy(),
+				() -> {
+					if (activeCells != null) {
+						activeCells.destroy();
+						activeCells = null;
+					}
+				},
+				renderBuffers::destroy,
+				efx::destroyConsolidatedBuffers,
+				() -> activeInstances.remove(this)));
 	}
 
 	/**
