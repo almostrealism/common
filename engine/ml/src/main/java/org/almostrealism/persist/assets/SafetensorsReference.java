@@ -141,12 +141,13 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @return the tensors by name, in the order the header lists them
 	 * @throws IOException if the file cannot be read
 	 * @throws IllegalArgumentException if the header is malformed, names an element type other
-	 *         than BF16, F16, F32 or F64, or gives a tensor a byte range that does not match its
-	 *         shape
+	 *         than BF16, F16, F32 or F64, or gives a tensor a byte range that is reversed, lies
+	 *         outside the file's tensor data, or does not match its shape
 	 */
 	public static Map<String, SafetensorsReference> locate(File file) throws IOException {
 		JsonObject header;
 		long dataStart;
+		long dataLength;
 
 		try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
 			byte[] lengthBytes = new byte[Long.BYTES];
@@ -162,13 +163,15 @@ public class SafetensorsReference extends CollectionDataReference {
 			in.readFully(headerBytes);
 			header = JsonParser.parseString(new String(headerBytes, StandardCharsets.UTF_8)).getAsJsonObject();
 			dataStart = Long.BYTES + headerLength;
+			dataLength = in.length() - dataStart;
 		}
 
 		Map<String, SafetensorsReference> tensors = new LinkedHashMap<>();
 		for (Map.Entry<String, JsonElement> entry : header.entrySet()) {
 			if ("__metadata__".equals(entry.getKey())) continue;
 
-			SafetensorsReference tensor = locateTensor(file, entry.getKey(), entry.getValue().getAsJsonObject(), dataStart);
+			SafetensorsReference tensor = locateTensor(file, entry.getKey(),
+					entry.getValue().getAsJsonObject(), dataStart, dataLength);
 			if (tensor != null) tensors.put(entry.getKey(), tensor);
 		}
 		return tensors;
@@ -180,10 +183,12 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param file      the file, for error messages
 	 * @param name      the tensor's name
 	 * @param entry     its header entry: {@code dtype}, {@code shape} and {@code data_offsets}
-	 * @param dataStart byte position where the tensors' data begins
+	 * @param dataStart  byte position where the tensors' data begins
+	 * @param dataLength number of bytes from {@code dataStart} to the end of the file
 	 * @return the reference, or {@code null} if the tensor holds no values
 	 */
-	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry, long dataStart) {
+	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
+													 long dataStart, long dataLength) {
 		Encoding encoding;
 		String dtype = entry.get("dtype").getAsString();
 		try {
@@ -198,13 +203,21 @@ public class SafetensorsReference extends CollectionDataReference {
 		shape[0] = 1;
 		for (int i = 0; i < dims.size(); i++) {
 			shape[i] = dims.get(i).getAsInt();
+			if (shape[i] < 0) {
+				throw new IllegalArgumentException(name + " in " + file + " has an axis of length " + shape[i]);
+			}
+			if (shape[i] == 0) return null;
 		}
 		TraversalPolicy policy = new TraversalPolicy(shape);
-		if (policy.getTotalSizeLong() == 0) return null;
 
 		JsonArray offsets = entry.getAsJsonArray("data_offsets");
 		long begin = offsets.get(0).getAsLong();
 		long end = offsets.get(1).getAsLong();
+		if (begin < 0 || end < begin || end > dataLength) {
+			throw new IllegalArgumentException(name + " in " + file + " occupies bytes " + begin + ".." + end
+					+ ", which is not a range within the file's " + dataLength + " bytes of tensor data");
+		}
+
 		long expected = policy.getTotalSizeLong() * encoding.getWidth().bytes();
 		if (end - begin != expected) {
 			throw new IllegalArgumentException(name + " in " + file + " occupies " + (end - begin)

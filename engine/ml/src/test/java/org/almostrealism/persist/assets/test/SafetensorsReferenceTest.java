@@ -15,6 +15,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -117,19 +118,109 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	/** An element type the reader cannot decode is named in the failure. */
 	@Test(timeout = 60000)
 	public void rejectsUnsupportedElementType() throws IOException {
-		byte[] header = "{\"ids\":{\"dtype\":\"I64\",\"shape\":[1],\"data_offsets\":[0,8]}}"
-				.getBytes(StandardCharsets.UTF_8);
-		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES + header.length + 8).order(ByteOrder.LITTLE_ENDIAN);
-		bytes.putLong(header.length).put(header);
+		assertRejected("{\"ids\":{\"dtype\":\"I64\",\"shape\":[1],\"data_offsets\":[0,8]}}", 8, "I64");
+	}
 
-		Path file = Files.createTempFile("unsupported", ".safetensors");
+	/** A byte range past the end of the file is rejected when the header is read, not when the tensor is. */
+	@Test(timeout = 60000)
+	public void rejectsRangeOutsideData() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[100,104]}}", 4, "100..104");
+	}
+
+	/** A byte range that ends one byte past the data is rejected; one that ends exactly at the end is not. */
+	@Test(timeout = 60000)
+	public void rejectsRangeOneBytePastData() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[1,5]}}", 4, "1..5");
+
+		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(
+				writeFile("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 4));
+		Assert.assertEquals(1, tensors.size());
+		Assert.assertEquals(1, tensors.get("w").getCount());
+	}
+
+	/** A byte range whose end precedes its beginning is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsReversedRange() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[8,4]}}", 8, "8..4");
+	}
+
+	/** A byte range starting before the tensor data is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsNegativeRange() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[-4,0]}}", 4, "-4..0");
+	}
+
+	/** A byte range whose length does not match the tensor's shape and element type is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsRangeNotMatchingShape() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[2],\"data_offsets\":[0,4]}}", 8, "occupy 8");
+	}
+
+	/** A header length larger than the file is rejected before any of the header is parsed. */
+	@Test(timeout = 60000)
+	public void rejectsHeaderLongerThanFile() throws IOException {
+		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES + 4).order(ByteOrder.LITTLE_ENDIAN);
+		bytes.putLong(1000);
+		Path file = Files.createTempFile("truncated", ".safetensors");
 		Files.write(file, bytes.array());
 
 		try {
 			SafetensorsReference.locate(file.toFile());
-			Assert.fail("An I64 tensor should be rejected");
+			Assert.fail("A header longer than the file should be rejected");
 		} catch (IllegalArgumentException e) {
-			Assert.assertTrue(e.getMessage(), e.getMessage().contains("I64"));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("not a safetensors file"));
+		}
+	}
+
+	/** A tensor with an axis of length zero holds no values and is left out; the others are kept. */
+	@Test(timeout = 60000)
+	public void omitsEmptyTensor() throws IOException {
+		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(writeFile("{"
+				+ "\"empty\":{\"dtype\":\"F32\",\"shape\":[0,3],\"data_offsets\":[0,0]},"
+				+ "\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]}}", 4));
+		Assert.assertEquals(List.of("w"), List.copyOf(tensors.keySet()));
+	}
+
+	/** An axis of negative length is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsNegativeAxis() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[-1,2],\"data_offsets\":[0,0]}}", 4, "length -1");
+	}
+
+	/**
+	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
+	 * tensor data.
+	 *
+	 * @param header    the JSON header
+	 * @param dataBytes number of bytes of tensor data after the header
+	 * @return the file
+	 */
+	private File writeFile(String header, int dataBytes) throws IOException {
+		byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
+		ByteBuffer bytes = ByteBuffer.allocate(Long.BYTES + headerBytes.length + dataBytes)
+				.order(ByteOrder.LITTLE_ENDIAN);
+		bytes.putLong(headerBytes.length).put(headerBytes);
+
+		Path file = Files.createTempFile("tensors", ".safetensors");
+		Files.write(file, bytes.array());
+		return file.toFile();
+	}
+
+	/**
+	 * Asserts that locating the tensors of a file with the given header fails, and that the
+	 * failure mentions {@code expected}.
+	 *
+	 * @param header    the JSON header
+	 * @param dataBytes number of bytes of tensor data after the header
+	 * @param expected  text the failure message must contain
+	 */
+	private void assertRejected(String header, int dataBytes, String expected) throws IOException {
+		File file = writeFile(header, dataBytes);
+		try {
+			SafetensorsReference.locate(file);
+			Assert.fail("The header " + header + " should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(expected));
 		}
 	}
 }

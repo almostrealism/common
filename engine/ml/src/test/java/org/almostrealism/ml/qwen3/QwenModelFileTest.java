@@ -11,6 +11,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Map;
+
 /**
  * Checks that the whole-model PDSL files, {@code /pdsl/qwen2.pdsl} and {@code /pdsl/qwen3.pdsl},
  * compute exactly what the per-layer Java assembly they replaced computed. The reference below
@@ -43,6 +45,38 @@ public class QwenModelFileTest extends TestSuiteBase implements AttentionFeature
 	@Test(timeout = 600000)
 	public void qwen3MatchesLayerAssembly() {
 		assertMatchesLayerAssembly(false);
+	}
+
+	/**
+	 * A configuration with a separate output projection ({@code lm_head.weight}) is refused
+	 * with a message naming it, since the model files read the projection from the embedding
+	 * table.
+	 */
+	@Test(timeout = 60000)
+	public void untiedOutputWeightsAreRejected() {
+		Qwen3Config config = new Qwen3Config(64, 192, 2, 4, 2, 100, 16, false, 1000000.0);
+		StateDictionary weights = Qwen3InferenceProfileTest.createRandomWeights(config, 7L, false);
+		try {
+			new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
+			Assert.fail("A checkpoint with untied output weights should be rejected");
+		} catch (UnsupportedOperationException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("lm_head.weight"));
+		}
+	}
+
+	/** The settings a model file reads hold every dimension of the configuration and its RoPE base. */
+	@Test(timeout = 60000)
+	public void settingsHoldConfiguration() {
+		Map<String, Object> settings = config().toPdslSettings();
+		Assert.assertEquals(64, settings.get("dim"));
+		Assert.assertEquals(192, settings.get("hidden_dim"));
+		Assert.assertEquals(2, settings.get("layers"));
+		Assert.assertEquals(4, settings.get("heads"));
+		Assert.assertEquals(2, settings.get("kv_heads"));
+		Assert.assertEquals(100, settings.get("vocab_size"));
+		Assert.assertEquals(16, settings.get("seq_len"));
+		Assert.assertEquals(1000000.0, (Double) settings.get("rope_theta"), 0.0);
+		Assert.assertEquals(8, settings.size());
 	}
 
 	/**

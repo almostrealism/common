@@ -203,7 +203,8 @@ public class PdslLoader {
 	 * Build a {@link Model} from a PDSL model definition whose weights come from a
 	 * {@link StateDictionary}. The dictionary is bound to every parameter the model declares
 	 * with the type {@code checkpoint}; the model body then reads each weight by name, as in
-	 * {@code weights["model.layers.{i}.self_attn.q_proj.weight"]}.
+	 * {@code weights.model.norm.weight}, or repeats over a group of them with
+	 * {@code stack weights.model.layers as block { ... }}.
 	 *
 	 * @param program      the parsed PDSL program
 	 * @param modelName    the name of the model to build
