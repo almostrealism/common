@@ -235,12 +235,15 @@ after"). It needs its own KV-cache wiring and is not required to prove that trai
      `dimHead / 2 = 8` for full rotary, with `invFreq[i] = 10000^(−2i / dimHead)`, `i = 0..7`.
      Build it as a producer, as `RotationFeatures.computeRopeFreqs` does internally
      (`exp(integers(0, 8).multiply(−2 · ln 10000 / 16))`), and evaluate it once at the test
-     boundary. There is no public helper for this today: the `RotationFeatures` class javadoc
-     shows a `computeInvFreq(dimHead, theta)` call, but no such method exists, and the existing
-     `sequenceAttention` callers either load `invFreq` from checkpoint weights
-     (`DiffusionTransformer`, partial rotary with length `dimHead / 4`) or fill a constant in
-     tests. Whether to add that helper to `RotationFeatures` is a placement decision for the
-     implementer (see Approach, "Discovery before new types"); the values above are fixed either way.
+     boundary. When this plan was written there was no public helper for this: the
+     `RotationFeatures` class javadoc showed a `computeInvFreq(dimHead, theta)` call that did not
+     exist, and the existing `sequenceAttention` callers either load `invFreq` from checkpoint
+     weights (`DiffusionTransformer`, partial rotary with length `dimHead / 4`) or fill a constant
+     in tests. **Implementation note:** the implementer added that helper to `RotationFeatures` as
+     `computeInvFreq(int dimHead, double theta)` (the placement chosen under Approach, "Discovery
+     before new types"). It returns the producer above, rejects an odd or non-positive head
+     dimension and a base whose frequencies overflow or underflow, and
+     `CausalLanguageModel.initialize` calls it directly.
    - **Query/key norm: off.** Pass a null `qNormWeight`, which skips both the Q and K norms. At
      embed 64 and depth 2 the extra normalization is not needed for stability, and leaving it out
      keeps the number of weight collections, and the gradient paths step 2 has to verify, as small as
