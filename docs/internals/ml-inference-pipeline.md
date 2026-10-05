@@ -827,15 +827,20 @@ if (seqLen > audioSeqLen) {
 ### Sequence-Based Self-Attention (DiffusionTransformer)
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
-`DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(in `AttentionFeatures`, with further overloads adding a customizable
-`ProjectionFactory` and a selectable query/key `NormalizationType`):
+`DiffusionTransformer` (and the T5Gemma text encoder) uses full-sequence attention via
+`sequenceAttention` (in `AttentionFeatures`, with further overloads adding a customizable
+`ProjectionFactory` and a selectable query/key `NormalizationType`). Its stages are the layers
+of the asset `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl`; `sequenceAttention`
+builds the two projection layers with the `ProjectionFactory`, allocates the key and value
+stores, and builds the layer for the requested normalization family and score form:
 
-- Processes all positions simultaneously with fused QKV projection
-- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
-- Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
-  single-position `ropeRotation`
-- No KV cache — the full K and V tensors are computed and stored for each forward pass
+- Processes all positions simultaneously with fused QKV projection, separated into one row per
+  head by `slice`, `reshape` and `permute`
+- Uses the `sdpa_scores`/`sdpa_context` layers of `sdpa.pdsl` over the full sequence (no causal
+  mask needed)
+- Applies full-sequence RoPE (`sequence_rope`, backed by `applyRotaryPositionEmbedding`) instead of
+  single-position `rope_rotation`
+- No KV cache — the full K and V tensors are computed and stored (`capture`) for each forward pass
 
 ---
 

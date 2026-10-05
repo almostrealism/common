@@ -159,6 +159,36 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	}
 
 	/**
+	 * Without query/key normalization weights the differential block applies no query/key
+	 * normalization, as {@link AttentionFeatures#sequenceAttention} does, so with {@code lambda = 0}
+	 * it still reduces to standard attention over the {@code [Q1, K1, V]} sections without
+	 * normalization. Normalizing with absent weights would instead normalize each whole query and
+	 * key tensor as a single group.
+	 */
+	@Test(timeout = 240000)
+	public void differentialWithoutQueryKeyNormalizationReducesToStandard() {
+		Weights w = new Weights();
+		PackedCollection input = new PackedCollection(inputShape()).randnFill();
+
+		PackedCollection diffOut = run(differentialSequenceAttention(
+				BATCH, SEQ_LEN, DIM, HEADS,
+				w.toQkv5, w.toOut,
+				null, null, null, null,
+				w.invFreq, lambda(0.0)), input);
+
+		PackedCollection standardOut = run(sequenceAttention(
+				BATCH, SEQ_LEN, DIM, HEADS,
+				w.standardQkv(0, 1, 3), w.toOut,
+				null, null, null, null,
+				w.invFreq), input);
+
+		double diff = compare(standardOut, diffOut);
+		log("unnormalized differential(lambda=0) vs standard difference = " + diff);
+		assertTrue("Differential attention without query/key normalization must equal standard attention"
+				+ " without it", diff < 1e-5);
+	}
+
+	/**
 	 * Verifies the differential lambda re-parameterization
 	 * {@code lambda = exp(lambdaQ1 . lambdaK1) - exp(lambdaQ2 . lambdaK2) + lambdaInit} against a
 	 * hand-computed reference, independent of the attention computation.

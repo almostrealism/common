@@ -577,7 +577,10 @@ for query/key normalization, an optional per-position `paddingMask` (zeroes mask
 vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
 `AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
 shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
-and no masking.
+and no masking. The attention's stages are the layers of the `sequence_attention.pdsl` asset;
+`sequenceAttention` builds the two projection layers with the given factory and binds them to
+the asset, so an adapter factory adapts exactly the fused query/key/value and output
+projections. Query/key normalization takes both weights or neither.
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 

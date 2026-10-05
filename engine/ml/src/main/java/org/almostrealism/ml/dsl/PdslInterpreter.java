@@ -57,19 +57,22 @@ import java.util.function.Function;
  *   <li>{@code conv1d(weight[, bias], stride, padding)},
  *       {@code conv_transpose1d(weight[, bias], stride, padding, output_padding)} - 1-D
  *       convolutions over a {@code [batch, channels, length]} signal</li>
- *   <li>{@code rmsnorm(weights, epsilon)}</li>
+ *   <li>{@code rmsnorm(weights, epsilon)}, {@code rmsnorm(weights, biases, epsilon)},
+ *       {@code layernorm(weights, biases, epsilon)}</li>
  *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
  *       {@code sigmoid()}, {@code tanh_act()}, {@code snake(alpha, beta)}</li>
- *   <li>{@code slice(offset, size)} - extract a 1-D sub-range</li>
+ *   <li>{@code slice(offset, size)} - extract a 1-D sub-range;
+ *       {@code slice([shape], position...)} - extract the sub-tensor of {@code shape} at a position</li>
  *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
- *   <li>{@code reshape(shape)}</li>
+ *   <li>{@code reshape(shape)}, {@code permute(axes...)} - reorder the input's axes</li>
  *   <li>{@code identity()} - pass-through block, forward and backward unchanged</li>
- *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer</li>
+ *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer;
+ *       {@code scale(factors, axis)} - multiply by one factor per position along an axis</li>
  *   <li>{@code repeat(n)} - replicate the input along axis 0 to produce {@code n}
  *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
  *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
  *       by summing along axis 0</li>
- *   <li>{@code rope_rotation(shape, freq_cis, position)},
+ *   <li>{@code rope_rotation(shape, freq_cis, position)}, {@code sequence_rope(inv_freq)},
  *       {@code mra_rope_rotation(shape, head_groups)},
  *       {@code split_half_rope(heads, head_size)}, {@code merge_half_rope(heads, head_size)}</li>
  *   <li>{@code repeat_each(n)} - duplicate every row of a {@code [rows, size]} input
