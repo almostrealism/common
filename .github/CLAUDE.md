@@ -219,6 +219,13 @@ skipped every auto-resolve that followed one (run 36380449113). A skip is a
 successful response, so `submit-agent-job.sh` reports it as a warning and in the
 step summary rather than failing the step.
 
+When a Metal lane (`test-mac`, `test-media-mac`, or any matrix entry of them)
+failed in the attempt being resolved, `auto-resolve-submit.yaml` submits with
+`REQUIRED_LABELS={"platform":"macos"}`, so the agent lands on a Node that can
+reproduce the failure. `tools/ci/remediation-required-labels.sh` decides this
+from the run's job list in the GitHub API, never from the staged request, and
+fails the step if it cannot list the jobs rather than submitting unpinned.
+
 No remediation job declares `environment:` — in a `pull_request` run that
 attaches a deployment status to the PR head, and an abandoned one shows as a
 spurious "had a problem deploying" red X. `auto-resolve-submit.yaml` keeps its
@@ -839,12 +846,15 @@ which bought nothing and competed with the test lanes for runners. Do not add a
 
 `performance-qa` is the one round whose result depends on the machine the
 *agent* runs on, not just the runner that submits it. Its measurements are only
-meaningful with Metal available, so its submission carries
-`REQUIRED_LABELS='{"platform": "macos"}'` (a job-level `requiredLabels` override
-matched against the Node's auto-detected `platform` label) and pins the primary
-phase to `claude/opus` at `effort: max`. The `runs-on` label of the workflow job
-says nothing about where the agent executes; `REQUIRED_LABELS` does. Keep both
-in place when copying this job.
+meaningful with Metal available, so its workstream is registered with
+`REQUIRED_LABELS_JSON='{"platform": "macos"}'` and its submission carries the
+same `REQUIRED_LABELS` (both matched against the Node's auto-detected `platform`
+label). The workstream's labels are the ones that matter for every job after the
+first — a PR follow-up or a fix for a failing check is submitted with no labels
+of its own, and without them it once landed on a Node with no Metal. The
+submission also pins the primary phase to `claude/opus` at `effort: max`. The
+`runs-on` label of the workflow job says nothing about where the agent executes;
+the labels do. Keep all three in place when copying this job.
 
 `pdsl-qa` is the round that moves compute-pipeline structure out of Java and
 into `.pdsl` assets (`tools/ci/prompts/pdsl-migration.txt`). It carries the same
