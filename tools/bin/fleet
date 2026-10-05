@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 # ─── fleet: one entry point for the self-hosted CI runner fleet ──────
@@ -16,6 +16,9 @@ set -euo pipefail
 #   tools/bin/fleet macos install --store-from michael@mac-studio
 #
 # `tools/bin/fleet <platform> --help` lists that platform's options.
+
+# /bin/bash by absolute path, like the macOS script this hands off to: the
+# macOS install calls sudo, so its shell must not come from an unscreened PATH.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CI_DIR="$(cd "${SCRIPT_DIR}/../ci" && pwd)"

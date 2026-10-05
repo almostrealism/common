@@ -397,11 +397,14 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn(" RUNNER_WORKDIR ", re.search(r"^read_env\(\) \{.*?^\}", self.src, re.M | re.S).group(0),
                       "read_env must read RUNNER_WORKDIR for install to screen it")
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
-        check = install.find('untrusted_ancestor "${RUNNER_USER}" "${runner_workdir}" sudo')
-        self.assertNotEqual(-1, check, "install must walk the effective RUNNER_WORKDIR")
+        check = install.find('$(runner_dir_problems RUNNER_WORKDIR "${runner_workdir}")')
+        self.assertNotEqual(-1, check, "install must screen the effective RUNNER_WORKDIR")
         self.assertLess(check, install.find('s|@RUNNER_DIR@|'))
-        self.assertIn('*) bad="${runner_workdir}" ;;', install,
-                      "a relative RUNNER_WORKDIR must be refused, not walked from /")
+        helper = re.search(r"^runner_dir_problems\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('bad="$(untrusted_ancestor "${RUNNER_USER}" "${path}" sudo)"', helper,
+                      "the helper must walk the path with the runner trust boundary")
+        self.assertIn('must be an absolute path"; return 0 ;;', helper,
+                      "a relative path must be refused, not walked from /")
 
     def test_the_default_runner_workdir_is_validated(self):
         """When the env file leaves RUNNER_WORKDIR unset, runner.sh still runs
@@ -420,14 +423,19 @@ class MacosFleetSecurityTests(unittest.TestCase):
         trusted path the runner cannot create — an existing non-directory, or a
         missing one under a runner-unwritable parent — must be refused in
         preflight rather than left to fail after launchd starts retrying."""
-        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        helper = re.search(r"^runner_dir_problems\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
         self.assertRegex(
-            install,
-            r'sudo test -e "\$\{runner_workdir\}" && ! sudo test -d "\$\{runner_workdir\}"',
-            "install must reject a RUNNER_WORKDIR that exists but is not a directory")
-        self.assertIn('workdir_at="$(nearest_existing_dir "${runner_workdir}")"', install,
-                      "install must probe the nearest existing ancestor of RUNNER_WORKDIR")
-        probe = install.find('nearest_existing_dir "${runner_workdir}"')
+            helper,
+            r'sudo test -e "\$\{path\}" && ! sudo test -d "\$\{path\}"',
+            "the helper must reject a path that exists but is not a directory")
+        self.assertIn('at="$(nearest_existing_dir "${path}")"', helper,
+                      "the helper must probe the nearest existing ancestor of the path")
+        self.assertRegex(
+            helper,
+            r'sudo -u "\$\{RUNNER_USER\}" /bin/sh -c \'test -w "\$1" && test -x "\$1"\' _ "\$\{at\}"',
+            "the write probe must run as the runner account")
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        probe = install.find('runner_dir_problems RUNNER_WORKDIR')
         self.assertLess(probe, install.find('s|@RUNNER_DIR@|'),
                         "the write-access probe must run before install proceeds")
 
@@ -710,16 +718,80 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertNotIn('launchctl bootout "system/${LABEL}"', tail,
                          "a monitor failure must not boot the online runner out")
 
+    def test_both_entry_points_run_bash_by_absolute_path(self):
+        """fleet.sh calls sudo and installs the monitor as the administrator, and
+        the administrator's PATH is not screened before it starts. A
+        `/usr/bin/env bash` shebang would let a writable PATH entry supply the
+        shell that does all of that, so both the dispatcher and the macOS script
+        name /bin/bash directly."""
+        for script in (_FLEET, _MACOS_FLEET):
+            with self.subTest(script=os.path.relpath(script, _REPO_ROOT)):
+                with open(script) as f:
+                    self.assertEqual("#!/bin/bash", f.readline().rstrip("\n"))
+
+    def test_an_env_file_that_sets_path_is_refused_before_staging(self):
+        """runner.sh sources the staged env file after launchd has set the
+        screened RUNNER_PATH, so a PATH assignment in it would replace the
+        screened value. install must refuse one, before anything is staged."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('if [ -n "${ENV_PATH_OVERRIDE}" ]; then')
+        self.assertNotEqual(-1, check, "install must check whether the env file sets PATH")
+        self.assertLess(install.find('read_env "${ENV_FILE}"'), check,
+                        "the override is known only once the env file has been read")
+        self.assertLess(check, install.find('stage_file "${STAGE_DIR}/runner.env"'),
+                        "the env file must be refused before it is staged")
+        self.assertIn("exit 1", install[check:check + 600])
+
+    def test_runner_dir_tree_is_scanned_for_write_granting_acls(self):
+        """A mode-755 run.sh can still carry an ACL entry letting another account
+        rewrite it; the mode-bit scan of the runner tree cannot see that, so the
+        same tree (minus _work) is scanned for write-granting ACL entries."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('acl_write_grant_tree "${RUNNER_DIR}" "${RUNNER_DIR}/_work" sudo')
+        self.assertNotEqual(-1, check, "install must scan RUNNER_DIR for write-granting ACLs")
+        self.assertLess(check, install.find('s|@RUNNER_DIR@|'),
+                        "the ACL scan must run before anything is installed")
+
+    def test_the_host_python3_is_screened_before_the_monitor_install(self):
+        """install.sh runs the PATH's python3 as the administrator to check for
+        the venv module, and render.sh creates the venv with it on a first
+        install. That interpreter must be followed and screened whether or not
+        the venv exists, and a missing or relative one refused."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('host_python="$(command -v python3 || true)"', install)
+        screen = install.find('untrusted_program "${admin_user}" "${host_python}"')
+        self.assertNotEqual(-1, screen, "the host python3 must be followed, not just walked")
+        self.assertIn('"") host_python_bad="python3 (not found on your PATH)" ;;', install)
+        self.assertIn('*) host_python_bad="${host_python}" ;;', install,
+                      "a relative python3 must be refused")
+        block = install[install.find('host_python="$(command -v python3'):screen]
+        self.assertNotIn("sudo test -e", block,
+                         "the host interpreter must be screened even before any venv exists")
+        self.assertLess(screen, install.find('"${MONITOR_INSTALL}" ${STORE_FROM'),
+                        "the interpreter must be screened before the monitor install runs")
+
+    def test_the_stage_directory_is_screened_before_staging(self):
+        """The stage directory receives runner.env, with GITHUB_PAT, before
+        register-daemon.sh checks the plist path. Its ancestors must be trusted
+        and the runner must be able to create it, all before anything is
+        staged."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        check = install.find('$(runner_dir_problems "the stage directory" "${STAGE_DIR}")')
+        self.assertNotEqual(-1, check, "install must screen STAGE_DIR")
+        self.assertLess(check, install.find('mkdir -p "$1/bin"'),
+                        "STAGE_DIR must be screened before it is created")
+        self.assertLess(check, install.find('stage_file "${STAGE_DIR}/runner.env"'))
+
 
 def _trust_functions(*names):
     """The source of fleet.sh's path-trust helpers, to run outside the script
     (which refuses to run anywhere but macOS). ``acl_write_grant`` and the
-    ``acl_grant`` it delegates to are always included because ``untrusted_path``
-    and ``untrusted_tool_dir`` call them."""
+    ``acl_write_rights`` and ``acl_grant`` it delegates to are always included
+    because ``untrusted_path`` and ``untrusted_tool_dir`` call them."""
     with open(_MACOS_FLEET) as f:
         src = f.read()
     names = names or ("untrusted_path", "untrusted_ancestor")
-    names = tuple(dict.fromkeys(names + ("acl_write_grant", "acl_grant")))
+    names = tuple(dict.fromkeys(names + ("acl_write_grant", "acl_write_rights", "acl_grant")))
     return "\n".join(
         re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0)
         for name in names)
@@ -1088,6 +1160,223 @@ class AclWriteGrantTests(unittest.TestCase):
             self._MODE_LINE + " 0: user:someone inherited allow read,write\n"))
         self.assertEqual("", self._grant(
             self._MODE_LINE + " 0: group:everyone inherited deny delete\n"))
+
+
+class AclWriteGrantTreeTests(unittest.TestCase):
+    """Runs ``acl_write_grant_tree`` against a canned recursive ``ls -lde``
+    listing, as ``AclWriteGrantTests`` does for one path: ``xargs`` is shadowed
+    to print the listing a real macOS run would produce."""
+
+    _LIST = "xargs() { cat >/dev/null; printf '%s' \"${LS_OUTPUT}\"; }\n"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.functions = _trust_functions("acl_write_grant_tree")
+
+    def _scan(self, listing, prelude=_LIST):
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\nfind() { printf '/r\\0'; }\n" + prelude
+             + self.functions + '\nacl_write_grant_tree /r /r/_work'],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, LS_OUTPUT=listing))
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    _DIR = "drwxr-xr-x  4 worker staff 128 Jan  1 00:00 /r\n"
+    _RUN = "-rwxr-xr-x+ 1 worker staff 2048 Jan  1 00:00 /r/run.sh\n"
+
+    def test_a_tree_without_acls_is_not_reported(self):
+        self.assertEqual("", self._scan(
+            self._DIR + "-rwxr-xr-x  1 worker staff 2048 Jan  1 00:00 /r/run.sh\n"))
+
+    def test_a_nested_file_with_an_allow_write_entry_is_reported(self):
+        """The line reported is the file's own, not the directory's above it."""
+        self.assertEqual(self._RUN.strip(), self._scan(
+            self._DIR + self._RUN + " 0: user:intruder allow write\n"))
+
+    def test_an_inherited_write_entry_is_reported(self):
+        self.assertEqual(self._RUN.strip(), self._scan(
+            self._DIR + self._RUN + " 0: user:intruder inherited allow append\n"))
+
+    def test_deny_and_read_only_entries_are_not_reported(self):
+        self.assertEqual("", self._scan(
+            self._DIR + self._RUN + " 0: group:everyone deny delete\n"
+            + " 1: user:reader allow read,readattr\n"))
+
+    def test_only_the_first_offender_is_reported(self):
+        other = "-rw-r--r--+ 1 worker staff 10 Jan  1 00:00 /r/config.sh\n"
+        self.assertEqual(self._RUN.strip(), self._scan(
+            self._DIR + self._RUN + " 0: user:a allow write\n"
+            + other + " 0: user:b allow write\n"))
+
+    def test_a_listing_that_cannot_be_made_reports_the_tree(self):
+        self.assertEqual("/r", self._scan("", prelude="xargs() { cat >/dev/null; return 1; }\n"))
+
+    @unittest.skipUnless(platform.system() == "Darwin", "needs macOS ACLs")
+    def test_real_acls_on_a_macos_tree(self):
+        """The real find/xargs/ls -lde pipeline, on real macOS ACLs: a read-only
+        entry and a write entry under the pruned _work pass; a write entry on a
+        directory inside the tree is reported."""
+        root = tempfile.mkdtemp(prefix="fleet-acl-")
+        self.addCleanup(shutil.rmtree, root, True)
+        tree = os.path.join(root, "r")
+        os.makedirs(os.path.join(tree, "_work"))
+        os.makedirs(os.path.join(tree, "bin"))
+        for name in ("run.sh", os.path.join("_work", "job.sh")):
+            with open(os.path.join(tree, name), "w") as f:
+                f.write("x\n")
+
+        def scan():
+            result = subprocess.run(
+                ["bash", "-c", "set -euo pipefail\n" + self.functions
+                 + '\nacl_write_grant_tree "$1" "$1/_work"', "_", tree],
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, result.returncode, result.stderr)
+            return result.stdout.strip()
+
+        def add_acl(entry, path):
+            subprocess.run(["chmod", "+a", entry, os.path.join(tree, path)],
+                           check=True, capture_output=True, timeout=30)
+
+        self.assertEqual("", scan())
+        add_acl("everyone allow read", "run.sh")
+        self.assertEqual("", scan())
+        add_acl("everyone allow write,append", os.path.join("_work", "job.sh"))
+        self.assertEqual("", scan(), "_work is pruned")
+        add_acl("everyone allow add_file", "bin")
+        reported = scan()
+        self.assertTrue(reported.endswith(os.path.join(tree, "bin")), reported)
+
+
+class ReadEnvTests(unittest.TestCase):
+    """Runs ``read_env`` against real env files: it sources them in a clean
+    shell and reports, besides the values install uses, any PATH the file
+    assigns, which runner.sh would otherwise let replace the screened
+    RUNNER_PATH."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.functions = _trust_functions("read_env")
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="fleet-env-")
+        self.addCleanup(shutil.rmtree, self.root)
+        self.env = os.path.join(self.root, ".env")
+
+    def _read(self, text, variable):
+        with open(self.env, "w") as f:
+            f.write(text)
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\n" + self.functions
+             + '\nread_env "$1"\nprintf "%s" "${!2}"', "_", self.env, variable],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, RUNNER_HOME=self.root))
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout
+
+    def test_an_env_file_without_path_reports_no_override(self):
+        self.assertEqual("", self._read("GITHUB_OWNER=acme\n", "ENV_PATH_OVERRIDE"))
+        self.assertEqual("acme", self._read("GITHUB_OWNER=acme\n", "ENV_GITHUB_OWNER"))
+
+    def test_an_env_file_that_sets_path_reports_it(self):
+        self.assertEqual("/tmp/evil:/usr/bin",
+                         self._read("PATH=/tmp/evil:/usr/bin\n", "ENV_PATH_OVERRIDE"))
+
+    def test_an_env_file_that_extends_path_reports_it(self):
+        """Prepending to the inherited PATH is an override all the same."""
+        self.assertEqual("/tmp/evil:/usr/bin:/bin",
+                         self._read('PATH="/tmp/evil:${PATH}"\n', "ENV_PATH_OVERRIDE"))
+
+    def test_runner_path_is_not_mistaken_for_path(self):
+        self.assertEqual("", self._read("RUNNER_PATH=/opt/homebrew/bin:/usr/bin\n",
+                                        "ENV_PATH_OVERRIDE"))
+        self.assertEqual("/opt/homebrew/bin:/usr/bin",
+                         self._read("RUNNER_PATH=/opt/homebrew/bin:/usr/bin\n", "ENV_RUNNER_PATH"))
+
+
+class RunnerDirProblemsTests(unittest.TestCase):
+    """Runs ``runner_dir_problems`` against real directories, as the test's own
+    account standing in for the runner. ``sudo`` is shadowed to run the command
+    as that account, and, as in ``UntrustedAncestorTests``, everything above the
+    fixture root is treated as trusted."""
+
+    @classmethod
+    def setUpClass(cls):
+        functions = _trust_functions(
+            "untrusted_path", "untrusted_ancestor", "nearest_existing_dir", "runner_dir_problems"
+        ).replace("untrusted_path() {", "real_untrusted_path() {", 1)
+        cls.functions = '''sudo() {
+    if [ "$1" = "-u" ]; then shift 2; fi
+    "$@"
+}
+''' + functions + '''
+untrusted_path() {
+    case "$2" in
+        "${FIXTURE_ROOT}"|"${FIXTURE_ROOT}"/*) real_untrusted_path "$@" ;;
+    esac
+}'''
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="fleet-stage-")
+        self.addCleanup(self._cleanup)
+        os.chmod(self.root, 0o755)
+        self.home = os.path.join(self.root, "home")
+        os.mkdir(self.home, 0o755)
+        os.chmod(self.home, 0o755)
+
+    def _cleanup(self):
+        os.chmod(self.home, 0o755)
+        shutil.rmtree(self.root, True)
+
+    def _problems(self, path):
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\n" + self.functions
+             + '\nrunner_dir_problems "the stage directory" "$1"', "_", path],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, FIXTURE_ROOT=self.root, RUNNER_USER=self.user))
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def test_a_missing_directory_under_a_trusted_writable_home_passes(self):
+        self.assertEqual("", self._problems(os.path.join(self.home, "ci-runner")))
+
+    def test_an_existing_trusted_directory_passes(self):
+        stage = os.path.join(self.home, "ci-runner")
+        os.mkdir(stage, 0o755)
+        os.chmod(stage, 0o755)
+        self.assertEqual("", self._problems(stage))
+
+    def test_a_relative_path_is_refused(self):
+        self.assertIn("must be an absolute path", self._problems("ci-runner"))
+
+    def test_a_symlinked_stage_directory_is_reported(self):
+        target = os.path.join(self.root, "elsewhere")
+        os.mkdir(target, 0o755)
+        stage = os.path.join(self.home, "ci-runner")
+        os.symlink(target, stage)
+        problems = self._problems(stage)
+        self.assertTrue(problems.startswith(stage + ", on the path to the stage directory"), problems)
+
+    def test_a_writable_ancestor_is_reported(self):
+        os.chmod(self.home, 0o777)
+        problems = self._problems(os.path.join(self.home, "ci-runner"))
+        self.assertTrue(problems.startswith(self.home + ", on the path to"), problems)
+
+    def test_an_existing_non_directory_is_reported(self):
+        stage = os.path.join(self.home, "ci-runner")
+        with open(stage, "w") as f:
+            f.write("")
+        os.chmod(stage, 0o644)
+        self.assertIn("exists but is not a directory", self._problems(stage))
+
+    def test_a_home_the_runner_cannot_create_in_is_reported(self):
+        """A trusted but read-only home passes the walk, yet mkdir -p of the
+        stage directory would fail after preflight."""
+        os.chmod(self.home, 0o555)
+        problems = self._problems(os.path.join(self.home, "ci-runner"))
+        self.assertIn("cannot create the stage directory", problems)
+        self.assertIn(self.home + ", the nearest existing directory", problems)
 
 
 class ExposedSecretTests(unittest.TestCase):

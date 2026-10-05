@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 # ─── Install, start, stop, and inspect the macOS CI runner ───────────
@@ -61,6 +61,9 @@ set -euo pipefail
 # monitor is not stopped: it costs little, and a host with no runner is
 # still worth measuring. uninstall removes the runner's LaunchDaemon and
 # leaves the stage directory, the runner directory and the monitor in place.
+
+# The interpreter is /bin/bash by absolute path, never looked up on PATH: this
+# script calls sudo, and the administrator's PATH is not screened before it runs.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKOUT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -220,7 +223,31 @@ acl_grant() {
 # open on macOS, closed the same way register-daemon.sh closes it on the plist
 # path. PRIV is as for untrusted_path.
 acl_write_grant() {
-    acl_grant "write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown" "$1" "${2:-}"
+    acl_grant "$(acl_write_rights)" "$1" "${2:-}"
+}
+
+# The ACL right names, '|'-separated as acl_grant takes them, that let a subject
+# change or replace a file or directory.
+acl_write_rights() {
+    echo "write|delete|delete_child|append|add_file|add_subdirectory|writeattr|writeextattr|writesecurity|chown"
+}
+
+# Echoes the `ls` line of the first file or directory in the tree at DIR, other
+# than links and anything under PRUNE, that carries an ACL entry allowing a
+# subject one of the acl_write_rights — the gap a mode-bit scan of the tree
+# leaves open, as acl_write_grant closes it for a single path — and nothing when
+# none does. A listing that cannot be made reports DIR rather than passing it.
+# PRIV is as for untrusted_path.
+acl_write_grant_tree() {
+    local dir="$1" prune="$2" priv="${3:-}" listing
+    listing="$(${priv} find "${dir}" -path "${prune}" -prune -o ! -type l -print0 \
+        | ${priv} xargs -0 ls -lde)" || { echo "${dir}"; return 0; }
+    awk -v r="(^|,)($(acl_write_rights))(,|$)" '
+        !/^ [0-9]+: / { entry = $0; next }
+        { i = ($3 == "inherited") ? 4 : 3 }
+        $i == "allow" && $(i + 1) ~ r { print entry; exit }' <<EOF
+${listing}
+EOF
 }
 
 # Echoes PATH when an account other than root or OWNER could change it — when it
@@ -358,6 +385,32 @@ nearest_existing_dir() {
     echo "${dir}"
 }
 
+# Echoes one line for each reason the runner account could not be trusted to
+# create and use the directory at PATH, which NAME names in the message, and
+# nothing when it can: PATH is not absolute; a component on the way to it is a
+# symlink, writable by others, or owned by neither root nor RUNNER_USER, so
+# another account could swap it for one of its own; it exists as something other
+# than a directory; or the nearest existing directory is one RUNNER_USER cannot
+# create in. Each is a directory runner.sh or this install makes with mkdir -p
+# as the runner, so the write probe runs as the runner rather than as root.
+runner_dir_problems() {
+    local name="$1" path="$2" bad at
+    case "${path}" in
+        /*) ;;
+        *) echo "${name} (${path}) must be an absolute path"; return 0 ;;
+    esac
+    bad="$(untrusted_ancestor "${RUNNER_USER}" "${path}" sudo)"
+    if [ -n "${bad}" ]; then
+        echo "${bad}, on the path to ${name} (${path}), is a symlink, is writable by others, or is owned by neither root nor ${RUNNER_USER}; another account could swap what the runner keeps and runs there. Keep it under a path only root and ${RUNNER_USER} can write."
+    elif sudo test -e "${path}" && ! sudo test -d "${path}"; then
+        echo "${name} (${path}) exists but is not a directory, so the runner's mkdir -p there would fail. Remove or relocate it."
+    else
+        at="$(nearest_existing_dir "${path}")"
+        sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${at}" \
+            || echo "${RUNNER_USER} cannot create ${name} (${path}): ${at}, the nearest existing directory, is not writable by it. Fix: sudo chown ${RUNNER_USER} ${at}, or choose a path it can create."
+    fi
+}
+
 # Echoes the first place on the way to the program at the absolute PATH where an
 # account other than root, OWNER or an administrator could change what runs: a
 # directory or file, judged as untrusted_tool_dir judges them, along PATH itself,
@@ -408,7 +461,10 @@ stage_file() {
 # Reads the env file into ENV_* variables. It is sourced in a clean shell
 # whose HOME is the runner account's, so a `~` or `$HOME` in it means the
 # runner's home — what it means when runner.sh sources it under launchd —
-# and not the administrator's.
+# and not the administrator's. ENV_PATH_OVERRIDE is the PATH the file leaves
+# behind when it assigns one, and empty when it does not: runner.sh sources the
+# staged copy after launchd has set the screened RUNNER_PATH, so a PATH in the
+# file would replace it.
 read_env() {
     local values
     values="$(env -i HOME="${RUNNER_HOME}" PATH=/usr/bin:/bin /bin/bash -c '
@@ -417,7 +473,9 @@ read_env() {
         for v in GITHUB_PAT GITHUB_OWNER GITHUB_REPO RUNNER_SCOPE RUNNER_NAME RUNNER_DIR RUNNER_WORKDIR RUNNER_LABELS RUNNER_PATH; do
             eval "x=\${$v-}"
             printf "ENV_%s=%q\n" "$v" "$x"
-        done' _ "$1")" || {
+        done
+        [ "${PATH}" = /usr/bin:/bin ] && x="" || x="${PATH}"
+        printf "ENV_PATH_OVERRIDE=%q\n" "$x"' _ "$1")" || {
         echo "ERROR: could not read $1." >&2
         exit 1
     }
@@ -565,6 +623,16 @@ cmd_install() {
 
     read_env "${ENV_FILE}"
     resolve_api_base
+    # The daemon's PATH is RUNNER_PATH, screened below and rendered into the
+    # plist; runner.sh then sources the staged env file on top of it, so a PATH
+    # assigned there would quietly replace the screened one with an unchecked
+    # one for runner.sh and every job.
+    if [ -n "${ENV_PATH_OVERRIDE}" ]; then
+        echo "ERROR: ${ENV_FILE} sets PATH (to ${ENV_PATH_OVERRIDE}). The runner's PATH must come from" >&2
+        echo "  RUNNER_PATH, which install screens; runner.sh would otherwise replace it with this unchecked" >&2
+        echo "  one. Remove the PATH line and set RUNNER_PATH instead." >&2
+        exit 1
+    fi
     # A named instance must carry its own RUNNER_NAME. The default name,
     # $(hostname)-macos, belongs to the default instance, and runner.sh registers
     # with config.sh --replace, so a second instance that fell back to it would
@@ -728,6 +796,16 @@ EOF
             echo "      Fix: sudo chmod -R go-w ${RUNNER_DIR}" >&2
             errors=$((errors + 1))
         fi
+        # Mode bits are not the whole story on macOS: an ACL entry can let another
+        # account rewrite a mode-755 run.sh just the same, so the same tree is
+        # scanned for write-granting ACL entries.
+        local acl_writable
+        acl_writable="$(acl_write_grant_tree "${RUNNER_DIR}" "${RUNNER_DIR}/_work" sudo)"
+        if [ -n "${acl_writable}" ]; then
+            echo "  ✗ ${RUNNER_DIR} holds a file an ACL lets another account write (first: ${acl_writable})" >&2
+            echo "      Fix: sudo chmod -R -N ${RUNNER_DIR}" >&2
+            errors=$((errors + 1))
+        fi
     fi
 
     # The daemon runs ${RUNNER_DIR}/run.sh as the runner. RUNNER_DIR may be set
@@ -769,50 +847,23 @@ EOF
 
     # runner.sh checks out and runs every job in RUNNER_WORKDIR, defaulting to
     # ${RUNNER_DIR}/_work when the env file leaves it unset, and runs mkdir -p on
-    # it unconditionally. The effective path — the default as much as a custom
-    # one — gets the same treatment: a writable or symlinked directory on the way
-    # to it would let another account change the files a job executes as the
-    # runner, and an existing non-directory or a path the runner cannot create
-    # breaks the mkdir -p and leaves launchd retrying a runner that never
-    # registers. The default lives directly under RUNNER_DIR, whose ancestors the
-    # walk above already covered, but ${RUNNER_DIR}/_work itself is not screened
-    # there, so the walk runs for it too. It must be absolute — runner.sh creates
-    # it from the stage directory, but config.sh reads a relative one against the
-    # runner directory, so a relative path names two different places.
-    local runner_workdir="${ENV_RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
-    case "${runner_workdir}" in
-        /*) bad="$(untrusted_ancestor "${RUNNER_USER}" "${runner_workdir}" sudo)" ;;
-        *) bad="${runner_workdir}" ;;
-    esac
-    if [ -n "${bad}" ]; then
-        echo "  ✗ ${bad}, on the path to RUNNER_WORKDIR (${runner_workdir}), is not absolute, is a" >&2
-        echo "      symlink, is writable by others, or is owned by neither root nor ${RUNNER_USER};" >&2
-        echo "      another account could change the files jobs run there as ${RUNNER_USER}." >&2
-        echo "      Keep RUNNER_WORKDIR under a path only root and ${RUNNER_USER} can write, or unset it." >&2
+    # it unconditionally; the default is screened as much as a custom one, since
+    # the RUNNER_DIR walk above does not cover _work itself. The stage directory
+    # is created as the runner by this install, under the runner's home, and
+    # receives runner.env — GITHUB_PAT — before register-daemon.sh ever sees the
+    # path. Both get runner_dir_problems: a symlinked or other-writable directory
+    # on the way would let another account redirect the staged credential or
+    # change what jobs run, and a path the runner cannot create fails only after
+    # this preflight has passed.
+    local runner_workdir="${ENV_RUNNER_WORKDIR:-${RUNNER_DIR}/_work}" problem
+    while IFS= read -r problem; do
+        [ -n "${problem}" ] || continue
+        echo "  ✗ ${problem}" >&2
         errors=$((errors + 1))
-    elif sudo test -e "${runner_workdir}" && ! sudo test -d "${runner_workdir}"; then
-        # Exactly as for RUNNER_DIR: runner.sh runs mkdir -p on RUNNER_WORKDIR,
-        # which fails on an existing non-directory, leaving the daemon waiting.
-        echo "  ✗ RUNNER_WORKDIR ${runner_workdir} exists but is not a directory; runner.sh runs" >&2
-        echo "      mkdir -p there and would fail, leaving the daemon waiting for a runner that never registers." >&2
-        echo "      Fix: remove or relocate ${runner_workdir}, or set RUNNER_WORKDIR to a directory path." >&2
-        errors=$((errors + 1))
-    else
-        # The ancestor walk proves no other account can swap the path, but not
-        # that the runner can create it. A trusted but runner-unwritable work
-        # directory — or a missing one whose nearest existing ancestor the
-        # runner cannot create in — passes every check above yet breaks the
-        # mkdir -p in runner.sh, exactly as an unwritable RUNNER_DIR does.
-        local workdir_at
-        workdir_at="$(nearest_existing_dir "${runner_workdir}")"
-        if ! sudo -u "${RUNNER_USER}" /bin/sh -c 'test -w "$1" && test -x "$1"' _ "${workdir_at}"; then
-            echo "  ✗ ${RUNNER_USER} cannot create RUNNER_WORKDIR ${runner_workdir}: the nearest existing" >&2
-            echo "      directory ${workdir_at} is not writable by it, so runner.sh's mkdir -p would fail and" >&2
-            echo "      the daemon would wait for a runner that never registers." >&2
-            echo "      Fix: sudo chown ${RUNNER_USER} ${workdir_at}, or choose a RUNNER_WORKDIR it can create." >&2
-            errors=$((errors + 1))
-        fi
-    fi
+    done <<EOF
+$(runner_dir_problems RUNNER_WORKDIR "${runner_workdir}")
+$(runner_dir_problems "the stage directory" "${STAGE_DIR}")
+EOF
 
     # Trust is necessary but not sufficient: runner.sh runs as ${RUNNER_USER}
     # and must create ${RUNNER_DIR}/config.sh and _work. A runner directory the
@@ -972,6 +1023,24 @@ EOF
             echo "  ✗ ${python_bad}, on the path to the monitor interpreter (${fleet_python}), is not absolute, is" >&2
             echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
             echo "      another account could replace the interpreter the monitor install runs as you." >&2
+            errors=$((errors + 1))
+        fi
+        # Before any venv is involved, install.sh runs the python3 your PATH
+        # resolves to check for the venv module, and on a first install render.sh
+        # builds the venv with it — both as you, existing venv or not. That host
+        # interpreter is screened like the venv one: followed through every link
+        # and refused if another account could change any hop.
+        local host_python host_python_bad=""
+        host_python="$(command -v python3 || true)"
+        case "${host_python}" in
+            /*) host_python_bad="$(untrusted_program "${admin_user}" "${host_python}")" ;;
+            "") host_python_bad="python3 (not found on your PATH)" ;;
+            *) host_python_bad="${host_python}" ;;
+        esac
+        if [ -n "${host_python_bad}" ]; then
+            echo "  ✗ ${host_python_bad}, on the way to the python3 the monitor install runs as you, is not found," >&2
+            echo "      is not absolute, is writable by others, is owned by neither you (${admin_user}) nor root," >&2
+            echo "      or cannot be followed; another account could replace the interpreter it runs." >&2
             errors=$((errors + 1))
         fi
         # render.sh reuses an existing venv rather than recreating it, and runs
