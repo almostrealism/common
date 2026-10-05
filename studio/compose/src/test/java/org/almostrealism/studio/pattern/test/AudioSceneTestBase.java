@@ -156,9 +156,12 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/**
 	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
 	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
-	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
-	 * the library).
+	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host that is
+	 * expected to mount the library — the OpenCL {@code test-media-cl} runner, which declares its mount via
+	 * {@code AR_RINGS_LIBRARY}, or a local GPU host running the default profile). This check is only reached
+	 * once {@link #requireCuratedLibrary()} has already excluded a pipeline runner that does not declare a
+	 * mount (the Metal {@code test-media-mac} job), which {@code Assume}-skips before this point rather than
+	 * failing.
 	 *
 	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
 	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
