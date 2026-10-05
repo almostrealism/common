@@ -745,7 +745,12 @@ EOF
     done <<EOF
 ${programs}
 EOF
-    if ! xcodebuild -version >/dev/null 2>&1; then
+    # Resolved by absolute path, not through the administrator's inherited PATH:
+    # this preflight runs as the administrator, so a PATH entry another account
+    # can write would let that account run its own xcodebuild as the
+    # administrator. /usr/bin/xcodebuild is the OS shim that honors the selected
+    # developer directory, and it is the only xcodebuild a job would ever use.
+    if ! /usr/bin/xcodebuild -version >/dev/null 2>&1; then
         echo "  ! full Xcode is not selected; jobs that run xcodebuild will fail (see README, Prerequisites)"
     fi
 

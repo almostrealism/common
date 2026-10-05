@@ -289,6 +289,19 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertEqual(2, install.count("_ ${REQUIRED_TOOLS}"),
                          "the lookup and the screen must cover the same tool list")
 
+    def test_the_xcode_check_runs_the_system_xcodebuild_by_absolute_path(self):
+        """The optional Xcode check runs as the administrator, with the
+        administrator's inherited PATH. Resolving ``xcodebuild`` from that PATH
+        would let an account that can write a PATH entry run its own program as
+        the administrator, so the check must call the OS shim by absolute
+        path."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn("/usr/bin/xcodebuild -version", install,
+                      "the Xcode check must invoke the system xcodebuild by absolute path")
+        self.assertNotRegex(
+            install, r"(?<![/\w])xcodebuild -version",
+            "xcodebuild must never be resolved through the inherited PATH")
+
     def test_runner_dir_files_others_can_write_are_refused(self):
         """Files the runner owns are still another account's to rewrite when a
         group or world write bit is set; the daemon would run them."""
