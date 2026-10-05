@@ -363,8 +363,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 			}
 			return args;
 		} catch (RuntimeException | Error t) {
-			// Release the collections already inserted into the partial map.
-			Destroyable.destroy(args.values());
+			// Release every collection already inserted into the partial map, best-effort; a
+			// release that throws neither skips the rest nor masks the original build failure.
+			Destroyable.destroyAll(t, args.values());
 			throw t;
 		}
 	}
@@ -456,9 +457,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 		// Static biquad response tables, materialised once and reused by every refresh
 		// and by the wet-filter coefficient gathers below (see wetFilterCoefficients).
+		// Register each table as soon as it is allocated so a throw from the second
+		// allocation leaves the first owned by args (released by the rollback), not leaked.
 		PackedCollection hpTable = biquadResponseTable(true);
-		PackedCollection lpTable = biquadResponseTable(false);
 		args.put("hp_table", hpTable);
+		PackedCollection lpTable = biquadResponseTable(false);
 		args.put("lp_table", lpTable);
 
 		// wet_filter_coeffs: producer([channels, fir_taps])

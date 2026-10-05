@@ -38,6 +38,7 @@ import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -324,9 +325,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 		return new CellListRunner();
 		} catch (RuntimeException | Error t) {
-			for (int i = allocated.size() - 1; i >= 0; i--) {
-				Destroyable.destroy(allocated.get(i));
-			}
+			// Release in reverse allocation order, best-effort; a release that throws neither
+			// aborts the remaining releases nor masks the original construction failure.
+			List<Object> reverse = new ArrayList<>(allocated);
+			Collections.reverse(reverse);
+			Destroyable.destroyAll(t, reverse);
 			throw t;
 		}
 	}
@@ -683,9 +686,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		runner.ownedFxStem = fxStem;
 		return runner;
 		} catch (RuntimeException | Error t) {
-			for (int i = allocated.size() - 1; i >= 0; i--) {
-				Destroyable.destroy(allocated.get(i));
-			}
+			// Release in reverse allocation order, best-effort; a release that throws neither
+			// aborts the remaining releases nor masks the original construction failure.
+			List<Object> reverse = new ArrayList<>(allocated);
+			Collections.reverse(reverse);
+			Destroyable.destroyAll(t, reverse);
 			throw t;
 		}
 	}

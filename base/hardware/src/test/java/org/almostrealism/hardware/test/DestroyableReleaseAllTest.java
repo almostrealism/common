@@ -154,4 +154,82 @@ public class DestroyableReleaseAllTest {
 			throw new AssertionError("Releasing nothing must not fail", e);
 		}
 	}
+
+	/** A {@link Destroyable} that records its own destruction and may throw from {@link #destroy()}. */
+	private static final class Probe implements Destroyable {
+		/** The failure to raise from {@link #destroy()}, or null to destroy cleanly. */
+		private final RuntimeException failure;
+
+		/** Whether {@link #destroy()} has been invoked. */
+		private boolean destroyed;
+
+		private Probe() { this(null); }
+
+		private Probe(RuntimeException failure) { this.failure = failure; }
+
+		@Override
+		public void destroy() {
+			destroyed = true;
+			if (failure != null) throw failure;
+		}
+	}
+
+	/** destroyAll destroys every target and leaves the primary throwable unmodified when none fail. */
+	@Test(timeout = 10000)
+	public void destroyAllDestroysEveryTargetWithoutFailure() {
+		Probe a = new Probe();
+		Probe b = new Probe();
+		IllegalStateException primary = new IllegalStateException("build failed");
+
+		Destroyable.destroyAll(primary, List.of(a, b, "not-destroyable"));
+
+		Assert.assertTrue("first target destroyed", a.destroyed);
+		Assert.assertTrue("second target destroyed", b.destroyed);
+		Assert.assertEquals("no cleanup failure to suppress", 0, primary.getSuppressed().length);
+	}
+
+	/**
+	 * Regression: a target whose destroy() throws must not skip the later targets, and its failure
+	 * is attached to the primary throwable as suppressed rather than replacing it.
+	 */
+	@Test(timeout = 10000)
+	public void destroyAllSuppressesFailuresOntoPrimary() {
+		IllegalStateException primary = new IllegalStateException("build failed");
+		RuntimeException firstFailure = new RuntimeException("release A failed");
+		RuntimeException secondFailure = new RuntimeException("release C failed");
+		Probe a = new Probe(firstFailure);
+		Probe b = new Probe();
+		Probe c = new Probe(secondFailure);
+
+		Destroyable.destroyAll(primary, List.of(a, b, c));
+
+		Assert.assertTrue("failing target A still ran", a.destroyed);
+		Assert.assertTrue("target B after a failure still ran", b.destroyed);
+		Assert.assertTrue("failing target C still ran", c.destroyed);
+		Assert.assertEquals("both cleanup failures suppressed", 2, primary.getSuppressed().length);
+		Assert.assertSame(firstFailure, primary.getSuppressed()[0]);
+		Assert.assertSame(secondFailure, primary.getSuppressed()[1]);
+	}
+
+	/** The varargs form behaves like the iterable form and tolerates null entries. */
+	@Test(timeout = 10000)
+	public void destroyAllVarargsSkipsNullAndNonDestroyable() {
+		Probe a = new Probe();
+		Probe b = new Probe();
+		IllegalStateException primary = new IllegalStateException("build failed");
+
+		Destroyable.destroyAll(primary, a, null, "not-destroyable", b);
+
+		Assert.assertTrue("first target destroyed", a.destroyed);
+		Assert.assertTrue("second target destroyed", b.destroyed);
+		Assert.assertEquals("no cleanup failure to suppress", 0, primary.getSuppressed().length);
+	}
+
+	/** A null iterable of targets is a no-op rather than a failure. */
+	@Test(timeout = 10000)
+	public void destroyAllNullTargetsIsNoOp() {
+		IllegalStateException primary = new IllegalStateException("build failed");
+		Destroyable.destroyAll(primary, (Iterable<?>) null);
+		Assert.assertEquals(0, primary.getSuppressed().length);
+	}
 }

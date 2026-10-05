@@ -377,11 +377,9 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			compiled.reset();
 			return compiled;
 		} catch (RuntimeException | Error t) {
-			Destroyable.destroy(backwardOp);
-			Destroyable.destroy(forwardOp);
-			Destroyable.destroy(setup);
-			if (gradOut != null) gradOut.destroy();
-			if (output != null) output.destroy();
+			// Release every native resource even if one release throws, and keep the original
+			// compilation failure as the thrown exception (cleanup failures are suppressed onto it).
+			Destroyable.destroyAll(t, backwardOp, forwardOp, setup, gradOut, output);
 			throw t;
 		}
 	}
