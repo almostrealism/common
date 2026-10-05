@@ -20,6 +20,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -75,5 +76,15 @@ public class WorkspaceResolverTest extends TestSuiteBase {
 		String input = "http://10.0.0.1:8080/api";
 		String result = WorkspaceResolver.resolveWorkstreamUrl(input);
 		assertEquals(input, result);
+	}
+
+	/**
+	 * Verifies that a job with no workstream URL resolves to {@code null}
+	 * rather than failing, since {@code GitManagedJob} delegates here for
+	 * jobs that were never bound to a workstream.
+	 */
+	@Test(timeout = 30000)
+	public void resolvesNullWorkstreamUrlToNull() {
+		assertNull(WorkspaceResolver.resolveWorkstreamUrl(null));
 	}
 }

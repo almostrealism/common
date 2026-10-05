@@ -286,10 +286,10 @@ class EnforcementRunner implements ConsoleFeatures {
      * rule's own {@linkplain EnforcementRule#getProgressPaths() progress paths};
      * see {@link GitOperations#fingerprintUncommittedState}.
      *
-     * @param rule the rule whose progress is being measured
      * <p>A job without a working directory has no tree to judge; git would
      * otherwise inspect the JVM's own working directory.</p>
      *
+     * @param rule the rule whose progress is being measured
      * @return the fingerprint, or {@code null} when it cannot be computed (no
      *         working directory, not a git working tree, a failed status
      *         query), in which case no attempt is ever judged to have made no

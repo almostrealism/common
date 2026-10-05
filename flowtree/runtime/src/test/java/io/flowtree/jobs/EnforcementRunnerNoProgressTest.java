@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
@@ -115,6 +116,36 @@ public class EnforcementRunnerNoProgressTest extends TestSuiteBase {
         });
 
         assertEquals(EnforcementRunner.MAX_NO_PROGRESS_ATTEMPTS, sessions.size());
+    }
+
+    /**
+     * Writing a file the rule names as a {@linkplain EnforcementRule#getProgressPaths()
+     * progress path} is progress even when that file is scratch space, so a
+     * rule resolved by writing {@code commit.txt} is not cut short while the
+     * agent keeps rewriting it: like any rule making progress, it runs until
+     * the job-wide attempt cap stops it.
+     */
+    @Test(timeout = 60000)
+    public void writingAProgressPathIsProgress() throws Exception {
+        int[] edits = {0};
+        EnforcementRule rule = new EnforcementRule() {
+            @Override public String getName() { return RULE; }
+            @Override public boolean isViolated(CodingAgentJob job) { return true; }
+            @Override public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
+            @Override public int getMaxRetries() { return 5; }
+            @Override public Set<String> getProgressPaths() { return Set.of("commit.txt"); }
+        };
+        List<String> sessions = runWith(List.of(rule),
+                activity -> write("commit.txt", "Attempt " + (++edits[0]) + "\n"));
+
+        assertEquals(CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS,
+                sessions.stream().filter(RULE::equals).count());
+    }
+
+    /** The commit-message rule is resolved by writing {@code commit.txt}, so it names it. */
+    @Test(timeout = 60000)
+    public void commitMessageRuleCountsCommitTxtAsProgress() {
+        assertEquals(Set.of("commit.txt"), new CommitMessageRule().getProgressPaths());
     }
 
     /**

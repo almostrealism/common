@@ -22,6 +22,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
@@ -284,8 +285,9 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
-     * Returns a digest of the working tree's uncommitted state: the path and
-     * current content of every file {@code git status} reports as changed,
+     * Returns a digest of the working tree's uncommitted state: the path,
+     * current content and executable bit (which git tracks, so a mode-only
+     * change is a change) of every file {@code git status} reports as changed,
      * except the scratch paths {@link #isExcludedPath(String)} names (session
      * output, build output, harness artifacts), plus the given extra paths,
      * which are included whether git reports or ignores them. Two equal
@@ -318,8 +320,12 @@ public class GitOperations implements ConsoleFeatures {
             digest.update(path.getBytes(StandardCharsets.UTF_8));
             digest.update((byte) 0);
             File file = new File(root, path);
-            digest.update(file.isFile() ? Files.readAllBytes(file.toPath()) : new byte[] {1});
-            digest.update((byte) 0);
+            // A length prefix keeps one file's bytes from reading as the next
+            // file's path; -1 marks a path with no regular file behind it.
+            byte[] content = file.isFile() ? Files.readAllBytes(file.toPath()) : null;
+            digest.update(ByteBuffer.allocate(Long.BYTES).putLong(content != null ? content.length : -1).array());
+            if (content != null) digest.update(content);
+            digest.update((byte) (file.canExecute() ? 1 : 0));
         }
         return HexFormat.of().formatHex(digest.digest());
     }

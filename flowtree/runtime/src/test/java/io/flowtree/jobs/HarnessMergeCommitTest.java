@@ -233,16 +233,73 @@ public class HarnessMergeCommitTest extends TestSuiteBase {
     /**
      * A merge with no recorded parent was not started by the harness, so
      * nothing it brings in is exempt: the CI lock rejects the base branch's CI
-     * change and the file stays at the feature branch's version.
+     * change. Reverting it to the feature branch's version inside a commit that
+     * records the merge would leave the branch reverting the base branch's
+     * change, so the commit fails, names the file, and commits nothing.
      */
     @Test(timeout = 60000)
     public void mergeWithoutRecordedParentGetsNoExemption() throws Exception {
         resolveSharedConflict();
+        String before = git("rev-parse", "HEAD").trim();
+
+        try {
+            commit(newJob(null));
+            fail("an untrusted merge that changes a protected file must not be committed");
+        } catch (RuntimeException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains(CI_FILE));
+        }
+        assertEquals(before, git("rev-parse", "HEAD").trim());
+        assertEquals("name: v1\n", committed(CI_FILE));
+    }
+
+    /**
+     * A merge the harness did not start is still committed when it changes
+     * no protected file: only the protected paths it brings in lack a trusted
+     * source.
+     */
+    @Test(timeout = 60000)
+    public void untrustedMergeOfUnprotectedChangesIsCommitted() throws Exception {
+        git("merge", "--abort");
+        String root = git("rev-list", "--max-parents=0", "HEAD").trim();
+        git("checkout", "--quiet", "-b", "unprotected-only", root);
+        write("other.txt", "other\n");
+        commitAll("unprotected change");
+        git("checkout", "--quiet", "feature/test");
+        runGit("merge", "--no-commit", "--no-ff", "unprotected-only");
 
         GitCommitHandler handler = commit(newJob(null));
 
+        assertTrue("the merge must be committed", isMergeCommit());
+        assertEquals("other\n", committed("other.txt"));
         assertEquals("name: v1\n", committed(CI_FILE));
-        assertTrue(mentions(handler.getSkippedFiles(), CI_FILE));
+        assertTrue("nothing was rejected: " + handler.getSkippedFiles(),
+                handler.getSkippedFiles().isEmpty());
+    }
+
+    /**
+     * An agent that rewrites {@code MERGE_HEAD} loses the exemption, and also
+     * cannot use the untrusted merge to drop a protected change: the base
+     * branch's CI change, put back to the feature branch's version where
+     * {@code git status} cannot see it, is still found through the commit the
+     * merge would record, and the commit fails rather than revert it.
+     */
+    @Test(timeout = 60000)
+    public void rewrittenMergeHeadCannotRevertProtectedBaseChange() throws Exception {
+        String later = git("commit-tree", mergeParent + "^{tree}", "-p", mergeParent,
+                "-m", "later master commit").trim();
+        resolveSharedConflict();
+        Files.writeString(repo.resolve(".git/MERGE_HEAD"), later + "\n");
+        write(CI_FILE, "name: v1\n");
+        git("add", CI_FILE);
+        String before = git("rev-parse", "HEAD").trim();
+
+        try {
+            commit(newJob(mergeParent));
+            fail("the rewritten merge must not be committed with the base CI change dropped");
+        } catch (RuntimeException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains(CI_FILE));
+        }
+        assertEquals(before, git("rev-parse", "HEAD").trim());
     }
 
     /**

@@ -162,8 +162,9 @@ class GitCommitHandler implements ConsoleFeatures {
         }
 
         // Step 2: Detect whether a merge is in progress.
-        boolean mergeInProgress = !job.executeGitWithOutput(
-                "rev-parse", "--verify", "--quiet", "MERGE_HEAD").trim().isEmpty();
+        String mergeHead = job.executeGitWithOutput(
+                "rev-parse", "--verify", "--quiet", "MERGE_HEAD").trim();
+        boolean mergeInProgress = !mergeHead.isEmpty();
 
         if (mergeInProgress) {
             log("Merge in progress -- will commit as merge commit");
@@ -180,11 +181,11 @@ class GitCommitHandler implements ConsoleFeatures {
             // but do NOT reset HEAD — that would abort the in-progress merge.
             // Rejected paths are restored in the index instead.
             FileStager.GitOperations gitOps = job.asGitOperations();
-            String mergeParent = FileStager.trustedMergeParent(buildStagingConfig(job), gitOps);
-            List<String> candidates = stagingCandidates(findChangedFiles(), mergeParent, gitOps);
+            boolean trusted = FileStager.trustedMergeParent(buildStagingConfig(job), gitOps) != null;
+            List<String> candidates = stagingCandidates(findChangedFiles(), mergeHead, gitOps);
             if (!candidates.isEmpty()) {
                 stageFiles(candidates);
-                restoreRejected(candidates, mergeParent);
+                restoreRejected(candidates, mergeHead, trusted);
             }
 
             if (job.executeGitWithOutput("diff", "--name-only", "--cached").trim().isEmpty()) {
@@ -258,8 +259,8 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Returns the files a commit must evaluate: those {@code git status}
-     * reports as changed and, while a harness merge is in progress, every file
-     * the base branch changed since the merge-base.
+     * reports as changed and, while a merge is in progress, every file the
+     * merged commit changed since its merge-base with {@code HEAD}.
      *
      * <p>The second set matters because {@code git status} compares against
      * {@code HEAD}. A file the merge brought in from the base branch, which the
@@ -267,23 +268,30 @@ class GitCommitHandler implements ConsoleFeatures {
      * and is invisible to it, yet committing it would silently revert the base
      * branch's change inside the merge commit.</p>
      *
+     * <p>The merged commit is whatever {@code MERGE_HEAD} names, trusted or not:
+     * it is the commit the merge commit will record as merged, so its changes
+     * are the ones the commit must not silently revert. Whether content equal
+     * to it may be committed is a separate question, answered by
+     * {@link FileStager#trustedMergeParent}.</p>
+     *
      * @param changedFiles the files {@code git status} reports as changed
-     * @param mergeParent  the trusted merge parent, or {@code null}
+     * @param mergedCommit the commit {@code MERGE_HEAD} names, or {@code null}
+     *                     when no merge is in progress
      * @param gitOps       git operations for the working tree
      * @return the files to evaluate, without duplicates
-     * @throws IOException if the base branch's changes cannot be listed
+     * @throws IOException if the merged commit's changes cannot be listed
      * @throws InterruptedException if a git command is interrupted
      */
-    static List<String> stagingCandidates(List<String> changedFiles, String mergeParent,
+    static List<String> stagingCandidates(List<String> changedFiles, String mergedCommit,
                                           FileStager.GitOperations gitOps)
             throws IOException, InterruptedException {
-        if (mergeParent == null) {
+        if (mergedCommit == null || mergedCommit.isEmpty()) {
             return changedFiles;
         }
         Set<String> baseChanges = gitOps.executeForPaths(
-                "diff", "--name-only", "--no-renames", "HEAD..." + mergeParent);
+                "diff", "--name-only", "--no-renames", "HEAD..." + mergedCommit);
         if (baseChanges == null) {
-            throw new IOException("Could not list the files " + mergeParent
+            throw new IOException("Could not list the files " + mergedCommit
                     + " changed since its merge-base with HEAD");
         }
         Set<String> candidates = new LinkedHashSet<>(changedFiles);
@@ -309,10 +317,11 @@ class GitCommitHandler implements ConsoleFeatures {
                 : new File(".");
         List<String> candidates = changedFiles;
         try {
+            String mergeHead = gitOps.executeOrNull("rev-parse", "--verify", "--quiet", "MERGE_HEAD");
             candidates = stagingCandidates(changedFiles,
-                    FileStager.trustedMergeParent(config, gitOps), gitOps);
+                    mergeHead != null ? mergeHead.trim() : null, gitOps);
         } catch (IOException e) {
-            job.warn("Staging preview could not list the base branch's changes: " + e.getMessage());
+            job.warn("Staging preview could not list the merged commit's changes: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -324,22 +333,33 @@ class GitCommitHandler implements ConsoleFeatures {
      * merge would have given it, so that nothing reaches the merge commit
      * without passing the guardrails.
      *
-     * <p>Without a trusted merge parent the agent's merge has no trusted
-     * history, and every rejected path returns to {@code HEAD}. With one, a
-     * path only the base branch changed returns to the merge parent, and a
-     * path only the target branch changed (or neither) returns to
-     * {@code HEAD}. A rejected path that both sides changed has no version
-     * the harness can choose on the agent's behalf; the commit fails and
-     * names it, rather than commit the rejected content or discard either
-     * side's change.</p>
+     * <p>A path the merged commit did not change returns to {@code HEAD}. A
+     * path only the merged commit changed returns to that commit, but only
+     * when it is the trusted merge parent the harness recorded (see
+     * {@link FileStager#trustedMergeParent}). Every other rejected path has no
+     * version the harness can choose on the agent's behalf, and the commit
+     * fails and names it rather than commit the rejected content or silently
+     * drop a change the merge commit records as merged:</p>
+     * <ul>
+     *   <li>a path both sides changed, whose resolution only the agent (or a
+     *       human) can choose; and</li>
+     *   <li>while the merge is untrusted (the harness did not start it, or
+     *       {@code MERGE_HEAD} no longer names the commit it merged), a path
+     *       the merged commit changed. Its content cannot be trusted, yet
+     *       reverting it to {@code HEAD} inside a commit that records the
+     *       merge would leave the branch reverting the base branch's change,
+     *       which the pipeline's own locks reject on every later run.</li>
+     * </ul>
      *
-     * @param candidates  every file that was evaluated for staging
-     * @param mergeParent the trusted merge parent, or {@code null}
+     * @param candidates   every file that was evaluated for staging
+     * @param mergedCommit the commit {@code MERGE_HEAD} names
+     * @param trusted      whether {@code mergedCommit} is the merge parent the
+     *                     harness recorded
      * @throws IOException if a git command fails to execute
      * @throws InterruptedException if a git command is interrupted
-     * @throws RuntimeException if a rejected path changed on both sides
+     * @throws RuntimeException if a rejected path has no version to restore
      */
-    private void restoreRejected(List<String> candidates, String mergeParent)
+    private void restoreRejected(List<String> candidates, String mergedCommit, boolean trusted)
             throws IOException, InterruptedException {
         Set<String> rejected = new LinkedHashSet<>(candidates);
         stagedFiles.forEach(rejected::remove);
@@ -347,18 +367,17 @@ class GitCommitHandler implements ConsoleFeatures {
             return;
         }
 
-        Set<String> branchChanges = Set.of();
-        Set<String> baseChanges = Set.of();
-        if (mergeParent != null) {
-            String mergeBase = job.executeGitWithOutput("merge-base", "HEAD", mergeParent).trim();
-            branchChanges = changedPaths(mergeBase, "HEAD");
-            baseChanges = changedPaths(mergeBase, mergeParent);
+        String mergeBase = job.executeGitWithOutput("merge-base", "HEAD", mergedCommit).trim();
+        if (mergeBase.isEmpty()) {
+            throw new IOException("Could not find the merge-base of HEAD and " + mergedCommit);
         }
+        Set<String> branchChanges = changedPaths(mergeBase, "HEAD");
+        Set<String> baseChanges = changedPaths(mergeBase, mergedCommit);
 
         List<String> unresolvable = new ArrayList<>();
         for (String file : rejected) {
             String source = !baseChanges.contains(file) ? "HEAD"
-                    : !branchChanges.contains(file) ? mergeParent
+                    : trusted && !branchChanges.contains(file) ? mergedCommit
                     : null;
             if (source == null) {
                 unresolvable.add(file);
@@ -374,13 +393,22 @@ class GitCommitHandler implements ConsoleFeatures {
             }
         }
 
-        if (!unresolvable.isEmpty()) {
-            throw new RuntimeException("The merge changes protected files that both "
-                    + job.getTargetBranch() + " and the base branch changed, and the"
-                    + " staging guardrails rejected their resolution: "
-                    + String.join(", ", unresolvable)
-                    + ". The harness cannot pick a side for them; they need a human.");
+        if (unresolvable.isEmpty()) {
+            return;
         }
+        // TODO(review): untrusted path also fails for base-changed files rejected by size/binary/pattern guardrails, not only protected ones; message says "protected"
+        if (!trusted) {
+            throw new RuntimeException("The merge of " + TestMethodProtection.shortSha(mergedCommit)
+                    + " in progress is not the one the harness started, so the protected files"
+                    + " it changes cannot be committed, and reverting them inside a merge commit"
+                    + " would silently drop them: " + String.join(", ", unresolvable)
+                    + ". The merge needs a human.");
+        }
+        throw new RuntimeException("The merge changes protected files that both "
+                + job.getTargetBranch() + " and the base branch changed, and the"
+                + " staging guardrails rejected their resolution: "
+                + String.join(", ", unresolvable)
+                + ". The harness cannot pick a side for them; they need a human.");
     }
 
     /**
