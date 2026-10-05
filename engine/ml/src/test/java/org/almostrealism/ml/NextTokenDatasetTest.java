@@ -154,6 +154,40 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 		((NextTokenDataset) nested.get(0)).destroy();
 	}
 
+	/**
+	 * A split ratio outside {@code [0, 1]}, or not a number, is rejected rather than producing a
+	 * part that reads past the parent's region; the endpoints themselves give an empty part and a
+	 * part covering the whole region.
+	 */
+	@Test(timeout = 60000)
+	public void splitRejectsRatiosOutsideUnitInterval() {
+		NextTokenDataset data = new NextTokenDataset(positions(40), VOCAB, 4, 2, 3);
+
+		for (double ratio : new double[] {-0.1, 1.1, Double.NaN,
+				Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+			try {
+				data.split(ratio);
+				Assert.fail("split(" + ratio + ") was accepted");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains(String.valueOf(ratio)));
+			}
+		}
+
+		List<Dataset<PackedCollection>> none = data.split(0.0);
+		Assert.assertEquals(0, ((NextTokenDataset) none.get(0)).getEnd());
+		Assert.assertEquals(0, ((NextTokenDataset) none.get(1)).getStart());
+		Assert.assertEquals(40, ((NextTokenDataset) none.get(1)).getEnd());
+
+		List<Dataset<PackedCollection>> all = data.split(1.0);
+		Assert.assertEquals(40, ((NextTokenDataset) all.get(0)).getEnd());
+		Assert.assertEquals(40, ((NextTokenDataset) all.get(1)).getStart());
+
+		for (List<Dataset<PackedCollection>> parts : List.of(none, all)) {
+			parts.forEach(part -> ((NextTokenDataset) part).destroy());
+		}
+		data.destroy();
+	}
+
 	/** A window cap limits the window count; a region too short for one window yields none. */
 	@Test(timeout = 60000)
 	public void windowCapAndShortRegion() {

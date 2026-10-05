@@ -287,11 +287,12 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 	 *
 	 * @param ratio the fraction of the region's tokens assigned to the first part
 	 * @return the first-part dataset followed by the second-part dataset
-	 * @throws IllegalArgumentException if {@code ratio} is not within {@code [0, 1]}
+	 * @throws IllegalArgumentException if {@code ratio} is not within {@code [0, 1]}, including
+	 *                                  when it is {@code NaN}
 	 */
 	@Override
 	public List<Dataset<PackedCollection>> split(double ratio) {
-		if (ratio < 0 || ratio > 1) {
+		if (!(ratio >= 0 && ratio <= 1)) {
 			throw new IllegalArgumentException("Split ratio " + ratio + " is not within [0, 1]");
 		}
 

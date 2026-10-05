@@ -40,6 +40,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -422,7 +423,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * unperturbed values plus a one-hot step whose position is a device-side counter, so the
 	 * perturbation never computes a value on the host and every kernel is compiled once. The
 	 * original values are restored, and the snapshot and compiled perturbations released, before
-	 * returning, including when {@code f} throws.</p>
+	 * returning, including when {@code f} throws or a perturbation fails to compile.</p>
 	 *
 	 * @param values the collection to perturb, which {@code f} must read
 	 * @param eps    the perturbation step
@@ -437,12 +438,17 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		PackedCollection position = new PackedCollection(1);
 		position.clear();
 
-		CollectionProducer step = oneHot(n, cp(position)).multiply(eps);
-		Runnable plus = a(p(values.reshape(flat)), cp(original).add(step)).get();
-		Runnable minus = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
-		Runnable advance = a(p(position), cp(position).add(1.0)).get();
+		List<Runnable> compiled = new ArrayList<>();
 
 		try {
+			CollectionProducer step = oneHot(n, cp(position)).multiply(eps);
+			Runnable plus = a(p(values.reshape(flat)), cp(original).add(step)).get();
+			compiled.add(plus);
+			Runnable minus = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
+			compiled.add(minus);
+			Runnable advance = a(p(position), cp(position).add(1.0)).get();
+			compiled.add(advance);
+
 			double[] result = new double[n];
 			for (int i = 0; i < n; i++) {
 				plus.run();
@@ -457,9 +463,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		} finally {
 			Destroyable.releaseAll(List.<Runnable>of(
 					() -> values.setFrom(0, original),
-					() -> Destroyable.destroy(plus),
-					() -> Destroyable.destroy(minus),
-					() -> Destroyable.destroy(advance),
+					() -> Destroyable.destroy(compiled),
 					original::destroy,
 					position::destroy));
 		}
