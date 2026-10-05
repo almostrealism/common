@@ -693,11 +693,20 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	/**
 	 * Adds a layer using the given parameter set.
 	 *
+	 * <p>The per-layer automation parameter collection is allocated independently
+	 * (via {@code new PackedCollection}) rather than through
+	 * {@link PackedCollection#factory()}. It is shared by every element of the layer
+	 * for the layer's lifetime, so it is long-lived and outlives any render stage.
+	 * When a {@link Heap} is active, {@code factory()} would return an alias into the
+	 * heap's backing store, which the tracked {@link #releaseAutomationParameterData()}
+	 * {@code destroy()} call cannot free (it reports an attempt to destroy an alias).
+	 * Standard allocation keeps the deterministic per-layer release effective
+	 * regardless of whether a heap is active when the layer is built.</p>
+	 *
 	 * @param params the parameter set for this layer
 	 */
 	protected void layer(ParameterSet params) {
-		PackedCollection automationParams =
-				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH);
+		PackedCollection automationParams = new PackedCollection(AUTOMATION_GENE_LENGTH);
 		automationParameterData.add(automationParams);
 		automationParamEvaluables.computeIfAbsent(depth(), d -> {
 			Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);

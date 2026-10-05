@@ -22,6 +22,7 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
@@ -329,6 +330,45 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 
 		plm.destroy();
 		Assert.assertTrue("a repeated teardown is a no-op", plm.getAutomationParameterData().isEmpty());
+	}
+
+	/**
+	 * Building layers while a {@link Heap} is active must not make the manager-owned
+	 * automation parameter collections heap aliases: an alias cannot be freed by the
+	 * tracked {@code destroy()} release ({@code MemoryDataAdapter.destroy()} reports an
+	 * attempt to destroy an alias and leaves the memory owned by the heap stage). The
+	 * collection is long-lived (shared by every element of the layer across render
+	 * stages), so {@link PatternLayerManager#layer} allocates it independently. This
+	 * asserts the deterministic release still holds under an active heap: the release and
+	 * assertions run while the heap is still alive, so a heap-aliased collection would
+	 * report {@code isDestroyed() == false} and fail here.
+	 */
+	@Test(timeout = 120000)
+	public void automationParameterDataIsReleasableUnderActiveHeap() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		Heap heap = new Heap(16 * 1024 * 1024);
+
+		try {
+			heap.use(() -> {
+				plm.setLayerCount(2);
+
+				List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+				Assert.assertTrue("one automation parameter collection is allocated per layer",
+						allocated.size() == 2);
+				allocated.forEach(c -> Assert.assertNull(
+						"a layer built under an active heap is allocated independently, not as a heap alias",
+						c.getDelegate()));
+
+				plm.destroy();
+
+				allocated.forEach(c -> Assert.assertTrue(
+						"the independently allocated automation parameters are released under an active heap",
+						c.isDestroyed()));
+			});
+		} finally {
+			heap.destroy();
+		}
 	}
 
 	/**
