@@ -67,6 +67,13 @@ CHECKOUT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 REGISTER_SCRIPT="${CHECKOUT}/flowtree/runtime/agent/macos/register-daemon.sh"
 MONITOR_INSTALL="${CHECKOUT}/tools/fleet/launchd/install.sh"
 MONITOR_RENDER="${CHECKOUT}/tools/fleet/launchd/render.sh"
+# render.sh reads these two plist templates from its own directory as the
+# administrator and renders them into FLEET_HOME; a tampered template could
+# inject launchd keys (ProgramArguments and the like) into an admin-owned
+# plist that register-daemon.sh then accepts, so they are screened alongside
+# the scripts that read them.
+MONITOR_COLLECTOR_TEMPLATE="${CHECKOUT}/tools/fleet/launchd/com.almostrealism.fleet-collector.plist"
+MONITOR_POLLER_TEMPLATE="${CHECKOUT}/tools/fleet/launchd/com.almostrealism.fleet-poller.plist"
 TEMPLATE="${SCRIPT_DIR}/com.almostrealism.ci-runner.plist"
 PLISTBUDDY="/usr/libexec/PlistBuddy"
 DAEMONS_DIR="/Library/LaunchDaemons"
@@ -494,7 +501,11 @@ cmd_install() {
         exit 1
     fi
     RUNNER_HOME="$(dscl . -read "/Users/${RUNNER_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-    if [ -z "${RUNNER_HOME}" ] || [ ! -d "${RUNNER_HOME}" ]; then
+    # Stat the home through sudo: a service account's home is commonly not
+    # traversable by the administrator, so an unprivileged `[ -d ]` would read a
+    # real home as missing and reject a supported setup. The rest of the
+    # preflight already uses sudo for the paths under this home.
+    if [ -z "${RUNNER_HOME}" ] || ! sudo test -d "${RUNNER_HOME}"; then
         echo "ERROR: ${RUNNER_USER} has no home directory." >&2
         exit 1
     fi
@@ -843,18 +854,23 @@ EOF
     if [ "${MONITOR}" = true ]; then
         # install.sh, and the render.sh it calls, both run with your privileges
         # (no sudo), straight from the checkout — exactly the position the
-        # register script is in before it runs as root. If any component on the
-        # way to either — anywhere in the checkout — is a symlink, writable by
-        # others, or owned by neither you nor root, another account could swap a
-        # script fleet runs as you between this preflight and the monitor step.
-        # Walk the full path of each, the same way the register script is walked.
+        # register script is in before it runs as root. render.sh also reads the
+        # two plist templates beside it and renders them, as you, into
+        # admin-owned plists register-daemon.sh will accept, so a tampered
+        # template is as dangerous as a tampered script. If any component on the
+        # way to any of these — anywhere in the checkout — is a symlink, writable
+        # by others, or owned by neither you nor root, another account could swap
+        # a file fleet runs or renders as you between this preflight and the
+        # monitor step. Walk the full path of each, the same way the register
+        # script is walked.
         local monitor_code monitor_bad
-        for monitor_code in "${MONITOR_INSTALL}" "${MONITOR_RENDER}"; do
+        for monitor_code in "${MONITOR_INSTALL}" "${MONITOR_RENDER}" \
+                "${MONITOR_COLLECTOR_TEMPLATE}" "${MONITOR_POLLER_TEMPLATE}"; do
             monitor_bad="$(untrusted_ancestor "${admin_user}" "${monitor_code}")"
             if [ -n "${monitor_bad}" ]; then
                 echo "  ✗ ${monitor_bad}, on the path to ${monitor_code}, is a symlink, is writable by" >&2
                 echo "      others, or is owned by neither you (${admin_user}) nor root; another account could" >&2
-                echo "      replace a script the monitor install runs as you." >&2
+                echo "      replace a file the monitor install runs or renders as you." >&2
                 errors=$((errors + 1))
             fi
         done
@@ -915,6 +931,29 @@ EOF
             echo "  ✗ ${python_bad}, on the path to the monitor interpreter (${fleet_python}), is not absolute, is" >&2
             echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
             echo "      another account could replace the interpreter the monitor install runs as you." >&2
+            errors=$((errors + 1))
+        fi
+        # render.sh reuses an existing venv rather than recreating it, and runs
+        # that venv's pip as you to bring an old install's dependencies up to
+        # date (PyYAML). So an existing ${FLEET_HOME}/venv/bin/pip is a code path
+        # the monitor install executes as you, just like the interpreter; screen
+        # it the same way — followed with untrusted_program, and only once it
+        # exists, so a first install (the venv not yet created) is not refused. A
+        # venv created freshly by render.sh lives inside the FLEET_HOME screened
+        # above, so only a pre-existing one needs this.
+        local fleet_pip="${fleet_home}/venv/bin/pip" pip_bad=""
+        case "${fleet_pip}" in
+            /*)
+                if sudo test -e "${fleet_pip}"; then
+                    pip_bad="$(untrusted_program "${admin_user}" "${fleet_pip}" sudo)"
+                fi
+                ;;
+            *) pip_bad="${fleet_pip}" ;;
+        esac
+        if [ -n "${pip_bad}" ]; then
+            echo "  ✗ ${pip_bad}, on the path to the monitor venv pip (${fleet_pip}), is not absolute, is" >&2
+            echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
+            echo "      another account could replace the pip the monitor install runs as you." >&2
             errors=$((errors + 1))
         fi
         # An existing credential is used as it stands, and install.sh restricts
@@ -1031,6 +1070,14 @@ wait_online() {
     # As the runner, whose file it is, so a log the runner swapped for a
     # symlink cannot make root read something else onto this terminal.
     sudo -u "${RUNNER_USER}" tail -n 30 "${LOG_FILE}" >&2 || true
+    # The plist was registered and enabled just above, and it carries KeepAlive,
+    # so launchd would otherwise keep retrying this runner in the background
+    # after the install reports failure — a half-installed service that could
+    # later come online and take jobs without a completed install. Boot it out
+    # and disable it so the failure leaves nothing running, matching `stop`.
+    echo "Backing the half-installed ${LABEL} out so launchd stops retrying it..." >&2
+    sudo launchctl disable "system/${LABEL}" || true
+    sudo launchctl bootout "system/${LABEL}" || true
     exit 1
 }
 

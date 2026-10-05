@@ -465,8 +465,10 @@ class MacosFleetSecurityTests(unittest.TestCase):
         self.assertIn('MONITOR_RENDER="${CHECKOUT}/tools/fleet/launchd/render.sh"', self.src,
                       "the render script path must be defined")
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
-        self.assertIn('for monitor_code in "${MONITOR_INSTALL}" "${MONITOR_RENDER}"; do', install,
-                      "install must screen both the monitor installer and render.sh")
+        self.assertRegex(
+            install,
+            r'for monitor_code in "\$\{MONITOR_INSTALL\}" "\$\{MONITOR_RENDER\}"',
+            "install must screen both the monitor installer and render.sh")
         walk = install.find('untrusted_ancestor "${admin_user}" "${monitor_code}"')
         run = install.find('"${MONITOR_INSTALL}" ${STORE_FROM')
         self.assertNotEqual(-1, walk, "install must walk the monitor code paths")
@@ -583,6 +585,70 @@ class MacosFleetSecurityTests(unittest.TestCase):
         for array in ("parts", "dirs"):
             self.assertIn('${%s[@]+"${%s[@]}"}' % (array, array), self.src,
                           "%s must be expanded with the empty-array guard" % array)
+
+    def test_the_render_templates_are_screened(self):
+        """render.sh reads the two plist templates beside it and renders them, as
+        the administrator, into admin-owned plists register-daemon.sh accepts; a
+        writable or ACL-modified template could inject launchd keys into one of
+        those plists. The templates must be walked with the same trust boundary
+        as the scripts, before the monitor install runs."""
+        for const in ("MONITOR_COLLECTOR_TEMPLATE", "MONITOR_POLLER_TEMPLATE"):
+            self.assertRegex(
+                self.src,
+                r'%s="\$\{CHECKOUT\}/tools/fleet/launchd/com\.almostrealism\.fleet-[a-z]+\.plist"' % const,
+                "the render template path %s must be defined" % const)
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('"${MONITOR_COLLECTOR_TEMPLATE}" "${MONITOR_POLLER_TEMPLATE}"', install,
+                      "install must screen both render templates alongside the monitor scripts")
+        walk = install.find('untrusted_ancestor "${admin_user}" "${monitor_code}"')
+        run = install.find('"${MONITOR_INSTALL}" ${STORE_FROM')
+        self.assertNotEqual(-1, walk, "install must walk the monitor code and template paths")
+        self.assertLess(walk, run, "the templates must be screened before the monitor install runs")
+
+    def test_the_monitor_venv_pip_is_followed_and_screened(self):
+        """render.sh reuses an existing venv and runs its pip as the administrator
+        to bring an old install's dependencies up to date, so an existing
+        ${FLEET_HOME}/venv/bin/pip is a code path the monitor install executes.
+        It must be followed with untrusted_program and screened only once it
+        exists, exactly as the interpreter is, before the monitor install runs."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('fleet_pip="${fleet_home}/venv/bin/pip"', install,
+                      "install must screen the venv pip render.sh may run")
+        self.assertIn('if sudo test -e "${fleet_pip}"; then', install,
+                      "the pip must be screened only once it exists, so a first install is not refused")
+        screen = install.find('untrusted_program "${admin_user}" "${fleet_pip}" sudo')
+        self.assertNotEqual(-1, screen,
+                            "the venv pip must be followed, not walked, like the interpreter")
+        self.assertIn('*) pip_bad="${fleet_pip}" ;;', install,
+                      "a relative pip path must be refused, not followed from the cwd")
+        self.assertLess(screen, install.find('"${MONITOR_INSTALL}" ${STORE_FROM'),
+                        "the pip must be screened before the monitor install runs")
+
+    def test_the_runner_home_is_stat_through_sudo(self):
+        """A service account's home is commonly not traversable by the
+        administrator, so an unprivileged `[ -d ]` reads a real home as missing
+        and rejects a supported setup; the rest of the preflight already uses
+        sudo for paths under this home, so the home test must too."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('! sudo test -d "${RUNNER_HOME}"', install,
+                      "the home must be stat'd through sudo, not with an unprivileged [ -d ]")
+        self.assertNotIn('[ ! -d "${RUNNER_HOME}" ]', install,
+                         "the unprivileged home test must be gone")
+
+    def test_a_timed_out_install_boots_out_the_runner(self):
+        """The plist is registered and enabled before wait_online, and carries
+        KeepAlive, so on timeout launchd would keep retrying a half-installed
+        runner after install reports failure. wait_online must disable and boot
+        the service out before exiting, so a failed install leaves nothing
+        running."""
+        wait = re.search(r"^wait_online\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        disable = wait.find('sudo launchctl disable "system/${LABEL}"')
+        bootout = wait.find('sudo launchctl bootout "system/${LABEL}"')
+        fail = wait.rfind("exit 1")
+        self.assertNotEqual(-1, disable, "the timeout path must disable the label")
+        self.assertNotEqual(-1, bootout, "the timeout path must boot the service out")
+        self.assertLess(disable, fail, "the service must be disabled before the install fails")
+        self.assertLess(bootout, fail, "the service must be booted out before the install fails")
 
 
 def _trust_functions(*names):
