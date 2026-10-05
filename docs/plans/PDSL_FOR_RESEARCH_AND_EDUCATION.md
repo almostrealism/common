@@ -311,6 +311,15 @@ uses). All existing Qwen tests pass unchanged.
 4. **Fix the meaning of `-> [shape]`.** Either rename it to say input shape, or make it
    actually check the output.
 5. **A pure Java safetensors reader** in `engine/ml`, next to `StateDictionary`.
+   - **Implemented** (`SafetensorsReference`): `new StateDictionary(hfDirectory)` reads the
+     safetensors files of a published checkpoint directly, lazily, via `FileMapping`.
+   - **Remaining:**
+     - Files over 2 GB need range mappings. Single-file checkpoints such as Qwen2.5-0.5B
+       are under the limit; 5 GB shards are not.
+     - The Qwen tokenizer still reads its own `tokenizer.bin` + `merges.txt` rather than a
+       checkpoint's `tokenizer.json` / `vocab.json`.
+     - The real-weight gate has not been run, because no Hugging Face checkpoint is on the
+       development machine.
    - Today a checkpoint must be converted to protobuf by `extract_qwen3_weights.py`.
    - The format is simple: an 8-byte little-endian header length, a JSON header naming each
      tensor's dtype, shape and byte range, then raw bytes. Parse the header with whatever JSON

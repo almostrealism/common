@@ -27,6 +27,7 @@ import org.almostrealism.persist.assets.CollectionDataMemoryProvider;
 import org.almostrealism.persist.assets.CollectionDataReference;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.EncodedMessage;
+import org.almostrealism.persist.assets.SafetensorsReference;
 import org.almostrealism.protobuf.Collections;
 
 import io.almostrealism.code.Precision;
@@ -64,6 +65,13 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Passed directly as that method's {@code materialize} parameter.
 	 */
 	public static boolean enableMaterializeWeights = false;
+
+	/**
+	 * File name extension of a safetensors checkpoint. A directory holding any such file is read
+	 * as a published checkpoint: its safetensors files are the weights, and its other files
+	 * (configuration, tokenizer) are ignored.
+	 */
+	public static final String SAFETENSORS_EXTENSION = ".safetensors";
 
 	/** Field number of {@code collections} within {@code CollectionLibraryData}. */
 	private static final int LIBRARY_COLLECTIONS_FIELD = 1;
@@ -133,6 +141,20 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Load weights from protobuf {@link org.almostrealism.persist.assets.Asset}s.
 	 */
 	private void loadWeights() throws IOException {
+		List<File> safetensors = files()
+				.filter(File::exists)
+				.filter(f -> f.getName().endsWith(SAFETENSORS_EXTENSION))
+				.collect(Collectors.toList());
+		if (!safetensors.isEmpty()) {
+			// A published checkpoint directory also holds its configuration and tokenizer;
+			// only the safetensors files hold weights.
+			for (File file : safetensors) {
+				log("Located " + locateSafetensors(file) + " weight tensors in " + file.getName());
+			}
+			logLoaded(safetensors.size());
+			return;
+		}
+
 		int total = files()
 				.filter(File::exists)
 				.filter(f -> !f.getName().startsWith("."))
@@ -196,6 +218,23 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		} finally {
 			mapping.release();
 		}
+	}
+
+	/**
+	 * Locates each tensor of a safetensors checkpoint file by its header, as
+	 * {@link #locateWeights} does for a protobuf library: the values stay in the file until
+	 * something reads them, unless {@link #enableMaterializeWeights} asks for them to be copied
+	 * into freshly allocated memory now.
+	 *
+	 * @param file the safetensors file
+	 * @return the number of tensors located
+	 * @throws IOException if the file cannot be read
+	 */
+	private int locateSafetensors(File file) throws IOException {
+		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(file);
+		tensors.forEach((key, reference) ->
+				weights.put(key, CollectionEncoder.decode(reference, file, enableMaterializeWeights)));
+		return tensors.size();
 	}
 
 	/**
