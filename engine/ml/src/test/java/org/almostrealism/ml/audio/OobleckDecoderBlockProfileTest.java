@@ -18,6 +18,7 @@ package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.model.Block;
@@ -83,6 +84,11 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 		OperationProfileNode profile = new OperationProfileNode("oobleck_decoder_block1");
 		Hardware.getLocalHardware().assignProfile(profile);
 
+		// The decoder's convolutions sum groups of thousands of members; compile them as native
+		// loops rather than single expressions, which is the behavior this profile measures.
+		boolean loopGeneration = WeightedSumComputation.enableLoopGeneration;
+		WeightedSumComputation.enableLoopGeneration = true;
+
 		Model model = null;
 		CompiledModel compiled = null;
 		PackedCollection input = null;
@@ -114,6 +120,7 @@ public class OobleckDecoderBlockProfileTest extends TestSuiteBase {
 			log("firstForwardMs=" + firstMs + " secondForwardMs=" + secondMs);
 			Assert.assertEquals((long) OUT_CHANNELS * outLength, first.getShape().getTotalSizeLong());
 		} finally {
+			WeightedSumComputation.enableLoopGeneration = loopGeneration;
 			Hardware.getLocalHardware().clearProfile();
 			if (compiled != null) compiled.destroy();
 			if (model != null) model.destroy();

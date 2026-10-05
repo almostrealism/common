@@ -577,10 +577,18 @@ promotes the element to a register accumulator and hoists loop-invariant index a
 `getValueAt` is still used whenever the computation is embedded in another expression, so the two
 must agree.
 
-`WeightedSumComputation` uses this for any group of at least `WeightedSumComputation.loopThreshold`
+`WeightedSumComputation` can use this for any group of at least `WeightedSumComputation.loopThreshold`
 (256) members, summing the trailing group dimensions (at most `maxUnrolledMembers`, 16) in each
-iteration. A convolution over 1024 channels with a kernel of 7 compiles to a loop of 1024 iterations
-of 7 products instead of a single sum of 7168 products.
+iteration. A convolution over 1024 channels with a kernel of 7 would then compile to a loop of 1024
+iterations of 7 products instead of a single sum of 7168 products.
+
+The loop form is **opt-in** (`WeightedSumComputation.enableLoopGeneration`, off by default). It is
+correct on the native backend and on the GPU backends for the matmul and convolution kernels the ML
+tests exercise, but it regressed the studio audio render to silence on the GPU lanes
+(`test-media-mac`, `test-media-cl`), a failure that could not be reproduced from a CPU-only host.
+Until the loop kernel is verified against those backends for the audio render's weighted sums, every
+weighted sum compiles as a single expression by default — the form master shipped, correct on every
+backend — and callers that have verified the loop for their own kernels enable it explicitly.
 
 See [relation/README.md](../../base/relation/README.md) for comprehensive Process optimization documentation.
 

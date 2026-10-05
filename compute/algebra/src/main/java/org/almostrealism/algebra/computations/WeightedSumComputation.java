@@ -79,6 +79,22 @@ public class WeightedSumComputation
 
 	// TODO(review): public static mutable config is global state (tests mutate it); consider a settings/property-backed source
 	/**
+	 * Whether a large weighted sum may be compiled as a native loop at all; when false every
+	 * weighted sum is compiled as a single expression regardless of {@link #loopThreshold}.
+	 *
+	 * <p>The loop form is correct on the native (CPU) backend and on the GPU backends for the
+	 * matmul and convolution kernels exercised by the ML tests, but it regressed the studio
+	 * audio render to silence on the GPU backends (the {@code test-media-mac} and
+	 * {@code test-media-cl} lanes), where the failure could not be reproduced or pinned from a
+	 * CPU-only host. Until the loop kernel is verified against those backends for the audio
+	 * render's weighted sums, it is opt-in: the default single-expression form is the one
+	 * master shipped and is correct on every backend. Callers and tests that have verified the
+	 * loop for their own kernels enable it explicitly. The setting is read when a weighted sum
+	 * is constructed and, through {@link #isLooped()}, is part of its {@link #signature()}.</p>
+	 */
+	public static boolean enableLoopGeneration = false;
+
+	/**
 	 * Group size at or above which the kernel for a weighted sum is generated as a native
 	 * loop over the group, rather than as one expression that sums every member.
 	 *
@@ -311,6 +327,8 @@ public class WeightedSumComputation
 	 * @return the members summed by each iteration, or zero for a single expression
 	 */
 	private static int unrolledLoopMembers(TraversalPolicy inputGroupShape) {
+		if (!enableLoopGeneration) return 0;
+
 		long size = inputGroupShape.getTotalSizeLong();
 		if (size < loopThreshold) return 0;
 

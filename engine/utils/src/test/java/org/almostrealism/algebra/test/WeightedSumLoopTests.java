@@ -17,12 +17,19 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
+
+import java.io.File;
 
 import java.util.ArrayList;
 import java.util.function.Supplier;
@@ -39,6 +46,26 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 
 	/** Largest deviation, relative to the magnitude of the expected value, that is accepted. */
 	private static final double TOLERANCE = 1e-4;
+
+	/** The {@link WeightedSumComputation#enableLoopGeneration} setting to restore after each test. */
+	private boolean loopGeneration;
+
+	/**
+	 * Enables loop generation for these tests, which verify the loop form. The default is off
+	 * (see {@link WeightedSumComputation#enableLoopGeneration}), so it is enabled here and
+	 * restored afterward rather than left on for other tests in the module.
+	 */
+	@Before
+	public void enableLoopGeneration() {
+		loopGeneration = WeightedSumComputation.enableLoopGeneration;
+		WeightedSumComputation.enableLoopGeneration = true;
+	}
+
+	/** Restores the loop-generation setting changed by {@link #enableLoopGeneration()}. */
+	@After
+	public void restoreLoopGeneration() {
+		WeightedSumComputation.enableLoopGeneration = loopGeneration;
+	}
 
 	/**
 	 * A one-dimensional convolution over 64 channels with a kernel of 7 sums a group of 448
@@ -273,6 +300,117 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				cp(new PackedCollection(shape(1, 1, 4, 7)).randFill()),
 				cp(new PackedCollection(shape(1, 2, 4, 3)).randFill()));
 		Assert.assertFalse(((WeightedSumComputation) conv).isLooped());
+	}
+
+	/**
+	 * A looped weighted sum evaluated into a destination that already holds values overwrites
+	 * them with the sum, rather than adding the sum to them. The single-expression form assigns
+	 * the output element, so the loop form must too; a reused render buffer would otherwise
+	 * accumulate across evaluations.
+	 */
+	@Test(timeout = 60000)
+	public void loopOverwritesReusedDestination() {
+		int m = 6;
+		int n = 300;
+		int p = 5;
+
+		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
+		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+
+		double[] left = a.toArray();
+		double[] right = b.toArray();
+		double[] expected = new double[m * p];
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < p; j++) {
+				double sum = 0;
+				for (int k = 0; k < n; k++) {
+					sum += left[i * n + k] * right[k * p + j];
+				}
+				expected[i * p + j] = sum;
+			}
+		}
+
+		TraversalPolicy resultShape = shape(1, m, 1, p);
+		CollectionProducer product = weightedSum("matmul", resultShape,
+				resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+				shape(1, 1, n, 1), shape(1, 1, n, 1),
+				cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+		Assert.assertTrue(((WeightedSumComputation) product).isLooped());
+
+		Evaluable<PackedCollection> ev = product.get();
+		PackedCollection destination = new PackedCollection(resultShape);
+		destination.fill(100.0);
+		ev.into(destination).evaluate();
+
+		assertMatches("matmul (reused destination)", expected, destination);
+	}
+
+	/**
+	 * A looped matrix product with a large output (many output elements, each a loop over a
+	 * group of at least {@link WeightedSumComputation#loopThreshold} members) matches the host
+	 * evaluation. This is the shape a dense projection in a render pipeline produces.
+	 */
+	@Test(timeout = 120000)
+	public void largeOutputLoopMatchesReference() {
+		int m = 12000;
+		int n = 300;
+		int p = 1;
+
+		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
+		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+
+		double[] left = a.toArray();
+		double[] right = b.toArray();
+		double[] expected = new double[m * p];
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < p; j++) {
+				double sum = 0;
+				for (int k = 0; k < n; k++) {
+					sum += left[i * n + k] * right[k * p + j];
+				}
+				expected[i * p + j] = sum;
+			}
+		}
+
+		assertLoopMatches("large output", expected, () -> {
+			TraversalPolicy resultShape = shape(1, m, 1, p);
+			return weightedSum("matmul", resultShape,
+					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+					shape(1, 1, n, 1), shape(1, 1, n, 1),
+					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+		});
+	}
+
+	/**
+	 * Saves a profile of a looped matrix product so the generated loop kernel source can be
+	 * read with the profile analyzer.
+	 */
+	@Test(timeout = 120000)
+	public void loopKernelSourceProfile() throws Exception {
+		int m = 6;
+		int n = 300;
+		int p = 5;
+
+		PackedCollection a = new PackedCollection(shape(m, n)).randFill();
+		PackedCollection b = new PackedCollection(shape(n, p)).randFill();
+
+		OperationProfileNode profile = new OperationProfileNode("weighted_sum_loop");
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		try {
+			TraversalPolicy resultShape = shape(1, m, 1, p);
+			CollectionProducer product = weightedSum("matmul", resultShape,
+					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+					shape(1, 1, n, 1), shape(1, 1, n, 1),
+					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+			Assert.assertTrue(((WeightedSumComputation) product).isLooped());
+			product.get().evaluate();
+		} finally {
+			Hardware.getLocalHardware().assignProfile(null);
+		}
+
+		new File("results").mkdirs();
+		profile.save("results/weighted_sum_loop.xml");
 	}
 
 	/**
