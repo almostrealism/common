@@ -13,9 +13,12 @@ set -euo pipefail
 # The library is not platform-specific and neither is this script. It serves
 # every fleet:
 #   macOS ([self-hosted, macos, ar-ci])      -> /Users/Shared/Music
-#   ROCm  ([self-hosted, linux, ar-ci-cl])   -> the host path bind-mounted into
-#   CUDA  ([self-hosted, linux, ar-ci-cuda])    the runner container, e.g.
-#                                               /srv/ar-ci/music
+#   ROCm  ([self-hosted, linux, ar-ci-cl])   -> /srv/ar-ci/music on the host
+#   CUDA  ([self-hosted, linux, ar-ci-cuda]) -> /srv/ar-ci/music on the host
+# On both Linux fleets that host path is bind-mounted read-only into the
+# runner container at /opt/ar-samples (the CUDA fleet's host path is
+# AR_CI_SAMPLES_DIR in tools/ci/cuda/.env).
+# TODO(review): confirm the CUDA container's runner uid can read a tree made only group-readable to --group.
 # The layout is the same in every case: a Samples/ directory beside
 # pattern-factory.json. Tests locate it via AR_RINGS_LIBRARY / AR_RINGS_PATTERNS,
 # which default to the macOS paths.
