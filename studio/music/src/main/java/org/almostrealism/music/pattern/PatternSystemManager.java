@@ -181,13 +181,28 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	}
 
 	/**
+	 * Incremented by {@link #clear()} whenever the current pattern managers are destroyed.
+	 * Render operations built by {@link #sum} capture the generation they were built
+	 * against and refuse to run once it has moved on, because the managers they reference
+	 * have released their native memory.
+	 */
+	private volatile int patternGeneration;
+
+	/**
 	 * Initializes the volume to 1.0. Releases any previously allocated volume
 	 * collection first, so re-initializing a live manager does not leak the native
 	 * memory backing the old one.
+	 *
+	 * <p>The volume is allocated independently (via {@code new PackedCollection})
+	 * rather than through {@link PackedCollection#factory()}, which {@code pack} uses.
+	 * It is owned by this manager for its lifetime and outlives any render stage, so
+	 * it must not be an alias into an active {@link Heap}: a heap alias could not be
+	 * released by {@link #destroy()} and would be invalidated when the heap stage that
+	 * backs it is popped.</p>
 	 */
 	public void init() {
 		if (volume != null) volume.destroy();
-		volume = pack(1.0);
+		volume = new PackedCollection(1).fill(1.0);
 		volumeValue = 1.0;
 	}
 
@@ -432,10 +447,17 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * could no longer reach it. Destroying each manager before removing it frees that
 	 * memory deterministically, which matters when settings are reloaded into a live
 	 * manager (see {@link #setSettings(Settings)}) as well as at teardown.</p>
+	 *
+	 * <p>Any render operation previously returned by {@link #sum} references the
+	 * destroyed managers, so it becomes stale: running it afterwards throws
+	 * {@link IllegalStateException} instead of evaluating against released memory.
+	 * Callers that replace the patterns of a live manager must rebuild their render
+	 * operations.</p>
 	 */
 	public void clear() {
 		patterns.forEach(PatternLayerManager::destroy);
 		patterns.clear();
+		patternGeneration++;
 	}
 
 	/**
@@ -467,6 +489,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * destination buffers, iterates through all patterns assigned to the
 	 * channel, sums their audio output, and optionally applies auto-volume
 	 * normalization.</p>
+	 *
+	 * <p>The returned operation is bound to the pattern managers present when it is
+	 * built. If they are later replaced or destroyed (see {@link #clear()}), running it
+	 * throws {@link IllegalStateException}; build a new operation instead.</p>
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
@@ -504,6 +530,15 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 			if (enableWarnings) warn("No patterns for channel " + channel);
 			return op;
 		}
+
+		// TODO(review): confirm no live-scene path (AudioScene.setSettings after runner ops are built) now hits this throw where it previously rendered.
+		int generation = patternGeneration;
+		op.add(() -> () -> {
+			if (generation != patternGeneration) {
+				throw new IllegalStateException("Pattern render operation is stale because its"
+						+ " patterns were replaced or destroyed after it was built");
+			}
+		});
 
 		patternsForChannel.forEach(i -> {
 			op.add(patterns.get(i).sum(context, channel.getVoicing(),
@@ -544,8 +579,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * <p>The notes gathered for each element are transient to this warm-up: each owns a
 	 * single-element offset-argument {@link PackedCollection} nothing else references, so
 	 * they are {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after
-	 * evaluation and the evaluation runs in a {@link Heap} stage, so repeated scene
-	 * warm-ups do not accumulate native allocations until garbage collection. The scratch
+	 * evaluation. The evaluated audio is discarded: when a {@link Heap} is active the
+	 * evaluation runs in a heap stage that frees it on exit, and otherwise the
+	 * evaluation's output allocation is destroyed directly, so repeated scene warm-ups
+	 * do not accumulate native allocations until garbage collection. The scratch
 	 * destination allocated for each pattern is likewise released in a {@code finally}; it
 	 * exists only to satisfy {@link PatternLayerManager#updateDestination} during warm-up
 	 * and is replaced by the real destination on the first render.</p>
@@ -596,7 +633,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 										Producer<PackedCollection> producer =
 												note.getProducer(note.getExpectedFrameCount());
 										if (producer == null) return;
-										rendered[0] = traverse(1, producer).get().evaluate() != null;
+										PackedCollection audio = traverse(1, producer).get().evaluate();
+										if (audio == null) return;
+										rendered[0] = true;
+										if (Heap.getDefault() == null) audio.getRootDelegate().destroy();
 									});
 									if (rendered[0]) {
 										notesEvaluated++;

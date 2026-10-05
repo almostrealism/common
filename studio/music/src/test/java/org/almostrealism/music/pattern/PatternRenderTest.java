@@ -439,6 +439,62 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * Warming the note cache releases each discarded evaluation's output, which must not
+	 * reach the sample data the note audio is read from: the same system still renders
+	 * both hits correctly afterwards.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void renderAfterWarmNoteCachePlacesHits() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system()) {
+			Assert.assertEquals(1, psm.warmNoteCache(channel -> context(null)));
+			assertHitPlacement(renderAtOnce(psm));
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A render operation built by {@link PatternSystemManager#sum} renders normally while
+	 * its patterns are current, but once they are cleared (and their native memory
+	 * released) running it throws rather than evaluating against destroyed collections.
+	 * An operation built after the patterns are replaced runs normally.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void renderOperationIsRejectedAfterPatternsCleared() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system();
+			 PackedCollection destination = new PackedCollection(TOTAL_FRAMES)) {
+			AudioSceneContext context = context(destination);
+			Runnable render = psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get();
+			render.run();
+			assertHitPlacement(destination.toArray(0, TOTAL_FRAMES));
+
+			psm.clear();
+			try {
+				render.run();
+				Assert.fail("a stale render operation must be rejected");
+			} catch (IllegalStateException expected) {
+				Assert.assertTrue(expected.getMessage().contains("stale"));
+			}
+
+			psm.addPattern(0, 1.0, false);
+			destination.clear();
+			psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get().run();
+			Assert.assertEquals("a rebuilt operation over an empty pattern renders silence",
+					0.0, peak(destination.toArray(0, TOTAL_FRAMES), 0, TOTAL_FRAMES), 0.0);
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
 	 * Warming the note cache allocates a scratch destination per pattern to satisfy
 	 * {@link PatternLayerManager#updateDestination}; it exists only for the warm-up.
 	 * It must be released when the warm-up returns so repeated scene warm-ups do not

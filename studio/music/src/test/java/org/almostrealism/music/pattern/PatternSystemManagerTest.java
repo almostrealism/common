@@ -29,6 +29,7 @@ import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -203,6 +204,36 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 		Assert.assertTrue("the previous volume collection is released", first.isDestroyed());
 		Assert.assertNotSame("init installs a distinct collection", first, second);
 		Assert.assertFalse("the fresh volume collection is live", second.isDestroyed());
+	}
+
+	/**
+	 * Initializing under an active {@link Heap} must not make the manager-owned volume a
+	 * heap alias: an alias cannot be released by {@code destroy()} and would be invalidated
+	 * when the heap stage backing it is popped. The release and assertions run while the
+	 * heap is still alive, so a heap-aliased volume would report
+	 * {@code isDestroyed() == false} and fail here.
+	 */
+	@Test(timeout = 30000)
+	public void volumeIsAllocatedIndependentlyOfActiveHeap() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(1));
+		Heap heap = new Heap(1024 * 1024);
+
+		try {
+			heap.use(() -> {
+				psm.init();
+
+				PackedCollection volume = psm.getVolume();
+				Assert.assertNull("the volume is allocated independently, not as a heap alias",
+						volume.getDelegate());
+				Assert.assertEquals("init sets unity volume", 1.0, volume.toDouble(0), 0.0);
+
+				psm.destroy();
+				Assert.assertTrue("the independently allocated volume is released under an active heap",
+						volume.isDestroyed());
+			});
+		} finally {
+			heap.destroy();
+		}
 	}
 
 	/** Pattern elements are merged across patterns by the choice that owns them. */
