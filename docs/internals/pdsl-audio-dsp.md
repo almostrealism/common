@@ -100,14 +100,21 @@ audio-domain assumption:
 `scaled_dot_product`, `sqrt`, `attention`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
 composes the KV-cached attention block from these and `attention()` loads that asset;
-`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes the full-sequence
-self-attention that `sequenceAttention()` loads; and
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes the non-causal
+full-sequence self-attention that `sequenceAttention()` computes; and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
 pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward.pdsl` — `accum` around an attention
 layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
 statements (see [Imports](#imports)), so `transformer()` builds it from
-`PdslLoader.parseResource(TRANSFORMER_ASSET)` alone. A layer called from another layer
+`PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
+`engine/ml/src/main/resources/pdsl/sdpa.pdsl` is the full-sequence (non-autoregressive)
+counterpart of the `attend` layer inside `attention.pdsl` — the score/context core only, not
+the whole attention block, whose normalization, projections, RoPE, cache writes and output
+projection have no analogue here. Its `sdpa_scores` (with a soft-capped variant
+`sdpa_scores_softcapped`) and `sdpa_context` layers compose scaled dot-product attention over a
+whole sequence at once from `scaled_dot_product` (batched `Q Kᵀ` / `A V`) and `key_mask`
+(per-key validity masking), and `AttentionFeatures.scaledDotProductAttention(...)` loads it. A layer called from another layer
 is built, as a built-in is, for the signal at the point where the call is placed — after the
 stages before it, or as the input of the `accum`, `product`, `accum_blocks` or `concat_blocks`
 that holds it — unless it declares a `-> [shape]` annotation, in which case it is built for that

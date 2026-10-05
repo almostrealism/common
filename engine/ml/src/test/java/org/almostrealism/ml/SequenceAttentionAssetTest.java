@@ -64,6 +64,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class SequenceAttentionAssetTest extends TestSuiteBase implements AttentionFeatures {
 
+	// TODO(review): since the master merge, sequenceAttention no longer loads this asset; route it through the asset gradient-safely or drop the duplicate description
 	/** Classpath location of the parallel self-attention asset. */
 	private static final String SEQUENCE_ATTENTION_ASSET = "/pdsl/sequence_attention.pdsl";
 

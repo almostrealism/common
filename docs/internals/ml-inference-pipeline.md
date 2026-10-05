@@ -686,10 +686,12 @@ accum {
 ```
 
 Each `accum` adds its stage's output to the residual stream, implementing the standard
-pre-norm transformer pattern `x = x + sublayer(norm(x))`. The `transformer()` methods of
-`AttentionFeatures` only bind the arguments (`attentionArguments` allocates the key and
-value caches) and build one of those layers from the three assets parsed into one program
-(`PdslLoader.parseResources`); the model classes loop over their layers in Java.
+pre-norm transformer pattern `x = x + sublayer(norm(x))`. `transformer.pdsl` declares its
+dependency on `attention.pdsl` and `feed_forward.pdsl` with `import` statements, so the
+`transformer()` methods of `AttentionFeatures` only bind the arguments (`attentionArguments`
+allocates the key and value caches) and build one of those layers from the single asset
+(`PdslLoader.parseResource`), whose imports pull the other two into the same program; the
+model classes loop over their layers in Java.
 
 ---
 
@@ -828,19 +830,24 @@ if (seqLen > audioSeqLen) {
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
 `DiffusionTransformer` (and the T5Gemma text encoder) uses full-sequence attention via
-`sequenceAttention` (in `AttentionFeatures`, with further overloads adding a customizable
-`ProjectionFactory` and a selectable query/key `NormalizationType`). Its stages are the layers
-of the asset `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl`; `sequenceAttention`
-builds the two projection layers with the `ProjectionFactory`, allocates the key and value
-stores, and builds the layer for the requested normalization family and score form:
+`sequenceAttention` (in `SequenceAttentionFeatures`, with further overloads adding a customizable
+`ProjectionFactory`, a selectable query/key `NormalizationType` and causal masking):
 
-- Processes all positions simultaneously with fused QKV projection, separated into one row per
-  head by `slice`, `reshape` and `permute`
-- Uses the `sdpa_scores`/`sdpa_context` layers of `sdpa.pdsl` over the full sequence (no causal
-  mask needed)
-- Applies full-sequence RoPE (`sequence_rope`, backed by `applyRotaryPositionEmbedding`) instead of
-  single-position `rope_rotation`
-- No KV cache — the full K and V tensors are computed and stored (`capture`) for each forward pass
+- Processes all positions simultaneously with fused QKV projection
+- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed); like the
+  autoregressive block, its structure lives in a PDSL asset
+  (`engine/ml/src/main/resources/pdsl/sdpa.pdsl`), and `scaledDotProductAttention` is a thin
+  loader that binds the key and value tensors and chains the asset's `sdpa_scores`/`sdpa_context`
+  layers
+- Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
+  single-position `ropeRotation`
+- No KV cache — the full K and V tensors are computed for each forward pass
+
+The same non-causal attention is also written out as PDSL layers in
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` (fused projection separated into one
+row per head by `slice`, `reshape` and `permute`, `sequence_rope`, and the `sdpa.pdsl` score and
+context layers), which a PDSL program can build directly with the two projection layers bound as
+arguments.
 
 ---
 

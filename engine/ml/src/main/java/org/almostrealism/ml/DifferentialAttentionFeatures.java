@@ -66,6 +66,12 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * <p>Routes {@link AttentionVariant#DIFFERENTIAL} to {@link #differentialSequenceAttention} and
 	 * defers every other variant (including {@link AttentionVariant#STANDARD}) to the base
 	 * implementation, so the default path remains unchanged.</p>
+	 *
+	 * <p>The differential variant does not support causal masking, so requesting it with
+	 * {@code causal = true} is rejected rather than silently building non-causal attention.</p>
+	 *
+	 * @throws UnsupportedOperationException if {@code variant} is
+	 *         {@link AttentionVariant#DIFFERENTIAL} and {@code causal} is set
 	 */
 	@Override
 	default Block selfAttention(int batchSize, int seqLen, int dim, int heads, AttentionVariant variant,
@@ -73,8 +79,14 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 								PackedCollection qNormWeight, PackedCollection qNormBias,
 								PackedCollection kNormWeight, PackedCollection kNormBias, PackedCollection invFreq,
 								Producer<PackedCollection> diffLambda, ProjectionFactory projectionFactory,
-								NormalizationType qkNorm, Producer<PackedCollection> paddingMask) {
+								NormalizationType qkNorm, Producer<PackedCollection> paddingMask,
+								boolean causal) {
 		if (variant == AttentionVariant.DIFFERENTIAL) {
+			if (causal) {
+				throw new UnsupportedOperationException(
+						"Causal masking is not supported by differential attention");
+			}
+
 			return differentialSequenceAttention(batchSize, seqLen, dim, heads,
 					toQkvWeight, toOutWeight,
 					qNormWeight, qNormBias, kNormWeight, kNormBias,
@@ -84,7 +96,7 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 		return AttentionFeatures.super.selfAttention(batchSize, seqLen, dim, heads, variant,
 				toQkvWeight, toOutWeight,
 				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, diffLambda, projectionFactory, qkNorm, paddingMask);
+				invFreq, diffLambda, projectionFactory, qkNorm, paddingMask, causal);
 	}
 
 	/**

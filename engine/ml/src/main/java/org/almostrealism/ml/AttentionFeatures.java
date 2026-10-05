@@ -27,7 +27,6 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -175,13 +174,7 @@ import java.util.function.Function;
  * @see org.almostrealism.layers.LayerFeatures
  * @see org.almostrealism.model.Block
  */
-public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
-
-	/**
-	 * Magnitude of the negative bias added to the attention logit of a masked key, large enough
-	 * that the key's softmax weight underflows to zero in single precision.
-	 */
-	double MASKED_LOGIT_PENALTY = 1e9;
+public interface AttentionFeatures extends SequenceAttentionFeatures {
 
 	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
@@ -986,175 +979,6 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
-	 * Creates a sequence-based multi-head attention block with fused QKV projection.
-	 *
-	 * <p>This implements full-sequence attention (not autoregressive) with:
-	 * <ul>
-	 *   <li>Fused QKV projection for efficiency</li>
-	 *   <li>QK normalization for stability</li>
-	 *   <li>Rotary positional embeddings (RoPE)</li>
-	 *   <li>Scaled dot-product attention</li>
-	 * </ul></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @return Sequence attention block
-	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq) {
-		return sequenceAttention(batchSize, seqLen, dim, heads,
-				toQkvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, ProjectionFactory.dense());
-	}
-
-	/**
-	 * Creates a sequence-based multi-head attention block with fused QKV projection
-	 * and customizable projection layers.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param projectionFactory Factory for creating projection layers
-	 * @return Sequence attention block
-	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq,
-									ProjectionFactory projectionFactory) {
-		return sequenceAttention(batchSize, seqLen, dim, heads,
-				toQkvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, projectionFactory, NormalizationType.LAYER, null, null, 0.0);
-	}
-
-	/**
-	 * Classpath location of the asset describing parallel (full-sequence) self-attention, the
-	 * layers the {@link #sequenceAttention} methods build: the full-sequence counterpart of
-	 * {@link #ATTENTION_ASSET}, with the score and context halves of {@link #SDPA_ASSET}.
-	 */
-	String SEQUENCE_ATTENTION_ASSET = "/pdsl/sequence_attention.pdsl";
-
-	/**
-	 * Creates a sequence-based multi-head attention block with a selectable query/key
-	 * normalization family, an optional value padding mask, an optional key mask and optional
-	 * logit soft-capping.
-	 *
-	 * <p>This is the fully specified overload; every other {@code sequenceAttention} routes here
-	 * with {@link NormalizationType#LAYER}, no masks and no soft-cap. The two masks serve two
-	 * conventions for padded sequences: the padding mask zeroes the value vectors at masked
-	 * positions so they contribute nothing to any output while still occupying their softmax
-	 * slots (value masking), whereas the key mask removes masked keys from the softmax entirely
-	 * (logit masking). Query/key normalization is skipped when neither normalization weight is
-	 * supplied, and applied to both queries and keys when both are.</p>
-	 *
-	 * <p>The structure is not assembled here but in the layers of {@link #SEQUENCE_ATTENTION_ASSET}.
-	 * This method builds the two projection layers with {@code projectionFactory} (so an adapter
-	 * factory adapts them), allocates the key and value stores, binds an all-ones mask, which changes
-	 * nothing, for each mask left out, and builds the layer for the normalization family and score form.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights ({@code null} for no query/key normalization)
-	 * @param qNormBias Query normalization biases ({@code null} for none)
-	 * @param kNormWeight Key normalization weights ({@code null} exactly when {@code qNormWeight} is)
-	 * @param kNormBias Key normalization biases ({@code null} for none)
-	 * @param invFreq RoPE inverse frequencies
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param qkNorm Family of the query/key normalization
-	 * @param paddingMask Per-position validity, shape {@code (batch, seqLen)} with one for a
-	 *                    valid position and zero for padding, or {@code null} for no value masking
-	 * @param keyMask Per-key validity, shape {@code (batch, seqLen)}, or {@code null} for no
-	 *                logit masking
-	 * @param logitSoftcap Soft-cap applied to the scaled attention logits, or {@code 0} for none
-	 * @return Sequence attention block
-	 * @throws IllegalArgumentException if only one of {@code qNormWeight} and {@code kNormWeight}
-	 *                                  is supplied
-	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
-	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq,
-									ProjectionFactory projectionFactory,
-									NormalizationType qkNorm,
-									Producer<PackedCollection> paddingMask,
-									Producer<PackedCollection> keyMask,
-									double logitSoftcap) {
-		if (batchSize != 1) {
-			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
-		}
-		if ((qNormWeight == null) != (kNormWeight == null)) {
-			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
-		}
-
-		TraversalPolicy inputShape = shape(batchSize, seqLen, dim);
-		TraversalPolicy headShape = shape(batchSize, heads, seqLen, dim / heads);
-
-		Map<String, Object> args = new HashMap<>();
-		args.put("batch", batchSize);
-		args.put("seq_len", seqLen);
-		args.put("heads", heads);
-		args.put("head_dim", dim / heads);
-		args.put("qkv_projection", projectionFactory.create(inputShape, toQkvWeight,
-				AdapterConfig.TargetLayer.SELF_ATTENTION_QKV));
-		args.put("out_projection", projectionFactory.create(inputShape, toOutWeight,
-				AdapterConfig.TargetLayer.SELF_ATTENTION_OUT));
-		args.put("q_norm_weight", qNormWeight);
-		args.put("q_norm_bias", qNormBias);
-		args.put("k_norm_weight", kNormWeight);
-		args.put("k_norm_bias", kNormBias);
-		args.put("inv_freq", invFreq);
-		args.put("padding_mask", paddingMask != null ? paddingMask : zeros(shape(batchSize, seqLen)).add(1.0));
-		args.put("key_mask", keyMask != null ? keyMask : zeros(shape(batchSize, seqLen)).add(1.0));
-		args.put("softcap", logitSoftcap);
-		args.put("k_heads", new PackedCollection(headShape));
-		args.put("v_heads", new PackedCollection(headShape));
-
-		// TODO(review): collapse the six norm x softcap layer copies in the asset once PDSL can express optional stages
-		String layer = "sequence_attention";
-		if (qNormWeight != null) {
-			layer += qkNorm == NormalizationType.RMS ? "_qk_rmsnorm" : "_qk_layernorm";
-		}
-		if (logitSoftcap > 0.0) {
-			layer += "_softcapped";
-		}
-
-		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResource(SEQUENCE_ATTENTION_ASSET), layer, inputShape, args);
-	}
-
-	/**
 	 * Creates the self-attention sub-block for the requested {@link AttentionVariant}.
 	 *
 	 * <p>This is the attention-variant seam threaded through
@@ -1200,11 +1024,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 
 	/**
 	 * Creates the self-attention sub-block for the requested variant, with a selectable query/key
-	 * normalization family and an optional padding mask.
-	 *
-	 * <p>This is the overload that sub-interfaces override to supply a variant; the shorter
-	 * {@code selfAttention} overload routes here with {@link NormalizationType#LAYER} and no
-	 * mask, so an override receives every call.</p>
+	 * normalization family and an optional padding mask, without causal masking. Routes to the
+	 * causal overload with {@code causal = false}.
 	 *
 	 * @param batchSize         batch dimension
 	 * @param seqLen            sequence length
@@ -1238,187 +1059,66 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 								ProjectionFactory projectionFactory,
 								NormalizationType qkNorm,
 								Producer<PackedCollection> paddingMask) {
+		return selfAttention(batchSize, seqLen, dim, heads, variant,
+				toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, diffLambda, projectionFactory, qkNorm, paddingMask, false);
+	}
+
+	/**
+	 * Creates the self-attention sub-block for the requested variant, with a selectable query/key
+	 * normalization family, an optional padding mask and optional causal masking.
+	 *
+	 * <p>This is the overload that sub-interfaces override to supply a variant; every shorter
+	 * {@code selfAttention} overload routes here, so an override receives every call. An override
+	 * must either honour {@code causal} or reject {@code causal = true} explicitly; it must never
+	 * build non-causal attention when causal attention was requested.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
+	 *                          {@code null} for no masking
+	 * @param causal            whether each position may attend only to itself and earlier
+	 *                          positions
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory,
+								NormalizationType qkNorm,
+								Producer<PackedCollection> paddingMask,
+								boolean causal) {
 		if (variant == null || variant == AttentionVariant.STANDARD) {
 			return sequenceAttention(batchSize, seqLen, dim, heads,
 					toQkvWeight, toOutWeight,
 					qNormWeight, qNormBias, kNormWeight, kNormBias,
-					invFreq, projectionFactory, qkNorm, paddingMask, null, 0.0);
+					invFreq, projectionFactory, qkNorm, paddingMask, null, 0.0, causal);
 		}
 
 		throw new UnsupportedOperationException("Attention variant " + variant +
 				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
 				" (or another sub-interface) to use it");
-	}
-
-	/**
-	 * Creates a cross-attention block for attending over external context.
-	 *
-	 * <p>Cross-attention allows the model to attend to a different sequence (context) than
-	 * the main input. This is used in encoder-decoder architectures where the decoder
-	 * attends to encoder outputs.</p>
-	 *
-	 * <p>Implementation details:
-	 * <ul>
-	 *   <li>Queries (Q) come from the main input</li>
-	 *   <li>Keys (K) and Values (V) come from the context input</li>
-	 *   <li>QK normalization for stability</li>
-	 *   <li>No rotary embeddings (context positions are independent)</li>
-	 * </ul></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores) {
-		return sequenceCrossAttention(batchSize, querySeqLen, contextSeqLen, dim, heads,
-				toQWeight, toKvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				contextInput, attentionScores, ProjectionFactory.dense());
-	}
-
-	/**
-	 * Creates a cross-attention block with customizable projection layers, using layer
-	 * normalization for the query/key norms.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @param projectionFactory Factory for creating projection layers
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores,
-										 ProjectionFactory projectionFactory) {
-		return sequenceCrossAttention(batchSize, querySeqLen, contextSeqLen, dim, heads,
-				toQWeight, toKvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				contextInput, attentionScores, projectionFactory, NormalizationType.LAYER);
-	}
-
-	/**
-	 * Creates a cross-attention block with customizable projection layers and query/key
-	 * normalization family, so that a block builder can be parameterized by the normalization
-	 * its checkpoint was trained with.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param normType Family of the query/key normalization
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores,
-										 ProjectionFactory projectionFactory,
-										 NormalizationType normType) {
-		int dimHead = dim / heads;
-		TraversalPolicy queryShape = shape(batchSize, querySeqLen, dim);
-
-		SequentialBlock crossAttention = new SequentialBlock(queryShape);
-
-		// 1. Project main input to queries
-		crossAttention.add(projectionFactory.create(queryShape, toQWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_Q));
-		crossAttention.reshape(batchSize, querySeqLen, heads, dimHead);
-		crossAttention.permute(0, 2, 1, 3); // (batch, heads, querySeqLen, dimHead)
-
-		// 2. Apply Q normalization
-		crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
-
-		// 3. Process context input through separate branch for K and V
-		SequentialBlock contextBranch = contextInput.branch();
-		contextBranch.add(projectionFactory.create(contextInput.getOutputShape(), toKvWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_KV));
-		contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
-
-		List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
-		SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
-		SequentialBlock v = (SequentialBlock) kv.get(1).reshape(batchSize, contextSeqLen, heads, dimHead);
-
-		// 4. Permute K and V to (batch, heads, contextSeqLen, dimHead)
-		k.permute(0, 2, 1, 3);
-		v.permute(0, 2, 1, 3);
-
-		// 5. Apply K normalization (no rotary for context keys/values)
-		k.add(norm(normType, kNormWeight, kNormBias, 1e-6));
-
-		// 6. Store K and V tensors for use in attention computation
-		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-
-		k.andThen(into(kTensor));
-		v.andThen(into(vTensor));
-
-		// 7. Apply attention to values
-		crossAttention.add(scaledDotProductAttention(
-				batchSize, querySeqLen, contextSeqLen,
-				heads, dimHead, kTensor, vTensor, attentionScores));
-
-		// 8. Rearrange back to (batch, querySeqLen, dim)
-		crossAttention.permute(0, 2, 1, 3)
-				.reshape(batchSize, querySeqLen, dim);
-
-		// 9. Output projection
-		crossAttention.add(projectionFactory.create(queryShape, toOutWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_OUT));
-
-		return crossAttention;
 	}
 
 	/**
@@ -1685,139 +1385,6 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		if (!attention.getOutputShape().equalsIgnoreAxis(shape)) {
 			throw new IllegalArgumentException();
 		}
-
-		return attention;
-	}
-
-	/**
-	 * Classpath location of the asset describing parallel (full-sequence) scaled dot-product
-	 * attention: the {@code sdpa_scores} / {@code sdpa_scores_softcapped} and {@code sdpa_context}
-	 * layers the {@link #scaledDotProductAttention} methods build. It is the full-sequence
-	 * counterpart of {@link #ATTENTION_ASSET}'s autoregressive {@code attend} layer.
-	 */
-	String SDPA_ASSET = "/pdsl/sdpa.pdsl";
-
-	/**
-	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen    Sequence length for both queries and context
-	 * @param heads     Number of attention heads
-	 * @param dimHead   Dimension per head
-	 * @param k         Key tensor (batch, heads, seqLen, dimHead)
-	 * @param v         Value tensor (batch, heads, seqLen, dimHead)
-	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
-	 */
-	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v) {
-		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
-	}
-
-	/**
-	 * Builds a scaled dot-product attention block with optional attention score capture.
-	 *
-	 * @param batchSize       Batch dimension
-	 * @param seqLen          Sequence length for both queries and context
-	 * @param heads           Number of attention heads
-	 * @param dimHead         Dimension per head
-	 * @param k               Key tensor (batch, heads, seqLen, dimHead)
-	 * @param v               Value tensor (batch, heads, seqLen, dimHead)
-	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
-	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
-	 */
-	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores) {
-		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, attentionScores);
-	}
-
-	/**
-	 * Computes scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
-	 * This implementation properly handles K and V as tensor data rather than computational blocks.
-	 *
-	 * @param batchSize batch dimension
-	 * @param querySeqLen sequence length for queries
-	 * @param contextSeqLen sequence length for context (keys/values)
-	 * @param heads number of attention heads
-	 * @param dimHead dimension per head
-	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
-	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
-	 */
-	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores) {
-		return scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead,
-				k, v, attentionScores, 0.0, null);
-	}
-
-	/**
-	 * Builds scaled dot-product attention over a whole sequence at once from the {@link #SDPA_ASSET}
-	 * asset: {@code softmax(mask(softcap(Q Kᵀ / sqrt(d_k)))) V}. Soft-capping squashes the scaled
-	 * logits to {@code cap * tanh(logit / cap)}; the key mask adds a large negative bias to the
-	 * logits of masked keys so they receive no attention. This is the fully specified overload; the
-	 * others route here with no soft-cap and no mask.
-	 *
-	 * <p>The structure is not assembled here: the asset's {@code sdpa_scores} (or, when a soft-cap is
-	 * given, {@code sdpa_scores_softcapped}) layer computes the attention weights and its
-	 * {@code sdpa_context} layer their weighted sum of values. This method binds the key and value
-	 * tensors and the mask, selects the plain or soft-capped score layer, and chains the two halves.
-	 * A missing mask is bound as an all-ones mask so the asset's key-mask stage adds zero, which is
-	 * how one asset body serves masked and unmasked callers. When a receptor is supplied the
-	 * attention weights are tapped to it between the two halves, exactly where the Java assembly this
-	 * replaced branched the softmax output.</p>
-	 *
-	 * @param batchSize batch dimension (must be 1)
-	 * @param querySeqLen sequence length for queries
-	 * @param contextSeqLen sequence length for context (keys/values)
-	 * @param heads number of attention heads
-	 * @param dimHead dimension per head
-	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
-	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
-	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
-	 * @param logitSoftcap the soft-cap applied to the scaled logits, or {@code 0} for none
-	 * @param keyMask per-key validity, shape {@code (batch, contextSeqLen)} with one for a key that
-	 *                may be attended and zero for one that may not, or {@code null} for no masking
-	 * @return Block computing the attention output
-	 */
-	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores,
-											double logitSoftcap, Producer<PackedCollection> keyMask) {
-		if (batchSize != 1) {
-			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
-		}
-
-		TraversalPolicy inputShape = shape(batchSize, heads, querySeqLen, dimHead);
-		Producer<PackedCollection> mask =
-				keyMask != null ? keyMask : zeros(shape(batchSize, contextSeqLen)).add(1.0);
-
-		Map<String, Object> scoresArgs = new HashMap<>();
-		scoresArgs.put("k", k);
-		scoresArgs.put("key_mask", mask);
-		scoresArgs.put("dim_head", dimHead);
-
-		String scoresLayer;
-		if (logitSoftcap > 0.0) {
-			scoresArgs.put("softcap", logitSoftcap);
-			scoresLayer = "sdpa_scores_softcapped";
-		} else {
-			scoresLayer = "sdpa_scores";
-		}
-
-		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parseResource(SDPA_ASSET);
-		SequentialBlock attention = new SequentialBlock(inputShape);
-		attention.add(loader.buildLayer(program, scoresLayer, inputShape, scoresArgs));
-
-		// Tap the attention weights to the receptor between the score and context halves.
-		if (attentionScores != null) {
-			attention.branch().andThen(attentionScores);
-		}
-
-		Map<String, Object> contextArgs = new HashMap<>();
-		contextArgs.put("v", v);
-		attention.add(loader.buildLayer(program, "sdpa_context",
-				attention.getOutputShape(), contextArgs));
 
 		return attention;
 	}
