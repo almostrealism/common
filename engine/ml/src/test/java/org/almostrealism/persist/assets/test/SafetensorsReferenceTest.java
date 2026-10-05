@@ -247,6 +247,56 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		assertRejected("{\"w\":42}", 4, "is not described by a JSON object");
 	}
 
+	/** A {@code dtype} that is not a JSON string is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsNonStringDtype() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":{\"x\":1},\"shape\":[1],\"data_offsets\":[0,4]}}", 4,
+				"malformed dtype");
+		assertRejected("{\"w\":{\"dtype\":[\"F32\"],\"shape\":[1],\"data_offsets\":[0,4]}}", 4,
+				"malformed dtype");
+	}
+
+	/** A {@code shape} that is a scalar rather than an array is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsScalarShape() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":1,\"data_offsets\":[0,4]}}", 4,
+				"malformed shape");
+	}
+
+	/** A {@code shape} whose axes are not integers is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsNonIntegerAxis() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[\"a\"],\"data_offsets\":[0,4]}}", 4,
+				"malformed shape");
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1.5],\"data_offsets\":[0,4]}}", 4,
+				"malformed shape");
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[[1]],\"data_offsets\":[0,4]}}", 4,
+				"malformed shape");
+	}
+
+	/** An axis longer than any collection can be is rejected rather than truncated. */
+	@Test(timeout = 60000)
+	public void rejectsAxisBeyondIntRange() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[4294967297],\"data_offsets\":[0,4]}}", 4,
+				"length 4294967297");
+	}
+
+	/** A {@code data_offsets} that is a scalar rather than an array is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsScalarDataOffsets() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":4}}", 4,
+				"malformed data_offsets");
+	}
+
+	/** A {@code data_offsets} holding something other than integers is rejected, naming the field. */
+	@Test(timeout = 60000)
+	public void rejectsNonIntegerDataOffsets() throws IOException {
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,null]}}", 4,
+				"malformed data_offsets");
+		assertRejected("{\"w\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,3.5]}}", 4,
+				"malformed data_offsets");
+	}
+
 	/**
 	 * Writes a safetensors file with the given header followed by {@code dataBytes} zero bytes of
 	 * tensor data.

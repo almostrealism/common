@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * A tensor in a safetensors file, located but not read.
@@ -190,22 +191,48 @@ public class SafetensorsReference extends CollectionDataReference {
 	}
 
 	/**
-	 * Returns a required header field, failing with a message that names the tensor and file when
-	 * the field is absent.
+	 * Returns a required header field converted by {@code read}, failing with a message that names
+	 * the tensor and file when the field is absent or is not of the JSON type {@code read} expects.
 	 *
 	 * @param file  the file, for error messages
 	 * @param name  the tensor's name, for error messages
 	 * @param field the name of the required field
 	 * @param entry the tensor's header entry
-	 * @return the field's value
-	 * @throws IllegalArgumentException if {@code entry} has no such field
+	 * @param read  converts the field's JSON value
+	 * @param <T>   the type of the converted value
+	 * @return the converted value
+	 * @throws IllegalArgumentException if {@code entry} has no such field or it cannot be converted
 	 */
-	private static JsonElement require(File file, String name, String field, JsonObject entry) {
+	private static <T> T require(File file, String name, String field, JsonObject entry,
+								 Function<JsonElement, T> read) {
 		JsonElement value = entry.get(field);
 		if (value == null) {
 			throw new IllegalArgumentException(name + " in " + file + " has no " + field);
 		}
-		return value;
+
+		try {
+			return read.apply(value);
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException(name + " in " + file + " has a malformed "
+					+ field + ": " + value, e);
+		}
+	}
+
+	/**
+	 * Reads a JSON array of integers.
+	 *
+	 * @param element the array
+	 * @return its values
+	 * @throws IllegalStateException if {@code element} is not an array
+	 * @throws RuntimeException if an element is not an integer
+	 */
+	private static long[] longs(JsonElement element) {
+		JsonArray array = element.getAsJsonArray();
+		long[] values = new long[array.size()];
+		for (int i = 0; i < values.length; i++) {
+			values[i] = array.get(i).getAsJsonPrimitive().getAsBigDecimal().longValueExact();
+		}
+		return values;
 	}
 
 	/**
@@ -218,13 +245,15 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param dataLength number of bytes from {@code dataStart} to the end of the file
 	 * @return the reference, or {@code null} if the tensor holds no values
 	 * @throws IllegalArgumentException if the entry is missing {@code dtype}, {@code shape} or
-	 *         {@code data_offsets}, names an unreadable element type, or gives a byte range that
+	 *         {@code data_offsets} or gives one of them a value of the wrong JSON type (a
+	 *         {@code dtype} that is not a string, or a {@code shape} or {@code data_offsets} that
+	 *         is not an array of integers), names an unreadable element type, or gives a byte range that
 	 *         is not a {@code [begin, end]} pair within the file's tensor data for its shape
 	 */
 	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
 													 long dataStart, long dataLength) {
 		Encoding encoding;
-		String dtype = require(file, name, "dtype", entry).getAsString();
+		String dtype = require(file, name, "dtype", entry, e -> e.getAsJsonPrimitive().getAsString());
 		try {
 			encoding = Encoding.valueOf(dtype);
 		} catch (IllegalArgumentException e) {
@@ -232,25 +261,25 @@ public class SafetensorsReference extends CollectionDataReference {
 					+ "; only BF16, F16, F32 and F64 tensors can be read", e);
 		}
 
-		JsonArray dims = require(file, name, "shape", entry).getAsJsonArray();
+		long[] dims = require(file, name, "shape", entry, SafetensorsReference::longs);
 		boolean empty = false;
-		int[] shape = new int[Math.max(1, dims.size())];
+		int[] shape = new int[Math.max(1, dims.length)];
 		shape[0] = 1;
-		for (int i = 0; i < dims.size(); i++) {
-			shape[i] = dims.get(i).getAsInt();
-			if (shape[i] < 0) {
-				throw new IllegalArgumentException(name + " in " + file + " has an axis of length " + shape[i]);
+		for (int i = 0; i < dims.length; i++) {
+			if (dims[i] < 0 || dims[i] > Integer.MAX_VALUE) {
+				throw new IllegalArgumentException(name + " in " + file + " has an axis of length " + dims[i]);
 			}
+			shape[i] = (int) dims[i];
 			if (shape[i] == 0) empty = true;
 		}
 
-		JsonArray offsets = require(file, name, "data_offsets", entry).getAsJsonArray();
-		if (offsets.size() != 2) {
-			throw new IllegalArgumentException(name + " in " + file + " has " + offsets.size()
+		long[] offsets = require(file, name, "data_offsets", entry, SafetensorsReference::longs);
+		if (offsets.length != 2) {
+			throw new IllegalArgumentException(name + " in " + file + " has " + offsets.length
 					+ " data offsets, but a tensor occupies a single [begin, end] byte range");
 		}
-		long begin = offsets.get(0).getAsLong();
-		long end = offsets.get(1).getAsLong();
+		long begin = offsets[0];
+		long end = offsets[1];
 		if (begin < 0 || end < begin || end > dataLength) {
 			throw new IllegalArgumentException(name + " in " + file + " occupies bytes " + begin + ".." + end
 					+ ", which is not a range within the file's " + dataLength + " bytes of tensor data");
