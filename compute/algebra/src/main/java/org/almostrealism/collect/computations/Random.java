@@ -258,7 +258,6 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 
 			@Override
 			public PackedCollection evaluate(Object... args) {
-				// TODO(review): audit callers that retain a Random and mutate/destroy its evaluate() result, now that it aliases the cache
 				initValues();
 				return values;
 			}
