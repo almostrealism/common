@@ -812,23 +812,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the extended policy
 	 */
 	public TraversalPolicy prependDimension(int size) {
-		long newDims[] = new long[getDimensions() + 1];
-		newDims[0] = size;
-		for (int i = 0; i < getDimensions(); i++) newDims[i + 1] = lengthLong(i);
-
-		// Create new dimsOrder with shifted indices
-		int newDimsOrder[] = new int[newDims.length];
-		newDimsOrder[0] = 0; // New dimension maps to itself
-		for (int i = 0; i < getDimensions(); i++) {
-			newDimsOrder[i + 1] = dimsOrder[i] + 1;
-		}
-
-		int rateMap[] = IntStream.range(0, newDims.length).map(i -> i - 1).toArray();
-		TraversalPolicy p = new TraversalPolicy(
-				order, true, false, newDims, newDimsOrder,
-				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
-		p.traversalAxis = traversalAxis + 1;
-		return p;
+		return insertDimension(0, size);
 	}
 
 	/**
@@ -867,6 +851,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the extended policy
 	 */
 	public TraversalPolicy appendDimension(int size) {
+		// TODO(review): insertDimension's new axis-shift changes appendDimension behavior
+		// when traversalAxis == getDimensions() (fully traversed); this path is untested.
 		return insertDimension(getDimensions(), size);
 	}
 
@@ -939,7 +925,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false, newDims, newDimsOrder,
 				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
-		p.traversalAxis = traversalAxis;
+		// Inserting a dimension at or before the traversal axis shifts the axis it
+		// tracks one position to the right, mirroring the adjustment subset(int) makes
+		// when leading dimensions are dropped.
+		p.traversalAxis = axis <= traversalAxis ? traversalAxis + 1 : traversalAxis;
 		return p;
 	}
 
