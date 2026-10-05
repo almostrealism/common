@@ -246,9 +246,8 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 
 			@Override
 			public PackedCollection evaluate(Object... args) {
-				PackedCollection destination = new PackedCollection(getShape());
-				into(destination).evaluate(args);
-				return destination;
+				initValues();
+				return values;
 			}
 
 			@Override
