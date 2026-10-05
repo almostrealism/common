@@ -33,6 +33,11 @@ import org.junit.Test;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -341,6 +346,101 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			scene.destroy();
 			Destroyable.destroy(outputs);
 			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
+	 * A scene teardown that races a caller's in-progress runner release must wait for that
+	 * release instead of returning while it is still running. The runner here blocks inside
+	 * its release (standing in for a producer-thread join), and
+	 * {@link AudioSceneRealtimeRunner#destroy()} is started on another thread meanwhile. While
+	 * the release is blocked the runner must still count as live and teardown must not have
+	 * returned; once the release finishes, teardown returns, the runner is gone, and its
+	 * resources were released exactly once. Before the fix the runner was untracked as its
+	 * release began, so teardown snapshotted nothing and returned at once — and the scene
+	 * went on to free buffers the producer was still rendering into.
+	 */
+	@Test(timeout = 60_000)
+	public void sceneTeardownWaitsForInProgressRunnerRelease() throws InterruptedException {
+		CountDownLatch releasing = new CountDownLatch(1);
+		Semaphore proceed = new Semaphore(0);
+		AtomicInteger releases = new AtomicInteger();
+
+		// The scene is never used: create() is overridden to build only the blocking runner.
+		AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(null) {
+			@Override
+			public TemporalCellular create(MultiChannelAudioOutput output,
+										   List<Integer> channels, int bufferSize) {
+				BlockingReleaseRunner runner = new BlockingReleaseRunner(r -> release(r, List.of(() -> {
+					releasing.countDown();
+					proceed.acquireUninterruptibly();
+					releases.incrementAndGet();
+				})));
+				track(runner);
+				return runner;
+			}
+		};
+
+		TemporalCellular runner = runners.create(null, null, BUFFER_SIZE);
+		Thread caller = new Thread(((Destroyable) runner)::destroy, "runner-release");
+		caller.start();
+		assertTrue(releasing.await(30, TimeUnit.SECONDS));
+
+		CountDownLatch teardownDone = new CountDownLatch(1);
+		Thread teardown = new Thread(() -> {
+			runners.destroy();
+			teardownDone.countDown();
+		}, "scene-teardown");
+		teardown.start();
+
+		assertFalse("teardown must not return while a runner release is in progress",
+				teardownDone.await(500, TimeUnit.MILLISECONDS));
+		assertEquals("a runner being released must still count as live",
+				1, runners.getLiveRunnerCount());
+
+		proceed.release();
+		assertTrue("teardown must return once the release finishes",
+				teardownDone.await(30, TimeUnit.SECONDS));
+		caller.join(30_000);
+		teardown.join(30_000);
+
+		assertEquals(0, runners.getLiveRunnerCount());
+		assertEquals("the runner must be released exactly once", 1, releases.get());
+		((Destroyable) runner).destroy();
+		assertEquals("a repeated destroy() must not release again", 1, releases.get());
+	}
+
+	/**
+	 * A runner whose {@code destroy()} hands itself to a caller-supplied destroyer, which
+	 * releases it through the tracking collaborator's {@code release}, so a test can hold the
+	 * release in progress.
+	 */
+	private static class BlockingReleaseRunner implements TemporalCellular, Destroyable {
+		/** Releases this runner through the collaborator that tracks it. */
+		private final Consumer<Destroyable> destroyer;
+
+		/**
+		 * Creates the runner.
+		 *
+		 * @param destroyer releases this runner through the collaborator that tracks it
+		 */
+		BlockingReleaseRunner(Consumer<Destroyable> destroyer) {
+			this.destroyer = destroyer;
+		}
+
+		@Override
+		public Supplier<Runnable> setup() {
+			return () -> () -> { };
+		}
+
+		@Override
+		public Supplier<Runnable> tick() {
+			return () -> () -> { };
+		}
+
+		@Override
+		public void destroy() {
+			destroyer.accept(this);
 		}
 	}
 

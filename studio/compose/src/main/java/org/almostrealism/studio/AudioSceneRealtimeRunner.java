@@ -43,8 +43,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -83,7 +85,9 @@ import java.util.stream.IntStream;
  * this collaborator before its own render cells and consolidated buffers, so a runner a
  * caller never released has its producer thread stopped (and joined) before the buffers
  * that thread renders into are freed. A runner's {@code destroy()} is idempotent: a runner
- * the caller already released is not released again.</p>
+ * the caller already released is not released again. A runner stays tracked until its
+ * release has finished, so a scene teardown that races a caller's {@code destroy()} waits
+ * for that release rather than freeing the scene buffers underneath it.</p>
  *
  * @see AudioScene#runnerRealTime(MultiChannelAudioOutput, java.util.List, int)
  * @see MixdownManagerPdslAdapter
@@ -154,11 +158,17 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	private final AudioScene<?> scene;
 
 	/**
-	 * Runners built by {@link #create} that have not been destroyed yet, in creation order.
-	 * A runner removes itself on {@code destroy()}; membership is also what makes that
-	 * {@code destroy()} idempotent.
+	 * Runners built by {@link #create} whose release has not finished yet, in creation order.
+	 * A runner stays here while its release is in progress and is removed only once that
+	 * release completes (see {@link #release}), so {@link #destroy()} can wait for it.
 	 */
 	private final List<Destroyable> liveRunners = new ArrayList<>();
+
+	/**
+	 * The subset of {@link #liveRunners} whose release is in progress. Claiming a runner here
+	 * is what makes its {@code destroy()} idempotent: only the first caller releases it.
+	 */
+	private final Set<Destroyable> releasing = new HashSet<>();
 
 	/**
 	 * Set, under the same lock as {@link #liveRunners}, when {@link #destroy()} begins. From
@@ -177,7 +187,8 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	}
 
 	/**
-	 * Returns the number of runners built by {@link #create} that have not been destroyed.
+	 * Returns the number of runners built by {@link #create} whose release has not finished,
+	 * including any whose release is in progress.
 	 *
 	 * @return the live runner count
 	 */
@@ -204,10 +215,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * allocated: teardown has already taken its snapshot of live runners and would never
 	 * stop this one.</p>
 	 *
+	 * <p>Protected so that a subclass overriding {@link #create} can register a runner it
+	 * builds itself; such a runner must release its resources through {@link #release}.</p>
+	 *
 	 * @param runner the runner to track
 	 * @throws IllegalStateException if this collaborator has been destroyed
 	 */
-	private synchronized void track(Destroyable runner) {
+	protected synchronized void track(Destroyable runner) {
 		if (closed) {
 			throw new IllegalStateException("Cannot register a real-time runner for a destroyed scene");
 		}
@@ -216,14 +230,73 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	}
 
 	/**
-	 * Removes a runner from the live set.
+	 * Releases a tracked runner's resources, once. The first call for a live runner claims it
+	 * and runs every action in {@code releases} best-effort (see
+	 * {@link Destroyable#releaseAll(Iterable)}); any other call — for a runner already released,
+	 * being released by another thread, or never tracked — returns immediately without running
+	 * them.
+	 *
+	 * <p>The runner remains in the live set until its releases have finished, and only then is
+	 * removed, even if a release throws. A concurrent {@link #destroy()} therefore still sees a
+	 * runner whose release a caller started, and waits for it to finish before returning — so
+	 * the scene never frees the buffers a producer thread is still rendering into while that
+	 * runner's caller is stopping it.</p>
+	 *
+	 * @param runner   the runner being destroyed
+	 * @param releases the actions that free the runner's resources, in release order
+	 */
+	protected void release(Destroyable runner, List<Runnable> releases) {
+		if (!claim(runner)) return;
+
+		try {
+			Destroyable.releaseAll(releases);
+		} finally {
+			untrack(runner);
+		}
+	}
+
+	/**
+	 * Marks a live runner as being released.
 	 *
 	 * @param runner the runner being destroyed
-	 * @return true if the runner was live (and its resources must now be released), false if
-	 *         it had already been destroyed
+	 * @return true if the caller now owns the runner's release, false if the runner is not
+	 *         live or another caller already owns its release
 	 */
-	private synchronized boolean untrack(Destroyable runner) {
-		return liveRunners.remove(runner);
+	private synchronized boolean claim(Destroyable runner) {
+		if (!liveRunners.contains(runner) || releasing.contains(runner)) return false;
+		releasing.add(runner);
+		return true;
+	}
+
+	/**
+	 * Removes a runner whose release has finished from the live set, and wakes any
+	 * {@link #destroy()} waiting for in-progress releases.
+	 *
+	 * @param runner the runner whose release finished
+	 */
+	private synchronized void untrack(Destroyable runner) {
+		releasing.remove(runner);
+		liveRunners.remove(runner);
+		notifyAll();
+	}
+
+	/**
+	 * Blocks until every tracked runner's release has finished, including releases started by
+	 * other threads. An interrupt does not abandon the wait (returning early would let the scene
+	 * free buffers a producer still uses); it is re-asserted on the calling thread afterwards.
+	 */
+	private synchronized void awaitReleases() {
+		// TODO(review): unbounded wait; a tracked runner whose destroy() bypasses release() hangs scene teardown.
+		boolean interrupted = false;
+		while (!liveRunners.isEmpty()) {
+			try {
+				wait();
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) Thread.currentThread().interrupt();
 	}
 
 	/**
@@ -232,6 +305,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * attempted even when an earlier one fails; the first failure is rethrown afterwards
 	 * with later ones suppressed. Called by {@link AudioScene#destroy()} before the scene
 	 * frees the render cells and consolidated buffers those runners read.
+	 *
+	 * <p>A runner whose release another thread has already started is not released again,
+	 * but this method does not return until that release has finished either, so the scene
+	 * never proceeds to free its buffers while any runner is still stopping. Must not be
+	 * called from inside a runner's own release, which would wait on itself.</p>
 	 *
 	 * <p>Destruction is terminal: the snapshot is taken together with marking this
 	 * collaborator closed, so any runner whose build completes afterwards is refused (and
@@ -243,11 +321,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		synchronized (this) {
 			closed = true;
 			runners = new ArrayList<>(liveRunners);
+			runners.removeAll(releasing);
 		}
 
 		Collections.reverse(runners);
-		Destroyable.releaseAll(runners.stream()
-				.map(r -> (Runnable) r::destroy).collect(Collectors.toList()));
+		try {
+			Destroyable.releaseAll(runners.stream()
+					.map(r -> (Runnable) r::destroy).collect(Collectors.toList()));
+		} finally {
+			awaitReleases();
+		}
 	}
 
 	/**
@@ -433,10 +516,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 */
 			@Override
 			public void destroy() {
-				if (!untrack(this)) return;
 				// Best-effort: a release that throws must not leave the remaining resources
-				// allocated, since this runner is already untracked and destroy() is now a no-op.
-				Destroyable.releaseAll(List.of(
+				// allocated, since only the first destroy() runs these releases.
+				release(this, List.of(
 						() -> scene.destroyActiveCells(cells),
 						bufferFrameIndex::destroy));
 			}
@@ -796,9 +878,8 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 */
 			@Override
 			public void destroy() {
-				if (!untrack(this)) return;
 				// Best-effort: a release that throws must not leave the remaining resources
-				// allocated, since this runner is already untracked and destroy() is now a no-op.
+				// allocated, since only the first destroy() runs these releases.
 				// The stream is stopped first so the render op's kernels are no longer in use.
 				List<Runnable> releases = new ArrayList<>();
 				releases.add(renderStream::destroy);
@@ -811,7 +892,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				}
 				releases.add(args::clear);
 				releases.add(() -> Destroyable.destroy(ownedFxStem));
-				Destroyable.releaseAll(releases);
+				release(this, releases);
 			}
 		}
 

@@ -141,9 +141,16 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	 * rendered, so the first ticks find their input ready. A render failure during prefill is
 	 * rethrown to the caller.
 	 *
+	 * <p>{@code start}, {@link #stop()} and {@link #destroy()} are serialized on this stream,
+	 * since each reads and replaces {@link #producer}: a teardown running on another thread
+	 * waits for the producer to be started and prefilled before it stops it, rather than
+	 * clearing the field while it is still being configured. The prefill wait is bounded, as
+	 * the producer never blocks on the ring before {@code prefill} (at most {@link #slots})
+	 * buffers are rendered.</p>
+	 *
 	 * @param prefill number of buffers to render before returning (clamped to {@link #slots})
 	 */
-	public void start(int prefill) {
+	public synchronized void start(int prefill) {
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
@@ -260,8 +267,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	 * next, and callers free the render operation the producer runs — a producer still alive would
 	 * use those buffers and kernels after they are released (a use-after-free), and {@link #start(int)}
 	 * would otherwise be able to spawn a second producer alongside a lingering one.</p>
+	 *
+	 * <p>Serialized with {@link #start(int)} and other {@code stop()} calls, so concurrent
+	 * callers (a runner reset and a scene teardown, for example) cannot observe the producer
+	 * field half-replaced.</p>
 	 */
-	public void stop() {
+	public synchronized void stop() {
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
@@ -283,8 +294,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 		filled.drainPermits();
 	}
 
+	/**
+	 * Stops the producer (see {@link #stop()}) and frees the ring and the compiled slot copies.
+	 * The render operation is borrowed and left to its owner.
+	 */
 	@Override
-	public void destroy() {
+	public synchronized void destroy() {
 		stop();
 
 		for (int i = 0; i < slotCopies.length; i++) {
