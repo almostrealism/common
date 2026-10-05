@@ -35,6 +35,15 @@ configuration:
   one pipeline the two lanes never compete for these runners. Across concurrent
   pipelines they share them; the cost is queueing, not correctness.
 
+`AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
+It does not isolate the job: a CPU-lane job on these runners still has the GPU
+device and the read-only sample library mount, which runners in the plain CPU
+fleet do not. That is not a new trust boundary: `test-media-cuda` runs the same
+pull request's code on the same runners with both, and it is gated more
+strictly than `test` and `test-media`. If the CPU lane must keep the CPU fleet's
+isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
+`../docker` beside this fleet.
+
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
 the CPU lane in the runner count and the memory limit: `test` runs up to four
 groups at once, so with three runners it simply queues the fourth.
@@ -99,7 +108,11 @@ Start with **one** runner. This host has a single GPU whose memory is unified wi
 system RAM, and the workflow's own `max-parallel` (3 for `test-cuda`, 2 for
 `test-media-cuda`) bounds what a single pipeline can use. Raise the count with
 `./fleet.sh up 2` only after measuring, and keep `RUNNER_MEMORY_LIMIT` times the
-runner count well below the host's memory.
+runner count well below the host's memory: the limit applies to every runner,
+so the default 32g fits three runners on a 128 GB host, and 48g fits only two.
+`.env.example` still sets `RUNNER_MEMORY_LIMIT=48g`, which overrides the compose
+default, so a `.env` copied from it must be lowered to `32g` before running a
+third runner.
 
 ## How It Works
 
