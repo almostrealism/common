@@ -106,7 +106,9 @@ layer, then `accum` around `swiglu_ffn` — and declares its dependency on them 
 statements (see [Imports](#imports)), so `transformer()` builds it from
 `PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
 `engine/ml/src/main/resources/pdsl/sdpa.pdsl` is the full-sequence (non-autoregressive)
-counterpart of `attention.pdsl`: its `sdpa_scores` (with a soft-capped variant
+counterpart of the `attend` layer inside `attention.pdsl` — the score/context core only, not
+the whole attention block, whose normalization, projections, RoPE, cache writes and output
+projection have no analogue here. Its `sdpa_scores` (with a soft-capped variant
 `sdpa_scores_softcapped`) and `sdpa_context` layers compose scaled dot-product attention over a
 whole sequence at once from `scaled_dot_product` (batched `Q Kᵀ` / `A V`) and `key_mask`
 (per-key validity masking), and `AttentionFeatures.scaledDotProductAttention(...)` loads it. A layer called from another layer
