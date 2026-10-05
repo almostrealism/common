@@ -278,6 +278,73 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * A runner whose build completes after {@link AudioSceneRealtimeRunner#destroy()} has
+	 * begun must be refused rather than registered. Teardown has already taken its snapshot of
+	 * live runners, so a runner tracked afterwards would never be stopped, and would go on
+	 * reading the scene buffers the teardown frees. Teardown is triggered here from inside the
+	 * PDSL build, after the model is compiled and while the master output is wired, which
+	 * reproduces the race deterministically. The build must fail with an
+	 * {@link IllegalStateException}, roll back what it allocated (no runner tracked, no
+	 * producer thread), and every later {@code create} must be refused immediately.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void runnerBuiltDuringTeardownIsRefused() {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = true;
+		List<WaveOutput> outputs = new ArrayList<>();
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			applyGenome(scene, 1);
+			AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(scene);
+			int threads = producerThreadCount();
+
+			WaveOutput racingOut = new WaveOutput(
+					() -> new File("results/ownership-teardown-race.wav"), 24, true);
+			outputs.add(racingOut);
+			MultiChannelAudioOutput racing = new MultiChannelAudioOutput(racingOut) {
+				@Override
+				public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
+					runners.destroy();
+					return super.getMaster(channel);
+				}
+			};
+
+			assertFalse(runners.isClosed());
+			IllegalStateException thrown = null;
+			try {
+				runners.create(racing, null, BUFFER_SIZE);
+			} catch (IllegalStateException e) {
+				thrown = e;
+			}
+
+			assertTrue("a runner completed after teardown began must be refused", thrown != null);
+			assertTrue(thrown.getMessage(), thrown.getMessage().contains("destroyed scene"));
+			assertEquals(0, thrown.getSuppressed().length);
+			assertTrue(runners.isClosed());
+			assertEquals("a refused runner must not be tracked", 0, runners.getLiveRunnerCount());
+			assertEquals("a refused runner must not start a producer thread",
+					threads, producerThreadCount());
+
+			IllegalStateException refused = null;
+			try {
+				runners.create(output("ownership-after-teardown", outputs), List.of(0), BUFFER_SIZE);
+			} catch (IllegalStateException e) {
+				refused = e;
+			}
+
+			assertTrue("create() after destroy() must be refused", refused != null);
+			assertTrue(refused.getMessage(), refused.getMessage().contains("destroyed scene"));
+			assertEquals(0, runners.getLiveRunnerCount());
+		} finally {
+			scene.destroy();
+			Destroyable.destroy(outputs);
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
 	 * Delegates to a real runner except that compiling its tick operation throws. Destroying
 	 * it destroys the real runner, so ownership is observable through the live-runner count.
 	 */

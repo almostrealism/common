@@ -1264,12 +1264,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * {@link #assignGenome}, so the runner can be reused without recompilation.</p>
 	 *
 	 * <p>The caller may destroy the runner when done with it; any runner still live when
-	 * this scene is destroyed is destroyed by {@link #destroy()}.</p>
+	 * this scene is destroyed is destroyed by {@link #destroy()}, after which no further
+	 * runner can be built.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
 	 * @return a TemporalCellular for real-time playback
+	 * @throws IllegalStateException if this scene has been destroyed
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,

@@ -161,6 +161,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	private final List<Destroyable> liveRunners = new ArrayList<>();
 
 	/**
+	 * Set, under the same lock as {@link #liveRunners}, when {@link #destroy()} begins. From
+	 * then on {@link #track} refuses new runners, so a {@link #create} that finishes after
+	 * teardown has taken its snapshot cannot leave behind a runner nothing will ever stop.
+	 */
+	private boolean closed;
+
+	/**
 	 * Creates a runner for the given scene.
 	 *
 	 * @param scene the scene to drive in real time
@@ -179,11 +186,32 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	}
 
 	/**
+	 * Returns whether {@link #destroy()} has begun, after which {@link #create} refuses to
+	 * build runners.
+	 *
+	 * @return true once this collaborator has been destroyed
+	 */
+	public synchronized boolean isClosed() {
+		return closed;
+	}
+
+	/**
 	 * Registers a newly built runner as live.
 	 *
+	 * <p>Called last in each runner build, inside its construction-failure rollback scope.
+	 * If {@link #destroy()} has already begun, the runner is refused with an
+	 * {@link IllegalStateException}, and the caller's rollback releases everything the build
+	 * allocated: teardown has already taken its snapshot of live runners and would never
+	 * stop this one.</p>
+	 *
 	 * @param runner the runner to track
+	 * @throws IllegalStateException if this collaborator has been destroyed
 	 */
 	private synchronized void track(Destroyable runner) {
+		if (closed) {
+			throw new IllegalStateException("Cannot register a real-time runner for a destroyed scene");
+		}
+
 		liveRunners.add(runner);
 	}
 
@@ -204,11 +232,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * attempted even when an earlier one fails; the first failure is rethrown afterwards
 	 * with later ones suppressed. Called by {@link AudioScene#destroy()} before the scene
 	 * frees the render cells and consolidated buffers those runners read.
+	 *
+	 * <p>Destruction is terminal: the snapshot is taken together with marking this
+	 * collaborator closed, so any runner whose build completes afterwards is refused (and
+	 * rolled back) rather than registered where no teardown would reach it.</p>
 	 */
 	@Override
 	public void destroy() {
 		List<Destroyable> runners;
 		synchronized (this) {
+			closed = true;
 			runners = new ArrayList<>(liveRunners);
 		}
 
@@ -225,9 +258,14 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
 	 * @return a {@link TemporalCellular} for real-time playback
+	 * @throws IllegalStateException if this collaborator (and so its scene) has been destroyed
 	 */
 	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
+		if (isClosed()) {
+			throw new IllegalStateException("Cannot build a real-time runner for a destroyed scene");
+		}
+
 		List<Integer> resolved = channels != null ? channels :
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
 
