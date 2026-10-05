@@ -374,7 +374,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			if (shared == bestShared) nearest.add(candidate);
 		}
 
-		java.util.Collections.sort(nearest);
+		nearest.sort(Comparator.naturalOrder());
 		throw new IllegalArgumentException("No weight named '" + key + "' among "
 				+ weights.size() + " weights"
 				+ (nearest.isEmpty() ? "" : "; the closest names are "
@@ -418,7 +418,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		if (names.stream().allMatch(n -> n.matches("\\d+"))) {
 			names.sort(Comparator.comparing((String n) -> new BigInteger(n)).thenComparing(Comparator.naturalOrder()));
 		} else {
-			java.util.Collections.sort(names);
+			names.sort(Comparator.naturalOrder());
 		}
 		return names;
 	}
