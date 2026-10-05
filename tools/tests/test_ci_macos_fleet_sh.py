@@ -836,6 +836,43 @@ class MacosFleetSecurityTests(unittest.TestCase):
             re.search(r'^\s*"\$\{SCRIPT_DIR\}/cpu-watcher\.sh" \$\$', runner, re.M),
             "the watcher must not be launched through its own PATH-resolved shebang")
 
+    def test_the_path_is_anchored_to_the_system_directories_before_any_command(self):
+        """The installer resolves sudo, dscl, find, cp, launchctl, plutil and
+        the rest by name, and runs as the administrator. If a directory another
+        account can write sits earlier on the administrator's inherited PATH, it
+        could shadow one of those commands and run in the administrator's
+        context. Both entry points must prepend the system directories to PATH
+        before they resolve any command, so the system binaries always come from
+        a trusted location."""
+        for script in (_FLEET, _MACOS_FLEET):
+            with self.subTest(script=os.path.basename(script)):
+                with open(script) as f:
+                    src = f.read()
+                anchor = 'PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"'
+                self.assertIn(anchor, src,
+                              "PATH must be anchored to the system directories")
+                anchor_at = src.index(anchor)
+                # Nothing may resolve a command through the inherited PATH first:
+                # the first external command either script runs is in SCRIPT_DIR's
+                # `$(dirname ...)`, so the anchor must precede that.
+                script_dir = src.index("SCRIPT_DIR=")
+                self.assertLess(anchor_at, script_dir,
+                                "PATH must be anchored before the first command runs")
+
+    def test_the_monitor_python_tree_is_screened_before_the_monitor_install(self):
+        """install.sh runs `python3 -m tools.fleet.collector` and
+        `tools.fleet.cli` with PYTHONPATH=${CHECKOUT} as the administrator, so a
+        runner-writable module anywhere under tools/fleet is a code path that
+        runs as them. Screening install.sh and render.sh is not enough; the
+        importable tree must be scanned too, before the monitor install runs."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('untrusted_tool_tree "${admin_user}" "${CHECKOUT}/tools/fleet"', install,
+                      "the tools/fleet Python tree must be screened with untrusted_tool_tree")
+        scan = install.find('untrusted_tool_tree "${admin_user}" "${CHECKOUT}/tools/fleet"')
+        run = install.find('"${MONITOR_INSTALL}" ${STORE_FROM:+')
+        self.assertNotEqual(-1, run, "the monitor install invocation must be present")
+        self.assertLess(scan, run, "the Python tree must be screened before the monitor install runs")
+
 
 class ShellSyntaxTests(unittest.TestCase):
     """`bash -n` catches a syntax error in any of the installer scripts without

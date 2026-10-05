@@ -19,6 +19,11 @@ set -euo pipefail
 
 # /bin/bash by absolute path, like the macOS script this hands off to: the
 # macOS install calls sudo, so its shell must not come from an unscreened PATH.
+# PATH is anchored to the system directories for the same reason — this
+# dispatcher resolves dirname and sed by name before it execs the platform
+# script, which re-anchors its own PATH.
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+export PATH
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CI_DIR="$(cd "${SCRIPT_DIR}/../ci" && pwd)"

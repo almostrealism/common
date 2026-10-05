@@ -507,6 +507,77 @@ class AclWriteGrantTreeTests(unittest.TestCase):
         self.assertTrue(reported.endswith(os.path.join(tree, "bin")), reported)
 
 
+class UntrustedToolTreeTests(unittest.TestCase):
+    """Runs ``untrusted_tool_tree`` against a real fixture tree. It is
+    ``untrusted_tool_dir`` applied to every entry in a tree at once, so the
+    monitor install's Python tree (``tools/fleet``) can be screened in one call.
+    ``admin_members`` is replaced so the test decides who the administrators
+    are, and ``acl_write_grant_tree`` — which has its own tests and whose real
+    ``ls -lde`` pipeline needs macOS — is stubbed to empty; the mode and
+    ownership scan that is this helper's own logic runs for real on any host.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.functions = (_trust_functions("untrusted_tool_tree")
+                         + '\nadmin_members() { echo "${FIXTURE_ADMINS}"; }'
+                         + '\nacl_write_grant_tree() { :; }')
+        cls.user = pwd.getpwuid(os.geteuid()).pw_name
+        cls.group = grp.getgrgid(os.getegid()).gr_name
+        cls.other_group = grp.getgrgid(0).gr_name
+
+    def _scan(self, admins="", admin_group=None, find_fails=False):
+        prelude = "find() { return 1; }\n" if find_fails else ""
+        result = subprocess.run(
+            ["bash", "-c", "set -euo pipefail\n" + prelude + self.functions
+             + '\nuntrusted_tool_tree "$1" "$2"', "_", self.user, self.root],
+            capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, FIXTURE_ADMINS=admins,
+                     ADMIN_GROUP=admin_group or self.group))
+        if result.returncode != 0:
+            raise AssertionError(result.stderr)
+        return result.stdout.strip()
+
+    def setUp(self):
+        self.root = os.path.realpath(tempfile.mkdtemp(prefix="fleet-tree-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        os.chmod(self.root, 0o755)
+        self.sub = os.path.join(self.root, "launchd")
+        os.mkdir(self.sub)
+        os.chmod(self.sub, 0o755)
+        self.module = os.path.join(self.root, "collector.py")
+        with open(self.module, "w") as f:
+            f.write("x = 1\n")
+        os.chmod(self.module, 0o644)
+
+    def test_a_tree_only_root_the_owner_and_admins_can_change_is_trusted(self):
+        self.assertEqual("", self._scan())
+
+    def test_a_world_writable_module_is_reported(self):
+        """A module a CI job could rewrite would run as the administrator when
+        the monitor install imports it."""
+        os.chmod(self.module, 0o666)
+        self.assertEqual(self.module, self._scan())
+
+    def test_a_world_writable_subdirectory_is_reported(self):
+        """A writable directory in the tree is enough: another account could
+        drop a module, or a link to one, into it."""
+        os.chmod(self.sub, 0o777)
+        self.addCleanup(os.chmod, self.sub, 0o755)
+        self.assertEqual(self.sub, self._scan())
+
+    def test_group_write_is_allowed_for_the_admin_group_only(self):
+        """A file group-writable by the administrators' group is fine (they can
+        already become root); any other group's write bit is not."""
+        os.chmod(self.module, 0o664)
+        self.assertEqual("", self._scan(admin_group=self.group))
+        self.assertEqual(self.module, self._scan(admin_group=self.other_group))
+
+    def test_a_scan_that_cannot_run_reports_the_tree(self):
+        """A find that cannot run must read as untrusted, never pass."""
+        self.assertEqual(self.root, self._scan(find_fails=True))
+
+
 class ReadEnvTests(unittest.TestCase):
     """Runs ``read_env`` against real env files: it sources them in a clean
     shell and reports, besides the values install uses, any PATH the file

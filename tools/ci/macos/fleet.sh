@@ -62,8 +62,18 @@ set -euo pipefail
 # still worth measuring. uninstall removes the runner's LaunchDaemon and
 # leaves the stage directory, the runner directory and the monitor in place.
 
-# The interpreter is /bin/bash by absolute path, never looked up on PATH: this
-# script calls sudo, and the administrator's PATH is not screened before it runs.
+# The interpreter is /bin/bash by absolute path, never looked up on PATH, and
+# PATH itself is anchored to the system directories below before any command
+# runs: this script resolves sudo, dscl, find, cp, mktemp, launchctl, plutil
+# and the rest by name, and the administrator's inherited PATH is otherwise
+# unscreened, so a directory another account could write, placed earlier on it,
+# could shadow one of those commands and run in the administrator's context
+# before any trust check. The system directories are prepended rather than
+# substituted so a python3 that lives outside them is still found; the host
+# python3 is the one program this script looks up rather than runs from a fixed
+# location, and it is screened with untrusted_program wherever it resolves.
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+export PATH
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKOUT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -337,6 +347,31 @@ untrusted_tool_dir() {
         \( -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
            -o \( "${owners[@]}" \) \) -print 2>/dev/null)" || out="${path}"
     [ -n "${out}" ] || out="$(acl_write_grant "${path}" "${priv}")"
+    [ -z "${out}" ] || echo "${out}"
+}
+
+# Echoes the first file or directory anywhere in the tree at DIR, links aside,
+# that an account other than root, OWNER or an administrator could change — one
+# untrusted_tool_dir would flag by its mode or owner, or one a write-granting
+# ACL entry exposes — and nothing when the whole tree is safe. This is
+# untrusted_tool_dir applied to every entry at once: the monitor install
+# imports and runs the Python under tools/fleet as the administrator, so a
+# single writable module anywhere in that tree is a code path that runs as
+# them. Links are skipped as the runner-tree scan skips them — their own mode
+# bits mean nothing, and a link can only be planted by whoever can write the
+# directory holding it, which the scan reaches on its own. A scan that cannot
+# run reports DIR rather than passing it, as acl_write_grant_tree does.
+# PRIV is as for untrusted_path.
+untrusted_tool_tree() {
+    local owner="$1" dir="$2" priv="${3:-}" member out
+    local -a owners=(! -user root ! -user "${owner}")
+    for member in $(admin_members); do
+        owners+=(! -user "${member}")
+    done
+    out="$(${priv} find -H "${dir}" ! -type l \
+        \( -perm -o+w -o \( -perm -g+w ! -group "${ADMIN_GROUP}" \) \
+           -o \( "${owners[@]}" \) \) -print -quit 2>/dev/null)" || out="${dir}"
+    [ -n "${out}" ] || out="$(acl_write_grant_tree "${dir}" "" "${priv}")"
     [ -z "${out}" ] || echo "${out}"
 }
 
@@ -985,6 +1020,25 @@ EOF
                 errors=$((errors + 1))
             fi
         done
+        # install.sh does not just run those scripts: it runs the Python under
+        # tools/fleet as you — `python3 -m tools.fleet.collector` and
+        # `tools.fleet.cli`, with PYTHONPATH=${CHECKOUT} — to take and read back
+        # the proving sample. The loop above screens install.sh, render.sh and
+        # the plist templates, but not the modules those import and execute:
+        # collector.py, cli.py, store.py and the rest. The tree's ancestors are
+        # already walked with install.sh above, so a writable directory on the
+        # way to it is caught there; its contents are scanned here the same way
+        # the runner tree is scanned, with the administrator's trust boundary. A
+        # single runner-writable module anywhere in it would otherwise run as
+        # you during the sample step.
+        local monitor_py_bad
+        monitor_py_bad="$(untrusted_tool_tree "${admin_user}" "${CHECKOUT}/tools/fleet")"
+        if [ -n "${monitor_py_bad}" ]; then
+            echo "  ✗ ${monitor_py_bad}, under ${CHECKOUT}/tools/fleet, is writable by others or is owned by" >&2
+            echo "      neither you (${admin_user}) nor root; the monitor install imports and runs the Python" >&2
+            echo "      there as you. Keep the checkout under a path only you, root and the administrators can write." >&2
+            errors=$((errors + 1))
+        fi
         # install.sh keeps the monitor's database credential in FLEET_HOME and
         # runs FLEET_HOME's Python as you, so a FLEET_HOME the runner account (or
         # any other) could change — one under the runner's home, say — would
