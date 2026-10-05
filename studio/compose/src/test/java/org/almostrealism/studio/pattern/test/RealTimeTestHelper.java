@@ -243,10 +243,16 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 
 				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 			} finally {
-				Destroyable.destroy(writeOp);
-				Destroyable.destroy(tick);
-				Destroyable.destroy(setupRunnable);
-				Destroyable.destroy(runner);
+				// Best-effort: a release that throws must not skip the remaining resources,
+				// which would leave the runner's producer thread and native buffers live. The
+				// compiled ops are released before the runner they read, newest first.
+				Runnable w = writeOp, t = tick, s = setupRunnable;
+				TemporalCellular r = runner;
+				Destroyable.releaseAll(List.of(
+						() -> Destroyable.destroy(w),
+						() -> Destroyable.destroy(t),
+						() -> Destroyable.destroy(s),
+						() -> Destroyable.destroy(r)));
 			}
 		} finally {
 			// Released here too so the output buffer is freed if runner construction threw.

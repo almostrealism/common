@@ -411,6 +411,92 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * A scene teardown that races an in-progress runner build must wait for that build to finish
+	 * before it returns, so the scene never frees the render buffers the build is still compiling
+	 * against. The build here is paused inside the PDSL output wiring (its {@code getMaster} call),
+	 * after the mixdown model has compiled but before the runner is tracked, and
+	 * {@link AudioSceneRealtimeRunner#destroy()} is started on another thread meanwhile. While the
+	 * build is paused, teardown must not have returned; once the build is released it reaches
+	 * {@code track()}, is refused (teardown has begun), rolls back, and only then does teardown
+	 * return. The refused build propagates an {@link IllegalStateException} and leaves no runner
+	 * tracked. Before the build was tracked, teardown snapshotted no runners and returned at once,
+	 * freeing buffers the build was still reading.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void sceneTeardownWaitsForInProgressRunnerBuild() throws InterruptedException {
+		boolean pdsl = MixdownManager.enablePdslMixdown;
+		MixdownManager.enablePdslMixdown = true;
+		List<WaveOutput> outputs = new ArrayList<>();
+		AudioScene<?> scene = createBaselineScene(getSamplesDir(), SOURCE_COUNT);
+
+		try {
+			applyGenome(scene, 1);
+			AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(scene);
+
+			CountDownLatch building = new CountDownLatch(1);
+			Semaphore proceed = new Semaphore(0);
+			AtomicInteger masterCalls = new AtomicInteger();
+
+			WaveOutput racingOut = new WaveOutput(
+					() -> new File("results/ownership-build-race.wav"), 24, true);
+			outputs.add(racingOut);
+			// The first getMaster() call pauses the build mid-construction (after the model has
+			// compiled, before track()); later calls pass through so rollback can complete.
+			MultiChannelAudioOutput racing = new MultiChannelAudioOutput(racingOut) {
+				@Override
+				public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
+					if (masterCalls.getAndIncrement() == 0) {
+						building.countDown();
+						proceed.acquireUninterruptibly();
+					}
+					return super.getMaster(channel);
+				}
+			};
+
+			AtomicInteger thrown = new AtomicInteger();
+			Thread builder = new Thread(() -> {
+				try {
+					runners.create(racing, null, BUFFER_SIZE);
+				} catch (IllegalStateException e) {
+					if (e.getMessage() != null && e.getMessage().contains("destroyed scene")) {
+						thrown.incrementAndGet();
+					}
+				}
+			}, "runner-build");
+			builder.start();
+			assertTrue("the build should reach the paused output wiring",
+					building.await(120, TimeUnit.SECONDS));
+
+			CountDownLatch teardownDone = new CountDownLatch(1);
+			Thread teardown = new Thread(() -> {
+				runners.destroy();
+				teardownDone.countDown();
+			}, "scene-teardown");
+			teardown.start();
+
+			assertFalse("teardown must not return while a runner build is in progress",
+					teardownDone.await(500, TimeUnit.MILLISECONDS));
+
+			proceed.release();
+			assertTrue("teardown must return once the build finishes",
+					teardownDone.await(60, TimeUnit.SECONDS));
+			builder.join(60_000);
+			teardown.join(60_000);
+
+			assertEquals("the build begun before teardown must be refused once it completes",
+					1, thrown.get());
+			assertEquals("a build refused during teardown must leave no runner tracked",
+					0, runners.getLiveRunnerCount());
+			assertTrue(runners.isClosed());
+		} finally {
+			scene.destroy();
+			Destroyable.destroy(outputs);
+			MixdownManager.enablePdslMixdown = pdsl;
+		}
+	}
+
+	/**
 	 * A runner whose {@code destroy()} hands itself to a caller-supplied destroyer, which
 	 * releases it through the tracking collaborator's {@code release}, so a test can hold the
 	 * release in progress.

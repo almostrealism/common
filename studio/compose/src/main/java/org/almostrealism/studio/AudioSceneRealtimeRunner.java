@@ -87,7 +87,9 @@ import java.util.stream.IntStream;
  * that thread renders into are freed. A runner's {@code destroy()} is idempotent: a runner
  * the caller already released is not released again. A runner stays tracked until its
  * release has finished, so a scene teardown that races a caller's {@code destroy()} waits
- * for that release rather than freeing the scene buffers underneath it.</p>
+ * for that release rather than freeing the scene buffers underneath it. For the same reason a
+ * teardown that races an in-progress {@link #create} waits for the build to finish before
+ * freeing the scene buffers, since a build is not tracked until it completes.</p>
  *
  * @see AudioScene#runnerRealTime(MultiChannelAudioOutput, java.util.List, int)
  * @see MixdownManagerPdslAdapter
@@ -176,6 +178,20 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * teardown has taken its snapshot cannot leave behind a runner nothing will ever stop.
 	 */
 	private boolean closed;
+
+	/**
+	 * Threads currently inside {@link #create}, between registering under the lock and the
+	 * build's final {@link #track} (or its construction-failure rollback). A build is not yet
+	 * represented in {@link #liveRunners} while it is compiling against the scene's buffers, so
+	 * {@link #destroy()} waits for every build on another thread to finish before it snapshots
+	 * the live runners and lets the scene free those buffers — otherwise a build that passed the
+	 * {@code closed} check could still be reading buffers the teardown frees underneath it. A
+	 * list (rather than a set) so a thread that re-enters {@link #create} is counted once per
+	 * entry. The calling thread's own in-progress build is excluded from the wait, so a
+	 * {@link #destroy()} triggered from inside a build (as the refusal path is) does not deadlock
+	 * on itself.
+	 */
+	private final List<Thread> building = new ArrayList<>();
 
 	/**
 	 * Creates a runner for the given scene.
@@ -300,6 +316,30 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	}
 
 	/**
+	 * Blocks until every in-progress {@link #create} on a thread other than the caller's has
+	 * finished — reached its {@link #track} (now refused, since {@link #destroy()} sets
+	 * {@code closed} first) and rolled back, or otherwise returned. Called while holding this
+	 * monitor, with {@code closed} already set, so no further builds begin and the ones already
+	 * running drain. The caller's own build is excluded, so a {@link #destroy()} invoked from
+	 * inside a build does not wait on itself. An interrupt does not abandon the wait (returning
+	 * early would let the scene free buffers a build still reads); it is re-asserted afterwards.
+	 */
+	private void awaitBuilds() {
+		// TODO(review): unbounded wait; a build that hangs (compile/getMaster) hangs scene teardown.
+		Thread current = Thread.currentThread();
+		boolean interrupted = false;
+		while (building.stream().anyMatch(t -> t != current)) {
+			try {
+				wait();
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) current.interrupt();
+	}
+
+	/**
 	 * Destroys every runner built by {@link #create} that is still live, newest first, so
 	 * each stops its producer thread and frees the native memory it owns. Every runner is
 	 * attempted even when an earlier one fails; the first failure is rethrown afterwards
@@ -313,13 +353,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 *
 	 * <p>Destruction is terminal: the snapshot is taken together with marking this
 	 * collaborator closed, so any runner whose build completes afterwards is refused (and
-	 * rolled back) rather than registered where no teardown would reach it.</p>
+	 * rolled back) rather than registered where no teardown would reach it. A build already in
+	 * flight on another thread is waited for before the snapshot (see {@link #awaitBuilds}), so
+	 * the scene never frees the buffers a build is still compiling against.</p>
 	 */
 	@Override
 	public void destroy() {
 		List<Destroyable> runners;
 		synchronized (this) {
 			closed = true;
+			awaitBuilds();
 			runners = new ArrayList<>(liveRunners);
 			runners.removeAll(releasing);
 		}
@@ -337,6 +380,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * Builds a real-time runner using whichever DSP path is currently selected by
 	 * {@link MixdownManager#enablePdslMixdown}.
 	 *
+	 * <p>The build is registered with this collaborator for its whole duration, so a
+	 * {@link #destroy()} racing it from another thread waits for the build to finish before the
+	 * scene frees the buffers the build compiles against — the build is not represented in
+	 * {@link #liveRunners} until its final {@link #track}, so without this wait a build that had
+	 * already passed the {@code closed} check could read buffers freed underneath it. A build
+	 * that completes after teardown has begun is refused by {@link #track} and rolled back.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
@@ -345,23 +395,35 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 */
 	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
-		if (isClosed()) {
-			throw new IllegalStateException("Cannot build a real-time runner for a destroyed scene");
-		}
-
-		List<Integer> resolved = channels != null ? channels :
-				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
-
-		if (MixdownManager.enablePdslMixdown) {
-			if (supportsPdsl(resolved)) {
-				return createPdsl(output, resolved, bufferSize);
+		Thread current = Thread.currentThread();
+		synchronized (this) {
+			if (closed) {
+				throw new IllegalStateException("Cannot build a real-time runner for a destroyed scene");
 			}
 
-			log("channels=" + resolved + " is outside the PDSL mixdown's supported"
-					+ " configurations; using the CellList runner for this build");
+			building.add(current);
 		}
 
-		return createCellList(output, resolved, bufferSize);
+		try {
+			List<Integer> resolved = channels != null ? channels :
+					IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
+
+			if (MixdownManager.enablePdslMixdown) {
+				if (supportsPdsl(resolved)) {
+					return createPdsl(output, resolved, bufferSize);
+				}
+
+				log("channels=" + resolved + " is outside the PDSL mixdown's supported"
+						+ " configurations; using the CellList runner for this build");
+			}
+
+			return createCellList(output, resolved, bufferSize);
+		} finally {
+			synchronized (this) {
+				building.remove(current);
+				notifyAll();
+			}
+		}
 	}
 
 	/**
