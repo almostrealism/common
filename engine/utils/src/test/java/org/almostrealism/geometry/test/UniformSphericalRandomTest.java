@@ -51,19 +51,22 @@ public class UniformSphericalRandomTest extends TestSuiteBase {
 		double sumZ2 = 0.0;
 
 		for (int i = 0; i < SAMPLES; i++) {
-			Vector v = UniformSphericalRandom.getInstance().evaluate(null);
+			// Each sample is a native-memory-backed Vector; close it as soon as its
+			// coordinates have been read so the hardware allocator is not exhausted by
+			// half a million live samples before the statistical assertions run.
+			try (Vector v = UniformSphericalRandom.getInstance().evaluate(null)) {
+				double x = v.getX();
+				double y = v.getY();
+				double z = v.getZ();
 
-			double x = v.getX();
-			double y = v.getY();
-			double z = v.getZ();
+				// Every output must lie on the unit sphere regardless of distribution.
+				double lengthSquared = x * x + y * y + z * z;
+				Assert.assertEquals(1.0, lengthSquared, 0.0001);
 
-			// Every output must lie on the unit sphere regardless of distribution.
-			double lengthSquared = x * x + y * y + z * z;
-			Assert.assertEquals(1.0, lengthSquared, 0.0001);
-
-			sumX2 += x * x;
-			sumY2 += y * y;
-			sumZ2 += z * z;
+				sumX2 += x * x;
+				sumY2 += y * y;
+				sumZ2 += z * z;
+			}
 		}
 
 		double meanX2 = sumX2 / SAMPLES;

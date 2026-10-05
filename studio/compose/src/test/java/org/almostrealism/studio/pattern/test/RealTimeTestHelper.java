@@ -138,9 +138,13 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	 */
 	public AudioScene<?> createSceneWithWorkingSeed(File samplesDir, int sourceCount) {
 		AudioScene<?> searchScene = testBase.createBaselineScene(samplesDir, sourceCount);
-		long seed = testBase.findWorkingGenomeSeed(searchScene, samplesDir);
-		// The search scene only scores seeds; release it before building the returned scene.
-		searchScene.destroy();
+		long seed;
+		try {
+			seed = testBase.findWorkingGenomeSeed(searchScene, samplesDir);
+		} finally {
+			// Release the seed-scoring scene whether or not the search threw.
+			searchScene.destroy();
+		}
 
 		if (seed < 0) {
 			log("No working genome found after " + MAX_GENOME_ATTEMPTS + " attempts");
@@ -196,36 +200,40 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		file.getParentFile().mkdirs();
 
 		WaveOutput output = new WaveOutput(() -> file, 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(output), bufferSize);
 
 		try {
-			runner.setup().get().run();
+			TemporalCellular runner = scene.runnerRealTime(
+					new MultiChannelAudioOutput(output), bufferSize);
 
-			int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
-			int numBuffers = totalFrames / bufferSize;
-			double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
+			try {
+				runner.setup().get().run();
 
-			List<Long> bufferTimings = new ArrayList<>();
-			Runnable tick = runner.tick().get();
+				int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
+				int numBuffers = totalFrames / bufferSize;
+				double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
 
-			long startTime = System.nanoTime();
-			for (int buf = 0; buf < numBuffers; buf++) {
-				long bufferStart = System.nanoTime();
-				tick.run();
-				bufferTimings.add(System.nanoTime() - bufferStart);
+				List<Long> bufferTimings = new ArrayList<>();
+				Runnable tick = runner.tick().get();
+
+				long startTime = System.nanoTime();
+				for (int buf = 0; buf < numBuffers; buf++) {
+					long bufferStart = System.nanoTime();
+					tick.run();
+					bufferTimings.add(System.nanoTime() - bufferStart);
+				}
+				long totalTime = System.nanoTime() - startTime;
+
+				output.write().get().run();
+
+				TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
+				AudioStats stats = analyzeAudio(outputFile);
+
+				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
+			} finally {
+				Destroyable.destroy(runner);
 			}
-			long totalTime = System.nanoTime() - startTime;
-
-			output.write().get().run();
-
-			TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
-			AudioStats stats = analyzeAudio(outputFile);
-
-			return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 		} finally {
-			// Release this render's native memory even if the render threw.
-			Destroyable.destroy(runner);
+			// Released here too so the output buffer is freed if runner construction threw.
 			output.destroy();
 		}
 	}
