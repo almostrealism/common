@@ -15,6 +15,18 @@ set -euo pipefail
 #   RUNNER_LABELS   - Comma-separated extra labels (always includes "self-hosted,linux")
 #   RUNNER_GROUP    - Runner group (default: "Default")
 #   RUNNER_WORKDIR  - Working directory for job execution (default: /home/runner/_work)
+#   RUNNER_DISABLE_UPDATE - "true" registers with --disableupdate, so the agent never
+#                     self-updates; the image must then carry a current agent release.
+#                     Ephemeral runners need this: an agent that updates itself while
+#                     reporting its result can lose the job's completion (see
+#                     tools/ci/rocm/README.md). Default: unset (self-update allowed).
+#   RUNNER_SLOT_DIR - A directory shared by every runner container on this host. When
+#                     set, each container claims its <prefix>-N name by holding an
+#                     exclusive flock on <dir>/<prefix>-N.lock for its whole lifetime,
+#                     so replicas started together can never pick the same name (the
+#                     API-based search below only sees runners that are already
+#                     online). The lock is released when the container exits.
+#                     Default: unset (API-based search).
 
 # ---------- Validation ----------
 for var in GITHUB_OWNER GITHUB_PAT; do
@@ -128,9 +140,30 @@ if [ -f .runner ]; then
 fi
 
 # ---------- Claim a sequential name ----------
-# If RUNNER_NAME is explicitly set, use it. Otherwise find the lowest
-# available <prefix>-N by querying the GitHub runners API.
-if [ -z "${RUNNER_NAME:-}" ]; then
+# If RUNNER_NAME is explicitly set, use it. With RUNNER_SLOT_DIR, claim the
+# lowest <prefix>-N whose host-local lock is free; the lock makes the name
+# exclusive among this host's containers, so --replace below can only evict a
+# registration left behind by a container that has since exited. Otherwise
+# find the lowest available <prefix>-N by querying the GitHub runners API.
+if [ -z "${RUNNER_NAME:-}" ] && [ -n "${RUNNER_SLOT_DIR:-}" ]; then
+    echo "Claiming a runner slot in '${RUNNER_SLOT_DIR}' for prefix '${RUNNER_PREFIX}'..."
+    for i in $(seq 1 100); do
+        CANDIDATE="${RUNNER_PREFIX}-${i}"
+        # The descriptor stays open in this shell, which lives as long as the
+        # runner, so the lock is held until the container exits.
+        exec 9>"${RUNNER_SLOT_DIR}/${CANDIDATE}.lock"
+        if flock -n 9; then
+            RUNNER_NAME="${CANDIDATE}"
+            break
+        fi
+        exec 9>&-
+    done
+
+    if [ -z "${RUNNER_NAME:-}" ]; then
+        echo "ERROR: Could not claim a runner slot in '${RUNNER_SLOT_DIR}' (tried 1-100)."
+        exit 1
+    fi
+elif [ -z "${RUNNER_NAME:-}" ]; then
     # Small random delay to reduce races when many containers start together
     sleep $(( RANDOM % 3 ))
 
@@ -176,6 +209,11 @@ if ! REG_TOKEN=$(request_runner_token "runners/registration-token"); then
 fi
 
 # ---------- Configure the runner ----------
+CONFIG_FLAGS=()
+if [ "${RUNNER_DISABLE_UPDATE:-}" = "true" ]; then
+    CONFIG_FLAGS+=(--disableupdate)
+fi
+
 echo "Registering with ${SCOPE_LABEL} as '${RUNNER_NAME}' [${ALL_LABELS}]..."
 ./config.sh \
     --url "${CONFIG_URL}" \
@@ -186,7 +224,8 @@ echo "Registering with ${SCOPE_LABEL} as '${RUNNER_NAME}' [${ALL_LABELS}]..."
     --work "${RUNNER_WORKDIR}" \
     --replace \
     --unattended \
-    --ephemeral
+    --ephemeral \
+    ${CONFIG_FLAGS[@]+"${CONFIG_FLAGS[@]}"}
 
 # ---------- Graceful shutdown ----------
 cleanup() {

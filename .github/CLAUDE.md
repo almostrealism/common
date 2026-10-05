@@ -510,7 +510,12 @@ already exclude every failure path, so `!cancelled()` does not weaken the gate �
 it is what makes the gate run at all. Never add a lane stage that depends on a
 layer-gated stage without it.
 
-### Three lanes: CPU (linux), GPU (macOS), and CL (linux/ROCm)
+### Lanes: CPU (linux), GPU (macOS), CL (linux/ROCm) and CUDA (linux/NVIDIA)
+
+The CUDA lane (`test-cuda` → `test-media-cuda`) is described in its own section
+below, "What the `test-cuda` and `test-media-cuda` jobs cover". It is admitted
+exactly like the CL lane and runs in parallel with it. The rest of this section
+describes the three lanes that are part of the merge gate.
 
 The self-hosted test jobs run as three lanes, each serialised internally so
 heavy suites do not contend on their fleet:
@@ -621,6 +626,37 @@ Surefire allowlist. A new accelerator lane joins the same way: `analysis.needs`,
 the `Check for incomplete test execution` step, and a Surefire upload the
 allowlist keeps — `tools/tests/test_auto_resolve_test_job_coverage.py` fails
 until all of them are in place.
+
+### What the `test-cuda` and `test-media-cuda` jobs cover
+
+CUDA-backend duplicates of `test-cl` and `test-media-cl`: the same modules,
+groups, memory settings and `AR_HARDWARE_PRECISION=FP32`, with
+`AR_HARDWARE_DRIVER=native,cuda` where the CL jobs use `native,cl`. They are the
+two stages of the CUDA lane (`test-media-cuda` after `test-cuda`, because the
+host has one GPU), on `[self-hosted, linux, ar-ci-cuda]`: an NVIDIA DGX Spark set
+up per `tools/ci/cuda/README.md`. The fleet reuses the Linux CPU fleet's image on
+the host's own Docker and NVIDIA Container Toolkit, so it installs nothing on the
+host.
+
+**Admission** is the CL lane's, for the CL lane's reason. Both stages gate on
+`test`, `test-media`, `test-mac` and `test-media-mac` (success-or-skipped) plus
+`build` and the four validation checks, and `test-media-cuda` gates on those
+upstream lanes directly as well as on `test-cuda`. The two accelerator lanes run
+in parallel on their separate machines; neither gates on the other.
+
+**The CUDA lane is informational for now.** Unlike every other test lane, it is
+**not** in `analysis.needs`, `all-checks`, `auto-resolve.needs`, the
+`Check for incomplete test execution` step, or the Surefire allowlist, so a
+failure there neither blocks a merge nor reaches an agent. It still uploads
+`surefire-cuda-group-*` and `surefire-media-cuda-group-*`, so a run's CUDA
+results can be assessed from its artifacts. This is deliberate and temporary:
+the lane joins the gate, the same way the CL lanes did, once it has a passing
+baseline. Making it required means wiring it into every place listed at the end
+of the previous section, and `tools/tests/test_auto_resolve_test_job_coverage.py`
+fails until all of them are done.
+
+`ar-ci-cuda` is deliberately distinct from `ar-ci` and `ar-ci-cl`, for the reason
+given for `ar-ci-cl` above.
 
 ### What the `docker-build` job covers
 

@@ -565,6 +565,51 @@ public abstract class PdslNode {
 		public List<Expression> getBlocks() { return blocks; }
 	}
 
+	/**
+	 * Repetition over a weight group: {@code stack weights.model.layers as layer { body }}.
+	 *
+	 * <p>The body is built once for each member of the group, in the group's order, with the
+	 * member bound to {@code name}. The number of repetitions is the number of members the data
+	 * holds, and the body has no index to compute with: each repetition differs from the others
+	 * only in the weights it reads. That keeps the text the same shape as a diagram of the
+	 * model, which draws the stack as one box repeated.</p>
+	 */
+	public static class StackStatement extends Statement {
+		/** The weight group whose members the body is repeated over. */
+		private final Expression group;
+
+		/** The name each repetition binds its member to. */
+		private final String name;
+
+		/** Statements forming the repeated body. */
+		private final List<Statement> body;
+
+		/**
+		 * Constructs a stack statement.
+		 *
+		 * @param group  The weight group expression
+		 * @param name   The member name
+		 * @param body   The repeated body
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public StackStatement(Expression group, String name, List<Statement> body, int line, int column) {
+			super(line, column);
+			this.group = group;
+			this.name = name;
+			this.body = body;
+		}
+
+		/** Returns the weight group expression. */
+		public Expression getGroup() { return group; }
+
+		/** Returns the name each repetition binds its member to. */
+		public String getName() { return name; }
+
+		/** Returns the repeated body. */
+		public List<Statement> getBody() { return body; }
+	}
+
 	/** For-loop: {@code for i in start..end { body }}. */
 	public static class ForStatement extends Statement {
 		/** Loop variable name. */

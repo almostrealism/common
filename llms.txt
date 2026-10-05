@@ -101,6 +101,7 @@
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
+- [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Detecting failure-to-skip concealment (Assume/@Disabled gating), skipped-count delta visibility
 - [Profiling](docs/internals/profiling.md): Operation profiling infrastructure
 - [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
 

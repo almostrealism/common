@@ -178,6 +178,42 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
                           "These required test jobs upload no surefire artifact the "
                           "allowlist keeps: %s (allowlist: %s)" % (uncovered, patterns))
 
+    def test_informational_jobs_are_dropped_by_the_surefire_allowlist(self):
+        """A job outside the required set must not have its surefire kept.
+
+        An informational lane (the CUDA lane today) is deliberately absent
+        from `analysis.needs`, so its failures must never reach an agent. A
+        broad allowlist glob can still match its artifact name — the
+        test-media arm was once `surefire-media-*`, which also kept
+        `surefire-media-cuda-group-*` — and hand its XML to the parser.
+        """
+        workflow = _workflow()
+        required = _required_test_jobs(workflow)
+        patterns = _allowlist_case_patterns()
+
+        kept = []
+        checked = 0
+        for job_name in sorted(set(workflow["jobs"]) - required):
+            for name in _surefire_artifact_names(workflow["jobs"][job_name]):
+                example = _concrete_example(name)
+                checked += 1
+                if _matches_allowlist(example, patterns):
+                    kept.append((job_name, example))
+
+        self.assertGreater(checked, 0, "expected at least one informational surefire upload")
+        self.assertEqual([], kept,
+                          "These jobs are not required test jobs, but the allowlist "
+                          "keeps their surefire artifacts: %s (allowlist: %s)" % (kept, patterns))
+
+    def test_media_arm_does_not_match_other_lanes(self):
+        """test-media's arm keeps only its own numbered groups."""
+        patterns = _allowlist_case_patterns()
+        self.assertTrue(_matches_allowlist("surefire-media-0", patterns))
+        self.assertTrue(_matches_allowlist("surefire-media-7", patterns))
+        self.assertFalse(_matches_allowlist("surefire-media-cuda-group-0", patterns))
+        self.assertFalse(_matches_allowlist("surefire-cuda-group-0", patterns))
+        self.assertFalse(_matches_allowlist("surefire-media-", patterns))
+
 
 if __name__ == "__main__":
     unittest.main()

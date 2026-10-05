@@ -258,6 +258,8 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 
 			@Override
 			public PackedCollection evaluate(Object... args) {
+				// TODO(review): returning the shared cache (was a fresh owned collection) aliases
+				// internal state; audit callers that may destroy/mutate the evaluate() result.
 				initValues();
 				return values;
 			}

@@ -73,7 +73,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		// Create synthetic weights
 		log("Creating synthetic weights...");
 		long weightStart = System.currentTimeMillis();
-		StateDictionary stateDict = createRandomWeights(config, 42L);
+		StateDictionary stateDict = createRandomWeights(config, 42L, false);
 		log("Weights created in " + (System.currentTimeMillis() - weightStart) + " ms");
 
 		// Build model (compilation is profiled internally by Qwen3)
@@ -165,13 +165,17 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	}
 
 	/**
-	 * Creates a StateDictionary with random weights matching the given config.
+	 * Creates a StateDictionary with random weights matching the given config, named as a
+	 * Hugging Face checkpoint names them. A Qwen3 checkpoint has QK-norm weights and no
+	 * projection biases; a Qwen2 / Qwen2.5 checkpoint has query, key and value biases and no
+	 * QK-norm weights.
 	 *
 	 * @param config the model configuration
 	 * @param seed random seed for reproducibility
+	 * @param qwen2 whether to create a Qwen2-style checkpoint rather than a Qwen3-style one
 	 * @return StateDictionary populated with random weights
 	 */
-	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
+	static StateDictionary createRandomWeights(Qwen3Config config, long seed, boolean qwen2) {
 		Random random = new Random(seed);
 		Map<String, PackedCollection> weights = new HashMap<>();
 
@@ -204,11 +208,16 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 			weights.put(prefix + ".self_attn.o_proj.weight",
 					randomCollection(random, config.dim, config.dim));
 
-			// QK-Norm weights
-			weights.put(prefix + ".self_attn.q_norm.weight",
-					randomCollection(random, config.headCount, config.headSize));
-			weights.put(prefix + ".self_attn.k_norm.weight",
-					randomCollection(random, config.kvHeadCount, config.headSize));
+			if (qwen2) {
+				weights.put(prefix + ".self_attn.q_proj.bias", randomCollection(random, config.dim));
+				weights.put(prefix + ".self_attn.k_proj.bias", randomCollection(random, kvDim));
+				weights.put(prefix + ".self_attn.v_proj.bias", randomCollection(random, kvDim));
+			} else {
+				weights.put(prefix + ".self_attn.q_norm.weight",
+						randomCollection(random, config.headCount, config.headSize));
+				weights.put(prefix + ".self_attn.k_norm.weight",
+						randomCollection(random, config.kvHeadCount, config.headSize));
+			}
 
 			// FFN weights (SwiGLU)
 			weights.put(prefix + ".mlp.gate_proj.weight",
