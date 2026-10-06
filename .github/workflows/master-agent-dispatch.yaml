@@ -32,7 +32,8 @@ name: "Master Agent Dispatch"
 # hostname; that only tied them to machines the test lanes need, and brought
 # host-specific problems (an OS-bundled Python too old for the coverage
 # scripts) that a hosted runner does not have. Where the *agent* runs is a
-# separate question, answered per job by REQUIRED_LABELS (see performance-qa).
+# separate question, answered per job by REQUIRED_LABELS on the submission
+# and REQUIRED_LABELS_JSON on the workstream (see performance-qa).
 
 on:
   push:
@@ -1380,6 +1381,11 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
+          # Every later job on this workstream — a follow-up asked for on the
+          # PR, a review, a fix for a failing check — needs Metal as much as
+          # the first one does, and only the workstream's own labels reach
+          # them. Keep this equal to REQUIRED_LABELS on the submission below.
+          REQUIRED_LABELS_JSON: '{"platform": "macos"}'
         run: |
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
@@ -1393,11 +1399,11 @@ jobs:
           chmod +x ./tools/ci/prompts/build-performance-prompt.sh
           ./tools/ci/prompts/build-performance-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      # REQUIRED_LABELS is a job-level override, so it holds even though
-      # the workstream registered above carries no labels of its own; the
-      # controller matches it against the Node's auto-detected platform
-      # label. "effort": "max" is the Claude Code --effort level, the
-      # top of the runner's accepted range.
+      # REQUIRED_LABELS repeats the workstream's labels as a job-level
+      # override, so this first job is pinned even if the workstream
+      # predates them; the controller matches it against the Node's
+      # auto-detected platform label. "effort": "max" is the Claude Code
+      # --effort level, the top of the runner's accepted range.
       - name: Submit performance agent job
         if: steps.decide.outputs.run == 'true'
         env:

@@ -372,7 +372,7 @@ class TestMethodProtection implements ConsoleFeatures {
      * @param sha the full commit id
      * @return the shortened id
      */
-    private static String shortSha(String sha) {
+    static String shortSha(String sha) {
         return sha.length() > 7 ? sha.substring(0, 7) : sha;
     }
 
