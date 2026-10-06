@@ -175,7 +175,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			throw e;
 		}
 
-		completions.add(new Completion(submission.completion, event, submission.onComplete));
+		completions.add(new Completion(submission.completion, event, submission.onComplete, null));
 	}
 
 	/**
@@ -267,8 +267,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			}
 		}
 
-		if (failure != null) submission.completion.fail(failure);
-		completions.add(new Completion(submission.completion, event, submission.onComplete));
+		completions.add(new Completion(submission.completion, event, submission.onComplete, failure));
 	}
 
 	/**
@@ -422,7 +421,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	/** A launched (or failed) submission whose completion the completion thread will observe. */
 	private static final class Completion {
 		/** Tells the completion thread to stop. */
-		private static final Completion STOP = new Completion(null, null, null);
+		private static final Completion STOP = new Completion(null, null, null, null);
 
 		/** The submission's completion. */
 		private final CudaSemaphore completion;
@@ -430,6 +429,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		private final CUEvent event;
 		/** The completion callback, or {@code null}. */
 		private final Runnable onComplete;
+		/** The failure the submission settles with before its callback runs, or {@code null}. */
+		private final Throwable failure;
 
 		/**
 		 * Creates a completion record.
@@ -437,11 +438,15 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		 * @param completion the submission's completion
 		 * @param event      the event recorded behind the work, or {@code null}
 		 * @param onComplete the completion callback, or {@code null}
+		 * @param failure    the failure the submission already carries (a failed foreign dependency
+		 *                   or a failed deferred launch), or {@code null}; reported as the primary
+		 *                   failure so a later callback failure is suppressed onto it rather than lost
 		 */
-		private Completion(CudaSemaphore completion, CUEvent event, Runnable onComplete) {
+		private Completion(CudaSemaphore completion, CUEvent event, Runnable onComplete, Throwable failure) {
 			this.completion = completion;
 			this.event = event;
 			this.onComplete = onComplete;
+			this.failure = failure;
 		}
 
 		/**
@@ -453,7 +458,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		 * whether or not waiting for it failed.
 		 */
 		private void settle() {
-			Throwable failure = null;
+			Throwable failure = this.failure;
 
 			if (event != null) {
 				try {

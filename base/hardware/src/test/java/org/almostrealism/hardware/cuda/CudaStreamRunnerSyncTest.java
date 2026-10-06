@@ -479,6 +479,38 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * When a held submission's foreign dependency fails and its completion callback then fails too,
+	 * the submission's semaphore reports the dependency failure first and carries the callback failure
+	 * as suppressed. The dependency failure is recorded before the callback runs, so this guards
+	 * against the callback failure being silently dropped because a failure was already recorded.
+	 */
+	@Test(timeout = 30000)
+	public void dependencyFailureKeepsCallbackFailureSuppressed() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		Semaphore held = runner.submit(null, stream -> events.add("held"), pending,
+				() -> { throw new IllegalArgumentException("release failed"); });
+
+		pending.fail(new IllegalStateException("dependency failed"));
+		pending.countDown();
+
+		try {
+			held.waitFor();
+			Assert.fail("The dependency failure must propagate");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("dependency failed", expected.getMessage());
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalArgumentException);
+			Assert.assertEquals("release failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		Assert.assertFalse("A failed dependency must not launch its command", events.contains("held"));
+		runner.destroy();
+	}
+
+	/**
 	 * Interrupting the completion thread while a completion is still queued must not leave that
 	 * submission's semaphore un-settled: its callback still runs and {@link Semaphore#waitFor()}
 	 * returns rather than hanging forever. The first submission holds the completion thread inside
