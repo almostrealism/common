@@ -299,11 +299,27 @@ if [ "$ADDED_SKIP_PROPS" -gt 0 ]; then
 fi
 ```
 
-Fixtures for `test-detect-test-hiding.sh`: a widened `assumeTrue(x)` →
+Both greps match only when the `assume…(` or `@TestProperties(` token is itself
+on an added line. A widening split across lines — the opener left on an unchanged
+line and only a continuation changed, e.g. a `&& libraryDeclared` appended to the
+second line of a multiline `Assume.assumeTrue(` call, or a `knownIssue = true`
+added on a continuation line of an existing multiline `@TestProperties(` block —
+carries no `assume…(`/`@TestProperties(` token on its added lines, so Pattern 13
+does not see it. This is a known textual blind spot, the same class as the
+environment-keyed `return` above: Pattern 13 is a cheap best-effort check, not a
+complete one. The multiline widening is closed by Control C's normalised skip-site
+records (each `Assume` condition's normalised text and each `@TestProperties` flag,
+extracted from the whole annotation block rather than a single diff line) and by
+Control B's executed-set delta — neither depends on which line a change lands on.
+
+Fixtures for `test-detect-test-hiding.sh`: a single-line widened `assumeTrue(x)` →
 `assumeTrue(x && y)` in a base helper (flagged); `@TestProperties(knownIssue = true)`
-added to a base test (flagged); a deleted base test file (flagged); a pure
-`git mv` of a test file (not flagged); a brand-new helper using `assumeTrue`
-(not flagged).
+added on one line to a base test (flagged); a deleted base test file (flagged); a
+pure `git mv` of a test file (not flagged); a brand-new helper using `assumeTrue`
+(not flagged); a multiline `Assume.assumeTrue(` whose condition grows only on a
+continuation line, and a `knownIssue = true` added on a continuation line of an
+existing multiline `@TestProperties(` block (both NOT flagged by Pattern 13 — the
+blind spot above; they belong to the Control B and Control C fixtures instead).
 
 Under the CI-file lock: must land on a `ci/...` branch, like B and C.
 
@@ -313,13 +329,19 @@ Under the CI-file lock: must land on a `ci/...` branch, like B and C.
 base-branch test methods, at staging time, before the commit exists. It is the
 one place a control acts *on the agent session itself*. Two extensions:
 
-1. **Count skip sites always, not only under the test lock.** For every staged
-   test source that existed at the merge-base, compare its skip-site count
-   (Control C's extraction) between the merge-base and the working tree. Refuse
-   to stage a file whose count grew in base-branch methods, and say why, in the
-   same way the CI-file lock reports a refused file. The agent learns at once
-   that a skip is not an available move, rather than learning it from a red
-   pipeline after the commit.
+1. **Compare skip-site records always, not only under the test lock.** For every
+   staged test source that existed at the merge-base, extract its skip-site
+   records (Control C's extraction, including each `Assume` entry's normalised
+   condition text) from the merge-base and from the working tree, and refuse to
+   stage a file that introduces a record absent at the merge-base in a base-branch
+   method — a new skip site, or a *widened condition* on an existing one
+   (incident 2: `assumeTrue(a)` → `assumeTrue(a && b)`, which keeps the site key
+   but changes its condition). Say why, in the same way the CI-file lock reports a
+   refused file. Comparing a bare site *count* would miss the widening, since the
+   number of sites is unchanged; comparing records catches it, which is what the
+   verification plan below requires even without `protectTestFiles`. The agent
+   learns at once that a skip is not an available move, rather than learning it
+   from a red pipeline after the commit.
 2. **Lock helpers in `*TestBase` files under `protectTestFiles`.** The lock
    currently compares only `@Test` method records. Helpers in a `*TestBase` are
    shared by many tests and are where incident-shaped pressure lands, so for a
@@ -391,12 +413,17 @@ the failure mode this document exists to prevent.
    uses `assumeTrue`. Run `test-branch-checks.sh` to confirm the existing twelve
    patterns do not regress.
 2. Control B: against a stored `master` surefire artifact, confirm the delta
-   names a test moved to `@Disabled`, to `knownIssue = true`, behind a widened
-   helper assumption, and into a deleted file. Confirm it is silent when the
-   executed set is unchanged, and when a test is newly added.
+   names a test moved to `@Disabled`, to `knownIssue = true` (both single-line
+   and on a continuation line of a multiline `@TestProperties(` block), behind a
+   widened helper assumption (both single-line and split across lines), and into
+   a deleted file. Confirm it is silent when the executed set is unchanged, and
+   when a test is newly added.
 3. Control C: seed the ledger from the current tree, then confirm that adding an
    `Assume` to any helper fails, removing one passes, and editing a ledgered
-   condition fails.
+   condition fails — including a condition widened only on a continuation line of
+   a multiline `Assume`/`@TestProperties` block, which the normalised-record
+   extraction must catch where the line-based Pattern 13 does not.
 4. Control D: in `FileStager` unit tests, confirm a widened helper assumption is
-   refused at staging with and without `protectTestFiles`, and that a
-   merge-carried skip site from the base branch is staged.
+   refused at staging with and without `protectTestFiles` — including a widening
+   that changes only a continuation line, which a site-count comparison would
+   miss — and that a merge-carried skip site from the base branch is staged.
