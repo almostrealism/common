@@ -44,10 +44,20 @@ services:
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-dgx-spark}
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
-      - RUNNER_LABELS=ar-ci-cuda
+      # ar-ci-cuda is the capability label: the CUDA jobs require it, and only
+      # this fleet (which proves the GPU in its preflight) carries it.
+      # RUNNER_EXTRA_LABELS lets a GPU host also serve other lanes; set to ar-ci,
+      # these runners also take the CPU lane (test, test-media). That lane runs
+      # with AR_HARDWARE_DRIVER=native, but the CUDA bridge tests in base/hardware
+      # use the GPU directly whenever one is present, so this container must be
+      # a complete CUDA environment for every job it takes, not only CUDA jobs.
+      - RUNNER_LABELS=ar-ci-cuda${RUNNER_EXTRA_LABELS:+,${RUNNER_EXTRA_LABELS}}
       - RUNNER_DISABLE_UPDATE=true
       - RUNNER_SLOT_DIR=/var/lock/ar-ci-slots
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # No LD_LIBRARY_PATH here: some workflow steps overwrite it. NVRTC finds
+      # libnvrtc-builtins through the container's loader cache instead, which
+      # cuda-preflight.sh registers the mounted toolkit in at startup.
     volumes:
       # Shared by every replica: each holds a lock on its <prefix>-N slot, so
       # "fleet.sh up N" cannot start two runners under the same name.
@@ -83,7 +93,7 @@ services:
               count: all
               capabilities: [gpu]
         limits:
-          memory: ${RUNNER_MEMORY_LIMIT:-48g}
+          memory: ${RUNNER_MEMORY_LIMIT:-32g}
           cpus: "${RUNNER_CPU_LIMIT:-12}"
     logging:
       driver: json-file
