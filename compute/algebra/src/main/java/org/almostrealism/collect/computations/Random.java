@@ -258,9 +258,6 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 
 			@Override
 			public PackedCollection evaluate(Object... args) {
-				// TODO(review): evaluate() now returns the shared internal cache; audit callers of
-				// rand()/randn()/Random.get().evaluate() that mutate or destroy the result and switch
-				// them to into(new PackedCollection(shape)).
 				initValues();
 				return values;
 			}
