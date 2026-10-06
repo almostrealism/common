@@ -387,6 +387,21 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * already passed the {@code closed} check could read buffers freed underneath it. A build
 	 * that completes after teardown has begun is refused by {@link #track} and rolled back.</p>
 	 *
+	 * <p><b>Shared scene state — one live CellList runner.</b> Every build rebuilds the scene's
+	 * shared render state through {@link AudioScene#getCells} (CellList path) or
+	 * {@link AudioScene#prepareRenderBuffers} (PDSL path); both destroy the scene's current
+	 * {@code activeCells} before producing the new state. The CellList path captures that
+	 * {@code activeCells} as the cell graph its runner ticks, so a subsequent build on the same
+	 * scene destroys the cell graph a previously built CellList runner still holds. Tracking a
+	 * runner keeps teardown correct (every live runner is stopped and released, in any
+	 * combination), but it does not give two CellList runners independent cell state: at most one
+	 * live CellList runner is valid at a time. A caller must therefore destroy a CellList runner
+	 * before building another runner on the same scene, rather than tick it across a later build.
+	 * The established usages satisfy this — {@link #render} builds, uses and destroys its runner
+	 * within the call, and a reused runner (driven by {@link AudioScene#assignGenome}) is built
+	 * once and never rebuilt. A PDSL runner does not capture {@code activeCells}, so it may
+	 * coexist with one CellList runner.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
