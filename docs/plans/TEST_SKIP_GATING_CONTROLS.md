@@ -19,8 +19,11 @@ are proposed and outstanding rather than describing the tree as it is today.
 
 Ordered by leverage. B and C are the load-bearing pair; A and D are earlier,
 cheaper trip-wires; E is process and is known to be insufficient on its own.
+One ordering constraint cuts across the leverage ranking: Control A must land
+with or before Control B, because B defers deliberate deletions and renames
+(rows 13–15) to A's honest-move check and cannot close those rows without it.
 
-### Control B — executed-test set delta (visibility; closes every route that stops a test executing)
+### Control B — executed-test set delta (visibility; closes every route that stops a test executing, and deletions/renames once Control A lands)
 
 Surefire writes one `<testcase classname=... name=...>` per test to
 `target/surefire-reports/TEST-*.xml`, with a `<skipped/>` child when it was
@@ -41,12 +44,20 @@ skipped. Per test lane:
 3. Every id in `master − branch` is a test that stopped executing: it was
    skipped, deleted, renamed away, excluded by the pom, or filtered by the
    machinery. Write each one into the job summary, and fail the lane unless the
-   branch also removed that test's source method (a deliberate deletion, which
-   rows 13–15 then hold to Control A and review).
+   branch also removed that test's source method (a deliberate deletion). That
+   exemption is a blanket pass on deletions and renames until Control A exists:
+   on its own, B reports a deleted or renamed test (rows 13–15) in the summary
+   but does not fail on it, so it does not close those rows. Control A's
+   honest-move check — a removed method must reappear with an identical body in a
+   file the branch added — is what separates a legitimate move from a deletion
+   that hides a failing test, so **Control A is a prerequisite for B to close
+   rows 13–15** and must land with or before B.
 
 Compare **sets of ids, not counts**. A count delta lets one newly skipped test
 hide behind one newly added test. This is the only control that needs no model
-of how the skip was produced. It catches rows 3–10 and 13–17, and the GPU-lane
+of how the skip was produced. On its own it closes rows 3–10 and 16–17; rows
+13–15 (deletion and rename) are surfaced in the summary but, because of the
+deletion exemption above, are only closed once Control A lands. The GPU-lane
 skip from incident 1 would have appeared as two named tests that stopped
 executing on `test-media-mac`.
 
@@ -232,9 +243,9 @@ Outstanding, in recommended order:
 
 | Item | Where it lands | Why |
 | --- | --- | --- |
-| Control B — executed-test set delta | `ci/...` branch | Closes every route of the inventory that stops a test executing (rows 3–10 and 13–17), including ones not yet thought of |
+| Control A — `D`/`R` selection fix and Pattern 13 | `ci/...` branch | Small; closes rows 3–8 and 13–15 in the existing detector, and its honest-move check is the prerequisite for Control B to fail on a hidden deletion/rename — land it with or before B |
+| Control B — executed-test set delta | `ci/...` branch | Closes rows 3–10 and 16–17 on its own, and rows 13–15 (deletion/rename) once Control A lands; surfaces every route of the inventory that stops a test executing, including ones not yet thought of |
 | Control C — skip-site ledger | `ci/...` branch | Turns every new skip into a human-gated declaration |
-| Control A — `D`/`R` selection fix and Pattern 13 | `ci/...` branch | Small; closes rows 3–8 and 13–15 in the existing detector |
 | Control D — harness skip refusal | `feature/...` branch in `flowtree/runtime` | Stops the move inside the session, before a commit exists |
 | Python skip markers (row 19) in `detect-python-test-hiding.sh` | `ci/...` branch | Same rule, Python side |
 | Protect the skip machinery (row 16): add `TestUtils`, `TestDepthRule`, `TestSuiteBase`, `TestSettings` to the enforcement-tampering list | `ci/...` branch | Editing the skip machinery skips any test |
