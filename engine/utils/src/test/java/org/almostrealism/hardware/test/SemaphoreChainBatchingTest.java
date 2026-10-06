@@ -153,6 +153,73 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies the boundaries of {@link MetalSemaphore#merge(Semaphore)}: merging is symmetric
+	 * within one runner, never merges a completion of another runner or of any other provider
+	 * (so {@link Semaphore#all(List)} still composes them), and carries the highest value from
+	 * an earlier command buffer through repeated merges, including when the earlier side is
+	 * itself a merged completion that shares the later one's buffer.
+	 */
+	@Test(timeout = 60000)
+	public void metalMergeBoundaries() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandQueue queueA = metal.getMtlDevice().newCommandQueue();
+		MTLCommandQueue queueB = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner runnerA = new MetalCommandRunner(queueA);
+		MetalCommandRunner runnerB = new MetalCommandRunner(queueB);
+
+		try {
+			MetalSemaphore a1 = runnerA.submit(null, buffer -> { }, null, null);
+			MetalSemaphore a2 = runnerA.submit(null, buffer -> { }, null, null);
+			MetalSemaphore b1 = runnerB.submit(null, buffer -> { }, null, null);
+			assertTrue("Both dispatches must share the open buffer",
+					a1.getCommandBuffer() == a2.getCommandBuffer());
+
+			assertTrue("Merging must yield the later dispatch", a1.merge(a2) == a2);
+			assertTrue("Merging must be symmetric", a2.merge(a1) == a2);
+			assertEquals(0.0, (double) a2.getPriorBufferValue());
+
+			assertTrue("Another runner's completion must not merge", a2.merge(b1) == null);
+			assertTrue("A foreign completion must not merge",
+					a2.merge(new DefaultLatchSemaphore((Semaphore) null, 0)) == null);
+			Semaphore mixed = Semaphore.all(List.of(a2, b1));
+			assertTrue("Unmergeable completions must still be composed", mixed != a2 && mixed != b1);
+
+			// A foreign dependency commits the open buffer, so a3 and a4 share a new one
+			MetalSemaphore a3 = runnerA.submit(null, buffer -> { }, () -> { }, null);
+			MetalSemaphore a4 = runnerA.submit(null, buffer -> { }, null, null);
+			assertTrue(a3.getCommandBuffer() != a2.getCommandBuffer());
+			assertTrue(a3.getCommandBuffer() == a4.getCommandBuffer());
+
+			MetalSemaphore m1 = (MetalSemaphore) a1.merge(a3);
+			assertEquals((double) a3.getValue(), (double) m1.getValue());
+			assertEquals((double) a1.getValue(), (double) m1.getPriorBufferValue());
+
+			MetalSemaphore m2 = (MetalSemaphore) m1.merge(a2);
+			assertEquals((double) a3.getValue(), (double) m2.getValue());
+			assertEquals((double) a2.getValue(), (double) m2.getPriorBufferValue());
+			assertTrue("A merge that adds nothing must return the existing completion", m2.merge(a1) == m2);
+
+			MetalSemaphore m3 = (MetalSemaphore) a4.merge(m2);
+			assertEquals((double) a4.getValue(), (double) m3.getValue());
+			assertEquals((double) a2.getValue(), (double) m3.getPriorBufferValue());
+			assertTrue(m3.getCommandBuffer() == a4.getCommandBuffer());
+
+			mixed.waitFor();
+			m3.waitFor();
+		} finally {
+			runnerA.destroy();
+			runnerB.destroy();
+			queueA.release();
+			queueB.release();
+		}
+	}
+
+	/**
 	 * Verifies that a merged completion spanning a commit boundary still orders a dependent
 	 * dispatch after its earlier member. The earlier copy is held on the GPU by a foreign gate
 	 * in a committed buffer while the later member is in the open buffer, where a dependency

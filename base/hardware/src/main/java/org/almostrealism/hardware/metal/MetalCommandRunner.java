@@ -38,9 +38,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * single-threaded executor, so independent dispatches accumulate into one command buffer. Each
  * dispatch returns a {@link MetalSemaphore} — the operation's single completion handle — and
  * signals a {@link MTLEvent} timeline value. Ordering between dependent dispatches is expressed at
- * the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency, the open
- * buffer is committed and a fresh buffer encodes a wait for the dependency's event value, so the
- * GPU serializes the dependent after the dependency across buffers without a host stall.</p>
+ * the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency of this
+ * runner, nothing is committed. A dependency in the still-open buffer is ordered by in-buffer hazard
+ * tracking and costs no wait (only a merged completion's
+ * {@link MetalSemaphore#getPriorBufferValue() prior buffer value}, if any, is waited for); a
+ * dependency in an earlier, committed buffer is honored by encoding a wait for its event value, so
+ * the GPU serializes the dependent after the dependency across buffers without a host stall. Only a
+ * foreign dependency commits the open buffer first (see {@link #submit}).</p>
  *
  * <p>{@link MetalSemaphore#waitFor()} is the only thing that blocks the host: it commits the
  * dispatch's buffer if still open and waits for it (and every buffer committed before it, since the
