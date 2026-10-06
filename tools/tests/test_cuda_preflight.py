@@ -33,6 +33,23 @@ _ENTRYPOINT_STUB = """#!/usr/bin/env bash
 touch "${STUB_MARKER}"
 """
 
+# Stands in for ldconfig: rebuilding the cache is a no-op (or fails, under
+# STUB_LDCONFIG_FAIL), and `-p` lists every library in the directories the
+# preflight registered in STUB_LD_CONF, in ldconfig's own format. Under
+# STUB_LDCONFIG_IGNORE the cache never picks the registration up.
+_LDCONFIG_STUB = """#!/usr/bin/env bash
+if [ "${1:-}" = "-p" ]; then
+    [ -n "${STUB_LDCONFIG_IGNORE:-}" ] && exit 0
+    while read -r dir; do
+        for lib in "${dir}"/*.so*; do
+            [ -e "${lib}" ] && echo "	$(basename "${lib}") (libc6) => ${lib}"
+        done
+    done < "${STUB_LD_CONF}"
+    exit 0
+fi
+[ -z "${STUB_LDCONFIG_FAIL:-}" ]
+"""
+
 _DOCKER_STUB = """#!/usr/bin/env bash
 {
     echo "AR_CI_SAMPLES_GID=${AR_CI_SAMPLES_GID:-}"
@@ -58,6 +75,11 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
         self.cuda_root = os.path.join(self.tmp, "cuda")
         os.makedirs(os.path.join(self.cuda_root, "lib64"))
         open(os.path.join(self.cuda_root, "lib64", "libnvrtc.so.12"), "w").close()
+        open(os.path.join(self.cuda_root, "lib64", "libnvrtc-builtins.so.12.0"), "w").close()
+        self.ldconfig = os.path.join(self.bin_dir, "ldconfig")
+        _write_executable(self.ldconfig, _LDCONFIG_STUB)
+        self.ld_conf = os.path.join(self.tmp, "ar-ci-cuda.conf")
+        self.ldconfig_env = {}
         self.samples = os.path.join(self.tmp, "samples")
         os.mkdir(self.samples)
         self.entrypoint = os.path.join(self.tmp, "entrypoint.sh")
@@ -82,8 +104,15 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
             "PREFLIGHT_SAMPLES_ROOT": self.samples,
             "PREFLIGHT_RUNNER_ENTRYPOINT": self.entrypoint,
             "PREFLIGHT_FAIL_PAUSE_SECONDS": "0",
+            "PREFLIGHT_LD_CONF": self.ld_conf,
+            "PREFLIGHT_LDCONFIG": self.ldconfig,
+            "PREFLIGHT_SUDO": "",
+            "STUB_LD_CONF": self.ld_conf,
             "STUB_MARKER": self.marker,
+            # A step-level value that omits the toolkit, as the CPU lane sets it.
+            "LD_LIBRARY_PATH": "/opt/other",
         }
+        env.update(self.ldconfig_env)
         proc = subprocess.run(["bash", _PREFLIGHT], env=env, capture_output=True,
                               text=True, timeout=60)
         return proc.returncode, proc.stdout + proc.stderr
@@ -144,6 +173,49 @@ class CudaPreflightSampleLibraryTest(unittest.TestCase):
         code, output = self._run()
         self.assertNotEqual(0, code)
         self.assertIn("NVRTC was not found under " + self.cuda_root, output)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_missing_nvrtc_builtins_does_not_register(self):
+        """NVRTC cannot compile anything without its builtins library."""
+        self._stage()
+        os.remove(os.path.join(self.cuda_root, "lib64", "libnvrtc-builtins.so.12.0"))
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("No readable libnvrtc-builtins", output)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_toolkit_is_registered_in_the_loader_cache(self):
+        """NVRTC loads its builtins by name, so the loader cache must resolve them.
+
+        This is the failure CI hit: libnvrtc itself loaded through the bridge's
+        runpath, but every compile failed with NVRTC_ERROR_BUILTIN_OPERATION_FAILURE
+        because nothing told the container's loader where libnvrtc-builtins was,
+        and the CPU lane's steps overwrite LD_LIBRARY_PATH. The fixture's
+        LD_LIBRARY_PATH omits the toolkit for that reason.
+        """
+        self._stage()
+        code, output = self._run()
+        self.assertEqual(0, code, output)
+        lib_dir = os.path.realpath(os.path.join(self.cuda_root, "lib64"))
+        with open(self.ld_conf) as f:
+            self.assertEqual(lib_dir, f.read().strip())
+        self.assertIn("registered in the loader cache from " + lib_dir, output)
+        self.assertTrue(os.path.exists(self.marker))
+
+    def test_failed_cache_rebuild_does_not_register(self):
+        self._stage()
+        self.ldconfig_env = {"STUB_LDCONFIG_FAIL": "1"}
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("Could not register", output)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_cache_that_does_not_resolve_the_builtins_does_not_register(self):
+        self._stage()
+        self.ldconfig_env = {"STUB_LDCONFIG_IGNORE": "1"}
+        code, output = self._run()
+        self.assertNotEqual(0, code)
+        self.assertIn("does not resolve libnvrtc-builtins", output)
         self.assertFalse(os.path.exists(self.marker))
 
 

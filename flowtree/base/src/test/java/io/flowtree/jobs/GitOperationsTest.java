@@ -224,6 +224,67 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * {@link GitOperations#fingerprintUncommittedState} changes exactly when
+     * uncommitted work outside scratch space changes: content edits, mode
+     * changes, new and deleted files all move it; rewriting excluded paths
+     * does not, unless the caller names the path as an extra.
+     */
+    @Test(timeout = 10000)
+    public void fingerprintTracksUncommittedWorkOutsideScratchSpace() throws Exception {
+        Path repo = initRepo();
+        Path tracked = repo.resolve("tracked.txt");
+        Files.writeString(tracked, "v1");
+        gitRun(repo, "add", "tracked.txt");
+        gitRun(repo, "commit", "-m", "seed");
+        String dir = repo.toString();
+
+        String clean = GitOperations.fingerprintUncommittedState(dir);
+        Assert.assertEquals("an unchanged tree must fingerprint identically",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+
+        Files.writeString(tracked, "v2");
+        String edited = GitOperations.fingerprintUncommittedState(dir);
+        assertFalse("a content edit must change the fingerprint", clean.equals(edited));
+        Files.writeString(tracked, "v3");
+        assertFalse("a second edit to the same file must change it again",
+                edited.equals(GitOperations.fingerprintUncommittedState(dir)));
+
+        Files.writeString(tracked, "v1");
+        Assert.assertEquals("restoring the committed content restores the fingerprint",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+
+        Files.createDirectories(repo.resolve("target"));
+        Files.writeString(repo.resolve("target/Out.class"), "bytes");
+        Files.writeString(repo.resolve("commit.txt"), "message");
+        Assert.assertEquals("scratch-space writes must not change the fingerprint",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+        assertFalse("a named extra path counts even in scratch space",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir, "commit.txt")));
+
+        assertTrue(tracked.toFile().setExecutable(true));
+        assertFalse("a mode-only change must change the fingerprint",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir)));
+        assertTrue(tracked.toFile().setExecutable(false));
+
+        Files.delete(tracked);
+        assertFalse("deleting a tracked file must change the fingerprint",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir)));
+    }
+
+    /** A directory that is not a git working tree cannot be fingerprinted. */
+    @Test(timeout = 10000)
+    public void fingerprintFailsOutsideAWorkingTree() throws Exception {
+        Path dir = Files.createTempDirectory("git-ops-not-a-repo-");
+        tempDirs.add(dir);
+        try {
+            GitOperations.fingerprintUncommittedState(dir.toString());
+            Assert.fail("fingerprinting a directory outside a working tree must throw");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("git status"));
+        }
+    }
+
+    /**
      * Tests that {@link GitOperations#listFilesOnRef} returns the files tracked
      * on a ref, filtered by suffix, and ignores untracked working-tree files.
      */

@@ -22,14 +22,19 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -277,6 +282,52 @@ public class GitOperations implements ConsoleFeatures {
                     + (workingDirectory != null ? workingDirectory : "."));
         }
         return result.getFiles();
+    }
+
+    /**
+     * Returns a digest of the working tree's uncommitted state: the path,
+     * current content and executable bit (which git tracks, so a mode-only
+     * change is a change) of every file {@code git status} reports as changed,
+     * except the scratch paths {@link #isExcludedPath(String)} names (session
+     * output, build output, harness artifacts), plus the given extra paths,
+     * which are included whether git reports or ignores them. Two equal
+     * fingerprints mean nothing uncommitted outside scratch space changed in
+     * between; it says nothing about committed history.
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @param extraPaths       repository-relative paths to include whether or
+     *                         not git reports them
+     * @return a hex SHA-256 digest of the uncommitted state
+     * @throws IOException if the {@code git status} query fails or a changed
+     *                     file cannot be read
+     */
+    public static String fingerprintUncommittedState(String workingDirectory, String... extraPaths)
+            throws IOException {
+        Set<String> paths = new TreeSet<>();
+        for (String path : requireChangedFiles(workingDirectory)) {
+            if (!isExcludedPath(path)) paths.add(path);
+        }
+        paths.addAll(Arrays.asList(extraPaths));
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 is unavailable", e);
+        }
+        File root = workingDirectory != null ? new File(workingDirectory) : new File(".");
+        for (String path : paths) {
+            digest.update(path.getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) 0);
+            File file = new File(root, path);
+            // A length prefix keeps one file's bytes from reading as the next
+            // file's path; -1 marks a path with no regular file behind it.
+            byte[] content = file.isFile() ? Files.readAllBytes(file.toPath()) : null;
+            digest.update(ByteBuffer.allocate(Long.BYTES).putLong(content != null ? content.length : -1).array());
+            if (content != null) digest.update(content);
+            digest.update((byte) (file.canExecute() ? 1 : 0));
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     /**
