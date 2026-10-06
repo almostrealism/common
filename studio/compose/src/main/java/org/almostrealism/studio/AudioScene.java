@@ -143,7 +143,7 @@ import java.util.stream.IntStream;
  * runner.setup().get().run();
  * Runnable tick = runner.tick().get();
  * for (int i = 0; i < bufferCount; i++) tick.run();
- * runner.destroy();
+ * Destroyable.destroy(runner);
  * }</pre>
  *
  * <h2>Pattern Rendering Flow</h2>
