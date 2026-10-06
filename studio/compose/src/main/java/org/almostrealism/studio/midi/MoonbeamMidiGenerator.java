@@ -18,6 +18,7 @@ package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -26,7 +27,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Consumer;
 import javax.sound.midi.InvalidMidiDataException;
 
 import org.almostrealism.music.midi.MidiFileReader;
@@ -68,12 +68,17 @@ import org.almostrealism.ml.midi.GRUDecoder;
  * }
  * }</pre>
  *
+ * <h2>Lifecycle</h2>
+ * <p>The generator owns its input buffer, temperature and token-loading operation, and
+ * {@link #destroy()} releases them. The {@link MoonbeamMidi} model, including the position it
+ * reads, remains the caller's and stays usable by other generators.</p>
+ *
  * @see MoonbeamMidi
  * @see AutoregressiveModel
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
  */
-public class MoonbeamMidiGenerator {
+public class MoonbeamMidiGenerator implements Destroyable {
 
 	/** The generic autoregressive token-generation loop. */
 	private final AutoregressiveModel<MidiCompoundToken> inner;
@@ -138,7 +143,7 @@ public class MoonbeamMidiGenerator {
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
 		PackedCollection temperature = new PackedCollection(1);
 
-		Consumer<MidiCompoundToken> loadOrdinary = AutoregressiveModel.tokenLoader(
+		AutoregressiveModel.TokenLoader<MidiCompoundToken> loadOrdinary = AutoregressiveModel.tokenLoader(
 				input, MoonbeamConfig.NUM_ATTRIBUTES,
 				(token, values) -> {
 					try (PackedCollection packed = token.pack()) {
@@ -161,12 +166,14 @@ public class MoonbeamMidiGenerator {
 				},
 				() -> model.forward(input),
 				hidden -> {
+					// TODO(review): vec is allocated on every sampled token and never released; destroy() does not cover it
 					PackedCollection vec = new PackedCollection(hiddenSize);
 					vec.setFrom(0, hidden, 0, hiddenSize);
 					int[] decodeTokens = decoder.decode(vec, temperature.toDouble(0), topP, random);
 					return decodeToCompoundToken(decodeTokens);
 				},
 				temperature);
+		this.inner.own(loadOrdinary, input, temperature);
 
 		this.inner.setCurrentToken(MidiCompoundToken.sos());
 	}
@@ -277,6 +284,16 @@ public class MoonbeamMidiGenerator {
 
 	/** Returns the top-p setting. */
 	public double getTopP() { return topP; }
+
+	/**
+	 * Releases the input buffer, temperature, token-loading operation and compiled position
+	 * operations of this generator. The {@link MoonbeamMidi} model and its position are not
+	 * released. The generator cannot be used afterwards; a repeated call releases nothing further.
+	 */
+	@Override
+	public void destroy() {
+		inner.destroy();
+	}
 
 	/**
 	 * Generate tokens for a fill region within a masked token sequence.

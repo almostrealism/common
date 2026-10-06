@@ -440,26 +440,49 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 * the embedding directly into {@code input}, so no intermediate result is copied
 	 * through the host.
 	 *
+	 * <p>The loader owns the token-value buffer and the compiled operation it creates, and
+	 * {@link TokenLoader#destroy() destroying} it releases them; {@code input} remains the
+	 * caller's. A generator using the loader can take it over with {@link #own(Destroyable...)}.</p>
+	 *
 	 * @param <T>       the token type
 	 * @param input     the model input the embedding is written into
 	 * @param values    how many values a token packs
 	 * @param pack      writes a token's values into a collection of {@code values} elements
 	 * @param embedding builds the embedding of the values behind the given producer
-	 * @return a consumer that loads a token into {@code input} before a forward pass
+	 * @return a loader that writes a token into {@code input} before a forward pass
 	 */
-	public static <T> Consumer<T> tokenLoader(PackedCollection input, int values,
-											  BiConsumer<T, PackedCollection> pack,
-											  Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
+	public static <T> TokenLoader<T> tokenLoader(PackedCollection input, int values,
+												 BiConsumer<T, PackedCollection> pack,
+												 Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
 		Ops ops = Ops.o();
 		PackedCollection tokenValues = new PackedCollection(values);
 		TraversalPolicy shape = ops.shape(input.getShape().getTotalSize());
 		Runnable load = Process.optimized(ops.a(ops.cp(input.reshape(shape)),
 				ops.c(embedding.apply(ops.cp(tokenValues))).reshape(shape))).get();
 
-		return token -> {
-			pack.accept(token, tokenValues);
-			load.run();
+		return new TokenLoader<>() {
+			@Override
+			public void accept(T token) {
+				pack.accept(token, tokenValues);
+				load.run();
+			}
+
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.<Runnable>of(
+						() -> Destroyable.destroy(load),
+						tokenValues::destroy));
+			}
 		};
+	}
+
+	/**
+	 * Loads tokens into a model input, as created by {@link #tokenLoader}, and releases the
+	 * resources it loads with when destroyed.
+	 *
+	 * @param <T> the token type
+	 */
+	public interface TokenLoader<T> extends Consumer<T>, Destroyable {
 	}
 
 	/**
