@@ -540,9 +540,10 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 *
 	 * <p>Every writer, every channel producer, and the self-allocated timeline buffer
 	 * ({@code ownedData}) is registered as its own best-effort release action and run through
-	 * {@link Destroyable#releaseAll(Iterable)}, so a failure destroying one resource releases
-	 * neither the others nor the large backing buffer. The fields are detached up front, so a
-	 * failing release still leaves this output cleared. The first failure is rethrown once all
+	 * {@link Destroyable#releaseAll(Iterable)}, so a failure destroying one resource does not
+	 * prevent the others or the large backing buffer from being released. The fields are
+	 * detached up front, so a failing release still leaves this output cleared. The first
+	 * failure is rethrown once all
 	 * actions have run. The channel producers are range views into {@code ownedData}, so they do
 	 * not free it; only a buffer this output allocated itself is released, and a caller-supplied
 	 * buffer is left to its owner.</p>

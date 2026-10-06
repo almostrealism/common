@@ -1420,12 +1420,20 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * are created across test methods without explicit cleanup. Each scene's
 	 * {@link #destroy()} method is called to release its cell graph,
 	 * consolidated buffers, and delay line memory.</p>
+	 *
+	 * <p>{@link #destroy()} aggregates and rethrows cleanup failures, so every scene is
+	 * released through {@link Destroyable#releaseAll(Iterable)}: one scene whose teardown
+	 * throws does not leave the remaining scenes (and their native memory) registered to
+	 * poison a later test in the reused JVM. The first failure is rethrown once all scenes
+	 * have been attempted.</p>
 	 */
 	public static void destroyAll() {
 		List<AudioScene<?>> scenes = new ArrayList<>(activeInstances);
+		List<Runnable> releases = new ArrayList<>();
 		for (AudioScene<?> scene : scenes) {
-			scene.destroy();
+			releases.add(scene::destroy);
 		}
+		Destroyable.releaseAll(releases);
 	}
 
 	/**

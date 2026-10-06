@@ -160,10 +160,15 @@ public class EfxManager implements CellFeatures {
 	 * (one per channel per voicing (MAIN/WET) per stereo side (LEFT/RIGHT)).
 	 * Unused slots do not become kernel arguments since nothing references them.</p>
 	 *
+	 * <p>Any buffer from a previous build is destroyed before the replacement is allocated
+	 * (see {@link #destroyConsolidatedBuffers()}), so a second runner build on the same scene
+	 * does not orphan the previous root, which only scene teardown would otherwise free.</p>
+	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render buffer
 	 */
 	public void consolidateFilterBuffers(int channelCount, int bufferSize) {
+		destroyConsolidatedBuffers();
 		int maxFilters = channelCount * 4;
 		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
 		filterBufferIndex = 0;

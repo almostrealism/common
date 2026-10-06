@@ -69,10 +69,17 @@ class PatternRenderBuffers implements Destroyable {
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
 	 *
+	 * <p>Any buffer from a previous build is destroyed before the replacement is allocated,
+	 * so a second build on the same scene — a repeated {@code renderChannel}, or a
+	 * failed-then-retried runner build — does not orphan the previous root (which only
+	 * {@link #destroy()} at scene teardown would otherwise free). This mirrors the
+	 * replacement-frees-the-old lifecycle of the scene's active cell list.</p>
+	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render region
 	 */
 	void consolidate(int channelCount, int bufferSize) {
+		destroy();
 		cells = new ArrayList<>();
 		buffer = new PackedCollection(bufferSize * channelCount * 4);
 		regionIndex = 0;
