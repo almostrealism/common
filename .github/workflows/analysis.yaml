@@ -2560,6 +2560,154 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  test-cuda:
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CUDA lane, first stage: the CUDA duplicate of test-cl, with AR_HARDWARE_DRIVER=native,cuda
+    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl; see
+    # there for the FP32 precision, memory scale and direct-memory settings, which carry over
+    # unchanged (CudaDataContext is FP32, so the native context must match it).
+    #
+    # Runs on the NVIDIA fleet (tools/ci/cuda) and runs in parallel with the CL lane: the
+    # two lanes use different machines. It is admitted on the same terms as test-cl — only
+    # once both stages of the CPU lane and of the macOS GPU lane are success-or-skipped —
+    # for the same reason: a branch that cannot pass those suites will not pass their CUDA
+    # duplicates either.
+    #
+    # INFORMATIONAL: this lane is deliberately not in analysis.needs, all-checks or
+    # auto-resolve until it has a passing baseline. Making it required means wiring it in
+    # every place tools/tests/test_auto_resolve_test_job_coverage.py checks.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, linux, ar-ci-cuda]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    concurrency:
+      group: test-cuda-${{ github.ref }}-${{ matrix.group }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run (see test-cl).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+      # CUDA surefire reports. Not yet read by auto-resolve (the lane is informational),
+      # but kept so a baseline can be assessed from the run's artifacts.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-cuda-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
   test-media-mac:
     needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # GPU lane, second stage: runs after test-mac. test-media-mac and test-mac both run heavy
@@ -2892,6 +3040,163 @@ jobs:
         with:
           overwrite: true
           name: surefire-media-cl-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-media-cuda:
+    needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl; see there.
+    #
+    # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
+    # single GPU, and on the upstream lanes DIRECTLY for the reason test-media-cl does:
+    # test-cuda's `skipped` cannot distinguish its own layer gate from an upstream failure.
+    #
+    # AR_RINGS_LIBRARY / AR_RINGS_PATTERNS point at the curated sample library the fleet's
+    # compose file bind-mounts read-only at /opt/ar-samples (see tools/ci/cuda).
+    #
+    # INFORMATIONAL, like test-cuda: outside analysis.needs, all-checks and auto-resolve
+    # until the lane has a passing baseline.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.test-cuda.result == 'success' || needs.test-cuda.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, linux, ar-ci-cuda]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+      AR_RINGS_LIBRARY: /opt/ar-samples/Samples
+      AR_RINGS_PATTERNS: /opt/ar-samples/pattern-factory.json
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run (see test-cl).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      - name: Run Audio Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Music Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/music \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Compose Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Spatial Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      # Not yet read by auto-resolve (the lane is informational); kept for assessing a baseline.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-media-cuda-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -3620,15 +3925,17 @@ jobs:
           # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
           # which fails a new test lane until it is added here):
           #   surefire-utils-group-*, surefire-ml-group-* (test),
-          #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
+          #   surefire-media-[0-9]* (test-media), surefire-flowtree (test-flowtree),
           #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac),
           #   surefire-cl-group-* (test-cl), surefire-media-cl-group-* (test-media-cl)
-          # Remove anything else.
+          # Remove anything else — including the informational CUDA lane's
+          # surefire-cuda-group-* and surefire-media-cuda-group-*. test-media's arm is
+          # anchored on the group digit so it cannot match another lane's media artifact.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*)
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media-[0-9]*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)

@@ -316,6 +316,20 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
 
+    def test_the_performance_workstream_is_routed_to_a_gpu_node(self):
+        """Only the first job is submitted here; every later job on the
+        workstream (a PR follow-up, a fix for a failing check) gets its Node
+        from the workstream's own labels. Without them those jobs land on a
+        Node without Metal and cannot reproduce what they were asked to fix."""
+        job = self.qa_jobs["performance-qa"]
+        register = next(s for s in job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        labels = json.loads(register["env"]["REQUIRED_LABELS_JSON"])
+        self.assertEqual({"platform": "macos"}, labels)
+        self.assertEqual(labels, json.loads(submit["env"]["REQUIRED_LABELS"]))
+
     def test_the_pdsl_migration_round_runs_at_max_effort_with_tests_locked(self):
         """The round's hardest step is telling a building block from a
         composition, and the cheap answer — a primitive that wraps the

@@ -95,7 +95,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/** Maps raw memory objects to the argument variables created for them. */
 	private final Map<Memory, ArrayVariable> mems;
-	/** All root delegate provider suppliers created by this map, for lifecycle management. */
+	/** Root delegate provider suppliers owned by this map, released when it is destroyed. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
 
 	/** Factory creating the aggregate buffer of a given element count, or null to disable aggregation. */
@@ -208,17 +208,19 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		} else {
 			ArrayVariable var = null;
 
+			// Kernel-owned memory is never aggregated and outlives this map (see KernelConstantProviderSupplier)
+			boolean kernelOwned = key instanceof KernelConstantProviderSupplier;
+
 			// If aggregation is enabled and this root is small enough, fold it into the
 			// shared aggregate buffer instead of giving it its own kernel argument.
-			// Kernel-owned constant memory is never folded (see KernelConstantProviderSupplier).
-			if (aggregateGenerator != null && !(key instanceof KernelConstantProviderSupplier)
-					&& isAggregationTarget(md.getRootDelegate())) {
+			if (aggregateGenerator != null && !kernelOwned && isAggregationTarget(md.getRootDelegate())) {
 				var = aggregate(createDelegate(md), md.getRootDelegate());
 			}
 
 			if (var == null) {
-				// Otherwise obtain a standalone array variable for the root delegate
-				var = delegateProvider.getArgument(createDelegate(md), null, -1);
+				RootDelegateProviderSupplier root = kernelOwned
+						? new RootDelegateProviderSupplier(md) : createDelegate(md);
+				var = delegateProvider.getArgument(root, null, -1);
 			}
 
 			// Record that this MemoryData has var as its root delegate

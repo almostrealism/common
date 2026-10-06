@@ -379,8 +379,25 @@ public class PdslParser {
 			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
 			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
 			case FOR: return parseForStatement();
+			case STACK: return parseStackStatement();
 			default: return parseExpressionStatement();
 		}
+	}
+
+	/**
+	 * Parses a {@code stack group as name { body }} statement.
+	 *
+	 * @return The parsed stack statement node
+	 */
+	private PdslNode.StackStatement parseStackStatement() {
+		PdslToken kw = consume(PdslToken.Type.STACK);
+		PdslNode.Expression group = parseExpression();
+		consume(PdslToken.Type.AS);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		consume(PdslToken.Type.LBRACE);
+		List<PdslNode.Statement> body = parseBody();
+		consume(PdslToken.Type.RBRACE);
+		return new PdslNode.StackStatement(group, name, body, kw.getLine(), kw.getColumn());
 	}
 
 	/**
@@ -662,7 +679,14 @@ public class PdslParser {
 						expr.getLine(), expr.getColumn());
 			} else if (check(PdslToken.Type.DOT)) {
 				consume(PdslToken.Type.DOT);
-				String field = consume(PdslToken.Type.IDENTIFIER).getValue();
+				// A field may be spelled like a keyword: weights.model.layers names the
+				// checkpoint's "model.layers" group, whatever words the language reserves.
+				PdslToken fieldToken = peek();
+				if (fieldToken.getType() != PdslToken.Type.IDENTIFIER
+						&& !PdslLexer.isKeyword(fieldToken.getValue())) {
+					throw error("Expected a field name after '.' but found " + fieldToken);
+				}
+				String field = advance().getValue();
 				if (check(PdslToken.Type.LPAREN)) {
 					// Method call: expr.method(args)
 					consume(PdslToken.Type.LPAREN);

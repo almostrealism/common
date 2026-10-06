@@ -10,8 +10,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `agent-protection/` | Anti-deception enforcement scripts (test write locks, audit) |
 | `coverage/` | Test-coverage automation: target selection, report fetching, assertion density |
 | `docker/` | Linux CPU runner fleet (`ar-ci`), Docker Compose |
-| `macos/` | macOS GPU runner configuration (`ar-ci`) |
+| `macos/` | macOS GPU runner (`ar-ci`): `tools/bin/fleet macos install` sets one up as a LaunchDaemon |
 | `rocm/` | AMD/ROCm OpenCL runner fleet (`ar-ci-cl`), Docker Compose |
+| `cuda/` | NVIDIA CUDA runner fleet (`ar-ci-cuda`), Docker Compose on the host's NVIDIA runtime |
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
@@ -26,6 +27,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) |
+| `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check` |

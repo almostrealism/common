@@ -27,6 +27,7 @@ import org.almostrealism.persist.assets.CollectionDataMemoryProvider;
 import org.almostrealism.persist.assets.CollectionDataReference;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.EncodedMessage;
+import org.almostrealism.persist.assets.SafetensorsReference;
 import org.almostrealism.protobuf.Collections;
 
 import io.almostrealism.code.Precision;
@@ -35,12 +36,17 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * {@link StateDictionary} provides access to model weights stored in protobuf format.
@@ -62,6 +68,13 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public static boolean enableMaterializeWeights = false;
 
+	/**
+	 * File name extension of a safetensors checkpoint. A directory holding any such file is read
+	 * as a published checkpoint: its safetensors files are the weights, and its other files
+	 * (configuration, tokenizer) are ignored.
+	 */
+	public static final String SAFETENSORS_EXTENSION = ".safetensors";
+
 	/** Field number of {@code collections} within {@code CollectionLibraryData}. */
 	private static final int LIBRARY_COLLECTIONS_FIELD = 1;
 
@@ -75,6 +88,15 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	private Map<String, PackedCollection> weights;
 
 	/**
+	 * Whether this dictionary owns the native memory of its tensors. A dictionary that loads its
+	 * weights from files or is constructed with its own map owns them, so {@link #destroy()}
+	 * releases them. A {@link #group} shares another dictionary's tensors rather than copying them,
+	 * so it is non-owning: destroying a group clears its own view without touching the shared
+	 * weights the root dictionary (and any sibling group) still rely on.
+	 */
+	private final boolean owning;
+
+	/**
 	 * Create a {@link StateDictionary} by loading weights from the specified directory.
 	 *
 	 * @param weightsDirectory Directory containing protobuf weight files
@@ -82,6 +104,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(String weightsDirectory) throws IOException {
 		super(weightsDirectory);
+		this.owning = true;
 		init();
 	}
 
@@ -93,6 +116,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(AssetGroupInfo assets) throws IOException {
 		super(assets);
+		this.owning = true;
 		init();
 	}
 
@@ -104,16 +128,31 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public StateDictionary(List<Asset> assets) throws IOException {
 		super(assets);
+		this.owning = true;
 		init();
 	}
 
 	/**
-	 * Create a {@link StateDictionary} with manually provided weights (for testing).
+	 * Create a {@link StateDictionary} with manually provided weights (for testing). The dictionary
+	 * owns the supplied tensors, so {@link #destroy()} releases them.
 	 *
 	 * @param weights Map of weight names to PackedCollections
 	 */
 	public StateDictionary(Map<String, PackedCollection> weights) {
+		this(weights, true);
+	}
+
+	/**
+	 * Create a {@link StateDictionary} over the given weight map, owning or sharing them. A sharing
+	 * (non-owning) dictionary is the backing of {@link #group}: it exposes tensors held by another
+	 * dictionary without taking responsibility for their native memory.
+	 *
+	 * @param weights Map of weight names to PackedCollections
+	 * @param owning  whether this dictionary owns the tensors' native memory
+	 */
+	private StateDictionary(Map<String, PackedCollection> weights, boolean owning) {
 		this.weights = weights;
+		this.owning = owning;
 	}
 
 	/**
@@ -123,15 +162,49 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
-		loadWeights();
+
+		try {
+			loadWeights();
+		} catch (IOException | RuntimeException e) {
+			// The dictionary is never returned to a caller who could destroy it, so the
+			// tensors located before the failure would otherwise keep their files mapped.
+			destroy();
+			throw e;
+		}
 	}
 
 	/**
-	 * Load weights from protobuf {@link org.almostrealism.persist.assets.Asset}s.
+	 * Load weights from the {@link org.almostrealism.persist.assets.Asset}s: the safetensors
+	 * files among them if there are any, and otherwise every file as a protobuf library.
+	 *
+	 * <p>Each asset's file is resolved once. Resolving an asset verifies its checksum and may
+	 * download it, which is too costly to repeat for each pass over the files.</p>
+	 *
+	 * @throws IOException if a safetensors file cannot be read
+	 * @throws IllegalArgumentException if a safetensors file is malformed, or a tensor is defined
+	 *         by more than one of them
 	 */
 	private void loadWeights() throws IOException {
-		int total = files()
+		List<File> available = files()
+				.filter(Objects::nonNull)
 				.filter(File::exists)
+				.collect(Collectors.toList());
+
+		List<File> safetensors = available.stream()
+				.filter(f -> f.getName().endsWith(SAFETENSORS_EXTENSION))
+				.collect(Collectors.toList());
+		if (!safetensors.isEmpty()) {
+			// A published checkpoint directory also holds its configuration and tokenizer;
+			// only the safetensors files hold weights.
+			Map<String, File> shards = new HashMap<>();
+			for (File file : safetensors) {
+				log("Located " + locateSafetensors(file, shards) + " weight tensors in " + file.getName());
+			}
+			logLoaded(safetensors.size(), "safetensors");
+			return;
+		}
+
+		int total = available.stream()
 				.filter(f -> !f.getName().startsWith("."))
 				.mapToInt(weightFile -> {
 			try {
@@ -147,7 +220,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			}
 		}).sum();
 
-		logLoaded(total);
+		logLoaded(total, "protobuf");
 	}
 
 	/**
@@ -196,6 +269,39 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	}
 
 	/**
+	 * Locates each tensor of a safetensors checkpoint file by its header, as
+	 * {@link #locateWeights} does for a protobuf library: the values stay in the file until
+	 * something reads them, unless {@link #enableMaterializeWeights} asks for them to be copied
+	 * into freshly allocated memory now.
+	 *
+	 * <p>A sharded checkpoint assigns each tensor to exactly one shard, and the order the shards
+	 * are read in is not part of that contract. A name that a shard read earlier already defined
+	 * is therefore rejected, before any tensor of this file is added, rather than letting the
+	 * filesystem's ordering decide which of the two definitions survives.</p>
+	 *
+	 * @param file   the safetensors file
+	 * @param shards the shard each tensor read so far came from, updated with this file's tensors
+	 * @return the number of tensors located
+	 * @throws IOException if the file cannot be read
+	 * @throws IllegalArgumentException if a tensor in the file is also defined by an earlier shard
+	 */
+	private int locateSafetensors(File file, Map<String, File> shards) throws IOException {
+		Map<String, SafetensorsReference> tensors = SafetensorsReference.locate(file);
+		for (String key : tensors.keySet()) {
+			File earlier = shards.get(key);
+			if (earlier != null) {
+				throw new IllegalArgumentException("The tensor " + key + " is defined by both "
+						+ earlier.getName() + " and " + file.getName());
+			}
+		}
+
+		tensors.keySet().forEach(key -> shards.put(key, file));
+		tensors.forEach((key, reference) ->
+				weights.put(key, CollectionEncoder.decode(reference, file, enableMaterializeWeights)));
+		return tensors.size();
+	}
+
+	/**
 	 * Reads every tensor in the given library into freshly allocated memory.
 	 *
 	 * @param weightFile the library to read
@@ -223,11 +329,12 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	/**
 	 * Reports what was loaded, and from how many files.
 	 *
-	 * @param total the number of files read
+	 * @param total  the number of files read
+	 * @param format the name of the on-disk format the files are in, for the diagnostic message
 	 */
-	private void logLoaded(int total) {
+	private void logLoaded(int total, String format) {
 		log("StateDictionary loaded " + weights.size() +
-				" total weight tensors from " + total + " protobuf files");
+				" total weight tensors from " + total + " " + format + " files");
 	}
 
 	/**
@@ -238,6 +345,82 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	public PackedCollection get(String key) {
 		return weights.get(key);
+	}
+
+	/**
+	 * Get a weight by key, failing when the dictionary has none by that name. The failure names
+	 * the keys that share the longest leading part with the requested one, so a misspelled or
+	 * misplaced name (a wrong layer index, {@code q_proj} for {@code k_proj}) points at what the
+	 * dictionary actually holds.
+	 *
+	 * @param key Weight key
+	 * @return PackedCollection containing the weight data
+	 * @throws IllegalArgumentException if there is no weight named {@code key}
+	 */
+	public PackedCollection require(String key) {
+		PackedCollection weight = weights.get(key);
+		if (weight != null) return weight;
+
+		int bestShared = -1;
+		List<String> nearest = new ArrayList<>();
+		for (String candidate : weights.keySet()) {
+			int shared = 0;
+			int limit = Math.min(candidate.length(), key.length());
+			while (shared < limit && candidate.charAt(shared) == key.charAt(shared)) shared++;
+			if (shared > bestShared) {
+				bestShared = shared;
+				nearest.clear();
+			}
+			if (shared == bestShared) nearest.add(candidate);
+		}
+
+		java.util.Collections.sort(nearest);
+		throw new IllegalArgumentException("No weight named '" + key + "' among "
+				+ weights.size() + " weights"
+				+ (nearest.isEmpty() ? "" : "; the closest names are "
+						+ String.join(", ", nearest.subList(0, Math.min(3, nearest.size())))));
+	}
+
+	/**
+	 * Returns the weights under one name of this dictionary's dotted hierarchy, as a dictionary
+	 * of its own whose keys omit that name: in a checkpoint, {@code group("model")} holds
+	 * {@code layers.0.mlp.up_proj.weight} for {@code model.layers.0.mlp.up_proj.weight}. The
+	 * group shares this dictionary's tensors rather than copying them, and is a non-owning view:
+	 * destroying a group releases nothing and leaves the root dictionary (and any sibling group)
+	 * intact, while destroying the root releases the weights every group drew from.
+	 *
+	 * @param name a name, or dotted path of names, within this dictionary
+	 * @return the weights under {@code name}; empty if there are none
+	 */
+	public StateDictionary group(String name) {
+		String prefix = name + ".";
+		Map<String, PackedCollection> members = new HashMap<>();
+		weights.forEach((key, weight) -> {
+			if (key.startsWith(prefix)) members.put(key.substring(prefix.length()), weight);
+		});
+		return new StateDictionary(members, false);
+	}
+
+	/**
+	 * Returns the names at the top of this dictionary's dotted hierarchy, in order: the
+	 * {@link #group} names that, with the weights named directly, make up the dictionary. Names
+	 * that are all whole numbers, such as the layers of a checkpoint's {@code model.layers}, are
+	 * in numeric order ({@code 2} before {@code 10}), whatever their magnitude, with names of
+	 * equal value ({@code 1} and {@code 01}) in alphabetical order; any other names are in
+	 * alphabetical order.
+	 *
+	 * @return the distinct first segments of this dictionary's keys
+	 */
+	public List<String> members() {
+		List<String> names = new ArrayList<>(weights.keySet().stream()
+				.map(key -> key.contains(".") ? key.substring(0, key.indexOf('.')) : key)
+				.collect(Collectors.toSet()));
+		if (names.stream().allMatch(n -> n.matches("\\d+"))) {
+			names.sort(Comparator.comparing((String n) -> new BigInteger(n)).thenComparing(Comparator.naturalOrder()));
+		} else {
+			java.util.Collections.sort(names);
+		}
+		return names;
 	}
 
 	/**
@@ -346,14 +529,17 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	}
 
 	/**
-	 * Destroy all loaded weight data.
+	 * Destroy all loaded weight data this dictionary owns. A {@link #group} is a non-owning view,
+	 * so destroying one clears its own view of the shared tensors without releasing them — the
+	 * root dictionary and any sibling group keep working — while destroying an owning dictionary
+	 * releases the tensors every group drew from.
 	 *
 	 * @see PackedCollection#destroy()
 	 */
 	@Override
 	public void destroy() {
 		if (weights != null) {
-			weights.values().forEach(PackedCollection::destroy);
+			if (owning) weights.values().forEach(PackedCollection::destroy);
 			weights.clear();
 			weights = null;
 		}
