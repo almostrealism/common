@@ -193,8 +193,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * ordered ahead of this dispatch by Metal's hazard tracking (every buffer is allocated
 	 * with default tracking; see {@code MTL.cpp}), so it is simply dropped; a dependency in
 	 * an earlier, committed buffer is honored by encoding a GPU wait for its event value.
-	 * Neither case blocks the host or forces a commit, so chaining completion semaphores
-	 * through a sequence of dispatches preserves batching.</p>
+	 * A dependency that {@link MetalSemaphore#merge(Semaphore) merges} several dispatches is
+	 * honored the same way for the latest of them, plus a GPU wait for its
+	 * {@link MetalSemaphore#getPriorBufferValue() prior buffer value} when the latest is still
+	 * in the open buffer. Neither case blocks the host or forces a commit, so chaining
+	 * completion semaphores through a sequence of dispatches preserves batching.</p>
 	 *
 	 * <p>A foreign dependency (any other {@link Semaphore}) is bridged without blocking when
 	 * {@link #enableHostSignaledBridges} is set: the dispatch's buffer encodes a GPU wait on a
@@ -252,10 +255,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
-			// A dependency encoded into the still-open buffer is already ordered ahead of this
-			// dispatch by in-buffer hazard tracking; no commit and no event wait are needed.
-			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
-				dependency = null;
+			// The timeline value to wait for, or 0; see the submit javadoc for the open-buffer case
+			long waitValue = 0;
+			if (dependency != null) {
+				waitValue = dependency.getCommandBuffer() == openBuffer ?
+						dependency.getPriorBufferValue() : dependency.getValue();
 			}
 
 			if (foreign != null && !enableHostSignaledBridges) {
@@ -276,8 +280,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 			ensureOpenBuffer();
 
-			if (dependency != null) {
-				openBuffer.encodeWaitForEvent(event, dependency.getValue());
+			if (waitValue > 0) {
+				openBuffer.encodeWaitForEvent(event, waitValue);
 			}
 
 			if (foreign != null) {
