@@ -63,26 +63,34 @@ public class Llama2LifecycleTest extends TestSuiteBase {
 	@Test(timeout = 600000)
 	public void destroyReleasesGenerator() throws IOException {
 		Path dir = Files.createTempDirectory("llama2-lifecycle");
-		String checkpoint = writeCheckpoint(dir.resolve("model.bin")).toString();
-		String tokenizer = writeTokenizer(dir.resolve("tokenizer.bin")).toString();
-
-		Llama2 first = new Llama2(checkpoint, tokenizer);
-		PackedCollection position = first.getAutoregressiveModel().getPosition();
-		List<String> before;
+		Path checkpointFile = dir.resolve("model.bin");
+		Path tokenizerFile = dir.resolve("tokenizer.bin");
 		try {
-			before = generate(first);
-		} finally {
+			String checkpoint = writeCheckpoint(checkpointFile).toString();
+			String tokenizer = writeTokenizer(tokenizerFile).toString();
+
+			Llama2 first = new Llama2(checkpoint, tokenizer);
+			PackedCollection position = first.getAutoregressiveModel().getPosition();
+			List<String> before;
+			try {
+				before = generate(first);
+			} finally {
+				first.destroy();
+			}
+
+			Assert.assertEquals(STEPS, before.size());
+			Assert.assertTrue("generator position was not released", position.isDestroyed());
 			first.destroy();
-		}
 
-		Assert.assertEquals(STEPS, before.size());
-		Assert.assertTrue("generator position was not released", position.isDestroyed());
-		first.destroy();
-
-		try (Llama2 second = new Llama2(checkpoint, tokenizer)) {
-			Assert.assertFalse("a new instance shares the released position",
-					second.getAutoregressiveModel().getPosition().isDestroyed());
-			Assert.assertEquals(before, generate(second));
+			try (Llama2 second = new Llama2(checkpoint, tokenizer)) {
+				Assert.assertFalse("a new instance shares the released position",
+						second.getAutoregressiveModel().getPosition().isDestroyed());
+				Assert.assertEquals(before, generate(second));
+			}
+		} finally {
+			Files.deleteIfExists(checkpointFile);
+			Files.deleteIfExists(tokenizerFile);
+			Files.deleteIfExists(dir);
 		}
 	}
 
