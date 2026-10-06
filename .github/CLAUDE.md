@@ -483,8 +483,18 @@ cannot host — prefer it over an early `return`, which reports the test as
 **passed**. Note that `@TestDepth` and `longRunning()` will not do this: the
 pipeline profile deliberately ignores both.
 
-Three methods carry it, each because it needs an asset or port the runners do
-not have. Drop the annotation if that ever changes:
+The table below lists the original three uses, each there because the test
+needs an asset or port the runners do not have. It is **not** the full set:
+about forty methods now carry the annotation (mostly heavy studio/compose
+benchmarks), with no central registry, and nothing in `test-integrity-check`
+flags the annotation being added to an existing test.
+`knownIssue = true` and `highMemory = true` also always skip under the
+pipeline profile. Run `grep -rn "excludeProfiles *=" --include='*.java' .` for
+the current list, and see
+[`docs/internals/test-skip-gating-prevention.md`](../docs/internals/test-skip-gating-prevention.md)
+for why adding any of these to an existing test must be treated as a skip, and
+for the proposed ledger that would make each one a reviewed declaration. Drop
+an annotation once the test's reason no longer applies:
 
 | Test | Reason |
 |------|--------|
