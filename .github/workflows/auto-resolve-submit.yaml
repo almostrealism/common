@@ -127,6 +127,21 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # A failure on a Metal lane (test-mac, test-media-mac) can only be
+      # reproduced where Metal is, so the agent is pinned to a macOS Node.
+      # Decided from the run's own job list, not the staged request. Runs
+      # only when a request was staged, so a run with nothing to submit
+      # does not depend on the jobs query succeeding.
+      - name: Choose the Node the agent needs
+        id: labels
+        if: hashFiles('auto-resolve-request/submit.env') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: bash ./tools/ci/remediation-required-labels.sh
+
       # The artifact was written by a job that ran the pull request's code, so
       # its submit.env is untrusted: submit-staged-request.sh exports only the
       # documented keys rather than appending the file to $GITHUB_ENV, and is a
@@ -148,6 +163,7 @@ jobs:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
+          REQUIRED_LABELS: ${{ steps.labels.outputs.required_labels }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
