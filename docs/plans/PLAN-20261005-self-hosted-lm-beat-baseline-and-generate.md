@@ -2,7 +2,8 @@
 
 **Category:** Proof of Value
 **Branch:** `project/plan-20261005-185050` (created from `master`)
-**Status:** Proposed — awaiting approval
+**Status:** Implemented in part — Deliverables 2 and 3 are done; Deliverable 1 is unmet (held-out
+4.957 vs baseline 4.912 bits/byte). See "Implementation outcome" below.
 **Estimated complexity:** Medium–Large
 **Requires:** Metal (macOS node) — see `plan-20261005-185050-workstream.yaml` and "Hardware" below.
 

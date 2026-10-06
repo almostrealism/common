@@ -53,6 +53,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
 /**
@@ -645,6 +646,46 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			}
 		} finally {
 			inference.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * A generator built by {@link AutoregressiveModel#of} releases only what it created: after it
+	 * is destroyed, the caller's position and token embedding are still live, and the compiled
+	 * model still produces the same tokens for a second generator.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void destroyingFactoryGeneratorKeepsCallerResources() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		CompiledModel inference = lm.buildModel(ParameterUpdate.disabled()).compile(false);
+		PackedCollection position = new PackedCollection(1);
+		PackedCollection embedded = new PackedCollection(shape(seq));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			IntFunction<PackedCollection> embed = t -> {
+				embedded.fill((double) t);
+				return embedded;
+			};
+			// TODO(review): of() takes argmax over the flattened (seq, vocab) output, so generated tokens may exceed VOCAB and feed an out-of-range embedding index
+			AutoregressiveModel<Integer> generator = AutoregressiveModel.of(inference, position, embed);
+			int[] before = generate(generator, prompt, 2);
+			Assert.assertEquals(prompt.length + 2, (int) position.toDouble(0));
+
+			generator.destroy();
+			Assert.assertFalse("caller position was released", position.isDestroyed());
+			Assert.assertFalse("caller embedding was released", embedded.isDestroyed());
+			generator.destroy();
+
+			try (AutoregressiveModel<Integer> next = AutoregressiveModel.of(inference, position, embed)) {
+				Assert.assertArrayEquals(before, generate(next, prompt, 2));
+			}
+		} finally {
+			inference.destroy();
+			position.destroy();
+			embedded.destroy();
 			lm.getWeights().destroy();
 		}
 	}

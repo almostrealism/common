@@ -250,17 +250,19 @@ public class AutoregressiveModel<T> implements Destroyable {
 	/**
 	 * Releases the compiled position operations and every resource handed over with
 	 * {@link #own(Destroyable...)}; every release is attempted even when an earlier one fails.
-	 * The generator cannot be used afterwards. Owned resources are released only once, so a
-	 * repeated call releases nothing further that was handed over.
+	 * The compiled operations are released before the owned resources, because their teardown
+	 * may still reference argument memory such as the position. The generator cannot be used
+	 * afterwards. Owned resources are released only once, so a repeated call releases nothing
+	 * further that was handed over.
 	 */
 	@Override
 	public void destroy() {
 		List<Runnable> releases = new ArrayList<>();
+		releases.add(() -> Destroyable.destroy(resetPosition));
+		releases.add(() -> Destroyable.destroy(advancePosition));
 		owned.forEach(resource -> releases.add(resource::destroy));
 		owned.clear();
-		Destroyable.releaseAll(releases,
-				() -> Destroyable.destroy(resetPosition),
-				() -> Destroyable.destroy(advancePosition));
+		Destroyable.releaseAll(releases);
 	}
 
 	/**
@@ -471,6 +473,10 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 *   <li>Samples the next token using temperature scaling and softmax</li>
 	 * </ul>
 	 *
+	 * <p>The returned model owns the input buffer, temperature and sampling operations created
+	 * here, so {@link #destroy()} releases them; {@code model}, {@code position} and the
+	 * embeddings returned by {@code tokenEmbed} remain the caller's.</p>
+	 *
 	 * @param model      the compiled transformer model
 	 * @param position   single-element collection that {@code model} reads as the sequence
 	 *                   position, maintained on the device by {@link #reset()}/{@link #advance()}
@@ -500,12 +506,22 @@ public class AutoregressiveModel<T> implements Destroyable {
 			}
 		};
 
+		Destroyable samplers = new Destroyable() {
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.<Runnable>of(
+						() -> Destroyable.destroy(indexOfMax),
+						() -> Destroyable.destroy(rescale),
+						() -> Destroyable.destroy(softmax)));
+			}
+		};
+
 		return new AutoregressiveModel<>(
 				position,
 				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
 				sample,
-				temperature);
+				temperature).own(samplers, in, temperature);
 	}
 
 }
