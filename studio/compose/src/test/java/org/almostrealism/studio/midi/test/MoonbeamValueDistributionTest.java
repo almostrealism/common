@@ -642,10 +642,13 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	/* ================================================================ */
 
 	/**
-	 * Create a minimal GRU decoder for offset/mapping tests (tiny weights).
+	 * Create a GRU decoder for offset/mapping tests. The token-to-attribute mapping
+	 * depends only on the configuration's vocabulary layout, never on the weights, so
+	 * the weights are left zero-filled at their real shapes rather than drawn from a
+	 * Gaussian: drawing the roughly 86 million real-dimension values on the host takes
+	 * longer than the mapping tests' time budget on slower runners.
 	 */
 	private GRUDecoder createDecoderForTest() {
-		Random rng = new Random(0);
 		int decoderHidden = REAL_CONFIG.decoderHiddenSize;
 		int vocabSize = REAL_CONFIG.decodeVocabSize;
 		int hidden = REAL_CONFIG.hiddenSize;
@@ -658,18 +661,18 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		PackedCollection[] biasHhC = new PackedCollection[nc];
 		for (int l = 0; l < nc; l++) {
 			inputSizesC[l] = decoderHidden;
-			weightIhC[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
-			weightHhC[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
-			biasIhC[l] = createRandomCollection(rng, 3 * decoderHidden);
-			biasHhC[l] = createRandomCollection(rng, 3 * decoderHidden);
+			weightIhC[l] = new PackedCollection(3 * decoderHidden, decoderHidden);
+			weightHhC[l] = new PackedCollection(3 * decoderHidden, decoderHidden);
+			biasIhC[l] = new PackedCollection(3 * decoderHidden);
+			biasHhC[l] = new PackedCollection(3 * decoderHidden);
 		}
 
 		return new GRUDecoder(REAL_CONFIG, inputSizesC, weightIhC, weightHhC, biasIhC, biasHhC,
-				createRandomCollection(rng, decoderHidden, hidden),
-				createRandomCollection(rng, decoderHidden),
-				createRandomCollection(rng, vocabSize, decoderHidden),
-				createRandomCollection(rng, vocabSize),
-				createRandomCollection(rng, vocabSize, decoderHidden));
+				new PackedCollection(decoderHidden, hidden),
+				new PackedCollection(decoderHidden),
+				new PackedCollection(vocabSize, decoderHidden),
+				new PackedCollection(vocabSize),
+				new PackedCollection(vocabSize, decoderHidden));
 	}
 
 	/**

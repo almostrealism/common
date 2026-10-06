@@ -38,7 +38,6 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -90,20 +89,18 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * <p>
 	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
 	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. A GPU runner that declares the library mount via
-	 * {@code AR_RINGS_LIBRARY} (the OpenCL {@code test-media-cl} job) is expected to run the real
-	 * workload; the Metal {@code test-media-mac} job runs the {@link TestUtils#PIPELINE} profile without
-	 * declaring a mount, and the CPU-only Linux runners never have the library. So:
+	 * hiding the difference between hosts. Every GPU runner is expected to mount the curated library and
+	 * run the real workload, so a GPU host that is missing it is misconfigured — regardless of test
+	 * profile or whether it declared an {@code AR_RINGS_LIBRARY} mount. The only host allowed to skip is
+	 * one with no GPU at all (the CPU-only native Linux jobs), which is not expected to mount the
+	 * library. So:
 	 * <ul>
 	 *   <li>library present → return it and run the real workload;</li>
-	 *   <li>library absent on a {@link TestUtils#PIPELINE} profile run that declares no
-	 *       {@code AR_RINGS_LIBRARY} mount → {@code Assume}-skip, matching the curated-library tests
-	 *       that exclude the pipeline profile outright;</li>
 	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
 	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
 	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
 	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
-	 *       false pass).</li>
+	 *       false pass, and no GPU job may pass merely by omitting the library).</li>
 	 * </ul>
 	 *
 	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
@@ -116,11 +113,6 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
 				+ PATTERN_FACTORY + " not available on this host.";
-		boolean pipeline = TestUtils.PIPELINE.equals(TestUtils.getTestProfile());
-		boolean mountDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
-		Assume.assumeFalse(detail + " This is a " + TestUtils.PIPELINE + " profile run whose runner does not"
-				+ " declare a library mount (AR_RINGS_LIBRARY); skipping as the other curated-library tests"
-				+ " excluded from the pipeline profile are.", pipeline && !mountDeclared);
 		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
 				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
 		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
@@ -145,9 +137,10 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/**
 	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
 	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
-	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
-	 * the library).
+	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure. Every GPU host
+	 * is expected to mount the curated library — the Metal {@code test-media-mac} and OpenCL
+	 * {@code test-media-cl} runners, and any local GPU host — so a missing library on any of them is a
+	 * failure regardless of test profile; only a host with no GPU at all is allowed to skip.
 	 *
 	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
 	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from

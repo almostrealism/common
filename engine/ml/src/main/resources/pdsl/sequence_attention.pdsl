@@ -1,0 +1,326 @@
+/**
+ * Parallel (full-sequence) multi-head self-attention with rotary position embeddings: every position
+ * of a [batch, seq_len, dim] sequence attends to every position of the same sequence in one forward
+ * pass. It is the self-attention of the Stable Audio diffusion transformer's blocks and of the
+ * T5Gemma text encoder.
+ *
+ * The layers below describe the same stages SequenceAttentionFeatures.sequenceAttention assembles in
+ * Java as a SequentialBlock: a fused query/key/value projection split three ways, a per-head reshape
+ * and permute of each third, an optional query/key normalization, the rotary embedding, the value
+ * padding mask, scaled dot-product attention and the output projection. sequenceAttention does not
+ * build these layers; a PDSL program builds them directly, binding the arguments each layer declares.
+ *
+ * Forward only. The keys and values reach the score and context halves through the k_heads and
+ * v_heads stores, written by capture, whose backward pass is empty. No gradient flows from the
+ * attention output into the key and value thirds of qkv_projection, so these layers are for
+ * inference; trainable sequence attention is the Java sequenceAttention, which keeps the key and
+ * value branches connected to the graph.
+ *
+ * It is the full-sequence counterpart of the autoregressive `attention` layer of
+ * /pdsl/attention.pdsl, which scores one token against a growing key/value cache; here the keys and
+ * values of the whole sequence are computed in the same pass as the queries. The score and context
+ * halves are the layers of /pdsl/sdpa.pdsl, which this file imports.
+ *
+ * Data flow of one forward pass (dim = heads * head_dim):
+ *
+ *   [batch, seq_len, dim] sequence
+ *     qkv_projection                                         [batch, seq_len, 3 * dim]
+ *     reshape                                                [batch, seq_len, 3, dim]
+ *     ├─ keys:   head_rows(1) → [norm] → sequence_rope → capture(k_heads)
+ *     ├─ values: head_rows(2) → scale(padding_mask, 2) → capture(v_heads)
+ *     └─ query:  head_rows(0) → [norm] → sequence_rope       [batch, heads, seq_len, head_dim]
+ *          sdpa_scores(k_heads, key_mask)    softmax(Q Kᵀ / sqrt(head_dim))
+ *                                                            [batch, heads, seq_len, seq_len]
+ *          sdpa_context(v_heads)             weights · V     [batch, heads, seq_len, head_dim]
+ *          merge_heads                                       [batch, seq_len, dim]
+ *          out_projection                                    [batch, seq_len, dim]
+ *
+ * A branch runs before the path that follows it, so both stores hold this pass's keys and values
+ * when the scores are computed. The stores are the sequence_attention_state block below: the caller
+ * allocates them and binds them as k_heads and v_heads, and every forward pass rewrites them whole.
+ *
+ * The projections. qkv_projection and out_projection are layers the caller builds from its weights
+ * and binds like a weight: plain dense layers, or adapter-wrapped ones when the model is being
+ * fine-tuned. The adapter decision belongs to the training setup, not to the attention's structure,
+ * and the language has no construct for a projection the host may adapt, so the two projections
+ * arrive as layers and appear below as the first and last stages.
+ *
+ * The masks. padding_mask is one validity value per position, [batch, seq_len], one for a real
+ * position and zero for padding; it zeroes the padded positions' values, which still occupy their
+ * softmax slots (value masking). key_mask has the same shape and removes masked keys from the softmax
+ * entirely (logit masking, the key_mask stage of sdpa_scores). A caller without padding binds
+ * all-ones masks, which leave every value and every score unchanged.
+ *
+ * The six layers. The structure above has two optional parts: the query/key normalization (none,
+ * LayerNorm or RMSNorm, each applied to every head_dim row of the queries and keys) and the logit
+ * soft-cap of the score half (sdpa_scores or sdpa_scores_softcapped). Each combination is its own
+ * layer, so a reader sees exactly the stages a model runs:
+ *
+ *   sequence_attention                          no normalization, plain scores
+ *   sequence_attention_softcapped               no normalization, soft-capped scores (T5Gemma)
+ *   sequence_attention_qk_layernorm             LayerNorm of q and k, plain scores (Stable Audio DiT)
+ *   sequence_attention_qk_layernorm_softcapped  LayerNorm of q and k, soft-capped scores
+ *   sequence_attention_qk_rmsnorm               RMSNorm of q and k, plain scores (RMS-normalized DiT)
+ *   sequence_attention_qk_rmsnorm_softcapped    RMSNorm of q and k, soft-capped scores
+ *
+ * The query/key normalizations use an epsilon of 1e-6.
+ */
+
+import "/pdsl/sdpa.pdsl"
+
+/**
+ * The key and value stores, each [batch, heads, seq_len, head_dim]: the rotated keys and the masked
+ * values of the current sequence, written by the branches and read by the score and context halves.
+ */
+state sequence_attention_state {
+    k_heads: weight
+    v_heads: weight
+}
+
+/**
+ * One third of the fused projection, laid out one row per head:
+ * [batch, seq_len, 3, dim] -> [batch, heads, seq_len, head_dim]. Section 0 holds the queries,
+ * section 1 the keys and section 2 the values.
+ *
+ *   slice      the section's third                          [batch, seq_len, 1, dim]
+ *   reshape    each position's dim split into heads         [batch, seq_len, heads, head_dim]
+ *   permute    heads ahead of positions                     [batch, heads, seq_len, head_dim]
+ */
+layer head_rows(batch: int, seq_len: int, heads: int, head_dim: int, section: int) {
+    slice([batch, seq_len, 1, heads * head_dim], 0, 0, section, 0)
+    reshape([batch, seq_len, heads, head_dim])
+    permute(0, 2, 1, 3)
+}
+
+/**
+ * The value branch: [batch, seq_len, 3, dim] -> v_heads.
+ *
+ *   head_rows(2)              the values, one row per head  [batch, heads, seq_len, head_dim]
+ *   scale(padding_mask, 2)    each position's rows times its validity (axis 2 is the position)
+ *   capture(v_heads)          store the values for the context half
+ */
+layer stored_values(batch: int, seq_len: int, heads: int, head_dim: int, padding_mask: weight) {
+    head_rows(batch, seq_len, heads, head_dim, 2)
+    scale(padding_mask, 2)
+    capture(v_heads)
+}
+
+/**
+ * The attended rows back in the sequence layout:
+ * [batch, heads, seq_len, head_dim] -> [batch, seq_len, dim].
+ *
+ *   permute    positions ahead of heads                     [batch, seq_len, heads, head_dim]
+ *   reshape    each position's heads joined                 [batch, seq_len, dim]
+ */
+layer merge_heads(batch: int, seq_len: int, heads: int, head_dim: int) {
+    permute(0, 2, 1, 3)
+    reshape([batch, seq_len, heads * head_dim])
+}
+
+/**
+ * Self-attention without query/key normalization, plain scores: [batch, seq_len, dim] -> same.
+ *
+ *   qkv_projection            queries, keys and values side by side   [batch, seq_len, 3 * dim]
+ *   reshape                   one dim-wide section each               [batch, seq_len, 3, dim]
+ *   keys:   head_rows(1)      the keys, one row per head              [batch, heads, seq_len, head_dim]
+ *           sequence_rope     each row rotated by its position
+ *           capture(k_heads)  store the keys for the score half
+ *   values: stored_values     store the masked values for the context half
+ *   head_rows(0)              the queries, one row per head           [batch, heads, seq_len, head_dim]
+ *   sequence_rope             each row rotated by its position
+ *   sdpa_scores               softmax over the keys of the key-masked Q Kᵀ / sqrt(head_dim)
+ *                                                                     [batch, heads, seq_len, seq_len]
+ *   sdpa_context              the weights times v_heads               [batch, heads, seq_len, head_dim]
+ *   merge_heads               the heads of each position joined       [batch, seq_len, dim]
+ *   out_projection            the output projection                   [batch, seq_len, dim]
+ */
+layer sequence_attention(batch: int, seq_len: int, heads: int, head_dim: int,
+                         qkv_projection: projection, out_projection: projection,
+                         inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    sequence_rope(inv_freq)
+    sdpa_scores(k_heads, key_mask, head_dim)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Self-attention without query/key normalization, soft-capped scores (T5Gemma):
+ * [batch, seq_len, dim] -> same. As sequence_attention, with the scaled logits squashed to
+ * softcap * tanh(logit / softcap) before the key mask.
+ */
+layer sequence_attention_softcapped(batch: int, seq_len: int, heads: int, head_dim: int,
+                                    qkv_projection: projection, out_projection: projection,
+                                    inv_freq: weight, padding_mask: weight, key_mask: weight,
+                                    softcap: float) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    sequence_rope(inv_freq)
+    sdpa_scores_softcapped(k_heads, key_mask, head_dim, softcap)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Self-attention with a LayerNorm of every query and key row before the rotation, plain scores
+ * (the Stable Audio diffusion transformer): [batch, seq_len, dim] -> same. As sequence_attention,
+ * with one stage added on each of the query and key paths:
+ *
+ *   layernorm(norm weight, norm bias, 1e-6)   each head_dim row to zero mean and unit variance,
+ *                                             then scaled and shifted; applied after head_rows and
+ *                                             before sequence_rope
+ */
+layer sequence_attention_qk_layernorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                                      qkv_projection: projection, out_projection: projection,
+                                      q_norm_weight: weight, q_norm_bias: weight,
+                                      k_norm_weight: weight, k_norm_bias: weight,
+                                      inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        layernorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    layernorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores(k_heads, key_mask, head_dim)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Self-attention with a LayerNorm of every query and key row, soft-capped scores:
+ * [batch, seq_len, dim] -> same. As sequence_attention_qk_layernorm, with sdpa_scores_softcapped
+ * in place of sdpa_scores.
+ */
+layer sequence_attention_qk_layernorm_softcapped(batch: int, seq_len: int, heads: int, head_dim: int,
+                                                 qkv_projection: projection, out_projection: projection,
+                                                 q_norm_weight: weight, q_norm_bias: weight,
+                                                 k_norm_weight: weight, k_norm_bias: weight,
+                                                 inv_freq: weight, padding_mask: weight,
+                                                 key_mask: weight, softcap: float) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        layernorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    layernorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores_softcapped(k_heads, key_mask, head_dim, softcap)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Self-attention with an RMSNorm of every query and key row before the rotation, plain scores
+ * (a diffusion transformer trained with RMS normalization): [batch, seq_len, dim] -> same. As
+ * sequence_attention, with one stage added on each of the query and key paths:
+ *
+ *   rmsnorm(norm weight, norm bias, 1e-6)     each head_dim row divided by its root mean square,
+ *                                             then scaled (and shifted when a bias is bound; bind
+ *                                             null for none); applied after head_rows and before
+ *                                             sequence_rope
+ */
+layer sequence_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                                    qkv_projection: projection, out_projection: projection,
+                                    q_norm_weight: weight, q_norm_bias: weight,
+                                    k_norm_weight: weight, k_norm_bias: weight,
+                                    inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        rmsnorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    rmsnorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores(k_heads, key_mask, head_dim)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Self-attention with an RMSNorm of every query and key row, soft-capped scores:
+ * [batch, seq_len, dim] -> same. As sequence_attention_qk_rmsnorm, with sdpa_scores_softcapped
+ * in place of sdpa_scores.
+ */
+layer sequence_attention_qk_rmsnorm_softcapped(batch: int, seq_len: int, heads: int, head_dim: int,
+                                               qkv_projection: projection, out_projection: projection,
+                                               q_norm_weight: weight, q_norm_bias: weight,
+                                               k_norm_weight: weight, k_norm_bias: weight,
+                                               inv_freq: weight, padding_mask: weight,
+                                               key_mask: weight, softcap: float) {
+    qkv_projection
+    reshape([batch, seq_len, 3, heads * head_dim])
+
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, 1)
+        rmsnorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+        capture(k_heads)
+    }
+    branch values {
+        stored_values(batch, seq_len, heads, head_dim, padding_mask)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, 0)
+    rmsnorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores_softcapped(k_heads, key_mask, head_dim, softcap)
+    sdpa_context(v_heads)
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
