@@ -228,6 +228,7 @@ public class ScaleTraversalMidiTest extends TestSuiteBase {
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
 
+		List<RenderedNoteAudio> destinations = null;
 		try {
 			PatternElement e = element(ScaleTraversalStrategy.CHORD, List.of(0.0), 3);
 			e.setDurationStrategy(NoteDurationStrategy.NONE);
@@ -237,7 +238,7 @@ public class ScaleTraversalMidiTest extends TestSuiteBase {
 			NoteAudioContext audio = new NoteAudioContext(ChannelInfo.Voicing.MAIN,
 					ChannelInfo.StereoChannel.LEFT, d -> note, p -> p + 0.25);
 
-			List<RenderedNoteAudio> destinations = e.getNoteDestinations(false, 1.0, scene(TRIAD), audio);
+			destinations = e.getNoteDestinations(false, 1.0, scene(TRIAD), audio);
 
 			double measureFrames = MEASURE_SECONDS * OutputLine.sampleRate;
 			Assert.assertEquals(e.getRepeatCount(), destinations.size());
@@ -251,6 +252,7 @@ public class ScaleTraversalMidiTest extends TestSuiteBase {
 				Assert.assertNull(rendered.getBatchedInputs());
 			}
 		} finally {
+			if (destinations != null) destinations.forEach(RenderedNoteAudio::destroy);
 			PatternLayerManager.enableBatched = batched;
 		}
 	}
@@ -261,15 +263,17 @@ public class ScaleTraversalMidiTest extends TestSuiteBase {
 		boolean batched = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = false;
 
+		List<RenderedNoteAudio> destinations = null;
 		try {
 			PatternElement e = element(ScaleTraversalStrategy.CHORD, List.of(0.0, 0.0, 0.0, 0.0), 1);
 			PatternNote note = e.getNote(ChannelInfo.Voicing.MAIN);
 			NoteAudioContext audio = new NoteAudioContext(ChannelInfo.Voicing.MAIN,
 					ChannelInfo.StereoChannel.RIGHT, d -> note, p -> p + 0.25);
 
-			Assert.assertEquals(TRIAD.length(),
-					e.getNoteDestinations(true, 0.0, scene(TRIAD), audio).size());
+			destinations = e.getNoteDestinations(true, 0.0, scene(TRIAD), audio);
+			Assert.assertEquals(TRIAD.length(), destinations.size());
 		} finally {
+			if (destinations != null) destinations.forEach(RenderedNoteAudio::destroy);
 			PatternLayerManager.enableBatched = batched;
 		}
 	}

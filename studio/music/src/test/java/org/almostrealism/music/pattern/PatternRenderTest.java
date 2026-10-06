@@ -495,6 +495,36 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * An operation built for a channel that has no patterns is rejected once a later
+	 * pattern addition changes the pattern set. While the operation is current it renders
+	 * silence, but after {@link PatternSystemManager#addPattern} advances the pattern
+	 * generation it throws rather than silently continuing to render nothing, so a caller
+	 * rebuilds it and picks up the newly added pattern.
+	 */
+	@Test(timeout = 120000)
+	public void renderOperationForEmptyChannelIsRejectedAfterPatternAdded() {
+		try (PatternSystemManager psm = new PatternSystemManager(
+				PatternSystemManagerTest.chromosomes(1));
+			 PackedCollection destination = new PackedCollection(TOTAL_FRAMES)) {
+			psm.init();
+			AudioSceneContext context = context(destination);
+			Runnable render = psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get();
+
+			render.run();
+			Assert.assertEquals("an empty-channel operation renders silence while current",
+					0.0, peak(destination.toArray(0, TOTAL_FRAMES), 0, TOTAL_FRAMES), 0.0);
+
+			psm.addPattern(CHANNEL.getPatternChannel(), 1.0, false);
+			try {
+				render.run();
+				Assert.fail("a stale empty-channel render operation must be rejected");
+			} catch (IllegalStateException expected) {
+				Assert.assertTrue(expected.getMessage().contains("stale"));
+			}
+		}
+	}
+
+	/**
 	 * Warming the note cache allocates a scratch destination per pattern to satisfy
 	 * {@link PatternLayerManager#updateDestination}; it exists only for the warm-up.
 	 * It must be released when the warm-up returns so repeated scene warm-ups do not

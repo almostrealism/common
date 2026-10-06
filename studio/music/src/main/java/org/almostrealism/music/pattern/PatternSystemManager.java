@@ -353,6 +353,11 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	/**
 	 * Adds a new pattern and returns its manager.
 	 *
+	 * <p>Adding a pattern is a structural mutation of the pattern set, so it advances the
+	 * pattern generation: any render operation previously returned by {@link #sum} becomes
+	 * stale and throws {@link IllegalStateException} when run, as it does after
+	 * {@link #clear()}.</p>
+	 *
 	 * @param channel  the channel index
 	 * @param measures the duration in measures
 	 * @param melodic  whether the pattern is melodic
@@ -364,6 +369,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 						chromosomes.get(patterns.size()),
 						channel, measures, melodic);
 		patterns.add(pattern);
+		patternGeneration++;
 		return pattern;
 	}
 
@@ -491,8 +497,11 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * normalization.</p>
 	 *
 	 * <p>The returned operation is bound to the pattern managers present when it is
-	 * built. If they are later replaced or destroyed (see {@link #clear()}), running it
-	 * throws {@link IllegalStateException}; build a new operation instead.</p>
+	 * built. If they are later replaced or destroyed (see {@link #clear()}) or a pattern
+	 * is added (see {@link #addPattern}), running it throws {@link IllegalStateException};
+	 * build a new operation instead. The guard also covers an operation built for a
+	 * channel that had no patterns at build time, so a channel that gains patterns after
+	 * the operation was built does not silently keep rendering as an empty channel.</p>
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
@@ -522,6 +531,16 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 					patterns.get(i).updateDestination(ctx));
 		}
 
+		// Guard before the empty-channel check so an op built for a channel with no
+		// patterns is also rejected once a later mutation gives that channel patterns.
+		int generation = patternGeneration;
+		op.add(() -> () -> {
+			if (generation != patternGeneration) {
+				throw new IllegalStateException("Pattern render operation is stale because its"
+						+ " patterns were replaced or destroyed after it was built");
+			}
+		});
+
 		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
 				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
 				.boxed().toList();
@@ -530,15 +549,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 			if (enableWarnings) warn("No patterns for channel " + channel);
 			return op;
 		}
-
-		// TODO(review): confirm no live-scene path (AudioScene.setSettings after runner ops are built) now hits this throw where it previously rendered.
-		int generation = patternGeneration;
-		op.add(() -> () -> {
-			if (generation != patternGeneration) {
-				throw new IllegalStateException("Pattern render operation is stale because its"
-						+ " patterns were replaced or destroyed after it was built");
-			}
-		});
 
 		patternsForChannel.forEach(i -> {
 			op.add(patterns.get(i).sum(context, channel.getVoicing(),
