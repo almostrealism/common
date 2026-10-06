@@ -169,6 +169,26 @@ public class FileStager implements ConsoleFeatures {
             }
             return paths;
         }
+
+        /**
+         * Like {@link #executeForPaths}, but answers {@code null} rather than
+         * throwing when the command cannot be run, for callers that treat an
+         * unavailable listing as "no answer". An interruption is re-asserted
+         * on the calling thread.
+         *
+         * @param args the git subcommand and its arguments
+         * @return the listed paths, or {@code null} if git could not answer
+         */
+        default Set<String> pathsOrNull(String... args) {
+            try {
+                return executeForPaths(args);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (IOException e) {
+                return null;
+            }
+        }
     }
 
     /**
@@ -197,8 +217,9 @@ public class FileStager implements ConsoleFeatures {
      * granularity for Java sources.</p>
      *
      * <p>While a merge the harness started is in progress (see
-     * {@link #trustedMergeParent}), a file whose working-tree state is exactly
-     * its state in the merged base-branch commit is not an agent edit: the merge
+     * {@link #trustedMergeParent}), a file that the merged base-branch commit
+     * changed, and whose working-tree state is exactly its state in that
+     * commit, is not an agent edit: the merge
      * carried it in, and it is staged without passing through the guardrails,
      * which judge the agent's work. Protected test methods are judged against
      * that commit rather than the older merge-base, so the base branch's own
@@ -225,15 +246,21 @@ public class FileStager implements ConsoleFeatures {
         Set<String> mergeBaseFiles = mergeBase != null
                 ? testMethodProtection.resolveMergeBaseFiles(mergeBase, gitOps)
                 : null;
+        // Each listing is one git invocation rather than one per file: a merge
+        // can bring in thousands of base-branch files. An unavailable listing
+        // leaves no file merge-carried.
+        Set<String> parentChanges = mergeParent != null
+                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", "HEAD..." + mergeParent)
+                : null;
         Set<String> differFromParent = mergeParent != null
-                ? filesDifferingFrom(mergeParent, gitOps)
+                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", mergeParent, "--")
                 : null;
 
         for (String file : changedFiles) {
             File f = new File(workingDirectory, file);
             boolean isDeleted = !f.exists();
 
-            if (isMergeCarried(file, isDeleted, mergeBaseFiles, differFromParent)) {
+            if (isMergeCarried(file, isDeleted, mergeBaseFiles, parentChanges, differFromParent)) {
                 log("Staging (merge-carried from "
                         + TestMethodProtection.shortSha(mergeParent) + "): " + file);
                 stagedFiles.add(file);
@@ -342,43 +369,34 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Lists the tracked paths whose working-tree state differs from
-     * {@code commit}, in one {@code git diff --name-only} rather than one
-     * comparison per file. A merge can bring in thousands of base-branch files.
+     * Returns whether the trusted merge carried {@code file} in: the merge
+     * parent changed it since its merge-base with {@code HEAD} (a base-side
+     * deletion included), and its working-tree state is exactly its state in
+     * that parent — identical content, or absent from both.
      *
-     * @param commit the commit to compare the working tree against
-     * @param gitOps git operations for the working tree
-     * @return the differing paths, or {@code null} if git could not answer
-     *         (no file is then treated as merge-carried)
-     */
-    private static Set<String> filesDifferingFrom(String commit, GitOperations gitOps) {
-        try {
-            return gitOps.executeForPaths("diff", "--name-only", "--no-renames", commit, "--");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    /**
-     * Returns whether {@code file}'s working-tree state is exactly its state in
-     * the trusted merge parent: identical content, or absent from both. An
-     * untracked file never appears in {@code differFromParent}, so it is
+     * <p>Requiring the parent to have changed the path is what ties the
+     * exemption to the merge. Matching the parent alone is not enough: a
+     * target-branch file the base branch never had is "absent from the
+     * parent", and deleting it during the merge would otherwise slip past the
+     * locks as if the merge had deleted it.</p>
+     *
+     * <p>An untracked file never appears in {@code differFromParent}, so it is
      * carried only when the parent lacks it too and it is gone from disk.
-     * Answers {@code false} whenever either listing is unavailable.
+     * Answers {@code false} whenever any listing is unavailable.</p>
      *
      * @param file             the repository-relative path
      * @param isDeleted        whether the file is absent from the working tree
      * @param parentFiles      the files present in the merge parent, or {@code null}
+     * @param parentChanges    the paths the merge parent changed since its
+     *                         merge-base with {@code HEAD}, or {@code null}
      * @param differFromParent the tracked paths that differ from the merge
      *                         parent, or {@code null}
      * @return {@code true} when the merge carried the file in unchanged
      */
-    private static boolean isMergeCarried(String file, boolean isDeleted,
-                                          Set<String> parentFiles, Set<String> differFromParent) {
-        if (parentFiles == null || differFromParent == null || differFromParent.contains(file)) {
+    private static boolean isMergeCarried(String file, boolean isDeleted, Set<String> parentFiles,
+                                          Set<String> parentChanges, Set<String> differFromParent) {
+        if (parentFiles == null || parentChanges == null || differFromParent == null
+                || !parentChanges.contains(file) || differFromParent.contains(file)) {
             return false;
         }
         return parentFiles.contains(file) != isDeleted;

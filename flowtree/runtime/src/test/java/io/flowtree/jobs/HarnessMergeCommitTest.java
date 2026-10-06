@@ -303,6 +303,71 @@ public class HarnessMergeCommitTest extends TestSuiteBase {
     }
 
     /**
+     * A CI file that exists only on the target branch is absent from the merge
+     * parent, but the merge did not delete it. Deleting it during the merge is
+     * an agent edit, judged by the CI lock: it is rejected and the file stays.
+     */
+    @Test(timeout = 60000)
+    public void deletingTargetOnlyCiFileDuringMergeIsNotCommitted() throws Exception {
+        String agentWorkflow = ".github/workflows/agent.yaml";
+        git("merge", "--abort");
+        write(agentWorkflow, "name: agent\n");
+        commitAll("branch-only workflow");
+        startConflictedMerge();
+        resolveSharedConflict();
+        git("rm", "--quiet", agentWorkflow);
+
+        assertTrue("the preview must report the deletion as skipped",
+                mentions(newJob(mergeParent).previewStaging().getSkippedFiles(), agentWorkflow));
+        GitCommitHandler handler = commit(newJob(mergeParent));
+
+        assertEquals("name: agent\n", committed(agentWorkflow));
+        assertEquals("name: v2\n", committed(CI_FILE));
+        assertTrue(mentions(handler.getSkippedFiles(), agentWorkflow));
+    }
+
+    /**
+     * An untrusted merge's failure names why each file was rejected, so a
+     * file the guardrails dropped for a reason other than protection is not
+     * reported as protected.
+     */
+    @Test(timeout = 60000)
+    public void untrustedMergeFailureNamesTheRejectionReason() throws Exception {
+        resolveSharedConflict();
+
+        try {
+            commit(newJob(null));
+            fail("an untrusted merge that changes a protected file must not be committed");
+        } catch (RuntimeException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains(CI_FILE + " (protected - CI/workflow file)"));
+        }
+    }
+
+    /**
+     * When the merged commit's changes cannot be listed, the commit fails
+     * before staging anything, and the preview must say so rather than show a
+     * clean result built from {@code git status} alone.
+     */
+    @Test(timeout = 60000)
+    public void previewReportsUnlistableMergeCandidates() throws Exception {
+        resolveSharedConflict();
+        String unrelated = git("commit-tree", mergeParent + "^{tree}", "-m", "unrelated root").trim();
+        Files.writeString(repo.resolve(".git/MERGE_HEAD"), unrelated + "\n");
+
+        StagingResult preview = newJob(mergeParent).previewStaging();
+
+        assertTrue("nothing can be staged: " + preview.getStagedFiles(), preview.getStagedFiles().isEmpty());
+        assertTrue("the failure must be reported: " + preview.getSkippedFiles(),
+                preview.getSkippedFiles().stream().anyMatch(s -> s.contains("staging candidates unavailable")));
+        try {
+            commit(newJob(mergeParent));
+            fail("the commit must fail when its candidates cannot be listed");
+        } catch (IOException expected) {
+            // The preview and the commit agree.
+        }
+    }
+
+    /**
      * The recorded parent is trusted only while {@code MERGE_HEAD} still names
      * it, so an agent that rewrites {@code MERGE_HEAD} gains no exemption.
      */

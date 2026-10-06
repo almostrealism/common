@@ -305,6 +305,12 @@ class GitCommitHandler implements ConsoleFeatures {
      * same candidates and configuration as {@link #handle(boolean)}, so the
      * preview the enforcement rules act on cannot disagree with the commit.
      *
+     * <p>When the candidates cannot be listed, the commit would fail before
+     * staging anything, so the preview reports exactly that: nothing staged,
+     * and one skipped entry naming the failure. Evaluating only the
+     * {@code git status} paths instead would show a clean preview for a commit
+     * that is certain to fail.</p>
+     *
      * @param job the job whose working tree is previewed
      * @return the staging result a commit would produce now
      */
@@ -315,15 +321,20 @@ class GitCommitHandler implements ConsoleFeatures {
         File workDir = job.getWorkingDirectory() != null
                 ? new File(job.getWorkingDirectory())
                 : new File(".");
-        List<String> candidates = changedFiles;
+        List<String> candidates;
         try {
             String mergeHead = gitOps.executeOrNull("rev-parse", "--verify", "--quiet", "MERGE_HEAD");
             candidates = stagingCandidates(changedFiles,
                     mergeHead != null ? mergeHead.trim() : null, gitOps);
         } catch (IOException e) {
             job.warn("Staging preview could not list the merged commit's changes: " + e.getMessage());
+            // TODO(review): StagingSkipRule surfaces this entry with its "find another way" file-guardrail prompt, which misdescribes an infrastructure failure
+            return StagingResult.unavailable("MERGE_HEAD",
+                    "staging candidates unavailable: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return StagingResult.unavailable("MERGE_HEAD",
+                    "staging candidates unavailable: interrupted");
         }
         return new FileStager().evaluateFiles(candidates, config, workDir, gitOps);
     }
@@ -396,18 +407,25 @@ class GitCommitHandler implements ConsoleFeatures {
         if (unresolvable.isEmpty()) {
             return;
         }
-        // TODO(review): untrusted path also fails for base-changed files rejected by size/binary/pattern guardrails, not only protected ones; message says "protected"
+        // Name each file with the guardrail that rejected it (protection, size,
+        // binary content, or an excluded pattern), as recorded in skippedFiles.
+        List<String> described = new ArrayList<>();
+        for (String file : unresolvable) {
+            described.add(skippedFiles.stream()
+                    .filter(entry -> entry.startsWith(file + " ("))
+                    .findFirst().orElse(file));
+        }
+        String reasons = String.join(", ", described);
         if (!trusted) {
             throw new RuntimeException("The merge of " + TestMethodProtection.shortSha(mergedCommit)
-                    + " in progress is not the one the harness started, so the protected files"
-                    + " it changes cannot be committed, and reverting them inside a merge commit"
-                    + " would silently drop them: " + String.join(", ", unresolvable)
+                    + " in progress is not the one the harness started, so files it changes that"
+                    + " the staging guardrails rejected cannot be committed, and reverting them"
+                    + " inside a merge commit would silently drop them: " + reasons
                     + ". The merge needs a human.");
         }
-        throw new RuntimeException("The merge changes protected files that both "
+        throw new RuntimeException("The merge changes files that both "
                 + job.getTargetBranch() + " and the base branch changed, and the"
-                + " staging guardrails rejected their resolution: "
-                + String.join(", ", unresolvable)
+                + " staging guardrails rejected their resolution: " + reasons
                 + ". The harness cannot pick a side for them; they need a human.");
     }
 
