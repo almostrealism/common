@@ -552,9 +552,12 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 			int[] prompt = new ByteTokenizer().encodeAsInt("Producer");
 			int generated = 2 * seq;
-			AutoregressiveModel<Integer> generator = lm.generator(inference, null);
-			int[] first = generate(generator, prompt, generated);
-			int[] second = generate(generator, prompt, generated);
+			int[] first;
+			int[] second;
+			try (AutoregressiveModel<Integer> generator = lm.generator(inference, null)) {
+				first = generate(generator, prompt, generated);
+				second = generate(generator, prompt, generated);
+			}
 			Assert.assertArrayEquals("greedy decoding is not reproducible", first, second);
 
 			int[] sequence = IntStream.concat(IntStream.of(prompt), IntStream.of(first)).toArray();
@@ -563,12 +566,82 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 				int filled = p - from;
 				int[] padded = IntStream.rangeClosed(0, seq)
 						.map(i -> i < filled ? sequence[from + i] : VOCAB - 1).toArray();
-				NextTokenDataset window = new NextTokenDataset(padded, VOCAB, seq, seq, 1);
-				PackedCollection row = inference.forward(window.iterator().next().getInput())
-						.range(shape(VOCAB), (filled - 1) * VOCAB);
-				Assert.assertEquals("token at position " + p, sequence[p],
-						AutoregressiveModel.sampleToken(row, VOCAB, 0.0, 1.0, null));
-				window.destroy();
+				try (NextTokenDataset window = new NextTokenDataset(padded, VOCAB, seq, seq, 1)) {
+					PackedCollection row = inference.forward(window.iterator().next().getInput())
+							.range(shape(VOCAB), (filled - 1) * VOCAB);
+					Assert.assertEquals("token at position " + p, sequence[p],
+							AutoregressiveModel.sampleToken(row, VOCAB, 0.0, 1.0, null));
+				}
+			}
+		} finally {
+			inference.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The generator accepts only a model with exactly this configuration's single
+	 * {@code (seqLen)} input and {@code (seqLen, vocab)} output: a model whose input has the same
+	 * number of elements but another shape, or whose output is the transposed
+	 * {@code (vocab, seqLen)}, is rejected rather than decoded with its rows misread.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void generatorRejectsMismatchedShapes() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		PackedCollection table = new PackedCollection(shape(VOCAB, VOCAB));
+
+		Model batched = new Model(shape(1, seq));
+		batched.add(lm.reshape(shape(1, seq), shape(seq)));
+		batched.add(lm.embedding(shape(seq), table));
+
+		Model transposed = new Model(shape(seq));
+		transposed.add(lm.embedding(shape(seq), table));
+		transposed.add(lm.reshape(shape(seq, VOCAB), shape(VOCAB, seq)));
+
+		CompiledModel batchedCompiled = null;
+		CompiledModel transposedCompiled = null;
+		try {
+			batchedCompiled = batched.compile(false);
+			transposedCompiled = transposed.compile(false);
+			Assert.assertEquals(seq, batchedCompiled.getInputShape().getTotalSize());
+			Assert.assertEquals(seq * VOCAB, transposedCompiled.getOutputShape().getTotalSize());
+
+			CompiledModel rejectedBatched = batchedCompiled;
+			CompiledModel rejectedTransposed = transposedCompiled;
+			assertRejected(() -> lm.generator(rejectedBatched, null));
+			assertRejected(() -> lm.generator(rejectedTransposed, null));
+		} finally {
+			Destroyable.destroy(batchedCompiled);
+			Destroyable.destroy(transposedCompiled);
+			table.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * Destroying a generator releases the buffers it decodes with, including its position, and
+	 * leaves the inference model usable for another generator; a second destroy is harmless.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void destroyingGeneratorReleasesItsBuffers() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		CompiledModel inference = lm.buildModel(ParameterUpdate.disabled()).compile(false);
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			AutoregressiveModel<Integer> generator = lm.generator(inference, null);
+			int[] before = generate(generator, prompt, 2);
+			PackedCollection position = generator.getPosition();
+			Assert.assertFalse(position.isDestroyed());
+
+			generator.destroy();
+			Assert.assertTrue("generator position was not released", position.isDestroyed());
+			generator.destroy();
+
+			try (AutoregressiveModel<Integer> next = lm.generator(inference, null)) {
+				Assert.assertArrayEquals(before, generate(next, prompt, 2));
 			}
 		} finally {
 			inference.destroy();
@@ -591,12 +664,15 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 */
 	private int[][] generateSample(CausalLanguageModel lm, CompiledModel inference, String prompt, int length) {
 		int[] promptTokens = new ByteTokenizer().encodeAsInt(prompt);
-		AutoregressiveModel<Integer> generator = lm.generator(inference, null);
-
-		long start = System.nanoTime();
-		int[] first = generate(generator, promptTokens, length);
-		double seconds = (System.nanoTime() - start) / 1e9;
-		int[] second = generate(generator, promptTokens, length);
+		int[] first;
+		int[] second;
+		double seconds;
+		try (AutoregressiveModel<Integer> generator = lm.generator(inference, null)) {
+			long start = System.nanoTime();
+			first = generate(generator, promptTokens, length);
+			seconds = (System.nanoTime() - start) / 1e9;
+			second = generate(generator, promptTokens, length);
+		}
 
 		byte[] bytes = new byte[first.length];
 		IntStream.range(0, first.length).forEach(i -> bytes[i] = (byte) first[i]);

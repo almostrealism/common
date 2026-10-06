@@ -351,23 +351,27 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * tempered distribution using {@code random}. The generator's
 	 * {@link AutoregressiveModel#getPosition() position} is not read by the inference model. The
 	 * window is cleared whenever a sequence restarts at step zero, so
-	 * {@link AutoregressiveModel#reset()} starts a new sequence. The caller remains responsible
-	 * for {@code inference}.</p>
+	 * {@link AutoregressiveModel#reset()} starts a new sequence.</p>
+	 *
+	 * <p>The generator owns the device buffers it decodes with, and
+	 * {@link AutoregressiveModel#destroy() destroying} it releases them. The caller remains
+	 * responsible for {@code inference}, which outlives any number of generators.</p>
 	 *
 	 * @param inference the compiled model, from {@code (seqLen)} token ids to
-	 *                  {@code (seqLen, vocabSize)} log-probabilities
+	 *                  {@code (seqLen, vocabSize)} log-probabilities, with no further inputs
 	 * @param random    the source of randomness for positive temperatures; may be null when
 	 *                  only greedy decoding is used
-	 * @return a generator of token ids
-	 * @throws IllegalArgumentException if {@code inference} does not have this configuration's
-	 *                                  input and output shapes
+	 * @return a generator of token ids, to be destroyed by the caller
+	 * @throws IllegalArgumentException if {@code inference} does not have exactly this
+	 *                                  configuration's single input and output shapes
 	 */
 	public AutoregressiveModel<Integer> generator(CompiledModel inference, Random random) {
-		if (inference.getInputShape().getTotalSize() != seqLen ||
-				inference.getOutputShape().getTotalSize() != seqLen * vocabSize) {
-			throw new IllegalArgumentException("Model with input " + inference.getInputShape() +
-					" and output " + inference.getOutputShape() + " does not map (" + seqLen +
-					") token ids to " + getOutputShape());
+		if (inference.getInputCount() != 1 ||
+				!inference.getInputShape().equalsIgnoreAxis(shape(seqLen)) ||
+				!inference.getOutputShape().equalsIgnoreAxis(getOutputShape())) {
+			throw new IllegalArgumentException("Model with " + inference.getInputCount() + " input(s), the first " +
+					inference.getInputShape() + ", and output " + inference.getOutputShape() +
+					" does not map (" + seqLen + ") token ids to " + getOutputShape());
 		}
 
 		return new SlidingWindow(inference, random).generator;
@@ -402,7 +406,8 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	 * The decoding state of one {@link #generator(CompiledModel, Random) generator}: the model
 	 * input holding the most recent {@code seqLen} tokens of the sequence, kept in device memory.
 	 * Each token reaches the device as a single value, and the window slides by device-to-device
-	 * copies, so no window contents are staged on the host.
+	 * copies, so no window contents are staged on the host. The generator owns every buffer
+	 * allocated here, including its position and temperature.
 	 */
 	private class SlidingWindow {
 		/** The compiled inference model. */
@@ -437,16 +442,18 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 		 * @param random    the source of randomness for positive temperatures
 		 */
 		SlidingWindow(CompiledModel inference, Random random) {
-			// TODO(review): input, scratch, token and the generator's position/temperature are never destroyed
 			this.inference = inference;
 			this.input = new PackedCollection(shape(seqLen));
 			this.scratch = new PackedCollection(shape(seqLen));
 			this.token = new PackedCollection(1);
 
-			this.generator = new AutoregressiveModel<>(new PackedCollection(1), this::append, this::forward,
+			PackedCollection position = new PackedCollection(1);
+			PackedCollection temperature = new PackedCollection(1);
+			this.generator = new AutoregressiveModel<>(position, this::append, this::forward,
 					logProbabilities -> AutoregressiveModel.sampleToken(logProbabilities, vocabSize,
 							this.generator.getTemperature(), 1.0, random),
-					new PackedCollection(1));
+					temperature);
+			this.generator.own(input, scratch, token, position, temperature);
 		}
 
 		/**

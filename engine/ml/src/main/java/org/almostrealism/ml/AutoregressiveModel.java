@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
@@ -25,7 +26,9 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -93,6 +96,12 @@ import java.util.function.Supplier;
  * }
  * }</pre>
  *
+ * <h2>Lifecycle</h2>
+ * <p>{@link #destroy()} releases the compiled position operations this class creates, and
+ * every resource its creator handed over with {@link #own(Destroyable...)}. The position,
+ * temperature and model passed to the constructor are not released unless they were handed
+ * over that way, because they may be shared with other parts of the computation graph.</p>
+ *
  * <h2>Token Selection Process</h2>
  * <p>The {@link #next()} method implements the following logic:</p>
  * <ol>
@@ -104,7 +113,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  * @see CompiledModel
  */
-public class AutoregressiveModel<T> {
+public class AutoregressiveModel<T> implements Destroyable {
 
 	/** Singleton for accessing {@link DistributionFeatures#softmax} from static context. */
 	private static final DistributionFeatures DIST = new DistributionFeatures() {};
@@ -157,6 +166,9 @@ public class AutoregressiveModel<T> {
 
 	/** The model output produced by the most recent forward pass; used to sample the next token. */
 	private PackedCollection cachedOutput;
+
+	/** Resources handed over by {@link #own(Destroyable...)}, released by {@link #destroy()}. */
+	private final List<Destroyable> owned = new ArrayList<>();
 
 	/**
 	 * Creates a new autoregressive model with the specified components.
@@ -220,6 +232,35 @@ public class AutoregressiveModel<T> {
 	public void advance() {
 		advancePosition.run();
 		this.currentStep++;
+	}
+
+	/**
+	 * Hands resources over to this generator, so that {@link #destroy()} releases them. A
+	 * creator that allocates state used only by this generator, such as its input buffers,
+	 * position or temperature, uses this to give the caller a single object to release.
+	 *
+	 * @param resources the resources this generator now owns
+	 * @return this generator
+	 */
+	public AutoregressiveModel<T> own(Destroyable... resources) {
+		owned.addAll(Arrays.asList(resources));
+		return this;
+	}
+
+	/**
+	 * Releases the compiled position operations and every resource handed over with
+	 * {@link #own(Destroyable...)}; every release is attempted even when an earlier one fails.
+	 * The generator cannot be used afterwards. Owned resources are released only once, so a
+	 * repeated call releases nothing further that was handed over.
+	 */
+	@Override
+	public void destroy() {
+		List<Runnable> releases = new ArrayList<>();
+		owned.forEach(resource -> releases.add(resource::destroy));
+		owned.clear();
+		Destroyable.releaseAll(releases,
+				() -> Destroyable.destroy(resetPosition),
+				() -> Destroyable.destroy(advancePosition));
 	}
 
 	/**

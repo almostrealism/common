@@ -122,7 +122,9 @@ chooses the combination that clears the bar with margin; all must keep the compa
 1. **Train further / better schedule.** More epochs and/or a tuned learning-rate schedule, within
    the step budget the timing allows. The doc already found that rotating through the whole training
    region at a decaying rate is what moved held-out loss below the region's unigram rate; push that
-   further without tripping the `ModelOptimizer` memorization guard.
+   further without tripping `ModelOptimizer`'s post-update check (after an update, the first
+   sample's loss must not have increased; its documentation treats a failure as a sign of
+   gradient-computation trouble).
 2. **More capacity or more corpus, within the memory budget.** The feed-forward input-projection
    Jacobian dominates device memory (grows with the square of the FF width), which is why width is
    128 today. Prefer adding corpus (more `docs/internals` pages, listed in the test's `CORPUS`
@@ -366,6 +368,11 @@ reloaded checkpoint and logs the sample with strict-decoder UTF-8 validity (repo
 asserted — open question 3). With the current model the greedy continuation is 96 spaces (the
 corpus's most frequent byte), so the reproducibility/non-triviality assertions, which run after
 the baseline assertion, also fail until the model improves. KV-cache decoding remains a follow-up.
+Open question 2 was settled without an ordering dependency: generation runs inside
+`trainOnDocumentation` on the checkpoint that run just saved and reloaded, and the determinism of
+the generation path itself is proven on random weights by the fast test. The generator owns its
+device buffers and releases them when it is destroyed (`AutoregressiveModel` is `Destroyable`), and
+`generator(...)` requires the inference model's exact single input and output shapes.
 
 **Deliverable 3 — done.** `docs/internals/training-a-language-model.md` has the new
 configuration, curve, recipe comparison, step-cost analysis, and a Generation section.
