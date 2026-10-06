@@ -109,19 +109,7 @@ public class CudaStreamRunnerSyncTest {
 		public void synchronize() {
 			if (gate != null) {
 				entered.countDown();
-
-				// Wait uninterruptibly so an interrupt here does not abandon the wait.
-				boolean interrupted = false;
-				while (true) {
-					try {
-						gate.await();
-						break;
-					} catch (InterruptedException e) {
-						interrupted = true;
-					}
-				}
-
-				if (interrupted) Thread.currentThread().interrupt();
+				awaitUninterruptibly(gate);
 			}
 
 			events.add("synchronize");
@@ -129,6 +117,27 @@ public class CudaStreamRunnerSyncTest {
 
 		@Override
 		public void release() { }
+	}
+
+	/**
+	 * Awaits the given latch, ignoring interrupts so the wait is never abandoned, and restores the
+	 * thread's interrupt status afterward if any interrupt arrived. A recorded event's wait models
+	 * the GPU finishing with the buffers, which no interrupt may cut short.
+	 *
+	 * @param latch the latch to await to completion
+	 */
+	private static void awaitUninterruptibly(CountDownLatch latch) {
+		boolean interrupted = false;
+		while (true) {
+			try {
+				latch.await();
+				break;
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) Thread.currentThread().interrupt();
 	}
 
 	/**
