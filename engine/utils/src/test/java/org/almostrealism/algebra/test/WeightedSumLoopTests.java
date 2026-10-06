@@ -87,11 +87,91 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void convolutionLoopMatchesReference() {
-		int channels = 64;
-		int filters = 8;
-		int kernel = 7;
-		int length = 20;
+		assertConvolutionLoop("convolution", 64, 8, 7, 20, 7);
+	}
 
+	/**
+	 * A one-dimensional convolution whose kernel of 16 taps is exactly
+	 * {@link WeightedSumComputation#maxUnrolledMembers} sums all 16 taps of a channel in each
+	 * iteration of the loop over 32 channels, and matches the host evaluation and the
+	 * single-expression kernel.
+	 */
+	@Test(timeout = 120000)
+	public void convolutionKernelAtUnrollLimit() {
+		assertConvolutionLoop("convolution (kernel at unroll limit)", 32, 2, 16, 6, 16);
+	}
+
+	/**
+	 * A one-dimensional convolution whose kernel of 17 taps exceeds
+	 * {@link WeightedSumComputation#maxUnrolledMembers} cannot place a whole channel in one
+	 * iteration, so its group of 272 members is summed one member per iteration, and matches
+	 * the host evaluation and the single-expression kernel.
+	 */
+	@Test(timeout = 120000)
+	public void convolutionKernelBeyondUnrollLimit() {
+		assertConvolutionLoop("convolution (kernel beyond unroll limit)", 16, 2, 17, 6, 1);
+	}
+
+	/**
+	 * A group of exactly {@link WeightedSumComputation#loopThreshold} members is summed by a
+	 * loop and matches the host evaluation, while a group one member smaller is summed by a
+	 * single expression.
+	 */
+	@Test(timeout = 120000)
+	public void loopThresholdIsInclusive() {
+		int n = WeightedSumComputation.loopThreshold;
+
+		PackedCollection a = track(new PackedCollection(shape(2, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, 3)).randFill());
+		assertLoopMatches("matmul at threshold",
+				matmulReference(a.toArray(), b.toArray(), 2, n, 3),
+				() -> matmul(a, b, 2, n, 3));
+
+		PackedCollection c = track(new PackedCollection(shape(2, n - 1)).randFill());
+		PackedCollection d = track(new PackedCollection(shape(n - 1, 3)).randFill());
+		Assert.assertFalse("a group below the threshold must not be looped",
+				((WeightedSumComputation) matmul(c, d, 2, n - 1, 3)).isLooped());
+	}
+
+	/**
+	 * The looped and single-expression forms of the same sum generate different kernels, so
+	 * their signatures must differ; otherwise a kernel cache keyed by signature would reuse
+	 * one form's kernel for the other.
+	 */
+	@Test(timeout = 30000)
+	public void loopedSignatureDiffersFromSingleExpression() {
+		int n = 300;
+
+		PackedCollection a = track(new PackedCollection(shape(4, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, 3)).randFill());
+
+		WeightedSumComputation looped = (WeightedSumComputation) matmul(a, b, 4, n, 3);
+		Assert.assertTrue(looped.isLooped());
+		Assert.assertNotNull(looped.signature());
+		Assert.assertTrue(looped.signature().contains("{loop:1}"));
+
+		int threshold = WeightedSumComputation.loopThreshold;
+		WeightedSumComputation.loopThreshold = Integer.MAX_VALUE;
+
+		try {
+			WeightedSumComputation single = (WeightedSumComputation) matmul(a, b, 4, n, 3);
+			Assert.assertFalse(single.isLooped());
+			Assert.assertNotNull(single.signature());
+			Assert.assertFalse(single.signature().contains("{loop:"));
+			Assert.assertNotEquals(looped.signature(), single.signature());
+		} finally {
+			WeightedSumComputation.loopThreshold = threshold;
+		}
+	}
+
+	/**
+	 * Asserts that a one-dimensional convolution of {@code channels} input channels by
+	 * {@code filters} filters of {@code kernel} taps, producing {@code length} outputs per
+	 * filter, is looped with {@code loopMembers} members per iteration (as recorded in its
+	 * signature) and that both kernel forms match a host evaluation.
+	 */
+	private void assertConvolutionLoop(String label, int channels, int filters, int kernel,
+									   int length, int loopMembers) {
 		PackedCollection input = track(new PackedCollection(shape(1, 1, channels, length + kernel - 1)).randFill());
 		PackedCollection filter = track(new PackedCollection(shape(1, filters, channels, kernel)).randFill());
 
@@ -110,13 +190,50 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 			}
 		}
 
-		assertLoopMatches("convolution", expected, () -> {
+		Supplier<CollectionProducer> conv = () -> {
 			TraversalPolicy resultShape = shape(1, filters, 1, length);
 			return weightedSum("convolution",
 					resultShape.withRate(1, 1, filters).withRate(2, channels, 1),
 					resultShape.withRate(2, channels, 1).withRate(3, kernel, length),
 					shape(1, 1, channels, kernel), cp(input), cp(filter));
-		});
+		};
+
+		String signature = ((WeightedSumComputation) conv.get()).signature();
+		Assert.assertNotNull(label + " signature", signature);
+		Assert.assertTrue(label + " should sum " + loopMembers + " members per iteration",
+				signature.endsWith("{loop:" + loopMembers + "}"));
+
+		assertLoopMatches(label, expected, conv);
+	}
+
+	/**
+	 * Builds the weighted sum for the product of an {@code m} by {@code n} matrix and an
+	 * {@code n} by {@code p} matrix, whose group is the inner dimension of {@code n} members.
+	 */
+	private CollectionProducer matmul(PackedCollection a, PackedCollection b, int m, int n, int p) {
+		TraversalPolicy resultShape = shape(1, m, 1, p);
+		return weightedSum("matmul", resultShape,
+				resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
+				shape(1, 1, n, 1), shape(1, 1, n, 1),
+				cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+	}
+
+	/**
+	 * Computes on the host the product of the row-major {@code m} by {@code n} matrix
+	 * {@code left} and the row-major {@code n} by {@code p} matrix {@code right}.
+	 */
+	private static double[] matmulReference(double[] left, double[] right, int m, int n, int p) {
+		double[] expected = new double[m * p];
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < p; j++) {
+				double sum = 0;
+				for (int k = 0; k < n; k++) {
+					sum += left[i * n + k] * right[k * p + j];
+				}
+				expected[i * p + j] = sum;
+			}
+		}
+		return expected;
 	}
 
 	/**
@@ -133,26 +250,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
 		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
-		double[] left = a.toArray();
-		double[] right = b.toArray();
-		double[] expected = new double[m * p];
-		for (int i = 0; i < m; i++) {
-			for (int j = 0; j < p; j++) {
-				double sum = 0;
-				for (int k = 0; k < n; k++) {
-					sum += left[i * n + k] * right[k * p + j];
-				}
-				expected[i * p + j] = sum;
-			}
-		}
-
-		assertLoopMatches("matrix product", expected, () -> {
-			TraversalPolicy resultShape = shape(1, m, 1, p);
-			return weightedSum("matmul", resultShape,
-					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
-					shape(1, 1, n, 1), shape(1, 1, n, 1),
-					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
-		});
+		assertLoopMatches("matrix product", matmulReference(a.toArray(), b.toArray(), m, n, p),
+				() -> matmul(a, b, m, n, p));
 	}
 
 	/**
@@ -214,28 +313,17 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		PackedCollection a = track(new PackedCollection(shape(4, n)).randFill());
 		PackedCollection b = track(new PackedCollection(shape(n, 3)).randFill());
 
-		double[] left = a.toArray();
-		double[] right = b.toArray();
+		double[] sums = matmulReference(a.toArray(), b.toArray(), 4, n, 3);
+		double[] expected = new double[sums.length];
+		for (int i = 0; i < sums.length; i++) {
+			expected[i] = 2.0 * sums[i] + 1.0;
+		}
 
-		TraversalPolicy resultShape = shape(1, 4, 1, 3);
-		CollectionProducer product = weightedSum("matmul", resultShape,
-				resultShape.withRate(3, n, 3), resultShape.withRate(1, 1, 4),
-				shape(1, 1, n, 1), shape(1, 1, n, 1),
-				cp(a.reshape(1, 4, n, 1)), cp(b.reshape(1, 1, n, 3)));
+		CollectionProducer product = matmul(a, b, 4, n, 3);
 		Assert.assertTrue(((WeightedSumComputation) product).isLooped());
 
-		PackedCollection result = track(product.multiply(2.0).add(1.0).evaluate());
-
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 3; j++) {
-				double sum = 0;
-				for (int k = 0; k < n; k++) {
-					sum += left[i * n + k] * right[k * 3 + j];
-				}
-				Assert.assertEquals(2.0 * sum + 1.0, result.toDouble(i * 3 + j),
-						TOLERANCE * Math.max(1.0, 2.0 * sum + 1.0));
-			}
-		}
+		assertMatches("matmul inside expression", expected,
+				track(product.multiply(2.0).add(1.0).evaluate()));
 	}
 
 	/**
@@ -253,11 +341,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
 		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
-		TraversalPolicy resultShape = shape(1, m, 1, p);
-		WeightedSumComputation looped = (WeightedSumComputation) weightedSum("matmul", resultShape,
-				resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
-				shape(1, 1, n, 1), shape(1, 1, n, 1),
-				cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+		WeightedSumComputation looped = (WeightedSumComputation) matmul(a, b, m, n, p);
 		Assert.assertTrue(looped.isLooped());
 		String signature = looped.signature();
 
@@ -329,29 +413,13 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 
 		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
 		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
+		double[] expected = matmulReference(a.toArray(), b.toArray(), m, n, p);
 
-		double[] left = a.toArray();
-		double[] right = b.toArray();
-		double[] expected = new double[m * p];
-		for (int i = 0; i < m; i++) {
-			for (int j = 0; j < p; j++) {
-				double sum = 0;
-				for (int k = 0; k < n; k++) {
-					sum += left[i * n + k] * right[k * p + j];
-				}
-				expected[i * p + j] = sum;
-			}
-		}
-
-		TraversalPolicy resultShape = shape(1, m, 1, p);
-		CollectionProducer product = weightedSum("matmul", resultShape,
-				resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
-				shape(1, 1, n, 1), shape(1, 1, n, 1),
-				cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+		CollectionProducer product = matmul(a, b, m, n, p);
 		Assert.assertTrue(((WeightedSumComputation) product).isLooped());
 
 		Evaluable<PackedCollection> ev = product.get();
-		PackedCollection destination = track(new PackedCollection(resultShape));
+		PackedCollection destination = track(new PackedCollection(shape(1, m, 1, p)));
 		destination.fill(100.0);
 		ev.into(destination).evaluate();
 
@@ -372,26 +440,8 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
 		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
 
-		double[] left = a.toArray();
-		double[] right = b.toArray();
-		double[] expected = new double[m * p];
-		for (int i = 0; i < m; i++) {
-			for (int j = 0; j < p; j++) {
-				double sum = 0;
-				for (int k = 0; k < n; k++) {
-					sum += left[i * n + k] * right[k * p + j];
-				}
-				expected[i * p + j] = sum;
-			}
-		}
-
-		assertLoopMatches("large output", expected, () -> {
-			TraversalPolicy resultShape = shape(1, m, 1, p);
-			return weightedSum("matmul", resultShape,
-					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
-					shape(1, 1, n, 1), shape(1, 1, n, 1),
-					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
-		});
+		assertLoopMatches("large output", matmulReference(a.toArray(), b.toArray(), m, n, p),
+				() -> matmul(a, b, m, n, p));
 	}
 
 	/**
@@ -411,16 +461,13 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 		Hardware.getLocalHardware().assignProfile(profile);
 
 		try {
-			TraversalPolicy resultShape = shape(1, m, 1, p);
-			CollectionProducer product = weightedSum("matmul", resultShape,
-					resultShape.withRate(3, n, p), resultShape.withRate(1, 1, m),
-					shape(1, 1, n, 1), shape(1, 1, n, 1),
-					cp(a.reshape(1, m, n, 1)), cp(b.reshape(1, 1, n, p)));
+			CollectionProducer product = matmul(a, b, m, n, p);
 			Assert.assertTrue(((WeightedSumComputation) product).isLooped());
 			Evaluable<PackedCollection> ev = product.get();
-			track(ev.evaluate());
+			assertMatches("profiled matmul", matmulReference(a.toArray(), b.toArray(), m, n, p),
+					track(ev.evaluate()));
 		} finally {
-			Hardware.getLocalHardware().assignProfile(null);
+			Hardware.getLocalHardware().clearProfile();
 		}
 
 		new File("results").mkdirs();
