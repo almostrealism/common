@@ -4,12 +4,17 @@
  * pass. It is the self-attention of the Stable Audio diffusion transformer's blocks and of the
  * T5Gemma text encoder.
  *
- * This file replaces the Java assembly that used to live in AttentionFeatures.sequenceAttention,
- * which built the same stages as a SequentialBlock: a fused query/key/value projection split three
- * ways, a per-head reshape and permute of each third, an optional query/key normalization, the
- * rotary embedding, the value padding mask, the key and value stores, scaled dot-product attention
- * and the output projection. AttentionFeatures.sequenceAttention now only builds the two projection
- * layers, allocates the key and value stores, binds the arguments and builds one of the layers below.
+ * The layers below describe the same stages SequenceAttentionFeatures.sequenceAttention assembles in
+ * Java as a SequentialBlock: a fused query/key/value projection split three ways, a per-head reshape
+ * and permute of each third, an optional query/key normalization, the rotary embedding, the value
+ * padding mask, scaled dot-product attention and the output projection. sequenceAttention does not
+ * build these layers; a PDSL program builds them directly, binding the arguments each layer declares.
+ *
+ * Forward only. The keys and values reach the score and context halves through the k_heads and
+ * v_heads stores, written by capture, whose backward pass is empty. No gradient flows from the
+ * attention output into the key and value thirds of qkv_projection, so these layers are for
+ * inference; trainable sequence attention is the Java sequenceAttention, which keeps the key and
+ * value branches connected to the graph.
  *
  * It is the full-sequence counterpart of the autoregressive `attention` layer of
  * /pdsl/attention.pdsl, which scores one token against a growing key/value cache; here the keys and

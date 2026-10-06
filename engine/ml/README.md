@@ -579,7 +579,8 @@ vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
 shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
 and no masking. Query/key normalization takes both weights or neither. The same non-causal
 attention is also described by the layers of the `sequence_attention.pdsl` asset, which a PDSL
-program can build directly with the two projection layers bound as arguments.
+program can build directly with the two projection layers bound as arguments; those layers are
+forward only (their key and value stores pass no gradient back).
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 

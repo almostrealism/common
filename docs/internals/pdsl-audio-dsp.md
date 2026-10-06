@@ -100,8 +100,9 @@ audio-domain assumption:
 `scaled_dot_product`, `sqrt`, `attention`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
 composes the KV-cached attention block from these and `attention()` loads that asset;
-`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes the non-causal
-full-sequence self-attention that `sequenceAttention()` computes; and
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` describes, forward only, the non-causal
+full-sequence self-attention that `sequenceAttention()` computes (it is not loaded by that
+method); and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
 pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward.pdsl` — `accum` around an attention

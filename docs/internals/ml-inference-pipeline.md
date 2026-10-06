@@ -846,7 +846,9 @@ The same non-causal attention is also written out as PDSL layers in
 `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` (fused projection separated into one
 row per head by `slice`, `reshape` and `permute`, `sequence_rope`, and the `sdpa.pdsl` score and
 context layers), which a PDSL program can build directly with the two projection layers bound as
-arguments.
+arguments. These layers are forward only: the keys and values reach the score and context halves
+through `capture` stores, which pass no gradient back, so trainable attention uses
+`sequenceAttention`.
 
 ---
 

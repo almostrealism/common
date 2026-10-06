@@ -41,15 +41,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Pins the behaviour of {@link AttentionFeatures#sequenceAttention} — parallel (full-sequence)
- * multi-head self-attention with rotary position embeddings — across its migration from a Java
- * {@link SequentialBlock} assembly to the layers of {@code /pdsl/sequence_attention.pdsl}.
+ * Holds the layers of {@code /pdsl/sequence_attention.pdsl} to the behaviour of
+ * {@link AttentionFeatures#sequenceAttention} — parallel (full-sequence) multi-head self-attention
+ * with rotary position embeddings. The feature method still assembles a Java
+ * {@link SequentialBlock} (its key and value branches stay connected to the graph for training);
+ * the asset is a forward-only PDSL description of the same computation.
  *
  * <p>Every configuration is computed four ways over the same weights and input: by the feature
- * method {@code sequenceAttention}; by the Java assembly that method built before the migration,
- * reproduced verbatim in {@link Weights#javaAssembly} so that the comparison survives the
- * migration; by the asset layer built directly through {@link PdslLoader} with the arguments its
- * header documents; and by a reference computed on the host in double precision
+ * method {@code sequenceAttention}; by a fixed copy of that Java assembly with dense projections,
+ * {@link Weights#javaAssembly}, so that the comparison is independent of later changes to the
+ * feature method; by the asset layer built directly through {@link PdslLoader} with the arguments
+ * its header documents; and by a reference computed on the host in double precision
  * ({@link Weights#hostReference}), which uses no framework block and so pins the numerical contract
  * whatever builds the attention. The first three must agree to within float rounding and the
  * feature method must match the host reference.</p>
@@ -64,7 +66,6 @@ import static org.junit.Assert.assertTrue;
  */
 public class SequenceAttentionAssetTest extends TestSuiteBase implements AttentionFeatures {
 
-	// TODO(review): since the master merge, sequenceAttention no longer loads this asset; route it through the asset gradient-safely or drop the duplicate description
 	/** Classpath location of the parallel self-attention asset. */
 	private static final String SEQUENCE_ATTENTION_ASSET = "/pdsl/sequence_attention.pdsl";
 
@@ -414,9 +415,8 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 		}
 
 		/**
-		 * The Java assembly {@code AttentionFeatures.sequenceAttention} built before the stages
-		 * moved to {@code /pdsl/sequence_attention.pdsl}, reproduced verbatim with dense
-		 * projections, as the reference the migrated attention is held to.
+		 * A fixed copy of the Java assembly {@code sequenceAttention} builds, with dense
+		 * projections, as the reference the asset and the feature method are held to.
 		 *
 		 * @param paddingMask the padding mask, or {@code null}
 		 * @param keyMask     the key mask, or {@code null}
