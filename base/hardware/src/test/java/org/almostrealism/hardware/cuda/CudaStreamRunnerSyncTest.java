@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cuda;
 
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.junit.Assert;
@@ -499,6 +500,65 @@ public class CudaStreamRunnerSyncTest {
 		}
 
 		Assert.assertEquals(List.of(), events);
+	}
+
+	/**
+	 * A re-attributed view returned by {@link CudaSemaphore#withRequester} is a distinct handle
+	 * that keeps the original runner and carries the new requester metadata, while the original
+	 * keeps its own, and it shares the submission's settlement state, so once the submission has
+	 * completed the view reports it settled too.
+	 */
+	@Test(timeout = 30000)
+	public void withRequesterKeepsRunnerAndSharesSettlement() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+
+		OperationMetadata original = new OperationMetadata("original", "original");
+		OperationMetadata reattributed = new OperationMetadata("reattributed", "reattributed");
+
+		CudaSemaphore completion = (CudaSemaphore) runner.submit(original,
+				stream -> events.add("command"), null, () -> events.add("complete"));
+		CudaSemaphore view = (CudaSemaphore) completion.withRequester(reattributed);
+
+		Assert.assertNotSame("withRequester must return a distinct handle", completion, view);
+		Assert.assertSame("The view must keep the original runner", runner, view.getRunner());
+		Assert.assertSame("The view must carry the new requester", reattributed, view.getRequester());
+		Assert.assertSame("The original must keep its own requester", original, completion.getRequester());
+
+		completion.waitFor();
+
+		Assert.assertTrue("The view must share the original's settlement state", view.isSettled());
+		view.waitFor();
+		runner.destroy();
+	}
+
+	/**
+	 * A re-attributed view shares the original submission's failure: when the submission it
+	 * describes fails, waiting on the view rethrows that failure rather than returning as though
+	 * the work had succeeded. This is the reason the view reuses the original's failure reference.
+	 */
+	@Test(timeout = 30000)
+	public void withRequesterViewSharesFailure() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		CudaSemaphore held = (CudaSemaphore) runner.submit(null, stream -> events.add("held"),
+				pending, () -> events.add("held complete"));
+		CudaSemaphore view = (CudaSemaphore) held.withRequester(
+				new OperationMetadata("reattributed", "reattributed"));
+
+		runner.destroy();
+
+		Assert.assertTrue("The view must share the original's settlement state", view.isSettled());
+
+		try {
+			view.waitFor();
+			Assert.fail("The view must rethrow the shared failure");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("The failure must explain the runner was destroyed",
+					expected.getMessage().contains("destroyed"));
+		}
 	}
 
 	/**
