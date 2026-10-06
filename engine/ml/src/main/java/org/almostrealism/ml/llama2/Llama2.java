@@ -157,6 +157,13 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	public OperationProfile getProfile() { return profile; }
 
 	/**
+	 * Returns the generator {@link #run} decodes with, which {@link #destroy()} releases.
+	 *
+	 * @return the autoregressive model built from the checkpoint
+	 */
+	public AutoregressiveModel<Integer> getAutoregressiveModel() { return model; }
+
+	/**
 	 * Sets the sampling temperature.
 	 *
 	 * @param temperature 0.0 for greedy decoding, higher values for more randomness
