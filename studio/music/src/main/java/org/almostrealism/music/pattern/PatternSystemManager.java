@@ -181,7 +181,8 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	}
 
 	/**
-	 * Incremented by {@link #clear()} whenever the current pattern managers are destroyed.
+	 * Incremented by {@link #clear()} whenever the current pattern managers are destroyed,
+	 * and by {@link #addPattern} whenever a pattern is added.
 	 * Render operations built by {@link #sum} capture the generation they were built
 	 * against and refuse to run once it has moved on, because the managers they reference
 	 * have released their native memory.
@@ -230,8 +231,17 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 				.flatMap(c -> c.getSources().stream()).toList();
 	}
 
-	/** Returns the list of pattern layer managers. */
-	public List<PatternLayerManager> getPatterns() { return patterns; }
+	/**
+	 * Returns a read-only view of the pattern layer managers.
+	 *
+	 * <p>The view reflects later changes, but cannot be used to mutate the pattern set:
+	 * every structural mutation must go through {@link #addPattern}, {@link #clear()} or
+	 * {@link #setSettings(Settings)}, which advance the pattern generation that stale
+	 * {@link #sum} operations are checked against and destroy removed managers.</p>
+	 *
+	 * @return an unmodifiable view of the pattern layer managers
+	 */
+	public List<PatternLayerManager> getPatterns() { return Collections.unmodifiableList(patterns); }
 
 	/**
 	 * Returns all pattern elements in {@code [start, end)}, grouped by choice.

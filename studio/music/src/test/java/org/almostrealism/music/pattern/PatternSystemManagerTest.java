@@ -147,6 +147,45 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@code getPatterns()} is a read-only live view: it cannot be used to add, remove
+	 * or clear patterns (which would bypass the pattern generation that stale render
+	 * operations are checked against), yet it reflects mutations made through the
+	 * manager itself.
+	 */
+	@Test(timeout = 30000)
+	public void patternListViewIsReadOnly() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(2));
+		PatternLayerManager first = psm.addPattern(0, 2.0, false);
+		List<PatternLayerManager> view = psm.getPatterns();
+
+		assertRejected(() -> view.add(first));
+		assertRejected(() -> view.remove(0));
+		assertRejected(view::clear);
+		Assert.assertEquals("a rejected mutation leaves the patterns intact", List.of(first), view);
+
+		PatternLayerManager second = psm.addPattern(1, 2.0, false);
+		Assert.assertEquals("the view reflects patterns added later", List.of(first, second), view);
+
+		psm.clear();
+		Assert.assertTrue("the view reflects a clear", view.isEmpty());
+	}
+
+	/**
+	 * Asserts that the given mutation is rejected with
+	 * {@link UnsupportedOperationException}.
+	 *
+	 * @param mutation the mutation to attempt
+	 */
+	private static void assertRejected(Runnable mutation) {
+		try {
+			mutation.run();
+			Assert.fail("the pattern list view must reject mutation");
+		} catch (UnsupportedOperationException expected) {
+			// the view is read-only
+		}
+	}
+
+	/**
 	 * {@code destroy()} empties the pattern list, releasing every manager's cache, and
 	 * is idempotent across repeated teardown.
 	 */

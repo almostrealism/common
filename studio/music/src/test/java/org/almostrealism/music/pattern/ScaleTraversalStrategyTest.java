@@ -384,6 +384,8 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 					destinations.get(2).getCacheIdentity());
 			Assert.assertNotEquals(destinations.get(1).getCacheIdentity(),
 					destinations.get(2).getCacheIdentity());
+
+			destinations.forEach(RenderedNoteAudio::destroy);
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}
@@ -434,6 +436,7 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 				Assert.assertSame(rightAudio, cache.get(right.getOffset(), right.getCacheIdentity()));
 			} finally {
 				cache.clear();
+				List.of(left, leftAgain, right).forEach(RenderedNoteAudio::destroy);
 			}
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
