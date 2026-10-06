@@ -338,11 +338,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 	/**
 	 * The active cell list produced by the most recent {@code getCells} call. Held in an
-	 * {@link AtomicReference} so that replacing it (a scene rebuild) and releasing it (a
-	 * runner teardown on another thread) are compare-and-set operations that cannot
-	 * interleave into a double free or clobber a newer list.
+	 * {@link AtomicReference} so that a release from a runner teardown on another thread is
+	 * compare-and-set guarded (see {@link #destroyActiveCells}) and cannot double-free a list
+	 * or clobber a newer one. Replacement during a scene rebuild runs on the single build
+	 * thread: {@link #getCells}/{@link #prepareRenderBuffers} first CAS-release the prior list
+	 * via {@link #destroyActiveCells} and then publish the freshly built list with a plain
+	 * {@code set()}, since no other thread produces a list to race that publish.
 	 */
-	// TODO(review): getCells replaces this with an unconditional set(), not a CAS; only releases are CAS-guarded.
 	private final AtomicReference<CellList> activeCells = new AtomicReference<>();
 
 	/** Builds this scene's real-time runners and releases any still live on {@link #destroy()}. */
