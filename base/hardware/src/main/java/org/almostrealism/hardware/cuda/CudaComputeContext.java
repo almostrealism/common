@@ -27,6 +27,7 @@ import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * {@link io.almostrealism.code.ComputeContext} that compiles scopes to CUDA kernels and runs
@@ -126,19 +128,45 @@ public class CudaComputeContext extends AbstractComputeContext<CudaDataContext> 
 	@Override
 	public boolean isCPU() { return false; }
 
+	/**
+	 * Copies one CUDA allocation into another on the device, ordered after {@code dependsOn},
+	 * without waiting for the copy on the calling thread; falls back to the host-mediated copy of
+	 * {@link AbstractComputeContext#copy} when either operand is not CUDA memory.
+	 *
+	 * <p>The device copy is enqueued on the stream and runs after this returns, exactly as a
+	 * dispatched kernel does, so it holds a {@link KernelMemoryGuard} scheduling lease over both
+	 * regions from the moment it is scheduled until its completion callback, as the fallback copy
+	 * does. Without it a region released in the meantime could be freed while the queued copy is
+	 * still using it. A lease (rather than a plain execution reservation) is used because a foreign
+	 * dependency may hold the submission longer than the deferred-release backstop, which a lease is
+	 * exempt from. The lease keeps the memory alive, but destroying either operand still clears its
+	 * reference to it, so the copy resolves each region through the lease's
+	 * {@link KernelMemoryGuard.Reservation#detachedReference detached reference} when it launches.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
+	 * @return the copy's completion
+	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
 		if (source.getMem() instanceof CudaMemory && destination.getMem() instanceof CudaMemory) {
-			CudaMemory src = (CudaMemory) source.getMem();
-			CudaMemory dst = (CudaMemory) destination.getMem();
-			long elementSize = src.getProvider().getNumberSize();
-			long sourceOffset = source.getOffset() * elementSize;
-			long destinationOffset = destination.getOffset() * elementSize;
-			long size = source.getMemLength() * elementSize;
+			KernelMemoryGuard.Reservation lease =
+					Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(source, destination);
+			Supplier<MemoryData> from = lease.detachedReference(source);
+			Supplier<MemoryData> to = lease.detachedReference(destination);
 
-			return runner.submit(DEVICE_COPY,
-					stream -> stream.copy(src.getBuffer(), sourceOffset, dst.getBuffer(), destinationOffset, size),
-					dependsOn, null);
+			return runner.submit(DEVICE_COPY, stream -> {
+				MemoryData src = from.get();
+				MemoryData dst = to.get();
+				CudaMemory srcMem = (CudaMemory) src.getMem();
+				CudaMemory dstMem = (CudaMemory) dst.getMem();
+				long elementSize = srcMem.getProvider().getNumberSize();
+
+				stream.copy(srcMem.getBuffer(), src.getOffset() * elementSize,
+						dstMem.getBuffer(), dst.getOffset() * elementSize,
+						src.getMemLength() * elementSize);
+			}, dependsOn, lease::release);
 		}
 
 		return super.copy(source, destination, dependsOn);
