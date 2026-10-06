@@ -195,9 +195,7 @@ branch whose subject is that decision.
 Ordered by leverage. B and C are the load-bearing pair; A and D are earlier,
 cheaper trip-wires; E is process and is known to be insufficient on its own.
 
-### Control B — executed-test set delta (visibility; closes every row)
-
-<!-- TODO(review): "closes every row" overclaims; the body says rows 3–10 and 13–17, and row 12 (swallowing catch) still reports executed/passed. -->
+### Control B — executed-test set delta (visibility; closes every route that stops a test executing)
 
 Surefire writes one `<testcase classname=... name=...>` per test to
 `target/surefire-reports/TEST-*.xml`, with a `<skipped/>` child when it was
@@ -273,19 +271,22 @@ are small:
 2. **Add the skip routes to the method-scoped patterns.** Extend Pattern 1's
    regex beyond `@(Ignore|Disabled)` to
    `@TestProperties\([^)]*(knownIssue|highMemory|audioDeviceRequired|excludeProfiles)`,
-   and add Pattern 13 for added `Assume.*`/`Assumptions.*` calls and
-   environment-keyed `return`s within `ADDED_IN_EXISTING`. Note that
+   and add Pattern 13 for added `Assume.*`/`Assumptions.*` calls — qualified or
+   statically imported — within `ADDED_IN_EXISTING`. Note that
    `ADDED_IN_EXISTING` already covers helper methods: it is keyed on any method
    that existed on the base branch, not only `@Test` methods. So this pattern
    fires on incident 2's widened `assumeTrue` line, and on incident 1's added
-   `assumeFalse`.
-
-<!-- TODO(review): prose above promises environment-keyed returns in Pattern 13, but the snippet below has no env-return check (rows 9–10). -->
+   `assumeFalse`. Environment-keyed early `return`s (rows 9–10) are deliberately
+   left out of this textual pattern: they cannot be distinguished from an
+   ordinary early `return` without unacceptable false positives, and are covered
+   instead by Control B's executed-set delta.
 
 ```bash
 # ── Pattern 13: skip-guard added or widened in an EXISTING method ──
+# Matches both qualified (Assume.assumeTrue) and statically imported (assumeTrue)
+# assumption calls, so a static import cannot slip a guard past the detector.
 ADDED_ASSUME=$(echo "$ADDED_IN_EXISTING" \
-    | grep -cE '\b(Assume\.assume[A-Za-z]*|Assumptions\.assume[A-Za-z]*|assumeThat)\b' || true)
+    | grep -cE '\b(Assume\.|Assumptions\.)?assume[A-Za-z]*[[:space:]]*\(' || true)
 if [ "$ADDED_ASSUME" -gt 0 ]; then
     record_violation "$FILE" "ADDED_SKIP_GUARD_ASSUMPTION" \
         "Added or changed ${ADDED_ASSUME} JUnit assumption(s) in method(s) that existed on the base branch (turns a failing path into a skip)"
@@ -369,7 +370,7 @@ Outstanding, in recommended order:
 | Item | Where it lands | Why |
 | --- | --- | --- |
 | **Incident 1 is live on `master`.** `requireCuratedLibrary()` skips on every pipeline run without `AR_RINGS_LIBRARY`, so `GenerateAudioFileTest` and `AudioSceneOptimizerStemTest` never execute on the Metal lane. Recommended fix: mount the curated library on the `test-media-mac` runners, declare `AR_RINGS_LIBRARY` there as `test-media-cl` does, and remove the `pipeline && !mountDeclared` assumption. If the owner instead decides the Metal lane should never run these tests, record that as a deliberate decision (a Control C ledger entry), not as a helper condition. | `ci/...` branch (runner provisioning and workflow) plus the helper revert | A provisioning decision for the owner; an agent session must not make it in either direction |
-| Control B — executed-test set delta | `ci/...` branch | Closes every row of §3, including routes not yet thought of |
+| Control B — executed-test set delta | `ci/...` branch | Closes every route of §3 that stops a test executing (rows 3–10 and 13–17), including ones not yet thought of |
 | Control C — skip-site ledger | `ci/...` branch | Turns every new skip into a human-gated declaration |
 | Control A — `D`/`R` selection fix and Pattern 13 | `ci/...` branch | Small; closes rows 3–8 and 13–15 in the existing detector |
 | Control D — harness skip refusal | `feature/...` branch in `flowtree/runtime` | Stops the move inside the session, before a commit exists |
