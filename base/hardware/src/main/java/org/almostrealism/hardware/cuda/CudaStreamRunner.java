@@ -444,36 +444,36 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		/**
 		 * Waits for the work to finish on the GPU, releases the event, runs the callback and
 		 * settles the semaphore. A failure at any step is reported by the semaphore and does
-		 * not prevent the later steps. When waiting for the event fails and releasing it then
-		 * fails too, the wait failure is the one reported, carrying the release failure as
-		 * suppressed, so the operation that actually failed is not hidden.
+		 * not prevent the later steps. The first failure is the one reported; a later failure is
+		 * attached to it as suppressed rather than replacing it, so the operation that actually
+		 * failed is not hidden by cleanup or by the callback. The event is released exactly once,
+		 * whether or not waiting for it failed.
 		 */
 		private void settle() {
-			try {
-				if (event != null) {
-					try {
-						event.synchronize();
-					} catch (RuntimeException | Error e) {
-						try {
-							event.release();
-						} catch (RuntimeException | Error releaseFailure) {
-							e.addSuppressed(releaseFailure);
-						}
+			Throwable failure = null;
 
-						throw e;
-					}
-
-					event.release();
+			if (event != null) {
+				try {
+					event.synchronize();
+				} catch (RuntimeException | Error e) {
+					failure = e;
 				}
-			} catch (RuntimeException | Error e) {
-				completion.fail(e);
+
+				try {
+					event.release();
+				} catch (RuntimeException | Error e) {
+					if (failure != null) failure.addSuppressed(e);
+					else failure = e;
+				}
 			}
 
 			try {
 				if (onComplete != null) onComplete.run();
 			} catch (RuntimeException | Error e) {
-				completion.fail(e);
+				if (failure != null) failure.addSuppressed(e);
+				else failure = e;
 			} finally {
+				completion.fail(failure);
 				completion.countDown();
 			}
 		}

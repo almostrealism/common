@@ -120,6 +120,46 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * A {@link CUStream} whose recorded completion event both fails to synchronize and then fails
+	 * again when released, so a test can assert that the synchronization failure reaches the caller
+	 * with the release failure attached as suppressed rather than replacing it. Draining the stream
+	 * and releasing it are no-ops, as in {@link RecordingStream}.
+	 */
+	private static final class FailingCompletionStream extends CUStream {
+		/** Wraps a placeholder handle; the stream touches no native state. */
+		private FailingCompletionStream() {
+			super(null, 0L);
+		}
+
+		@Override
+		public void synchronize() { }
+
+		@Override
+		public CUEvent recordEvent() { return new FailingCompletionEvent(); }
+
+		@Override
+		public void release() { }
+	}
+
+	/**
+	 * A {@link CUEvent} whose wait throws {@link IllegalStateException} and whose release then
+	 * throws {@link IllegalArgumentException}, modeling a completion whose synchronization fails
+	 * and whose cleanup also fails.
+	 */
+	private static final class FailingCompletionEvent extends CUEvent {
+		/** Wraps a placeholder handle; the event touches no native state. */
+		private FailingCompletionEvent() {
+			super(null, 0L);
+		}
+
+		@Override
+		public void synchronize() { throw new IllegalStateException("sync failed"); }
+
+		@Override
+		public void release() { throw new IllegalArgumentException("release failed"); }
+	}
+
+	/**
 	 * Awaits the given latch, ignoring interrupts so the wait is never abandoned, and restores the
 	 * thread's interrupt status afterward if any interrupt arrived. A recorded event's wait models
 	 * the GPU finishing with the buffers, which no interrupt may cut short.
@@ -190,26 +230,7 @@ public class CudaStreamRunnerSyncTest {
 	 */
 	@Test(timeout = 30000)
 	public void completionSyncFailureSuppressesReleaseFailure() {
-		CUStream stream = new CUStream(null, 0L) {
-			@Override
-			public void synchronize() { }
-
-			@Override
-			public CUEvent recordEvent() {
-				return new CUEvent(null, 0L) {
-					@Override
-					public void synchronize() { throw new IllegalStateException("sync failed"); }
-
-					@Override
-					public void release() { throw new IllegalArgumentException("release failed"); }
-				};
-			}
-
-			@Override
-			public void release() { }
-		};
-
-		CudaStreamRunner runner = new CudaStreamRunner(stream);
+		CudaStreamRunner runner = new CudaStreamRunner(new FailingCompletionStream());
 		Semaphore completion = runner.submit(null, s -> { }, null, null);
 
 		try {
@@ -220,6 +241,31 @@ public class CudaStreamRunnerSyncTest {
 			Assert.assertEquals(1, expected.getSuppressed().length);
 			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalArgumentException);
 			Assert.assertEquals("release failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		runner.destroy();
+	}
+
+	/**
+	 * When waiting for a submission's completion event fails, releasing it fails, and the completion
+	 * callback then fails too, the semaphore still reports the wait failure first and carries both
+	 * the release failure and the callback failure as suppressed, so a callback failure is not
+	 * discarded just because an earlier failure was already recorded.
+	 */
+	@Test(timeout = 30000)
+	public void completionCallbackFailureSuppressedAfterEventFailure() {
+		CudaStreamRunner runner = new CudaStreamRunner(new FailingCompletionStream());
+		Semaphore completion = runner.submit(null, s -> { }, null,
+				() -> { throw new IllegalStateException("callback failed"); });
+
+		try {
+			completion.waitFor();
+			Assert.fail("The event synchronization failure must propagate");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("sync failed", expected.getMessage());
+			List<String> suppressed = List.of(expected.getSuppressed()).stream()
+					.map(Throwable::getMessage).collect(Collectors.toList());
+			Assert.assertEquals(List.of("release failed", "callback failed"), suppressed);
 		}
 
 		runner.destroy();
