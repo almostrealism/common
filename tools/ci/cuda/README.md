@@ -11,6 +11,52 @@ The lane is currently **informational**: it is not in `analysis.needs`,
 `all-checks` or `auto-resolve`, so a failure does not block a merge. It joins
 the gate once it has a passing baseline.
 
+## Labels: CUDA Is a Capability, the CPU Lane Is Optional
+
+Every runner in this fleet carries `ar-ci-cuda`, and the CUDA jobs require it.
+Only this fleet adds that label, and only after its preflight has proved the GPU,
+so CUDA jobs never land on a machine without an NVIDIA GPU. An arm64 or x86 host
+without one runs the plain CPU fleet (`../docker`, label `ar-ci`) and is never
+offered a CUDA job.
+
+`RUNNER_EXTRA_LABELS` adds further labels. With `ar-ci` (the default in
+`.env.example`), these runners also take the CPU lane, `test` and `test-media`, so
+a GPU host can serve both lanes with one set of runners instead of running a CPU
+fleet beside this one. That is safe because the two lanes differ only in
+configuration:
+
+- Both fleets build the same image (`../docker`).
+- Every step of `test` and `test-media` sets `AR_HARDWARE_DRIVER=native`, so the
+  framework creates no CUDA context and `Hardware.isAvailable(GPU)` reports no
+  GPU. The media tests that require the curated library when a GPU is present
+  (for example `AudioSceneTestBase.requireCuratedLibrary()`) therefore behave
+  exactly as they do on a CPU-only runner.
+- The exception is the CUDA bridge tests in `base/hardware` (`CudaBridgeTest`,
+  `CudaDataContextLifecycleTest`), which use the GPU directly whenever one is
+  present, whatever the driver setting. On these runners they run in `test`
+  as well as `test-cuda`, so the container must be a complete CUDA environment
+  for every job, whatever a step does to `LD_LIBRARY_PATH` (the CPU lane's steps
+  overwrite it). NVRTC loads `libnvrtc-builtins` by bare name, so the preflight
+  registers the mounted toolkit in the container's loader cache (`ldconfig`, as
+  the host does through `/etc/ld.so.conf.d`) and refuses to register the runner
+  unless the cache resolves it. Only the container's own `/etc` is written.
+- The CUDA lane is admitted only after `test` and `test-media` finish, so within
+  one pipeline the two lanes never compete for these runners. Across concurrent
+  pipelines they share them; the cost is queueing, not correctness.
+
+`AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
+It does not isolate the job: a CPU-lane job on these runners still has the GPU
+device and the read-only sample library mount, which runners in the plain CPU
+fleet do not. That is not a new trust boundary: `test-media-cuda` runs the same
+pull request's code on the same runners with both, and it is gated more
+strictly than `test` and `test-media`. If the CPU lane must keep the CPU fleet's
+isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
+`../docker` beside this fleet.
+
+When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
+the CPU lane in the runner count and the memory limit: `test` runs up to four
+groups at once, so with three runners it simply queues the fourth.
+
 ## Design: Nothing Installed on the Host
 
 The target host is an NVIDIA DGX Spark (GB10, aarch64) running NVIDIA's own OS
@@ -71,7 +117,11 @@ Start with **one** runner. This host has a single GPU whose memory is unified wi
 system RAM, and the workflow's own `max-parallel` (3 for `test-cuda`, 2 for
 `test-media-cuda`) bounds what a single pipeline can use. Raise the count with
 `./fleet.sh up 2` only after measuring, and keep `RUNNER_MEMORY_LIMIT` times the
-runner count well below the host's memory.
+runner count well below the host's memory: the limit applies to every runner,
+so the default 32g fits three runners on a 128 GB host, and 48g fits only two.
+`.env.example` still sets `RUNNER_MEMORY_LIMIT=48g`, which overrides the compose
+default, so a `.env` copied from it must be lowered to `32g` before running a
+third runner.
 
 ## How It Works
 
