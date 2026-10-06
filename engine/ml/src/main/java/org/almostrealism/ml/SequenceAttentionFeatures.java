@@ -207,7 +207,7 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * @param toOutWeight Output projection weights
 	 * @param qNormWeight Query normalization weights ({@code null} for no query/key normalization)
 	 * @param qNormBias Query normalization biases ({@code null} for none)
-	 * @param kNormWeight Key normalization weights
+	 * @param kNormWeight Key normalization weights ({@code null} exactly when {@code qNormWeight} is)
 	 * @param kNormBias Key normalization biases ({@code null} for none)
 	 * @param invFreq RoPE inverse frequencies
 	 * @param projectionFactory Factory for creating projection layers
@@ -217,6 +217,8 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * @param logitSoftcap Soft-cap applied to the scaled attention logits, or {@code 0} for none
 	 * @param causal Whether each position may attend only to itself and earlier positions
 	 * @return Sequence attention block
+	 * @throws IllegalArgumentException if only one of {@code qNormWeight} and {@code kNormWeight}
+	 *                                  is supplied
 	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
 									PackedCollection toQkvWeight, PackedCollection toOutWeight,
@@ -229,6 +231,10 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 									Producer<PackedCollection> keyMask,
 									double logitSoftcap,
 									boolean causal) {
+		if ((qNormWeight == null) != (kNormWeight == null)) {
+			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
+		}
+
 		int dimHead = dim / heads;
 		TraversalPolicy inputShape = shape(batchSize, seqLen, dim);
 		TraversalPolicy headShape = shape(batchSize, heads, seqLen, dimHead);
