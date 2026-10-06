@@ -74,6 +74,36 @@ public class BufferConsolidationReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that once a render buffer's ownership is claimed (by a runner build), neither a
+	 * subsequent {@link PatternRenderBuffers#consolidate(int, int)} nor
+	 * {@link PatternRenderBuffers#destroy()} frees it — the claiming runner owns it instead.
+	 * This is the contract that keeps a second build from freeing a root a still-live runner's
+	 * producer thread renders into.
+	 */
+	@Test(timeout = 60_000)
+	public void claimedRenderBufferSurvivesReconsolidationAndDestroy() {
+		PatternRenderBuffers buffers = new PatternRenderBuffers();
+
+		buffers.consolidate(2, 16);
+		PackedCollection claimed = buffers.claim();
+		assertNotNull("consolidation must allocate a buffer to claim", claimed);
+
+		buffers.consolidate(2, 16);
+		PackedCollection replacement = buffers.getBuffer();
+		assertNotSame("re-consolidation must allocate a new root", claimed, replacement);
+		assertFalse("a claimed root must not be freed by re-consolidation", claimed.isDestroyed());
+		assertFalse("the unclaimed replacement must remain live", replacement.isDestroyed());
+
+		buffers.destroy();
+		assertTrue("destroy must free the unclaimed surviving root", replacement.isDestroyed());
+		assertFalse("destroy must not free a root whose ownership was claimed", claimed.isDestroyed());
+
+		// The claiming owner is responsible for freeing it.
+		claimed.destroy();
+		assertTrue(claimed.isDestroyed());
+	}
+
+	/**
 	 * Verifies that a second {@link EfxManager#consolidateFilterBuffers(int, int)} frees the
 	 * filter buffer the first one allocated.
 	 */
@@ -99,6 +129,41 @@ public class BufferConsolidationReleaseTest extends TestSuiteBase {
 			assertTrue("re-consolidation must free the previous filter root", first.isDestroyed());
 			assertFalse("replacement filter root must remain live", second.isDestroyed());
 		} finally {
+			efx.destroyConsolidatedBuffers();
+		}
+	}
+
+	/**
+	 * Verifies that once a filter buffer's ownership is claimed (by a runner build), neither a
+	 * subsequent {@link EfxManager#consolidateFilterBuffers(int, int)} nor
+	 * {@link EfxManager#destroyConsolidatedBuffers()} frees it — the claiming runner owns it.
+	 */
+	@Test(timeout = 60_000)
+	public void claimedFilterBufferSurvivesReconsolidationAndDestroy() {
+		ProjectedGenome genome = new ProjectedGenome(256);
+		GlobalTimeManager time = new GlobalTimeManager(measure -> measure * SAMPLE_RATE);
+		AutomationManager automation = new AutomationManager(
+				genome.addChromosome(), time.getClock(), () -> 1.0, SAMPLE_RATE);
+		EfxManager efx = new EfxManager(
+				genome.addChromosome(), 2, automation, () -> 0.25, SAMPLE_RATE);
+
+		PackedCollection claimed = null;
+		try {
+			efx.consolidateFilterBuffers(2, 16);
+			claimed = efx.claimConsolidatedFilterBuffer();
+			assertNotNull("consolidation must allocate a filter buffer to claim", claimed);
+
+			efx.consolidateFilterBuffers(2, 16);
+			PackedCollection replacement = efx.getConsolidatedFilterBuffer();
+			assertNotSame("re-consolidation must allocate a new filter root", claimed, replacement);
+			assertFalse("a claimed filter root must not be freed by re-consolidation",
+					claimed.isDestroyed());
+
+			efx.destroyConsolidatedBuffers();
+			assertFalse("destroyConsolidatedBuffers must not free a claimed root",
+					claimed.isDestroyed());
+		} finally {
+			if (claimed != null) claimed.destroy();
 			efx.destroyConsolidatedBuffers();
 		}
 	}

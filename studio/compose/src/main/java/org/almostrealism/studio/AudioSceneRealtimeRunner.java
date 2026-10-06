@@ -509,6 +509,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			public void destroy() { scene.destroyActiveCells(cells); }
 		});
 
+		// This build owns the consolidated buffers it just allocated (see the runner
+		// destroy() javadoc); the rollback and destroy() release them.
+		PackedCollection consolidatedRender = scene.claimConsolidatedRenderBuffer();
+		allocated.add(consolidatedRender);
+		PackedCollection consolidatedFilter = scene.getEfxManager().claimConsolidatedFilterBuffer();
+		if (consolidatedFilter != null) allocated.add(consolidatedFilter);
+
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
 
@@ -575,6 +582,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 * {@link AudioScene#destroyActiveCells} rather than destroyed directly: that
 			 * clears the scene's reference atomically with the release, so the scene's own
 			 * {@link AudioScene#destroy()} does not double-free the cell graph.</p>
+			 *
+			 * <p>Finally the consolidated render and filter roots this build claimed from the
+			 * scene are freed, after the cell graph that reads their regions. The build owns
+			 * them rather than the scene so a later build on the same scene (a scene may have
+			 * more than one live runner) cannot free a root this runner still uses.</p>
 			 */
 			@Override
 			public void destroy() {
@@ -582,7 +594,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				// allocated, since only the first destroy() runs these releases.
 				release(this, List.of(
 						() -> scene.destroyActiveCells(cells),
-						bufferFrameIndex::destroy));
+						bufferFrameIndex::destroy,
+						() -> Destroyable.destroy(consolidatedRender),
+						() -> Destroyable.destroy(consolidatedFilter)));
 			}
 		}
 
@@ -715,7 +729,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				? new MixdownManagerPdslAdapter(mixdown, scene.getEfxManager(), config)
 				: new MixdownManagerPdslAdapter(mixdown, config);
 
-		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
+		// This build takes ownership of the consolidated buffers it just allocated (see
+		// the runner destroy() javadoc); the rollback and destroy() release them.
+		PackedCollection consolidated = scene.claimConsolidatedRenderBuffer();
+		allocated.add(consolidated);
+		PackedCollection consolidatedFilter = scene.getEfxManager().claimConsolidatedFilterBuffer();
+		if (consolidatedFilter != null) allocated.add(consolidatedFilter);
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
 		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
@@ -935,8 +954,17 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			 * ({@link #ownedFxStem}) when stems summing is active. {@code masterOutput} is
 			 * freed after the compiled model, and both are read only by the output-loop
 			 * operations compiled into the tick — which the caller destroys before the
-			 * runner — so they are no longer in use here. The scene's consolidated render
-			 * buffer is left to its owner.</p>
+			 * runner — so they are no longer in use here.</p>
+			 *
+			 * <p>Finally the consolidated render and filter roots this build claimed from the
+			 * scene ({@link AudioScene#claimConsolidatedRenderBuffer} and
+			 * {@link org.almostrealism.studio.arrange.EfxManager#claimConsolidatedFilterBuffer})
+			 * are freed. They are released last — after {@link PatternRenderStream#destroy()}
+			 * has stopped the producer thread that renders into the render root — so no thread
+			 * is reading them. The build owns them rather than the scene so that a later build
+			 * on the same scene (a scene may have more than one live runner) cannot free a root
+			 * this runner still uses; an unclaimed buffer, by contrast, is freed on the scene's
+			 * next reconsolidation or teardown.</p>
 			 */
 			@Override
 			public void destroy() {
@@ -954,6 +982,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				}
 				releases.add(args::clear);
 				releases.add(() -> Destroyable.destroy(ownedFxStem));
+				// Last: the consolidated render/filter roots this build claimed, freed only
+				// after the producer thread (stopped above) can no longer render into them.
+				releases.add(() -> Destroyable.destroy(consolidated));
+				releases.add(() -> Destroyable.destroy(consolidatedFilter));
 				release(this, releases);
 			}
 		}

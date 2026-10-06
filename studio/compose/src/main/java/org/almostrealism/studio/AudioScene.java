@@ -702,6 +702,18 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
 	 */
 	public PackedCollection getConsolidatedRenderBuffer() { return renderBuffers.getBuffer(); }
+
+	/**
+	 * Transfers ownership of the current consolidated render buffer to the caller (a runner
+	 * build), which becomes responsible for freeing it. Once claimed, neither a later
+	 * {@link #getCells}/{@link #prepareRenderBuffers} rebuild nor this scene's {@link #destroy()}
+	 * frees it, so a build's render root survives a subsequent build on the same scene and is
+	 * released only when its own runner is destroyed.
+	 *
+	 * @return the consolidated render buffer, or {@code null} if {@link #getCells} has not run
+	 */
+	PackedCollection claimConsolidatedRenderBuffer() { return renderBuffers.claim(); }
+
 	/**
 	 * Returns the mixdown manager that handles delay, reverb, and final mix bus processing.
 	 *

@@ -61,6 +61,13 @@ class PatternRenderBuffers implements Destroyable {
 	/** Consolidated backing buffer for all render cell outputs. */
 	private PackedCollection buffer;
 
+	/**
+	 * Whether the current {@link #buffer}'s ownership has been transferred to a runner via
+	 * {@link #claim()}. A claimed buffer is freed by that runner, not by this collaborator,
+	 * so neither a subsequent {@link #consolidate} nor {@link #destroy} frees it.
+	 */
+	private boolean claimed;
+
 	/** Index of the next region to hand out. */
 	private int regionIndex;
 
@@ -69,20 +76,36 @@ class PatternRenderBuffers implements Destroyable {
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
 	 *
-	 * <p>Any buffer from a previous build is destroyed before the replacement is allocated,
-	 * so a second build on the same scene — a repeated {@code renderChannel}, or a
-	 * failed-then-retried runner build — does not orphan the previous root (which only
-	 * {@link #destroy()} at scene teardown would otherwise free). This mirrors the
-	 * replacement-frees-the-old lifecycle of the scene's active cell list.</p>
+	 * <p>An unclaimed buffer from a previous build is destroyed before the replacement is
+	 * allocated, so a direct re-consolidation (one not handed to a runner) does not orphan the
+	 * previous root. A buffer whose ownership a runner build has taken via {@link #claim()} is
+	 * left untouched: that runner frees it when it is destroyed (after its producer thread has
+	 * stopped rendering into it), so freeing it here would pull native memory out from under a
+	 * still-live runner. A scene may legitimately have more than one live runner — the runner
+	 * tracker permits it — so ownership is per build rather than per scene.</p>
 	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render region
 	 */
 	void consolidate(int channelCount, int bufferSize) {
-		destroy();
+		if (!claimed) destroy();
 		cells = new ArrayList<>();
 		buffer = new PackedCollection(bufferSize * channelCount * 4);
+		claimed = false;
 		regionIndex = 0;
+	}
+
+	/**
+	 * Transfers ownership of the current consolidated buffer to the caller (a runner build),
+	 * which becomes responsible for freeing it. Once claimed, the buffer is freed by neither a
+	 * later {@link #consolidate} nor {@link #destroy}, so a build's consolidated root outlives
+	 * the next build on the same scene and is released only when its own runner is destroyed.
+	 *
+	 * @return the consolidated buffer, or {@code null} before the first {@link #consolidate}
+	 */
+	PackedCollection claim() {
+		claimed = true;
+		return buffer;
 	}
 
 	/**
@@ -198,9 +221,10 @@ class PatternRenderBuffers implements Destroyable {
 
 	@Override
 	public void destroy() {
-		if (buffer != null) {
+		if (buffer != null && !claimed) {
 			buffer.destroy();
-			buffer = null;
 		}
+		buffer = null;
+		claimed = false;
 	}
 }

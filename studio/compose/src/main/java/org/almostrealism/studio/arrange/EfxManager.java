@@ -144,6 +144,14 @@ public class EfxManager implements CellFeatures {
 	/** Consolidated buffer for all filter destinations; {@code null} if not pre-allocated. */
 	private PackedCollection consolidatedFilterBuffer;
 
+	/**
+	 * Whether the current {@link #consolidatedFilterBuffer}'s ownership has been transferred to
+	 * a runner via {@link #claimConsolidatedFilterBuffer()}. A claimed buffer is freed by that
+	 * runner, not here, so neither a subsequent {@link #consolidateFilterBuffers} nor
+	 * {@link #destroyConsolidatedBuffers} frees it.
+	 */
+	private boolean filterBufferClaimed;
+
 	/** Next available slot index within the consolidated filter buffer. */
 	private int filterBufferIndex;
 
@@ -160,17 +168,21 @@ public class EfxManager implements CellFeatures {
 	 * (one per channel per voicing (MAIN/WET) per stereo side (LEFT/RIGHT)).
 	 * Unused slots do not become kernel arguments since nothing references them.</p>
 	 *
-	 * <p>Any buffer from a previous build is destroyed before the replacement is allocated
-	 * (see {@link #destroyConsolidatedBuffers()}), so a second runner build on the same scene
-	 * does not orphan the previous root, which only scene teardown would otherwise free.</p>
+	 * <p>An unclaimed buffer from a previous build is destroyed before the replacement is
+	 * allocated (see {@link #destroyConsolidatedBuffers()}), so a direct re-consolidation does
+	 * not orphan the previous root. A buffer whose ownership a runner build has taken via
+	 * {@link #claimConsolidatedFilterBuffer()} is left untouched: that runner frees it when it
+	 * is destroyed, so a scene with more than one live runner (which the runner tracker permits)
+	 * never has a live runner's filter root freed out from under it by the next build.</p>
 	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render buffer
 	 */
 	public void consolidateFilterBuffers(int channelCount, int bufferSize) {
-		destroyConsolidatedBuffers();
+		if (!filterBufferClaimed) destroyConsolidatedBuffers();
 		int maxFilters = channelCount * 4;
 		consolidatedFilterBuffer = new PackedCollection(bufferSize * maxFilters);
+		filterBufferClaimed = false;
 		filterBufferIndex = 0;
 	}
 
@@ -182,13 +194,29 @@ public class EfxManager implements CellFeatures {
 	public PackedCollection getConsolidatedFilterBuffer() { return consolidatedFilterBuffer; }
 
 	/**
-	 * Destroys the consolidated filter buffer, freeing its native memory.
+	 * Transfers ownership of the current consolidated filter buffer to the caller (a runner
+	 * build), which becomes responsible for freeing it. Once claimed, the buffer is freed by
+	 * neither a later {@link #consolidateFilterBuffers} nor {@link #destroyConsolidatedBuffers},
+	 * so a build's filter root outlives the next build and is released only when its own runner
+	 * is destroyed.
+	 *
+	 * @return the consolidated filter buffer, or {@code null} if not active
+	 */
+	public PackedCollection claimConsolidatedFilterBuffer() {
+		filterBufferClaimed = true;
+		return consolidatedFilterBuffer;
+	}
+
+	/**
+	 * Destroys the consolidated filter buffer, freeing its native memory, unless its ownership
+	 * has been claimed by a runner (which then frees it).
 	 */
 	public void destroyConsolidatedBuffers() {
-		if (consolidatedFilterBuffer != null) {
+		if (consolidatedFilterBuffer != null && !filterBufferClaimed) {
 			consolidatedFilterBuffer.destroy();
-			consolidatedFilterBuffer = null;
 		}
+		consolidatedFilterBuffer = null;
+		filterBufferClaimed = false;
 	}
 
 	/** Returns the list of channel indices that receive wet effects processing. */
