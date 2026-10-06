@@ -18,8 +18,8 @@ package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -73,8 +73,9 @@ import org.almostrealism.ml.midi.GRUDecoder;
  *
  * <h2>Lifecycle</h2>
  * <p>The generator owns its input buffer, temperature, decoder input buffer, token-loading
- * operation and compiled special-token embeddings, and {@link #destroy()} releases them. The {@link MoonbeamMidi} model, including the position it
- * reads, remains the caller's and stays usable by other generators.</p>
+ * operation and compiled special-token embeddings, and {@link #destroy()} releases them. The
+ * {@link MoonbeamMidi} model, including the position it reads, remains the caller's and stays
+ * usable by other generators.</p>
  *
  * @see MoonbeamMidi
  * @see AutoregressiveModel
@@ -296,8 +297,9 @@ public class MoonbeamMidiGenerator implements Destroyable {
 
 	/**
 	 * Releases the input buffer, temperature, decoder input buffer, token-loading operation,
-	 * compiled special-token embeddings and compiled position operations of this generator. The {@link MoonbeamMidi} model and its position are not
-	 * released. The generator cannot be used afterwards; a repeated call releases nothing further.
+	 * compiled special-token embeddings and compiled position operations of this generator. The
+	 * {@link MoonbeamMidi} model and its position are not released. The generator cannot be used
+	 * afterwards; a repeated call releases nothing further.
 	 */
 	@Override
 	public void destroy() {

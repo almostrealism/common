@@ -3,6 +3,7 @@ package org.almostrealism.ml.qwen3;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
@@ -72,6 +73,33 @@ public class QwenModelFileTest extends TestSuiteBase implements AttentionFeature
 		}
 	}
 
+	/**
+	 * Destroying a {@link Qwen3} releases the position and compiled transformer its generator
+	 * was built with, but not the checkpoint: a second destroy is harmless, and a new instance
+	 * over the same weights generates the same greedy tokens.
+	 */
+	@Test(timeout = 600000)
+	public void destroyReleasesGeneratorButNotCheckpoint() {
+		Qwen3Config config = config();
+		StateDictionary weights = Qwen3InferenceProfileTest.createRandomWeights(config, 7L, false);
+		Integer[] prompt = { 3, 41 };
+
+		Qwen3 first = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
+		int[] before = greedyTokens(first, prompt, STEPS);
+		PackedCollection position = first.getPosition();
+
+		first.destroy();
+		Assert.assertTrue("generator position was not released", position.isDestroyed());
+		Assert.assertFalse("checkpoint weights were released",
+				weights.get("model.embed_tokens.weight").isDestroyed());
+		first.destroy();
+
+		Qwen3 second = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
+		Assert.assertArrayEquals(before, greedyTokens(second, prompt, STEPS));
+		Assert.assertEquals(STEPS, second.getAutoregressiveModel().getCurrentStep());
+		second.destroy();
+	}
+
 	/** The settings a model file reads hold every dimension of the configuration and its RoPE base. */
 	@Test(timeout = 60000)
 	public void settingsHoldConfiguration() {
@@ -122,6 +150,29 @@ public class QwenModelFileTest extends TestSuiteBase implements AttentionFeature
 
 		reference.destroy();
 		fromFile.getCompiledModel().destroy();
+	}
+
+	/**
+	 * Runs the generator of a {@link Qwen3} greedily from the start of a sequence.
+	 *
+	 * @param qwen   the model
+	 * @param prompt the prompt tokens, the first of which starts the sequence
+	 * @param steps  the number of steps to run
+	 * @return the token returned by each step
+	 */
+	private static int[] greedyTokens(Qwen3 qwen, Integer[] prompt, int steps) {
+		AutoregressiveModel<Integer> generator = qwen.getAutoregressiveModel();
+		generator.setTemperature(0.0);
+		generator.reset();
+		generator.setCurrentToken(prompt[0]);
+		generator.setPrompt(prompt, prompt.length);
+
+		int[] tokens = new int[steps];
+		for (int i = 0; i < steps; i++) {
+			tokens[i] = generator.next();
+		}
+
+		return tokens;
 	}
 
 	/**

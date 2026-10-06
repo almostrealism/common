@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
@@ -79,7 +80,7 @@ import java.util.function.Consumer;
  * @see AttentionFeatures
  * @author Michael Murray
  */
-public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
+public class Qwen3 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	static {
 		// Disable off-heap memory allocation for simplicity
 		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
@@ -327,7 +328,8 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 	 *
 	 * @param profile Operation profile for performance tracking
 	 * @param requirements Compute requirements for hardware acceleration
-	 * @return Autoregressive model ready for inference
+	 * @return Autoregressive model ready for inference, which owns the compiled transformer and
+	 *         the position created here
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		if (!config.sharedWeights) {
@@ -359,7 +361,18 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 		return AutoregressiveModel.of(
 				compiledModel,
 				position,
-				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
+				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim))
+				.own(compiledModel, position);
+	}
+
+	/**
+	 * Releases the generator, together with the compiled transformer and position it was built
+	 * with. The {@link StateDictionary} and tokenizer are not released. This instance cannot
+	 * generate afterwards.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.destroy(model);
 	}
 
 

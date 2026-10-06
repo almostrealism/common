@@ -17,6 +17,7 @@
 package org.almostrealism.ml.llama2;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -24,6 +25,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.BPE;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
@@ -48,7 +50,7 @@ import java.util.function.Consumer;
  * @see Llama2Weights
  * @see AutoregressiveModel
  */
-public class Llama2 implements AttentionFeatures, ConsoleFeatures {
+public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	static {
 		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
 		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
@@ -168,7 +170,8 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 	 *
 	 * @param profile      the operation profile to record timing data
 	 * @param requirements optional compute requirements (e.g., GPU)
-	 * @return the compiled autoregressive model
+	 * @return the compiled autoregressive model, which owns the compiled transformer and the
+	 *         position it creates
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
@@ -195,9 +198,19 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 		transformer.add(rmsnorm(shape(1, dim), weights.rmsFinalWeight));
 		transformer.add(dense(weights.wcls));
 
-		return AutoregressiveModel.of(transformer.compile(false, profile),
-				position,
-				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim));
+		CompiledModel compiled = transformer.compile(false, profile);
+		return AutoregressiveModel.of(compiled, position,
+				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim))
+				.own(compiled, position);
+	}
+
+	/**
+	 * Releases the generator, together with the compiled transformer and position it was built
+	 * with. The checkpoint weights are not released. This instance cannot generate afterwards.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.destroy(model);
 	}
 
 	/**
