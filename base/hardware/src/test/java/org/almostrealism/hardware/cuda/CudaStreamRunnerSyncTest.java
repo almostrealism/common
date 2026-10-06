@@ -24,6 +24,8 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -153,6 +155,77 @@ public class CudaStreamRunnerSyncTest {
 				events.stream().filter(e -> e.endsWith(" complete")).collect(Collectors.toList()));
 		Assert.assertTrue("Each completion must be waited for before its callback runs",
 				events.indexOf("synchronize") < events.indexOf("first complete"));
+		runner.destroy();
+	}
+
+	/**
+	 * Destroying the runner while a submission is still held behind an unsatisfied foreign
+	 * dependency abandons the submission: its command never launches, its completion callback
+	 * still runs so its reservation is released, and its semaphore reports that the runner was
+	 * destroyed.
+	 */
+	@Test(timeout = 30000)
+	public void destroyAbandonsHeldSubmissionReportingDestroyed() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		Semaphore held = runner.submit(null, stream -> events.add("held"),
+				pending, () -> events.add("held complete"));
+
+		runner.destroy();
+
+		Assert.assertTrue("A held submission must settle when the runner is destroyed",
+				((CudaSemaphore) held).isSettled());
+		Assert.assertFalse("The abandoned command must never launch", events.contains("held"));
+		Assert.assertTrue("The abandoned submission's callback must still run",
+				events.contains("held complete"));
+
+		try {
+			held.waitFor();
+			Assert.fail("Destroying the runner must fail the held submission");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("The failure must explain the runner was destroyed",
+					expected.getMessage().contains("destroyed"));
+		}
+	}
+
+	/**
+	 * A completion callback runs on the runner's completion thread, so waiting there for the
+	 * submission's own semaphore would wait for the thread itself. That self-wait is rejected
+	 * with an {@link IllegalStateException} rather than deadlocking.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the callback to run
+	 */
+	@Test(timeout = 30000)
+	public void completionCallbackCannotWaitForItsOwnSubmission() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+
+		CountDownLatch ready = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(1);
+		AtomicReference<Semaphore> handle = new AtomicReference<>();
+		AtomicReference<Throwable> rejected = new AtomicReference<>();
+
+		handle.set(runner.submit(null, stream -> { }, null, () -> {
+			try {
+				ready.await();
+				handle.get().waitFor();
+			} catch (IllegalStateException e) {
+				rejected.set(e);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} finally {
+				done.countDown();
+			}
+		}));
+
+		ready.countDown();
+		done.await();
+
+		Assert.assertNotNull("Waiting from the completion thread must be rejected", rejected.get());
+		Assert.assertTrue("The rejection must be an IllegalStateException",
+				rejected.get() instanceof IllegalStateException);
 		runner.destroy();
 	}
 }

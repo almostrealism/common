@@ -272,6 +272,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			try {
 				next = completions.take();
 			} catch (InterruptedException e) {
+				// TODO(review): pending completions are left un-settled here, so their waiters hang
 				warn("Completion thread interrupted with " + completions.size() + " completions pending");
 				return;
 			}
