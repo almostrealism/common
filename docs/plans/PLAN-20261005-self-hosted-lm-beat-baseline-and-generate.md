@@ -367,8 +367,10 @@ window slides) equals the argmax of an independent full forward with different p
 greedy decoding is reproducible after `reset()`. `trainOnDocumentation` generates from the
 reloaded checkpoint and logs the sample with strict-decoder UTF-8 validity (reported, not
 asserted — open question 3). With the current model the greedy continuation is 96 spaces (the
-corpus's most frequent byte), so the reproducibility/non-triviality assertions, which run after
-the baseline assertion, also fail until the model improves. KV-cache decoding remains a follow-up.
+corpus's most frequent byte). The generation checks run before the baseline assertion, so they
+are evaluated: the continuation is reproducible, and the run stops at the non-triviality check
+("generation is a single repeated byte") before reaching the baseline assertion. Both criteria
+stay unmet until the model improves. KV-cache decoding remains a follow-up.
 Open question 2 was settled without an ordering dependency: generation runs inside
 `trainOnDocumentation` on the checkpoint that run just saved and reloaded, and the determinism of
 the generation path itself is proven on random weights by the fast test. The generator owns its

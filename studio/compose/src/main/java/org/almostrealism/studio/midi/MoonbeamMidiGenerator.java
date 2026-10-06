@@ -18,6 +18,7 @@ package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
@@ -25,7 +26,9 @@ import org.almostrealism.ml.AutoregressiveModel;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import javax.sound.midi.InvalidMidiDataException;
 
@@ -69,8 +72,8 @@ import org.almostrealism.ml.midi.GRUDecoder;
  * }</pre>
  *
  * <h2>Lifecycle</h2>
- * <p>The generator owns its input buffer, temperature and token-loading operation, and
- * {@link #destroy()} releases them. The {@link MoonbeamMidi} model, including the position it
+ * <p>The generator owns its input buffer, temperature, decoder input buffer, token-loading
+ * operation and compiled special-token embeddings, and {@link #destroy()} releases them. The {@link MoonbeamMidi} model, including the position it
  * reads, remains the caller's and stays usable by other generators.</p>
  *
  * @see MoonbeamMidi
@@ -117,6 +120,12 @@ public class MoonbeamMidiGenerator implements Destroyable {
 	private final Random random;
 
 	/**
+	 * Compiled embedding of each special token (start, end, fill, pad) seen so far, so that
+	 * each is compiled once rather than on every occurrence; released by {@link #destroy()}.
+	 */
+	private final Map<MidiCompoundToken, Evaluable<? extends PackedCollection>> specialEmbeddings = new HashMap<>();
+
+	/**
 	 * Create a MoonbeamMidiGenerator from a MoonbeamMidi model.
 	 *
 	 * @param model the Moonbeam model containing transformer, embedding, and decoder
@@ -142,6 +151,7 @@ public class MoonbeamMidiGenerator implements Destroyable {
 		int hiddenSize = config.hiddenSize;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
 		PackedCollection temperature = new PackedCollection(1);
+		PackedCollection decodeInput = new PackedCollection(hiddenSize);
 
 		AutoregressiveModel.TokenLoader<MidiCompoundToken> loadOrdinary = AutoregressiveModel.tokenLoader(
 				input, MoonbeamConfig.NUM_ATTRIBUTES,
@@ -158,22 +168,21 @@ public class MoonbeamMidiGenerator implements Destroyable {
 					model.setAttributePositions(token);
 
 					if (token.isSpecial()) {
-						input.setFrom(0, Process.optimized(embedding.embed(token)).get().evaluate(),
-								0, hiddenSize);
+						try (PackedCollection embedded = specialEmbedding(token).evaluate()) {
+							input.setFrom(0, embedded, 0, hiddenSize);
+						}
 					} else {
 						loadOrdinary.accept(token);
 					}
 				},
 				() -> model.forward(input),
 				hidden -> {
-					// TODO(review): vec is allocated on every sampled token and never released; destroy() does not cover it
-					PackedCollection vec = new PackedCollection(hiddenSize);
-					vec.setFrom(0, hidden, 0, hiddenSize);
-					int[] decodeTokens = decoder.decode(vec, temperature.toDouble(0), topP, random);
+					decodeInput.setFrom(0, hidden, 0, hiddenSize);
+					int[] decodeTokens = decoder.decode(decodeInput, temperature.toDouble(0), topP, random);
 					return decodeToCompoundToken(decodeTokens);
 				},
 				temperature);
-		this.inner.own(loadOrdinary, input, temperature);
+		this.inner.own(loadOrdinary, input, temperature, decodeInput);
 
 		this.inner.setCurrentToken(MidiCompoundToken.sos());
 	}
@@ -286,13 +295,27 @@ public class MoonbeamMidiGenerator implements Destroyable {
 	public double getTopP() { return topP; }
 
 	/**
-	 * Releases the input buffer, temperature, token-loading operation and compiled position
-	 * operations of this generator. The {@link MoonbeamMidi} model and its position are not
+	 * Releases the input buffer, temperature, decoder input buffer, token-loading operation,
+	 * compiled special-token embeddings and compiled position operations of this generator. The {@link MoonbeamMidi} model and its position are not
 	 * released. The generator cannot be used afterwards; a repeated call releases nothing further.
 	 */
 	@Override
 	public void destroy() {
-		inner.destroy();
+		Destroyable.releaseAll(List.of(inner::destroy, () -> {
+			Destroyable.destroy(specialEmbeddings.values());
+			specialEmbeddings.clear();
+		}));
+	}
+
+	/**
+	 * Returns the compiled embedding of a special token, compiling it on first use.
+	 *
+	 * @param token a special token ({@link MidiCompoundToken#isSpecial()})
+	 * @return an evaluable producing a fresh (hiddenSize) embedding on each evaluation
+	 */
+	private Evaluable<? extends PackedCollection> specialEmbedding(MidiCompoundToken token) {
+		return specialEmbeddings.computeIfAbsent(token,
+				t -> Process.optimized(embedding.embed(t)).get());
 	}
 
 	/**
