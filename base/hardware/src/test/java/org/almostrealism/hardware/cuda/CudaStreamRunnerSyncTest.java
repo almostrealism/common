@@ -16,11 +16,15 @@
 
 package org.almostrealism.hardware.cuda;
 
+import io.almostrealism.streams.LatchSemaphore;
+import io.almostrealism.streams.Semaphore;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 /**
  * The completion callback {@link org.almostrealism.hardware.cuda.CudaOperator} hands to
@@ -30,11 +34,13 @@ import java.util.List;
  * released — otherwise a failed launch becomes a use-after-free. These tests record the order in
  * which {@link CUStream#synchronize()} and the completion callback run.
  *
- * <p>The recording stream overrides {@link CUStream#synchronize()} so it touches no native state,
- * so these tests need no CUDA device and run on every host, like the other hardware tests here.</p>
+ * <p>The recording stream and its events override every operation the runner performs on them so
+ * they touch no native state, so these tests need no CUDA device and run on every host, like the
+ * other hardware tests here. Waiting for a recorded event is logged as {@code "synchronize"}, the
+ * same as draining the stream, since both mean the GPU has finished with the buffers.</p>
  */
 public class CudaStreamRunnerSyncTest {
-	/** A {@link CUStream} whose {@link #synchronize()} records the call instead of reaching JNI. */
+	/** A {@link CUStream} that records the calls the runner makes instead of reaching JNI. */
 	private static final class RecordingStream extends CUStream {
 		/** The shared event log the stream appends {@code "synchronize"} to. */
 		private final List<String> events;
@@ -47,6 +53,30 @@ public class CudaStreamRunnerSyncTest {
 
 		@Override
 		public void synchronize() { events.add("synchronize"); }
+
+		@Override
+		public CUEvent recordEvent() { return new RecordingEvent(events); }
+
+		@Override
+		public void release() { }
+	}
+
+	/** A {@link CUEvent} whose wait is recorded as {@code "synchronize"} instead of reaching JNI. */
+	private static final class RecordingEvent extends CUEvent {
+		/** The shared event log. */
+		private final List<String> events;
+
+		/** Wraps a placeholder handle and records into the given event log. */
+		private RecordingEvent(List<String> events) {
+			super(null, 0L);
+			this.events = events;
+		}
+
+		@Override
+		public void synchronize() { events.add("synchronize"); }
+
+		@Override
+		public void release() { }
 	}
 
 	/**
@@ -70,17 +100,59 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
-	 * On the success path the command runs, the stream drains once, and the completion callback
-	 * runs last, in that order.
+	 * On the success path the command runs, its completion is waited for once, and the completion
+	 * callback runs last, in that order, all before the submission's semaphore settles.
 	 */
 	@Test(timeout = 30000)
 	public void successfulSubmitDrainsThenCompletes() {
-		List<String> events = new ArrayList<>();
+		List<String> events = new CopyOnWriteArrayList<>();
 		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
 
-		Assert.assertNull(runner.submit(null, stream -> events.add("command"),
-				null, () -> events.add("complete")));
+		Semaphore completion = runner.submit(null, stream -> events.add("command"),
+				null, () -> events.add("complete"));
+		Assert.assertNotNull(completion);
+		completion.waitFor();
 
 		Assert.assertEquals(List.of("command", "synchronize", "complete"), events);
+		runner.destroy();
+	}
+
+	/**
+	 * A submission whose foreign dependency is pending returns without launching, and holds every
+	 * later submission behind it, including one that depends only on the held submission and one
+	 * with no dependency at all. Once the dependency completes, all three launch in submission
+	 * order and settle in that order.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the held submissions
+	 */
+	@Test(timeout = 30000)
+	public void foreignDependencyHoldsLaterSubmissionsInOrder() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		Semaphore first = runner.submit(null, stream -> events.add("first"),
+				pending, () -> events.add("first complete"));
+		Semaphore second = runner.submit(null, stream -> events.add("second"),
+				first, () -> events.add("second complete"));
+		Semaphore third = runner.submit(null, stream -> events.add("third"),
+				null, () -> events.add("third complete"));
+
+		Thread.sleep(200);
+		Assert.assertEquals("Nothing may launch while the foreign dependency is pending",
+				List.of(), events);
+
+		pending.countDown();
+		third.waitFor();
+
+		Assert.assertTrue(((CudaSemaphore) first).isSettled());
+		Assert.assertTrue(((CudaSemaphore) second).isSettled());
+		Assert.assertEquals(List.of("first", "second", "third"),
+				events.stream().filter(e -> !e.contains(" ") && !e.equals("synchronize")).collect(Collectors.toList()));
+		Assert.assertEquals(List.of("first complete", "second complete", "third complete"),
+				events.stream().filter(e -> e.endsWith(" complete")).collect(Collectors.toList()));
+		Assert.assertTrue("Each completion must be waited for before its callback runs",
+				events.indexOf("synchronize") < events.indexOf("first complete"));
+		runner.destroy();
 	}
 }

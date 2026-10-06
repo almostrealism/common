@@ -39,6 +39,25 @@ public class CUStream extends CUObject {
 		CU.eventRecord(getContextPointer(), event.getNativePointer(), getNativePointer());
 	}
 
+	/**
+	 * Creates a new event in this stream's context and records it here, capturing all work
+	 * submitted so far. The caller owns the event and releases it once it is no longer needed.
+	 *
+	 * @return the recorded event
+	 */
+	public CUEvent recordEvent() {
+		CUEvent event = getContext().newEvent();
+
+		try {
+			record(event);
+		} catch (RuntimeException | Error e) {
+			event.release();
+			throw e;
+		}
+
+		return event;
+	}
+
 	/** Blocks until all work submitted to this stream has completed. */
 	public void synchronize() {
 		CU.streamSynchronize(getContextPointer(), getNativePointer());
