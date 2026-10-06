@@ -324,9 +324,36 @@ public class CudaStreamRunnerSyncTest {
 				events.stream().filter(e -> !e.contains(" ") && !e.equals("synchronize")).collect(Collectors.toList()));
 		Assert.assertEquals(List.of("first complete", "second complete", "third complete"),
 				events.stream().filter(e -> e.endsWith(" complete")).collect(Collectors.toList()));
-		Assert.assertTrue("Each completion must be waited for before its callback runs",
-				events.indexOf("synchronize") < events.indexOf("first complete"));
+		assertEachCallbackFollowsItsSynchronization(events, 3);
 		runner.destroy();
+	}
+
+	/**
+	 * Asserts that exactly {@code submissions} completion events were waited for, and that the
+	 * n-th completion callback (an event ending in {@code " complete"}) is preceded by at least n
+	 * waits, so every callback runs only after its own submission's completion was observed.
+	 *
+	 * @param events      the recorded event log
+	 * @param submissions the number of submissions that completed
+	 */
+	private static void assertEachCallbackFollowsItsSynchronization(List<String> events, int submissions) {
+		Assert.assertEquals("Each submission's completion must be waited for exactly once", submissions,
+				events.stream().filter("synchronize"::equals).count());
+
+		int waits = 0;
+		int callbacks = 0;
+
+		for (String event : events) {
+			if (event.equals("synchronize")) {
+				waits++;
+			} else if (event.endsWith(" complete")) {
+				callbacks++;
+				Assert.assertTrue("Callback " + callbacks + " ran after only " + waits + " waits: " + events,
+						waits >= callbacks);
+			}
+		}
+
+		Assert.assertEquals(submissions, callbacks);
 	}
 
 	/**
@@ -397,6 +424,57 @@ public class CudaStreamRunnerSyncTest {
 		Assert.assertNotNull("Waiting from the completion thread must be rejected", rejected.get());
 		Assert.assertTrue("The rejection must be an IllegalStateException",
 				rejected.get() instanceof IllegalStateException);
+		runner.destroy();
+	}
+
+	/**
+	 * The completion thread settles submissions in order, so by the time a later submission's
+	 * callback runs every earlier submission has settled. Waiting there for an earlier submission
+	 * cannot deadlock, so it must return normally rather than be rejected like a self-wait, and it
+	 * must still report the earlier submission's failure when it failed.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the callback to run
+	 */
+	@Test(timeout = 30000)
+	public void completionCallbackMayWaitForSettledEarlierSubmission() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		Semaphore earlier = runner.submit(null, stream -> events.add("earlier"),
+				null, () -> events.add("earlier complete"));
+		CudaSemaphore failed = (CudaSemaphore) runner.submit(null, stream -> events.add("failed"),
+				pending, () -> events.add("failed complete"));
+
+		CountDownLatch done = new CountDownLatch(1);
+		AtomicReference<Throwable> earlierWait = new AtomicReference<>();
+		AtomicReference<Throwable> failedWait = new AtomicReference<>();
+
+		runner.submit(null, stream -> { }, null, () -> {
+			try {
+				earlier.waitFor();
+			} catch (RuntimeException e) {
+				earlierWait.set(e);
+			}
+
+			try {
+				failed.waitFor();
+			} catch (RuntimeException e) {
+				failedWait.set(e);
+			} finally {
+				done.countDown();
+			}
+		});
+
+		pending.fail(new IllegalArgumentException("dependency failed"));
+		pending.countDown();
+		done.await();
+
+		Assert.assertNull("Waiting for a settled earlier submission must not be rejected", earlierWait.get());
+		Assert.assertTrue("The failed submission's failure must be reported, not a self-wait rejection",
+				failedWait.get() instanceof IllegalArgumentException);
+		Assert.assertEquals("dependency failed", failedWait.get().getMessage());
+		Assert.assertFalse("A failed dependency must not launch its command", events.contains("failed"));
 		runner.destroy();
 	}
 

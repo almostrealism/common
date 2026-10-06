@@ -75,12 +75,18 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	/**
 	 * Blocks until the submission has completed on the GPU and its completion callback has run.
 	 *
-	 * @throws IllegalStateException if called from the runner's completion thread, which would
-	 *                               otherwise wait for itself
+	 * <p>A submission that has already settled returns (or reports its failure) immediately from
+	 * any thread, including the runner's completion thread: the completion thread settles
+	 * submissions in order, so a callback may rely on an earlier submission's result. Only a wait
+	 * for a submission that has not settled yet is rejected there, as it would wait for the
+	 * completion thread itself.</p>
+	 *
+	 * @throws IllegalStateException if the submission has not settled and this is called from the
+	 *                               runner's completion thread, which would otherwise wait for itself
 	 */
 	@Override
 	public void waitFor() {
-		runner.requireOffCompletionThread();
+		if (!isSettled()) runner.requireOffCompletionThread();
 		super.waitFor();
 	}
 

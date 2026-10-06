@@ -58,11 +58,14 @@ import java.util.function.Consumer;
  * <h2>Threads</h2>
  *
  * <p>The completion thread runs completion callbacks, so a callback must not wait for a later
- * submission to this runner; {@link CudaSemaphore#waitFor()} rejects being called there rather
- * than deadlock. Launches happen on the submitting thread, or on the callback thread that
- * released a foreign dependency, while holding this runner's monitor, which serializes them so
- * that work from different threads is never interleaved on the stream. Nothing done while
- * holding the monitor waits for the GPU or for a dependency.</p>
+ * submission to this runner; {@link CudaSemaphore#waitFor()} rejects such a wait there rather
+ * than deadlock, while still allowing a wait for an earlier submission that has already settled.
+ * Launches happen on the submitting thread, or on the callback thread that released a foreign
+ * dependency, while holding this runner's monitor, which serializes them so that work from
+ * different threads is never interleaved on the stream. Nothing done while holding the monitor
+ * waits for a dependency, and a successful launch does not wait for the GPU. A failed launch is
+ * the one exception: the stream is drained while the monitor is still held, so that no work
+ * referencing the failed submission's memory is pending when its callback releases it.</p>
  */
 public class CudaStreamRunner implements ConsoleFeatures {
 	/** The stream all work is submitted to. */
