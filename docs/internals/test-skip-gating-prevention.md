@@ -77,8 +77,12 @@ Assert.fail(detail + " ... must not report a false pass ...");  // now unreachab
 In both cases the `Assert.fail` call was **not removed**. It was made unreachable
 on the failing host by adding or widening an assumption in front of it. The
 merge of `origin/master` resolved that branch's copy to `master`'s byte-for-byte,
-which drops incident 2 and keeps incident 1. **Incident 1 is still live on
-`master`;** see the planning document's outstanding-work section.
+which dropped incident 2. Incident 1 stayed on `master` until PR #616
+(`qa/pdsl-20261005-031022`) removed the `pipeline && !mountDeclared` assumption;
+`requireCuratedLibrary()` is back to the original contract, so a GPU host
+without the library reaches `Assert.fail` again. The incident remains the
+motivating case: it was reviewed, approved and merged, and was removed only
+because a later branch happened to revisit the helper.
 
 ---
 
@@ -111,17 +115,20 @@ Facts the table depends on:
 
 - **CI test jobs run under one of two profiles — not uniformly `pipeline`.**
   In every lane (CPU, Metal, OpenCL, CUDA) the `engine/ml`, `base/io` and
-  `engine/utils-http` invocations, all `test-media` modules (`engine/audio`,
-  `studio/music`, `studio/compose`, `studio/spatial`, `extern/ml-onnx`,
-  `studio/experiments`) and every `test-flowtree` module pass
-  `-DAR_TEST_PROFILE=pipeline`, while `base/hardware`, `engine/utils` and
-  `engine/render` pass **no** `-DAR_TEST_PROFILE` and so run under the
-  **default** profile (`analysis.yaml`). No `AR_TEST_DEPTH`, `AR_LONG_TESTS` or
-  `AR_KNOWN_ISSUES` is set in any lane, so under the default profile
-  `TestUtils.getTestDepth()` is `9`, `getSkipLongTests()` and
+  `engine/utils-http` invocations, the `test-media` modules `engine/audio`,
+  `studio/compose`, `studio/spatial`, `extern/ml-onnx` and `studio/experiments`,
+  and every `test-flowtree` module pass `-DAR_TEST_PROFILE=pipeline`. The
+  `base/hardware`, `engine/utils` and `engine/render` invocations pass **no**
+  `-DAR_TEST_PROFILE` and so run under the **default** profile, as does
+  `studio/music` in the Metal, OpenCL and CUDA media lanes (`test-media-mac`,
+  `test-media-cl`, `test-media-cuda`); only the CPU `test-media` lane runs
+  `studio/music` under `pipeline` (`analysis.yaml`). No `AR_TEST_DEPTH`,
+  `AR_LONG_TESTS` or `AR_KNOWN_ISSUES` is set in any lane, so under the default
+  profile `TestUtils.getTestDepth()` is `9`, `getSkipLongTests()` and
   `getSkipKnownIssues()` are `true`, and `getSkipHighMemoryTests()` is `false`.
   The "Effect in CI" column gives the pipeline-profile effect and, where it
-  differs, the default-profile effect that applies to those three modules.
+  differs, the default-profile effect that applies to these default-profile
+  invocations.
 - `TestDepthRule` skips via `Assume.assumeTrue(reason, false)` for each
   `@TestProperties` flag and for a `@TestDepth(n)` whose `n` exceeds the current
   depth. Under the pipeline profile `getTestDepth()` is `Integer.MAX_VALUE` (so
@@ -143,16 +150,16 @@ Facts the table depends on:
 | # | Route (applied to a test that exists on the base branch) | Effect in CI | `test-integrity-check` | Harness test lock (when on) |
 |---|---|---|---|---|
 | 1 | `@Ignore` / `@Disabled` | skipped | **caught** (P1) | caught |
-| 2 | `@TestDepth` added / raised | none under pipeline (depth forced to max); under the default profile (`base/hardware`, `engine/utils`, `engine/render`) skips when `n > 9`; skips locally | caught (P6, P8) | caught |
+| 2 | `@TestDepth` added / raised | none under pipeline (depth forced to max); under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) skips when `n > 9`; skips locally | caught (P6, P8) | caught |
 | 3 | `@TestProperties(knownIssue = true)` | **always skipped** (pipeline; and default, via disabled long tests) | **missed** | caught |
-| 4 | `@TestProperties(highMemory = true)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`) | **missed** | caught |
-| 5 | `@TestProperties(excludeProfiles = PIPELINE)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`) | **missed** | caught |
+| 4 | `@TestProperties(highMemory = true)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) | **missed** | caught |
+| 5 | `@TestProperties(excludeProfiles = PIPELINE)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) | **missed** | caught |
 | 6 | `@TestProperties(audioDeviceRequired = true)` | skipped on every Linux lane | **missed** | caught |
 | 7 | `Assume.*` added inside the `@Test` body | skipped where the condition holds | **missed** | caught |
 | 8 | `Assume.*` added or widened in a helper, `*TestBase`, `@Before`, `@BeforeClass` or rule | skipped where the condition holds | **missed** | **missed** (helpers are not locked) — *the incidents* |
 | 9 | environment-keyed early `return` in the `@Test` body | reported as **passed** | **missed** | caught |
 | 10 | early `return` in a helper that the test then treats as "nothing to check" | reported as passed | **missed** | **missed** |
-| 11 | `if (skipLongTests) return;` | none under pipeline; under the default profile (`base/hardware`, `engine/utils`, `engine/render`) skips (reported as passed); skips locally | caught (P5) | caught |
+| 11 | `if (skipLongTests) return;` | none under pipeline; under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) skips (reported as passed); skips locally | caught (P5) | caught |
 | 12 | swallowing `catch` | failure hidden | caught (P4) | caught |
 | 13 | delete the whole test file | test gone | **missed** (`D` not selected) | caught (deletion blocked) |
 | 14 | rename the class out of Surefire's include pattern (`FooTest` → `FooCheck`) | never run | **missed** (`R` not selected) | caught (old path deleted) |

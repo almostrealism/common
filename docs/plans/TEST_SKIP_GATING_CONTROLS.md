@@ -28,9 +28,16 @@ skipped. Per test lane:
 
 1. Build the set of test ids (`classname#name`) that **executed** (present and
    not `<skipped/>`).
-2. Compare with the same lane's executed set from the most recent green
-   `master` run. The `surefire-*` artifacts master already uploads are the
-   baseline; nothing new has to run.
+2. Compare with the same lane's executed set from the newest successful
+   `master` run that **actually executed that lane and still has its
+   `surefire-*` artifact**. The most recent green run is not enough: the test
+   jobs are layer-gated (a lane such as `test-media-mac` is skipped when no
+   relevant layer changed), and the artifacts expire after seven days, so a
+   green run may carry no baseline for the lane. When no usable baseline
+   exists, the control fails closed — the lane is reported as unverified and
+   fails — until a baseline is produced by running that lane on `master`
+   (for example a scheduled or manually dispatched master run); it never
+   passes for lack of something to compare against.
 3. Every id in `master − branch` is a test that stopped executing: it was
    skipped, deleted, renamed away, excluded by the pom, or filtered by the
    machinery. Write each one into the job summary, and fail the lane unless the
@@ -214,11 +221,17 @@ Done on `qa/consolidate-20261005-031109`:
 - `.github/CLAUDE.md`: no longer claims that only three methods are excluded
   from the pipeline profile.
 
+Done elsewhere: PR #616 removed incident 1's `pipeline && !mountDeclared`
+assumption from `requireCuratedLibrary()`, restoring the contract in which only
+a CPU-only host skips and any GPU host without the curated library fails. Any
+future decision that a GPU lane should not run the curated-library tests is a
+provisioning decision for the owner, to be recorded as a Control C ledger entry
+rather than as a helper condition.
+
 Outstanding, in recommended order:
 
 | Item | Where it lands | Why |
 | --- | --- | --- |
-| **Incident 1 is live on `master`.** `requireCuratedLibrary()` skips on every pipeline run without `AR_RINGS_LIBRARY`, so `GenerateAudioFileTest` and `AudioSceneOptimizerStemTest` never execute on the Metal lane. Recommended fix: mount the curated library on the `test-media-mac` runners, declare `AR_RINGS_LIBRARY` there as `test-media-cl` does, and remove the `pipeline && !mountDeclared` assumption. If the owner instead decides the Metal lane should never run these tests, record that as a deliberate decision (a Control C ledger entry), not as a helper condition. | `ci/...` branch (runner provisioning and workflow) plus the helper revert | A provisioning decision for the owner; an agent session must not make it in either direction |
 | Control B — executed-test set delta | `ci/...` branch | Closes every route of the inventory that stops a test executing (rows 3–10 and 13–17), including ones not yet thought of |
 | Control C — skip-site ledger | `ci/...` branch | Turns every new skip into a human-gated declaration |
 | Control A — `D`/`R` selection fix and Pattern 13 | `ci/...` branch | Small; closes rows 3–8 and 13–15 in the existing detector |
