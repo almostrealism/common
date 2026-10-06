@@ -403,6 +403,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		Runnable renderOp = renderOps.get();
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+		scene.registerRenderStream(renderStream);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);

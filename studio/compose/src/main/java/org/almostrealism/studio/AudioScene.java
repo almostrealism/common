@@ -710,6 +710,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	List<PatternAudioBuffer> getRenderCells() { return renderBuffers.getCells(); }
 
 	/**
+	 * Registers a render-ahead stream that renders this scene's patterns on its own
+	 * thread, so {@link #destroy()} stops it before releasing pattern state.
+	 *
+	 * @param stream the render-ahead stream built for a runner of this scene
+	 */
+	void registerRenderStream(PatternRenderStream stream) { renderBuffers.addStream(stream); }
+
+	/**
 	 * Returns the generation manager for ML-based audio generation integration.
 	 *
 	 * @return the generation manager
@@ -1357,6 +1365,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public void destroy() {
 		Destroyable.super.destroy();
 		getSectionManager().destroy();
+		renderBuffers.stopStreams();
 		patterns.destroy();
 
 		if (activeCells != null) {
