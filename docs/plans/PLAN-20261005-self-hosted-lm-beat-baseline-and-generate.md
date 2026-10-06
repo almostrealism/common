@@ -329,3 +329,43 @@ These are for the person approving the plan; the implementer should not settle t
    rotation-convention check (see Deliverable 2) and is core work in its own right. The approver
    may prefer to fix the first path to sliding-window now and leave KV-cache decoding for the
    follow-up named in `MANAGER_LOG.md`, rather than leave the choice to the implementer.
+
+## Implementation outcome (2026-10-06)
+
+**Deliverable 1 — not met; evidenced finding.** The representative measurement is in place: the
+asserted loss is `ModelOptimizer.evaluate` over all 83 held-out windows, against
+`scoredTargetEntropyBits()` of the same dataset (4.912 on the current 53,465-byte corpus); the
+12-window set remains as the per-epoch curve only. Four full Metal runs (all-window held-out):
+
+| Recipe | Held-out | Gap |
+|--------|----------|-----|
+| lr 3e-3 to 3e-4, stride 64 (previous configuration, reproduced) | 5.115 | +0.203 |
+| lr 1e-2 to 1e-3, stride 64 | 5.047 | +0.135 |
+| lr 1e-2 to 1e-3, `NextTokenDataset.spanningStride` (committed) | 4.957 | +0.045 |
+| lr 1e-2 to 3e-3, spanning stride | 5.097 | +0.185 |
+
+The largest lever was coverage: at stride 64 the 550 steps read only the first 35 kB of the
+training region and never reached `end-to-end-computation`, the page whose tail is held out (an
+ideal count bigram on exactly the bytes read: 4.50 at stride 64 vs 3.86 at the spanning stride).
+The limiting factor is the step budget: ~550 batch-1 steps (~35k target bytes) fit the 38-minute
+timeout because each step costs ~3.6 s. Profiling (thread dumps + operation shapes) shows the
+backward pass is GPU-bound in weight gradients formed from full Jacobians
+(`DefaultGradientPropagation` / `GradientFeatures.combineGradient`): ~17G-term iteration spaces
+for the 256x64 output projection where the gradient needs ~1M multiply-adds. A matmul-structured
+weight gradient is the change that would buy the steps; it is core autodiff work and was not
+undertaken here, per this plan's scope. Capacity and corpus levers were not tried: the model is
+data-starved, not capacity-bound, and more corpus does not add steps. The assertion and its
+`TODO(review)` comment remain (comment updated with the current numbers); nothing was loosened.
+
+**Deliverable 2 — done (sliding-window shape).** `CausalLanguageModel.generator(CompiledModel,
+Random)` returns an `AutoregressiveModel<Integer>` through the general constructor; the fast
+test `slidingWindowGenerationMatchesFullForward` proves every greedy token (including after the
+window slides) equals the argmax of an independent full forward with different padding, and that
+greedy decoding is reproducible after `reset()`. `trainOnDocumentation` generates from the
+reloaded checkpoint and logs the sample with strict-decoder UTF-8 validity (reported, not
+asserted — open question 3). With the current model the greedy continuation is 96 spaces (the
+corpus's most frequent byte), so the reproducibility/non-triviality assertions, which run after
+the baseline assertion, also fail until the model improves. KV-cache decoding remains a follow-up.
+
+**Deliverable 3 — done.** `docs/internals/training-a-language-model.md` has the new
+configuration, curve, recipe comparison, step-cost analysis, and a Generation section.

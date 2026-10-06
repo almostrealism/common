@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.util.Arrays;
@@ -51,7 +52,12 @@ import java.util.Random;
  * can be saved and rebuilt from the saved weights. Projection weights use the {@code (out, in)}
  * convention.</p>
  *
+ * <p>A compiled inference model of this configuration generates text through
+ * {@link #generator(CompiledModel, Random)}, which decodes with a sliding window over the same
+ * forward pass the model was trained with.</p>
+ *
  * @see NextTokenDataset
+ * @see AutoregressiveModel
  */
 public class CausalLanguageModel implements TransformerBlockFeatures {
 	/** Weight key of the token embedding table, {@code (vocabSize, dim)}. */
@@ -328,6 +334,46 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 	}
 
 	/**
+	 * Creates an autoregressive generator that decodes with a sliding window over a compiled
+	 * inference model of this configuration, for example
+	 * {@code buildModel(ParameterUpdate.disabled()).compile(false)}.
+	 *
+	 * <p>Each step runs one full {@code (seqLen)} forward pass over the most recent tokens of the
+	 * sequence and samples the next token from the log-probabilities at the last filled position.
+	 * Positions after the filled prefix hold padding, which the causal mask keeps from affecting
+	 * the filled rows; once the sequence is longer than {@code seqLen} the window slides, so every
+	 * forward pass sees its tokens at positions {@code 0..seqLen-1}, exactly as every training
+	 * window did. The forward pass is therefore the trained one, at the cost of a full window per
+	 * token; a single-position decode with a key/value cache would avoid that cost.</p>
+	 *
+	 * <p>Sampling uses {@link AutoregressiveModel#sampleToken}: a temperature of zero (the
+	 * initial value) selects the most probable token, and a positive temperature samples from the
+	 * tempered distribution using {@code random}. The generator's
+	 * {@link AutoregressiveModel#getPosition() position} is not read by the inference model. The
+	 * window is cleared whenever a sequence restarts at step zero, so
+	 * {@link AutoregressiveModel#reset()} starts a new sequence. The caller remains responsible
+	 * for {@code inference}.</p>
+	 *
+	 * @param inference the compiled model, from {@code (seqLen)} token ids to
+	 *                  {@code (seqLen, vocabSize)} log-probabilities
+	 * @param random    the source of randomness for positive temperatures; may be null when
+	 *                  only greedy decoding is used
+	 * @return a generator of token ids
+	 * @throws IllegalArgumentException if {@code inference} does not have this configuration's
+	 *                                  input and output shapes
+	 */
+	public AutoregressiveModel<Integer> generator(CompiledModel inference, Random random) {
+		if (inference.getInputShape().getTotalSize() != seqLen ||
+				inference.getOutputShape().getTotalSize() != seqLen * vocabSize) {
+			throw new IllegalArgumentException("Model with input " + inference.getInputShape() +
+					" and output " + inference.getOutputShape() + " does not map (" + seqLen +
+					") token ids to " + getOutputShape());
+		}
+
+		return new SlidingWindow(inference, random).generator;
+	}
+
+	/**
 	 * Creates and initializes every weight of the model.
 	 *
 	 * @param ropeBase rotary embedding base frequency
@@ -350,5 +396,89 @@ public class CausalLanguageModel implements TransformerBlockFeatures {
 		PackedCollection invFreq = new PackedCollection(getWeightShapes().get(INV_FREQ_KEY));
 		Destroyable.runOnce(a(cp(invFreq.each()), invFreqValues.each()).get());
 		weights.put(INV_FREQ_KEY, invFreq);
+	}
+
+	/**
+	 * The decoding state of one {@link #generator(CompiledModel, Random) generator}: the model
+	 * input holding the most recent {@code seqLen} tokens of the sequence, kept in device memory.
+	 * Each token reaches the device as a single value, and the window slides by device-to-device
+	 * copies, so no window contents are staged on the host.
+	 */
+	private class SlidingWindow {
+		/** The compiled inference model. */
+		private final CompiledModel inference;
+
+		/**
+		 * The model input: the most recent tokens of the sequence, oldest first. Positions after
+		 * the filled prefix hold padding, which is zeroed when a sequence starts so that every
+		 * position is a valid token id.
+		 */
+		private final PackedCollection input;
+
+		/** Scratch space for sliding {@link #input} by one position without an overlapping copy. */
+		private final PackedCollection scratch;
+
+		/** The token being appended. */
+		private final PackedCollection token;
+
+		/**
+		 * The generator this window decodes for; not final because its sample function, created
+		 * before it is assigned, reads its temperature.
+		 */
+		private AutoregressiveModel<Integer> generator;
+
+		/** Number of filled positions of {@link #input}. */
+		private int filled;
+
+		/**
+		 * Creates the window and its generator.
+		 *
+		 * @param inference the compiled inference model
+		 * @param random    the source of randomness for positive temperatures
+		 */
+		SlidingWindow(CompiledModel inference, Random random) {
+			// TODO(review): input, scratch, token and the generator's position/temperature are never destroyed
+			this.inference = inference;
+			this.input = new PackedCollection(shape(seqLen));
+			this.scratch = new PackedCollection(shape(seqLen));
+			this.token = new PackedCollection(1);
+
+			this.generator = new AutoregressiveModel<>(new PackedCollection(1), this::append, this::forward,
+					logProbabilities -> AutoregressiveModel.sampleToken(logProbabilities, vocabSize,
+							this.generator.getTemperature(), 1.0, random),
+					new PackedCollection(1));
+		}
+
+		/**
+		 * Appends a token to the window, sliding it by one position when it is full, and clears
+		 * the window first when the generator is at the start of a sequence.
+		 *
+		 * @param id the token id
+		 */
+		private void append(int id) {
+			if (generator.getCurrentStep() == 0) {
+				input.clear();
+				filled = 0;
+			}
+
+			if (filled == seqLen) {
+				scratch.setFrom(0, input, 1, seqLen - 1);
+				input.setFrom(0, scratch, 0, seqLen - 1);
+				filled--;
+			}
+
+			token.fill((double) id);
+			input.setFrom(filled++, token, 0, 1);
+		}
+
+		/**
+		 * Runs the inference model over the window and returns the log-probabilities of the
+		 * token following the last filled position.
+		 *
+		 * @return a {@code (vocabSize)} view of the model output
+		 */
+		private PackedCollection forward() {
+			return inference.forward(input).range(shape(vocabSize), (filled - 1) * vocabSize);
+		}
 	}
 }
