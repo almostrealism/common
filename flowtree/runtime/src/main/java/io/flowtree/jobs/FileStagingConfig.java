@@ -68,6 +68,12 @@ public final class FileStagingConfig {
     private final String baseBranch;
 
     /**
+     * The base-branch commit the harness merged in and left in progress, or
+     * {@code null}; see {@link #getMergeParent()}.
+     */
+    private final String mergeParent;
+
+    /**
      * Private constructor — use {@link #builder()} to create instances.
      *
      * @param builder the populated builder
@@ -79,6 +85,7 @@ public final class FileStagingConfig {
         this.protectTestFiles = builder.protectTestFiles;
         this.protectCiFiles = builder.protectCiFiles;
         this.baseBranch = builder.baseBranch;
+        this.mergeParent = builder.mergeParent;
     }
 
     /**
@@ -155,6 +162,22 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Returns the base-branch commit the harness merged into the target branch
+     * and left in progress for the agent, or {@code null} when it started no
+     * such merge.
+     *
+     * <p>While that merge is still the one in progress, {@link FileStager}
+     * treats content identical to this commit as carried in by the merge
+     * rather than written by the agent, and judges protected test methods
+     * against this commit rather than the older merge-base.</p>
+     *
+     * @return the merge parent's full SHA, or {@code null}
+     */
+    public String getMergeParent() {
+        return mergeParent;
+    }
+
+    /**
      * Returns a concise string representation of this configuration showing
      * pattern counts rather than the full pattern sets.
      *
@@ -169,6 +192,7 @@ public final class FileStagingConfig {
             ", protectTestFiles=" + protectTestFiles +
             ", protectCiFiles=" + protectCiFiles +
             ", baseBranch='" + baseBranch + '\'' +
+            ", mergeParent=" + mergeParent +
             '}';
     }
 
@@ -197,6 +221,9 @@ public final class FileStagingConfig {
 
         /** @see FileStagingConfig#baseBranch */
         private String baseBranch = "master";
+
+        /** @see FileStagingConfig#mergeParent */
+        private String mergeParent;
 
         /**
          * Private constructor — use {@link FileStagingConfig#builder()} to obtain instances.
@@ -267,6 +294,19 @@ public final class FileStagingConfig {
          */
         public Builder baseBranch(String baseBranch) {
             this.baseBranch = baseBranch;
+            return this;
+        }
+
+        /**
+         * Sets the base-branch commit the harness merged in and left in
+         * progress for the agent.
+         *
+         * @param mergeParent the merge parent's full SHA, or {@code null}
+         *                    when no harness merge is in progress
+         * @return this builder
+         */
+        public Builder mergeParent(String mergeParent) {
+            this.mergeParent = mergeParent;
             return this;
         }
 
