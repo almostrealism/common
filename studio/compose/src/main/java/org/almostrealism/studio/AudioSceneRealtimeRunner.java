@@ -25,7 +25,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
@@ -406,11 +405,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback, which the caller
-	 *         destroys when done with it
+	 * @return a {@link TemporalCellular} for real-time playback, which the caller destroys when
+	 *         done with it via {@link Destroyable#destroy(Object)}
 	 * @throws IllegalStateException if this collaborator (and so its scene) has been destroyed
 	 */
-	public DestroyableTemporalCellular create(MultiChannelAudioOutput output,
+	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
 		Thread current = Thread.currentThread();
 		synchronized (this) {
@@ -499,9 +498,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
-	private DestroyableTemporalCellular createCellList(MultiChannelAudioOutput output,
+	private TemporalCellular createCellList(MultiChannelAudioOutput output,
 											List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 
@@ -546,7 +545,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		 * The CellList-path real-time runner. Owns the compiled per-frame {@link CellList}
 		 * and the per-buffer frame index, and releases them on {@code destroy()}.
 		 */
-		class CellListRunner implements DestroyableTemporalCellular {
+		class CellListRunner implements TemporalCellular, Destroyable {
 			@Override
 			public Supplier<Runnable> setup() {
 				return cells.setup();
@@ -714,9 +713,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
-	private DestroyableTemporalCellular createPdsl(MultiChannelAudioOutput output,
+	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
 										List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 		final long[] renderFrame = {0};
@@ -853,7 +852,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		 * {@link CompiledModel}, and the per-buffer frame index, and releases them on
 		 * {@code destroy()}.
 		 */
-		class PdslRunner implements DestroyableTemporalCellular {
+		class PdslRunner implements TemporalCellular, Destroyable {
 			/**
 			 * The combined-effects stems buffer this runner allocated (see {@code fxStem}
 			 * in {@link #createPdsl}), or {@code null} when stems summing is not active. It

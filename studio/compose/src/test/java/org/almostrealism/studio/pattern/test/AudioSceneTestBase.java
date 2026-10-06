@@ -38,6 +38,7 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
 

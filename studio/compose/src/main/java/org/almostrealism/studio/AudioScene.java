@@ -60,7 +60,7 @@ import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.Console;
@@ -139,7 +139,7 @@ import java.util.stream.IntStream;
  * scene.setLibraryRoot(new FileWaveDataProviderNode(new File("samples/")));
  *
  * // Build the realtime runner and drive it one buffer at a time
- * DestroyableTemporalCellular runner = scene.runnerRealTime(output, 1024);
+ * TemporalCellular runner = scene.runnerRealTime(output, 1024);
  * runner.setup().get().run();
  * Runnable tick = runner.tick().get();
  * for (int i = 0; i < bufferCount; i++) tick.run();
@@ -1269,11 +1269,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * @param output     the audio output to write to
 	 * @param bufferSize frames per buffer
-	 * @return a DestroyableTemporalCellular for real-time playback
+	 * @return a TemporalCellular for real-time playback; destroy it when done via
+	 *         {@link Destroyable#destroy(Object)}
 	 *
 	 * @see PatternAudioBuffer
 	 */
-	public DestroyableTemporalCellular runnerRealTime(MultiChannelAudioOutput output, int bufferSize) {
+	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output, int bufferSize) {
 		return runnerRealTime(output, null, bufferSize);
 	}
 
@@ -1293,10 +1294,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
-	 * @return a DestroyableTemporalCellular for real-time playback
+	 * @return a TemporalCellular for real-time playback; destroy it when done via
+	 *         {@link Destroyable#destroy(Object)}
 	 * @throws IllegalStateException if this scene has been destroyed
 	 */
-	public DestroyableTemporalCellular runnerRealTime(MultiChannelAudioOutput output,
+	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
 		return realtimeRunners.create(output, channels, bufferSize);

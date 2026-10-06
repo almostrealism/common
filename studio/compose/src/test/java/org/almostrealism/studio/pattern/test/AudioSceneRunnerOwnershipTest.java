@@ -21,7 +21,6 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.AudioScene;
@@ -86,7 +85,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			applyGenome(scene, 1);
 			int before = producerThreadCount();
 
-			DestroyableTemporalCellular runner = scene.runnerRealTime(output("ownership-scene", outputs), BUFFER_SIZE);
+			TemporalCellular runner = scene.runnerRealTime(output("ownership-scene", outputs), BUFFER_SIZE);
 			setup = runner.setup().get();
 			setup.run();
 			assertEquals("setup() should start exactly one producer thread",
@@ -98,7 +97,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 
 			// The scene already released the runner; a caller destroying it afterwards
 			// must be a no-op rather than a second release of freed resources.
-			runner.destroy();
+			Destroyable.destroy(runner);
 			assertEquals(before, producerThreadCount());
 		} finally {
 			// setup().get() compiles native kernels the runner does not retain; release them
@@ -128,24 +127,24 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			assertEquals(0, runners.getLiveRunnerCount());
 
 			MixdownManager.enablePdslMixdown = true;
-			DestroyableTemporalCellular pdslRunner = runners.create(output("ownership-pdsl", outputs), null, BUFFER_SIZE);
+			TemporalCellular pdslRunner = runners.create(output("ownership-pdsl", outputs), null, BUFFER_SIZE);
 			assertEquals(1, runners.getLiveRunnerCount());
 
 			MixdownManager.enablePdslMixdown = false;
-			DestroyableTemporalCellular cellListRunner = runners.create(output("ownership-celllist", outputs),
+			TemporalCellular cellListRunner = runners.create(output("ownership-celllist", outputs),
 					List.of(0), BUFFER_SIZE);
 			assertEquals(2, runners.getLiveRunnerCount());
 
-			cellListRunner.destroy();
+			Destroyable.destroy(cellListRunner);
 			assertEquals(1, runners.getLiveRunnerCount());
-			cellListRunner.destroy();
+			Destroyable.destroy(cellListRunner);
 			assertEquals("a repeated destroy() must not untrack another runner",
 					1, runners.getLiveRunnerCount());
 
 			runners.destroy();
 			assertEquals(0, runners.getLiveRunnerCount());
 			runners.destroy();
-			pdslRunner.destroy();
+			Destroyable.destroy(pdslRunner);
 			assertEquals(0, runners.getLiveRunnerCount());
 		} finally {
 			Destroyable.destroy(outputs);
@@ -154,16 +153,16 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * The runner-building API exposes its destroy lifecycle through its declared return type:
-	 * {@link AudioScene#runnerRealTime} returns a {@link DestroyableTemporalCellular}, so a
-	 * caller honoring the documented "destroy the runner when done" contract calls
-	 * {@code destroy()} — and {@code close()} via try-with-resources — directly, without a
-	 * cast to a concrete implementation. Both routes must release the runner, taking the
-	 * scene's live-runner count back to zero.
+	 * {@link AudioScene#runnerRealTime} returns the runner as a {@link TemporalCellular} — the
+	 * integration type — rather than a concrete implementation or a bespoke destroyable subtype.
+	 * A caller honoring the documented "destroy the runner when done" contract releases it through
+	 * the sanctioned {@link Destroyable#destroy(Object)} helper, which destroys the runner when it
+	 * is {@link Destroyable} without reaching around the interface to its implementation. Two
+	 * successive runners released this way must each take the scene's live-runner count back to zero.
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
-	public void runnerRealTimeReturnsDirectlyDestroyableRunner() {
+	public void runnerRealTimeRunnerIsReleasedViaDestroyableHelper() {
 		boolean pdsl = MixdownManager.enablePdslMixdown;
 		MixdownManager.enablePdslMixdown = false;
 		List<WaveOutput> outputs = new ArrayList<>();
@@ -173,21 +172,20 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			applyGenome(scene, 1);
 			assertEquals(0, scene.getLiveRunnerCount());
 
-			// Declared type exposes destroy() — no (Destroyable) cast required.
-			DestroyableTemporalCellular runner =
+			// Released through the sanctioned static helper — no (Destroyable) cast required.
+			TemporalCellular runner =
 					scene.runnerRealTime(output("ownership-destroyable", outputs), List.of(0), BUFFER_SIZE);
 			assertEquals(1, scene.getLiveRunnerCount());
-			runner.destroy();
-			assertEquals("destroy() on the declared return type must release the runner",
+			Destroyable.destroy(runner);
+			assertEquals("Destroyable.destroy must release the runner returned as TemporalCellular",
 					0, scene.getLiveRunnerCount());
 
-			// close() (try-with-resources) delegates to destroy() and is likewise reachable
-			// through the declared type.
-			try (DestroyableTemporalCellular scoped =
-						 scene.runnerRealTime(output("ownership-autocloseable", outputs), List.of(0), BUFFER_SIZE)) {
-				assertEquals(1, scene.getLiveRunnerCount());
-			}
-			assertEquals("try-with-resources close() must release the runner",
+			// A second runner, released the same way, must also return the count to zero.
+			TemporalCellular second =
+					scene.runnerRealTime(output("ownership-destroyable-2", outputs), List.of(0), BUFFER_SIZE);
+			assertEquals(1, scene.getLiveRunnerCount());
+			Destroyable.destroy(second);
+			assertEquals("a second Destroyable.destroy must release the second runner",
 					0, scene.getLiveRunnerCount());
 		} finally {
 			scene.destroy();
@@ -248,7 +246,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			applyGenome(scene, 1);
 			AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(scene) {
 				@Override
-				public DestroyableTemporalCellular create(MultiChannelAudioOutput output,
+				public TemporalCellular create(MultiChannelAudioOutput output,
 											   List<Integer> channels, int bufferSize) {
 					return new FailingTick(super.create(output, channels, bufferSize));
 				}
@@ -316,11 +314,11 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			assertEquals("a failed build must not start a producer thread",
 					threads, producerThreadCount());
 
-			DestroyableTemporalCellular runner = runners.create(output("ownership-pdsl-retry", outputs),
+			TemporalCellular runner = runners.create(output("ownership-pdsl-retry", outputs),
 					null, BUFFER_SIZE);
 			assertEquals("the scene must remain usable after a rolled-back build",
 					1, runners.getLiveRunnerCount());
-			runner.destroy();
+			Destroyable.destroy(runner);
 			assertEquals(0, runners.getLiveRunnerCount());
 		} finally {
 			scene.destroy();
@@ -416,7 +414,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 		// The scene is never used: create() is overridden to build only the blocking runner.
 		AudioSceneRealtimeRunner runners = new AudioSceneRealtimeRunner(null) {
 			@Override
-			public DestroyableTemporalCellular create(MultiChannelAudioOutput output,
+			public TemporalCellular create(MultiChannelAudioOutput output,
 										   List<Integer> channels, int bufferSize) {
 				BlockingReleaseRunner runner = new BlockingReleaseRunner(r -> release(r, List.of(() -> {
 					releasing.countDown();
@@ -428,8 +426,8 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 			}
 		};
 
-		DestroyableTemporalCellular runner = runners.create(null, null, BUFFER_SIZE);
-		Thread caller = new Thread(runner::destroy, "runner-release");
+		TemporalCellular runner = runners.create(null, null, BUFFER_SIZE);
+		Thread caller = new Thread(() -> Destroyable.destroy(runner), "runner-release");
 		caller.start();
 		// Release on failure so the non-daemon caller cannot block forever on acquire.
 		boolean releaseStarted = releasing.await(30, TimeUnit.SECONDS);
@@ -462,7 +460,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 
 		assertEquals(0, runners.getLiveRunnerCount());
 		assertEquals("the runner must be released exactly once", 1, releases.get());
-		runner.destroy();
+		Destroyable.destroy(runner);
 		assertEquals("a repeated destroy() must not release again", 1, releases.get());
 	}
 
@@ -564,7 +562,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	 * releases it through the tracking collaborator's {@code release}, so a test can hold the
 	 * release in progress.
 	 */
-	private static class BlockingReleaseRunner implements DestroyableTemporalCellular {
+	private static class BlockingReleaseRunner implements TemporalCellular, Destroyable {
 		/** Releases this runner through the collaborator that tracks it. */
 		private final Consumer<Destroyable> destroyer;
 
@@ -597,7 +595,7 @@ public class AudioSceneRunnerOwnershipTest extends AudioSceneTestBase {
 	 * Delegates to a real runner except that compiling its tick operation throws. Destroying
 	 * it destroys the real runner, so ownership is observable through the live-runner count.
 	 */
-	private static class FailingTick implements DestroyableTemporalCellular {
+	private static class FailingTick implements TemporalCellular, Destroyable {
 		/** Message of the simulated tick compilation failure. */
 		static final String MESSAGE = "simulated tick compilation failure";
 
