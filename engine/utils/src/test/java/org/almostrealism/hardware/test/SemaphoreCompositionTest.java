@@ -126,6 +126,32 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Merging is probed in both directions: a member that cannot merge with a later one is
+	 * still folded when the later one can merge with it, whichever of the two is ordered
+	 * first in the selection and whichever of them is the later completion.
+	 */
+	@Test(timeout = 30000)
+	public void mergeProbedInBothDirections() {
+		Timeline timeline = new Timeline();
+		Semaphore passive = timeline.passiveCompletion(1);
+		Semaphore active = timeline.completion(2);
+		Semaphore passiveLater = timeline.passiveCompletion(3);
+
+		assertTrue(passive.merge(active) == null);
+		assertTrue(Semaphore.all(Arrays.asList(passive, active)) == active);
+		assertTrue(Semaphore.all(Arrays.asList(active, passive)) == active);
+		assertTrue(Semaphore.all(Arrays.asList(passiveLater, active)) == passiveLater);
+
+		// Two members that cannot merge with each other are still composed
+		Semaphore unmerged = Semaphore.all(Arrays.asList(passive, passiveLater));
+		assertTrue(unmerged != passive && unmerged != passiveLater);
+
+		// Release the composite's callback threads, which would otherwise stay parked
+		timeline.reach(3);
+		unmerged.waitFor();
+	}
+
+	/**
 	 * A point that advances monotonically, standing in for a provider whose work completes
 	 * in order: a completion at a given point has completed once the timeline reaches it, so
 	 * the later of two completions on one timeline implies the earlier.
@@ -141,7 +167,19 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 		 * @return the completion
 		 */
 		Semaphore completion(long point) {
-			return new TimelineCompletion(this, point);
+			return new TimelineCompletion(this, point, true);
+		}
+
+		/**
+		 * Returns a completion that completes once this timeline reaches the given point but
+		 * does not itself merge with anything; another completion of this timeline may still
+		 * merge with it.
+		 *
+		 * @param point the point at which the completion completes
+		 * @return the completion
+		 */
+		Semaphore passiveCompletion(long point) {
+			return new TimelineCompletion(this, point, false);
 		}
 
 		/**
@@ -181,16 +219,20 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 		private final Timeline timeline;
 		/** The point of the timeline at which this completion completes. */
 		private final long point;
+		/** Whether this completion merges with others, rather than only being merged into. */
+		private final boolean merging;
 
 		/**
 		 * Creates a completion at the given point of a timeline.
 		 *
 		 * @param timeline the timeline this completion belongs to
 		 * @param point    the point at which it completes
+		 * @param merging  whether this completion's own {@link #merge} merges anything
 		 */
-		TimelineCompletion(Timeline timeline, long point) {
+		TimelineCompletion(Timeline timeline, long point, boolean merging) {
 			this.timeline = timeline;
 			this.point = point;
+			this.merging = merging;
 		}
 
 		@Override
@@ -200,7 +242,7 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 
 		@Override
 		public Semaphore merge(Semaphore other) {
-			if (!(other instanceof TimelineCompletion)) return null;
+			if (!merging || !(other instanceof TimelineCompletion)) return null;
 
 			TimelineCompletion completion = (TimelineCompletion) other;
 			if (completion.timeline != timeline) return null;
