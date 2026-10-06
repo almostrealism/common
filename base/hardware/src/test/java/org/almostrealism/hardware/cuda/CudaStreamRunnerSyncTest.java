@@ -161,6 +161,71 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * When the command fails and the completion callback then fails too, the caller still receives
+	 * the original command failure, with the callback's failure attached as suppressed rather than
+	 * replacing it, exactly as a refused submission preserves its refusal.
+	 */
+	@Test(timeout = 30000)
+	public void commandFailureKeepsCallbackFailureSuppressed() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>()));
+
+		try {
+			runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); },
+					null, () -> { throw new IllegalArgumentException("release failed"); });
+			Assert.fail("The command failure should propagate");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("launch failed", expected.getMessage());
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalArgumentException);
+			Assert.assertEquals("release failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		runner.destroy();
+	}
+
+	/**
+	 * When waiting for a submission's completion event fails and releasing that event then fails
+	 * too, the submission's semaphore reports the wait failure, carrying the release failure as
+	 * suppressed, so the operation that actually failed is not hidden by cleanup.
+	 */
+	@Test(timeout = 30000)
+	public void completionSyncFailureSuppressesReleaseFailure() {
+		CUStream stream = new CUStream(null, 0L) {
+			@Override
+			public void synchronize() { }
+
+			@Override
+			public CUEvent recordEvent() {
+				return new CUEvent(null, 0L) {
+					@Override
+					public void synchronize() { throw new IllegalStateException("sync failed"); }
+
+					@Override
+					public void release() { throw new IllegalArgumentException("release failed"); }
+				};
+			}
+
+			@Override
+			public void release() { }
+		};
+
+		CudaStreamRunner runner = new CudaStreamRunner(stream);
+		Semaphore completion = runner.submit(null, s -> { }, null, null);
+
+		try {
+			completion.waitFor();
+			Assert.fail("The event synchronization failure must propagate");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("sync failed", expected.getMessage());
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalArgumentException);
+			Assert.assertEquals("release failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		runner.destroy();
+	}
+
+	/**
 	 * On the success path the command runs, its completion is waited for once, and the completion
 	 * callback runs last, in that order, all before the submission's semaphore settles.
 	 */

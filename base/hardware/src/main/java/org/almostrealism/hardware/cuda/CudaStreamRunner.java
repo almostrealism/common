@@ -33,7 +33,7 @@ import java.util.function.Consumer;
  * submitting thread: the CUDA counterpart of
  * {@link org.almostrealism.hardware.metal.MetalCommandRunner}.
  *
- * <p>Each submission returns a {@link CudaSemaphore}. Work is enqueued on the stream as soon as
+ * <p>Each submission returns a {@link Semaphore} (a {@link CudaSemaphore}). Work is enqueued on the stream as soon as
  * nothing it depends on is outstanding, and an event recorded behind it marks its completion. A
  * dedicated completion thread waits for those events in launch order and runs each submission's
  * completion callback before settling its semaphore, so callbacks run in submission order and
@@ -121,8 +121,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * @return the submission's completion
 	 * @throws IllegalStateException if the runner has been destroyed
 	 */
-	public CudaSemaphore submit(OperationMetadata requester, Consumer<CUStream> command,
-								Semaphore dependsOn, Runnable onComplete) {
+	public Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
+							Semaphore dependsOn, Runnable onComplete) {
 		CudaSemaphore completion = new CudaSemaphore(requester, this);
 		boolean sameRunner = dependsOn instanceof CudaSemaphore &&
 				((CudaSemaphore) dependsOn).getRunner() == this;
@@ -149,7 +149,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	/**
 	 * Launches a submission on the submitting thread. On failure the stream has been drained by
 	 * {@link #launch}, so the callback runs and the semaphore settles here before the failure is
-	 * rethrown. Must hold this runner's monitor.
+	 * rethrown; a failure of the callback is attached to it as suppressed rather than replacing it.
+	 * Must hold this runner's monitor.
 	 *
 	 * @param submission the submission to launch
 	 */
@@ -161,6 +162,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		} catch (RuntimeException | Error e) {
 			try {
 				if (submission.onComplete != null) submission.onComplete.run();
+			} catch (RuntimeException | Error callbackFailure) {
+				e.addSuppressed(callbackFailure);
 			} finally {
 				submission.completion.fail(e);
 				submission.completion.countDown();
@@ -441,16 +444,26 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		/**
 		 * Waits for the work to finish on the GPU, releases the event, runs the callback and
 		 * settles the semaphore. A failure at any step is reported by the semaphore and does
-		 * not prevent the later steps.
+		 * not prevent the later steps. When waiting for the event fails and releasing it then
+		 * fails too, the wait failure is the one reported, carrying the release failure as
+		 * suppressed, so the operation that actually failed is not hidden.
 		 */
 		private void settle() {
 			try {
 				if (event != null) {
 					try {
 						event.synchronize();
-					} finally {
-						event.release();
+					} catch (RuntimeException | Error e) {
+						try {
+							event.release();
+						} catch (RuntimeException | Error releaseFailure) {
+							e.addSuppressed(releaseFailure);
+						}
+
+						throw e;
 					}
+
+					event.release();
 				}
 			} catch (RuntimeException | Error e) {
 				completion.fail(e);
