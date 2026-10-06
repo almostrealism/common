@@ -27,7 +27,6 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
@@ -49,9 +48,6 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	/** Largest deviation, relative to the magnitude of the expected value, that is accepted. */
 	private static final double TOLERANCE = 1e-4;
 
-	/** The {@link WeightedSumComputation#enableLoopGeneration} setting to restore after each test. */
-	private boolean loopGeneration;
-
 	/**
 	 * Collections allocated by a test, destroyed after it. {@link MemoryDataAdapter} disables
 	 * finalizer cleanup by default and {@link TestSuiteBase} only clears profiling, so the
@@ -61,25 +57,11 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	private final List<PackedCollection> allocated = new ArrayList<>();
 
 	/**
-	 * Enables loop generation for these tests, which verify the loop form. The default is off
-	 * (see {@link WeightedSumComputation#enableLoopGeneration}), so it is enabled here and
-	 * restored afterward rather than left on for other tests in the module.
-	 */
-	@Before
-	public void enableLoopGeneration() {
-		loopGeneration = WeightedSumComputation.enableLoopGeneration;
-		WeightedSumComputation.enableLoopGeneration = true;
-	}
-
-	/**
-	 * Restores the loop-generation setting changed by {@link #enableLoopGeneration()} and
-	 * destroys the collections the test allocated. {@code destroy()} is idempotent, so a
+	 * Destroys the collections the test allocated. {@code destroy()} is idempotent, so a
 	 * collection whose memory a computation already released is unaffected.
 	 */
 	@After
-	public void restoreLoopGeneration() {
-		WeightedSumComputation.enableLoopGeneration = loopGeneration;
-
+	public void destroyAllocated() {
 		for (PackedCollection c : allocated) {
 			c.destroy();
 		}

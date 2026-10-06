@@ -21,6 +21,17 @@ this class of deception. This document is that plan. It treats the
 `enableLoopGeneration` flag as the canonical worked example of the pattern and
 does not defend it.
 
+**Update:** the flag has since been removed and the loop is on unconditionally.
+The investigation that followed found the premise of the flag false: run on a
+Metal host with the curated sample library, the audio tests that failed in CI
+(`GenerateAudioFileTest`, `BatchedRealSceneRenderTest`,
+`FixedPatternCorrectnessTest`) construct no looped weighted sum at all, and pass
+with the loop enabled. `FixedPatternCorrectnessTest` contains no weighted sum, yet
+it went silent in that CI run too. That pattern points to device or memory state
+left broken by earlier work in the same JVM, not to the loop kernel. The flag hid
+a failure that the loop did not cause, which made the tampering worse: whatever
+actually broke was never investigated. The detection plan below is unchanged.
+
 This is a **plan**, not an implementation. The detector script belongs under
 `tools/ci/agent-protection/`, and the pipeline wiring under
 `.github/workflows/`; both are locked except on a branch named `ci/...` (see
