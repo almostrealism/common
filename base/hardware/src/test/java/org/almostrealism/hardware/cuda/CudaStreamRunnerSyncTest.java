@@ -322,6 +322,128 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * A submission refused because the runner has already been destroyed must still run its
+	 * completion callback, which is how callers release the memory reservation they acquired before
+	 * submitting; otherwise losing the race with {@code destroy()} pins that reservation forever. The
+	 * command itself must never run, and the refusal must reach the caller.
+	 */
+	@Test(timeout = 30000)
+	public void submitAfterDestroyRunsCompletionCallback() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		runner.destroy();
+		events.clear();
+
+		try {
+			runner.submit(null, stream -> events.add("command"), null, () -> events.add("complete"));
+			Assert.fail("A destroyed runner must refuse the submission");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("The refusal must explain the runner was destroyed",
+					expected.getMessage().contains("destroyed"));
+			Assert.assertEquals(0, expected.getSuppressed().length);
+		}
+
+		Assert.assertEquals("Only the refused submission's callback may run",
+				List.of("complete"), events);
+	}
+
+	/**
+	 * When the completion callback of a refused submission itself fails, the caller still receives
+	 * the refusal, with the callback's failure attached as suppressed rather than replacing it.
+	 */
+	@Test(timeout = 30000)
+	public void submitAfterDestroyKeepsCallbackFailureSuppressed() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>()));
+		runner.destroy();
+
+		try {
+			runner.submit(null, stream -> { }, null, () -> {
+				throw new IllegalArgumentException("release failed");
+			});
+			Assert.fail("A destroyed runner must refuse the submission");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage().contains("destroyed"));
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalArgumentException);
+			Assert.assertEquals("release failed", expected.getSuppressed()[0].getMessage());
+		}
+	}
+
+	/**
+	 * A submission without a completion callback is still refused cleanly once the runner has been
+	 * destroyed.
+	 */
+	@Test(timeout = 30000)
+	public void submitAfterDestroyWithoutCallbackIsRefused() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		runner.destroy();
+		events.clear();
+
+		try {
+			runner.submit(null, stream -> events.add("command"), null, null);
+			Assert.fail("A destroyed runner must refuse the submission");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage().contains("destroyed"));
+		}
+
+		Assert.assertEquals(List.of(), events);
+	}
+
+	/**
+	 * If recording a new event fails and releasing that event then fails too, the recording failure
+	 * is the one thrown, carrying the release failure as suppressed, so the operation that actually
+	 * failed is not hidden. A successful release adds nothing.
+	 */
+	@Test(timeout = 30000)
+	public void recordEventFailureSuppressesReleaseFailure() {
+		IllegalStateException failure = recordEventFailure(true);
+		Assert.assertEquals("record failed", failure.getMessage());
+		Assert.assertEquals(1, failure.getSuppressed().length);
+		Assert.assertEquals("release failed", failure.getSuppressed()[0].getMessage());
+
+		IllegalStateException clean = recordEventFailure(false);
+		Assert.assertEquals("record failed", clean.getMessage());
+		Assert.assertEquals(0, clean.getSuppressed().length);
+	}
+
+	/**
+	 * Calls {@link CUStream#recordEvent()} on a stream whose recording always fails, in a context
+	 * whose new events optionally fail to release, and returns the failure it throws.
+	 *
+	 * @param releaseFails whether releasing the unrecorded event fails
+	 * @return the failure thrown by {@link CUStream#recordEvent()}
+	 */
+	private static IllegalStateException recordEventFailure(boolean releaseFails) {
+		CUContext context = new CUContext(null, 0L) {
+			@Override
+			public CUEvent newEvent() {
+				return new CUEvent(this, 0L) {
+					@Override
+					public void release() {
+						if (releaseFails) throw new IllegalStateException("release failed");
+					}
+				};
+			}
+		};
+
+		CUStream stream = new CUStream(context, 0L) {
+			@Override
+			public void record(CUEvent event) {
+				throw new IllegalStateException("record failed");
+			}
+		};
+
+		try {
+			stream.recordEvent();
+		} catch (IllegalStateException e) {
+			return e;
+		}
+
+		throw new AssertionError("recordEvent must propagate the recording failure");
+	}
+
+	/**
 	 * Returns the completion thread of the given runner, so a test can interrupt it directly.
 	 *
 	 * @param runner the runner whose completion thread to return

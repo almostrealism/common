@@ -109,6 +109,10 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * behind a foreign dependency cannot report to the caller, so the same failure is reported by
 	 * its semaphore instead, after the same drain and callback.</p>
 	 *
+	 * <p>A submission refused because the runner has been destroyed never launches, but its
+	 * {@code onComplete} still runs before the refusal is thrown, so a resource the caller handed
+	 * to the callback (such as a memory reservation) is released rather than leaked.</p>
+	 *
 	 * @param requester  the operation submitting the work, or {@code null}
 	 * @param command    enqueues the work on the stream
 	 * @param dependsOn  work that must complete first, or {@code null}
@@ -127,7 +131,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 
 		synchronized (this) {
 			if (destroyed) {
-				throw new IllegalStateException("The CUDA stream runner has been destroyed");
+				throw submission.refuse();
 			}
 
 			if (submission.dependsOn == null && held.isEmpty()) {
@@ -383,6 +387,29 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			this.command = command;
 			this.dependsOn = dependsOn;
 			this.onComplete = onComplete;
+		}
+
+		/**
+		 * Refuses this submission because the runner has been destroyed: runs its completion
+		 * callback, so whatever the callback releases is not leaked, and fails its semaphore. A
+		 * failure of the callback is attached to the refusal as suppressed.
+		 *
+		 * @return the refusal to throw to the submitting thread
+		 */
+		private IllegalStateException refuse() {
+			IllegalStateException refusal =
+					new IllegalStateException("The CUDA stream runner has been destroyed");
+
+			try {
+				if (onComplete != null) onComplete.run();
+			} catch (RuntimeException | Error e) {
+				refusal.addSuppressed(e);
+			} finally {
+				completion.fail(refusal);
+				completion.countDown();
+			}
+
+			return refusal;
 		}
 	}
 
