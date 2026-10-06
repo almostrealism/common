@@ -81,23 +81,28 @@ public class QwenModelFileTest extends TestSuiteBase implements AttentionFeature
 	@Test(timeout = 600000)
 	public void destroyReleasesGeneratorButNotCheckpoint() {
 		Qwen3Config config = config();
-		StateDictionary weights = Qwen3InferenceProfileTest.createRandomWeights(config, 7L, false);
 		Integer[] prompt = { 3, 41 };
 
-		Qwen3 first = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
-		int[] before = greedyTokens(first, prompt, STEPS);
-		PackedCollection position = first.getPosition();
+		try (StateDictionary weights = Qwen3InferenceProfileTest.createRandomWeights(config, 7L, false)) {
+			Qwen3 first = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
+			PackedCollection position = first.getPosition();
+			int[] before;
+			try {
+				before = greedyTokens(first, prompt, STEPS);
+			} finally {
+				first.destroy();
+			}
 
-		first.destroy();
-		Assert.assertTrue("generator position was not released", position.isDestroyed());
-		Assert.assertFalse("checkpoint weights were released",
-				weights.get("model.embed_tokens.weight").isDestroyed());
-		first.destroy();
+			Assert.assertTrue("generator position was not released", position.isDestroyed());
+			Assert.assertFalse("checkpoint weights were released",
+					weights.get("model.embed_tokens.weight").isDestroyed());
+			first.destroy();
 
-		Qwen3 second = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer());
-		Assert.assertArrayEquals(before, greedyTokens(second, prompt, STEPS));
-		Assert.assertEquals(STEPS, second.getAutoregressiveModel().getCurrentStep());
-		second.destroy();
+			try (Qwen3 second = new Qwen3(config, weights, Qwen3Tokenizer.createTestTokenizer())) {
+				Assert.assertArrayEquals(before, greedyTokens(second, prompt, STEPS));
+				Assert.assertEquals(STEPS, second.getAutoregressiveModel().getCurrentStep());
+			}
+		}
 	}
 
 	/** The settings a model file reads hold every dimension of the configuration and its RoPE base. */
