@@ -225,6 +225,23 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	private final Object renderLock = new Object();
 
 	/**
+	 * Set by {@link #destroy()} once the manager's caches, automation data and batched
+	 * renderer have been released, and read by {@link #sum} before it renders. Both
+	 * guard it with {@link #renderLock}, so a render that acquires the lock after a
+	 * teardown observes it and refuses to run against released memory rather than
+	 * dereferencing it.
+	 *
+	 * <p>This closes the one window the {@link PatternSystemManager#sum} generation
+	 * guard leaves open: a render-ahead tick can pass that guard and only then have the
+	 * owning thread call {@link PatternSystemManager#clear()}, which destroys this
+	 * manager before the tick reaches {@link #sum}. Rendering a torn-down manager would
+	 * read its destroyed automation parameter collections and batched renderer. The flag
+	 * makes {@link #sum} throw {@link IllegalStateException} in that case, matching the
+	 * stale-operation contract of {@link PatternSystemManager#sum}.</p>
+	 */
+	private boolean destroyed;
+
+	/**
 	 * Returns this manager's note-audio cache. Package-private: it exposes the cache
 	 * so tests in this package can verify that {@link #destroy()} releases it, without
 	 * widening the public surface.
@@ -316,6 +333,8 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 			if (renderer != null) {
 				renderer.destroy();
 			}
+
+			destroyed = true;
 		}
 	}
 
@@ -959,7 +978,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
 	 * @param startFrame Supplier for the starting frame (absolute position)
 	 * @param frameCount Number of frames to render
-	 * @return Operation that renders elements within the frame range
+	 * @return Operation that renders elements within the frame range. Running it throws
+	 *         {@link IllegalStateException} if the manager was {@link #destroy() destroyed}
+	 *         after the operation was built, so a render-ahead tick that reaches a manager
+	 *         torn down by {@link PatternSystemManager#clear()} refuses to run rather than
+	 *         dereferencing released memory.
 	 *
 	 * @see PatternFeatures#render
 	 */
@@ -975,8 +998,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
 
-					// TODO(review): guard against rendering after destroy()
 					synchronized (renderLock) {
+						if (destroyed) {
+							throw new IllegalStateException("Pattern render operation is stale"
+									+ " because its manager was destroyed after it was built");
+						}
+
 						int currentEpoch = cacheEpoch.get();
 						if (observedCacheEpoch != currentEpoch) {
 							// Arrangement switched: discard audio rendered for the previous

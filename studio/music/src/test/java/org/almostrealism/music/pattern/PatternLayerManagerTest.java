@@ -333,6 +333,46 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	}
 
 	/**
+	 * A render operation built by {@link PatternLayerManager#sum} runs while the manager
+	 * is live, but once the manager is {@link PatternLayerManager#destroy() destroyed} —
+	 * which releases its automation parameter collections and batched renderer — running
+	 * the operation throws {@link IllegalStateException} rather than rendering against the
+	 * released memory. This closes the window the {@link PatternSystemManager#sum}
+	 * generation guard leaves open: a render-ahead tick can pass that guard and only then
+	 * have the owning thread destroy this manager through {@link PatternSystemManager#clear()}.
+	 * The manager's {@code renderLock} makes the check and the teardown mutually exclusive,
+	 * so the operation either completes before the teardown or observes it and refuses to run.
+	 */
+	@Test(timeout = 60000)
+	public void renderOperationIsRejectedAfterManagerDestroyed() {
+		PatternLayerManager plm = manager(List.of(), 2.0, false);
+
+		int measureFrames = 2 * OutputLine.sampleRate;
+		AudioSceneContext context = new AudioSceneContext();
+		context.setMeasures(4);
+		context.setFrames(4 * measureFrames);
+		context.setFrameForPosition(pos -> (int) (pos * measureFrames));
+		context.setTimeForDuration(d -> d * 2.0);
+		context.setScaleForPosition(pos -> Scale.of(WesternChromatic.C4));
+
+		Runnable render = plm.sum(() -> context, ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT, () -> 0, 4 * measureFrames).get();
+
+		// An empty manager renders silence while live, exercising the live path without audio.
+		render.run();
+
+		plm.destroy();
+
+		try {
+			render.run();
+			Assert.fail("a render operation built before destroy() must be rejected afterwards");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("the rejection explains the operation is stale",
+					expected.getMessage().contains("stale"));
+		}
+	}
+
+	/**
 	 * Building layers while a {@link Heap} is active must not make the manager-owned
 	 * automation parameter collections heap aliases: an alias cannot be freed by the
 	 * tracked {@code destroy()} release ({@code MemoryDataAdapter.destroy()} reports an
