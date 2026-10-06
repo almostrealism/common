@@ -263,7 +263,9 @@ public class CudaStreamRunner implements ConsoleFeatures {
 
 	/**
 	 * Body of the completion thread: settles completions in order until {@link #destroy()}
-	 * hands it {@link Completion#STOP}.
+	 * hands it {@link Completion#STOP}. An interrupt still settles every completion already
+	 * queued before the thread exits, so no caller is left waiting on a submission that will
+	 * never be observed.
 	 */
 	private void observeCompletions() {
 		while (true) {
@@ -272,13 +274,27 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			try {
 				next = completions.take();
 			} catch (InterruptedException e) {
-				// TODO(review): pending completions are left un-settled here, so their waiters hang
 				warn("Completion thread interrupted with " + completions.size() + " completions pending");
+				settlePending();
+				Thread.currentThread().interrupt();
 				return;
 			}
 
 			if (next == Completion.STOP) return;
 			next.settle();
+		}
+	}
+
+	/**
+	 * Settles every completion still queued, so a thread interrupt does not leave callers of
+	 * {@link CudaSemaphore#waitFor()} waiting on a submission the completion thread will never
+	 * observe. {@link Completion#STOP} is skipped rather than settled, as it has no semaphore.
+	 */
+	private void settlePending() {
+		Completion next;
+
+		while ((next = completions.poll()) != null) {
+			if (next != Completion.STOP) next.settle();
 		}
 	}
 

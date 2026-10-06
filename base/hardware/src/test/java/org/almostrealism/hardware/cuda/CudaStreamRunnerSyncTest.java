@@ -21,6 +21,7 @@ import io.almostrealism.streams.Semaphore;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -46,18 +47,37 @@ public class CudaStreamRunnerSyncTest {
 	private static final class RecordingStream extends CUStream {
 		/** The shared event log the stream appends {@code "synchronize"} to. */
 		private final List<String> events;
+		/** Counted down when the first recorded event starts waiting, or {@code null}. */
+		private final CountDownLatch entered;
+		/** Releases the first recorded event's wait, or {@code null} if none block. */
+		private final CountDownLatch gate;
+		/** How many events have been recorded, to block only the first. */
+		private int recorded;
 
 		/** Wraps a placeholder handle and records into the given event log. */
 		private RecordingStream(List<String> events) {
+			this(events, null, null);
+		}
+
+		/**
+		 * Wraps a placeholder handle and records into the given event log, blocking the first
+		 * event it records until {@code gate} is released.
+		 */
+		private RecordingStream(List<String> events, CountDownLatch entered, CountDownLatch gate) {
 			super(null, 0L);
 			this.events = events;
+			this.entered = entered;
+			this.gate = gate;
 		}
 
 		@Override
 		public void synchronize() { events.add("synchronize"); }
 
 		@Override
-		public CUEvent recordEvent() { return new RecordingEvent(events); }
+		public CUEvent recordEvent() {
+			if (gate != null && recorded++ == 0) return new RecordingEvent(events, entered, gate);
+			return new RecordingEvent(events);
+		}
 
 		@Override
 		public void release() { }
@@ -67,15 +87,45 @@ public class CudaStreamRunnerSyncTest {
 	private static final class RecordingEvent extends CUEvent {
 		/** The shared event log. */
 		private final List<String> events;
+		/** Counted down when the wait begins, or {@code null} if the wait does not block. */
+		private final CountDownLatch entered;
+		/** Releases the wait, or {@code null} if the wait does not block. */
+		private final CountDownLatch gate;
 
 		/** Wraps a placeholder handle and records into the given event log. */
 		private RecordingEvent(List<String> events) {
+			this(events, null, null);
+		}
+
+		/** Wraps a placeholder handle and blocks its wait on {@code gate} once {@code entered}. */
+		private RecordingEvent(List<String> events, CountDownLatch entered, CountDownLatch gate) {
 			super(null, 0L);
 			this.events = events;
+			this.entered = entered;
+			this.gate = gate;
 		}
 
 		@Override
-		public void synchronize() { events.add("synchronize"); }
+		public void synchronize() {
+			if (gate != null) {
+				entered.countDown();
+
+				// Wait uninterruptibly so an interrupt here does not abandon the wait.
+				boolean interrupted = false;
+				while (true) {
+					try {
+						gate.await();
+						break;
+					} catch (InterruptedException e) {
+						interrupted = true;
+					}
+				}
+
+				if (interrupted) Thread.currentThread().interrupt();
+			}
+
+			events.add("synchronize");
+		}
 
 		@Override
 		public void release() { }
@@ -227,5 +277,51 @@ public class CudaStreamRunnerSyncTest {
 		Assert.assertTrue("The rejection must be an IllegalStateException",
 				rejected.get() instanceof IllegalStateException);
 		runner.destroy();
+	}
+
+	/**
+	 * Interrupting the completion thread while a completion is still queued must not leave that
+	 * submission's semaphore un-settled: its callback still runs and {@link Semaphore#waitFor()}
+	 * returns rather than hanging forever. The first submission holds the completion thread inside
+	 * {@code settle()} so the second's completion is waiting in the queue when the interrupt lands;
+	 * once the thread returns to {@code take()} it sees the interrupt and settles what remains.
+	 *
+	 * @throws Exception if interrupted while waiting, or the completion thread cannot be reached
+	 */
+	@Test(timeout = 30000)
+	public void interruptSettlesPendingCompletionsSoWaitersDoNotHang() throws Exception {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events, entered, gate));
+
+		runner.submit(null, stream -> events.add("first"), null, () -> events.add("first complete"));
+		Semaphore second = runner.submit(null, stream -> events.add("second"),
+				null, () -> events.add("second complete"));
+
+		entered.await();
+
+		completionThread(runner).interrupt();
+		gate.countDown();
+
+		second.waitFor();
+
+		Assert.assertTrue("The queued submission must settle despite the interrupt",
+				((CudaSemaphore) second).isSettled());
+		Assert.assertTrue("The queued submission's callback must still run",
+				events.contains("second complete"));
+	}
+
+	/**
+	 * Returns the completion thread of the given runner, so a test can interrupt it directly.
+	 *
+	 * @param runner the runner whose completion thread to return
+	 * @return the runner's completion thread
+	 * @throws ReflectiveOperationException if the field cannot be read
+	 */
+	private static Thread completionThread(CudaStreamRunner runner) throws ReflectiveOperationException {
+		Field field = CudaStreamRunner.class.getDeclaredField("completionThread");
+		field.setAccessible(true);
+		return (Thread) field.get(runner);
 	}
 }
