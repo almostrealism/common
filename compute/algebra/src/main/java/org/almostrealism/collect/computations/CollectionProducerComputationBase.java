@@ -218,14 +218,16 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Prepares the operation metadata by adding shape information to the base metadata.
-	 * 
+	 * Prepares the operation metadata by adding shape information to the base metadata. The
+	 * signature is the one the base metadata defers to {@link #signature()}, so it is computed
+	 * only if it is requested.
+	 *
 	 * @param metadata The base metadata to enhance
 	 * @return Enhanced metadata including shape information
 	 */
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return super.prepareMetadata(metadata).withShape(getShape()).withSignature(signature());
+		return super.prepareMetadata(metadata).withShape(getShape());
 	}
 
 	/**

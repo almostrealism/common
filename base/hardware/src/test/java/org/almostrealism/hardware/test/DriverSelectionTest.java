@@ -125,6 +125,19 @@ public class DriverSelectionTest {
 	}
 
 	/**
+	 * Host-accessible memory is offered by Metal wherever it is selected, and not by the native
+	 * or OpenCL backends, for which no device is consulted. (Whether CUDA offers it depends on the
+	 * device, which this test does not assume.)
+	 */
+	@Test(timeout = 30000)
+	public void hostAccessibleMemoryFollowsTheSelectedBackends() {
+		Assert.assertTrue(DriverSelection.parse("mtl", true, true).offersHostAccessibleMemory());
+		Assert.assertTrue(DriverSelection.parse("native,mtl", true, true).offersHostAccessibleMemory());
+		Assert.assertFalse(DriverSelection.parse("native", false, false).offersHostAccessibleMemory());
+		Assert.assertFalse(DriverSelection.parse("native,cl", false, false).offersHostAccessibleMemory());
+	}
+
+	/**
 	 * Uniform precision follows OpenCL being named. Tolerating OpenCL through the
 	 * wildcard must not constrain the precision of every other backend.
 	 */

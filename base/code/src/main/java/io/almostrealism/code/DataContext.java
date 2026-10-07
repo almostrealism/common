@@ -88,6 +88,20 @@ public interface DataContext<MEM> extends Named {
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
 
 	/**
+	 * Returns the memory provider through which this context can share memory with kernels that
+	 * run on the host, or {@code null} if it cannot. Memory from the returned provider must be
+	 * directly addressable by host code at its content pointer, so that a host kernel and this
+	 * context's kernels can operate on the same allocation without copying it between them.
+	 * When shared memory is enabled, the host context allocates from this provider. The default
+	 * shares nothing.
+	 *
+	 * @return the provider of host-addressable memory, or {@code null}
+	 */
+	default MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() {
+		return null;
+	}
+
+	/**
 	 * Executes the given callable within device memory scope.
 	 *
 	 * <p>Allocations made during the callable's execution will be directed to device memory.

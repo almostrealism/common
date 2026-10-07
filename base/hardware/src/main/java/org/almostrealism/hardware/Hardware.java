@@ -519,45 +519,10 @@ public final class Hardware implements ConsoleFeatures {
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = Optional.ofNullable(memScale).map(Integer::parseInt).orElse(4);
 
-		String memLocation = SystemUtils.getProperty("AR_HARDWARE_MEMORY_LOCATION");
-		Location location = Location.DEVICE;
-		if ("heap".equalsIgnoreCase(memLocation)) {
-			location = Location.HEAP;
-		} else if ("host".equalsIgnoreCase(memLocation)) {
-			location = Location.HOST;
-		} else if ("delegate".equalsIgnoreCase(memLocation)) {
-			location = Location.DELEGATE;
-		}
-
 		String opDepth = SystemUtils.getProperty("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
 
-		DriverSelection selection = DriverSelection.parse(
-				SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*"),
-				SystemUtils.isMacOS(), aarch);
-
-		if (selection.isUniformPrecisionRequired()) {
-			KernelPreferences.requireUniformPrecision();
-		}
-
-		boolean sharedMem = selection.isSharedMemoryPreferred();
-		if (sharedMem) {
-			KernelPreferences.enableSharedMemory();
-		}
-
-		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
-
-		if (sharedMem) {
-			if (memLocation != null) {
-				if (location == Location.HOST) {
-					console.warn("NIO memory is enabled, location will be set to DELEGATE instead of HOST");
-				} else if (location != Location.DELEGATE) {
-					throw new IllegalArgumentException("Cannot use location " + memLocation + " with NIO memory");
-				}
-			}
-
-			location = Location.DELEGATE;
-		}
+		HardwareSettings settings = HardwareSettings.resolve(SystemUtils.isMacOS(), aarch);
 
 		// ExpansionWidthTargetOptimization intentionally left out of the cascade
 		// for now. The switch from MemoryDataCopy to Assignment in
@@ -571,7 +536,7 @@ public final class Hardware implements ConsoleFeatures {
 				new ParallelismTargetOptimization()
 		));
 
-		local = new Hardware(selection, location, sharedMem);
+		local = new Hardware(settings.getSelection(), settings.getLocation(), settings.isNioMemory());
 	}
 
 	/** Display name for this hardware instance, used in log messages. */
@@ -834,7 +799,7 @@ public final class Hardware implements ConsoleFeatures {
 						ctx.getPrecision().name() + ")");
 
 				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null &&
-						(ctx instanceof MetalDataContext || ctx instanceof CLDataContext)) {
+						ctx.getHostAccessibleMemoryProvider() != null) {
 					sharedMemoryCtx = ctx;
 				}
 
@@ -852,14 +817,8 @@ public final class Hardware implements ConsoleFeatures {
 			}
 		}
 
-		MemoryProvider<? extends Memory> provider = null;
-		if (sharedMemoryCtx != null) {
-			if (sharedMemoryCtx instanceof MetalDataContext) {
-				provider = ((MetalDataContext) sharedMemoryCtx).getMemoryProvider();
-			} else if (sharedMemoryCtx instanceof CLDataContext) {
-				provider = ((CLDataContext) sharedMemoryCtx).getMemoryProvider();
-			}
-		}
+		MemoryProvider<? extends Memory> provider =
+				sharedMemoryCtx == null ? null : sharedMemoryCtx.getHostAccessibleMemoryProvider();
 
 		if (provider == null && nioMemory != null) {
 			if (!nioMemory.isShared()) {

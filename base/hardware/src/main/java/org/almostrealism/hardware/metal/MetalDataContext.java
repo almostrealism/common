@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.MemoryData;
@@ -147,6 +148,13 @@ public class MetalDataContext extends AcceleratorDataContext<MetalMemoryProvider
 				.orElseGet(() -> new MetalMemoryProvider(this, getPrecision().bytes(),
 						getMaxReservation() * getPrecision().bytes(), true));
 	}
+
+	/**
+	 * Returns {@link #getMemoryProvider()}: Metal buffers use shared storage on unified memory,
+	 * so host kernels can address them directly.
+	 */
+	@Override
+	public MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() { return getMemoryProvider(); }
 
 	/** Releases the underlying Metal device, once, if it has not already been released. */
 	@Override

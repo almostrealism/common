@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.cuda.CudaDataContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,6 +123,28 @@ public class DriverSelection {
 	 * @return whether shared memory between backends is wanted
 	 */
 	public boolean isSharedMemoryPreferred() { return sharedMemoryPreferred; }
+
+	/**
+	 * Whether a backend in the selection provides memory that host code can address directly on
+	 * this machine, so that host kernels can share memory with it without copying: Metal, whose
+	 * buffers live in the host's unified memory, or CUDA on a device that allocates managed memory
+	 * (see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}).
+	 *
+	 * <p>Unlike the rest of this type, this examines the machine rather than the selection alone:
+	 * it may query the CUDA driver for the configured device's attributes. It does not change any
+	 * configuration.</p>
+	 *
+	 * @return whether a selected backend offers host-accessible memory
+	 */
+	public boolean offersHostAccessibleMemory() {
+		for (ComputeRequirement requirement : requirements) {
+			ComputeRequirement type = requirement.resolve();
+			if (type == ComputeRequirement.MTL) return true;
+			if (type == ComputeRequirement.CUDA && CudaDataContext.isHostAccessibleMemoryAvailable()) return true;
+		}
+
+		return false;
+	}
 
 	/**
 	 * Whether the selection requires all backends to agree on precision.

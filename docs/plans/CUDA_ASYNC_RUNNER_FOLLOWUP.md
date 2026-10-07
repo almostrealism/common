@@ -180,6 +180,65 @@ Investigate the per-call cost on CUDA with `ar-profile-analyzer` (Rule 3b): wher
 the roughly 500K small evaluations spend their time (kernel launch, host reads of
 managed memory, completion handoff). Do not change the timeout.
 
+**Findings and fix (2026-10-07):** `pairwiseSimilarityBaseline` measures computation
+creation and evaluation separately. Times are ms per comparison; the full test needs about
+1.2 ms in total.
+
+| Configuration | Creation | Evaluation |
+|---|---|---|
+| `native`, before | 0.60 | 1.07 |
+| `native,cuda`, before | 0.59 | 2.49 |
+| `cuda` only, before | 0.48 | 0.91 |
+| `native`, after | 0.27 | 1.02 |
+| `native,cuda` with shared memory, after | 0.27 | 0.77 |
+
+A JFR profile of the full-scale test under `native,cuda` found two causes.
+
+1. **No shared memory between native and CUDA.** The inputs lived in native memory, so every
+   evaluation:
+   - allocated a CUDA aggregate with `cuMemAllocManaged`;
+   - copied the inputs into it host-to-device on the ComputeContext pool, through the
+     host-mediated `AbstractComputeContext.copy`;
+   - copied the result back device-to-host on the semaphore callback pool;
+   - freed the aggregate with `cuMemFree`, which synchronizes the device.
+
+   The test thread was idle more than half the time, waiting on those hand-offs.
+   **Fix (decision D4):** `DataContext.getHostAccessibleMemoryProvider()` replaces the
+   `instanceof MetalDataContext / CLDataContext` chains in `Hardware.processRequirements`.
+   Metal and CL return their providers as before. `CudaDataContext` returns its provider when
+   it allocates managed memory, whose device address is also a host address. With shared
+   memory on, the native context allocates from CUDA managed memory, and the copies,
+   allocations and hand-offs disappear.
+2. **Eager signatures (all backends).** `ComputationBase.prepareMetadata`, which runs in every
+   constructor, computed `signature()`, and `Signature.of` re-hashes every input's signature
+   recursively with no cache. Building an expression therefore cost quadratic time in its
+   depth: about 56% of creation CPU. **Fix:**
+   - `OperationMetadata.deferSignature(Supplier)` computes the signature on first request. It is
+     memoized, and copies of the metadata share it.
+   - `prepareMetadata` defers instead of computing.
+   - The redundant eager `withSignature(signature())` in `CollectionProducerComputationBase`
+     is gone.
+   - Every reader of the signature reads it at compile or execution time.
+
+**Result:** `pairwiseSimilarityAtScale` under `native,cuda` with
+`AR_HARDWARE_SHARED_MEMORY=enabled` completes 499,500 comparisons in 469.7 s
+(0.940 ms/comparison), against the 600 s timeout.
+
+**Shared-memory default, resolved:** the decision is now made from the machine, before any
+context exists.
+- `DriverSelection.offersHostAccessibleMemory()` reports Metal, and CUDA on a device that
+  allocates managed memory.
+- `CudaDataContext.isHostAccessibleMemoryAvailable()` answers that from the device's
+  attributes, without creating a context: integrated with concurrent managed access, unless
+  `AR_HARDWARE_CUDA_MEMORY` says otherwise.
+- With `AR_HARDWARE_SHARED_MEMORY` unset, memory is shared whenever a selected backend offers
+  host-accessible memory; `enabled` or `disabled` still decides explicitly. The decision lives
+  in the new `HardwareSettings`, extracted from `Hardware`'s static block.
+- OpenCL reports no host-accessible memory for now, so the CL lane is unchanged. (It allocates
+  on the device whatever `AR_HARDWARE_MEMORY_LOCATION` says.) Whether to report unified memory
+  for an APU such as the AMD Halo should be decided with CL-device verification.
+- Under plain `native,cuda`, the full test completes in 386.6 s (0.774 ms/comparison).
+
 ## 5. Remaining Phase 3 items (from the plan)
 
 - A `CudaSemaphore` from another CUDA context is still treated as foreign, and so
