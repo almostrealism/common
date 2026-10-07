@@ -213,6 +213,112 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link TraversalPolicy#prependDimension(int)} is {@link TraversalPolicy#insertDimension(int, long)}
+	 * at axis 0: it must produce the same shape, ordering, rates, and traversal axis as inserting a new
+	 * leading dimension, so the two are interchangeable and share a single implementation. The shared
+	 * build also fixes the traversal-axis adjustment (see
+	 * {@link #insertDimensionShiftsTraversalAxisAtOrBeforeIt()}).
+	 */
+	@Test(timeout = 10000)
+	public void prependDimensionEqualsInsertAtZero() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(2);
+
+		TraversalPolicy prepended = shape.prependDimension(5);
+		TraversalPolicy insertedAtZero = shape.insertDimension(0, 5);
+
+		assertEquals(insertedAtZero, prepended);
+		assertEquals(insertedAtZero.getTraversalAxis(), prepended.getTraversalAxis());
+
+		assertEquals(4, prepended.getDimensions());
+		assertEquals(5, prepended.length(0));
+		assertEquals(2, prepended.length(1));
+		assertEquals(3, prepended.length(2));
+		assertEquals(4, prepended.length(3));
+		assertEquals(3, prepended.getTraversalAxis());
+	}
+
+	/**
+	 * Inserting a dimension at or before the traversal axis must shift the traversal axis one position
+	 * to the right so it keeps tracking the same logical dimension, mirroring the adjustment
+	 * {@link TraversalPolicy#subset(int)} makes when leading dimensions are dropped. Before the shared
+	 * build this was handled only by {@link TraversalPolicy#prependDimension(int)} (insert at axis 0);
+	 * {@link TraversalPolicy#insertDimension(int, long)} left the traversal axis unchanged for every
+	 * axis, which was wrong for an insertion at or before it. The single-argument
+	 * {@link TraversalPolicy#insertDimension(long)} inserts at the traversal axis and so shifts it too.
+	 */
+	@Test(timeout = 10000)
+	public void insertDimensionShiftsTraversalAxisAtOrBeforeIt() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(2);
+		assertEquals(2, shape.getTraversalAxis());
+
+		assertEquals(3, shape.insertDimension(1, 7).getTraversalAxis());
+		assertEquals(3, shape.insertDimension(2, 7).getTraversalAxis());
+		assertEquals(2, shape.insertDimension(3, 7).getTraversalAxis());
+		assertEquals(3, shape.insertDimension(7L).getTraversalAxis());
+	}
+
+	/**
+	 * {@link TraversalPolicy#appendDimension(int)} inserts past every existing axis, so the traversal
+	 * axis is never shifted by it. This pins the append side of the shared insertion build, including
+	 * the fully traversed case ({@code traversalAxis == getDimensions()}), where
+	 * {@link TraversalPolicy#insertDimension(int, long)}'s at-or-before-axis shift would otherwise move
+	 * the axis and turn the appended dimension from an item dimension into part of the traversal count.
+	 */
+	@Test(timeout = 10000)
+	public void appendDimensionLeavesTraversalAxisUnchanged() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(1);
+		assertEquals(1, shape.getTraversalAxis());
+
+		TraversalPolicy appended = shape.appendDimension(5);
+		assertEquals(4, appended.getDimensions());
+		assertEquals(5, appended.length(3));
+		assertEquals(1, appended.getTraversalAxis());
+
+		// A fully traversed policy must stay anchored to the same axis, so the appended
+		// dimension becomes the item shape rather than being folded into the count.
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3, 4).traverseEach();
+		assertEquals(3, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy appendedFull = fullyTraversed.appendDimension(5);
+		assertEquals(4, appendedFull.getDimensions());
+		assertEquals(5, appendedFull.length(3));
+		assertEquals(3, appendedFull.getTraversalAxis());
+		assertEquals(5, appendedFull.item().getTotalSizeLong());
+	}
+
+	/**
+	 * For a fully traversed policy the insertion point {@code getDimensions()} equals the traversal
+	 * axis, so {@link TraversalPolicy#insertDimension(int, long)} (and the single-argument
+	 * {@link TraversalPolicy#insertDimension(long)}, which inserts at the traversal axis) shift the
+	 * axis and keep the policy fully traversed, while {@link TraversalPolicy#appendDimension(int)}
+	 * keeps the axis so the new dimension becomes the item. Both must produce the same dimensions.
+	 */
+	@Test(timeout = 10000)
+	public void trailingInsertDiffersFromAppendWhenFullyTraversed() {
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3).traverseEach();
+		assertEquals(2, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy inserted = fullyTraversed.insertDimension(2, 4);
+		TraversalPolicy insertedAtAxis = fullyTraversed.insertDimension(4L);
+		TraversalPolicy appended = fullyTraversed.appendDimension(4);
+
+		assertEquals(3, inserted.getTraversalAxis());
+		assertEquals(3, insertedAtAxis.getTraversalAxis());
+		assertEquals(2, appended.getTraversalAxis());
+
+		long totalSize = fullyTraversed.getTotalSizeLong() * 4;
+		assertEquals(totalSize, inserted.getCountLong());
+		assertEquals(0, inserted.item().getDimensions());
+		assertEquals(fullyTraversed.getTotalSizeLong(), appended.getCountLong());
+		assertEquals(4, appended.item().getTotalSizeLong());
+
+		for (int i = 0; i < 3; i++) {
+			assertEquals(inserted.length(i), appended.length(i));
+			assertEquals(inserted.length(i), insertedAtAxis.length(i));
+		}
+	}
+
+	/**
 	 * Tests permute with 4 dimensions.
 	 */
 	@Test(timeout = 10000)
