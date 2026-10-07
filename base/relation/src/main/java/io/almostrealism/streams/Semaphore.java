@@ -16,6 +16,7 @@
 
 package io.almostrealism.streams;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -121,6 +122,28 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Returns a single completion that is equivalent to waiting for both this and
+	 * {@code other}, when the provider behind this semaphore can express that without a
+	 * host-side composite, or {@code null} when it cannot.
+	 *
+	 * <p>{@link #all(List, IntFunction)} merges completions this way before it builds a
+	 * composite. A composite waits for each member on a callback thread, which, for a
+	 * provider whose {@link #waitFor()} has side effects (forcing a command-buffer commit,
+	 * for example), defeats the batching that chaining the completions was meant to keep;
+	 * and a dispatch that depends on the composite cannot chain on it inside the provider.
+	 * A provider that orders its own work (a single in-order device queue, for example) can
+	 * often represent two of its completions by the later of them, which a dependent
+	 * dispatch can chain on directly. The default merges nothing.</p>
+	 *
+	 * @param other another completion, never {@code null}
+	 * @return a completion that completes only once both have, or {@code null} if this
+	 *         semaphore cannot merge with {@code other}
+	 */
+	default Semaphore merge(Semaphore other) {
+		return null;
+	}
+
+	/**
 	 * Runs {@code r} once {@code dependsOn} has completed, or immediately on the calling
 	 * thread when there is no dependency. This is the non-blocking way for work that cannot
 	 * chain a completion into a dispatch (a host evaluation that reads memory a prior
@@ -167,8 +190,10 @@ public interface Semaphore {
 	 * attribution.
 	 *
 	 * <p>Null entries are ignored; an empty selection yields {@code null} and a single
-	 * remaining semaphore is returned directly, so the combiner is only invoked when there
-	 * is genuinely more than one completion to merge.</p>
+	 * remaining semaphore is returned directly. Members that {@link #merge(Semaphore) merge}
+	 * are replaced by their merged completion first, so the combiner is only invoked when
+	 * there is genuinely more than one completion left that the providers could not express
+	 * as one.</p>
 	 *
 	 * <p>Every member is settled rather than merely awaited: a member whose {@link #waitFor()}
 	 * throws still counts the composite down, so a single failure can never pin the latch and
@@ -199,11 +224,11 @@ public interface Semaphore {
 		if (count == 0) return null;
 		if (count == 1) return single;
 
-		LatchSemaphore combined = combiner.apply(count);
-		for (int i = 0; i < semaphores.size(); i++) {
-			Semaphore s = semaphores.get(i);
-			if (s == null) continue;
+		List<Semaphore> members = merged(semaphores, count);
+		if (members.size() == 1) return members.get(0);
 
+		LatchSemaphore combined = combiner.apply(members.size());
+		for (Semaphore s : members) {
 			CALLBACK_EXECUTOR.execute(() -> {
 				try {
 					s.waitFor();
@@ -215,5 +240,38 @@ public interface Semaphore {
 			});
 		}
 		return combined;
+	}
+
+	/**
+	 * Returns the non-null members of {@code semaphores}, with every member that
+	 * {@link #merge(Semaphore) merges} with an earlier one folded into it, in either
+	 * direction.
+	 *
+	 * @param semaphores the completions to merge; may contain nulls
+	 * @param count      the number of non-null entries, used to size the result
+	 * @return the remaining completions, at least one
+	 */
+	private static List<Semaphore> merged(List<Semaphore> semaphores, int count) {
+		List<Semaphore> members = new ArrayList<>(count);
+
+		for (int i = 0; i < semaphores.size(); i++) {
+			Semaphore s = semaphores.get(i);
+			if (s == null) continue;
+
+			boolean folded = false;
+			for (int j = 0; j < members.size() && !folded; j++) {
+				Semaphore m = members.get(j).merge(s);
+				if (m == null) m = s.merge(members.get(j));
+
+				if (m != null) {
+					members.set(j, m);
+					folded = true;
+				}
+			}
+
+			if (!folded) members.add(s);
+		}
+
+		return members;
 	}
 }
