@@ -615,6 +615,22 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a layer that reorders the axes of its input: output axis {@code i} is input axis
+	 * {@code order[i]}, so {@code permute(shape(b, s, h, d), 0, 2, 1, 3)} produces
+	 * {@code [b, h, s, d]}, exchanging the sequence and head axes the way a multi-head attention
+	 * lays out one row per head.
+	 *
+	 * @param inputShape the input shape
+	 * @param order      the input axis that becomes each output axis; a permutation of
+	 *                   {@code 0 .. inputShape.getDimensions() - 1}
+	 * @return the permuting {@link CellularLayer}
+	 */
+	default CellularLayer permute(TraversalPolicy inputShape, int... order) {
+		TraversalPolicy outputShape = inputShape.permute(order).extentShape();
+		return layer("permute", inputShape, outputShape, in -> permute(in, order));
+	}
+
+	/**
 	 * Creates a layer that duplicates every row of a {@code [rows, size]} input {@code n}
 	 * consecutive times, producing {@code [rows * n, size]} with
 	 * {@code output[r * n + k] = input[r]} for {@code 0 <= k < n}.

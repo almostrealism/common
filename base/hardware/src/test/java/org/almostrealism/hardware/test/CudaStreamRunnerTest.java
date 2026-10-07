@@ -42,17 +42,22 @@ public class CudaStreamRunnerTest {
 	}
 
 	/**
-	 * When the dependency wait fails, the completion callback still runs and the failure
-	 * propagates, so the reservation is released rather than leaked.
+	 * When the dependency wait fails, the command does not run, the completion callback still
+	 * runs and the failure propagates, so the reservation is released rather than leaked. The
+	 * dependency is waited for off the submitting thread, so the failure is reported by the
+	 * submission's semaphore.
 	 */
 	@Test(timeout = 30000)
 	public void dependencyFailureRunsCompletion() {
 		CudaStreamRunner runner = new CudaStreamRunner(null);
 		AtomicBoolean completed = new AtomicBoolean(false);
 
+		Semaphore completion = runner.submit(null,
+				stream -> Assert.fail("The command must not run after a failed dependency"),
+				failingDependency(), () -> completed.set(true));
+
 		try {
-			runner.submit(null, stream -> Assert.fail("The command must not run after a failed dependency"),
-					failingDependency(), () -> completed.set(true));
+			completion.waitFor();
 			Assert.fail("The dependency failure should propagate");
 		} catch (IllegalStateException expected) {
 			Assert.assertEquals("upstream failed", expected.getMessage());

@@ -170,7 +170,8 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	/**
 	 * Builds a differential self-attention block with a selectable query/key normalization family
 	 * and an optional padding mask; this is the fully specified overload the others route to.
-	 * The mask zeroes the shared value vectors at padded positions, exactly as
+	 * The mask zeroes the shared value vectors at padded positions, and the query/key normalization
+	 * is skipped when neither of its weights is supplied, exactly as
 	 * {@link AttentionFeatures#sequenceAttention} does for standard attention.
 	 *
 	 * @param batchSize         batch dimension
@@ -179,9 +180,9 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * @param heads             number of attention heads
 	 * @param toQkvWeight       fused {@code dim*5} projection weights ({@code [Q1, K1, K2, V, Q2]})
 	 * @param toOutWeight       output projection weights
-	 * @param qNormWeight       query normalization weights
+	 * @param qNormWeight       query normalization weights ({@code null} for no query/key normalization)
 	 * @param qNormBias         query normalization biases ({@code null} for none)
-	 * @param kNormWeight       key normalization weights
+	 * @param kNormWeight       key normalization weights ({@code null} exactly when {@code qNormWeight} is)
 	 * @param kNormBias         key normalization biases ({@code null} for none)
 	 * @param invFreq           RoPE inverse frequencies
 	 * @param diffLambda        learned per-head lambda (shape {@code [heads]})
@@ -190,6 +191,8 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
 	 *                          {@code null} for no masking
 	 * @return the differential self-attention block
+	 * @throws IllegalArgumentException if {@code diffLambda} is {@code null}, or only one of
+	 *                                  {@code qNormWeight} and {@code kNormWeight} is supplied
 	 */
 	default Block differentialSequenceAttention(int batchSize, int seqLen, int dim, int heads,
 												PackedCollection toQkvWeight, PackedCollection toOutWeight,
@@ -202,6 +205,9 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 												Producer<PackedCollection> paddingMask) {
 		if (diffLambda == null) {
 			throw new IllegalArgumentException("Differential attention requires a lambda producer");
+		}
+		if ((qNormWeight == null) != (kNormWeight == null)) {
+			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
 		}
 		// TODO(review): Consider validating that diffLambda produces shape [heads]; a wrong shape
 		// causes a silent broadcast mismatch in the lambda expansion rather than a clear error.
@@ -232,11 +238,13 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 		v.permute(0, 2, 1, 3);
 		q2.permute(0, 2, 1, 3);
 
-		// 4. QK normalization (both queries share q_norm, both keys share k_norm)
-		q1.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
-		q2.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
-		k1.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
-		k2.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+		// 4. QK normalization, when its weights are supplied (queries share q_norm, keys share k_norm)
+		if (qNormWeight != null) {
+			q1.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
+			q2.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
+			k1.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+			k2.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+		}
 
 		if (paddingMask != null) {
 			v.add(scale(headShape, 2, paddingMask));

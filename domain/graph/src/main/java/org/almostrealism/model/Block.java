@@ -251,9 +251,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 	 * @return a new block with the permute operation appended
 	 */
 	default Block permute(int... order) {
-		TraversalPolicy resultShape = getOutputShape().permute(order).extentShape();
-		return andThen(layer("permute", getOutputShape(), resultShape,
-				in -> CollectionFeatures.getInstance().permute(in, order)));
+		return andThen(permute(getOutputShape(), order));
 	}
 
 	/**

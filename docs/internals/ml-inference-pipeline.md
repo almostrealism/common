@@ -828,9 +828,9 @@ if (seqLen > audioSeqLen) {
 ### Sequence-Based Self-Attention (DiffusionTransformer)
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
-`DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(in `AttentionFeatures`, with further overloads adding a customizable
-`ProjectionFactory` and a selectable query/key `NormalizationType`):
+`DiffusionTransformer` (and the T5Gemma text encoder) uses full-sequence attention via
+`sequenceAttention` (in `SequenceAttentionFeatures`, with further overloads adding a customizable
+`ProjectionFactory`, a selectable query/key `NormalizationType` and causal masking):
 
 - Processes all positions simultaneously with fused QKV projection
 - Uses `scaledDotProductAttention` over the full sequence (no causal mask needed); like the
@@ -840,7 +840,15 @@ Unlike autoregressive attention which processes one token at a time with KV cach
   layers
 - Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
   single-position `ropeRotation`
-- No KV cache — the full K and V tensors are computed and stored for each forward pass
+- No KV cache — the full K and V tensors are computed for each forward pass
+
+The same non-causal attention is also written out as PDSL layers in
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` (fused projection separated into one
+row per head by `slice`, `reshape` and `permute`, `sequence_rope`, and the `sdpa.pdsl` score and
+context layers), which a PDSL program can build directly with the two projection layers bound as
+arguments. These layers are forward only: the keys and values reach the score and context halves
+through `capture` stores, which pass no gradient back, so trainable attention uses
+`sequenceAttention`.
 
 ---
 
