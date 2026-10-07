@@ -233,29 +233,21 @@ public class MatrixMathTests extends TestSuiteBase {
 		profiles.print();
 
 		if (validate) {
-			if (batches > 0) {
-				for (int n = 0; n < batches; n++) {
-					for (int i = 0; i < dim; i++) {
-						double v = 0.0;
+			// Read each source once; per-element reads cost a host transfer each on some backends
+			double[] m = matrix.toArray();
+			double[] v = vector.toArray();
 
-						for (int j = 0; j < width; j++) {
-							v += matrix.valueAt(i, j) * vector.valueAt(n, j);
-						}
+			assertEquals(0.0, largestDeviation(result.getShape(), pos -> {
+				int n = batches > 0 ? pos[0] : 0;
+				int i = pos[pos.length - 1];
+				double sum = 0.0;
 
-						assertEquals(v, result.valueAt(n, i));
-					}
+				for (int j = 0; j < width; j++) {
+					sum += m[i * width + j] * v[n * width + j];
 				}
-			} else {
-				for (int i = 0; i < dim; i++) {
-					double v = 0.0;
 
-					for (int j = 0; j < width; j++) {
-						v += matrix.valueAt(i, j) * vector.valueAt(j);
-					}
-
-					assertEquals(v, result.valueAt(i));
-				}
-			}
+				return sum;
+			}, result));
 		}
 	}
 

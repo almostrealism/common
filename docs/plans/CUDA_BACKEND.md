@@ -517,6 +517,29 @@ another thread. Sessions without a CUDA toolkit cannot rebuild it.
 - Asynchronous `CudaStreamRunner`: pooled events, a completion thread, ordered
   `onComplete`, cross-stream `cuStreamWaitEvent`, and a host-wait bridge for
   foreign semaphores.
+
+  **Status: the runner is asynchronous** (`CudaStreamRunner`, `CudaSemaphore`). `submit`
+  never waits for a dependency or for successful GPU work: it launches and records an event
+  behind the work, and a runner-owned completion thread synchronizes events in launch order,
+  then runs `onComplete` before settling the semaphore. Its one synchronous wait is on the
+  launch-failure path, where `launch` drains the stream before the failure is rethrown, so work
+  the failed command already enqueued cannot outlive the buffers it referenced. It departs from
+  the sketch above in three ways:
+  - Launches run on the submitting thread under the runner's monitor, not on a
+    single-thread executor. Every `CU` entry point makes its context current, so per-thread
+    binding does not require one thread, and the monitor already makes launch order equal
+    submission order.
+  - A foreign dependency holds that submission, and every later one, in a host-side queue.
+    The queue is released from `Semaphore.CALLBACK_EXECUTOR` once the dependency settles,
+    rather than being waited for on the submitting thread. Holding the later submissions
+    preserves submission order, exactly as a Metal bridge's GPU wait holds every command
+    buffer committed after it. Work already on the stream is never held, so the "no cycle
+    through a shared bridge" invariant holds.
+  - Events are created per launch and destroyed after completion; they are not pooled yet.
+
+  Still open: a `CudaSemaphore` from another CUDA context is treated as foreign; using
+  `cuStreamWaitEvent` for it is the remaining optimization. Event pooling should wait until
+  profiles show event creation matters.
 - Managed memory handed to the JNI delegate through the D4 capability. Remove
   the `instanceof` chains in `NativeComputeContext` and
   `Hardware.processRequirements`.
