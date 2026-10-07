@@ -221,40 +221,6 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 	}
 
 	/**
-	 * Verifies {@link CompiledModel#getOutput()} exposes the model's stable output buffer:
-	 * it is non-null and correctly sized immediately after compilation, before any forward
-	 * pass has run, and it is the same instance {@link CompiledModel#forward} returns and
-	 * continues to return across passes. This is the handle a caller registers for
-	 * construction-failure rollback before running the fallible first forward pass.
-	 */
-	@Test(timeout = 30000)
-	public void compiledModelOutputHandle() {
-		int size = 32;
-
-		Model model = new Model(shape(size));
-		model.add(silu());
-
-		CompiledModel compiled = model.compile(false);
-		PackedCollection handle = compiled.getOutput();
-		try (PackedCollection input = new PackedCollection(shape(size))) {
-			assertNotNull("getOutput() before forward", handle);
-			assertEquals(size, handle.getShape().getTotalSize());
-			assertEquals(compiled.getOutputShape().getTotalSize(), handle.getShape().getTotalSize());
-
-			rand(input.getShape()).add(-0.5).multiply(4.0).into(input.traverseEach()).evaluate();
-
-			PackedCollection output = compiled.forward(input);
-			assertTrue("forward() returns the getOutput() handle", output == handle);
-			assertTrue("output handle stable across calls", compiled.getOutput() == handle);
-		} finally {
-			compiled.destroy();
-			if (handle != null) {
-				handle.destroy();
-			}
-		}
-	}
-
-	/**
 	 * Tests SiLU transformation against expected sigmoid-based computation.
 	 */
 	@Test(timeout = 30000)

@@ -44,6 +44,7 @@ import org.junit.Assume;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
@@ -186,26 +187,17 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/** Minimum peak amplitude below which a rendered signal is considered silent. */
 	protected static final double SILENCE_THRESHOLD = 1e-4;
 
+	/** Every scene this test created through {@link #createBaselineScene(File, int)}. */
+	private final List<AudioScene<?>> createdScenes = new ArrayList<>();
+
 	/**
-	 * Releases every {@link AudioScene} still alive at the end of each test method.
-	 *
-	 * <p>Each scene created by {@link #createBaselineScene(File, int)} registers itself in
-	 * {@link AudioScene}'s active-instance registry and holds native memory (its cell graph,
-	 * consolidated render buffers, and delay-line collections). The real-time tests create a
-	 * scene per method but never destroy it, and surefire reuses a single JVM across every
-	 * test in the module (no {@code reuseForks=false}), so without this the scenes accumulate
-	 * across the run and exhaust the hardware allocator — an {@link OutOfMemoryError} on the
-	 * direct-buffer limit on a CPU host, silent output once a GPU device allocator is starved.
-	 * {@link AudioScene#destroyAll()} destroys exactly the scenes that have not already been
-	 * released (a scene's own {@code destroy()} removes it from the registry, so a scene the
-	 * helper already freed — e.g. the seed-search scene — is not touched again).</p>
-	 *
-	 * <p>JUnit runs this subclass {@code @After} before {@code TestSuiteBase}'s own teardown,
-	 * so the scenes are freed while the backend this test used is still the active one.</p>
+	 * Destroys every scene this test created. A test that already destroyed one of
+	 * its scenes is unaffected, because {@link AudioScene#destroy()} is idempotent.
 	 */
 	@After
-	public void destroyScenes() {
-		AudioScene.destroyAll();
+	public void destroyCreatedScenes() {
+		createdScenes.forEach(AudioScene::destroy);
+		createdScenes.clear();
 	}
 
 	/**
@@ -233,6 +225,8 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * setup. Real-time tests can use the default (6) because they render only small
 	 * buffers per tick.</p>
 	 *
+	 * <p>The scene belongs to this test and is destroyed when the test finishes.</p>
+	 *
 	 * @param samplesDir  directory containing sample WAV files
 	 * @param sourceCount number of source channels to create
 	 * @return configured AudioScene ready for genome assignment
@@ -241,6 +235,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
 
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount, delayLayers, SAMPLE_RATE);
+		createdScenes.add(scene);
 		scene.setTuning(new DefaultKeyboardTuning());
 
 		addChoices(scene, samplesDir);

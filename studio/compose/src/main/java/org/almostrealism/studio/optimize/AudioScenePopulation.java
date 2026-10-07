@@ -362,7 +362,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		Destroyable.destroy(temporal);
+		if (temporal instanceof Destroyable) ((Destroyable) temporal).destroy();
 		temporal = null;
 	}
 

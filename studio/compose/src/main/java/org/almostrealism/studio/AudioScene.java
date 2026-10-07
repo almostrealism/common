@@ -41,6 +41,7 @@ import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.studio.generative.GenerationProvider;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
@@ -60,9 +61,9 @@ import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGenome;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 import org.almostrealism.space.Animation;
@@ -75,7 +76,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
@@ -143,7 +143,6 @@ import java.util.stream.IntStream;
  * runner.setup().get().run();
  * Runnable tick = runner.tick().get();
  * for (int i = 0; i < bufferCount; i++) tick.run();
- * Destroyable.destroy(runner);
  * }</pre>
  *
  * <h2>Pattern Rendering Flow</h2>
@@ -337,19 +336,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** Consolidated pattern-render storage and render-cell tracking for runner builds. */
 	private final PatternRenderBuffers renderBuffers = new PatternRenderBuffers();
 
-	/**
-	 * The active cell list produced by the most recent {@code getCells} call. Held in an
-	 * {@link AtomicReference} so that a release from a runner teardown on another thread is
-	 * compare-and-set guarded (see {@link #destroyActiveCells}) and cannot double-free a list
-	 * or clobber a newer one. Replacement during a scene rebuild runs on the single build
-	 * thread: {@link #getCells}/{@link #prepareRenderBuffers} first CAS-release the prior list
-	 * via {@link #destroyActiveCells} and then publish the freshly built list with a plain
-	 * {@code set()}, since no other thread produces a list to race that publish.
-	 */
-	private final AtomicReference<CellList> activeCells = new AtomicReference<>();
-
-	/** Builds this scene's real-time runners and releases any still live on {@link #destroy()}. */
-	private final AudioSceneRealtimeRunner realtimeRunners = new AudioSceneRealtimeRunner(this);
+	/** The active cell list produced by the most recent {@code getCells} call. */
+	private CellList activeCells;
 
 	/** Cached automation level function built lazily from the automation manager. */
 	private Function<PackedCollection, Factor<PackedCollection>> automationLevel;
@@ -705,18 +693,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
 	 */
 	public PackedCollection getConsolidatedRenderBuffer() { return renderBuffers.getBuffer(); }
-
-	/**
-	 * Transfers ownership of the current consolidated render buffer to the caller (a runner
-	 * build), which becomes responsible for freeing it. Once claimed, neither a later
-	 * {@link #getCells}/{@link #prepareRenderBuffers} rebuild nor this scene's {@link #destroy()}
-	 * frees it, so a build's render root survives a subsequent build on the same scene and is
-	 * released only when its own runner is destroyed.
-	 *
-	 * @return the consolidated render buffer, or {@code null} if {@link #getCells} has not run
-	 */
-	PackedCollection claimConsolidatedRenderBuffer() { return renderBuffers.claim(); }
-
 	/**
 	 * Returns the mixdown manager that handles delay, reverb, and final mix bus processing.
 	 *
@@ -1045,7 +1021,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			destroyActiveCells(activeCells.get());
+			if (activeCells != null) {
+				activeCells.destroy();
+				activeCells = null;
+			}
 
 			CellList cells = cells(
 					getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
@@ -1054,38 +1033,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 							bufferSize, frameSupplier, setup, waveCellFrame));
 
 			cells.addSetup(() -> setup);
-			activeCells.set(cells);
+			activeCells = cells;
 			return cells.addRequirement(time::tick);
 		} finally {
 			getCellsTime.addEntry(System.nanoTime() - start);
-		}
-	}
-
-	/**
-	 * Releases the given cell list only when it is still this scene's current
-	 * {@link #activeCells}, clearing the reference so the scene's own {@link #destroy()}
-	 * does not release it a second time.
-	 *
-	 * <p>A real-time runner built by {@link #runnerRealTime} shares ownership of the cells
-	 * returned by {@link #getCells}: the runner and the scene refer to the same instance.
-	 * {@link CellList#destroy()} traverses the cell graph on every call, so releasing that
-	 * instance twice would double-free its children. Routing the runner's release through
-	 * this method makes the release atomic with clearing {@code activeCells} (a
-	 * compare-and-set, so a concurrent rebuild or release cannot also claim the same list
-	 * or have its newer list cleared by a delayed release of an old one), so whichever
-	 * of the runner or the scene tears down first frees the cells exactly once. A cell list
-	 * that a later {@link #getCells} already replaced (and therefore destroyed) is no longer
-	 * {@code activeCells}, so this is a no-op for it too.</p>
-	 *
-	 * <p>The reference is cleared before {@link CellList#destroy()} runs, so a release that
-	 * throws part-way still leaves the scene without the list; a later call (such as the
-	 * scene's own teardown after a failed runner release) does not traverse it again.</p>
-	 *
-	 * @param cells the cell list to release; ignored when it is not the current active cells
-	 */
-	public void destroyActiveCells(CellList cells) {
-		if (cells != null && activeCells.compareAndSet(cells, null)) {
-			cells.destroy();
 		}
 	}
 
@@ -1125,7 +1076,10 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
-			destroyActiveCells(activeCells.get());
+			if (activeCells != null) {
+				activeCells.destroy();
+				activeCells = null;
+			}
 
 			// WET cells are created only when efx is enabled — mirrors getPatternCells,
 			// which omits the WET voicing on the fast path.
@@ -1269,8 +1223,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * @param output     the audio output to write to
 	 * @param bufferSize frames per buffer
-	 * @return a TemporalCellular for real-time playback; destroy it when done via
-	 *         {@link Destroyable#destroy(Object)}
+	 * @return a TemporalCellular for real-time playback
 	 *
 	 * @see PatternAudioBuffer
 	 */
@@ -1287,33 +1240,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * of the genome — only the {@link PackedCollection} contents change on
 	 * {@link #assignGenome}, so the runner can be reused without recompilation.</p>
 	 *
-	 * <p>The caller may destroy the runner when done with it; any runner still live when
-	 * this scene is destroyed is destroyed by {@link #destroy()}, after which no further
-	 * runner can be built.</p>
-	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
-	 * @return a TemporalCellular for real-time playback; destroy it when done via
-	 *         {@link Destroyable#destroy(Object)}
-	 * @throws IllegalStateException if this scene has been destroyed
+	 * @return a TemporalCellular for real-time playback
 	 */
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
-		return realtimeRunners.create(output, channels, bufferSize);
-	}
-
-	/**
-	 * Returns the number of real-time runners built by {@link #runnerRealTime} that the
-	 * caller has not yet destroyed. Each such runner is held until it is explicitly
-	 * destroyed or this scene is destroyed, so a caller that renders repeatedly must
-	 * destroy each runner to keep this from growing (see {@link #renderChannel}).
-	 *
-	 * @return the live runner count
-	 */
-	public int getLiveRunnerCount() {
-		return realtimeRunners.getLiveRunnerCount();
+		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize);
 	}
 
 	/**
@@ -1328,18 +1263,30 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * It builds a real-time runner for the one channel, ticks it for {@code frames}
 	 * frames, and flushes the output file.</p>
 	 *
-	 * <p>The runner, its compiled operations, and the output are owned by the render, not by
-	 * the caller, and are released when it finishes or fails (see
-	 * {@link AudioSceneRealtimeRunner#render}), so repeated renders on a long-lived scene do
-	 * not accumulate runners in {@link #runnerRealTime}'s live-runner tracker.</p>
-	 *
 	 * @param channel    the channel index to render
 	 * @param frames     the number of audio frames to render
 	 * @param outputPath the wav file path to write
 	 * @return {@code outputPath}
 	 */
 	public String renderChannel(int channel, int frames, String outputPath) {
-		realtimeRunners.render(channel, frames, outputPath, DEFAULT_REALTIME_BUFFER_SIZE);
+		WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
+		int bufferSize = DEFAULT_REALTIME_BUFFER_SIZE;
+		TemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
+				List.of(channel), bufferSize);
+		int bufferCount = (frames + bufferSize - 1) / bufferSize;
+
+		Runnable setup = cells.setup().get();
+		Runnable tick = cells.tick().get();
+		try {
+			setup.run();
+			for (int b = 0; b < bufferCount; b++) {
+				tick.run();
+			}
+			out.write().get().run();
+		} finally {
+			out.reset();
+			cells.reset();
+		}
 		return outputPath;
 	}
 
@@ -1406,27 +1353,19 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				DEFAULT_DURATION), libraryProvider, progress);
 	}
 
-	/**
-	 * Releases this scene's native memory. Real-time runners built by
-	 * {@link #runnerRealTime} that the caller has not destroyed are destroyed first, so
-	 * their producer threads stop before the render cells and consolidated buffers they
-	 * render into are freed.
-	 *
-	 * <p>Every release is aggregated through {@link Destroyable#releaseAll(Iterable)} so a
-	 * runner-cleanup failure (which {@link AudioSceneRealtimeRunner#destroy()} rethrows after
-	 * attempting every runner) cannot skip the scene's own teardown or its removal from
-	 * {@code activeInstances}. The first failure is rethrown once all actions have run.</p>
-	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		Destroyable.releaseAll(List.of(
-				realtimeRunners::destroy,
-				() -> getSectionManager().destroy(),
-				() -> destroyActiveCells(activeCells.get()),
-				renderBuffers::destroy,
-				efx::destroyConsolidatedBuffers,
-				() -> activeInstances.remove(this)));
+		getSectionManager().destroy();
+
+		if (activeCells != null) {
+			activeCells.destroy();
+			activeCells = null;
+		}
+
+		renderBuffers.destroy();
+		efx.destroyConsolidatedBuffers();
+		activeInstances.remove(this);
 	}
 
 	/**
@@ -1437,20 +1376,12 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * are created across test methods without explicit cleanup. Each scene's
 	 * {@link #destroy()} method is called to release its cell graph,
 	 * consolidated buffers, and delay line memory.</p>
-	 *
-	 * <p>{@link #destroy()} aggregates and rethrows cleanup failures, so every scene is
-	 * released through {@link Destroyable#releaseAll(Iterable)}: one scene whose teardown
-	 * throws does not leave the remaining scenes (and their native memory) registered to
-	 * poison a later test in the reused JVM. The first failure is rethrown once all scenes
-	 * have been attempted.</p>
 	 */
 	public static void destroyAll() {
 		List<AudioScene<?>> scenes = new ArrayList<>(activeInstances);
-		List<Runnable> releases = new ArrayList<>();
 		for (AudioScene<?> scene : scenes) {
-			releases.add(scene::destroy);
+			scene.destroy();
 		}
-		Destroyable.releaseAll(releases);
 	}
 
 	/**

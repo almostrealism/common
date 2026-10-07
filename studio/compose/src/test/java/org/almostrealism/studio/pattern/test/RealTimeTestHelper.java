@@ -26,7 +26,6 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
-import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -138,13 +137,7 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	 */
 	public AudioScene<?> createSceneWithWorkingSeed(File samplesDir, int sourceCount) {
 		AudioScene<?> searchScene = testBase.createBaselineScene(samplesDir, sourceCount);
-		long seed;
-		try {
-			seed = testBase.findWorkingGenomeSeed(searchScene, samplesDir);
-		} finally {
-			// Release the seed-scoring scene whether or not the search threw.
-			searchScene.destroy();
-		}
+		long seed = testBase.findWorkingGenomeSeed(searchScene, samplesDir);
 
 		if (seed < 0) {
 			log("No working genome found after " + MAX_GENOME_ATTEMPTS + " attempts");
@@ -179,21 +172,6 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	/**
 	 * Renders audio using the real-time runner with timing measurements.
 	 *
-	 * <p>The runner and {@link WaveOutput} this method allocates are destroyed before it
-	 * returns. Each real-time render allocates a render-ahead ring, a producer thread, a
-	 * compiled mixdown model (the runner) and a full-timeline capture buffer (the output,
-	 * ~162&nbsp;MB for the default stereo timeline); a test that renders several times in one
-	 * JVM would otherwise accumulate one of each per render and exhaust native memory — an
-	 * {@link OutOfMemoryError} on a CPU host, silent output once a GPU device allocator is
-	 * starved. The returned statistics are read back from the written WAV, so neither resource
-	 * is needed after the render completes.</p>
-	 *
-	 * <p>The compiled setup, tick, and write runnables are destroyed too. Each is produced by
-	 * {@link org.almostrealism.hardware.OperationList#get()}, which returns a compiled operation
-	 * (an {@code AcceleratedOperation} or {@code OperationListRunner}) owning native kernels. The
-	 * runner does not retain those runnables, so destroying the runner alone would leak them; they
-	 * are held in locals and destroyed in the same {@code finally} as the runner.</p>
-	 *
 	 * @param scene           the AudioScene to render
 	 * @param bufferSize      frames per buffer
 	 * @param durationSeconds how many seconds to render
@@ -205,58 +183,33 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		File file = new File(outputFile);
 		file.getParentFile().mkdirs();
 
-		WaveOutput output = new WaveOutput(() -> file, 24, true);
-
-		try {
+		try (WaveOutput output = new WaveOutput(() -> file, 24, true)) {
 			TemporalCellular runner = scene.runnerRealTime(
 					new MultiChannelAudioOutput(output), bufferSize);
 
-			// Compiled runnables the runner does not retain; destroyed with it below.
-			Runnable setupRunnable = null;
-			Runnable tick = null;
-			Runnable writeOp = null;
+			runner.setup().get().run();
 
-			try {
-				setupRunnable = runner.setup().get();
-				setupRunnable.run();
+			int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
+			int numBuffers = totalFrames / bufferSize;
+			double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
 
-				int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
-				int numBuffers = totalFrames / bufferSize;
-				double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
+			List<Long> bufferTimings = new ArrayList<>();
+			Runnable tick = runner.tick().get();
 
-				List<Long> bufferTimings = new ArrayList<>();
-				tick = runner.tick().get();
-
-				long startTime = System.nanoTime();
-				for (int buf = 0; buf < numBuffers; buf++) {
-					long bufferStart = System.nanoTime();
-					tick.run();
-					bufferTimings.add(System.nanoTime() - bufferStart);
-				}
-				long totalTime = System.nanoTime() - startTime;
-
-				writeOp = output.write().get();
-				writeOp.run();
-
-				TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
-				AudioStats stats = analyzeAudio(outputFile);
-
-				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
-			} finally {
-				// Best-effort: a release that throws must not skip the remaining resources,
-				// which would leave the runner's producer thread and native buffers live. The
-				// compiled ops are released before the runner they read, newest first.
-				Runnable w = writeOp, t = tick, s = setupRunnable;
-				TemporalCellular r = runner;
-				Destroyable.releaseAll(List.of(
-						() -> Destroyable.destroy(w),
-						() -> Destroyable.destroy(t),
-						() -> Destroyable.destroy(s),
-						() -> Destroyable.destroy(r)));
+			long startTime = System.nanoTime();
+			for (int buf = 0; buf < numBuffers; buf++) {
+				long bufferStart = System.nanoTime();
+				tick.run();
+				bufferTimings.add(System.nanoTime() - bufferStart);
 			}
-		} finally {
-			// Released here too so the output buffer is freed if runner construction threw.
-			output.destroy();
+			long totalTime = System.nanoTime() - startTime;
+
+			output.write().get().run();
+
+			TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
+			AudioStats stats = analyzeAudio(outputFile);
+
+			return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 		}
 	}
 
@@ -273,8 +226,6 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 				return null;
 			}
 
-			// Release the loaded buffer once statistics are read so repeated analyses
-			// do not accumulate one decoded timeline each in native memory.
 			try (WaveData data = WaveData.load(file)) {
 				return AudioStats.fromWaveData(data, SAMPLE_RATE);
 			}

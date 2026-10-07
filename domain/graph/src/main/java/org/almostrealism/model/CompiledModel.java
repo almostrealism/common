@@ -180,23 +180,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	/**
-	 * Returns the stable output collection this model writes on each forward pass.
-	 *
-	 * <p>The buffer is allocated once during {@link #compile(Model, boolean, boolean, OperationProfile)}
-	 * and reused for every {@link #forward(PackedCollection, PackedCollection...)} call — the value
-	 * returned here is the same object {@code forward} returns, available before the first forward
-	 * pass has run. {@link #destroy()} does not reclaim it (it destroys only the compiled
-	 * operations), so the caller owns the buffer's lifecycle. Exposing the handle lets a caller that
-	 * tracks resources for construction-failure rollback register the output buffer <em>before</em>
-	 * running the fallible forward pass, so a throw from that pass cannot leak it.</p>
-	 *
-	 * @return the output collection, or {@code null} if this model has no output supplier
-	 */
-	public PackedCollection getOutput() {
-		return retrieveOutput == null ? null : retrieveOutput.get();
-	}
-
-	/**
 	 * Executes the forward pass with the given inputs.
 	 *
 	 * @param input the primary input data
@@ -248,23 +231,11 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * reused or recompiled afterward — a later compilation would wire its backward pass
 	 * to released memory and fail with a {@link NullPointerException}. Build a fresh
 	 * {@link Model} if another compilation is needed.</p>
-	 *
-	 * <p>The one-time {@link #setup} operation is released alongside the forward and
-	 * backward passes: {@link #compile(Model, boolean, boolean, OperationProfile)}
-	 * compiles it from {@link Model#setup()} into a {@link Runnable} that owns its own
-	 * native kernels, and this instance is its only lifecycle owner. {@link #reset()} is
-	 * the only caller of {@code setup} and the model must not be used after destruction,
-	 * so releasing it here reclaims those kernels — significant for callers that compile
-	 * a fresh model per unit of work.</p>
 	 */
 	@Override
 	public void destroy() {
-		// Best-effort release: a throw from one operation must not leak the others, which
-		// own independent native kernels (first failure rethrown, the rest suppressed onto it).
-		Destroyable.releaseAll(List.of(
-				() -> Destroyable.destroy(forward),
-				() -> Destroyable.destroy(backward),
-				() -> Destroyable.destroy(setup)));
+		Destroyable.destroy(forward);
+		Destroyable.destroy(backward);
 	}
 
 	/**
@@ -291,27 +262,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	/**
 	 * Compiles the given model, optionally enabling backpropagation and gradient retrieval.
 	 *
-	 * <p><b>Construction-failure rollback.</b> The compiled {@code setup}, forward, and
-	 * backward operations own native kernels, and the output/gradient buffers own device
-	 * memory, but the {@link CompiledModel} instance whose {@link #destroy()} releases them
-	 * is not built until every allocation and optimization here has succeeded. Several steps
-	 * after {@code setup} is compiled are fallible (graph optimization, the forward/backward
-	 * compiles, the initial {@link #reset()}); a throw from any of them would otherwise leak
-	 * whatever was already allocated, since no owner would exist. Each resource is therefore
-	 * tracked as it is created and released in reverse order if compilation fails, and the
-	 * throwable is rethrown unchanged. The successful path is unchanged — the returned model
-	 * owns these resources and frees them on {@code destroy()}, so there is no double free.</p>
-	 *
-	 * <p><b>A failed compilation invalidates the source {@link Model}.</b> Compilation mutates
-	 * the model before it can fail — it records the attempt, installs the output (and optional
-	 * gradient) receptors on the model's terminal blocks, and may disable input tracking — and
-	 * none of that is reverted on failure. The rollback additionally frees the output/gradient
-	 * buffers those just-installed receptors capture. The model is therefore single-use per
-	 * compile attempt: a second {@link #compile(Model, boolean, boolean, OperationProfile)} on
-	 * the same instance would chain a stale receptor over released memory. This mirrors the
-	 * post-{@link #destroy()} contract — build a fresh {@link Model} if another compilation is
-	 * needed.</p>
-	 *
 	 * @param model          the model to compile
 	 * @param backprop       {@code true} to compile the backward pass
 	 * @param returnGradient {@code true} to allocate and return the input gradient after backward
@@ -324,84 +274,70 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		model.recordCompilation();
 
 		Runnable setup = Process.optimized(model.setup()).get();
-		PackedCollection output = null;
-		PackedCollection gradOut = null;
-		Runnable forwardOp = null;
-		Runnable backwardOp = null;
-		try {
-			List<InputManager> in = new ArrayList<>();
-			in.add(new InputManager(model.firstBlock().getInputShape()));
-			model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
 
-			InputManager grad = new InputManager(model.lastBlock().getOutputShape());
+		List<InputManager> in = new ArrayList<>();
+		in.add(new InputManager(model.firstBlock().getInputShape()));
+		model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
 
-			output = new PackedCollection(model.lastBlock().getOutputShape());
-			PackedCollection forwardOutput = output;
-			Receptor<PackedCollection> outputReceptor = out ->
-					Ops.o().a("Model Forward Output", Ops.o().p(forwardOutput), out);
+		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 
-			// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
-			Cell<PackedCollection> lastForward = model.lastBlock().getForward();
-			Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
-			if (existingReceptor != null) {
-				lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
-			} else {
-				lastForward.setReceptor(outputReceptor);
-			}
+		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
+		Receptor<PackedCollection> outputReceptor = out ->
+				Ops.o().a("Model Forward Output", Ops.o().p(output), out);
 
-			if (returnGradient) {
-				gradOut = new PackedCollection(model.firstBlock().getInputShape());
-				PackedCollection backwardGradient = gradOut;
-				model.firstBlock().getBackward().setReceptor(out ->
-						Ops.o().a("Model Backward Output", Ops.o().p(backwardGradient), out));
-			}
-
-			// TODO(review): inference compile disables input tracking on the shared Model
-			// without restoring it; a later compile(true) on the same instance could wire
-			// backward cells to a destroyed input buffer.
-			if (!backprop) {
-				model.setInputTracking(false);
-			}
-
-			List<Cell<PackedCollection>> cells = model.forward();
-			OperationList forward = new OperationList("CompiledModel Forward");
-			for (int i = cells.size() - 1; i >= 0; i--) {
-				forward.add(cells.get(i).push(in.get(i).get()));
-			}
-
-			ParallelProcess<?, Runnable> p = forward.flatten().optimize();
-
-			ParallelProcess<?, Runnable> q;
-
-			if (backprop) {
-				q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
-				if (q instanceof OperationList) q = ((OperationList) q).flatten();
-				q = q.optimize();
-			} else {
-				q = null;
-			}
-
-			if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
-			if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
-
-			forwardOp = p.get();
-			backwardOp = q == null ? null : q.get();
-
-			PackedCollection gradOutput = gradOut;
-			CompiledModel compiled = new CompiledModel(in.stream().map(InputManager::getShape).collect(Collectors.toList()),
-					grad.getShape(),
-					setup, in,
-					() -> forwardOutput, forwardOp, grad,
-					gradOutput == null ? null : () -> gradOutput,
-					backwardOp);
-			compiled.reset();
-			return compiled;
-		} catch (RuntimeException | Error t) {
-			// Release every native resource even if one release throws, and keep the original
-			// compilation failure as the thrown exception (cleanup failures are suppressed onto it).
-			Destroyable.destroyAll(t, backwardOp, forwardOp, setup, gradOut, output);
-			throw t;
+		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
+		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
+		Receptor<PackedCollection> existingReceptor = lastForward.getReceptor();
+		if (existingReceptor != null) {
+			lastForward.setReceptor(Receptor.to(existingReceptor, outputReceptor));
+		} else {
+			lastForward.setReceptor(outputReceptor);
 		}
+
+		PackedCollection gradOut;
+
+		if (returnGradient) {
+			gradOut = new PackedCollection(model.firstBlock().getInputShape());
+			model.firstBlock().getBackward().setReceptor(out ->
+					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
+		} else {
+			gradOut = null;
+		}
+
+		// TODO(review): inference compile mutates the shared Model (disables tracking) without restoring it; a later compile(true) on the same instance could leave backward cells wired to a destroyed input buffer.
+		if (!backprop) {
+			model.setInputTracking(false);
+		}
+
+		List<Cell<PackedCollection>> cells = model.forward();
+		OperationList forward = new OperationList("CompiledModel Forward");
+		for (int i = cells.size() - 1; i >= 0; i--) {
+			forward.add(cells.get(i).push(in.get(i).get()));
+		}
+
+		ParallelProcess<?, Runnable> p = forward.flatten().optimize();
+
+		ParallelProcess<?, Runnable> q;
+
+		if (backprop) {
+			q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
+			if (q instanceof OperationList) q = ((OperationList) q).flatten();
+			q = q.optimize();
+		} else {
+			q = null;
+		}
+
+		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
+		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
+
+		CompiledModel compiled = new CompiledModel(in.stream().map(InputManager::getShape).collect(Collectors.toList()),
+				grad.getShape(),
+				setup, in,
+				() -> output, p.get(), grad,
+				gradOut == null ? null : () -> gradOut,
+				q == null ? null : q.get());
+		compiled.reset();
+		return compiled;
 	}
 
 	/**

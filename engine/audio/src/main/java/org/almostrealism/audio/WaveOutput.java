@@ -26,6 +26,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -41,7 +42,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -146,15 +146,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Channel audio data buffers, one per channel. */
 	private List<CollectionProducer> data;
 
-	/**
-	 * The {@link WaveData} whose backing buffer this WaveOutput allocated itself and must
-	 * therefore release on {@link #destroy()}; {@code null} when the audio data was supplied
-	 * by the caller (who then owns its lifecycle). The per-channel entries in {@link #data}
-	 * are range views into this buffer, so destroying them does not free it — the buffer is
-	 * released here.
-	 */
-	private WaveData ownedData;
-
 	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
@@ -235,7 +226,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		this(f, bits, new WaveData(
 				stereo ? 2 : 1,
 				maxFrames <= 0 ? defaultTimelineFrames : maxFrames,
-				Math.toIntExact(sampleRate)), true);
+				Math.toIntExact(sampleRate)));
 	}
 
 	/**
@@ -264,40 +255,11 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * @param data WaveData providing the underlying channel buffers and sample rate
 	 */
 	public WaveOutput(Supplier<File> f, int bits, WaveData data) {
-		this(f, bits, data, false);
-	}
-
-	/**
-	 * Primary {@link WaveData}-backed constructor. Wraps the data's per-channel ranges as the
-	 * output buffers and, when {@code owned} is set, retains the {@link WaveData} so its backing
-	 * buffer is released on {@link #destroy()}.
-	 *
-	 * <p>The channel wiring is built in this constructor body (rather than through chained
-	 * construction) so it can be guarded: an owned {@link WaveData} is released if building the
-	 * channel producers or {@link Writer} cursors throws. Otherwise that initialization happens
-	 * during construction delegation, before ownership is recorded, and a throw there would leak
-	 * the freshly allocated backing buffer with no instance left to destroy it.</p>
-	 *
-	 * @param f     supplier producing the destination WAV file, or null for in-memory capture
-	 * @param bits  bit depth for encoding
-	 * @param data  WaveData providing the underlying channel buffers and sample rate
-	 * @param owned whether this WaveOutput allocated {@code data} itself and must release it
-	 */
-	private WaveOutput(Supplier<File> f, int bits, WaveData data, boolean owned) {
-		this.file = f;
-		this.bits = bits;
-		this.sampleRate = data.getSampleRate();
-		if (owned) this.ownedData = data;
-
-		try {
-			initChannels(data.getChannelCount() > 1 ?
-					List.of(p(data.getChannelData(0)), p(data.getChannelData(1))) :
-					List.of(p(data.getChannelData(0))));
-		} catch (RuntimeException | Error t) {
-			// Suppress a release failure onto the initialization error rather than masking it.
-			if (owned) Destroyable.destroyAll(t, data);
-			throw t;
-		}
+		this(f, bits, data.getSampleRate(),
+				data.getChannelCount() > 1 ? List.of(
+						CollectionFeatures.getInstance().p(data.getChannelData(0)),
+						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
+				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
 	}
 
 	/**
@@ -312,18 +274,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		this.file = f;
 		this.bits = bits;
 		this.sampleRate = sampleRate;
-		initChannels(data);
-	}
-
-	/**
-	 * Wraps the given per-channel data producers as the traversable channel buffers and
-	 * builds the per-channel {@link Writer} receptors. Shared by the {@link WaveData}-backed
-	 * and producer-list constructors.
-	 *
-	 * @param channelData per-channel audio data producers
-	 */
-	private void initChannels(List<Producer<PackedCollection>> channelData) {
-		this.data = channelData.stream()
+		this.data = data.stream()
 				.map(this::c)
 				.map(CollectionProducer::traverseEach)
 				.toList();
@@ -349,19 +300,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 	/** Returns the number of channels (1 for mono, 2 for stereo). */
 	public int getChannelCount() { return data.size(); }
-
-	/**
-	 * Returns the backing buffer this output allocated for itself and releases on
-	 * {@link #destroy()}, or {@code null} when the audio buffers were supplied by the caller
-	 * (who retains their lifecycle). The per-channel producers are range views into this
-	 * buffer, so this is the single allocation whose destruction frees the output's memory;
-	 * exposing it lets a caller confirm the ownership and release contract.
-	 *
-	 * @return the owned backing collection, or {@code null} if the buffers are caller-supplied
-	 */
-	public PackedCollection getOwnedBuffer() {
-		return ownedData == null ? null : ownedData.getData();
-	}
 
 	/**
 	 * Enables circular buffer mode where the cursor wraps at buffer size.
@@ -534,36 +472,17 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		channels.forEach(Writer::reset);
 	}
 
-	/**
-	 * Releases the per-channel writers, the per-channel data producers, and the backing
-	 * buffer this output allocated for itself.
-	 *
-	 * <p>Every writer, every channel producer, and the self-allocated timeline buffer
-	 * ({@code ownedData}) is registered as its own best-effort release action and run through
-	 * {@link Destroyable#releaseAll(Iterable)}, so a failure destroying one resource does not
-	 * prevent the others or the large backing buffer from being released. The fields are
-	 * detached up front, so a failing release still leaves this output cleared. The first
-	 * failure is rethrown once all
-	 * actions have run. The channel producers are range views into {@code ownedData}, so they do
-	 * not free it; only a buffer this output allocated itself is released, and a caller-supplied
-	 * buffer is left to its owner.</p>
-	 */
 	@Override
 	public void destroy() {
-		List<Writer> channels = this.channels;
-		List<CollectionProducer> data = this.data;
-		WaveData ownedData = this.ownedData;
+		if (channels != null) {
+			channels.forEach(Writer::destroy);
+			channels = null;
+		}
 
-		this.channels = null;
-		this.data = null;
-		this.ownedData = null;
-
-		List<Runnable> releases = new ArrayList<>();
-		if (channels != null) channels.forEach(writer -> releases.add(writer::destroy));
-		if (data != null) data.forEach(producer -> releases.add(producer::destroy));
-		if (ownedData != null) releases.add(ownedData::destroy);
-
-		Destroyable.releaseAll(releases);
+		if (data != null) {
+			data.forEach(CollectionProducer::destroy);
+			data = null;
+		}
 	}
 
 	@Override

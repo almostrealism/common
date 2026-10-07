@@ -17,7 +17,6 @@
 package org.almostrealism.studio.arrange;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -336,14 +335,6 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * the {@code mixdown_master_wet} layer when an {@link EfxManager} was supplied,
 	 * the base {@code mixdown_master} layer otherwise.
 	 *
-	 * <p>This method owns the map it returns: the slot builders it delegates to allocate
-	 * {@link PackedCollection} values incrementally, so if one of those allocations (or the
-	 * build-time automation refresh) throws part-way — plausible under the native-memory
-	 * pressure this adapter's one-shot release addresses — the collections already inserted
-	 * would have no owner to free them. The build therefore runs inside a try that releases
-	 * every collection in the partially built map before rethrowing. On success the caller
-	 * takes ownership and frees the values on teardown, so there is no double free.</p>
-	 *
 	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 * @throws IllegalStateException if the adapter was constructed without a manager
 	 */
@@ -353,21 +344,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 					"this adapter was constructed for structural constants only;"
 							+ " building an argument map requires a MixdownManager");
 		}
-
-		Map<String, Object> args = new HashMap<>();
-		try {
-			if (efx == null) {
-				baseArgsMap(args);
-			} else {
-				wetArgsMap(args);
-			}
-			return args;
-		} catch (RuntimeException | Error t) {
-			// Release every collection already inserted into the partial map, best-effort; a
-			// release that throws neither skips the rest nor masks the original build failure.
-			Destroyable.destroyAll(t, args.values());
-			throw t;
-		}
+		return efx == null ? baseArgsMap() : wetArgsMap();
 	}
 
 	/**
@@ -416,17 +393,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
 	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
-	 * <p>The {@code hp_table}/{@code lp_table} biquad response tables (see
-	 * {@link #biquadResponseTable(boolean)}) are also placed in the map here. They depend
-	 * only on the static {@link Config}, so they are materialised once and reused by every
-	 * {@link #automationRefresh} — build-time and per-buffer — rather than re-tabulated (and
-	 * re-allocated) on each call; as argument-map entries they share the runner's ownership,
-	 * released with the rest of {@code args} on teardown and on construction failure.</p>
-	 *
-	 * @param args the argument map to populate; its owner (see {@link #buildArgsMap()})
-	 *             releases every collection added here on failure or teardown
+	 * @return populated argument map for {@code PdslLoader.buildLayer(...)}
 	 */
-	private void baseArgsMap(Map<String, Object> args) {
+	private Map<String, Object> baseArgsMap() {
+		Map<String, Object> args = new HashMap<>();
 		args.put("channels", config.channels);
 		args.put("signal_size", config.signalSize);
 		args.put("fir_taps", config.filterOrder + 1);
@@ -455,26 +425,17 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				new TraversalPolicy(config.channels, taps)));
 		args.put("lp_coeffs", new PackedCollection(taps));
 
-		// Static biquad response tables, materialised once and reused by every refresh
-		// and by the wet-filter coefficient gathers below (see wetFilterCoefficients).
-		// Register each table as soon as it is allocated so a throw from the second
-		// allocation leaves the first owned by args (released by the rollback), not leaked.
-		PackedCollection hpTable = biquadResponseTable(true);
-		args.put("hp_table", hpTable);
-		PackedCollection lpTable = biquadResponseTable(false);
-		args.put("lp_table", lpTable);
-
 		// wet_filter_coeffs: producer([channels, fir_taps])
 		// Mirrors MixdownManager.createCells() — the
 		// FixedFilterChromosome at supplies dynamic IIR filters in
 		// the Java path; the PDSL path renders these as static FIR coefficients
 		// per channel by sampling the gene's HP/LP frequencies at args-build time.
-		args.put("wet_filter_coeffs", wetFilterCoefficients(false, lpTable));
+		args.put("wet_filter_coeffs", wetFilterCoefficients(false));
 
 		// wet_hp_coeffs: producer([channels, fir_taps]) — the high-pass half of the
 		// legacy wet-filter cascade (AudioPassFilter HP then LP); only the
 		// mixdown_master_wet layer declares it, and unknown keys are ignored elsewhere.
-		args.put("wet_hp_coeffs", wetFilterCoefficients(true, hpTable));
+		args.put("wet_hp_coeffs", wetFilterCoefficients(true));
 
 		// transmission: producer([channels, channels])
 		// Mirrors MixdownManager.createEfx():
@@ -506,14 +467,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		int ffFrames = (config.delaySamples + 2 * config.signalSize - 1) / config.signalSize;
 		int ffRing = ffFrames * config.signalSize;
 		PackedCollection buffers = new PackedCollection(config.channels * ffRing);
-		args.put("buffers", buffers);
 		PackedCollection heads = new PackedCollection(config.channels);
+		args.put("buffers", buffers);
 		args.put("heads", heads);
 
 		// Initialise the automation slots with their current (clock-position) values so
 		// direct consumers of this map (tests, single-shot renders) see live gene values
 		// even if they never run the per-buffer refresh.
-		runOnce(automationRefresh(args, null));
+		automationRefresh(args, null).get().run();
+
+		return args;
 	}
 
 	/**
@@ -541,7 +504,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Builds the refresh operation over an explicit effects manager — {@code null} while
-	 * {@link #baseArgsMap(Map)} initialises a map that does not carry the efx-layer slots
+	 * {@link #baseArgsMap()} initialises a map that does not carry the efx-layer slots
 	 * yet, the constructed {@link #efx} otherwise.
 	 *
 	 * @param args the argument map being initialised or refreshed
@@ -598,8 +561,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// subtrees — an exponential expression tree), so the responses are tabulated once
 		// at build time over log-spaced cutoff bins and each refresh SELECTS a row with a
 		// device-side gather: bin = round((bins-1) * ln(cutoff/10) / ln(20000/10)).
-		PackedCollection hpTable = (PackedCollection) args.get("hp_table");
-		PackedCollection lpTable = (PackedCollection) args.get("lp_table");
+		PackedCollection hpTable = biquadResponseTable(true);
+		PackedCollection lpTable = biquadResponseTable(false);
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(a(taps,
 					cp(hpCoeffs.reshape(shape(config.channels, taps)).traverse(1).get(ch)),
@@ -751,7 +714,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Prepend y[0] = a1 as the first tap, materialising the table at the build boundary.
 		CollectionProducer response = concat(1, a1.reshape(bins, 1), general);
 		PackedCollection table = new PackedCollection(new TraversalPolicy(bins, taps));
-		runOnce(a(bins * taps, cp(table), response), table);
+		a(bins * taps, cp(table), response).get().run();
 		return table;
 	}
 
@@ -783,7 +746,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	/**
 	 * Builds the argument map for the {@code mixdown_master_wet} layer, adding the
 	 * per-channel {@link EfxManager} parameters and the bus-line network on top of the
-	 * mixdown parameters from {@link #baseArgsMap(Map)}.
+	 * mixdown parameters from {@link #baseArgsMap()}.
 	 *
 	 * <p>The added arguments render the two distinct legacy regeneration structures:
 	 * {@link EfxManager#apply}'s per-channel echo (gene-chosen filter, wet level,
@@ -793,11 +756,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * send into the first line, {@code delay}-chromosome line lengths with per-line
 	 * drift, unscaled genome transmission recirculation, {@code wetOut} output taps).</p>
 	 *
-	 * @param args the argument map to populate; its owner (see {@link #buildArgsMap()})
-	 *             releases every collection added here on failure or teardown
+	 * @return populated argument map for {@code PdslLoader.buildLayer(..., "mixdown_master_wet", ...)}
 	 */
-	private void wetArgsMap(Map<String, Object> args) {
-		baseArgsMap(args);
+	private Map<String, Object> wetArgsMap() {
+		Map<String, Object> args = baseArgsMap();
 
 		// mixdown_master_wet renders the legacy mixdown-bus delay layer as the SHARED
 		// bus-line network below (bus_* arguments), not as the base map's per-channel
@@ -960,8 +922,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// longest tap keeps every tap inside that band. One write head per tap.
 		int reverbRing = reverbRingFrames() * config.signalSize;
 		PackedCollection reverbBuffers = new PackedCollection(reverbTaps * reverbRing);
-		args.put("reverb_buffers", reverbBuffers);
 		PackedCollection reverbHeads = new PackedCollection(reverbTaps);
+		args.put("reverb_buffers", reverbBuffers);
 		args.put("reverb_heads", reverbHeads);
 
 		// Diagnostic per-arm isolation gains (default 1.0). Mutable so a bisection test can zero
@@ -978,7 +940,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("stem_reverb", new PackedCollection(shape(1, config.signalSize)));
 
 		// Initialise the efx-layer automation slots (see the matching call in the base map).
-		runOnce(automationRefresh(args, efx));
+		automationRefresh(args, efx).get().run();
+
+		return args;
 	}
 
 	/**
@@ -1020,8 +984,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		CollectionProducer fraction = mod(
 				integers(1, reverbTaps + 1).multiply(phiInverse), c(1.0));
 		PackedCollection delays = new PackedCollection(reverbTaps);
-		runOnce(a(reverbTaps, cp(delays),
-				floor(fraction.multiply(hi - lo).add(lo))), delays);
+		a(reverbTaps, cp(delays),
+				floor(fraction.multiply(hi - lo).add(lo))).get().run();
 		return delays;
 	}
 
@@ -1052,8 +1016,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
 		double off = 2.0 / n;
 		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		runOnce(a(n * n, cp(matrix),
-				identity(n).multiply(gain).subtract(gain * off)), matrix);
+		a(n * n, cp(matrix),
+				identity(n).multiply(gain).subtract(gain * off)).get().run();
 		return matrix;
 	}
 
@@ -1268,16 +1232,14 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * meaningless value that clamped near the floor and left the wet bus over-filtered.
 	 * It also rendered only a low-pass, dropping the cascade's high-pass half.)</p>
 	 *
-	 * @param high  {@code true} for the cascade's high-pass half (gene slot 0);
-	 *              {@code false} for the low-pass half (gene slot 1)
-	 * @param table the runner-owned biquad response table for this half
-	 *              ({@link #biquadResponseTable(boolean) biquadResponseTable(high)}),
-	 *              reused here rather than re-allocated so it is not leaked on teardown
+	 * @param high {@code true} for the cascade's high-pass half (gene slot 0);
+	 *             {@code false} for the low-pass half (gene slot 1)
 	 * @return shape-{@code [channels, fir_taps]} coefficient producer
 	 */
-	private Producer<PackedCollection> wetFilterCoefficients(boolean high, PackedCollection table) {
+	private Producer<PackedCollection> wetFilterCoefficients(boolean high) {
 		final int firTaps = config.filterOrder + 1;
 		FixedFilterChromosome wetFilter = manager.getWetFilter();
+		PackedCollection table = biquadResponseTable(high);
 		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
 			int src = config.channel(ch);
@@ -1438,9 +1400,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		PackedCollection send = new PackedCollection(new TraversalPolicy(channels, layers));
 		CollectionProducer column = mod(
 				integers(0, channels * layers), c((double) layers));
-		runOnce(a(channels * layers, cp(send),
+		a(channels * layers, cp(send),
 				max(c(1.0).subtract(column.multiply(column)),
-						c(0.0))), send);
+						c(0.0))).get().run();
 		return send;
 	}
 
@@ -1493,51 +1455,6 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Compiles the given one-shot operation, runs it exactly once, and releases the
-	 * compiled native kernels it owns.
-	 *
-	 * <p>The build-time argument fills in this adapter — the automation-slot
-	 * initialisation in {@link #baseArgsMap(Map)} and {@link #wetArgsMap(Map)}, and the
-	 * constant-table/matrix materialisers (filter response table, reverb tap delays,
-	 * Householder matrix, bus-send matrix) plus {@link #maxEvaluated} — each materialise a
-	 * {@link PackedCollection} by running a compiled assignment once. Retaining the compiled
-	 * {@link Runnable} only to discard it would leak one operation's kernels per build, and
-	 * because the real-time runner compiles a fresh mixdown per render
-	 * ({@code AudioSceneRealtimeRunner.createPdsl}) that leak accumulates across renders.
-	 * Destroying the runnable immediately after it runs frees those kernels while leaving the
-	 * target collection — the operation's output, retained by the caller — untouched.
-	 * The release runs even when the run throws, and a release failure is suppressed onto
-	 * the run failure rather than replacing it (see {@link Destroyable#runOnce(Runnable)}).</p>
-	 *
-	 * @param operation the one-shot operation to compile, run, and release
-	 */
-	private static void runOnce(Supplier<Runnable> operation) {
-		Destroyable.runOnce(operation.get());
-	}
-
-	/**
-	 * Runs a one-shot materialiser (see {@link #runOnce(Supplier)}) that fills the given
-	 * freshly allocated destination collection, releasing that destination if compilation
-	 * or execution throws. The materialisers allocate their destination before running the
-	 * assignment and only hand it to an owner on return, so a throw would otherwise leave it
-	 * with no owner — {@link #buildArgsMap()}'s rollback can only release collections already
-	 * inserted into the map — leaking it on construction failure.
-	 *
-	 * @param operation   the one-shot operation to compile, run, and release
-	 * @param destination the collection the operation fills, released on failure
-	 */
-	private static void runOnce(Supplier<Runnable> operation, PackedCollection destination) {
-		try {
-			runOnce(operation);
-		} catch (RuntimeException | Error e) {
-			// Suppress a release failure onto the original throwable rather than letting it
-			// replace the compilation/execution error that triggered the rollback.
-			Destroyable.destroyAll(e, destination);
-			throw e;
-		}
-	}
-
-	/**
 	 * Evaluates a shape-{@code [count]} producer once at argument-build time and returns
 	 * the ceiling of its largest element. Used to size ring state from the current
 	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
@@ -1556,7 +1473,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private int maxEvaluated(Producer<PackedCollection> values, int count) {
 		PackedCollection evaluated = new PackedCollection(count);
-		runOnce(a(count, cp(evaluated), values), evaluated);
+		a(count, cp(evaluated), values).get().run();
 		double max = 0.0;
 		for (double v : evaluated.toArray(0, count)) {
 			max = Math.max(max, v);

@@ -17,11 +17,9 @@
 package org.almostrealism.studio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
-import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -38,15 +36,8 @@ import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
-import java.io.File;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -80,21 +71,10 @@ import java.util.stream.IntStream;
  * keep the scene model focused on state and to give the two runner strategies a single,
  * coherent home.</p>
  *
- * <p><b>Runner ownership.</b> Every runner built by {@link #create} is tracked until it is
- * destroyed, and {@link #destroy()} releases whichever are still live. The scene destroys
- * this collaborator before its own render cells and consolidated buffers, so a runner a
- * caller never released has its producer thread stopped (and joined) before the buffers
- * that thread renders into are freed. A runner's {@code destroy()} is idempotent: a runner
- * the caller already released is not released again. A runner stays tracked until its
- * release has finished, so a scene teardown that races a caller's {@code destroy()} waits
- * for that release rather than freeing the scene buffers underneath it. For the same reason a
- * teardown that races an in-progress {@link #create} waits for the build to finish before
- * freeing the scene buffers, since a build is not tracked until it completes.</p>
- *
  * @see AudioScene#runnerRealTime(MultiChannelAudioOutput, java.util.List, int)
  * @see MixdownManagerPdslAdapter
  */
-public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
+public class AudioSceneRealtimeRunner implements CellFeatures {
 
 	/** Classpath resource holding the PDSL program that declares {@code mixdown_master}. */
 	private static final String MIXDOWN_PDSL_RESOURCE = "/pdsl/audio/mixdown_manager.pdsl";
@@ -160,40 +140,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	private final AudioScene<?> scene;
 
 	/**
-	 * Runners built by {@link #create} whose release has not finished yet, in creation order.
-	 * A runner stays here while its release is in progress and is removed only once that
-	 * release completes (see {@link #release}), so {@link #destroy()} can wait for it.
-	 */
-	private final List<Destroyable> liveRunners = new ArrayList<>();
-
-	/**
-	 * The subset of {@link #liveRunners} whose release is in progress. Claiming a runner here
-	 * is what makes its {@code destroy()} idempotent: only the first caller releases it.
-	 */
-	private final Set<Destroyable> releasing = new HashSet<>();
-
-	/**
-	 * Set, under the same lock as {@link #liveRunners}, when {@link #destroy()} begins. From
-	 * then on {@link #track} refuses new runners, so a {@link #create} that finishes after
-	 * teardown has taken its snapshot cannot leave behind a runner nothing will ever stop.
-	 */
-	private boolean closed;
-
-	/**
-	 * Threads currently inside {@link #create}, between registering under the lock and the
-	 * build's final {@link #track} (or its construction-failure rollback). A build is not yet
-	 * represented in {@link #liveRunners} while it is compiling against the scene's buffers, so
-	 * {@link #destroy()} waits for every build on another thread to finish before it snapshots
-	 * the live runners and lets the scene free those buffers — otherwise a build that passed the
-	 * {@code closed} check could still be reading buffers the teardown frees underneath it. A
-	 * list (rather than a set) so a thread that re-enters {@link #create} is counted once per
-	 * entry. The calling thread's own in-progress build is excluded from the wait, so a
-	 * {@link #destroy()} triggered from inside a build (as the refusal path is) does not deadlock
-	 * on itself.
-	 */
-	private final List<Thread> building = new ArrayList<>();
-
-	/**
 	 * Creates a runner for the given scene.
 	 *
 	 * @param scene the scene to drive in real time
@@ -203,243 +149,29 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	}
 
 	/**
-	 * Returns the number of runners built by {@link #create} whose release has not finished,
-	 * including any whose release is in progress.
-	 *
-	 * @return the live runner count
-	 */
-	public synchronized int getLiveRunnerCount() {
-		return liveRunners.size();
-	}
-
-	/**
-	 * Returns whether {@link #destroy()} has begun, after which {@link #create} refuses to
-	 * build runners.
-	 *
-	 * @return true once this collaborator has been destroyed
-	 */
-	public synchronized boolean isClosed() {
-		return closed;
-	}
-
-	/**
-	 * Registers a newly built runner as live.
-	 *
-	 * <p>Called last in each runner build, inside its construction-failure rollback scope.
-	 * If {@link #destroy()} has already begun, the runner is refused with an
-	 * {@link IllegalStateException}, and the caller's rollback releases everything the build
-	 * allocated: teardown has already taken its snapshot of live runners and would never
-	 * stop this one.</p>
-	 *
-	 * <p>Protected so that a subclass overriding {@link #create} can register a runner it
-	 * builds itself; such a runner must release its resources through {@link #release}.</p>
-	 *
-	 * @param runner the runner to track
-	 * @throws IllegalStateException if this collaborator has been destroyed
-	 */
-	protected synchronized void track(Destroyable runner) {
-		if (closed) {
-			throw new IllegalStateException("Cannot register a real-time runner for a destroyed scene");
-		}
-
-		liveRunners.add(runner);
-	}
-
-	/**
-	 * Releases a tracked runner's resources, once. The first call for a live runner claims it
-	 * and runs every action in {@code releases} best-effort (see
-	 * {@link Destroyable#releaseAll(Iterable)}); any other call — for a runner already released,
-	 * being released by another thread, or never tracked — returns immediately without running
-	 * them.
-	 *
-	 * <p>The runner remains in the live set until its releases have finished, and only then is
-	 * removed, even if a release throws. A concurrent {@link #destroy()} therefore still sees a
-	 * runner whose release a caller started, and waits for it to finish before returning — so
-	 * the scene never frees the buffers a producer thread is still rendering into while that
-	 * runner's caller is stopping it.</p>
-	 *
-	 * @param runner   the runner being destroyed
-	 * @param releases the actions that free the runner's resources, in release order
-	 */
-	protected void release(Destroyable runner, List<Runnable> releases) {
-		if (!claim(runner)) return;
-
-		try {
-			Destroyable.releaseAll(releases);
-		} finally {
-			untrack(runner);
-		}
-	}
-
-	/**
-	 * Marks a live runner as being released.
-	 *
-	 * @param runner the runner being destroyed
-	 * @return true if the caller now owns the runner's release, false if the runner is not
-	 *         live or another caller already owns its release
-	 */
-	private synchronized boolean claim(Destroyable runner) {
-		if (!liveRunners.contains(runner) || releasing.contains(runner)) return false;
-		releasing.add(runner);
-		return true;
-	}
-
-	/**
-	 * Removes a runner whose release has finished from the live set, and wakes any
-	 * {@link #destroy()} waiting for in-progress releases.
-	 *
-	 * @param runner the runner whose release finished
-	 */
-	private synchronized void untrack(Destroyable runner) {
-		releasing.remove(runner);
-		liveRunners.remove(runner);
-		notifyAll();
-	}
-
-	/**
-	 * Blocks until every tracked runner's release has finished, including releases started by
-	 * other threads. An interrupt does not abandon the wait (returning early would let the scene
-	 * free buffers a producer still uses); it is re-asserted on the calling thread afterwards.
-	 */
-	private synchronized void awaitReleases() {
-		// TODO(review): unbounded wait; a tracked runner whose destroy() bypasses release() hangs scene teardown.
-		boolean interrupted = false;
-		while (!liveRunners.isEmpty()) {
-			try {
-				wait();
-			} catch (InterruptedException e) {
-				interrupted = true;
-			}
-		}
-
-		if (interrupted) Thread.currentThread().interrupt();
-	}
-
-	/**
-	 * Blocks until every in-progress {@link #create} on a thread other than the caller's has
-	 * finished — reached its {@link #track} (now refused, since {@link #destroy()} sets
-	 * {@code closed} first) and rolled back, or otherwise returned. Called while holding this
-	 * monitor, with {@code closed} already set, so no further builds begin and the ones already
-	 * running drain. The caller's own build is excluded, so a {@link #destroy()} invoked from
-	 * inside a build does not wait on itself. An interrupt does not abandon the wait (returning
-	 * early would let the scene free buffers a build still reads); it is re-asserted afterwards.
-	 */
-	private void awaitBuilds() {
-		// TODO(review): unbounded wait; a build that hangs (compile/getMaster) hangs scene teardown.
-		Thread current = Thread.currentThread();
-		boolean interrupted = false;
-		while (building.stream().anyMatch(t -> t != current)) {
-			try {
-				wait();
-			} catch (InterruptedException e) {
-				interrupted = true;
-			}
-		}
-
-		if (interrupted) current.interrupt();
-	}
-
-	/**
-	 * Destroys every runner built by {@link #create} that is still live, newest first, so
-	 * each stops its producer thread and frees the native memory it owns. Every runner is
-	 * attempted even when an earlier one fails; the first failure is rethrown afterwards
-	 * with later ones suppressed. Called by {@link AudioScene#destroy()} before the scene
-	 * frees the render cells and consolidated buffers those runners read.
-	 *
-	 * <p>A runner whose release another thread has already started is not released again,
-	 * but this method does not return until that release has finished either, so the scene
-	 * never proceeds to free its buffers while any runner is still stopping. Must not be
-	 * called from inside a runner's own release, which would wait on itself.</p>
-	 *
-	 * <p>Destruction is terminal: the snapshot is taken together with marking this
-	 * collaborator closed, so any runner whose build completes afterwards is refused (and
-	 * rolled back) rather than registered where no teardown would reach it. A build already in
-	 * flight on another thread is waited for before the snapshot (see {@link #awaitBuilds}), so
-	 * the scene never frees the buffers a build is still compiling against.</p>
-	 */
-	@Override
-	public void destroy() {
-		List<Destroyable> runners;
-		synchronized (this) {
-			closed = true;
-			awaitBuilds();
-			runners = new ArrayList<>(liveRunners);
-			runners.removeAll(releasing);
-		}
-
-		Collections.reverse(runners);
-		try {
-			Destroyable.releaseAll(runners.stream()
-					.map(r -> (Runnable) r::destroy).collect(Collectors.toList()));
-		} finally {
-			awaitReleases();
-		}
-	}
-
-	/**
 	 * Builds a real-time runner using whichever DSP path is currently selected by
 	 * {@link MixdownManager#enablePdslMixdown}.
-	 *
-	 * <p>The build is registered with this collaborator for its whole duration, so a
-	 * {@link #destroy()} racing it from another thread waits for the build to finish before the
-	 * scene frees the buffers the build compiles against — the build is not represented in
-	 * {@link #liveRunners} until its final {@link #track}, so without this wait a build that had
-	 * already passed the {@code closed} check could read buffers freed underneath it. A build
-	 * that completes after teardown has begun is refused by {@link #track} and rolled back.</p>
-	 *
-	 * <p><b>Shared scene state — one live CellList runner.</b> Every build rebuilds the scene's
-	 * shared render state through {@link AudioScene#getCells} (CellList path) or
-	 * {@link AudioScene#prepareRenderBuffers} (PDSL path); both destroy the scene's current
-	 * {@code activeCells} before producing the new state. The CellList path captures that
-	 * {@code activeCells} as the cell graph its runner ticks, so a subsequent build on the same
-	 * scene destroys the cell graph a previously built CellList runner still holds. Tracking a
-	 * runner keeps teardown correct (every live runner is stopped and released, in any
-	 * combination), but it does not give two CellList runners independent cell state: at most one
-	 * live CellList runner is valid at a time. A caller must therefore destroy a CellList runner
-	 * before building another runner on the same scene, rather than tick it across a later build.
-	 * The established usages satisfy this — {@link #render} builds, uses and destroys its runner
-	 * within the call, and a reused runner (driven by {@link AudioScene#assignGenome}) is built
-	 * once and never rebuilt. A PDSL runner does not capture {@code activeCells}, so it may
-	 * coexist with one CellList runner.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
-	 * @return a {@link TemporalCellular} for real-time playback, which the caller destroys when
-	 *         done with it via {@link Destroyable#destroy(Object)}
-	 * @throws IllegalStateException if this collaborator (and so its scene) has been destroyed
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
 	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
-		Thread current = Thread.currentThread();
-		synchronized (this) {
-			if (closed) {
-				throw new IllegalStateException("Cannot build a real-time runner for a destroyed scene");
+		List<Integer> resolved = channels != null ? channels :
+				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
+
+		if (MixdownManager.enablePdslMixdown) {
+			if (supportsPdsl(resolved)) {
+				return createPdsl(output, resolved, bufferSize);
 			}
 
-			building.add(current);
+			log("channels=" + resolved + " is outside the PDSL mixdown's supported"
+					+ " configurations; using the CellList runner for this build");
 		}
 
-		try {
-			List<Integer> resolved = channels != null ? channels :
-					IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
-
-			if (MixdownManager.enablePdslMixdown) {
-				if (supportsPdsl(resolved)) {
-					return createPdsl(output, resolved, bufferSize);
-				}
-
-				log("channels=" + resolved + " is outside the PDSL mixdown's supported"
-						+ " configurations; using the CellList runner for this build");
-			}
-
-			return createCellList(output, resolved, bufferSize);
-		} finally {
-			synchronized (this) {
-				building.remove(current);
-				notifyAll();
-			}
-		}
+		return createCellList(output, resolved, bufferSize);
 	}
 
 	/**
@@ -487,14 +219,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * contents change on {@link AudioScene#assignGenome}, so the runner can be reused
 	 * without recompilation.</p>
 	 *
-	 * <p><b>Construction-failure rollback.</b> The per-buffer frame index and the
-	 * {@link CellList} built here are owned by the returned {@link TemporalCellular} and
-	 * freed by its {@code destroy()}, but that owner is not constructed until both have been
-	 * allocated. A throw from {@link AudioScene#getCells} or {@link CellList#tick()} would
-	 * otherwise leak whatever was already allocated, so each resource is tracked as it is
-	 * created and released in reverse order if construction fails; the throwable is rethrown
-	 * unchanged.</p>
-	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -504,13 +228,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 											List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 
-		// Construction-failure rollback for runner-owned resources; see method javadoc.
-		List<Object> allocated = new ArrayList<>();
-		try {
 		// Per-buffer frame index for WaveCell external frame control; tracks position
 		// 0 to bufferSize-1 within each buffer.
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
-		allocated.add(bufferFrameIndex);
 		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
@@ -518,19 +238,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
 				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
 				bufferFrameProducer);
-		// The cells are the scene's activeCells, so roll back through the scene to clear
-		// its reference too; destroying the list directly would leave the scene holding it.
-		allocated.add(new Destroyable() {
-			@Override
-			public void destroy() { scene.destroyActiveCells(cells); }
-		});
-
-		// This build owns the consolidated buffers it just allocated (see the runner
-		// destroy() javadoc); the rollback and destroy() release them.
-		PackedCollection consolidatedRender = scene.claimConsolidatedRenderBuffer();
-		allocated.add(consolidatedRender);
-		PackedCollection consolidatedFilter = scene.getEfxManager().claimConsolidatedFilterBuffer();
-		if (consolidatedFilter != null) allocated.add(consolidatedFilter);
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
@@ -541,11 +248,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
 		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
-		/**
-		 * The CellList-path real-time runner. Owns the compiled per-frame {@link CellList}
-		 * and the per-buffer frame index, and releases them on {@code destroy()}.
-		 */
-		class CellListRunner implements TemporalCellular, Destroyable {
+		return new TemporalCellular() {
 			@Override
 			public Supplier<Runnable> setup() {
 				return cells.setup();
@@ -583,50 +286,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				cells.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
-
-			/**
-			 * Releases the native memory this runner owns: the compiled per-frame
-			 * {@link CellList} (and its cells) and the per-buffer frame index. Without this
-			 * a caller that builds a runner per render — as the real-time render tests do —
-			 * accumulates a runner's worth of device buffers for every render in the JVM,
-			 * exhausting native memory (an {@code OutOfMemoryError} on a CPU host, silent
-			 * output once the device allocator is starved on a GPU host). The scene's own
-			 * render buffers are left for the scene to manage.
-			 *
-			 * <p>The {@link CellList} is the scene's {@code activeCells} (the same instance
-			 * {@link AudioScene#getCells} returned), so it is released through
-			 * {@link AudioScene#destroyActiveCells} rather than destroyed directly: that
-			 * clears the scene's reference atomically with the release, so the scene's own
-			 * {@link AudioScene#destroy()} does not double-free the cell graph.</p>
-			 *
-			 * <p>Finally the consolidated render and filter roots this build claimed from the
-			 * scene are freed, after the cell graph that reads their regions. The build owns
-			 * them rather than the scene so a later build on the same scene (a scene may have
-			 * more than one live runner) cannot free a root this runner still uses.</p>
-			 */
-			@Override
-			public void destroy() {
-				// Best-effort: a release that throws must not leave the remaining resources
-				// allocated, since only the first destroy() runs these releases.
-				release(this, List.of(
-						() -> scene.destroyActiveCells(cells),
-						bufferFrameIndex::destroy,
-						() -> Destroyable.destroy(consolidatedRender),
-						() -> Destroyable.destroy(consolidatedFilter)));
-			}
-		}
-
-		CellListRunner runner = new CellListRunner();
-		track(runner);
-		return runner;
-		} catch (RuntimeException | Error t) {
-			// Release in reverse allocation order, best-effort; a release that throws neither
-			// aborts the remaining releases nor masks the original construction failure.
-			List<Object> reverse = new ArrayList<>(allocated);
-			Collections.reverse(reverse);
-			Destroyable.destroyAll(t, reverse);
-			throw t;
-		}
+		};
 	}
 
 	/**
@@ -699,17 +359,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 	 * (advancing the cursor) and {@code WaveOutput.write} gates on the minimum frame count
 	 * across channels, so the mono master is pushed to both stereo writers each frame.</p>
 	 *
-	 * <p><b>Construction-failure rollback.</b> The native resources built here (the
-	 * frame index, the render operation, the render-ahead {@link PatternRenderStream}
-	 * ring, the mixdown argument buffers, the compiled model, its output buffer, and the
-	 * combined-effects stems buffer) are owned by the returned {@link TemporalCellular}
-	 * and freed by its {@code destroy()} — but that owner is not constructed until every
-	 * allocation has succeeded. A throw before then (PDSL parse or compile, the throwaway
-	 * {@code forward()}, or output/stem wiring) would otherwise leak everything already
-	 * allocated, since no owner would exist to release it. Each resource is therefore
-	 * tracked as it is created and released in reverse order if construction fails, so a
-	 * failed build leaks nothing; the throwable is rethrown unchanged.</p>
-	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -721,11 +370,8 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		final long[] renderFrame = {0};
 		int channelCount = channels.size();
 
-		// Construction-failure rollback for runner-owned resources; see method javadoc.
-		List<Object> allocated = new ArrayList<>();
-		try {
+		// Frame index within the current buffer, driven by the output-streaming loop
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
-		allocated.add(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
@@ -745,12 +391,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				? new MixdownManagerPdslAdapter(mixdown, scene.getEfxManager(), config)
 				: new MixdownManagerPdslAdapter(mixdown, config);
 
-		// This build takes ownership of the consolidated buffers it just allocated (see
-		// the runner destroy() javadoc); the rollback and destroy() release them.
-		PackedCollection consolidated = scene.claimConsolidatedRenderBuffer();
-		allocated.add(consolidated);
-		PackedCollection consolidatedFilter = scene.getEfxManager().claimConsolidatedFilterBuffer();
-		if (consolidatedFilter != null) allocated.add(consolidatedFilter);
+		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
 		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
@@ -760,28 +401,19 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
 		Runnable renderOp = renderOps.get();
-		allocated.add(renderOp);
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
-		allocated.add(renderStream);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
 		Map<String, Object> args = adapter.buildArgsMap();
-		allocated.addAll(args.values());
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
-		allocated.add(compiled);
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
-		// Register the stable output handle for rollback before the fallible throwaway pass:
-		// a throw from forward() must not leak a buffer CompiledModel.destroy() cannot reclaim.
-		// It is placed ahead of the model so the reverse-order rollback releases the compiled
-		// operations before the output buffer they write, the same order as destroy().
-		PackedCollection masterOutput = compiled.getOutput();
-		allocated.add(allocated.indexOf(compiled), masterOutput);
-		compiled.forward(pdslInput);
+		// Throwaway pass to capture the stable output handle the streaming loop reads
+		PackedCollection masterOutput = compiled.forward(pdslInput);
 
 		// The mixdown renders one signal per frame; a stereo destination receives it
 		// on both channels, while a mono destination (or one with the master disabled)
@@ -809,7 +441,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		// Whole buffers per tick, not per-frame pushes in the output loop, which
 		// multiplied the loop's operation count enough to break the realtime budget
 		OperationList stemAppends = new OperationList("PDSL Stem Appends");
-		PackedCollection fxStem = null;
 		if (output.isStemsActive()) {
 			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
 			if (stemChannels != null) {
@@ -825,17 +456,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
 
 				if (stemEfx != null && stemReverb != null) {
-					// Summed once per tick, so the writers push plain memory. Retained
-					// as runner-owned state (fxStem) and released on destroy().
-					fxStem = new PackedCollection(bufferSize);
-					allocated.add(fxStem);
+					// Summed once per tick, so the writers push plain memory
+					PackedCollection fx = new PackedCollection(bufferSize);
 					stemAppends.add(a("PDSL FX Stem Sum",
-							cp(fxStem).each(),
+							cp(fx).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
 									.add(cp(stemReverb.range(
 											new TraversalPolicy(bufferSize), 0)))
 									.each()));
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fxStem));
+					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fx));
 				} else if (stemEfx != null) {
 					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
 							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
@@ -846,20 +475,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 			}
 		}
 
-		/**
-		 * The Block-forward PDSL-path real-time runner. Owns the render-ahead
-		 * {@link PatternRenderStream} (and its producer thread), the compiled mixdown
-		 * {@link CompiledModel}, and the per-buffer frame index, and releases them on
-		 * {@code destroy()}.
-		 */
-		class PdslRunner implements TemporalCellular, Destroyable {
-			/**
-			 * The combined-effects stems buffer this runner allocated (see {@code fxStem}
-			 * in {@link #createPdsl}), or {@code null} when stems summing is not active. It
-			 * is not an argument-map value, so {@link #destroy()} releases it directly.
-			 */
-			private PackedCollection ownedFxStem;
-
+		return new TemporalCellular() {
 			/**
 			 * One-time preparation: the render-cell setup from
 			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer
@@ -939,85 +555,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 				adapter.resetState(args);
 				scene.getTimeManager().getClock().setFrame(0);
 			}
-
-			/**
-			 * Releases the native memory this runner owns: the render-ahead
-			 * {@link PatternRenderStream} (which stops its producer thread and frees the
-			 * ring), the compiled pattern render operation that drives the stream, the
-			 * compiled mixdown {@link CompiledModel}, the per-buffer frame index, and the
-			 * mixdown argument buffers built by
-			 * {@link MixdownManagerPdslAdapter#buildArgsMap()} (delay, feedback, bus,
-			 * reverb, automation, and stem collections). PDSL supplies those buffers to
-			 * the model as external collection providers, so {@link CompiledModel#destroy()}
-			 * does not reclaim them; each is released as its own best-effort action so a
-			 * value whose {@code destroy()} throws cannot skip the remaining buffers, and
-			 * the map is cleared last. The
-			 * render operation is a compiled {@link OperationList} owning its own native
-			 * kernels; {@link PatternRenderStream} runs it but treats it as borrowed (it
-			 * frees only the ring and slot copies it allocates itself), so it is destroyed
-			 * here — after the stream has stopped its producer thread, so the kernels are
-			 * no longer in use. Without this a caller that builds a runner per render — as
-			 * the real-time render tests do — accumulates a render-ahead ring, a producer
-			 * thread, a render operation, a compiled model, and a full argument map for
-			 * every render in the JVM, exhausting native memory (an
-			 * {@code OutOfMemoryError} on a CPU host, silent output once the device allocator
-			 * is starved on a GPU host).
-			 *
-			 * <p>Also released: the compiled model's output collection
-			 * ({@code masterOutput}), which {@link CompiledModel#compile} allocates and
-			 * {@link CompiledModel#destroy()} does not reclaim (that destroys only the
-			 * compiled operations), and the combined-effects stems buffer
-			 * ({@link #ownedFxStem}) when stems summing is active. {@code masterOutput} is
-			 * freed after the compiled model, and both are read only by the output-loop
-			 * operations compiled into the tick — which the caller destroys before the
-			 * runner — so they are no longer in use here.</p>
-			 *
-			 * <p>Finally the consolidated render and filter roots this build claimed from the
-			 * scene ({@link AudioScene#claimConsolidatedRenderBuffer} and
-			 * {@link org.almostrealism.studio.arrange.EfxManager#claimConsolidatedFilterBuffer})
-			 * are freed. They are released last — after {@link PatternRenderStream#destroy()}
-			 * has stopped the producer thread that renders into the render root — so no thread
-			 * is reading them. The build owns them rather than the scene so that a later build
-			 * on the same scene (a scene may have more than one live runner) cannot free a root
-			 * this runner still uses; an unclaimed buffer, by contrast, is freed on the scene's
-			 * next reconsolidation or teardown.</p>
-			 */
-			@Override
-			public void destroy() {
-				// Best-effort: a release that throws must not leave the remaining resources
-				// allocated, since only the first destroy() runs these releases.
-				// The stream is stopped first so the render op's kernels are no longer in use.
-				List<Runnable> releases = new ArrayList<>();
-				releases.add(renderStream::destroy);
-				releases.add(() -> Destroyable.destroy(renderOp));
-				releases.add(() -> Destroyable.destroy(compiled));
-				releases.add(() -> Destroyable.destroy(masterOutput));
-				releases.add(bufferFrameIndex::destroy);
-				for (Object value : args.values()) {
-					releases.add(() -> Destroyable.destroy(value));
-				}
-				releases.add(args::clear);
-				releases.add(() -> Destroyable.destroy(ownedFxStem));
-				// Last: the consolidated render/filter roots this build claimed, freed only
-				// after the producer thread (stopped above) can no longer render into them.
-				releases.add(() -> Destroyable.destroy(consolidated));
-				releases.add(() -> Destroyable.destroy(consolidatedFilter));
-				release(this, releases);
-			}
-		}
-
-		PdslRunner runner = new PdslRunner();
-		runner.ownedFxStem = fxStem;
-		track(runner);
-		return runner;
-		} catch (RuntimeException | Error t) {
-			// Release in reverse allocation order, best-effort; a release that throws neither
-			// aborts the remaining releases nor masks the original construction failure.
-			List<Object> reverse = new ArrayList<>(allocated);
-			Collections.reverse(reverse);
-			Destroyable.destroyAll(t, reverse);
-			throw t;
-		}
+		};
 	}
 
 	/**
@@ -1085,55 +623,5 @@ public class AudioSceneRealtimeRunner implements CellFeatures, Destroyable {
 		Model model = new Model(inputShape);
 		model.add(block);
 		return model.compile(false);
-	}
-
-	/**
-	 * Renders a single channel of the scene's current pattern content to a wav file through
-	 * a runner built by {@link #create}, ticking it for {@code frames} frames and then
-	 * flushing the output.
-	 *
-	 * <p>The runner, its compiled setup/tick/write operations, and the {@link WaveOutput} are
-	 * owned by this method. Each is registered as soon as it exists; when the render finishes
-	 * they are released newest first (compiled ops before the runner and output buffers they
-	 * read) through {@link Destroyable#releaseAll(Iterable)}, so one failing release cannot
-	 * leak the rest. If building the runner, compiling an operation, or rendering fails,
-	 * everything built up to that point is released and the original failure is rethrown
-	 * with any release failures suppressed onto it. The runner therefore never remains in
-	 * the live-runner set after this method returns or throws.</p>
-	 *
-	 * @param channel    the channel index to render
-	 * @param frames     the number of audio frames to render
-	 * @param outputPath the wav file path to write
-	 * @param bufferSize frames per buffer
-	 */
-	public void render(int channel, int frames, String outputPath, int bufferSize) {
-		int bufferCount = (frames + bufferSize - 1) / bufferSize;
-		Deque<Object> owned = new ArrayDeque<>();
-
-		try {
-			WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
-			owned.push(out);
-			TemporalCellular cells = create(new MultiChannelAudioOutput(out), List.of(channel), bufferSize);
-			owned.push(cells);
-			Runnable setup = cells.setup().get();
-			owned.push(setup);
-			Runnable tick = cells.tick().get();
-			owned.push(tick);
-			Runnable write = out.write().get();
-			owned.push(write);
-
-			setup.run();
-			for (int b = 0; b < bufferCount; b++) {
-				tick.run();
-			}
-			write.run();
-		} catch (RuntimeException | Error e) {
-			Destroyable.destroyAll(e, owned);
-			throw e;
-		}
-
-		Destroyable.releaseAll(owned.stream()
-				.map(resource -> (Runnable) () -> Destroyable.destroy(resource))
-				.collect(Collectors.toList()));
 	}
 }

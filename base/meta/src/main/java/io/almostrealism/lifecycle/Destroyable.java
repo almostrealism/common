@@ -228,47 +228,6 @@ public interface Destroyable extends AutoCloseable {
 	}
 
 	/**
-	 * Destroys every target, best-effort, attaching any release failure to the given primary
-	 * throwable as a suppressed exception rather than throwing it.
-	 *
-	 * <p>This is the rollback-on-failure form of {@link #destroy(Iterable)}. A caller handling a
-	 * construction failure {@code t} releases the resources it had already allocated with
-	 * {@code destroyAll(t, resources)} and then rethrows {@code t}, so the original failure is
-	 * preserved and a release that itself throws neither aborts the remaining releases nor masks
-	 * {@code t}. Unlike {@link #destroy(Iterable)}, one failing {@link #destroy()} does not leave
-	 * the rest of the targets allocated.</p>
-	 *
-	 * @param primary the failure being rolled back, onto which release failures are suppressed;
-	 *                must not be null
-	 * @param targets the objects to conditionally destroy, in iteration order; null is treated as
-	 *                empty, and non-{@link Destroyable} entries are skipped
-	 */
-	static void destroyAll(Throwable primary, Iterable<?> targets) {
-		if (targets == null) return;
-
-		for (Object target : targets) {
-			try {
-				destroy(target);
-			} catch (RuntimeException | Error e) {
-				if (e != primary) primary.addSuppressed(e);
-			}
-		}
-	}
-
-	/**
-	 * Destroys every target, best-effort, attaching any release failure to the given primary
-	 * throwable as a suppressed exception rather than throwing it.
-	 *
-	 * @param primary the failure being rolled back, onto which release failures are suppressed;
-	 *                must not be null
-	 * @param targets the objects to conditionally destroy, in order; null is treated as empty
-	 * @see #destroyAll(Throwable, Iterable)
-	 */
-	static void destroyAll(Throwable primary, Object... targets) {
-		if (targets != null) destroyAll(primary, Arrays.asList(targets));
-	}
-
-	/**
 	 * Runs every release action in the given iterable and then each of the further actions,
 	 * even when earlier ones fail, with the same failure aggregation as
 	 * {@link #releaseAll(Iterable)}.

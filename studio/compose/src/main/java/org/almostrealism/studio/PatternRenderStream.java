@@ -141,26 +141,9 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	 * rendered, so the first ticks find their input ready. A render failure during prefill is
 	 * rethrown to the caller.
 	 *
-	 * <p>{@code start}, {@link #stop()} and {@link #destroy()} are serialized on this stream,
-	 * since each reads and replaces {@link #producer}: a teardown running on another thread
-	 * waits for the producer to be started and prefilled before it stops it, rather than
-	 * clearing the field while it is still being configured. The prefill wait is bounded, as
-	 * the producer never blocks on the ring before {@code prefill} (at most {@link #slots})
-	 * buffers are rendered.</p>
-	 *
-	 * <p>A second {@code start()} without an intervening {@link #stop()} first stops the
-	 * producer already running, rather than replacing {@link #producer} and leaving the old
-	 * thread alive. An orphaned producer would keep rendering into the ring and running the
-	 * borrowed render operation after a later {@code stop()}/{@code destroy()} — which only
-	 * joins and frees through the newer thread — freed them (a use-after-free).</p>
-	 *
 	 * @param prefill number of buffers to render before returning (clamped to {@link #slots})
 	 */
-	public synchronized void start(int prefill) {
-		if (producer != null) {
-			stop();
-		}
-
+	public void start(int prefill) {
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
@@ -268,33 +251,16 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	/**
 	 * Stops the producer thread and resets the ring to empty so the stream can be restarted via
 	 * {@link #start(int)}. The backing storage is retained.
-	 *
-	 * <p>This waits for the producer thread to actually terminate before returning, rather than
-	 * abandoning it after a bounded join. Clearing {@code running} and interrupting unblocks the
-	 * producer from {@link Semaphore#acquire()}, so it exits after at most one more render
-	 * iteration; the wait is therefore bounded in practice by a single buffer render. Termination
-	 * must be confirmed here because {@link #destroy()} frees the ring and {@link #slotCopies}
-	 * next, and callers free the render operation the producer runs — a producer still alive would
-	 * use those buffers and kernels after they are released (a use-after-free), and {@link #start(int)}
-	 * would otherwise be able to spawn a second producer alongside a lingering one.</p>
-	 *
-	 * <p>Serialized with {@link #start(int)} and other {@code stop()} calls, so concurrent
-	 * callers (a runner reset and a scene teardown, for example) cannot observe the producer
-	 * field half-replaced.</p>
 	 */
-	public synchronized void stop() {
+	public void stop() {
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
-			boolean interrupted = false;
-			while (producer.isAlive()) {
-				try {
-					producer.join();
-				} catch (InterruptedException e) {
-					interrupted = true;
-				}
+			try {
+				producer.join(2000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 			}
-			if (interrupted) Thread.currentThread().interrupt();
 			producer = null;
 		}
 		writeIndex.set(0);
@@ -304,12 +270,8 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 		filled.drainPermits();
 	}
 
-	/**
-	 * Stops the producer (see {@link #stop()}) and frees the ring and the compiled slot copies.
-	 * The render operation is borrowed and left to its owner.
-	 */
 	@Override
-	public synchronized void destroy() {
+	public void destroy() {
 		stop();
 
 		for (int i = 0; i < slotCopies.length; i++) {
