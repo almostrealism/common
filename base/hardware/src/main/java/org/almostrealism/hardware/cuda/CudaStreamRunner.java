@@ -25,6 +25,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
@@ -45,7 +48,7 @@ import java.util.function.Consumer;
  * same runner is already honored and costs nothing. Any other dependency (a <em>foreign</em> one:
  * another backend's completion, a host-side latch, a merge of several completions) is bridged on
  * the host without blocking the caller: the submission is held, with every submission after it,
- * in a queue whose head is released from {@link Semaphore#CALLBACK_EXECUTOR} once the foreign
+ * in a queue whose head is released from a runner-owned daemon thread once the foreign
  * dependency has completed. Holding the later submissions keeps submission order, which a
  * submission that depends on a held one relies on, exactly as the GPU-side wait of a Metal bridge
  * holds every command buffer committed after it. Work already on the stream is never held back,
@@ -83,8 +86,33 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	/** The thread that observes completions and runs completion callbacks. */
 	private final Thread completionThread;
 
-	/** Whether {@link #destroy()} has started. Guarded by this runner's monitor. */
+	/**
+	 * Daemon threads that wait for the foreign dependency at the head of {@link #held}. They are
+	 * daemons so that a dependency which never completes cannot keep the JVM alive.
+	 */
+	private final ExecutorService dependencyWaits = Executors.newCachedThreadPool(r -> {
+		Thread t = new Thread(r, "CUDA stream dependency wait");
+		t.setDaemon(true);
+		return t;
+	});
+
+	/**
+	 * The wait for the foreign dependency of the head of {@link #held}, or {@code null}. Guarded by
+	 * this runner's monitor.
+	 */
+	private Future<?> dependencyWait;
+
+	/**
+	 * Whether the runner has stopped accepting work, because {@link #destroy()} has started or the
+	 * completion thread was interrupted. Guarded by this runner's monitor.
+	 */
 	private boolean destroyed;
+
+	/** Held by {@link #destroy()} while it waits for the device and releases the stream. */
+	private final Object teardown = new Object();
+
+	/** Whether the stream has been released. Guarded by {@link #teardown}. */
+	private boolean tornDown;
 
 	/**
 	 * Creates a runner for the given stream, which it takes ownership of, and starts its
@@ -126,15 +154,41 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 */
 	public Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
 							Semaphore dependsOn, Runnable onComplete) {
+		return submit(requester, command, dependsOn, null, onComplete);
+	}
+
+	/**
+	 * Submits {@code command} as {@link #submit(OperationMetadata, Consumer, Semaphore, Runnable)}
+	 * does, and runs {@code onHeld} if the submission is held instead of being launched
+	 * immediately.
+	 *
+	 * <p>A held submission can wait for as long as the foreign dependency at the head of the
+	 * queue does, which can be longer than protection the caller took for the duration of a
+	 * kernel lasts (such as a {@code KernelMemoryGuard} execution reservation, which is subject
+	 * to a deferred-release backstop). {@code onHeld} lets the caller strengthen that protection
+	 * only when it is needed, so a submission that launches immediately pays nothing for it.
+	 * It runs on the submitting thread, before this method returns and before the submission
+	 * can launch. If it throws, the submission is rejected exactly as a refused one is: it never
+	 * launches, {@code onComplete} runs, and the failure is thrown from here.</p>
+	 *
+	 * @param requester  the operation submitting the work, or {@code null}
+	 * @param command    enqueues the work on the stream
+	 * @param dependsOn  work that must complete first, or {@code null}
+	 * @param onHeld     run if the submission is held rather than launched immediately, or {@code null}
+	 * @param onComplete run once the work has completed or failed, or {@code null}; must not wait
+	 *                   for a later submission to this runner
+	 * @return the submission's completion
+	 * @throws IllegalStateException if the runner has been destroyed
+	 */
+	public Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
+							Semaphore dependsOn, Runnable onHeld, Runnable onComplete) {
 		CudaSemaphore completion = new CudaSemaphore(requester, this);
-		boolean sameRunner = dependsOn instanceof CudaSemaphore &&
-				((CudaSemaphore) dependsOn).getRunner() == this;
 		Submission submission = new Submission(completion, command,
-				sameRunner ? null : dependsOn, onComplete);
+				ordersAfter(dependsOn) ? null : dependsOn, onComplete);
 
 		synchronized (this) {
 			if (destroyed) {
-				throw submission.refuse();
+				throw submission.reject(new IllegalStateException("The CUDA stream runner has been destroyed"));
 			}
 
 			if (submission.dependsOn == null && held.isEmpty()) {
@@ -142,11 +196,34 @@ public class CudaStreamRunner implements ConsoleFeatures {
 				return completion;
 			}
 
+			if (onHeld != null) {
+				try {
+					onHeld.run();
+				} catch (RuntimeException e) {
+					throw submission.reject(e);
+				} catch (Error e) {
+					throw submission.reject(e);
+				}
+			}
+
 			held.add(submission);
 			if (held.size() == 1) awaitDependency(submission);
 		}
 
 		return completion;
+	}
+
+	/**
+	 * Returns true if work submitted to this runner is already ordered after {@code dependsOn}
+	 * without any further action: when it is the completion of an earlier submission to this same
+	 * runner, whose stream executes in submission order. Any other completion is foreign, and a
+	 * submission that depends on it is held until it completes (see {@link #submit}).
+	 *
+	 * @param dependsOn a completion, or {@code null}
+	 * @return true if {@code dependsOn} is a completion of this runner
+	 */
+	public boolean ordersAfter(Semaphore dependsOn) {
+		return dependsOn instanceof CudaSemaphore && ((CudaSemaphore) dependsOn).getRunner() == this;
 	}
 
 	/**
@@ -203,13 +280,13 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	}
 
 	/**
-	 * Releases the given held submission from a callback thread once its foreign dependency has
-	 * completed or failed. Must hold this runner's monitor.
+	 * Releases the given held submission from one of {@link #dependencyWaits} once its foreign
+	 * dependency has completed or failed. Must hold this runner's monitor.
 	 *
 	 * @param head the submission at the head of {@link #held}
 	 */
 	private void awaitDependency(Submission head) {
-		Semaphore.CALLBACK_EXECUTOR.execute(() -> {
+		dependencyWait = dependencyWaits.submit(() -> {
 			Throwable failure = null;
 
 			try {
@@ -225,7 +302,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	/**
 	 * Launches the head of {@link #held} now that its foreign dependency has settled, followed by
 	 * every submission behind it up to the next one with a foreign dependency of its own, which
-	 * becomes the new head. Does nothing if {@code head} was abandoned by {@link #destroy()}.
+	 * becomes the new head. Does nothing if {@code head} was abandoned when the runner stopped
+	 * accepting work.
 	 *
 	 * @param head    the submission whose dependency has settled
 	 * @param failure the dependency's failure, or {@code null} if it completed
@@ -233,6 +311,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	private synchronized void release(Submission head, Throwable failure) {
 		if (held.peek() != head) return;
 
+		dependencyWait = null;
 		held.poll();
 		start(head, failure);
 
@@ -272,9 +351,14 @@ public class CudaStreamRunner implements ConsoleFeatures {
 
 	/**
 	 * Body of the completion thread: settles completions in order until {@link #destroy()}
-	 * hands it {@link Completion#STOP}. An interrupt still settles every completion already
-	 * queued before the thread exits, so no caller is left waiting on a submission that will
-	 * never be observed.
+	 * hands it {@link Completion#STOP}.
+	 *
+	 * <p>An interrupt stops the thread, and with it the only consumer of completions, so the
+	 * runner first stops accepting work exactly as {@link #destroy()} does: later submissions are
+	 * refused, and held ones are abandoned. Once no further completion can be queued, every one
+	 * already queued is settled before the thread exits, so no caller is left waiting on a
+	 * submission that will never be observed. {@link #destroy()} is still needed afterwards to
+	 * release the stream.</p>
 	 */
 	private void observeCompletions() {
 		while (true) {
@@ -284,6 +368,11 @@ public class CudaStreamRunner implements ConsoleFeatures {
 				next = completions.take();
 			} catch (InterruptedException e) {
 				warn("Completion thread interrupted with " + completions.size() + " completions pending");
+
+				synchronized (this) {
+					stopAccepting();
+				}
+
 				settlePending();
 				Thread.currentThread().interrupt();
 				return;
@@ -323,7 +412,13 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * Waits for all submitted work, runs every outstanding completion callback, stops the
 	 * completion thread and releases the stream. Submissions still held behind a foreign
 	 * dependency are not launched: their semaphores report that the runner was destroyed. Later
-	 * submissions are refused. Destroying a runner twice does nothing.
+	 * submissions are refused.
+	 *
+	 * <p>The teardown happens once. A caller that arrives while another is still tearing down
+	 * waits for it to finish, and a caller that arrives afterwards returns at once, so every
+	 * caller returns only once the stream has been released. The stream is released even if
+	 * waiting for it fails, in which case the failure is thrown to the caller that performed the
+	 * teardown.</p>
 	 *
 	 * @throws IllegalStateException if called from the completion thread
 	 */
@@ -331,22 +426,47 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		requireOffCompletionThread();
 
 		synchronized (this) {
-			if (destroyed) return;
-			destroyed = true;
-
-			for (Submission s : held) {
-				start(s, new IllegalStateException("The CUDA stream runner was destroyed " +
-						"before the submission's dependency completed"));
-			}
-
-			held.clear();
-			completions.add(Completion.STOP);
+			stopAccepting();
 		}
 
-		joinCompletionThread();
+		synchronized (teardown) {
+			if (tornDown) return;
+			tornDown = true;
 
-		stream.synchronize();
-		stream.release();
+			joinCompletionThread();
+			dependencyWaits.shutdownNow();
+
+			try {
+				stream.synchronize();
+			} finally {
+				stream.release();
+			}
+		}
+	}
+
+	/**
+	 * Stops accepting work, if the runner has not already: later submissions are refused, every
+	 * held submission is abandoned (reporting that the runner was destroyed, after its callback
+	 * runs in order), the wait for the dependency of the head is cancelled, and the completion
+	 * thread is told to stop once it has settled everything queued before it. Must hold this
+	 * runner's monitor.
+	 */
+	private void stopAccepting() {
+		if (destroyed) return;
+		destroyed = true;
+
+		if (dependencyWait != null) {
+			dependencyWait.cancel(true);
+			dependencyWait = null;
+		}
+
+		for (Submission s : held) {
+			start(s, new IllegalStateException("The CUDA stream runner was destroyed " +
+					"before the submission's dependency completed"));
+		}
+
+		held.clear();
+		completions.add(Completion.STOP);
 	}
 
 	/** Waits for the completion thread to finish, restoring any interrupt received meanwhile. */
@@ -395,26 +515,26 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		}
 
 		/**
-		 * Refuses this submission because the runner has been destroyed: runs its completion
-		 * callback, so whatever the callback releases is not leaked, and fails its semaphore. A
-		 * failure of the callback is attached to the refusal as suppressed.
+		 * Rejects this submission before it was queued or launched (because the runner has been
+		 * destroyed, or because the caller's {@code onHeld} failed): runs its completion callback,
+		 * so whatever the callback releases is not leaked, and fails its semaphore. A failure of
+		 * the callback is attached to the rejection as suppressed.
 		 *
-		 * @return the refusal to throw to the submitting thread
+		 * @param rejection why the submission is rejected
+		 * @param <T>       the type of the rejection
+		 * @return the rejection, to throw to the submitting thread
 		 */
-		private IllegalStateException refuse() {
-			IllegalStateException refusal =
-					new IllegalStateException("The CUDA stream runner has been destroyed");
-
+		private <T extends Throwable> T reject(T rejection) {
 			try {
 				if (onComplete != null) onComplete.run();
 			} catch (RuntimeException | Error e) {
-				refusal.addSuppressed(e);
+				rejection.addSuppressed(e);
 			} finally {
-				completion.fail(refusal);
+				completion.fail(rejection);
 				completion.countDown();
 			}
 
-			return refusal;
+			return rejection;
 		}
 	}
 

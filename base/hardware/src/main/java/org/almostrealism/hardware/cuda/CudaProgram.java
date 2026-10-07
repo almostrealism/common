@@ -50,11 +50,17 @@ public class CudaProgram implements OperationInfo, Signature, Destroyable, Conso
 	/** The CUDA C++ source. */
 	private final String src;
 
-	/** The loaded module, once compiled. */
+	/** The loaded module, once compiled, until it is unloaded. Guarded by this program's monitor. */
 	private CUModule module;
 
-	/** The kernel, once compiled. */
-	private CUFunction function;
+	/** The kernel, once compiled, until the program is destroyed. */
+	private volatile CUFunction function;
+
+	/**
+	 * Launches of the kernel begun with {@link #beginLaunch()} and not yet ended with
+	 * {@link #endLaunch()}. Guarded by this program's monitor.
+	 */
+	private int inFlight;
 
 	/**
 	 * Creates a program. It is not compiled until {@link #compile()} is called.
@@ -135,10 +141,43 @@ public class CudaProgram implements OperationInfo, Signature, Destroyable, Conso
 		return function == null;
 	}
 
-	@Override
-	public void destroy() {
-		function = null;
+	/**
+	 * Returns the kernel for a launch that is about to be submitted, and counts that launch as
+	 * in flight until {@link #endLaunch()}. Unloading a module does not wait for kernels from it
+	 * that are still pending on a stream, so {@link #destroy()} defers the unload until every
+	 * launch begun here has ended.
+	 *
+	 * @return the kernel
+	 * @throws HardwareException if the program is not compiled or has been destroyed
+	 */
+	public synchronized CUFunction beginLaunch() {
+		CUFunction kernel = getFunction();
+		inFlight++;
+		return kernel;
+	}
 
+	/**
+	 * Ends a launch begun with {@link #beginLaunch()}, once it has completed on the device or
+	 * failed. The module is unloaded here if the program was destroyed while the launch was
+	 * in flight and no other launch remains.
+	 */
+	public synchronized void endLaunch() {
+		inFlight--;
+		if (inFlight == 0 && function == null) unload();
+	}
+
+	/**
+	 * Destroys the program. No launch can begin afterwards. The module is unloaded now if no
+	 * launch is in flight, and otherwise by the {@link #endLaunch()} of the last one.
+	 */
+	@Override
+	public synchronized void destroy() {
+		function = null;
+		if (inFlight == 0) unload();
+	}
+
+	/** Unloads the module, if it is still loaded. Must hold this program's monitor. */
+	private void unload() {
 		if (module != null) {
 			module.release();
 			module = null;

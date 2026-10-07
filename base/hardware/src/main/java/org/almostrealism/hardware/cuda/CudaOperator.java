@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cuda;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
@@ -29,6 +30,7 @@ import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Dispatches the kernel of a {@link CudaProgram} with a particular set of arguments.
@@ -93,7 +95,18 @@ public class CudaOperator extends HardwareOperator {
 	 */
 	@Override
 	public int getWorkgroupSize() {
-		long work = Math.max(1, getGlobalWorkSize());
+		return workgroupSize(getGlobalWorkSize());
+	}
+
+	/**
+	 * Returns the block size for the given global work size: the largest the kernel allows,
+	 * capped at {@link #maxBlockSize} and at the work size.
+	 *
+	 * @param globalWorkSize the number of work items
+	 * @return the block size
+	 */
+	private int workgroupSize(long globalWorkSize) {
+		long work = Math.max(1, globalWorkSize);
 		int max = Math.min(maxBlockSize, prog.getFunction().getMaxThreadsPerBlock());
 		return (int) Math.min(max, work);
 	}
@@ -103,9 +116,54 @@ public class CudaOperator extends HardwareOperator {
 		return context.getDataContext().getMemoryProviders();
 	}
 
+	/**
+	 * Dispatches the kernel with the provided arguments and returns its completion without
+	 * waiting for the kernel to finish, or for {@code dependsOn}.
+	 *
+	 * <p>A {@code dependsOn} that the context's {@link CudaStreamRunner} already orders after (the
+	 * completion of earlier work on the same stream) needs nothing more, so the kernel is prepared
+	 * and submitted now. Any other completion may still be writing an input that argument
+	 * preparation would copy, so the whole dispatch is deferred until it completes, through
+	 * {@link #dispatchAfter}. The global work size and offset are read here, when the dispatch is
+	 * requested, because this operator is reused and they are set again for the next request,
+	 * which may come before a deferred dispatch has run.</p>
+	 *
+	 * @param args      the arguments to pass to the kernel
+	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
+	 * @return the dispatch's completion
+	 */
 	@Override
-	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
-		CUFunction function = prog.getFunction();
+	public Semaphore accept(Object[] args, Semaphore dependsOn) {
+		long count = getGlobalWorkSize();
+		long offset = getGlobalWorkOffset();
+
+		if (dependsOn != null && !context.getStreamRunner().ordersAfter(dependsOn)) {
+			return dispatchAfter(dependsOn, args, resolved -> dispatch(resolved, null, count, offset));
+		}
+
+		return dispatch(args, dependsOn, count, offset);
+	}
+
+	/**
+	 * Prepares the arguments and submits the kernel to the context's {@link CudaStreamRunner},
+	 * ordered after {@code dependsOn}, which is {@code null} or a completion the runner already
+	 * orders after.
+	 *
+	 * <p>The argument memory is protected by a {@link KernelMemoryGuard} execution reservation
+	 * until the kernel has completed. The runner may still hold the submission behind earlier
+	 * work that waits for a dependency of its own, for longer than that reservation's
+	 * deferred-release backstop, so if it does, a scheduling lease, which never expires, is also
+	 * taken over the same memory and kept until the kernel has completed. The program counts the
+	 * launch as in flight for the same period (see {@link CudaProgram#beginLaunch()}), so its
+	 * module is not unloaded under the kernel.</p>
+	 *
+	 * @param args      the arguments to pass to the kernel
+	 * @param dependsOn {@code null}, or a completion the runner already orders after
+	 * @param count     the global work size requested
+	 * @param offset    the global work offset requested
+	 * @return the dispatch's completion
+	 */
+	private synchronized Semaphore dispatch(Object[] args, Semaphore dependsOn, long count, long offset) {
 		long id = totalInvocations++;
 
 		MemoryData[] data = prepareArguments(argCount, args);
@@ -120,9 +178,7 @@ public class CudaOperator extends HardwareOperator {
 			sizes[i] = data[i].getAtomicMemLength();
 		}
 
-		long count = getGlobalWorkSize();
-		long offset = getGlobalWorkOffset();
-		int block = getWorkgroupSize();
+		int block = workgroupSize(count);
 		int elementBytes = context.getDataContext().getPrecision().bytes();
 		long grid = CUFunction.gridSize(count, block);
 
@@ -138,14 +194,28 @@ public class CudaOperator extends HardwareOperator {
 			log("\tGrid = " + grid + " x " + block + " for " + count + " work items");
 		}
 
-		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
+		CUFunction function = prog.beginLaunch();
+		KernelMemoryGuard memoryGuard = Hardware.getLocalHardware().getKernelMemoryGuard();
+		KernelMemoryGuard.Reservation guard;
+
+		try {
+			guard = memoryGuard.acquire(data);
+		} catch (RuntimeException | Error e) {
+			prog.endLaunch();
+			throw e;
+		}
+
+		AtomicReference<KernelMemoryGuard.Reservation> lease = new AtomicReference<>();
 
 		return context.getStreamRunner().submit(getMetadata(), stream -> recordDuration(null, () -> {
 			if (count > 0) {
 				function.launch(stream, (int) grid, block, buffers, offsets, sizes, elementBytes, count, offset);
 			}
-		}), dependsOn, () -> {
-			guard.release();
+		}), dependsOn, () -> lease.set(memoryGuard.acquireScheduled(data)), () -> {
+			Destroyable.releaseAll(List.of(guard::release, () -> {
+				KernelMemoryGuard.Reservation held = lease.getAndSet(null);
+				if (held != null) held.release();
+			}), prog::endLaunch);
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
 		});
