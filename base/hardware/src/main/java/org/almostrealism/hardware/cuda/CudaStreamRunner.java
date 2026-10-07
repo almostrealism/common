@@ -33,7 +33,7 @@ import java.util.function.Consumer;
  * submitting thread: the CUDA counterpart of
  * {@link org.almostrealism.hardware.metal.MetalCommandRunner}.
  *
- * <p>Each submission returns a {@link CudaSemaphore}. Work is enqueued on the stream as soon as
+ * <p>Each submission returns a {@link Semaphore} (a {@link CudaSemaphore}). Work is enqueued on the stream as soon as
  * nothing it depends on is outstanding, and an event recorded behind it marks its completion. A
  * dedicated completion thread waits for those events in launch order and runs each submission's
  * completion callback before settling its semaphore, so callbacks run in submission order and
@@ -58,11 +58,14 @@ import java.util.function.Consumer;
  * <h2>Threads</h2>
  *
  * <p>The completion thread runs completion callbacks, so a callback must not wait for a later
- * submission to this runner; {@link CudaSemaphore#waitFor()} rejects being called there rather
- * than deadlock. Launches happen on the submitting thread, or on the callback thread that
- * released a foreign dependency, while holding this runner's monitor, which serializes them so
- * that work from different threads is never interleaved on the stream. Nothing done while
- * holding the monitor waits for the GPU or for a dependency.</p>
+ * submission to this runner; {@link CudaSemaphore#waitFor()} rejects such a wait there rather
+ * than deadlock, while still allowing a wait for an earlier submission that has already settled.
+ * Launches happen on the submitting thread, or on the callback thread that released a foreign
+ * dependency, while holding this runner's monitor, which serializes them so that work from
+ * different threads is never interleaved on the stream. Nothing done while holding the monitor
+ * waits for a dependency, and a successful launch does not wait for the GPU. A failed launch is
+ * the one exception: the stream is drained while the monitor is still held, so that no work
+ * referencing the failed submission's memory is pending when its callback releases it.</p>
  */
 public class CudaStreamRunner implements ConsoleFeatures {
 	/** The stream all work is submitted to. */
@@ -109,6 +112,10 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * behind a foreign dependency cannot report to the caller, so the same failure is reported by
 	 * its semaphore instead, after the same drain and callback.</p>
 	 *
+	 * <p>A submission refused because the runner has been destroyed never launches, but its
+	 * {@code onComplete} still runs before the refusal is thrown, so a resource the caller handed
+	 * to the callback (such as a memory reservation) is released rather than leaked.</p>
+	 *
 	 * @param requester  the operation submitting the work, or {@code null}
 	 * @param command    enqueues the work on the stream
 	 * @param dependsOn  work that must complete first, or {@code null}
@@ -117,8 +124,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * @return the submission's completion
 	 * @throws IllegalStateException if the runner has been destroyed
 	 */
-	public CudaSemaphore submit(OperationMetadata requester, Consumer<CUStream> command,
-								Semaphore dependsOn, Runnable onComplete) {
+	public Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
+							Semaphore dependsOn, Runnable onComplete) {
 		CudaSemaphore completion = new CudaSemaphore(requester, this);
 		boolean sameRunner = dependsOn instanceof CudaSemaphore &&
 				((CudaSemaphore) dependsOn).getRunner() == this;
@@ -127,7 +134,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 
 		synchronized (this) {
 			if (destroyed) {
-				throw new IllegalStateException("The CUDA stream runner has been destroyed");
+				throw submission.refuse();
 			}
 
 			if (submission.dependsOn == null && held.isEmpty()) {
@@ -145,7 +152,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	/**
 	 * Launches a submission on the submitting thread. On failure the stream has been drained by
 	 * {@link #launch}, so the callback runs and the semaphore settles here before the failure is
-	 * rethrown. Must hold this runner's monitor.
+	 * rethrown; a failure of the callback is attached to it as suppressed rather than replacing it.
+	 * Must hold this runner's monitor.
 	 *
 	 * @param submission the submission to launch
 	 */
@@ -157,6 +165,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		} catch (RuntimeException | Error e) {
 			try {
 				if (submission.onComplete != null) submission.onComplete.run();
+			} catch (RuntimeException | Error callbackFailure) {
+				e.addSuppressed(callbackFailure);
 			} finally {
 				submission.completion.fail(e);
 				submission.completion.countDown();
@@ -165,7 +175,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			throw e;
 		}
 
-		completions.add(new Completion(submission.completion, event, submission.onComplete));
+		completions.add(new Completion(submission.completion, event, submission.onComplete, null));
 	}
 
 	/**
@@ -257,13 +267,14 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			}
 		}
 
-		if (failure != null) submission.completion.fail(failure);
-		completions.add(new Completion(submission.completion, event, submission.onComplete));
+		completions.add(new Completion(submission.completion, event, submission.onComplete, failure));
 	}
 
 	/**
 	 * Body of the completion thread: settles completions in order until {@link #destroy()}
-	 * hands it {@link Completion#STOP}.
+	 * hands it {@link Completion#STOP}. An interrupt still settles every completion already
+	 * queued before the thread exits, so no caller is left waiting on a submission that will
+	 * never be observed.
 	 */
 	private void observeCompletions() {
 		while (true) {
@@ -272,13 +283,27 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			try {
 				next = completions.take();
 			} catch (InterruptedException e) {
-				// TODO(review): pending completions are left un-settled here, so their waiters hang
 				warn("Completion thread interrupted with " + completions.size() + " completions pending");
+				settlePending();
+				Thread.currentThread().interrupt();
 				return;
 			}
 
 			if (next == Completion.STOP) return;
 			next.settle();
+		}
+	}
+
+	/**
+	 * Settles every completion still queued, so a thread interrupt does not leave callers of
+	 * {@link CudaSemaphore#waitFor()} waiting on a submission the completion thread will never
+	 * observe. {@link Completion#STOP} is skipped rather than settled, as it has no semaphore.
+	 */
+	private void settlePending() {
+		Completion next;
+
+		while ((next = completions.poll()) != null) {
+			if (next != Completion.STOP) next.settle();
 		}
 	}
 
@@ -368,12 +393,35 @@ public class CudaStreamRunner implements ConsoleFeatures {
 			this.dependsOn = dependsOn;
 			this.onComplete = onComplete;
 		}
+
+		/**
+		 * Refuses this submission because the runner has been destroyed: runs its completion
+		 * callback, so whatever the callback releases is not leaked, and fails its semaphore. A
+		 * failure of the callback is attached to the refusal as suppressed.
+		 *
+		 * @return the refusal to throw to the submitting thread
+		 */
+		private IllegalStateException refuse() {
+			IllegalStateException refusal =
+					new IllegalStateException("The CUDA stream runner has been destroyed");
+
+			try {
+				if (onComplete != null) onComplete.run();
+			} catch (RuntimeException | Error e) {
+				refusal.addSuppressed(e);
+			} finally {
+				completion.fail(refusal);
+				completion.countDown();
+			}
+
+			return refusal;
+		}
 	}
 
 	/** A launched (or failed) submission whose completion the completion thread will observe. */
 	private static final class Completion {
 		/** Tells the completion thread to stop. */
-		private static final Completion STOP = new Completion(null, null, null);
+		private static final Completion STOP = new Completion(null, null, null, null);
 
 		/** The submission's completion. */
 		private final CudaSemaphore completion;
@@ -381,6 +429,8 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		private final CUEvent event;
 		/** The completion callback, or {@code null}. */
 		private final Runnable onComplete;
+		/** The failure the submission settles with before its callback runs, or {@code null}. */
+		private final Throwable failure;
 
 		/**
 		 * Creates a completion record.
@@ -388,36 +438,50 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		 * @param completion the submission's completion
 		 * @param event      the event recorded behind the work, or {@code null}
 		 * @param onComplete the completion callback, or {@code null}
+		 * @param failure    the failure the submission already carries (a failed foreign dependency
+		 *                   or a failed deferred launch), or {@code null}; reported as the primary
+		 *                   failure so a later callback failure is suppressed onto it rather than lost
 		 */
-		private Completion(CudaSemaphore completion, CUEvent event, Runnable onComplete) {
+		private Completion(CudaSemaphore completion, CUEvent event, Runnable onComplete, Throwable failure) {
 			this.completion = completion;
 			this.event = event;
 			this.onComplete = onComplete;
+			this.failure = failure;
 		}
 
 		/**
 		 * Waits for the work to finish on the GPU, releases the event, runs the callback and
 		 * settles the semaphore. A failure at any step is reported by the semaphore and does
-		 * not prevent the later steps.
+		 * not prevent the later steps. The first failure is the one reported; a later failure is
+		 * attached to it as suppressed rather than replacing it, so the operation that actually
+		 * failed is not hidden by cleanup or by the callback. The event is released exactly once,
+		 * whether or not waiting for it failed.
 		 */
 		private void settle() {
-			try {
-				if (event != null) {
-					try {
-						event.synchronize();
-					} finally {
-						event.release();
-					}
+			Throwable failure = this.failure;
+
+			if (event != null) {
+				try {
+					event.synchronize();
+				} catch (RuntimeException | Error e) {
+					failure = e;
 				}
-			} catch (RuntimeException | Error e) {
-				completion.fail(e);
+
+				try {
+					event.release();
+				} catch (RuntimeException | Error e) {
+					if (failure != null) failure.addSuppressed(e);
+					else failure = e;
+				}
 			}
 
 			try {
 				if (onComplete != null) onComplete.run();
 			} catch (RuntimeException | Error e) {
-				completion.fail(e);
+				if (failure != null) failure.addSuppressed(e);
+				else failure = e;
 			} finally {
+				completion.fail(failure);
 				completion.countDown();
 			}
 		}

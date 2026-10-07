@@ -519,9 +519,12 @@ another thread. Sessions without a CUDA toolkit cannot rebuild it.
   foreign semaphores.
 
   **Status: the runner is asynchronous** (`CudaStreamRunner`, `CudaSemaphore`). `submit`
-  never blocks: it launches and records an event behind the work, and a runner-owned
-  completion thread synchronizes events in launch order, then runs `onComplete` before
-  settling the semaphore. It departs from the sketch above in three ways:
+  never waits for a dependency or for successful GPU work: it launches and records an event
+  behind the work, and a runner-owned completion thread synchronizes events in launch order,
+  then runs `onComplete` before settling the semaphore. Its one synchronous wait is on the
+  launch-failure path, where `launch` drains the stream before the failure is rethrown, so work
+  the failed command already enqueued cannot outlive the buffers it referenced. It departs from
+  the sketch above in three ways:
   - Launches run on the submitting thread under the runner's monitor, not on a
     single-thread executor. Every `CU` entry point makes its context current, so per-thread
     binding does not require one thread, and the monitor already makes launch order equal
