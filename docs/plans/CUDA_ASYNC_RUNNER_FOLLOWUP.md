@@ -233,11 +233,25 @@ gates master, so it is left for a separate change with CL-device verification.
 **Not changed:**
 - The runner's FIFO hold semantics. They match Metal, where a bridged buffer holds every
   later buffer.
-- The immediate-failure callback order (§3.3, second bullet). It still needs the owner's
-  decision.
 - The §3.4 copy migration check.
 
-**New since this document was written:** master added `Semaphore.merge`, which
+**Second pass:**
+- **§3.3 (callback order), decided and implemented:** a submission whose immediate launch
+  fails now goes through the ordered completion queue like any other. The submitting thread
+  waits for it to settle in its turn before it throws, so the synchronous throw still comes
+  after `onComplete` has run, and callbacks run strictly in submission order. The wait happens
+  only on that failure path. A submission made from a completion callback cannot wait for its
+  own turn, so its failure is thrown at once and its callback still runs in order.
+- **`CudaSemaphore.merge`:** each `CudaSemaphore` carries a sequence number assigned at
+  submission. `merge` returns the later of two completions from the same runner, so
+  `Semaphore.all` over CUDA completions folds to one completion that a dependent CUDA kernel
+  orders after on the stream, instead of a foreign composite that is deferred through
+  `dispatchAfter`.
+- **The new device test** (`inputDestroyedWhileDependencyPendingIsStillRead`) now runs wherever
+  a GPU accelerator is available, not only with CUDA, so CI shows whether Metal and OpenCL
+  protect an input destroyed during a deferred dispatch.
+
+**Earlier note (now addressed):** master added `Semaphore.merge`, which
 `Semaphore.all` uses to fold completions from one provider before it builds a host-side
 composite. `MetalSemaphore` implements it, but `CudaSemaphore` does not yet. So `all()` over
 CUDA completions becomes a foreign composite, which a dependent CUDA kernel then defers on

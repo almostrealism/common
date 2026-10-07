@@ -881,6 +881,73 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * Two completions of the same runner merge into the one submitted later, in either order, and
+	 * so does a merge of several through {@link Semaphore#all(List)}. Completions of another runner,
+	 * or of another provider, do not merge.
+	 */
+	@Test(timeout = 30000)
+	public void completionsOfOneRunnerMergeIntoTheLater() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
+		CudaStreamRunner other = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
+
+		Semaphore first = runner.submit(null, stream -> { }, null, null);
+		Semaphore second = runner.submit(null, stream -> { }, null, null);
+		Semaphore elsewhere = other.submit(null, stream -> { }, null, null);
+
+		Assert.assertSame(second, first.merge(second));
+		Assert.assertSame(second, second.merge(first));
+		Assert.assertSame(second, Semaphore.all(List.of(first, second)));
+		Assert.assertNull("Completions of different runners must not merge", first.merge(elsewhere));
+		Assert.assertNull("A completion of another provider must not merge",
+				first.merge(new LatchSemaphore(1)));
+
+		runner.destroy();
+		other.destroy();
+	}
+
+	/**
+	 * A submission whose immediate launch fails settles in its turn: its callback does not run
+	 * before that of an earlier submission still on the device, and the failure is thrown only once
+	 * its callback has run. This order is what lets a later completion stand for an earlier one
+	 * (see {@link CudaSemaphore#merge}).
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the submitting thread
+	 */
+	@Test(timeout = 30000)
+	public void immediateLaunchFailureSettlesAfterEarlierSubmissions() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events, entered, gate));
+
+		runner.submit(null, stream -> { }, null, () -> events.add("first complete"));
+		entered.await();
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		Thread submitting = new Thread(() -> {
+			try {
+				runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); },
+						null, () -> events.add("second complete"));
+			} catch (IllegalStateException e) {
+				thrown.set(e);
+			}
+		});
+		submitting.start();
+		submitting.join(500);
+
+		Assert.assertTrue("The failure must wait for the earlier submission to settle", submitting.isAlive());
+		Assert.assertFalse(events.contains("second complete"));
+
+		gate.countDown();
+		submitting.join();
+
+		Assert.assertNotNull("The launch failure must reach the submitting thread", thrown.get());
+		Assert.assertEquals("launch failed", thrown.get().getMessage());
+		Assert.assertTrue(events.indexOf("first complete") < events.indexOf("second complete"));
+		runner.destroy();
+	}
+
+	/**
 	 * A {@link CUStream} for teardown tests: draining it optionally blocks on a gate, and releasing
 	 * it is recorded as {@code "released"}. Completion events are recorded as in
 	 * {@link RecordingStream} but not logged.

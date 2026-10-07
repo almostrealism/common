@@ -108,6 +108,12 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 */
 	private boolean destroyed;
 
+	/**
+	 * The sequence number of the next submission. Submissions settle in the order of these
+	 * numbers (see {@link CudaSemaphore#merge}). Guarded by this runner's monitor.
+	 */
+	private long nextSequence;
+
 	/** Held by {@link #destroy()} while it waits for the device and releases the stream. */
 	private final Object teardown = new Object();
 
@@ -134,9 +140,17 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 * Submits {@code command} to run against the stream once {@code dependsOn} has completed,
 	 * without waiting for either on the calling thread.
 	 *
+	 * <p>Submissions settle in submission order, failed ones included: each submission's
+	 * {@code onComplete} runs, and its semaphore settles, only after those of every earlier
+	 * submission to this runner.</p>
+	 *
 	 * <p>If the work can be launched immediately and the command (or recording its completion)
 	 * fails, the stream is drained so no work that references the submission's memory is still
-	 * pending, {@code onComplete} runs, and the failure is thrown from here. A submission held
+	 * pending, and the failure is thrown from here once the submission has settled in its turn,
+	 * so {@code onComplete} has run by then. That waits for the earlier submissions to complete
+	 * first, but only on this failure path. The exception is a submission made from a completion
+	 * callback, which cannot wait for its own turn on the completion thread: its failure is
+	 * thrown at once and its {@code onComplete} runs afterwards, still in order. A submission held
 	 * behind a foreign dependency cannot report to the caller, so the same failure is reported by
 	 * its semaphore instead, after the same drain and callback.</p>
 	 *
@@ -182,35 +196,60 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 */
 	public Semaphore submit(OperationMetadata requester, Consumer<CUStream> command,
 							Semaphore dependsOn, Runnable onHeld, Runnable onComplete) {
-		CudaSemaphore completion = new CudaSemaphore(requester, this);
-		Submission submission = new Submission(completion, command,
-				ordersAfter(dependsOn) ? null : dependsOn, onComplete);
+		Semaphore foreign = ordersAfter(dependsOn) ? null : dependsOn;
+		CudaSemaphore completion;
+		Throwable launchFailure;
 
 		synchronized (this) {
+			completion = new CudaSemaphore(requester, this, nextSequence++);
+			Submission submission = new Submission(completion, command, foreign, onComplete);
+
 			if (destroyed) {
 				throw submission.reject(new IllegalStateException("The CUDA stream runner has been destroyed"));
 			}
 
 			if (submission.dependsOn == null && held.isEmpty()) {
-				launchOrThrow(submission);
+				launchFailure = start(submission, null);
+				if (launchFailure == null) return completion;
+			} else {
+				hold(submission, onHeld);
 				return completion;
 			}
-
-			if (onHeld != null) {
-				try {
-					onHeld.run();
-				} catch (RuntimeException e) {
-					throw submission.reject(e);
-				} catch (Error e) {
-					throw submission.reject(e);
-				}
-			}
-
-			held.add(submission);
-			if (held.size() == 1) awaitDependency(submission);
 		}
 
-		return completion;
+		if (Thread.currentThread() != completionThread) {
+			try {
+				completion.waitFor();
+			} catch (RuntimeException | Error settled) {
+				// The same failure, now with any callback failure attached; thrown below
+			}
+		}
+
+		if (launchFailure instanceof Error) throw (Error) launchFailure;
+		throw (RuntimeException) launchFailure;
+	}
+
+	/**
+	 * Holds a submission that cannot launch yet, behind its own foreign dependency or behind
+	 * earlier held work, running the caller's {@code onHeld} first. If {@code onHeld} fails, the
+	 * submission is rejected and the failure thrown. Must hold this runner's monitor.
+	 *
+	 * @param submission the submission to hold
+	 * @param onHeld     the caller's hook for a held submission, or {@code null}
+	 */
+	private void hold(Submission submission, Runnable onHeld) {
+		if (onHeld != null) {
+			try {
+				onHeld.run();
+			} catch (RuntimeException e) {
+				throw submission.reject(e);
+			} catch (Error e) {
+				throw submission.reject(e);
+			}
+		}
+
+		held.add(submission);
+		if (held.size() == 1) awaitDependency(submission);
 	}
 
 	/**
@@ -224,35 +263,6 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	 */
 	public boolean ordersAfter(Semaphore dependsOn) {
 		return dependsOn instanceof CudaSemaphore && ((CudaSemaphore) dependsOn).getRunner() == this;
-	}
-
-	/**
-	 * Launches a submission on the submitting thread. On failure the stream has been drained by
-	 * {@link #launch}, so the callback runs and the semaphore settles here before the failure is
-	 * rethrown; a failure of the callback is attached to it as suppressed rather than replacing it.
-	 * Must hold this runner's monitor.
-	 *
-	 * @param submission the submission to launch
-	 */
-	private void launchOrThrow(Submission submission) {
-		CUEvent event;
-
-		try {
-			event = launch(submission.command);
-		} catch (RuntimeException | Error e) {
-			try {
-				if (submission.onComplete != null) submission.onComplete.run();
-			} catch (RuntimeException | Error callbackFailure) {
-				e.addSuppressed(callbackFailure);
-			} finally {
-				submission.completion.fail(e);
-				submission.completion.countDown();
-			}
-
-			throw e;
-		}
-
-		completions.add(new Completion(submission.completion, event, submission.onComplete, null));
 	}
 
 	/**
@@ -329,13 +339,15 @@ public class CudaStreamRunner implements ConsoleFeatures {
 	}
 
 	/**
-	 * Launches a released submission, or records why it cannot be, handing it to the completion
-	 * thread either way so its callback runs in order. Must hold this runner's monitor.
+	 * Launches a submission, or records why it cannot be, handing it to the completion thread
+	 * either way so its callback runs in order. Must hold this runner's monitor.
 	 *
 	 * @param submission the submission to start
 	 * @param failure    the failure of its dependency, or {@code null}
+	 * @return the failure the submission settles with: {@code failure}, the launch failure, or
+	 *         {@code null} if it launched
 	 */
-	private void start(Submission submission, Throwable failure) {
+	private Throwable start(Submission submission, Throwable failure) {
 		CUEvent event = null;
 
 		if (failure == null) {
@@ -347,6 +359,7 @@ public class CudaStreamRunner implements ConsoleFeatures {
 		}
 
 		completions.add(new Completion(submission.completion, event, submission.onComplete, failure));
+		return failure;
 	}
 
 	/**

@@ -25,7 +25,6 @@ import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.cuda.CudaComputeContext;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.util.TestFeatures;
@@ -115,18 +114,17 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 	 * values rather than released memory. As in {@link #requestIsNotHeldUntilDependencyCompletes},
 	 * the inputs are large enough to be bound directly.
 	 *
-	 * <p>This runs only where a CUDA context is available, the backend verified to defer such a
-	 * dispatch with a lease over its arguments. The native backend does not yet: it prepares the
-	 * arguments when the dispatch is requested and protects them only with an expiring execution
-	 * reservation, so a destroyed input is dispatched without memory.</p>
+	 * <p>This runs only where a GPU accelerator is available. The native CPU backend does not yet
+	 * protect such a dispatch: it prepares the arguments when the dispatch is requested and holds
+	 * them only with an expiring execution reservation, so a destroyed input is dispatched without
+	 * memory.</p>
 	 *
 	 * @throws InterruptedException if interrupted while waiting for the delivery
 	 */
 	@Test(timeout = 60000)
 	public void inputDestroyedWhileDependencyPendingIsStillRead() throws InterruptedException {
-		Assume.assumeTrue("Requires a CUDA context", Hardware.getLocalHardware()
-				.getComputeContexts(false, true, ComputeRequirement.CUDA).stream()
-				.anyMatch(CudaComputeContext.class::isInstance));
+		Assume.assumeTrue("Requires a GPU accelerator",
+				Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU));
 
 		int size = 2 * MemoryDataArgumentMap.maxAggregateLength;
 
