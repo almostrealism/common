@@ -63,7 +63,14 @@ completion over this runner's own semaphores resolves by completing their whole 
 so a buffer containing both those dispatches and the bridge wait could never complete.
 Each such fresh-buffer commit increments `getBridgeCommitCount()`. A workload whose
 bridge commits approach its bridged-dispatch count is fragmenting buffers around bridges;
-grouping same-context members so bridges land at buffer starts restores batching. A zero
+grouping same-context members so bridges land at buffer starts restores batching.
+
+A dependency on several completions of the runner's *own* dispatches is not a composite and
+is never bridged: `Semaphore.all` first folds completions through `Semaphore.merge`, and
+`MetalSemaphore.merge` represents two dispatches of one runner by the later of them (the
+runner encodes and signals in order). Only composites that mix a Metal completion with a
+foreign one are bridged, and each such composite costs the commits its member waits force
+in addition to the bridge commit. A zero
 bridge count on a workload with cross-context dependencies means those dependencies never
 reach `submit` as dependencies at all — typically because non-submittable members in the
 composite force per-member waits that chop the chain first (see the composite

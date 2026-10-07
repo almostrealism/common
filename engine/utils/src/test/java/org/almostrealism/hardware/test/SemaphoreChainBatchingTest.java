@@ -119,6 +119,173 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that completions of one Metal runner merge rather than compose: merging two
+	 * dispatches encoded into the same command buffer yields the later dispatch's completion
+	 * itself, forces no command-buffer commit, and waiting on it covers the earlier dispatch.
+	 * A host-side composite would instead wait for each member on a callback thread, and each
+	 * of those waits commits the open buffer.
+	 */
+	@Test(timeout = 60000)
+	public void sameRunnerCompletionsMergeWithoutCommit() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+
+		// Start from a drained runner, so both dispatches below share one command buffer
+		runner.submit(null, buffer -> { }, null, null).waitFor();
+		long baseline = runner.getCommitCount();
+
+		AtomicBoolean firstRan = new AtomicBoolean();
+		Semaphore first = runner.submit(null, buffer -> { }, null, () -> firstRan.set(true));
+		Semaphore second = runner.submit(null, buffer -> { }, null, null);
+
+		Semaphore merged = Semaphore.all(List.of(first, second));
+		assertTrue("Completions of one runner must merge into the later one", merged == second);
+		assertEquals("Merging must not force a commit",
+				(double) baseline, (double) runner.getCommitCount());
+
+		merged.waitFor();
+		assertTrue("Waiting on the merged completion must cover the earlier dispatch", firstRan.get());
+	}
+
+	/**
+	 * Verifies the boundaries of {@link MetalSemaphore#merge(Semaphore)}: merging is symmetric
+	 * within one runner, never merges a completion of another runner or of any other provider
+	 * (so {@link Semaphore#all(List)} still composes them), and carries the highest value from
+	 * an earlier command buffer through repeated merges, including when the earlier side is
+	 * itself a merged completion that shares the later one's buffer.
+	 */
+	@Test(timeout = 60000)
+	public void metalMergeBoundaries() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandQueue queueA = metal.getMtlDevice().newCommandQueue();
+		MTLCommandQueue queueB = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner runnerA = new MetalCommandRunner(queueA);
+		MetalCommandRunner runnerB = new MetalCommandRunner(queueB);
+
+		try {
+			MetalSemaphore a1 = runnerA.submit(null, buffer -> { }, null, null);
+			MetalSemaphore a2 = runnerA.submit(null, buffer -> { }, null, null);
+			MetalSemaphore b1 = runnerB.submit(null, buffer -> { }, null, null);
+			assertTrue("Both dispatches must share the open buffer",
+					a1.getCommandBuffer() == a2.getCommandBuffer());
+
+			assertTrue("Merging must yield the later dispatch", a1.merge(a2) == a2);
+			assertTrue("Merging must be symmetric", a2.merge(a1) == a2);
+			assertEquals(0.0, (double) a2.getPriorBufferValue());
+
+			assertTrue("Another runner's completion must not merge", a2.merge(b1) == null);
+			assertTrue("A foreign completion must not merge",
+					a2.merge(new DefaultLatchSemaphore((Semaphore) null, 0)) == null);
+			Semaphore mixed = Semaphore.all(List.of(a2, b1));
+			assertTrue("Unmergeable completions must still be composed", mixed != a2 && mixed != b1);
+
+			// A foreign dependency commits the open buffer, so a3 and a4 share a new one
+			MetalSemaphore a3 = runnerA.submit(null, buffer -> { }, () -> { }, null);
+			MetalSemaphore a4 = runnerA.submit(null, buffer -> { }, null, null);
+			assertTrue(a3.getCommandBuffer() != a2.getCommandBuffer());
+			assertTrue(a3.getCommandBuffer() == a4.getCommandBuffer());
+
+			MetalSemaphore m1 = (MetalSemaphore) a1.merge(a3);
+			assertEquals((double) a3.getValue(), (double) m1.getValue());
+			assertEquals((double) a1.getValue(), (double) m1.getPriorBufferValue());
+
+			MetalSemaphore m2 = (MetalSemaphore) m1.merge(a2);
+			assertEquals((double) a3.getValue(), (double) m2.getValue());
+			assertEquals((double) a2.getValue(), (double) m2.getPriorBufferValue());
+			assertTrue("A merge that adds nothing must return the existing completion", m2.merge(a1) == m2);
+
+			MetalSemaphore m3 = (MetalSemaphore) a4.merge(m2);
+			assertEquals((double) a4.getValue(), (double) m3.getValue());
+			assertEquals((double) a2.getValue(), (double) m3.getPriorBufferValue());
+			assertTrue(m3.getCommandBuffer() == a4.getCommandBuffer());
+
+			mixed.waitFor();
+			m3.waitFor();
+		} finally {
+			runnerA.destroy();
+			runnerB.destroy();
+			queueA.release();
+			queueB.release();
+		}
+	}
+
+	/**
+	 * Verifies that a merged completion spanning a commit boundary still orders a dependent
+	 * dispatch after its earlier member. The earlier copy is held on the GPU by a foreign gate
+	 * in a committed buffer while the later member is in the open buffer, where a dependency
+	 * on the later member alone is ordered by the buffer and encodes no wait. The merged
+	 * completion records the earlier member's value as its prior buffer value, so the
+	 * dependent copy also waits for that value and reads the gated copy's result.
+	 */
+	@Test(timeout = 60000)
+	public void mergedCompletionAcrossBuffersOrdersDependent() throws InterruptedException {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean aggregation = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+
+		try {
+			int n = 16;
+
+			PackedCollection src = new PackedCollection(n);
+			PackedCollection mid = new PackedCollection(n);
+			PackedCollection dst = new PackedCollection(n);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
+
+			Submittable fill = copyKernel(src, mid, n, ComputeRequirement.MTL);
+			Submittable read = copyKernel(mid, dst, n, ComputeRequirement.MTL);
+			MetalCommandRunner runner = metal.getCommandRunner();
+
+			DefaultLatchSemaphore gate = new DefaultLatchSemaphore(
+					new OperationMetadata("gate", "holds the earlier buffer on the GPU"), 1);
+			MetalSemaphore gated = (MetalSemaphore) fill.submit(gate);
+
+			// A foreign dependency commits the gated buffer, so this dispatch opens a new one
+			MetalSemaphore later = runner.submit(null, buffer -> { }, () -> { }, null);
+			assertTrue("The later dispatch must be in a new command buffer",
+					later.getCommandBuffer() != gated.getCommandBuffer());
+
+			MetalSemaphore both = (MetalSemaphore) Semaphore.all(List.of(gated, later));
+			assertEquals((double) later.getValue(), (double) both.getValue());
+			assertEquals((double) gated.getValue(), (double) both.getPriorBufferValue());
+
+			Thread opener = new Thread(() -> {
+				try {
+					Thread.sleep(500);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+
+				gate.countDown();
+			}, "SemaphoreChainBatchingTest gate");
+			opener.start();
+
+			read.submit(both).waitFor();
+			opener.join(10000);
+
+			for (int i = 0; i < n; i++) {
+				assertEquals(src.toDouble(i), dst.toDouble(i));
+			}
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
+		}
+	}
+
+	/**
 	 * Verifies the non-blocking foreign-dependency bridge: submitting a Metal dispatch that
 	 * depends on a {@link Semaphore} from outside the runner must return while that dependency
 	 * is still outstanding (the runner encodes a GPU wait on a host-signaled event rather than

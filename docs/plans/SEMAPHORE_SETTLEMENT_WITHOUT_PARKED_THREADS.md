@@ -71,3 +71,14 @@ never. Two separate stalls were found:
   whose foreign dependency reaches the runner only after the host wait has started, so it
   fails deterministically without the fix.
 - Keep MetalSemaphore batching: no host-forced commit per `whenSettled` registration.
+
+## Update: same-runner composites no longer exist
+
+`Semaphore.all` now folds members through `Semaphore.merge` before building a composite, and
+`MetalSemaphore.merge` merges two completions of the same runner into the later one (carrying
+the highest value from an earlier command buffer as `getPriorBufferValue()`, which
+`MetalCommandRunner` still waits for when the dependent lands in the later completion's open
+buffer). The composite of two of the runner's own dispatches in stall 1 is therefore a single
+`MetalSemaphore` today: it is chained on the GPU, not bridged, and parks no thread. Composites
+that remain are mixed ones (a Metal completion together with a native or foreign one), which is
+where a second attempt still has to drive bridge dependencies rather than observe them.
