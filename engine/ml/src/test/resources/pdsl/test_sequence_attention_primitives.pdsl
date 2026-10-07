@@ -1,0 +1,46 @@
+/**
+ * Fixtures that exercise, one primitive per layer, the basic blocks parallel self-attention is
+ * written with in /pdsl/sequence_attention.pdsl, so each can be tested against a direct reference
+ * without the surrounding attention structure.
+ *
+ *   swap_axes()                  permute(0, 2, 1, 3): [b, x, y, z] -> [b, y, x, z]
+ *   repeated_axis()              permute(0, 0, 1, 2): not a permutation, rejected
+ *   short_order()                permute(1, 0): names two axes of a four-axis input, rejected
+ *   section(rows, width, index)  slice of the index-th [1, rows, 1, width] section of [1, rows, n, width]
+ *   position_scale(factors)      scale(factors, 2): one factor per position of axis 2
+ *   row_layernorm(w, b)          layernorm(w, b, 1e-6) over every run of len(w) features
+ *   row_rmsnorm(w, b)            rmsnorm(w, b, 1e-6) over every run of len(w) features
+ *   rotate(inv_freq)             sequence_rope(inv_freq) on [batch, heads, seq_len, head_dim]
+ */
+
+layer swap_axes() {
+    permute(0, 2, 1, 3)
+}
+
+layer repeated_axis() {
+    permute(0, 0, 1, 2)
+}
+
+layer short_order() {
+    permute(1, 0)
+}
+
+layer section(rows: int, width: int, index: int) {
+    slice([1, rows, 1, width], 0, 0, index, 0)
+}
+
+layer position_scale(factors: weight) {
+    scale(factors, 2)
+}
+
+layer row_layernorm(w: weight, b: weight) {
+    layernorm(w, b, 1e-6)
+}
+
+layer row_rmsnorm(w: weight, b: weight) {
+    rmsnorm(w, b, 1e-6)
+}
+
+layer rotate(inv_freq: weight) {
+    sequence_rope(inv_freq)
+}

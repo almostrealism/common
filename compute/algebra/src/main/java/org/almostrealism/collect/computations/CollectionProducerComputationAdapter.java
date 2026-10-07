@@ -23,18 +23,23 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.sequence.DefaultIndex;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryDataComputation;
 
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /**
@@ -294,7 +299,10 @@ public abstract class CollectionProducerComputationAdapter
 	 * 
 	 * <p>The choice between relative and absolute output affects memory access patterns,
 	 * kernel performance, and compatibility with different argument sizes.</p>
-	 * 
+	 *
+	 * <p>A computation with a positive {@link #getAccumulationCount()} instead writes the
+	 * same output elements from a native loop; see {@link #getAccumulationLoop}.</p>
+	 *
 	 * @param context The kernel structure context providing information about the compilation
 	 *               environment, including kernel maximums, threading constraints, and
 	 *               optimization hints. This context influences statement generation strategy.
@@ -310,6 +318,104 @@ public abstract class CollectionProducerComputationAdapter
 	@Override
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		Scope<PackedCollection> scope = super.getScope(context);
+
+		int iterations = getAccumulationCount();
+		if (iterations > 0) {
+			return getAccumulationLoop(scope, context, iterations);
+		}
+
+		forEachStatement(context, (output, index) ->
+				scope.getStatements().add(output.assign(getValueAt(index))));
+		return scope;
+	}
+
+	/**
+	 * Returns the number of iterations of a native loop that the kernel for this computation
+	 * accumulates each output element over, or zero (the default) when each output element
+	 * is assigned {@link #getValueAt(Expression)} by a single statement.
+	 *
+	 * <p>A computation whose value is a sum of many terms can return a positive count here,
+	 * together with {@link #getAccumulationTerm(Expression, Expression)}, so that its kernel
+	 * clears each output element and adds one term per iteration, rather than rendering the
+	 * whole sum as one expression whose size, and cost to compile, grows with the number of
+	 * terms. Only the kernel generated for the computation itself changes: when it is embedded
+	 * in another expression its value is still {@link #getValueAt(Expression)}, and the two
+	 * must agree.</p>
+	 *
+	 * @return the number of loop iterations, or zero for single-statement assignment
+	 */
+	protected int getAccumulationCount() { return 0; }
+
+	/**
+	 * Returns the term that one iteration of the accumulation loop adds to an output element,
+	 * for a computation whose {@link #getAccumulationCount()} is positive. The terms of all
+	 * iterations sum to {@link #getValueAt(Expression)} at the same index.
+	 *
+	 * @param index     the index of the output element
+	 * @param iteration the index of the loop iteration, from zero up to but excluding
+	 *                  {@link #getAccumulationCount()}
+	 * @return the term added to the output element by the iteration
+	 * @throws UnsupportedOperationException if the computation does not accumulate over a loop
+	 */
+	protected Expression<?> getAccumulationTerm(Expression<?> index, Expression<?> iteration) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Generates the kernel scope that accumulates each output element over {@code iterations}
+	 * iterations of a loop: before the loop the element is cleared, and each iteration adds
+	 * {@link #getAccumulationTerm(Expression, Expression)} to it. {@link Repeated} promotes
+	 * the element to a local accumulator and hoists the index arithmetic that does not depend
+	 * on the iteration out of the loop.
+	 *
+	 * <p>The loop is the kernel scope itself, taking the name, metadata, compute requirements
+	 * and variables of the scope it replaces, and the body that refers to the output is its
+	 * direct child. That is the structure {@link Scope#convertArgumentsToRequiredScopes}
+	 * recognizes as a computation referring to its own output, rather than as a dependency on
+	 * another kernel.</p>
+	 *
+	 * @param scope      the scope the kernel would otherwise consist of
+	 * @param context    the kernel structure context for scope generation
+	 * @param iterations the number of loop iterations
+	 * @return the accumulation loop
+	 */
+	protected Repeated<PackedCollection> getAccumulationLoop(Scope<PackedCollection> scope,
+															 KernelStructureContext context,
+															 int iterations) {
+		String name = getVariablePrefix() + "_i";
+		DefaultIndex iteration = new DefaultIndex(name, iterations);
+
+		Repeated<PackedCollection> loop = new Repeated<>(scope.getName(), scope.getMetadata());
+		loop.setComputeRequirements(scope.getComputeRequirements());
+		loop.getVariables().addAll(scope.getVariables());
+		loop.setIndex(new Variable<>(name));
+		loop.setInterval(e(1));
+		loop.setCondition(iteration.lessThan(e(iterations)));
+
+		Scope<PackedCollection> body = new Scope<>(getFunctionName() + "_body",
+				new OperationMetadata(getFunctionName() + "_body", "Accumulation (Body)"));
+
+		forEachStatement(context, (output, index) -> {
+			loop.getStatements().add(output.assign(e(0.0)));
+			body.getStatements().add(output.assign(output.add(getAccumulationTerm(index, iteration))));
+		});
+
+		loop.add(body);
+		return loop;
+	}
+
+	/**
+	 * Supplies, for each of the {@link #getStatementCount(KernelStructureContext)} statements
+	 * of the kernel, the output element the statement writes and the index of the value it
+	 * computes. With {@link #isOutputRelative() relative output}, or when the statement count
+	 * differs from the memory length, the element is located by the value's index; otherwise
+	 * it is located by the kernel index alone.
+	 *
+	 * @param context   the kernel structure context for scope generation
+	 * @param statement receives the output element and value index of each statement
+	 */
+	private void forEachStatement(KernelStructureContext context,
+								  BiConsumer<Expression<Double>, Expression<?>> statement) {
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		int statementCount = getStatementCount(context);
@@ -320,14 +426,8 @@ public abstract class CollectionProducerComputationAdapter
 			Expression index = kernelIndex;
 			if (statementCount > 1) index = index.multiply(statementCount).add(i);
 
-			if (relativeOutput) {
-				scope.getStatements().add(output.reference(index).assign(getValueAt(index)));
-			} else {
-				scope.getStatements().add(output.reference(kernelIndex).assign(getValueAt(index)));
-			}
+			statement.accept(output.reference(relativeOutput ? index : kernelIndex), index);
 		}
-
-		return scope;
 	}
 
 	/**

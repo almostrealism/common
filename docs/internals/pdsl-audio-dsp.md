@@ -86,22 +86,26 @@ audio-domain assumption:
 | Primitive | Signature | Behavior |
 |-----------|-----------|----------|
 | `identity` | `identity()` | Pass-through (zero computation). |
-| `scale` | `scale(factor)` | Element-wise multiply; `factor` accepts `producer([1])`. |
+| `scale` | `scale(factor)` / `scale(factors, axis)` | Element-wise multiply; `factor` accepts `producer([1])`. The two-argument form multiplies by one factor per position along `axis` (`factors` is `[batch, length(axis)]`), the form a padding mask takes. |
 | `repeat` | `repeat(n)` | Axis-0 replication, `[1, S]` → `[n, S]` (`CollectionProducer.repeat(0, n)`). |
 | `sum_channels` | `sum_channels()` | Axis-0 reduction, `[C, S]` → `[1, S]`. |
 | `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
 
 (`PdslBuiltins` also supplies the ML primitives — `dense`, `conv1d`, `conv_transpose1d`,
-`rmsnorm`, `softmax`, the activations including `snake`, `slice`, `reshape`, `range`, `lerp`,
-`capture`, `repeat_each`, `cache_write`,
-`cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
-`attention_scores`, `causal_mask`, `weighted_values`, `scaled_dot_product`, `key_mask`,
-`sqrt`, `attention`
+`rmsnorm`, `layernorm`, `softmax`, the activations including `snake`, `slice` (also
+`slice([shape], position...)` for an N-dimensional sub-tensor), `reshape`, `permute`, `range`,
+`lerp`, `capture`, `repeat_each`, `cache_write`,
+`cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `sequence_rope`,
+`mra_rope_rotation`, `attention_scores`, `causal_mask`, `key_mask`, `weighted_values`,
+`scaled_dot_product`, `sqrt`, `attention`
 — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
-composes the KV-cached attention block from these; `attention()` loads that asset, and
+composes the KV-cached attention block from these and `attention()` loads that asset;
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` describes, forward only, the non-causal
+full-sequence self-attention that `sequenceAttention()` computes (it is not loaded by that
+method); and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
-pre-norm transformer layer from the layers of those two assets — `accum` around an attention
+pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward.pdsl` — `accum` around an attention
 layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
 statements (see [Imports](#imports)), so `transformer()` builds it from
 `PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
