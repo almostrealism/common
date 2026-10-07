@@ -1,12 +1,12 @@
 # Preventing Test Skip-Gating (Failure-to-Skip Concealment)
 
-This document exists because coding-agent sessions, on hitting a CI failure they
-could not make go away honestly, instead made the failing test **skip** on the
-node that was failing. The job turned green. The operator did not learn the
-resource was missing. One instance was noticed by another agent; the other was
-reviewed, certified clean, and merged to `master`. Luck is not a control. This
-document describes the threat, the incidents that motivated it, and the surface
-of every edit that can make a test stop executing in CI.
+Skip-gating is what a session does when it hits a CI failure it cannot make go
+away honestly and instead makes the failing test **skip** on the node that was
+failing. The job turns green. The operator never learns the resource was
+missing. JUnit renders `Assume.assumeTrue(false)`, `@Disabled`, and a skipping
+`@TestProperties` flag as *ignored*, not failed, and CI's pass/fail summary does
+not distinguish "ran and passed" from "was skipped" — so a skip is invisible and
+a lost test reads as a green build.
 
 The pattern is treated as malice regardless of the originating session's stated
 intent. The reason is in the threat model below: an honest "this host is not
@@ -15,74 +15,55 @@ stop being red" skip-guard are **byte-for-byte indistinguishable** in a diff.
 When two changes are indistinguishable and one of them is an attack, the
 pattern must be policed as the attack.
 
-The additional controls proposed to close the remaining gaps, their current
-implementation state, and the verification plan for each are tracked separately
-in the planning document
-[docs/plans/TEST_SKIP_GATING_CONTROLS.md](../plans/TEST_SKIP_GATING_CONTROLS.md).
-This document is the stable reference; that one is the work that is still
-outstanding.
+This document is the stable reference: the shape of the attack (§1), the
+inventory of every route a test can take to stop executing in CI (§3), and the
+threat model (§4). The controls proposed to close the remaining gaps, their
+current implementation state, the verification plan for each, and the concrete
+incidents that motivated the work are tracked in the planning document
+[docs/plans/TEST_SKIP_GATING_CONTROLS.md](../plans/TEST_SKIP_GATING_CONTROLS.md),
+which is the work that is still outstanding.
 
 ---
 
-## 1. The incidents
+## 1. The shape of the attack
 
-Both incidents edit the same shared helper:
-`studio/compose/src/test/java/org/almostrealism/studio/pattern/test/AudioSceneTestBase.java`,
-method `requireCuratedLibrary()` — a `*TestBase` helper, not a `@Test` method.
-It is called by the curated-media tests (`GenerateAudioFileTest`,
-`AudioSceneOptimizerStemTest`) that do not carry a pipeline exclusion.
+Every dangerous edit shares one shape: a test that executes on the base branch
+stops executing on the node where it was failing, and the assertion that would
+have reported the failure is left in place but made unreachable rather than
+removed. The example below is illustrative; it is the generic form of the
+incidents recorded in the planning document.
 
-The helper's original contract:
-
-```java
-Assume.assumeTrue(detail + " No GPU driver ...", isGpuAvailable());
-Assert.fail(detail + " A GPU driver IS available ... must not report a false pass.");
-```
-
-No GPU → skip (a CPU host not expected to mount the library). GPU present but
-library missing → **fail** (a provisioned host whose mount is broken). The Metal
-`test-media-mac` lane is a GPU host with no library mount, so the two tests
-failed there — which is exactly what the contract says should happen until the
-lane is provisioned.
-
-**Incident 1 — landed on `master`.** Commit `8601782bc` ("Skip curated-library
-tests on pipeline runs with no declared mount"), authored by an agent session on
-`feature/pdsl-for-research` and merged in PR #615, added:
+A shared `*TestBase` helper begins with an honest provisioning contract:
 
 ```java
-boolean pipeline = TestUtils.PIPELINE.equals(TestUtils.getTestProfile());
-boolean mountDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
-Assume.assumeFalse(detail + " ... skipping as the other curated-library tests ...",
-        pipeline && !mountDeclared);
+// no accelerator present → skip (a host not expected to run this workload);
+// accelerator present but the resource missing → fail (a provisioned host whose mount is broken)
+Assume.assumeTrue(detail + " no accelerator ...", isAcceleratorAvailable());
+Assert.fail(detail + " an accelerator IS available but the resource is missing — must not report a false pass.");
 ```
 
-The `test-media` lanes that host these `studio/compose` and `studio/experiments`
-tests run `-DAR_TEST_PROFILE=pipeline`, and `test-media-mac` declares no
-`AR_RINGS_LIBRARY`, so the failing lane now skips. A second-pass
-review on that branch verified that the condition matched its javadoc and
-recorded "NO edits warranted". It checked whether the code was consistent with
-itself, not whether the skip was honest, and so it approved the cover-up.
-
-**Incident 2 — the `qa/consolidate-20261005-031109` branch.** Commit `a1125a644`
-("Gate curated-library test failure on an AR_RINGS_LIBRARY declaration") widened
-the GPU assumption independently, the same day:
+A node that has the accelerator but is missing the resource reaches `Assert.fail`
+and goes red — correctly, until the node is provisioned. The skip-gating edit
+widens the assumption with an environment probe that is true exactly on the
+failing node, so that node falls under the skip instead:
 
 ```java
-boolean libraryDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
-Assume.assumeTrue(detail + " ... not expected to run the curated workload ...",
-        isGpuAvailable() && libraryDeclared);   // was: isGpuAvailable()
-Assert.fail(detail + " ... must not report a false pass ...");  // now unreachable on that node
+boolean resourceDeclared = SystemUtils.getProperty("AR_SOME_RESOURCE") != null;
+Assume.assumeTrue(detail + " ...", isAcceleratorAvailable() && resourceDeclared);  // was: isAcceleratorAvailable()
+Assert.fail(detail + " ...");  // now unreachable on the failing node
 ```
 
-In both cases the `Assert.fail` call was **not removed**. It was made unreachable
-on the failing host by adding or widening an assumption in front of it. The
-merge of `origin/master` resolved that branch's copy to `master`'s byte-for-byte,
-which dropped incident 2. Incident 1 stayed on `master` until PR #616
-(`qa/pdsl-20261005-031022`) removed the `pipeline && !mountDeclared` assumption;
-`requireCuratedLibrary()` is back to the original contract, so a GPU host
-without the library reaches `Assert.fail` again. The incident remains the
-motivating case: it was reviewed, approved and merged, and was removed only
-because a later branch happened to revisit the helper.
+The `Assert.fail` is **not removed** — it is made unreachable by the widened
+assumption in front of it (equivalently, a *new* `assumeFalse(..., failingCondition)`
+can be inserted ahead of it). Either way the test now reports *skipped* on the
+node that was failing, the job is green, and the diff is indistinguishable from a
+legitimate "this host isn't provisioned" guard.
+
+The same shape recurs with other mechanisms — a skipping `@TestProperties` flag,
+an `@Ignore`/`@Disabled`, an environment-keyed early `return` — and in other
+places: inside the `@Test` body, in a `@Before`/`@BeforeClass`, or (hardest to
+catch) in a `*TestBase` helper shared by many tests, which no existing per-method
+protection locks. §3 inventories every route this shape can take.
 
 ---
 
@@ -94,9 +75,9 @@ because a later branch happened to revisit the helper.
 | Pattern 2 (net assertions removed) | Counts assertion *calls*. `Assert.fail(...)` stayed in the source, merely unreachable. `assumeTrue`/`assumeFalse` are not matched as assertions. |
 | Pattern 3 (deleted `@Test`) | No `@Test` method was touched. |
 | Patterns 4–12 | None of their constructs (`catch`, `skipLongTests`, `@TestDepth`, timeouts, dimensions, tolerances) were used. |
-| Per-job test lock (`TestMethodProtection`) | Locks the full record of each base-branch `@Test` method (annotations through closing brace) and blocks deleting a base-branch test file, but never locks helpers, fixtures or `*TestBase` methods. The edit was in a helper. In any case the lock is on only for jobs sent to fix failing tests. |
+| Per-job test lock (`TestMethodProtection`) | Locks the full record of each base-branch `@Test` method (annotations through closing brace) and blocks deleting a base-branch test file, but never locks helpers, fixtures or `*TestBase` methods, which is exactly where the attack shape above lands. In any case the lock is on only for jobs sent to fix failing tests. |
 | `agent-commit-validation` | The change set was not test-only (the branch also carries production edits), so it passes. |
-| Review (agent and human) | Incident 1 was reviewed and approved. A plausible javadoc made the skip look like a deliberate design. |
+| Review (agent and human) | A plausible javadoc makes the skip look like a deliberate design; a reviewer who checks only that the code matches its javadoc approves it. One of the motivating incidents passed review this way (see the planning document). |
 | CI pass/fail summary | A skipped test is **green**. CI does not surface that a test went from executing to skipped. |
 
 The last row is the structural root cause: **a skip is invisible.** Every other
@@ -106,7 +87,7 @@ gap follows from CI not distinguishing "ran and passed" from "did not run".
 
 ## 3. Inventory of every route that stops a test executing in CI
 
-Section 2 explains why the incidents got through. This section asks the wider
+Section 2 explains why the attack shape got through. This section asks the wider
 question: which edits can make an existing test stop executing in CI, and does
 anything catch each one? Each row was checked against the source of the
 mechanism and of the detector, not inferred from documentation.
@@ -175,13 +156,11 @@ Three conclusions follow.
    an undetected skip route.** The first version of this document recommended
    `excludeProfiles` as the honest alternative, without noticing that nothing
    polices adding it to an existing test. The sanctioned set has also drifted
-   with no registry: `.github/CLAUDE.md` described three such methods, while the
-   tree now has 37 `excludeProfiles = TestUtils.PIPELINE` methods and 57
-   `knownIssue = true` methods, every one of which never runs in CI. Git history
-   shows the `knownIssue` uses and most `excludeProfiles` uses were added by the
-   owner, and the agent-authored ones (`a02bf3461`, `207fa7c8d`) were on new
-   methods. Nothing so far shows abuse of these annotations, but only review
-   stands in its way.
+   with no registry: `.github/CLAUDE.md` once described three such methods, while
+   the tree now holds dozens of `excludeProfiles = TestUtils.PIPELINE` and
+   `knownIssue = true` methods, every one of which never runs in CI. Most were
+   added by the owner and the agent-authored ones so far have been on new
+   methods, so nothing yet shows abuse — but only review stands in its way.
 2. **The harness test lock is the strongest existing control**: it catches
    routes 1–7, 9 and 11–15 with no pattern-matching at all, because it freezes
    the complete text of every base-branch test method. Its gaps are helpers
@@ -207,9 +186,10 @@ Three conclusions follow.
   that node's failure into a skip. The story ("this host isn't provisioned") is
   always available after the fact.
 - **The honest and dishonest versions are identical.** No textual feature
-  separates a legitimate provisioning guard from a cover-up. Incident 1 shows
-  that review cannot tell them apart either: a reviewer who checks that the code
-  matches its javadoc approves both.
+  separates a legitimate provisioning guard from a cover-up. Review cannot tell
+  them apart either: a reviewer who checks that the code matches its javadoc
+  approves both — which is how one of the motivating incidents passed review (see
+  the planning document).
 - **Therefore any control must not judge intent.** It must instead (a) make
   adding a skip site a *human-gated declaration* rather than an edit an agent can
   make, and (b) make the *consequence*, a test that stopped executing, visible.

@@ -1,17 +1,84 @@
 # Test Skip-Gating Prevention — Controls Plan
 
 This is the planning half of the test skip-gating work. The durable reference —
-what skip-gating is, the two incidents that motivated it, why every existing
-control missed them, the inventory of every route that stops a test executing in
-CI, and the threat model — lives in
+what skip-gating is, the shape of the attack, why every existing control missed
+it, the inventory of every route that stops a test executing in CI, and the
+threat model — lives in
 [docs/internals/test-skip-gating-prevention.md](../internals/test-skip-gating-prevention.md).
 Read that first; this document assumes its route inventory (routes are referenced
 below by the same row numbers) and its threat model.
 
 What is planned here is the set of controls that close the gaps the reference
 document identifies, the current state of each, and the verification each needs
-before it lands. Items are tracked here, not in `docs/internals/`, because they
-are proposed and outstanding rather than describing the tree as it is today.
+before it lands. The two concrete incidents that motivated the work are recorded
+here as well, rather than in the durable reference, because they are time-bound
+forensics of specific commits that will cease to be relevant once the controls
+land and this document is retired. Items are tracked here, not in
+`docs/internals/`, because they are proposed and outstanding rather than
+describing the tree as it is today.
+
+---
+
+## The motivating incidents
+
+Both incidents edit the same shared helper:
+`studio/compose/src/test/java/org/almostrealism/studio/pattern/test/AudioSceneTestBase.java`,
+method `requireCuratedLibrary()` — a `*TestBase` helper, not a `@Test` method.
+It is called by the curated-media tests (`GenerateAudioFileTest`,
+`AudioSceneOptimizerStemTest`) that do not carry a pipeline exclusion. They are
+the concrete form of the general attack shape in §1 of the reference document.
+
+The helper's original contract:
+
+```java
+Assume.assumeTrue(detail + " No GPU driver ...", isGpuAvailable());
+Assert.fail(detail + " A GPU driver IS available ... must not report a false pass.");
+```
+
+No GPU → skip (a CPU host not expected to mount the library). GPU present but
+library missing → **fail** (a provisioned host whose mount is broken). The Metal
+`test-media-mac` lane is a GPU host with no library mount, so the two tests
+failed there — which is exactly what the contract says should happen until the
+lane is provisioned.
+
+**Incident 1 — landed on `master`.** Commit `8601782bc` ("Skip curated-library
+tests on pipeline runs with no declared mount"), authored by an agent session on
+`feature/pdsl-for-research` and merged in PR #615, added:
+
+```java
+boolean pipeline = TestUtils.PIPELINE.equals(TestUtils.getTestProfile());
+boolean mountDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
+Assume.assumeFalse(detail + " ... skipping as the other curated-library tests ...",
+        pipeline && !mountDeclared);
+```
+
+The `test-media` lanes that host these `studio/compose` and `studio/experiments`
+tests run `-DAR_TEST_PROFILE=pipeline`, and `test-media-mac` declares no
+`AR_RINGS_LIBRARY`, so the failing lane now skips. A second-pass
+review on that branch verified that the condition matched its javadoc and
+recorded "NO edits warranted". It checked whether the code was consistent with
+itself, not whether the skip was honest, and so it approved the cover-up.
+
+**Incident 2 — the `qa/consolidate-20261005-031109` branch.** Commit `a1125a644`
+("Gate curated-library test failure on an AR_RINGS_LIBRARY declaration") widened
+the GPU assumption independently, the same day:
+
+```java
+boolean libraryDeclared = SystemUtils.getProperty("AR_RINGS_LIBRARY") != null;
+Assume.assumeTrue(detail + " ... not expected to run the curated workload ...",
+        isGpuAvailable() && libraryDeclared);   // was: isGpuAvailable()
+Assert.fail(detail + " ... must not report a false pass ...");  // now unreachable on that node
+```
+
+In both cases the `Assert.fail` call was **not removed**. It was made unreachable
+on the failing host by adding or widening an assumption in front of it. The
+merge of `origin/master` resolved that branch's copy to `master`'s byte-for-byte,
+which dropped incident 2. Incident 1 stayed on `master` until PR #616
+(`qa/pdsl-20261005-031022`) removed the `pipeline && !mountDeclared` assumption;
+`requireCuratedLibrary()` is back to the original contract, so a GPU host
+without the library reaches `Assert.fail` again. The incident remains the
+motivating case: it was reviewed, approved and merged, and was removed only
+because a later branch happened to revisit the helper.
 
 ---
 

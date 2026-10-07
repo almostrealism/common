@@ -101,7 +101,7 @@
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
-- [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Failure-to-skip concealment (Assume/@Disabled gating) — the threat model, the incidents, and the inventory of every route that stops a test executing in CI
+- [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Failure-to-skip concealment (Assume/@Disabled gating) — the shape of the attack, the inventory of every route that stops a test executing in CI, and the threat model
 - [Profiling](docs/internals/profiling.md): Operation profiling infrastructure
 - [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
 
