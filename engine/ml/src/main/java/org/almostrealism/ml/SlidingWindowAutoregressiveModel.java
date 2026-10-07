@@ -17,9 +17,11 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -79,6 +81,9 @@ public class SlidingWindowAutoregressiveModel extends AutoregressiveModel<Intege
 	/** The token being appended. */
 	private final PackedCollection token;
 
+	/** The sampling temperature, created by this generator and released by {@link #destroy()}. */
+	private final PackedCollection temperature;
+
 	/** Number of filled positions of {@link #input}. */
 	private int filled;
 
@@ -108,10 +113,10 @@ public class SlidingWindowAutoregressiveModel extends AutoregressiveModel<Intege
 		this.vocabSize = model.getConfig().vocabSize;
 		this.seqLen = model.getConfig().seqLen;
 		this.random = random;
+		this.temperature = temperature;
 		this.input = new PackedCollection(new TraversalPolicy(seqLen));
 		this.scratch = new PackedCollection(new TraversalPolicy(seqLen));
 		this.token = new PackedCollection(1);
-		own(input, scratch, token, position, temperature);
 
 		CompiledModel compiled;
 		try {
@@ -122,8 +127,25 @@ public class SlidingWindowAutoregressiveModel extends AutoregressiveModel<Intege
 		}
 
 		this.inference = compiled;
-		own(inference);
 		input.clear();
+	}
+
+	/**
+	 * Releases the compiled position operations, the inference compilation, the window buffers,
+	 * the position and the temperature; every release is attempted even when an earlier one
+	 * fails. The compiled operations are released before the memory they read. The generator
+	 * cannot be used afterwards; a repeated call is harmless.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.releaseAll(List.<Runnable>of(
+				super::destroy,
+				() -> Destroyable.destroy(inference),
+				input::destroy,
+				scratch::destroy,
+				token::destroy,
+				getPosition()::destroy,
+				temperature::destroy));
 	}
 
 	/**

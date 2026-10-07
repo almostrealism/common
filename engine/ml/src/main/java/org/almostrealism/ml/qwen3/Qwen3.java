@@ -326,10 +326,12 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	 * method binds the checkpoint, the configuration and the position, compiles the result, and
 	 * looks up each token's embedding row as the model's input.
 	 *
+	 * <p>The position and compiled transformer created here belong to this instance, which
+	 * releases them in {@link #destroy()}.</p>
+	 *
 	 * @param profile Operation profile for performance tracking
 	 * @param requirements Compute requirements for hardware acceleration
-	 * @return Autoregressive model ready for inference, which owns the compiled transformer and
-	 *         the position created here
+	 * @return Autoregressive model ready for inference
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		if (!config.sharedWeights) {
@@ -361,18 +363,21 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 		return AutoregressiveModel.of(
 				compiledModel,
 				position,
-				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim))
-				.own(compiledModel, position);
+				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 	}
 
 	/**
 	 * Releases the generator, together with the compiled transformer and position it was built
-	 * with. The {@link StateDictionary} and tokenizer are not released. This instance cannot
-	 * generate afterwards.
+	 * with; every release is attempted even when an earlier one fails. The
+	 * {@link StateDictionary} and tokenizer are not released. This instance cannot generate
+	 * afterwards; a repeated call is harmless.
 	 */
 	@Override
 	public void destroy() {
-		Destroyable.destroy(model);
+		Destroyable.releaseAll(List.<Runnable>of(
+				() -> Destroyable.destroy(model),
+				() -> Destroyable.destroy(compiledModel),
+				() -> Destroyable.destroy(position)));
 	}
 
 

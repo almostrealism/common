@@ -93,5 +93,57 @@ agent session:
   `extends \w*Model`, warn with the identity rule. Do the same for `\w+Config` without
   `extends \w*Config`.
 
-Both belong in `.claude/hooks/lib/` beside `block_interface_bypass`, with pytest coverage, and
-must be registered in `.claude/settings.json`.
+- **Features mixins are implemented, not instantiated.** PR #620 again:
+  `CausalLanguageModelConfig` declared
+  `private static final RotationFeatures OPS = new RotationFeatures() { };` and called
+  `OPS.computeInvFreq(...)`, `OPS.cp(...)`. The owner's answer: you IMPLEMENT
+  `RotationFeatures` to get these methods; you do not declare a field holding one. See the
+  hook design below.
+
+All three belong in `.claude/hooks/lib/` beside `block_interface_bypass`, with pytest coverage,
+and must be registered in `.claude/settings.json`.
+
+### 3. Hook design: `block-features-instance.py` (every Edit/Write of a `.java` file)
+
+**What it looks for.** In the content an `Edit`/`Write` would produce (the `new_string` for
+`Edit`, the `content` for `Write`) of a file under `src/main/java`:
+
+1. An anonymous instantiation of a features mixin:
+   `new\s+(\w+Features)\s*(<[^>]*>)?\s*\(\s*\)\s*\{\s*\}`. A type counts as a features
+   mixin when its name ends in `Features` and `git ls-files` finds it as an `interface` in
+   the repository (the same type lookup `block-interface-bypass.py` performs), so a class
+   that merely ends in `Features` is not matched.
+2. A field, local or constant of such a type that is then used only as a receiver for its
+   default methods: `(static\s+)?(final\s+)?(\w+Features)\s+(\w+)\s*=` followed by
+   `\b\4\.\w+\(` elsewhere in the class.
+
+**What it does.** Blocks the edit (exit code 2) with a message:
+
+> `RotationFeatures` is a features mixin: an interface whose default methods are the
+> operations a class gains by implementing it. Declare `implements RotationFeatures` on the
+> class that uses them and call `computeInvFreq(...)` directly, instead of building an
+> anonymous instance and calling its methods through a field. If the class cannot implement
+> it (a name clash with a superclass method, for example), say so in the class javadoc and
+> resolve the clash; do not route around it.
+
+**Allowed shapes, so that the check is not a blunt ban.**
+
+- A features interface's own static singleton accessor (for example
+  `CollectionFeatures.getInstance()`), and the interface's own source file: the guard skips a
+  file whose declared type is the matched interface.
+- Static methods of a mixin (`RotationFeatures.computeRopeFreqs(...)`): they are not
+  instance calls through a field, and pattern 2 requires a declared variable.
+- Test sources (`src/test/java`) are warned (exit 0 with the message on stderr) rather than
+  blocked, since a test may need operations from a mixin its base class does not implement.
+
+**Existing violations.** Some production classes already hold anonymous mixin instances (for
+example `AutoregressiveModel.DIST`, used from the static `of(...)` factory). The hook blocks
+only lines that the edit adds, comparing `old_string` with `new_string` as
+`block-interface-bypass.py` does, so it does not block unrelated edits to those files. Each
+such class should then be fixed when it is next touched: a static factory that needs the
+operations becomes an instance method or uses `Ops.o()`.
+
+**Tests.** `pytest` cases for: anonymous instantiation in a field (blocked); a local variable
+(blocked); `implements RotationFeatures` with direct calls (allowed); a static call
+`RotationFeatures.computeRopeFreqs(...)` (allowed); the same pattern under `src/test/java`
+(warned); an edit to a file with a pre-existing instance that does not add one (allowed).

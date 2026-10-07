@@ -2,8 +2,11 @@
 
 **Category:** Proof of Value
 **Branch:** `project/plan-20261005-185050` (created from `master`)
-**Status:** Implemented in part — Deliverables 2 and 3 are done; Deliverable 1 is unmet (held-out
-4.957 vs baseline 4.912 bits/byte). See "Implementation outcome" below.
+**Status:** Implemented in part — Deliverable 3 is done. Deliverable 1 is unmet (held-out 4.957
+vs baseline 4.912 bits/byte). Deliverable 2 is met in part: the generation path exists and is
+proven greedy-deterministic and consistent with the full forward pass, but its non-trivial
+generation criterion is unmet (the trained model's greedy continuation is 96 spaces, and
+`trainOnDocumentation` fails that check). See "Implementation outcome" below.
 **Estimated complexity:** Medium–Large
 **Requires:** Metal (macOS node) — see `plan-20261005-185050-workstream.yaml` and "Hardware" below.
 
@@ -360,8 +363,10 @@ undertaken here, per this plan's scope. Capacity and corpus levers were not trie
 data-starved, not capacity-bound, and more corpus does not add steps. The assertion and its
 `TODO(review)` comment remain (comment updated with the current numbers); nothing was loosened.
 
-**Deliverable 2 — done (sliding-window shape).** `CausalLanguageModel.generator(CompiledModel,
-Random)` returns an `AutoregressiveModel<Integer>` through the general constructor; the fast
+**Deliverable 2 — met in part (sliding-window shape); non-trivial generation unmet.** The
+generation path was first `CausalLanguageModel.generator(CompiledModel, Random)`, returning an
+`AutoregressiveModel<Integer>` through the general constructor; it is now
+`SlidingWindowAutoregressiveModel` (see "Review rework" below). The fast
 test `slidingWindowGenerationMatchesFullForward` proves every greedy token (including after the
 window slides) equals the argmax of an independent full forward with different padding, and that
 greedy decoding is reproducible after `reset()`. `trainOnDocumentation` generates from the
@@ -374,8 +379,8 @@ stay unmet until the model improves. KV-cache decoding remains a follow-up.
 Open question 2 was settled without an ordering dependency: generation runs inside
 `trainOnDocumentation` on the checkpoint that run just saved and reloaded, and the determinism of
 the generation path itself is proven on random weights by the fast test. The generator owns its
-device buffers and releases them when it is destroyed (`AutoregressiveModel` is `Destroyable`), and
-`generator(...)` requires the inference model's exact single input and output shapes.
+device buffers and releases them when it is destroyed (`AutoregressiveModel` is `Destroyable`, and
+a generator that allocates resources of its own is a subclass that overrides `destroy()`).
 
 **Review rework (OOP).** The owner's review of PR #620 rejected the shape above:
 `CausalLanguageModel` was neither a `Model` nor named as a factory, `generator` accepted any

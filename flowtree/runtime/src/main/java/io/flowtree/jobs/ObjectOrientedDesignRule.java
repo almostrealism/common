@@ -17,6 +17,10 @@
 package io.flowtree.jobs;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,7 +29,10 @@ import java.util.stream.Collectors;
 
 /**
  * Enforcement rule that runs a dedicated object-oriented design review session for every
- * production Java class the job added or modified, one class per session.
+ * production Java class the branch added or modified relative to its base branch, one class
+ * per session. The set is branch-wide, as {@link CodingAgentJob#extractChangedFilePaths()}
+ * reports it, so a later job on the same branch reviews again a class that an earlier job
+ * changed: its own edits may have broken the design of a class it did not touch.
  *
  * <p>Agents reliably write procedural code in an object-oriented codebase: classes that are not
  * the thing their name says they are, methods that accept a collaborator the receiver already
@@ -40,7 +47,8 @@ import java.util.stream.Collectors;
  * A class a review session itself adds or modifies is reviewed in turn. The session records
  * its verdict in {@link #VERDICT_PATH}, a {@linkplain #getProgressPaths() progress path}, so that
  * a review that finds the class sound is not mistaken by {@link EnforcementRunner} for a session
- * that made no progress. At most {@link #MAX_CLASSES} classes are reviewed per job.</p>
+ * that made no progress. A class counts as reviewed only once its verdict is in that file. At
+ * most {@link #MAX_CLASSES} classes are reviewed per job.</p>
  *
  * <p>Active whenever review is enabled ({@link CodingAgentJob#isReviewEnabled()}); a job that
  * changes no production Java class has nothing for it to review. It runs after the
@@ -106,14 +114,41 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     }
 
     /**
-     * Records the class whose review session just completed as reviewed.
+     * Records the class whose review session just completed as reviewed, provided the session
+     * appended its verdict for that class to {@link #VERDICT_PATH}. A session that failed or
+     * wrote no verdict leaves the class unreviewed, so the next session reviews it again; a
+     * class that never receives a verdict stops the rule making progress, which
+     * {@link EnforcementRunner} reports, rather than being skipped silently.
      *
      * @param job the job after the review session
      */
     @Override
     public void onCorrectionAttempted(CodingAgentJob job) {
-        if (pending != null) reviewed.add(pending);
+        if (pending != null && hasVerdict(job, pending)) reviewed.add(pending);
         pending = null;
+    }
+
+    /**
+     * Returns whether {@link #VERDICT_PATH} holds a verdict line for a class: the class path
+     * followed by {@code : CLEAN} or {@code : FIXED}, as the review prompt requires.
+     *
+     * @param job    the job whose working tree holds the verdict file
+     * @param target the repository-relative path of the class
+     * @return whether a verdict for {@code target} was recorded
+     */
+    private boolean hasVerdict(CodingAgentJob job, String target) {
+        Path verdicts = Path.of(job.getWorkingDirectory(), VERDICT_PATH);
+        if (!Files.isRegularFile(verdicts)) return false;
+
+        try {
+            return Files.readAllLines(verdicts, StandardCharsets.UTF_8).stream()
+                    .map(String::trim)
+                    .anyMatch(line -> line.startsWith(target + ": CLEAN")
+                            || line.startsWith(target + ": FIXED"));
+        } catch (IOException e) {
+            job.warn("Object-oriented design review: failed to read " + VERDICT_PATH + ": " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -124,13 +159,12 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     Set<String> getReviewed() { return Collections.unmodifiableSet(reviewed); }
 
     /**
-     * Returns the existing production Java classes the job added or modified.
+     * Returns the existing production Java classes the branch added or modified.
      *
      * @param job the job whose working tree is inspected
      * @return repository-relative paths, new classes first
      */
     private List<String> getChangedClasses(CodingAgentJob job) {
-        // TODO(review): changed set is branch-wide (diff vs origin/base), not just this job's edits as the javadoc says
         File root = new File(job.getWorkingDirectory());
         return job.extractChangedFilePaths().stream()
                 .filter(this::isProductionClass)

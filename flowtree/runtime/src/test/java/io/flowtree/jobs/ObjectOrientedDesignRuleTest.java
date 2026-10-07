@@ -22,6 +22,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -91,22 +92,89 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 			assertTrue(rule.isViolated(job));
 			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + first));
 			assertTrue(rule.getReviewed().isEmpty());
+			appendVerdict(root, first + ": CLEAN");
 			rule.onCorrectionAttempted(job);
 			assertTrue(rule.isViolated(job));
 			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + second));
+			appendVerdict(root, second + ": FIXED - made it extend Model");
 			rule.onCorrectionAttempted(job);
 			assertFalse(rule.isViolated(job));
 
 			changed.add(added);
 			assertTrue(rule.isViolated(job));
 			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + added));
+			appendVerdict(root, added + ": CLEAN");
 			rule.onCorrectionAttempted(job);
 			assertFalse(rule.isViolated(job));
 			assertEquals(List.of(first, second, added), new ArrayList<>(rule.getReviewed()));
 		} finally {
-			try (Stream<Path> paths = Files.walk(root)) {
-				paths.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
-			}
+			delete(root);
+		}
+	}
+
+	/**
+	 * A session that records no verdict for its class, or a verdict for a different class, or a
+	 * line that is not a verdict, leaves the class unreviewed, so the next session reviews the
+	 * same class again; once its verdict is recorded the class counts as reviewed.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void classWithoutVerdictIsReviewedAgain() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			String other = "engine/ml/src/main/java/org/example/Other.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			ObjectOrientedDesignRule rule = new ObjectOrientedDesignRule();
+
+			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + target));
+			rule.onCorrectionAttempted(job);
+			assertTrue("a session without a verdict file counted as a review", rule.getReviewed().isEmpty());
+			assertTrue(rule.isViolated(job));
+
+			appendVerdict(root, other + ": CLEAN");
+			appendVerdict(root, target + ": reviewing");
+			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + target));
+			rule.onCorrectionAttempted(job);
+			assertTrue("a verdict for another class, or a non-verdict line, counted as a review",
+					rule.getReviewed().isEmpty());
+			assertTrue(rule.isViolated(job));
+
+			appendVerdict(root, "  " + target + ": CLEAN");
+			rule.buildCorrectionPrompt(job);
+			rule.onCorrectionAttempted(job);
+			assertEquals(Set.of(target), rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * Appends a line to the verdict file of a working tree, as a review session does.
+	 *
+	 * @param root the working tree
+	 * @param line the line to append
+	 * @throws IOException if the file cannot be written
+	 */
+	private void appendVerdict(Path root, String line) throws IOException {
+		Path verdicts = root.resolve(ObjectOrientedDesignRule.VERDICT_PATH);
+		Files.createDirectories(verdicts.getParent());
+		Files.writeString(verdicts, line + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Deletes a temporary tree.
+	 *
+	 * @param root the tree to delete
+	 * @throws IOException if the tree cannot be walked
+	 */
+	private void delete(Path root) throws IOException {
+		try (Stream<Path> paths = Files.walk(root)) {
+			paths.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
 		}
 	}
 

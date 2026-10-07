@@ -35,6 +35,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -68,6 +69,12 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 
 	/** BPE merge scores indexed by token ID; higher scores indicate preferred merges. */
 	private float[] vocabScores;
+
+	/** The sequence position the transformer reads, created by {@link #model}. */
+	private PackedCollection position;
+
+	/** The compiled transformer the generator decodes with, created by {@link #model}. */
+	private CompiledModel compiled;
 
 	/** The compiled autoregressive model used for inference. */
 	private AutoregressiveModel<Integer> model;
@@ -175,15 +182,17 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	/**
 	 * Constructs the autoregressive model from the loaded weights.
 	 *
+	 * <p>The position and compiled transformer created here belong to this instance, which
+	 * releases them in {@link #destroy()}.</p>
+	 *
 	 * @param profile      the operation profile to record timing data
 	 * @param requirements optional compute requirements (e.g., GPU)
-	 * @return the compiled autoregressive model, which owns the compiled transformer and the
-	 *         position it creates
+	 * @return the compiled autoregressive model
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
 
-		PackedCollection position = new PackedCollection(1);
+		position = new PackedCollection(1);
 
 		int dim = config.dim;
 
@@ -205,19 +214,22 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 		transformer.add(rmsnorm(shape(1, dim), weights.rmsFinalWeight));
 		transformer.add(dense(weights.wcls));
 
-		CompiledModel compiled = transformer.compile(false, profile);
+		compiled = transformer.compile(false, profile);
 		return AutoregressiveModel.of(compiled, position,
-				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim))
-				.own(compiled, position);
+				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim));
 	}
 
 	/**
 	 * Releases the generator, together with the compiled transformer and position it was built
-	 * with. The checkpoint weights are not released. This instance cannot generate afterwards.
+	 * with; every release is attempted even when an earlier one fails. The checkpoint weights
+	 * are not released. This instance cannot generate afterwards; a repeated call is harmless.
 	 */
 	@Override
 	public void destroy() {
-		Destroyable.destroy(model);
+		Destroyable.releaseAll(List.<Runnable>of(
+				() -> Destroyable.destroy(model),
+				() -> Destroyable.destroy(compiled),
+				() -> Destroyable.destroy(position)));
 	}
 
 	/**

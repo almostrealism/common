@@ -188,7 +188,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 
 	/**
 	 * A generator reused for a second prompt reproduces its greedy tokens. The second run embeds
-	 * the special start token through the compiled embedding cached by the first run, and decodes
+	 * the special start token through the same compiled token loader as the first run, and decodes
 	 * through the same reused decoder input buffer, so neither reuse may change the result.
 	 */
 	@Test(timeout = 600000) @TestDepth(2)

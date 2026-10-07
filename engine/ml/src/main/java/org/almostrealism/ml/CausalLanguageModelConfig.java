@@ -36,10 +36,7 @@ import java.util.Random;
  *
  * @see CausalLanguageModel
  */
-public class CausalLanguageModelConfig extends TransformerConfig {
-	/** The graph operations {@link #createWeights} builds the initial weights with. */
-	private static final RotationFeatures OPS = new RotationFeatures() { };
-
+public class CausalLanguageModelConfig extends TransformerConfig implements RotationFeatures {
 	/**
 	 * Creates and validates a configuration.
 	 *
@@ -191,22 +188,22 @@ public class CausalLanguageModelConfig extends TransformerConfig {
 	 * @throws IllegalArgumentException if {@code ropeBase} is not a finite positive number
 	 */
 	public StateDictionary createWeights(double ropeBase, Random random) {
-		CollectionProducer invFreqValues = OPS.computeInvFreq(headSize, ropeBase);
+		CollectionProducer invFreqValues = computeInvFreq(headSize, ropeBase);
 		StateDictionary weights = new StateDictionary(new HashMap<>());
 
 		getNormalWeightShapes().entrySet().stream()
 				.sorted(Map.Entry.comparingByKey())
 				.forEach(entry -> {
 					PackedCollection weight = new PackedCollection(entry.getValue());
-					Destroyable.runOnce(OPS.a(OPS.cp(weight.each()),
-							OPS.randn(weight.getShape(), 0.0, CausalLanguageModel.INIT_STD, random).each()).get());
+					Destroyable.runOnce(a(cp(weight.each()),
+							randn(weight.getShape(), 0.0, CausalLanguageModel.INIT_STD, random).each()).get());
 					weights.put(entry.getKey(), weight);
 				});
 
 		getScaleWeightShapes().forEach((key, shape) -> weights.put(key, new PackedCollection(shape).fill(1.0)));
 
 		PackedCollection invFreq = new PackedCollection(getInvFreqShape());
-		Destroyable.runOnce(OPS.a(OPS.cp(invFreq.each()), invFreqValues.each()).get());
+		Destroyable.runOnce(a(cp(invFreq.each()), invFreqValues.each()).get());
 		weights.put(CausalLanguageModel.INV_FREQ_KEY, invFreq);
 		return weights;
 	}

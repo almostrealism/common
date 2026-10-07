@@ -26,7 +26,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
@@ -100,10 +99,11 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * <h2>Lifecycle</h2>
- * <p>{@link #destroy()} releases the compiled position operations this class creates, and
- * every resource its creator handed over with {@link #own(Destroyable...)}. The position,
- * temperature and model passed to the constructor are not released unless they were handed
- * over that way, because they may be shared with other parts of the computation graph.</p>
+ * <p>{@link #destroy()} releases the compiled position operations this class creates. The
+ * position, temperature and generation steps passed to the constructor are not released,
+ * because they may be shared with other parts of the computation graph. A generator that
+ * allocates resources of its own, such as its input buffers or a compiled model, is a subclass
+ * that overrides {@link #destroy()} to release them.</p>
  *
  * <h2>Token Selection Process</h2>
  * <p>The {@link #next()} method implements the following logic:</p>
@@ -169,9 +169,6 @@ public class AutoregressiveModel<T> implements Destroyable {
 
 	/** The model output produced by the most recent forward pass; used to sample the next token. */
 	private PackedCollection cachedOutput;
-
-	/** Resources handed over by {@link #own(Destroyable...)}, released by {@link #destroy()}. */
-	private final List<Destroyable> owned = new ArrayList<>();
 
 	/**
 	 * Creates a new autoregressive model with the specified components.
@@ -250,34 +247,18 @@ public class AutoregressiveModel<T> implements Destroyable {
 	}
 
 	/**
-	 * Hands resources over to this generator, so that {@link #destroy()} releases them. A
-	 * creator that allocates state used only by this generator, such as its input buffers,
-	 * position or temperature, uses this to give the caller a single object to release.
-	 *
-	 * @param resources the resources this generator now owns
-	 * @return this generator
-	 */
-	public AutoregressiveModel<T> own(Destroyable... resources) {
-		owned.addAll(Arrays.asList(resources));
-		return this;
-	}
-
-	/**
-	 * Releases the compiled position operations and every resource handed over with
-	 * {@link #own(Destroyable...)}; every release is attempted even when an earlier one fails.
-	 * The compiled operations are released before the owned resources, because their teardown
-	 * may still reference argument memory such as the position. The generator cannot be used
-	 * afterwards. Owned resources are released only once, so a repeated call releases nothing
-	 * further that was handed over.
+	 * Releases the compiled position operations this class creates; both releases are attempted
+	 * even when the first fails. The position, temperature and generation steps passed to the
+	 * constructor are not released. A subclass that allocates resources of its own overrides
+	 * this method to release them, releasing its compiled operations before the memory they
+	 * read and calling this method. The generator cannot be used afterwards; a repeated call is
+	 * harmless.
 	 */
 	@Override
 	public void destroy() {
-		List<Runnable> releases = new ArrayList<>();
-		releases.add(() -> Destroyable.destroy(resetPosition));
-		releases.add(() -> Destroyable.destroy(advancePosition));
-		owned.forEach(resource -> releases.add(resource::destroy));
-		owned.clear();
-		Destroyable.releaseAll(releases);
+		Destroyable.releaseAll(List.<Runnable>of(
+				() -> Destroyable.destroy(resetPosition),
+				() -> Destroyable.destroy(advancePosition)));
 	}
 
 	/**
@@ -507,7 +488,7 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 *
 	 * <p>The loader owns the token-value buffer and the compiled operation it creates, and
 	 * {@link TokenLoader#destroy() destroying} it releases them; {@code input} remains the
-	 * caller's. A generator using the loader can take it over with {@link #own(Destroyable...)}.</p>
+	 * caller's, and so is the loader: the generator that creates it releases it.</p>
 	 *
 	 * @param <T>       the token type
 	 * @param input     the model input the embedding is written into
@@ -594,22 +575,23 @@ public class AutoregressiveModel<T> implements Destroyable {
 			}
 		};
 
-		Destroyable samplers = new Destroyable() {
-			@Override
-			public void destroy() {
-				Destroyable.releaseAll(List.<Runnable>of(
-						() -> Destroyable.destroy(indexOfMax),
-						() -> Destroyable.destroy(rescale),
-						() -> Destroyable.destroy(softmax)));
-			}
-		};
-
 		return new AutoregressiveModel<>(
 				position,
 				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
 				sample,
-				temperature).own(samplers, in, temperature);
+				temperature) {
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.<Runnable>of(
+						super::destroy,
+						() -> Destroyable.destroy(indexOfMax),
+						() -> Destroyable.destroy(rescale),
+						() -> Destroyable.destroy(softmax),
+						in::destroy,
+						temperature::destroy));
+			}
+		};
 	}
 
 }
