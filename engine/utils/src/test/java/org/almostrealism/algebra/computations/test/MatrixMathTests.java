@@ -236,17 +236,18 @@ public class MatrixMathTests extends TestSuiteBase {
 			// Read each source once; per-element reads cost a host transfer each on some backends
 			double[] m = matrix.toArray();
 			double[] v = vector.toArray();
-			double[] expected = new double[Math.max(batches, 1) * dim];
 
-			for (int n = 0; n < Math.max(batches, 1); n++) {
-				for (int i = 0; i < dim; i++) {
-					for (int j = 0; j < width; j++) {
-						expected[n * dim + i] += m[i * width + j] * v[n * width + j];
-					}
+			assertEquals(0.0, largestDeviation(result.getShape(), pos -> {
+				int n = batches > 0 ? pos[0] : 0;
+				int i = pos[pos.length - 1];
+				double sum = 0.0;
+
+				for (int j = 0; j < width; j++) {
+					sum += m[i * width + j] * v[n * width + j];
 				}
-			}
 
-			assertEquals(pack(expected).reshape(result.getShape()), result);
+				return sum;
+			}, result));
 		}
 	}
 
