@@ -25,7 +25,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.ml.tokenization.ByteTokenizer;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.Model;
 import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
@@ -79,7 +78,7 @@ import java.util.stream.IntStream;
  * device memory ceiling of at least {@code AR_HARDWARE_MEMORY_SCALE=6}.</p>
  *
  * <p>After training, the reloaded checkpoint generates a greedy continuation of a documentation
- * prompt through {@link CausalLanguageModel#generator}, which is logged.</p>
+ * prompt through a {@link SlidingWindowAutoregressiveModel}, which is logged.</p>
  */
 public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestFeatures {
 	/** Byte vocabulary size. */
@@ -174,12 +173,12 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	@Test(timeout = 60000)
 	public void rejectsIncompatibleWeights() {
 		CausalLanguageModel fresh = newModel();
-		Map<String, TraversalPolicy> shapes = fresh.getWeightShapes();
+		Map<String, TraversalPolicy> shapes = fresh.getConfig().getWeightShapes();
 		int perBlockKeys = 6;
 		int sharedKeys = 4;
 		Assert.assertEquals(sharedKeys + perBlockKeys * DEPTH, shapes.size());
 		Assert.assertEquals(shapes.keySet(), fresh.getWeights().keySet());
-		Assert.assertArrayEquals(new int[] { 3 * DIM, DIM }, shapes.get(fresh.layerKey(0, "qkv")).extent());
+		Assert.assertArrayEquals(new int[] { 3 * DIM, DIM }, shapes.get(fresh.getConfig().layerKey(0, "qkv")).extent());
 		Assert.assertArrayEquals(new int[] { DIM / HEADS / 2 },
 				shapes.get(CausalLanguageModel.INV_FREQ_KEY).extent());
 
@@ -204,7 +203,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		}
 
 		Map<String, PackedCollection> transposed = new HashMap<>(fresh.getWeights().getAllWeights());
-		transposed.put(fresh.layerKey(0, "w2"), new PackedCollection(shape(FF_DIM, DIM)));
+		transposed.put(fresh.getConfig().layerKey(0, "w2"), new PackedCollection(shape(FF_DIM, DIM)));
 		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
 				new StateDictionary(transposed)));
 	}
@@ -222,13 +221,13 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 		CausalLanguageModel minimal = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1, ROPE_BASE,
 				new Random(SEED));
-		Assert.assertEquals(expected, minimal.getParameterCount());
+		Assert.assertEquals(expected, minimal.getConfig().getParameterCount());
 
 		Map<String, PackedCollection> extended = new HashMap<>(minimal.getWeights().getAllWeights());
 		extended.put("unused.extra", new PackedCollection(shape(32)));
 		CausalLanguageModel reloaded = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1,
 				new StateDictionary(extended));
-		Assert.assertEquals(expected, reloaded.getParameterCount());
+		Assert.assertEquals(expected, reloaded.getConfig().getParameterCount());
 	}
 
 	/**
@@ -274,11 +273,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	@Test(timeout = 15 * 60000)
 	public void outputShapeAndMeanLoss() {
 		CausalLanguageModel lm = newModel();
-		Model model = lm.buildModel(ParameterUpdate.disabled());
-		assertOutputShape(model.getOutputShape());
 		assertOutputShape(lm.getOutputShape());
+		assertOutputShape(lm.getConfig().getOutputShape());
 
-		CompiledModel compiled = model.compile(false);
+		CompiledModel compiled = lm.compile(false);
 		assertOutputShape(compiled.getOutputShape());
 
 		int[] tokens = new ByteTokenizer().encodeAsInt(
@@ -339,7 +337,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			return gradients.apply(name, weights, gradient);
 		};
 
-		CompiledModel compiled = lm.buildModel(recorder).compile(true);
+		lm.setParameterUpdate(recorder);
+		CompiledModel compiled = lm.compile(true);
 		PackedCollection ids = PackedCollection.of(3, 7, 1, 12);
 		PackedCollection outputGradient = randn(shape(seq, vocab), 0.0, 1.0, new Random(4)).evaluate();
 		compiled.forward(ids);
@@ -425,9 +424,9 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 				" learningRate=" + LEARNING_RATE + "->" + FINAL_LEARNING_RATE + " betas=0.9/0.999 ffDim=" + FF_DIM + " ropeBase=" + ROPE_BASE);
 
 		CausalLanguageModel lm = newModel();
-		log("parameters=" + lm.getParameterCount());
+		log("parameters=" + lm.getConfig().getParameterCount());
 		PackedCollection learningRate = PackedCollection.of(LEARNING_RATE);
-		Model model = lm.buildModel(new AdamOptimizer(cp(learningRate), c(0.9), c(0.999)));
+		lm.setParameterUpdate(new AdamOptimizer(cp(learningRate), c(0.9), c(0.999)));
 		Runnable decayLearningRate = a(p(learningRate), max(
 				cp(learningRate).add((FINAL_LEARNING_RATE - LEARNING_RATE) / (EPOCHS - 1)),
 				c(FINAL_LEARNING_RATE))).get();
@@ -435,7 +434,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		CompiledModel compiled = null;
 		try {
 			long compileStart = System.nanoTime();
-			compiled = model.compile(true);
+			compiled = lm.compile(true);
 			log("compileSeconds=" + (System.nanoTime() - compileStart) / 1e9);
 
 			assertTrainsPastBaselineAndReloads(lm, compiled, learningRate, decayLearningRate,
@@ -511,7 +510,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		try {
 			CausalLanguageModel reloaded = new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
 					reloadedWeights);
-			reloadedCompiled = reloaded.buildModel(ParameterUpdate.disabled()).compile(false);
+			reloadedCompiled = reloaded.compile(false);
 			ModelOptimizer evaluator = new ModelOptimizer(reloadedCompiled, () -> heldOut);
 			evaluator.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
 			double reloadedBits = evaluator.evaluate(heldOut) / Math.log(2);
@@ -519,7 +518,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
 			Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
 
-			generated = generateSample(reloaded, reloadedCompiled, GENERATION_PROMPT, GENERATED_BYTES);
+			generated = generateSample(new CausalLanguageModel(reloaded.getConfig(), reloadedWeights),
+					GENERATION_PROMPT, GENERATED_BYTES);
 		} finally {
 			Destroyable.destroy(reloadedCompiled);
 			reloadedWeights.destroy();
@@ -536,27 +536,24 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * The sliding-window generator decodes exactly the full-sequence forward pass: on a miniature
 	 * configuration with random weights, every greedily generated token, including those generated
 	 * after the sequence outgrows the context and the window slides, is the most probable token of
-	 * the last filled row of the inference model run over the preceding (at most {@code seqLen})
-	 * tokens, with the remaining positions padded by a different filler than the generator uses,
-	 * which the causal mask must ignore. Greedy decoding is reproducible after
-	 * {@link AutoregressiveModel#reset()}, and a compiled model of another configuration is
-	 * rejected.
+	 * the last filled row of an independent inference compilation of the same weights run over the
+	 * preceding (at most {@code seqLen}) tokens, with the remaining positions padded by a different
+	 * filler than the generator uses, which the causal mask must ignore. Greedy decoding is
+	 * reproducible after {@link AutoregressiveModel#reset()}.
 	 */
 	@Test(timeout = 15 * 60000)
 	public void slidingWindowGenerationMatchesFullForward() {
 		int seq = 8;
 		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
-		CompiledModel inference = lm.buildModel(ParameterUpdate.disabled()).compile(false);
+		CompiledModel inference = lm.compile(false);
 
 		try {
-			assertRejected(() -> new CausalLanguageModel(VOCAB, seq + 1, 8, 2, 1, 8, lm.getWeights())
-					.generator(inference, null));
-
 			int[] prompt = new ByteTokenizer().encodeAsInt("Producer");
 			int generated = 2 * seq;
 			int[] first;
 			int[] second;
-			try (AutoregressiveModel<Integer> generator = lm.generator(inference, null)) {
+			try (AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
 				first = generate(generator, prompt, generated);
 				second = generate(generator, prompt, generated);
 			}
@@ -582,71 +579,33 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
-	 * The generator accepts only a model with exactly this configuration's single
-	 * {@code (seqLen)} input and {@code (seqLen, vocab)} output: a model whose input has the same
-	 * number of elements but another shape, or whose output is the transposed
-	 * {@code (vocab, seqLen)}, is rejected rather than decoded with its rows misread.
-	 */
-	@Test(timeout = 5 * 60000)
-	public void generatorRejectsMismatchedShapes() {
-		int seq = 8;
-		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
-		PackedCollection table = new PackedCollection(shape(VOCAB, VOCAB));
-
-		Model batched = new Model(shape(1, seq));
-		batched.add(lm.reshape(shape(1, seq), shape(seq)));
-		batched.add(lm.embedding(shape(seq), table));
-
-		Model transposed = new Model(shape(seq));
-		transposed.add(lm.embedding(shape(seq), table));
-		transposed.add(lm.reshape(shape(seq, VOCAB), shape(VOCAB, seq)));
-
-		CompiledModel batchedCompiled = null;
-		CompiledModel transposedCompiled = null;
-		try {
-			batchedCompiled = batched.compile(false);
-			transposedCompiled = transposed.compile(false);
-			Assert.assertEquals(seq, batchedCompiled.getInputShape().getTotalSize());
-			Assert.assertEquals(seq * VOCAB, transposedCompiled.getOutputShape().getTotalSize());
-
-			CompiledModel rejectedBatched = batchedCompiled;
-			CompiledModel rejectedTransposed = transposedCompiled;
-			assertRejected(() -> lm.generator(rejectedBatched, null));
-			assertRejected(() -> lm.generator(rejectedTransposed, null));
-		} finally {
-			Destroyable.destroy(batchedCompiled);
-			Destroyable.destroy(transposedCompiled);
-			table.destroy();
-			lm.getWeights().destroy();
-		}
-	}
-
-	/**
-	 * Destroying a generator releases the buffers it decodes with, including its position, and
-	 * leaves the inference model usable for another generator; a second destroy is harmless.
+	 * Destroying a generator releases the compilation and buffers it decodes with, including its
+	 * position, and leaves the weights of its model usable for another generator; a second
+	 * destroy is harmless.
 	 */
 	@Test(timeout = 5 * 60000)
 	public void destroyingGeneratorReleasesItsBuffers() {
 		int seq = 8;
 		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
-		CompiledModel inference = lm.buildModel(ParameterUpdate.disabled()).compile(false);
 
 		try {
 			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
-			AutoregressiveModel<Integer> generator = lm.generator(inference, null);
+			AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(lm, null);
 			int[] before = generate(generator, prompt, 2);
 			PackedCollection position = generator.getPosition();
 			Assert.assertFalse(position.isDestroyed());
 
 			generator.destroy();
 			Assert.assertTrue("generator position was not released", position.isDestroyed());
+			Assert.assertFalse("model weights were released",
+					lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY).isDestroyed());
 			generator.destroy();
 
-			try (AutoregressiveModel<Integer> next = lm.generator(inference, null)) {
+			try (AutoregressiveModel<Integer> next = new SlidingWindowAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
 				Assert.assertArrayEquals(before, generate(next, prompt, 2));
 			}
 		} finally {
-			inference.destroy();
 			lm.getWeights().destroy();
 		}
 	}
@@ -660,7 +619,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	public void destroyingFactoryGeneratorKeepsCallerResources() {
 		int seq = 8;
 		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
-		CompiledModel inference = lm.buildModel(ParameterUpdate.disabled()).compile(false);
+		CompiledModel inference = lm.compile(false);
 		PackedCollection position = new PackedCollection(1);
 		PackedCollection embedded = new PackedCollection(shape(seq));
 
@@ -726,18 +685,17 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * byte-level model may legitimately emit a partial multi-byte sequence. The continuations are
 	 * returned unchecked so that the sample is logged even when a later assertion fails.
 	 *
-	 * @param lm        the trained model
-	 * @param inference its compiled inference model
-	 * @param prompt    the text to continue
-	 * @param length    the number of bytes to generate
+	 * @param lm     the trained model, not yet compiled
+	 * @param prompt the text to continue
+	 * @param length the number of bytes to generate
 	 * @return the two continuations
 	 */
-	private int[][] generateSample(CausalLanguageModel lm, CompiledModel inference, String prompt, int length) {
+	private int[][] generateSample(CausalLanguageModel lm, String prompt, int length) {
 		int[] promptTokens = new ByteTokenizer().encodeAsInt(prompt);
 		int[] first;
 		int[] second;
 		double seconds;
-		try (AutoregressiveModel<Integer> generator = lm.generator(inference, null)) {
+		try (AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(lm, null)) {
 			long start = System.nanoTime();
 			first = generate(generator, promptTokens, length);
 			seconds = (System.nanoTime() - start) / 1e9;

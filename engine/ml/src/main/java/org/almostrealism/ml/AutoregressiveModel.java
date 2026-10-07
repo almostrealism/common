@@ -52,7 +52,10 @@ import java.util.function.Supplier;
  * <p>For standard integer-token text models use the
  * {@link #of(CompiledModel, PackedCollection, IntFunction)} factory, which returns
  * {@code AutoregressiveModel<Integer>} and handles all sampling infrastructure internally.
- * For compound or structured token types, use the generic constructor directly.</p>
+ * For compound or structured token types, use the generic constructor directly. A generator
+ * whose decoding state is more than a forward pass over a fixed input, such as
+ * {@link SlidingWindowAutoregressiveModel}, extends this class and overrides
+ * {@link #load(Object)}, {@link #forward()} and {@link #sample(PackedCollection)}.</p>
  *
  * <h2>Position</h2>
  * <p>The caller supplies the single-element collection that its computation graph reads as
@@ -192,6 +195,18 @@ public class AutoregressiveModel<T> implements Destroyable {
 		this.resetPosition = ops.a(ops.cp(position), ops.c(0.0)).get();
 		this.advancePosition = ops.a(ops.cp(position),
 				ops.add(ops.cp(position), ops.c(1.0))).get();
+	}
+
+	/**
+	 * Creates an autoregressive model whose subclass implements the generation steps by
+	 * overriding {@link #load(Object)}, {@link #forward()} and {@link #sample(PackedCollection)},
+	 * all three of which it must override.
+	 *
+	 * @param position    single-element collection holding the sequence position
+	 * @param temperature single-element collection holding the sampling temperature
+	 */
+	protected AutoregressiveModel(PackedCollection position, PackedCollection temperature) {
+		this(position, null, null, null, temperature);
 	}
 
 	/**
@@ -340,17 +355,67 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 */
 	public T next() {
 		if (currentStep < promptLength) {
-			token.accept(prompt[currentStep]);
-			cachedOutput = forward.get();
+			load(prompt[currentStep]);
+			cachedOutput = forward();
 			currentToken = prompt[currentStep];
 		} else {
-			currentToken = sample.apply(cachedOutput);
-			token.accept(currentToken);
-			cachedOutput = forward.get();
+			currentToken = sample(cachedOutput);
+			load(currentToken);
+			cachedOutput = forward();
 		}
 
 		advance();
 		return currentToken;
+	}
+
+	/**
+	 * Loads a token into the model input before the forward pass of the current step. Applies
+	 * the token consumer given to the constructor.
+	 *
+	 * @param t the token fed at the current position
+	 */
+	protected void load(T t) {
+		requireStep("load", token).accept(t);
+	}
+
+	/**
+	 * Runs the forward pass of the current step. Uses the forward supplier given to the
+	 * constructor.
+	 *
+	 * @return the model output, from which the next token is sampled
+	 */
+	protected PackedCollection forward() {
+		return requireStep("forward", forward).get();
+	}
+
+	/**
+	 * Selects the next token from the output of the previous forward pass. Applies the sample
+	 * function given to the constructor.
+	 *
+	 * @param output the model output of the previous step
+	 * @return the selected token
+	 */
+	protected T sample(PackedCollection output) {
+		return requireStep("sample", sample).apply(output);
+	}
+
+	/**
+	 * Returns a generation step given to the constructor, failing when it is absent because a
+	 * subclass created through {@link #AutoregressiveModel(PackedCollection, PackedCollection)}
+	 * did not override the method that uses it.
+	 *
+	 * @param <S>  the type of the step
+	 * @param name the name of the overridable method that uses the step
+	 * @param step the step, or null
+	 * @return the step
+	 * @throws IllegalStateException if {@code step} is null
+	 */
+	private <S> S requireStep(String name, S step) {
+		if (step == null) {
+			throw new IllegalStateException(getClass().getSimpleName() + " must override " + name);
+		}
+
+		return step;
 	}
 
 	/**

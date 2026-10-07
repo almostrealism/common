@@ -17,10 +17,10 @@ general rule that `ModelOptimizer` owns the training loop.
 | Causal attention | `SequenceAttentionFeatures` | `sequenceAttention(..., causal)` adds `causalLogitMask` (zero for key `j <= i`, a large negative penalty otherwise) to the logits before the key-axis softmax, alongside any per-key mask. Reached from `TransformerBlockFeatures.transformerBlock(..., causal)` through the `AttentionFeatures.selfAttention` variant seam; `DifferentialAttentionFeatures` rejects `causal = true`. |
 | Gradients into K and V | `SequenceAttentionFeatures.scaledDotProductAttention(..., Block k, Block v, ...)` | K and V are wired into the two attention products as auxiliary inputs (`LayerRoutingFeatures.compose`), so the fused QKV weight receives gradients in all three slices (`SequenceAttentionGradientTest`). |
 | Loss | `logSoftmax` + `NegativeLogLikelihood` | The model ends in a `(seqLen, vocab)` output, so the loss is the mean over positions; `NegativeLogLikelihood.gradient` is `-target / rows`, the gradient of that mean. |
-| Model | `CausalLanguageModel` | Embedding, `depth` pre-norm RMS blocks with causal RoPE attention and a SiLU-gated feed-forward, final RMS norm, output projection, log-softmax. Weights live in a `StateDictionary`. |
-| Optimizer | `AdamOptimizer` set on the `Model` | `Model` defaults to plain scaled SGD, so Adam must be passed explicitly. |
+| Model | `CausalLanguageModel` (a `Model`) and `CausalLanguageModelConfig` (a `TransformerConfig`) | Embedding, `depth` pre-norm RMS blocks with causal RoPE attention and a SiLU-gated feed-forward, final RMS norm, output projection, log-softmax, assembled when the model is constructed. Weights live in a `StateDictionary`; the configuration owns their shapes and keys and creates fresh ones. |
+| Optimizer | `AdamOptimizer` set with `Model.setParameterUpdate` | `CausalLanguageModel` starts with updates disabled, so Adam must be set before the model is compiled for training. |
 | Window spacing | `NextTokenDataset.spanningStride` | The largest stride at which a given number of windows fit in the region, so a run that reads that many windows covers the region from start to end. |
-| Generation | `CausalLanguageModel.generator` | An `AutoregressiveModel<Integer>` that decodes with a sliding window over a compiled inference model of the same weights; see "Generation" below. |
+| Generation | `SlidingWindowAutoregressiveModel` | An `AutoregressiveModel<Integer>` that compiles a `CausalLanguageModel` for inference and decodes with a sliding window over it; see "Generation" below. |
 
 ## Gradient wiring in sequence attention
 
@@ -151,10 +151,13 @@ trained one exactly (the test allows a relative difference of 1e-4).
 
 ## Generation
 
-`CausalLanguageModel.generator` turns a compiled inference model of the same weights (for example
-`buildModel(ParameterUpdate.disabled()).compile(false)`) into an `AutoregressiveModel<Integer>`,
-built through the general constructor of `AutoregressiveModel` rather than its `of` factory,
-which expects a model that takes one token's embedding and returns one vocabulary row.
+`SlidingWindowAutoregressiveModel` is an `AutoregressiveModel<Integer>` constructed from a
+`CausalLanguageModel`, which it compiles for inference itself, so it always decodes the model it
+was given. It extends `AutoregressiveModel` and overrides its `load`, `forward` and `sample` steps
+rather than using the `of` factory, which expects a model that takes one token's embedding and
+returns one vocabulary row. A `Model` is compiled once, so generating from weights that are also
+being trained or evaluated uses a second `CausalLanguageModel` over the same `StateDictionary`
+(`new CausalLanguageModel(lm.getConfig(), lm.getWeights())`).
 
 Decoding uses a sliding window over the full-sequence model the weights were trained with. The
 `(seqLen)` input holds the most recent tokens (at most `seqLen`) in device memory: each new token
@@ -164,12 +167,10 @@ never staged on the host. Each step runs one forward pass and samples from the l
 otherwise. Positions after the filled prefix hold padding, which the causal mask keeps from
 affecting the filled rows; once the text is longer than `seqLen` the window slides, so every pass
 sees its tokens at positions `0..seqLen-1`, as every training window did. The window is cleared
-(padding zeroed, so every position is a valid token id) when the generator restarts at step zero,
-so `AutoregressiveModel.reset()` begins a new sequence. The generator owns its window, token,
-position and temperature buffers: `AutoregressiveModel` is `Destroyable`, so a caller closes the
-generator (try-with-resources works) while the compiled inference model, which can serve any number
-of generators, stays the caller's to release. `generator` rejects a compiled model whose single
-input is not exactly `(seqLen)` or whose output is not exactly `(seqLen, vocabSize)`.
+(padding zeroed, so every position is a valid token id) by `reset()`, which begins a new sequence.
+The generator owns its inference compilation and its window, token, position and temperature
+buffers: `AutoregressiveModel` is `Destroyable`, so a caller closes the generator
+(try-with-resources works), while the `CausalLanguageModel` and its weights stay the caller's.
 `CausalLanguageModelTest.slidingWindowGenerationMatchesFullForward` checks that every greedily
 generated byte, including those after the window slides, is the most probable byte of the
 corresponding row of a separate forward pass whose padding differs, and that greedy decoding is

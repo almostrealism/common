@@ -377,5 +377,16 @@ the generation path itself is proven on random weights by the fast test. The gen
 device buffers and releases them when it is destroyed (`AutoregressiveModel` is `Destroyable`), and
 `generator(...)` requires the inference model's exact single input and output shapes.
 
+**Review rework (OOP).** The owner's review of PR #620 rejected the shape above:
+`CausalLanguageModel` was neither a `Model` nor named as a factory, `generator` accepted any
+`CompiledModel` instead of the model's own, and it returned a field reached through a throwaway
+inner object (`new SlidingWindow(...).generator`). Now `CausalLanguageModel extends Model` and
+assembles its layers in its constructor (training sets the update with `setParameterUpdate`);
+`CausalLanguageModelConfig extends TransformerConfig` validates the architecture and owns weight
+shapes, keys, parameter count and fresh-weight creation; and `SlidingWindowAutoregressiveModel
+extends AutoregressiveModel<Integer>` compiles the `CausalLanguageModel` it is given and overrides
+the new `load`/`forward`/`sample` steps of `AutoregressiveModel`. The shape-rejection test was
+removed with the API it tested: a generator can no longer be given a model of another shape.
+
 **Deliverable 3 — done.** `docs/internals/training-a-language-model.md` has the new
 configuration, curve, recipe comparison, step-cost analysis, and a Generation section.
