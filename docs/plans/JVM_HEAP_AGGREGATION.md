@@ -88,8 +88,12 @@ are `MemoryDataArgumentMap.copyOperation` and `Assignment$Runner` copies. These 
 by the **native** context, whose `AbstractComputeContext.copy` fallback calls `setFrom` on a
 callback thread, because the CPU kernels now run against CUDA managed memory. So every
 mechanism-A copy that used to be a host memcpy is now a synchronous driver call. The
-long-lived model removes these copies altogether. Until then, making a copy between two
-managed allocations cheap from the host is the remaining lever.
+long-lived model removes these copies altogether.
+
+A copy between two managed allocations is now made by the host over direct buffer views
+(`CUDeviceBuffer.copyFrom`), with no driver call. With that in place the same test takes
+435 s: sharing is now faster than not sharing. The copies themselves still run on every
+dispatch.
 
 ### C. Migration (`HardwareOperator.reassignMemory`)
 

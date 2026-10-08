@@ -39,7 +39,9 @@ import java.util.function.Consumer;
  * <p>A provider adopts it in three places:</p>
  * <ul>
  *   <li>{@link #take(long)} before making a native allocation, using the returned handle
- *       instead when there is one;</li>
+ *       instead when there is one. A handle comes back holding whatever its last user left
+ *       in it, so the provider restores whatever a fresh allocation guarantees (zero-filled
+ *       contents, for example) before handing it out;</li>
  *   <li>{@link #offer(long, Object)} instead of freeing a handle, freeing it only if the
  *       cache declines it;</li>
  *   <li>{@link #flush(Consumer)} when it needs the memory back (for example, when an

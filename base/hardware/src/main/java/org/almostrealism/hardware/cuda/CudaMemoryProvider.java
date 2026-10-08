@@ -31,7 +31,9 @@ import org.almostrealism.io.SystemUtils;
  *
  * <p>Allocations are either managed (addressable from host and device) or device-only, as
  * decided by the data context from the device's capabilities. Host reads and writes go
- * through the driver's copy functions in both cases, which are correct for either kind.</p>
+ * through the driver's copy functions in both cases, which are correct for either kind. A
+ * copy between two managed allocations is made by the host instead, without a driver call
+ * (see {@link CUDeviceBuffer#copyFrom}).</p>
  *
  * <p>Allocation is bounded by a maximum reservation; exceeding it throws a
  * {@link HardwareException} with the message {@code "Memory Max Reached"}, as the other
@@ -146,6 +148,13 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 
 		CUDeviceBuffer reused = cache.take(bytes);
 		if (reused != null) {
+			try {
+				reused.clear();
+			} catch (RuntimeException e) {
+				reused.release();
+				throw e;
+			}
+
 			synchronized (this) {
 				memoryUsed += bytes;
 			}

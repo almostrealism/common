@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
@@ -201,6 +202,12 @@ public final class CU {
 	/** Enqueues a copy between device allocations on a stream. Addresses include any offset. */
 	public static native void memcpyDtoDAsync(long context, long destination, long source,
 											  long bytes, long stream);
+
+	/**
+	 * Returns a direct buffer over {@code bytes} bytes of host-addressable memory at
+	 * {@code address}, without copying. The buffer does not own the memory.
+	 */
+	public static native ByteBuffer hostView(long address, long bytes);
 
 	/** Creates a non-blocking stream. */
 	public static native long streamCreate(long context);

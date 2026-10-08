@@ -26,6 +26,7 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -137,6 +138,42 @@ public class CudaDataContextLifecycleTest {
 
 			provider.deallocate(16, copy);
 			provider.deallocate(16, mem);
+		} finally {
+			context.destroy();
+		}
+	}
+
+	/**
+	 * An allocation reads as zeros even when the provider satisfies it by reusing a block an
+	 * earlier allocation of the same size wrote to and released.
+	 */
+	@Test(timeout = 60000)
+	public void reusedMemoryIsZeroed() {
+		CudaDataContext context = newContext();
+
+		try {
+			CudaMemoryProvider provider;
+
+			try {
+				provider = context.getMemoryProvider();
+			} catch (LinkageError | HardwareException e) {
+				Assume.assumeNoException("CUDA is unavailable", e);
+				return;
+			}
+
+			double[] values = new double[16];
+			Arrays.fill(values, 7.0);
+
+			for (int i = 0; i < 4; i++) {
+				CudaMemory mem = provider.allocate(16);
+
+				double[] out = new double[16];
+				provider.getMem(mem, 0, out, 0, 16);
+				Assert.assertArrayEquals("Allocation " + i, new double[16], out, 0.0);
+
+				provider.setMem(mem, 0, values, 0, 16);
+				provider.deallocate(16, mem);
+			}
 		} finally {
 			context.destroy();
 		}
