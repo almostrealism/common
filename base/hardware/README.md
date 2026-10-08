@@ -800,6 +800,8 @@ export AR_HARDWARE_SHARED_MEMORY=disabled
 
 # Enable the NIO shared-memory bridge (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
+
+<!-- TODO(review): document AR_HARDWARE_ALLOCATION_CACHE (CUDA released-buffer reuse, off by default) here -->
 ```
 
 ### Development vs Production

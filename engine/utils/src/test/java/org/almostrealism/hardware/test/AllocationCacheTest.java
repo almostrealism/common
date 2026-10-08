@@ -99,6 +99,21 @@ public class AllocationCacheTest extends TestSuiteBase {
 		Assert.assertEquals(0, cache.getHeldBytes());
 	}
 
+	/**
+	 * A cache with zero capacity holds nothing and declines every offer, so a provider given one
+	 * allocates and frees every buffer directly. This is how allocation caching is turned off.
+	 */
+	@Test(timeout = 10_000)
+	public void zeroCapacityCachesNothing() {
+		AllocationCache<String> cache = new AllocationCache<>(0, 512);
+
+		Assert.assertFalse(cache.offer(1, "a"));
+		Assert.assertFalse(cache.offer(64, "b"));
+		Assert.assertEquals(0, cache.getHeldBytes());
+		Assert.assertNull(cache.take(1));
+		Assert.assertNull(cache.take(64));
+	}
+
 	/** A closed cache releases what it holds and declines everything offered afterwards. */
 	@Test(timeout = 10_000)
 	public void closeDeclinesLaterOffers() {

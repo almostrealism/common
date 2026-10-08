@@ -44,6 +44,16 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
+	/**
+	 * Whether released buffers are kept for reuse rather than freed. Off by default; enabled with
+	 * {@code AR_HARDWARE_ALLOCATION_CACHE}. Reuse avoids the cost of allocating and freeing native
+	 * memory repeatedly (freeing synchronizes the device), which a workload such as a training loop
+	 * pays on every step, at the cost of holding memory against the reservation. When disabled, each
+	 * released buffer is freed at once and every allocation is made fresh.
+	 */
+	public static boolean enableAllocationCache =
+			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_CACHE").orElse(false);
+
 	/** The size in bytes above which an allocation is considered large. */
 	public static int largeAllocationSize = 40 * 1024 * 1024;
 
@@ -75,7 +85,9 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	 * Released buffers kept for reuse. Allocating a buffer and freeing one are each expensive
 	 * (freeing synchronizes the device), and a workload such as a training loop allocates the
 	 * same sizes over and over. Held buffers count toward the reservation, and are freed when an
-	 * allocation would otherwise exceed it.
+	 * allocation would otherwise exceed it. Reuse is governed by {@link #enableAllocationCache};
+	 * when it is off the cache is given a capacity of zero, so it holds nothing and the provider
+	 * allocates and frees every buffer directly.
 	 */
 	private final AllocationCache<CUDeviceBuffer> cache;
 
@@ -92,7 +104,8 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.managed = managed;
-		this.cache = new AllocationCache<>(memoryMax / 8, maxCachedAllocation);
+		this.cache = new AllocationCache<>(
+				enableAllocationCache ? memoryMax / 8 : 0, maxCachedAllocation);
 	}
 
 	@Override
