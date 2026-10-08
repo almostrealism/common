@@ -19,6 +19,7 @@ package org.almostrealism.hardware.cuda;
 import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.AllocationCache;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.Console;
@@ -44,6 +45,9 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	/** The size in bytes above which an allocation is considered large. */
 	public static int largeAllocationSize = 40 * 1024 * 1024;
 
+	/** The largest released buffer, in bytes, kept for reuse rather than freed. */
+	public static long maxCachedAllocation = 16L * 1024 * 1024;
+
 	/** Sizes of allocations made by all CUDA memory providers. */
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("cudaAllocationSizes", 1024 * 1024);
 
@@ -62,8 +66,16 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	/** Whether allocations are managed rather than device-only. */
 	private final boolean managed;
 
-	/** The number of bytes currently allocated. */
+	/** The number of bytes currently allocated and in use. */
 	private long memoryUsed;
+
+	/**
+	 * Released buffers kept for reuse. Allocating a buffer and freeing one are each expensive
+	 * (freeing synchronizes the device), and a workload such as a training loop allocates the
+	 * same sizes over and over. Held buffers count toward the reservation, and are freed when an
+	 * allocation would otherwise exceed it.
+	 */
+	private final AllocationCache<CUDeviceBuffer> cache;
 
 	/**
 	 * Creates a provider.
@@ -78,6 +90,7 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.managed = managed;
+		this.cache = new AllocationCache<>(memoryMax / 8, maxCachedAllocation);
 	}
 
 	@Override
@@ -122,11 +135,28 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	}
 
 	/**
-	 * Allocates a buffer of the given size, enforcing the maximum reservation.
+	 * Allocates a buffer of the given size, enforcing the maximum reservation. The driver rejects
+	 * an allocation of zero bytes, so an empty region is given a one-byte buffer; the reservation
+	 * accounts for the bytes actually allocated, which is also what is released when the buffer is.
 	 *
 	 * @throws HardwareException if the allocation would exceed the maximum reservation
 	 */
-	private CUDeviceBuffer buffer(long bytes) {
+	private CUDeviceBuffer buffer(long requested) {
+		long bytes = Math.max(requested, 1);
+
+		CUDeviceBuffer reused = cache.take(bytes);
+		if (reused != null) {
+			synchronized (this) {
+				memoryUsed += bytes;
+			}
+
+			return reused;
+		}
+
+		if (getAllocatedMemory() + cache.getHeldBytes() + bytes > memoryMax) {
+			cache.flush(CUDeviceBuffer::release);
+		}
+
 		synchronized (this) {
 			if (memoryUsed + bytes > memoryMax) {
 				throw new HardwareException("Memory Max Reached");
@@ -147,22 +177,39 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		}
 	}
 
+	/**
+	 * Releases the buffer behind a freed allocation: it is kept for reuse if the cache has room
+	 * for it, and freed otherwise.
+	 *
+	 * @param ref the freed allocation
+	 */
 	@Override
 	protected void deallocate(NativeRef<CudaMemory> ref) {
 		try {
 			CUDeviceBuffer buf = ((CudaMemoryRef) ref).getBuffer();
 
-			synchronized (buf) {
-				if (buf.isReleased()) return;
-				buf.release();
-			}
+			if (buf.isReleased()) return;
 
 			synchronized (this) {
 				memoryUsed -= ref.getSize();
 			}
+
+			if (!cache.offer(ref.getSize(), buf)) {
+				buf.release();
+			}
 		} finally {
 			deallocationSizes.addEntry(ref.getSize());
 		}
+	}
+
+	/**
+	 * Frees the buffers kept for reuse, so that nothing remains allocated once the context is
+	 * released, and then destroys the provider. A buffer released afterwards is freed at once.
+	 */
+	@Override
+	public void destroy() {
+		cache.close(CUDeviceBuffer::release);
+		super.destroy();
 	}
 
 	@Override
