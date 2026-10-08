@@ -34,6 +34,11 @@ import java.util.Arrays;
  * while preserving correct output values.
  */
 public class LayerTrackingTest extends TestSuiteBase {
+	/**
+	 * The most measurement rounds {@link #testInferenceTrackingPerformance()} takes before it
+	 * accepts that inference is not faster than training.
+	 */
+	private static final int MEASUREMENT_ROUNDS = 3;
 
 	/**
 	 * Creates a dense model with two layers.
@@ -142,8 +147,8 @@ public class LayerTrackingTest extends TestSuiteBase {
 	 *
 	 * <p>A machine saturated by other work can still starve one mode for long enough to move its
 	 * median, so a round in which inference is not faster is measured again, up to
-	 * {@code rounds} times in all. A genuine regression, where inference is slower, is slower in
-	 * every round and still fails.</p>
+	 * {@link #MEASUREMENT_ROUNDS} times in all. A genuine regression, where inference is slower,
+	 * is slower in every round and still fails.</p>
 	 */
 	@Test(timeout = 300000)
 	@TestDepth(1)
@@ -153,7 +158,6 @@ public class LayerTrackingTest extends TestSuiteBase {
 		int layers = 4;
 		int warmup = 10;
 		int measured = 60;
-		int rounds = 3;
 
 		Model trainingModel = new Model(shape(inputSize));
 		Model inferenceModel = new Model(shape(inputSize));
@@ -179,7 +183,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		double trainingMs = 0;
 		double inferenceMs = 0;
 
-		for (int round = 1; round <= rounds; round++) {
+		for (int round = 1; round <= MEASUREMENT_ROUNDS; round++) {
 			long[] trainingTimes = new long[measured];
 			long[] inferenceTimes = new long[measured];
 			for (int i = 0; i < measured; i++) {
