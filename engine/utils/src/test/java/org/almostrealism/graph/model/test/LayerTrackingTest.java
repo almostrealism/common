@@ -132,6 +132,18 @@ public class LayerTrackingTest extends TestSuiteBase {
 
 	/**
 	 * Tests inference vs training tracking performance.
+	 *
+	 * <p>Both models are compiled up front and their forward passes are interleaved, alternating
+	 * which mode runs first, so that load from other activity on the machine falls on both modes
+	 * alike rather than on whichever block of iterations it happens to overlap. Each mode is then
+	 * represented by the median of its forward passes, which a few passes slowed by interference
+	 * cannot move. (The fastest single pass is not used: it depends on one unusually quick pass,
+	 * and varies more between runs than the difference being measured.)</p>
+	 *
+	 * <p>A machine saturated by other work can still starve one mode for long enough to move its
+	 * median, so a round in which inference is not faster is measured again, up to
+	 * {@code rounds} times in all. A genuine regression, where inference is slower, is slower in
+	 * every round and still fails.</p>
 	 */
 	@Test(timeout = 300000)
 	@TestDepth(1)
@@ -139,59 +151,62 @@ public class LayerTrackingTest extends TestSuiteBase {
 		int inputSize = 512;
 		int hiddenSize = 512;
 		int layers = 4;
-		int warmup = 5;
-		int measured = 20;
+		int warmup = 10;
+		int measured = 60;
+		int rounds = 3;
 
 		Model trainingModel = new Model(shape(inputSize));
+		Model inferenceModel = new Model(shape(inputSize));
 		for (int l = 0; l < layers; l++) {
 			trainingModel.add(dense(hiddenSize, hiddenSize).apply(shape(hiddenSize)));
+			inferenceModel.add(dense(hiddenSize, hiddenSize).apply(shape(hiddenSize)));
 		}
 
 		OperationProfileNode trainingProfile = new OperationProfileNode("Training");
 		CompiledModel trainingCompiled = trainingModel.compile(true, trainingProfile);
+
+		OperationProfileNode inferenceProfile = new OperationProfileNode("Inference");
+		CompiledModel inferenceCompiled = inferenceModel.compile(false, inferenceProfile);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
 		integers(0, inputSize).multiply(0.01).into(input.traverseEach()).evaluate();
 
 		for (int i = 0; i < warmup; i++) {
 			trainingCompiled.forward(input);
+			inferenceCompiled.forward(input);
 		}
 
-		long trainingStart = System.nanoTime();
-		for (int i = 0; i < measured; i++) {
-			trainingCompiled.forward(input);
+		double trainingMs = 0;
+		double inferenceMs = 0;
+
+		for (int round = 1; round <= rounds; round++) {
+			long[] trainingTimes = new long[measured];
+			long[] inferenceTimes = new long[measured];
+			for (int i = 0; i < measured; i++) {
+				if (i % 2 == 0) {
+					trainingTimes[i] = timeForward(trainingCompiled, input);
+					inferenceTimes[i] = timeForward(inferenceCompiled, input);
+				} else {
+					inferenceTimes[i] = timeForward(inferenceCompiled, input);
+					trainingTimes[i] = timeForward(trainingCompiled, input);
+				}
+			}
+
+			trainingMs = median(trainingTimes) / 1_000_000.0;
+			inferenceMs = median(inferenceTimes) / 1_000_000.0;
+			double speedup = (trainingMs - inferenceMs) / trainingMs * 100.0;
+
+			log("Round " + round + " training mode:  " + String.format("%.3f", trainingMs) +
+					" ms (median of " + measured + " iterations)");
+			log("Round " + round + " inference mode: " + String.format("%.3f", inferenceMs) +
+					" ms (median of " + measured + " iterations)");
+			log("Speedup: " + String.format("%.1f", speedup) + "%");
+
+			if (inferenceMs < trainingMs) break;
 		}
-		long trainingTime = System.nanoTime() - trainingStart;
 
 		trainingCompiled.destroy();
-
-		Model inferenceModel = new Model(shape(inputSize));
-		for (int l = 0; l < layers; l++) {
-			inferenceModel.add(dense(hiddenSize, hiddenSize).apply(shape(hiddenSize)));
-		}
-
-		OperationProfileNode inferenceProfile = new OperationProfileNode("Inference");
-		CompiledModel inferenceCompiled = inferenceModel.compile(false, inferenceProfile);
-
-		for (int i = 0; i < warmup; i++) {
-			inferenceCompiled.forward(input);
-		}
-
-		long inferenceStart = System.nanoTime();
-		for (int i = 0; i < measured; i++) {
-			inferenceCompiled.forward(input);
-		}
-		long inferenceTime = System.nanoTime() - inferenceStart;
-
 		inferenceCompiled.destroy();
-
-		double trainingMs = trainingTime / 1_000_000.0;
-		double inferenceMs = inferenceTime / 1_000_000.0;
-		double speedup = (trainingMs - inferenceMs) / trainingMs * 100.0;
-
-		log("Training mode:  " + String.format("%.2f", trainingMs) + " ms (" + measured + " iterations)");
-		log("Inference mode: " + String.format("%.2f", inferenceMs) + " ms (" + measured + " iterations)");
-		log("Speedup: " + String.format("%.1f", speedup) + "%");
 
 		try {
 			trainingProfile.save("results/layer-tracking-training.xml");
@@ -205,6 +220,21 @@ public class LayerTrackingTest extends TestSuiteBase {
 						String.format("%.2f", trainingMs) + "ms, inference=" +
 						String.format("%.2f", inferenceMs) + "ms)",
 				inferenceMs < trainingMs);
+	}
+
+	/** Returns the median of {@code times}. */
+	private static double median(long[] times) {
+		long[] sorted = times.clone();
+		Arrays.sort(sorted);
+		int mid = sorted.length / 2;
+		return sorted.length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
+	}
+
+	/** Returns the wall-clock time, in nanoseconds, of one forward pass of {@code model}. */
+	private static long timeForward(CompiledModel model, PackedCollection input) {
+		long start = System.nanoTime();
+		model.forward(input);
+		return System.nanoTime() - start;
 	}
 
 	/**
