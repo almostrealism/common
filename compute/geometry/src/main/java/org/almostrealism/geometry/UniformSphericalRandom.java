@@ -25,8 +25,11 @@ import org.almostrealism.algebra.VectorFeatures;
  * This is useful for Monte Carlo methods in rendering, such as ambient occlusion,
  * global illumination, and random sampling for anti-aliasing.
  *
- * <p>The implementation uses spherical coordinates with random azimuth and polar
- * angles to achieve uniform distribution over the sphere's surface.</p>
+ * <p>The implementation uses spherical coordinates with a random azimuth and a
+ * polar coordinate chosen so that {@code cos(theta)} is uniform on {@code [-1, 1]}.
+ * Sampling the polar angle itself uniformly would concentrate points near the poles
+ * and break the uniform surface distribution; drawing {@code cos(theta)} uniformly
+ * instead yields an even distribution over the sphere's surface.</p>
  *
  * <p>This class is implemented as a singleton accessible via {@link #getInstance()}.</p>
  *
@@ -47,12 +50,16 @@ public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures
 	public Vector evaluate(Object[] args) {
 		double[] r = new double[3];
 
-		double y = 2 * Math.PI * Math.random();
-		double z = 2 * Math.PI * Math.random();
+		// Sample the polar coordinate so that cos(theta) is uniform on [-1, 1];
+		// sampling the polar angle itself uniformly would concentrate points near
+		// the poles and break the uniform surface distribution this class promises.
+		double cosTheta = 2 * Math.random() - 1;
+		double sinTheta = Math.sqrt(1 - cosTheta * cosTheta);
+		double phi = 2 * Math.PI * Math.random();
 
-		r[0] = Math.sin(y) * Math.cos(z);
-		r[1] = Math.sin(y) * Math.sin(z);
-		r[2] = Math.cos(y);
+		r[0] = sinTheta * Math.cos(phi);
+		r[1] = sinTheta * Math.sin(phi);
+		r[2] = cosTheta;
 
 		return new Vector(r);
 	}
