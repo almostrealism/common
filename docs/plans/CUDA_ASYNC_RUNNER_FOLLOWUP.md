@@ -239,6 +239,23 @@ context exists.
   for an APU such as the AMD Halo should be decided with CL-device verification.
 - Under plain `native,cuda`, the full test completes in 386.6 s (0.774 ms/comparison).
 
+**Shared-memory default, reverted for CUDA (2026-10-08):** with memory shared, the CUDA lane
+deadlocks. Bisected locally on `SyntheticNormTrainingTest` under `native,cuda`: master,
+`8019cf901` and `41470de06` train normally; `306d6470a` stalls before its first step, and the
+same commit with `AR_HARDWARE_SHARED_MEMORY=disabled` passes. A thread dump of the stall shows
+a CUDA submission held on the host behind a native dependency (`CudaStreamRunner.awaitDependency`),
+later CUDA submissions queued behind it, and native dispatches blocked in
+`NativeExecution.coordinate` on dependencies that never complete.
+- `DriverSelection.offersHostAccessibleMemory()` is replaced by `sharesMemoryByDefault()`, true
+  for Metal only. CUDA is shared only when `AR_HARDWARE_SHARED_MEMORY=enabled` is set.
+- Open question: why Metal tolerates the same native/accelerator mix (the macOS lanes run `*`,
+  which shares memory). The visible difference is the bridge. `MetalCommandRunner` commits the
+  open buffer and encodes a GPU-side wait on a host-signaled event, so the host never holds a
+  submission. `CudaStreamRunner` holds the submission on the host and queues every later
+  submission behind it.
+- Cost: with sharing off, `pairwiseSimilarityAtScale` took 543 s locally against its 600 s
+  timeout.
+
 ## 5. Remaining Phase 3 items (from the plan)
 
 - A `CudaSemaphore` from another CUDA context is still treated as foreign, and so

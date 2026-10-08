@@ -125,16 +125,16 @@ public class DriverSelectionTest {
 	}
 
 	/**
-	 * Host-accessible memory is offered by Metal wherever it is selected, and not by the native
-	 * or OpenCL backends, for which no device is consulted. (Whether CUDA offers it depends on the
-	 * device, which this test does not assume.)
+	 * Memory is shared by default wherever Metal is selected, and not for the native, OpenCL or
+	 * CUDA backends, whatever device CUDA would use.
 	 */
 	@Test(timeout = 30000)
 	public void hostAccessibleMemoryFollowsTheSelectedBackends() {
-		Assert.assertTrue(DriverSelection.parse("mtl", true, true).offersHostAccessibleMemory());
-		Assert.assertTrue(DriverSelection.parse("native,mtl", true, true).offersHostAccessibleMemory());
-		Assert.assertFalse(DriverSelection.parse("native", false, false).offersHostAccessibleMemory());
-		Assert.assertFalse(DriverSelection.parse("native,cl", false, false).offersHostAccessibleMemory());
+		Assert.assertTrue(DriverSelection.parse("mtl", true, true).sharesMemoryByDefault());
+		Assert.assertTrue(DriverSelection.parse("native,mtl", true, true).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native", false, false).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native,cl", false, false).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native,cuda", false, false).sharesMemoryByDefault());
 	}
 
 	/**

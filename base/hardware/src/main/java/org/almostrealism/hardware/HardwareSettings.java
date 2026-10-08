@@ -37,12 +37,11 @@ import java.util.Optional;
  * share. Both must be decided before any context is created, so the decision is made here.</p>
  *
  * <p>{@code AR_HARDWARE_SHARED_MEMORY} decides it when set ({@code enabled} or {@code disabled}).
- * Otherwise memory is shared when a requested backend provides host-addressable memory on this
- * machine: Metal, whose buffers live in the host's unified memory, and CUDA on a device that
- * allocates managed memory (one integrated with the host, unless managed memory is requested
- * explicitly; see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}). On a discrete CUDA
- * device, memory is not shared by default, because host access to device memory would move pages
- * across the bus. The bare {@code *} wildcard on macOS also requests it, as it always has.</p>
+ * Otherwise memory is shared when Metal, whose buffers live in the host's unified memory, is
+ * requested (see {@link DriverSelection#sharesMemoryByDefault()}), and the bare {@code *} wildcard
+ * on macOS also requests it, as it always has. CUDA is not shared by default, even on a device
+ * whose managed memory host code can address ({@link CudaDataContext#isHostAccessibleMemoryAvailable()});
+ * {@code enabled} still shares it.</p>
  */
 final class HardwareSettings {
 	/** The backends to start. */
@@ -96,7 +95,7 @@ final class HardwareSettings {
 		}
 
 		Optional<Boolean> requested = SystemUtils.isEnabled("AR_HARDWARE_SHARED_MEMORY");
-		if (requested.orElseGet(() -> selection.isSharedMemoryPreferred() || selection.offersHostAccessibleMemory())) {
+		if (requested.orElseGet(() -> selection.isSharedMemoryPreferred() || selection.sharesMemoryByDefault())) {
 			KernelPreferences.enableSharedMemory();
 		}
 

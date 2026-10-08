@@ -125,22 +125,22 @@ public class DriverSelection {
 	public boolean isSharedMemoryPreferred() { return sharedMemoryPreferred; }
 
 	/**
-	 * Whether a backend in the selection provides memory that host code can address directly on
-	 * this machine, so that host kernels can share memory with it without copying: Metal, whose
-	 * buffers live in the host's unified memory, or CUDA on a device that allocates managed memory
-	 * (see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}).
+	 * Whether host kernels share memory with a backend in the selection when
+	 * {@code AR_HARDWARE_SHARED_MEMORY} is not set: true when Metal, whose buffers live in the
+	 * host's unified memory, is selected.
 	 *
-	 * <p>Unlike the rest of this type, this examines the machine rather than the selection alone:
-	 * it may query the CUDA driver for the configured device's attributes. It does not change any
-	 * configuration.</p>
+	 * <p>CUDA on a device that allocates managed memory also provides memory host code can
+	 * address directly (see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}), but it is
+	 * not shared by default. With host kernels running on CUDA memory, native and CUDA work come
+	 * to depend on each other, and that combination stalls: a CUDA submission held behind a native
+	 * dependency holds back the later CUDA work the native side is waiting for. Sharing can still
+	 * be requested for CUDA explicitly.</p>
 	 *
-	 * @return whether a selected backend offers host-accessible memory
+	 * @return whether memory is shared by default for this selection
 	 */
-	public boolean offersHostAccessibleMemory() {
+	public boolean sharesMemoryByDefault() {
 		for (ComputeRequirement requirement : requirements) {
-			ComputeRequirement type = requirement.resolve();
-			if (type == ComputeRequirement.MTL) return true;
-			if (type == ComputeRequirement.CUDA && CudaDataContext.isHostAccessibleMemoryAvailable()) return true;
+			if (requirement.resolve() == ComputeRequirement.MTL) return true;
 		}
 
 		return false;
