@@ -1,0 +1,6 @@
+# Validating the performance payoff requires the self-hosted LM documentation
+# run (CausalLanguageModelTest.trainOnDocumentation), which is validated on
+# Apple silicon / Metal with AR_HARDWARE_MEMORY_SCALE=6 and a ~34-minute
+# training run. Only macOS FlowTree nodes provide the Metal backend.
+requiredLabels:
+  platform: macos

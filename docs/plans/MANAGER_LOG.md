@@ -28,6 +28,89 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian
+
+**Category:** Performance (directly unblocking Proof of Value)
+**Branch:** `project/plan-20261009-171224`
+**Plan:** [`PLAN-20261009-matmul-weight-gradient-vjp.md`](PLAN-20261009-matmul-weight-gradient-vjp.md)
+
+#### What changed since last cycle
+
+The last cycle's plan landed (PR #620). The self-hosted LM infrastructure is now real and correct:
+`CausalLanguageModel` is a `Model`, `SlidingWindowAutoregressiveModel` generates from it and is
+verified against a full forward pass, `CausalLanguageModelTest.gradientsMatchFiniteDifferences`
+shows every weight's gradient matching finite differences at the FP32 noise floor, and weights
+round-trip through `StateDictionary`. PR #620 also carried the `ObjectOrientedDesignRule`
+enforcement backstop. But the two headline acceptance criteria are still *unmet, and recorded
+honestly in the tree*: `trainOnDocumentation` scores **4.957 bits/byte against a 4.912 unigram
+baseline** (above it, so the assertion fails) and greedy generation emits **96 spaces**. The CUDA
+async-runner track (PR #623) and continuous QA (today's `qa/docs`, `qa/defect`, `qa/consolidate`,
+`qa/pdsl`, `qa/performance` branches) have been landing in parallel.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent.** The internals corpus tells the whole story, and
+  `training-a-language-model.md` is a model of honest, measured writing: it documents the failing
+  run, the recipe sweep, the coverage lever, the per-step cost breakdown, and names the fix itself.
+  No flagship gap. Moved on.
+- **Code quality — strong and owned.** The continuous QA pipeline merges fixes daily and
+  enforcement is mechanical; PR #620 added `ObjectOrientedDesignRule` as a per-class design
+  backstop. The one standing minor item (`io.almostrealism.collect` split) is unchanged and not a
+  flagship. Moved on.
+- **Performance — the category, and the lever is named by the platform's own documentation.**
+  `training-a-language-model.md` states it outright: the generic backward pass forms each weight
+  gradient from the operator's *full Jacobian* (about 17 billion terms for the 256×64 output
+  projection) then contracts it, a step takes ~3.6 s of which the backward pass is ~3.2–4.2 s of
+  GPU work, and "a weight gradient that uses the structure of the matrix multiply (the output
+  gradient times the transposed input) would make each step orders of magnitude cheaper and is the
+  change that would let this run train for long enough to approach its headroom."
+
+#### Why this task
+
+It is the honest next step named by the platform itself, and it is the highest-leverage performance
+work available. The step cost — not the model, not the recipe, both of which the finite-difference
+test and the recipe sweep have cleared — is what keeps the LM at the unigram rate: 550 batch-1 steps
+score only ~35 kB of a corpus whose bigram headroom is 3.78 bits/byte. Make the matrix-multiply
+weight gradient a structure-aware vector-Jacobian product (`gᵀ ⊗ x` instead of a materialized
+`[outSize, weightSize]` Jacobian — exactly Approach 2 in `SPARSE_GRADIENTS.md`) and the same
+38-minute budget buys many more steps. This is a Performance task whose payoff is the Proof-of-Value
+milestone two cycles have been reaching for: a model that finally beats its baseline and writes a
+readable byte about itself.
+
+The scope is deliberately narrow, because the history here is unforgiving. The `feature/lora-gradients`
+branch's broad sparse-Jacobian and masked-`Sum` reordering work repeatedly triggered the
+`convDeltaMedium` blow-up and the add/revert loop this log exists to prevent. This plan touches
+*only* the matrix-multiply family, behind a precise capability check with a byte-identical fallback
+for every other operator, so convolution and the rest of the backward pass are provably unchanged.
+Correctness is gated by A/B equality against the existing full-Jacobian result, not by "it looks
+trained." Turning the acceptance test green is allowed only by a genuinely better model measured
+apples-to-apples; a measured speedup with a documented remaining gap is an acceptable, honest
+outcome that hands the recipe/scale question to the next plan.
+
+#### Balance across categories
+
+Foundations stay covered by continuous QA. The last several cycles alternated foundation work with
+proof-of-value milestones; this cycle spends a focused performance investment to cash the milestone
+the LM track has been one step short of since September. It is the "whichever per-step backward cost
+the training-run profile names" item that the 2026-09-30 and 2026-10-05 "what comes next" lists both
+deferred — now promoted to its own plan, with the profile in hand to name it.
+
+#### What comes next
+
+1. This plan, if approved: the VJP weight/input gradient for matrix multiply, its two call-site
+   integrations with exact fallback, the A/B equality gate, a measured step-time speedup, and a
+   re-run of `trainOnDocumentation` whose outcome is recorded honestly in the training doc.
+2. If the baseline is beaten: **sampling quality and longer generation** (temperature/top-p already
+   exist in `AutoregressiveModel`; expose top-p through the sliding-window generator), and a proper
+   single-position **KV-cache decode** (needs the fused `qkv` split into Q/K/V views and the rotary
+   inputs derived from `rope_inv_freq`).
+3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context/depth, and the K/V gradient
+   wiring still missing in `sequenceCrossAttention`, `TransformerResamplingFeatures` and
+   `DifferentialAttentionFeatures`.
+4. A later cycle: let a trained model read the platform's own *source*, the deeper self-understanding
+   aim. Still open from prior cycles: the ONNX-pressure doc note; the `io.almostrealism.collect`
+   package split.
+
 ### 2026-10-05 — Make the self-hosted LM beat its unigram baseline and generate text
 
 **Category:** Proof of Value
