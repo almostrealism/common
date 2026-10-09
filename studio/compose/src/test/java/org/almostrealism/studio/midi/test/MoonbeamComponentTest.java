@@ -238,6 +238,75 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	}
 
 	/**
+	 * The one compiled embedding embeds special tokens too, recognized from the values
+	 * written into its argument: start and fill-start through supplementary row 0 and
+	 * the supplementary MLP, end and fill-end through row 1, pad as zeros. An ordinary
+	 * token evaluated by the same kernel afterwards still embeds its attributes, so the
+	 * special-token path does not leak into it.
+	 */
+	@Test(timeout = 60_000)
+	public void testCompoundEmbeddingKernelEmbedsSpecialTokens() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary weights = createRandomEmbeddingWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(weights, config);
+
+		PackedCollection values = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(embedding.embedValues(p(values))).get();
+
+		PackedCollection start = supplementaryReference(weights, config, 0);
+		PackedCollection end = supplementaryReference(weights, config, 1);
+		Assert.assertTrue("Start and end embed differently",
+				sum(cp(start).subtract(cp(end)).abs()).evaluate().toDouble(0) > 0.0);
+
+		assertEquals("Start", start, embedWith(kernel, values, MidiCompoundToken.sos()));
+		assertEquals("Fill start", start, embedWith(kernel, values, MidiCompoundToken.fillStart()));
+		assertEquals("End", end, embedWith(kernel, values, MidiCompoundToken.eos()));
+		assertEquals("Fill end", end, embedWith(kernel, values, MidiCompoundToken.fillEnd()));
+
+		PackedCollection pad = embedWith(kernel, values, MidiCompoundToken.pad());
+		Assert.assertEquals("Pad embedding size", config.hiddenSize, pad.getShape().getTotalSize());
+		Assert.assertEquals("Pad embeds as zeros", 0.0,
+				sum(cp(pad).abs()).evaluate().toDouble(0), 0.0);
+
+		int dim = config.embeddingDim;
+		PackedCollection ordinary = embedWith(kernel, values, new MidiCompoundToken(100, 50, 5, 7, 0, 80));
+		assertEquals("Onset slice of an ordinary token after special tokens",
+				embedding.getFmeEmbedding(0).embed(100).reshape(shape(dim)).evaluate(),
+				cp(ordinary).subset(shape(dim), 0).evaluate());
+	}
+
+	/**
+	 * Writes a token's values into the argument of a compiled embedding and evaluates it.
+	 */
+	private PackedCollection embedWith(Evaluable<? extends PackedCollection> kernel,
+									   PackedCollection values, MidiCompoundToken token) {
+		try (PackedCollection packed = token.pack()) {
+			values.setFrom(0, packed);
+		}
+
+		return kernel.evaluate();
+	}
+
+	/**
+	 * The embedding of a supplementary row, computed independently of
+	 * {@link CompoundMidiEmbedding}: the row, a linear layer, tanh-approximated GELU and
+	 * a second linear layer.
+	 */
+	private PackedCollection supplementaryReference(StateDictionary weights, MoonbeamConfig config, int row) {
+		int hidden = config.hiddenSize;
+		CollectionProducer lookup = cp(weights.get("supplementary_embedding.weight"))
+				.subset(shape(1, hidden), row, 0).reshape(shape(hidden));
+		CollectionProducer h = matmul(cp(weights.get("supplementary_mlp.0.weight")), lookup)
+				.add(cp(weights.get("supplementary_mlp.0.bias")));
+		CollectionProducer gelu = h.multiply(0.5).multiply(
+				tanh(h.add(h.multiply(h).multiply(h).multiply(0.044715)).multiply(Math.sqrt(2.0 / Math.PI)))
+						.add(1.0));
+		return matmul(cp(weights.get("supplementary_mlp.2.weight")), gelu)
+				.add(cp(weights.get("supplementary_mlp.2.bias"))).reshape(shape(hidden)).evaluate();
+	}
+
+	/**
 	 * Random weights for every parameter of the compound embedding, keyed as the
 	 * checkpoint keys them.
 	 */

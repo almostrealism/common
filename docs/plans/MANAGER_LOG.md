@@ -28,6 +28,88 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-05 — Make the self-hosted LM beat its unigram baseline and generate text
+
+**Category:** Proof of Value
+**Branch:** `project/plan-20261005-185050`
+**Plan:** [`PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md`](PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md)
+
+#### What changed since last cycle
+
+Two proof-of-value tracks landed. The from-scratch self-hosted LM merged (PR #596): the platform
+trained a decoder-only transformer on its own docs, end to end, every gradient through the normal
+graph machinery, weights round-tripped through `StateDictionary`. Separately, the
+PDSL-for-research / Qwen interpretability track merged most recently (PR #615) — a different track
+(reading a real Qwen checkpoint on one readable page), not a continuation of the from-scratch LM.
+
+But the self-hosted LM stopped one step short of its own promise, and it stopped before producing a
+single byte of text. Both gaps are recorded honestly in the tree:
+- `CausalLanguageModelTest.trainOnDocumentation` asserts held-out `finalBits < unigramBits` and
+  **fails**: 4.691 bits/byte held-out against a 4.600 unigram baseline
+  (`NextTokenDataset.scoredTargetEntropyBits()` over 12 scored windows). It is long-running and
+  excluded from the CI pipeline profile, so it does not break CI — but the last cycle's headline
+  success criterion is unmet. The earlier "0.22 below baseline" figure was a measurement error
+  (12 windows vs whole-region entropy), corrected to this honest number last cycle.
+- The model has **never generated text**. The general `AutoregressiveModel` sampling infrastructure
+  exists and is sound, but `CausalLanguageModel` only builds the full-sequence training model; there
+  is no path from the trained weights to text.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent.** Internals corpus tells the whole story and now includes
+  `training-a-language-model.md`; the one standing gap (ONNX-induced pressure) is low-priority and
+  out of scope. The only doc this task touches is the training page, updated as its own deliverable.
+- **Code quality — strong and owned** by the continuous QA pipeline; enforcement is mechanical. No
+  neglected flagship.
+- **Performance — one deferred lever** (13 small reductions compiled as native kernels, ~250 ms
+  each). The log has deliberately deferred it to *follow* a real training run. This task produces
+  exactly such a run and is the right place to re-check, via `ar-profile-analyzer`, whether it
+  matters in practice — as reporting only.
+- **Proof of value — the category.** A known-failing acceptance test and a model that has never
+  spoken are precisely the concrete, falsifiable gaps this category exists to close.
+
+#### Why this task
+
+It is the honest completion of last cycle's milestone and the direct next step named by the training
+doc itself ("scoring every held-out window (82 at this stride), or training further, are the next
+steps"). The headroom is evidenced: a training-fitted unigram scores 4.78 on the scored targets (the
+model beats that), while an interpolated bigram scores ~3.85 on the held-out region — so a byte-level
+transformer that models local structure should clear the unigram bar with margin. The task pairs the
+quality fix with the first generation path, so the outcome is not just a green test but the platform
+writing text about itself for the first time — the first readable artifact of the self-understanding
+goal.
+
+Because this sits on top of a known-failing acceptance test, the plan is explicit that the only
+acceptable way to turn it green is a genuinely better model measured apples-to-apples; weakening the
+assertion, the baseline, the dimensions, `@TestDepth` or the timeout is out of bounds and would fail
+`test-integrity-check`. If honest effort within the memory/time budget cannot clear the bar, the
+correct outcome is an evidenced finding for a revised plan, not a green test.
+
+#### Balance across categories
+
+Foundations stay covered by continuous QA. The last several cycles alternated foundation work with
+proof-of-value measurement; this cycle cashes the training milestone it set up — closing the loop
+rather than opening a new front. The deferred compile-time lever is revisited only as a measurement
+by-product, keeping the cycle focused.
+
+#### What comes next
+
+1. This plan, if approved: representative all-window held-out measurement, a tuned training recipe
+   that clears the baseline with margin, a generation path on `CausalLanguageModel` with a
+   deterministic generation test, and a rewritten training doc with a generation section. The plan's
+   "Open questions" record the risks a reviewer added: the run is ~34 min against a 38-min test
+   timeout, scoring all 82 held-out windows every epoch could exceed it, and the margin needed to
+   call the result "comfortable" is not yet fixed.
+2. **Sampling quality and longer generation** once the first path works (temperature sampling exists
+   in `AutoregressiveModel`; top-p exists in its static `sampleToken` but is not exposed by the
+   `of(...)` factory); a proper KV-cache decode if the first path was sliding-window (that needs the
+   fused `qkv` weight split into Q/K/V views and the rotary inputs derived from `rope_inv_freq`).
+3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context/depth, and whichever per-step
+   backward cost the training-run profile names (the standing small-reduction native-compile lever).
+4. A later cycle: let a trained model read the platform's own *source*, the deeper self-understanding
+   aim. Still open from prior cycles: the ONNX-pressure doc note; the `io.almostrealism.collect`
+   package split.
+
 ### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs
 
 **Category:** Proof of Value

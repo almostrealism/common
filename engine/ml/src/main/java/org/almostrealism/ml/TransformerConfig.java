@@ -67,6 +67,8 @@ public class TransformerConfig {
 	 * kvHeadCount, vocabSize, seqLen.
 	 *
 	 * @param buffer the byte buffer positioned at the start of the header
+	 * @throws IllegalArgumentException for any header the explicit-parameter constructor would
+	 *                                  reject
 	 */
 	protected TransformerConfig(ByteBuffer buffer) {
 		this.dim = buffer.getInt();
@@ -78,11 +80,12 @@ public class TransformerConfig {
 		this.vocabSize = Math.abs(vocabSize);
 		this.seqLen = buffer.getInt();
 		this.sharedWeights = vocabSize > 0;
+		validate();
 		this.headSize = dim / headCount;
 	}
 
 	/**
-	 * Constructs a configuration from explicit parameters.
+	 * Constructs and validates a configuration from explicit parameters.
 	 *
 	 * @param dim           transformer embedding dimension
 	 * @param hiddenDim     FFN hidden layer dimension
@@ -92,6 +95,9 @@ public class TransformerConfig {
 	 * @param vocabSize     vocabulary size (positive)
 	 * @param seqLen        maximum sequence length
 	 * @param sharedWeights whether embedding and output weights are shared
+	 * @throws IllegalArgumentException if any size other than {@code layerCount} is not positive,
+	 *                                  if {@code layerCount} is negative, or if {@code headCount}
+	 *                                  does not divide {@code dim}
 	 */
 	protected TransformerConfig(int dim, int hiddenDim, int layerCount, int headCount,
 								int kvHeadCount, int vocabSize, int seqLen, boolean sharedWeights) {
@@ -103,7 +109,31 @@ public class TransformerConfig {
 		this.vocabSize = vocabSize;
 		this.seqLen = seqLen;
 		this.sharedWeights = sharedWeights;
+		validate();
 		this.headSize = dim / headCount;
+	}
+
+	/**
+	 * Rejects sizes no transformer can have.
+	 *
+	 * @throws IllegalArgumentException if any size other than {@link #layerCount} is not positive,
+	 *                                  if {@link #layerCount} is negative, or if {@link #headCount}
+	 *                                  does not divide {@link #dim}
+	 */
+	private void validate() {
+		if (dim <= 0 || hiddenDim <= 0 || headCount <= 0 || kvHeadCount <= 0 || vocabSize <= 0 || seqLen <= 0) {
+			throw new IllegalArgumentException("dim, hiddenDim, headCount, kvHeadCount, vocabSize and seqLen " +
+					"must be positive, not " + dim + ", " + hiddenDim + ", " + headCount + ", " + kvHeadCount +
+					", " + vocabSize + ", " + seqLen);
+		}
+
+		if (layerCount < 0) {
+			throw new IllegalArgumentException("layerCount must not be negative, not " + layerCount);
+		}
+
+		if (dim % headCount != 0) {
+			throw new IllegalArgumentException("dim " + dim + " is not divisible by " + headCount + " heads");
+		}
 	}
 
 	/**

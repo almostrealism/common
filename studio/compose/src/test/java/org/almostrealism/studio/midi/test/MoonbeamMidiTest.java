@@ -153,6 +153,74 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Destroying a generator releases only what it created: the model's position stays live, a
+	 * second destroy is harmless, and a new generator over the same model, loading an ordinary
+	 * (non-special) prompt token through its own token loader, generates the same greedy tokens.
+	 */
+	@Test(timeout = 600000) @TestDepth(2)
+	public void destroyingGeneratorKeepsModelUsable() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary stateDict = createSyntheticWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+		GRUDecoder decoder = createSyntheticDecoder(config);
+
+		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
+				MidiCompoundToken.sos(),
+				new MidiCompoundToken(100, 50, 5, 7, 0, 80)
+		};
+
+		MoonbeamMidiGenerator first = new MoonbeamMidiGenerator(model);
+		first.setPrompt(prompt);
+		List<MidiCompoundToken> before = first.generate(2);
+		Assert.assertFalse(before.isEmpty());
+
+		first.destroy();
+		Assert.assertFalse("model position was released", model.getPosition().isDestroyed());
+		first.destroy();
+
+		try (MoonbeamMidiGenerator second = new MoonbeamMidiGenerator(model)) {
+			second.setPrompt(prompt);
+			Assert.assertEquals(before, second.generate(2));
+			Assert.assertEquals(prompt.length + before.size(), second.getCurrentStep());
+		}
+	}
+
+	/**
+	 * A generator reused for a second prompt reproduces its greedy tokens. The second run embeds
+	 * the special start token through the same compiled token loader as the first run, and decodes
+	 * through the same reused decoder input buffer, so neither reuse may change the result.
+	 */
+	@Test(timeout = 600000) @TestDepth(2)
+	public void reusedGeneratorReproducesGeneration() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary stateDict = createSyntheticWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+		GRUDecoder decoder = createSyntheticDecoder(config);
+
+		MoonbeamMidi model = new MoonbeamMidi(config, stateDict, embedding, decoder);
+		MidiCompoundToken[] prompt = new MidiCompoundToken[]{
+				MidiCompoundToken.sos(),
+				new MidiCompoundToken(100, 50, 5, 7, 0, 80),
+				MidiCompoundToken.sos()
+		};
+
+		try (MoonbeamMidiGenerator generator = new MoonbeamMidiGenerator(model)) {
+			generator.setPrompt(prompt);
+			List<MidiCompoundToken> first = generator.generate(3);
+			Assert.assertEquals(prompt.length + first.size(), generator.getCurrentStep());
+
+			generator.setPrompt(prompt);
+			Assert.assertEquals(0, generator.getCurrentStep());
+			List<MidiCompoundToken> second = generator.generate(3);
+			Assert.assertEquals(first, second);
+			Assert.assertEquals(prompt.length + second.size(), generator.getCurrentStep());
+		}
+
+		Assert.assertFalse("model position was released", model.getPosition().isDestroyed());
+	}
+
+	/**
 	 * Verify the end-to-end flow: tokens can be detokenized back to note events.
 	 */
 	@Test(timeout = 60000)

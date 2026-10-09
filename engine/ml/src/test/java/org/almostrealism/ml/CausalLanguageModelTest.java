@@ -25,7 +25,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.ml.tokenization.ByteTokenizer;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.model.Model;
 import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
@@ -41,14 +40,20 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 
 /**
  * Tests of {@link CausalLanguageModel}: the output shape and loss contract, and an end-to-end
@@ -63,10 +68,17 @@ import java.util.Random;
  * {@link #SEED}, Adam with betas 0.9 / 0.999 and a learning rate decaying linearly per epoch from
  * {@link #LEARNING_RATE} to {@link #FINAL_LEARNING_RATE}, batch 1.
  * The corpus bytes are split 90/10 into contiguous training and held-out regions before
- * windowing ({@link NextTokenDataset#split}); windows are non-overlapping, and the training set
- * {@link NextTokenDataset#setRotating rotates}, so each capped epoch reads the next stretch of the
- * training region while the held-out windows stay fixed. The run needs a device memory ceiling of at
- * least {@code AR_HARDWARE_MEMORY_SCALE=6}.</p>
+ * windowing ({@link NextTokenDataset#split}). The training windows are spaced at the
+ * {@link NextTokenDataset#spanningStride spanning stride} of the whole run, so that the windows of
+ * all epochs together cover the training region once from its start to its end, and the training
+ * set {@link NextTokenDataset#setRotating rotates}, so each capped epoch reads the next stretch of
+ * the region. Held-out windows are non-overlapping: a fixed subset is scored at every epoch
+ * boundary for the progress curve, and every held-out window is scored once after training, which
+ * is the number the unigram baseline of exactly those targets is compared with. The run needs a
+ * device memory ceiling of at least {@code AR_HARDWARE_MEMORY_SCALE=6}.</p>
+ *
+ * <p>After training, the reloaded checkpoint generates a greedy continuation of a documentation
+ * prompt through a {@link SlidingWindowAutoregressiveModel}, which is logged.</p>
  */
 public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestFeatures {
 	/** Byte vocabulary size. */
@@ -86,21 +98,27 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	/** Seed of the weight initialization. */
 	private static final long SEED = 20260930L;
 	/** Adam learning rate of the first epoch. */
-	private static final double LEARNING_RATE = 3e-3;
+	private static final double LEARNING_RATE = 1e-2;
 	/** Adam learning rate of the last epoch; the rate decays linearly in between. */
-	private static final double FINAL_LEARNING_RATE = 3e-4;
-	/** Stride of the training windows (non-overlapping). */
-	private static final int TRAIN_STRIDE = SEQ_LEN;
+	private static final double FINAL_LEARNING_RATE = 1e-3;
 	/** Stride of the held-out windows (non-overlapping). */
 	private static final int HELD_OUT_STRIDE = SEQ_LEN;
-	/** Training windows per epoch; the training set rotates, so each epoch sees new windows. */
+	/**
+	 * Training windows per epoch; the training set rotates, so each epoch sees new windows, and
+	 * the training stride is chosen so that the windows of all epochs together span the whole
+	 * training region once ({@link NextTokenDataset#spanningStride}).
+	 */
 	private static final int TRAIN_WINDOWS = 110;
-	/** Maximum held-out windows evaluated at each epoch boundary. */
+	/** Maximum held-out windows evaluated at each epoch boundary, for the progress curve only. */
 	private static final int HELD_OUT_WINDOWS = 12;
 	/** Epochs passed to {@link ModelOptimizer#optimize(int)}. */
 	private static final int EPOCHS = 5;
 	/** Fraction of the corpus bytes in the training region. */
 	private static final double TRAIN_FRACTION = 0.9;
+	/** The documentation-style prompt the trained model continues. */
+	private static final String GENERATION_PROMPT = "The computation graph is compiled to ";
+	/** Number of bytes generated greedily after {@link #GENERATION_PROMPT}. */
+	private static final int GENERATED_BYTES = 96;
 	/** Relative tolerance on the reloaded held-out loss (weights are saved as FP32). */
 	private static final double RELOAD_TOLERANCE = 1e-4;
 
@@ -155,12 +173,12 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	@Test(timeout = 60000)
 	public void rejectsIncompatibleWeights() {
 		CausalLanguageModel fresh = newModel();
-		Map<String, TraversalPolicy> shapes = fresh.getWeightShapes();
+		Map<String, TraversalPolicy> shapes = fresh.getConfig().getWeightShapes();
 		int perBlockKeys = 6;
 		int sharedKeys = 4;
 		Assert.assertEquals(sharedKeys + perBlockKeys * DEPTH, shapes.size());
 		Assert.assertEquals(shapes.keySet(), fresh.getWeights().keySet());
-		Assert.assertArrayEquals(new int[] { 3 * DIM, DIM }, shapes.get(fresh.layerKey(0, "qkv")).extent());
+		Assert.assertArrayEquals(new int[] { 3 * DIM, DIM }, shapes.get(fresh.getConfig().layerKey(0, "qkv")).extent());
 		Assert.assertArrayEquals(new int[] { DIM / HEADS / 2 },
 				shapes.get(CausalLanguageModel.INV_FREQ_KEY).extent());
 
@@ -185,7 +203,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		}
 
 		Map<String, PackedCollection> transposed = new HashMap<>(fresh.getWeights().getAllWeights());
-		transposed.put(fresh.layerKey(0, "w2"), new PackedCollection(shape(FF_DIM, DIM)));
+		transposed.put(fresh.getConfig().layerKey(0, "w2"), new PackedCollection(shape(FF_DIM, DIM)));
 		assertRejected(() -> new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
 				new StateDictionary(transposed)));
 	}
@@ -203,13 +221,13 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 		CausalLanguageModel minimal = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1, ROPE_BASE,
 				new Random(SEED));
-		Assert.assertEquals(expected, minimal.getParameterCount());
+		Assert.assertEquals(expected, minimal.getConfig().getParameterCount());
 
 		Map<String, PackedCollection> extended = new HashMap<>(minimal.getWeights().getAllWeights());
 		extended.put("unused.extra", new PackedCollection(shape(32)));
 		CausalLanguageModel reloaded = new CausalLanguageModel(vocab, 2, dim, 1, 0, 1,
 				new StateDictionary(extended));
-		Assert.assertEquals(expected, reloaded.getParameterCount());
+		Assert.assertEquals(expected, reloaded.getConfig().getParameterCount());
 	}
 
 	/**
@@ -255,11 +273,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	@Test(timeout = 15 * 60000)
 	public void outputShapeAndMeanLoss() {
 		CausalLanguageModel lm = newModel();
-		Model model = lm.buildModel(ParameterUpdate.disabled());
-		assertOutputShape(model.getOutputShape());
 		assertOutputShape(lm.getOutputShape());
+		assertOutputShape(lm.getConfig().getOutputShape());
 
-		CompiledModel compiled = model.compile(false);
+		CompiledModel compiled = lm.compile(false);
 		assertOutputShape(compiled.getOutputShape());
 
 		int[] tokens = new ByteTokenizer().encodeAsInt(
@@ -320,7 +337,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			return gradients.apply(name, weights, gradient);
 		};
 
-		CompiledModel compiled = lm.buildModel(recorder).compile(true);
+		lm.setParameterUpdate(recorder);
+		CompiledModel compiled = lm.compile(true);
 		PackedCollection ids = PackedCollection.of(3, 7, 1, 12);
 		PackedCollection outputGradient = randn(shape(seq, vocab), 0.0, 1.0, new Random(4)).evaluate();
 		compiled.forward(ids);
@@ -362,12 +380,14 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 	/**
 	 * Trains the tiny causal language model on the documentation corpus through
-	 * {@link ModelOptimizer} and requires its held-out loss to end below the unigram byte-entropy
-	 * baseline of the held-out targets it is scored on
-	 * ({@link NextTokenDataset#scoredTargetEntropyBits()}). Every training and validation loss passes through a
-	 * fail-fast wrapper that rejects non-finite values, so no window is silently skipped. The
-	 * trained weights are saved, reloaded, and must reproduce the held-out loss; that check runs
-	 * before the baseline check, so a run that misses the baseline still verifies its checkpoint.
+	 * {@link ModelOptimizer} and requires its loss over every held-out window to end below the
+	 * unigram byte-entropy baseline of exactly the held-out targets those windows score
+	 * ({@link NextTokenDataset#scoredTargetEntropyBits()} of the same dataset). Every training and
+	 * validation loss passes through a fail-fast wrapper that rejects non-finite values, so no
+	 * window is silently skipped. The trained weights are saved, reloaded, must reproduce the
+	 * per-epoch held-out loss, and generate a logged greedy continuation, which must be
+	 * reproducible and non-trivial. All of those checks run before the baseline check, so a run
+	 * that misses the baseline still verifies its checkpoint and its generation.
 	 *
 	 * @throws IOException if the corpus cannot be read or the weights cannot be saved
 	 */
@@ -379,29 +399,34 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		List<Dataset<PackedCollection>> parts = corpus.split(TRAIN_FRACTION);
 		NextTokenDataset train = (NextTokenDataset) parts.get(0);
 		NextTokenDataset heldOutRegion = (NextTokenDataset) parts.get(1);
+		int trainStride = train.spanningStride(EPOCHS * TRAIN_WINDOWS);
 		NextTokenDataset trainWindows = new NextTokenDataset(tokens, train.getStart(), train.getEnd(),
-				VOCAB, SEQ_LEN, TRAIN_STRIDE, TRAIN_WINDOWS).setRotating(true);
+				VOCAB, SEQ_LEN, trainStride, TRAIN_WINDOWS).setRotating(true);
 		NextTokenDataset heldOut = new NextTokenDataset(tokens, heldOutRegion.getStart(), heldOutRegion.getEnd(),
 				VOCAB, SEQ_LEN, HELD_OUT_STRIDE, HELD_OUT_WINDOWS);
+		NextTokenDataset heldOutAll = new NextTokenDataset(tokens, heldOutRegion.getStart(), heldOutRegion.getEnd(),
+				VOCAB, SEQ_LEN, HELD_OUT_STRIDE, 0);
 
-		double unigramBits = heldOut.scoredTargetEntropyBits();
+		double unigramBits = heldOutAll.scoredTargetEntropyBits();
 		log("corpus bytes=" + tokens.length + " trainRegion=[" + train.getStart() + ", " + train.getEnd() +
 				") heldOutRegion=[" + heldOut.getStart() + ", " + heldOut.getEnd() + ")");
-		log("trainStride=" + TRAIN_STRIDE + " heldOutStride=" + HELD_OUT_STRIDE +
+		log("trainStride=" + trainStride + " heldOutStride=" + HELD_OUT_STRIDE +
 				" trainWindowsPerEpoch=" + trainWindows.getWindowCount() +
 				" (of " + trainWindows.getAvailableWindowCount() + ", rotating)" +
-				" heldOutWindows=" + heldOut.getWindowCount() +
+				" perEpochHeldOutWindows=" + heldOut.getWindowCount() +
+				" finalHeldOutWindows=" + heldOutAll.getWindowCount() +
 				" epochs=" + EPOCHS);
 		log("baselines: uniformBitsPerByte=8.0 unigramBitsPerByte=" + unigramBits +
+				" perEpochUnigramBitsPerByte=" + heldOut.scoredTargetEntropyBits() +
 				" heldOutRegionUnigramBitsPerByte=" + heldOut.unigramEntropyBits());
 		log("host=" + System.getProperty("os.name") + " " + System.getProperty("os.arch") +
 				" precision=" + Hardware.getLocalHardware().getPrecision() + " seed=" + SEED +
 				" learningRate=" + LEARNING_RATE + "->" + FINAL_LEARNING_RATE + " betas=0.9/0.999 ffDim=" + FF_DIM + " ropeBase=" + ROPE_BASE);
 
 		CausalLanguageModel lm = newModel();
-		log("parameters=" + lm.getParameterCount());
+		log("parameters=" + lm.getConfig().getParameterCount());
 		PackedCollection learningRate = PackedCollection.of(LEARNING_RATE);
-		Model model = lm.buildModel(new AdamOptimizer(cp(learningRate), c(0.9), c(0.999)));
+		lm.setParameterUpdate(new AdamOptimizer(cp(learningRate), c(0.9), c(0.999)));
 		Runnable decayLearningRate = a(p(learningRate), max(
 				cp(learningRate).add((FINAL_LEARNING_RATE - LEARNING_RATE) / (EPOCHS - 1)),
 				c(FINAL_LEARNING_RATE))).get();
@@ -409,39 +434,42 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		CompiledModel compiled = null;
 		try {
 			long compileStart = System.nanoTime();
-			compiled = model.compile(true);
+			compiled = lm.compile(true);
 			log("compileSeconds=" + (System.nanoTime() - compileStart) / 1e9);
 
 			assertTrainsPastBaselineAndReloads(lm, compiled, learningRate, decayLearningRate,
-					trainWindows, heldOut, unigramBits);
+					trainWindows, heldOut, heldOutAll);
 		} finally {
 			Destroyable.destroy(compiled);
 			lm.getWeights().destroy();
 			learningRate.destroy();
 			trainWindows.destroy();
 			heldOut.destroy();
+			heldOutAll.destroy();
 		}
 	}
 
 	/**
-	 * Runs the training loop of {@link #trainOnDocumentation()}, saves and reloads the trained
-	 * weights, requires the reloaded model to reproduce the held-out loss, and requires the final
-	 * held-out loss to beat the unigram baseline. The reload evaluator and its weights are released
-	 * before returning or throwing.
+	 * Runs the training loop of {@link #trainOnDocumentation()}, scores every held-out window
+	 * once, saves and reloads the trained weights, requires the reloaded model to reproduce the
+	 * per-epoch held-out loss, generates text from the reloaded model and requires it to be
+	 * reproducible and non-trivial, and finally requires the all-window held-out loss to beat the
+	 * unigram baseline of exactly the targets those windows score. The
+	 * reload model and its weights are released before returning or throwing.
 	 *
 	 * @param lm                the model being trained
 	 * @param compiled          the compiled training model
 	 * @param learningRate      the learning-rate cell read by the optimizer
 	 * @param decayLearningRate the per-epoch learning-rate decay
 	 * @param trainWindows      the training windows
-	 * @param heldOut           the held-out windows
-	 * @param unigramBits       the unigram baseline of the scored held-out targets, in bits per byte
+	 * @param heldOut           the held-out windows scored at every epoch boundary
+	 * @param heldOutAll        every held-out window, scored once after training
 	 * @throws IOException if the weights cannot be saved or reloaded
 	 */
 	private void assertTrainsPastBaselineAndReloads(CausalLanguageModel lm, CompiledModel compiled,
 													PackedCollection learningRate, Runnable decayLearningRate,
 													NextTokenDataset trainWindows, NextTokenDataset heldOut,
-													double unigramBits) throws IOException {
+													NextTokenDataset heldOutAll) throws IOException {
 		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> trainWindows);
 		optimizer.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
 		optimizer.setValidationDataset(() -> heldOut);
@@ -463,34 +491,265 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 		List<Double> heldOutHistory = result.getValidationLossHistory();
 		Assert.assertFalse(heldOutHistory.isEmpty());
-		double finalBits = heldOutHistory.get(heldOutHistory.size() - 1) / Math.log(2);
+		long evaluationStart = System.nanoTime();
+		double finalBits = optimizer.evaluate(heldOutAll) / Math.log(2);
+		double unigramBits = heldOutAll.scoredTargetEntropyBits();
 		log("totalSteps=" + result.getEpochsCompleted() * trainWindows.getWindowCount() +
 				" epochsRun=" + result.getEpochsCompleted() +
-				" finalHeldOutBitsPerByte=" + finalBits + " unigramBitsPerByte=" + unigramBits);
+				" lastEpochHeldOutBitsPerByte=" + heldOutHistory.get(heldOutHistory.size() - 1) / Math.log(2) +
+				" finalHeldOutBitsPerByte=" + finalBits + " unigramBitsPerByte=" + unigramBits +
+				" heldOutWindows=" + heldOutAll.getWindowCount() +
+				" evaluationSeconds=" + (System.nanoTime() - evaluationStart) / 1e9);
 		Path weightsDir = Path.of("results", "causal-language-model");
 		Files.createDirectories(weightsDir);
 		lm.getWeights().save(weightsDir.resolve("weights.pb"));
 
 		StateDictionary reloadedWeights = new StateDictionary(weightsDir.toString());
 		CompiledModel reloadedCompiled = null;
+		int[][] generated;
 		try {
 			CausalLanguageModel reloaded = new CausalLanguageModel(VOCAB, SEQ_LEN, DIM, HEADS, DEPTH, FF_DIM,
 					reloadedWeights);
-			reloadedCompiled = reloaded.buildModel(ParameterUpdate.disabled()).compile(false);
+			reloadedCompiled = reloaded.compile(false);
 			ModelOptimizer evaluator = new ModelOptimizer(reloadedCompiled, () -> heldOut);
 			evaluator.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
 			double reloadedBits = evaluator.evaluate(heldOut) / Math.log(2);
 			double trainedBits = optimizer.evaluate(heldOut) / Math.log(2);
 			log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
 			Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
+
+			generated = generateSample(new CausalLanguageModel(reloaded.getConfig(), reloadedWeights),
+					GENERATION_PROMPT, GENERATED_BYTES);
 		} finally {
 			Destroyable.destroy(reloadedCompiled);
 			reloadedWeights.destroy();
 		}
 
-		// TODO(review): the documented configuration (4.691 vs scored baseline 4.600) fails this assertion; configuration/training needs revisiting
+		assertNonTrivialGeneration(new ByteTokenizer().encodeAsInt(GENERATION_PROMPT), generated[0], generated[1]);
+		// TODO(review): the documented configuration (all 83 held-out windows: 4.957 vs scored baseline 4.912) fails this
+		// assertion; the step budget (~550 steps at ~3.6 s each, dominated by Jacobian-based weight gradients) is the limit
 		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
 				unigramBits, finalBits < unigramBits);
+	}
+
+	/**
+	 * The sliding-window generator decodes exactly the full-sequence forward pass: on a miniature
+	 * configuration with random weights, every greedily generated token, including those generated
+	 * after the sequence outgrows the context and the window slides, is the most probable token of
+	 * the last filled row of an independent inference compilation of the same weights run over the
+	 * preceding (at most {@code seqLen}) tokens, with the remaining positions padded by a different
+	 * filler than the generator uses, which the causal mask must ignore. Greedy decoding is
+	 * reproducible after {@link AutoregressiveModel#reset()}.
+	 */
+	@Test(timeout = 15 * 60000)
+	public void slidingWindowGenerationMatchesFullForward() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		CompiledModel inference = lm.compile(false);
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Producer");
+			int generated = 2 * seq;
+			int[] first;
+			int[] second;
+			try (AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				first = generate(generator, prompt, generated);
+				second = generate(generator, prompt, generated);
+			}
+			Assert.assertArrayEquals("greedy decoding is not reproducible", first, second);
+
+			int[] sequence = IntStream.concat(IntStream.of(prompt), IntStream.of(first)).toArray();
+			for (int p = prompt.length; p < sequence.length; p++) {
+				int from = Math.max(0, p - seq);
+				int filled = p - from;
+				int[] padded = IntStream.rangeClosed(0, seq)
+						.map(i -> i < filled ? sequence[from + i] : VOCAB - 1).toArray();
+				try (NextTokenDataset window = new NextTokenDataset(padded, VOCAB, seq, seq, 1)) {
+					PackedCollection row = inference.forward(window.iterator().next().getInput())
+							.range(shape(VOCAB), (filled - 1) * VOCAB);
+					Assert.assertEquals("token at position " + p, sequence[p],
+							AutoregressiveModel.sampleToken(row, VOCAB, 0.0, 1.0, null));
+				}
+			}
+		} finally {
+			inference.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * Destroying a generator releases the compilation and buffers it decodes with, including its
+	 * position, and leaves the weights of its model usable for another generator; a second
+	 * destroy is harmless.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void destroyingGeneratorReleasesItsBuffers() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(lm, null);
+			int[] before = generate(generator, prompt, 2);
+			PackedCollection position = generator.getPosition();
+			Assert.assertFalse(position.isDestroyed());
+
+			generator.destroy();
+			Assert.assertTrue("generator position was not released", position.isDestroyed());
+			Assert.assertFalse("model weights were released",
+					lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY).isDestroyed());
+			generator.destroy();
+
+			try (AutoregressiveModel<Integer> next = new SlidingWindowAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				Assert.assertArrayEquals(before, generate(next, prompt, 2));
+			}
+		} finally {
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * A generator built by {@link AutoregressiveModel#of} releases only what it created: after it
+	 * is destroyed, the caller's position and token embedding are still live, and the compiled
+	 * model still produces the same tokens for a second generator.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void destroyingFactoryGeneratorKeepsCallerResources() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		CompiledModel inference = lm.compile(false);
+		PackedCollection position = new PackedCollection(1);
+		PackedCollection embedded = new PackedCollection(shape(seq));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			// of() takes the argmax over the whole flattened (seq, vocab) output, so a generated
+			// token may exceed VOCAB; it is reduced to a valid token id so that the embedding
+			// never gathers outside its table and the comparison below is deterministic
+			IntFunction<PackedCollection> embed = t -> {
+				embedded.fill((double) (t % VOCAB));
+				return embedded;
+			};
+			AutoregressiveModel<Integer> generator = AutoregressiveModel.of(inference, position, embed);
+			int[] before = generate(generator, prompt, 2);
+			Assert.assertEquals(prompt.length + 2, (int) position.toDouble(0));
+
+			generator.destroy();
+			Assert.assertFalse("caller position was released", position.isDestroyed());
+			Assert.assertFalse("caller embedding was released", embedded.isDestroyed());
+			generator.destroy();
+
+			try (AutoregressiveModel<Integer> next = AutoregressiveModel.of(inference, position, embed)) {
+				Assert.assertArrayEquals(before, generate(next, prompt, 2));
+			}
+		} finally {
+			inference.destroy();
+			position.destroy();
+			embedded.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * A {@link AutoregressiveModel#tokenLoader token loader} writes the embedding of each token's
+	 * packed values into the caller's input, replacing the previous token's embedding, and
+	 * destroying it leaves that input live and holding the last embedding.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void tokenLoaderWritesEmbeddingAndKeepsCallerInput() {
+		PackedCollection input = new PackedCollection(shape(1, 4));
+
+		try {
+			AutoregressiveModel.TokenLoader<Double> loader = AutoregressiveModel.tokenLoader(
+					input, 4, (token, values) -> values.fill(token), values -> c(values).multiply(2.0));
+
+			loader.accept(3.0);
+			Assert.assertArrayEquals(new double[] { 6.0, 6.0, 6.0, 6.0 }, input.toArray(0, 4), 0.0);
+			loader.accept(-5.0);
+			Assert.assertArrayEquals(new double[] { -10.0, -10.0, -10.0, -10.0 }, input.toArray(0, 4), 0.0);
+
+			loader.destroy();
+			Assert.assertFalse("caller input was released", input.isDestroyed());
+			Assert.assertArrayEquals(new double[] { -10.0, -10.0, -10.0, -10.0 }, input.toArray(0, 4), 0.0);
+		} finally {
+			input.destroy();
+		}
+	}
+
+	/**
+	 * Greedily continues a prompt with a trained model, twice, restarting the generator in
+	 * between. Logs the generated text, the generation time, and whether the generated bytes are
+	 * valid UTF-8 under a strict decoder; validity is reported rather than asserted, because a
+	 * byte-level model may legitimately emit a partial multi-byte sequence. The continuations are
+	 * returned unchecked so that the sample is logged even when a later assertion fails.
+	 *
+	 * @param lm     the trained model, not yet compiled
+	 * @param prompt the text to continue
+	 * @param length the number of bytes to generate
+	 * @return the two continuations
+	 */
+	private int[][] generateSample(CausalLanguageModel lm, String prompt, int length) {
+		int[] promptTokens = new ByteTokenizer().encodeAsInt(prompt);
+		int[] first;
+		int[] second;
+		double seconds;
+		try (AutoregressiveModel<Integer> generator = new SlidingWindowAutoregressiveModel(lm, null)) {
+			long start = System.nanoTime();
+			first = generate(generator, promptTokens, length);
+			seconds = (System.nanoTime() - start) / 1e9;
+			second = generate(generator, promptTokens, length);
+		}
+
+		byte[] bytes = new byte[first.length];
+		IntStream.range(0, first.length).forEach(i -> bytes[i] = (byte) first[i]);
+		String validity;
+		try {
+			StandardCharsets.UTF_8.newDecoder()
+					.onMalformedInput(CodingErrorAction.REPORT)
+					.onUnmappableCharacter(CodingErrorAction.REPORT)
+					.decode(ByteBuffer.wrap(bytes));
+			validity = "valid";
+		} catch (CharacterCodingException e) {
+			validity = "invalid (" + e.getMessage() + ")";
+		}
+
+		log("generationSeconds=" + seconds + " bytesPerSecond=" + (promptTokens.length + length) / seconds +
+				" utf8=" + validity);
+		log("generated=" + prompt + new String(bytes, StandardCharsets.UTF_8));
+		return new int[][] { first, second };
+	}
+
+	/**
+	 * Requires two greedy continuations of the same prompt to be identical and non-trivial: more
+	 * than one distinct byte, and not the prompt repeated.
+	 *
+	 * @param prompt the prompt tokens
+	 * @param first  the first continuation
+	 * @param second the continuation generated again after a restart
+	 */
+	private void assertNonTrivialGeneration(int[] prompt, int[] first, int[] second) {
+		int[] promptRepeated = IntStream.range(0, first.length).map(i -> prompt[i % prompt.length]).toArray();
+		Assert.assertArrayEquals("greedy decoding is not reproducible", first, second);
+		Assert.assertTrue("generation is a single repeated byte", IntStream.of(first).distinct().count() > 1);
+		Assert.assertFalse("generation repeats the prompt", Arrays.equals(promptRepeated, first));
+	}
+
+	/**
+	 * Restarts a generator, feeds it a prompt, and returns the tokens it generates after the
+	 * prompt.
+	 *
+	 * @param generator the generator
+	 * @param prompt    the prompt tokens
+	 * @param length    the number of tokens to generate
+	 * @return the generated tokens
+	 */
+	private int[] generate(AutoregressiveModel<Integer> generator, int[] prompt, int length) {
+		generator.reset();
+		generator.setPrompt(IntStream.of(prompt).boxed().toArray(Integer[]::new), prompt.length);
+		IntStream.range(0, prompt.length).forEach(i -> generator.next());
+		return IntStream.range(0, length).map(i -> generator.next()).toArray();
 	}
 
 	/**

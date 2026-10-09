@@ -164,22 +164,8 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
 	public CollectionProducer embed(Producer<MidiCompoundToken> token) {
-		MidiCompoundToken t = token.get().evaluate();
-		int hidden = config.hiddenSize;
-
-		if (t.isSOS()) {
-			return embedSupplementary(0);
-		} else if (t.isEOS()) {
-			return embedSupplementary(1);
-		} else if (t.isFillStart()) {
-			return embedSupplementary(0);
-		} else if (t.isFillEnd()) {
-			return embedSupplementary(1);
-		} else if (t.isPAD()) {
-			return zeros(shape(hidden));
-		}
-
-		return embedValues(cp(t.pack()));
+		// TODO(review): every embed now carries the supplementary MLP; profileCompoundEmbedding (REAL_CONFIG) times out compiling it
+		return embedValues(cp(token.get().evaluate().pack()));
 	}
 
 	/**
@@ -189,17 +175,39 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * its source, so one compiled kernel serves every token: a consumer embedding
 	 * tokens one after another holds a single evaluable and writes each token's
 	 * values into the collection behind {@code values} before evaluating, instead
-	 * of compiling an embedding per distinct token. Special tokens (start, end,
-	 * fill, pad) take a different path and are handled by {@link #embed(Producer)}
-	 * with a token producer.</p>
+	 * of compiling an embedding per distinct token.</p>
+	 *
+	 * <p>Special tokens are recognized inside the kernel by their sentinel onset
+	 * ({@link MidiCompoundToken#isSpecial()}): start and fill-start embed as row 0 of
+	 * the supplementary embedding through the supplementary MLP, end and fill-end as
+	 * row 1, and pad as zeros. Every other token embeds as the concatenation of its
+	 * attribute embeddings.</p>
 	 *
 	 * @param values producer of the attribute values in the order of
 	 *               {@link MidiCompoundToken#toArray()}, shape (NUM_ATTRIBUTES)
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
 	public CollectionProducer embedValues(Producer<PackedCollection> values) {
-		int dim = config.embeddingDim;
 		CollectionProducer attributes = c(values);
+		CollectionProducer onset = attributes.subset(shape(1), 0);
+		CollectionProducer special = lessThan(onset, c(0.0));
+		CollectionProducer pad = equals(onset, c(MidiCompoundToken.PAD_VALUE));
+		CollectionProducer row = equals(onset, c(MidiCompoundToken.EOS_VALUE))
+				.add(equals(onset, c(MidiCompoundToken.FILL_END_VALUE)));
+
+		return embedAttributes(attributes).multiply(c(1.0).subtract(special))
+				.add(embedSupplementary(row).multiply(special.subtract(pad)));
+	}
+
+	/**
+	 * Embeds the six attribute values of an ordinary token by concatenating the
+	 * per-attribute embeddings.
+	 *
+	 * @param attributes the attribute values, shape (NUM_ATTRIBUTES)
+	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
+	 */
+	private CollectionProducer embedAttributes(CollectionProducer attributes) {
+		int dim = config.embeddingDim;
 		CollectionProducer[] attrEmbs = new CollectionProducer[MoonbeamConfig.NUM_ATTRIBUTES];
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
 			CollectionProducer value = attributes.subset(shape(1), attr);
@@ -255,38 +263,51 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	/**
 	 * Looks up the instrument embedding row for an instrument id supplied at
 	 * evaluation time, gathering the row from the flattened table so the id is
-	 * a kernel argument rather than a literal offset.
+	 * a kernel argument rather than a literal offset. A negative id, which only a
+	 * special token carries, reads row 0 so that the gather stays inside the table;
+	 * {@link #embedValues} discards that row for special tokens.
 	 *
 	 * @param instrumentId producer of the instrument id, shape (1)
 	 * @return CollectionProducer of shape (dim,) producing the instrument embedding
 	 */
 	private CollectionProducer embedInstrument(Producer<PackedCollection> instrumentId) {
-		int dim = config.embeddingDim;
-		int vocab = config.vocabSizes[INSTRUMENT_INDEX];
-		CollectionProducer positions = integers(0, dim).add(c(instrumentId).multiply(dim));
-		return cp(instrumentEmbedding).reshape(shape(vocab * dim)).valueAt(positions);
+		return row(instrumentEmbedding, max(instrumentId, c(0.0)));
 	}
 
 	/**
-	 * Embed a special token (SOS or EOS) using the supplementary embedding + MLP,
+	 * Gathers the row of a 2-D table selected by an index supplied at evaluation time.
+	 *
+	 * @param table the {@code (rows, rowSize)} table
+	 * @param index producer of the row index, shape (1)
+	 * @return CollectionProducer of shape (rowSize,) producing the row
+	 */
+	private CollectionProducer row(PackedCollection table, Producer<PackedCollection> index) {
+		int rows = table.getShape().length(0);
+		int rowSize = table.getShape().length(1);
+		CollectionProducer positions = integers(0, rowSize).add(c(index).multiply(rowSize));
+		return cp(table).reshape(shape(rows * rowSize)).valueAt(positions);
+	}
+
+	/**
+	 * Embeds a special token through the supplementary embedding and MLP,
 	 * returning a {@link CollectionProducer} of shape (hiddenSize,).
 	 *
 	 * <p>Pipeline: lookup -&gt; Linear -&gt; GELU -&gt; Linear</p>
 	 *
-	 * @param tokenIndex the integer token index into the supplementary embedding table
+	 * @param tokenIndex producer of the row of the supplementary embedding table,
+	 *                   shape (1): 0 for start and fill-start, 1 for end and fill-end
 	 */
-	private CollectionProducer embedSupplementary(int tokenIndex) {
+	private CollectionProducer embedSupplementary(Producer<PackedCollection> tokenIndex) {
 		int hidden = config.hiddenSize;
 
-		CollectionProducer lookup = cp(supplementaryEmbedding)
-				.subset(shape(1, hidden), tokenIndex, 0).reshape(shape(hidden));
+		CollectionProducer lookup = row(supplementaryEmbedding, tokenIndex);
 
 		CollectionProducer mlp0Out = add(matmul(cp(supplementaryMlp0Weight), lookup),
 				cp(supplementaryMlp0Bias));
 
 		// GELU activation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
 		CollectionProducer geluArg = mlp0Out.multiply(c(Math.sqrt(2.0 / Math.PI)))
-				.multiply(c(1.0).add(mlp0Out.multiply(mlp0Out).multiply(mlp0Out).multiply(c(0.044715))));
+				.multiply(c(1.0).add(mlp0Out.multiply(mlp0Out).multiply(c(0.044715))));
 		CollectionProducer geluOut = mlp0Out.multiply(c(0.5)).multiply(c(1.0).add(tanh(geluArg)));
 
 		return add(matmul(cp(supplementaryMlp2Weight), geluOut), cp(supplementaryMlp2Bias))
