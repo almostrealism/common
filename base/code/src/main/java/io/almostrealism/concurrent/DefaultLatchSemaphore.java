@@ -72,11 +72,24 @@ public class DefaultLatchSemaphore extends LatchSemaphore implements OperationSe
 		this.requester = requester;
 	}
 
+	/**
+	 * Constructs a view sharing all of another semaphore's settlement state (including the
+	 * members of a composite) under a new requester, used by
+	 * {@link #withRequester(OperationMetadata)}.
+	 *
+	 * @param requester the new requester metadata
+	 * @param shared    the semaphore whose settlement state is reused
+	 */
+	protected DefaultLatchSemaphore(OperationMetadata requester, LatchSemaphore shared) {
+		super(shared);
+		this.requester = requester;
+	}
+
 	@Override
 	public OperationMetadata getRequester() { return requester; }
 
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new DefaultLatchSemaphore(requester, getLatch(), getFailure());
+		return new DefaultLatchSemaphore(requester, this);
 	}
 }

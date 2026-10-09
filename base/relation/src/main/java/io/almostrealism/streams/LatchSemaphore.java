@@ -89,6 +89,18 @@ public class LatchSemaphore implements Semaphore {
 	}
 
 	/**
+	 * Constructs a view sharing all of another semaphore's settlement state: its latch, its
+	 * failure reference and, when it is a composite, its members (see {@link #compose(List)}),
+	 * so a re-attributed view of a composite still settles the members directly when waited.
+	 *
+	 * @param shared the semaphore whose settlement state is reused
+	 */
+	protected LatchSemaphore(LatchSemaphore shared) {
+		this(shared.latch, shared.failure);
+		this.members = shared.members;
+	}
+
+	/**
 	 * Returns the underlying latch, so a subclass sharing this synchronization state can
 	 * pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)}.
 	 *
@@ -138,7 +150,6 @@ public class LatchSemaphore implements Semaphore {
 	 * @param members the completions this composite stands for
 	 */
 	void compose(List<Semaphore> members) {
-		// TODO(review): re-attributed views (DefaultLatchSemaphore.withRequester, CudaSemaphore) share latch/failure but not members, so they fall back to latch.await()
 		this.members = members;
 	}
 

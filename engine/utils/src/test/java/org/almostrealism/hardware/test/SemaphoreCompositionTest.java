@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -196,6 +197,29 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A view of a composite re-attributed to another requester settles the composite's members
+	 * on the waiting thread exactly as the composite itself does, rather than falling back to
+	 * waiting for the threads that count the shared latch down.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedCompositeSettlesMembersOnWaitingThread() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+
+		OperationSemaphore combined = (OperationSemaphore) Semaphore.all(Arrays.asList(first, second),
+				count -> new DefaultLatchSemaphore((Semaphore) null, count));
+		Semaphore view = combined.withRequester(null);
+		first.release();
+		second.release();
+
+		view.waitFor();
+		assertTrue("The re-attributed view must settle the first member on the waiting thread",
+				first.waitedBy(Thread.currentThread()));
+		assertTrue("The re-attributed view must settle the second member on the waiting thread",
+				second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
 	 * A completion that records every thread that waits for it, and completes (or fails) once
 	 * {@link #release()} is called.
 	 */
@@ -235,7 +259,7 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 				done.await();
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				return;
+				throw new IllegalStateException("Interrupted before this completion was released", e);
 			}
 
 			if (failure != null) throw failure;
