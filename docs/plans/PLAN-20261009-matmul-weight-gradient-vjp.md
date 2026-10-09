@@ -134,6 +134,13 @@ In scope:
    matrix multiply. The fallback must be the *exact* current code, so any non-matmul operator —
    every convolution, every element-wise op, every attention sub-op that is not a plain matmul —
    behaves identically to today. No flag that changes default behavior for unrelated graphs.
+   Note that these call sites do **not** hold the bare matmul: `DefaultGradientPropagation` computes
+   `function.get().delta(weights[i])` on `operator.getResultant(input)`, and `LayerFeatures.dense`
+   builds that operator as `matmul(p(weights), input).add(bias).reshape(outputShape)` — so the
+   producer `delta` is called on is the output `reshape` (or the bias `add`), with the matmul one or
+   two levels down. A capability that only exists on the inner matmul computation is therefore not
+   visible at the call site unless `delta` carries it up through the reshape/bias-add wrappers; see
+   the Open questions.
 
 3. **Correctness gate.** The VJP result must equal the full-Jacobian result, not merely "look
    trained." Add an A/B equality test that computes both forms for representative shapes
@@ -260,6 +267,21 @@ focused session on a macOS/Metal node.
   product is lowered so it survives whichever graph is built). The method should still sit wherever
   the delta of that producer is already decided (alongside `attemptDelta` / the producer's own
   `delta` override), so both the weight and input call sites reach it through one capability check.
+- **Whether the capability is discoverable through the dense wrappers.** Even once the method is on
+  the right computation, the backward-pass call sites never see that computation directly. For a
+  dense layer, `LayerFeatures.dense`'s forward operator is
+  `matmul(p(weights), input).add(bias).reshape(outputShape)`, and `DefaultGradientPropagation`
+  calls `function.get().delta(weights[i])` on the outermost producer — the `reshape` (and, when a
+  bias is present, a bias `add` beneath it), not the matmul. So a marker or VJP method attached only
+  to the inner matmul / `weightedSum` / `multiply`-`sum` node is invisible at the point `delta` is
+  invoked, and the dense weights — the main documented workload — would silently take the
+  full-Jacobian fallback. The implementer must therefore make the capability propagate up through
+  the bias-add and the output reshape (so the enclosing `delta` surfaces the inner matmul's VJP when,
+  and only when, those wrappers are shape-preserving pass-throughs for the weight operand), or
+  recognize the matmul during delta propagation at the point the chain reaches it. Either way the
+  A/B equality gate must run against the gradient of the **whole dense operator**
+  (reshape ∘ add ∘ matmul), not a bare `matmul`, so a capability that fails to survive the wrappers
+  is caught as a fallback rather than mistaken for a pass.
 - **How "matrix multiply" is recognized.** The fallback is only safe if recognition is precise —
   it must fire for the dense/matmul weight products and nothing else. A bare type check on
   `WeightedSumComputation` is **not** sufficient: that computation is shared by convolution,
