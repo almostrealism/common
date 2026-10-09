@@ -375,6 +375,24 @@ public class SdpaPrimitivesTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
+	 * A branch feeds one product: {@code compose} wires a branch into a product by replacing the
+	 * branch's forward receptor, so reading the same branch from a second {@code scaled_dot_product}
+	 * would silently displace the first product's consumer. The interpreter rejects the second use
+	 * rather than overwriting the first.
+	 */
+	@Test(timeout = 60000)
+	public void scaledDotProductRejectsReuseOfABranch() {
+		PdslLoader loader = new PdslLoader();
+		try {
+			loader.buildLayer(loader.parseResource(SEQUENCE_FIXTURE), "sdp_branch_reused",
+					shape(BATCH, HEADS, QUERIES, DIM), factorArgument());
+			Assert.fail("scaled_dot_product should reject a branch already consumed by another product");
+		} catch (PdslParseException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * {@code sequence_causal_mask()} adds {@code -MASKED_LOGIT_PENALTY} to every score whose key
 	 * comes after its query ({@code j > i}) and leaves every other score unchanged, on a rectangular
 	 * {@code [batch, heads, queries, keys]} score tensor whose last key is after every query.

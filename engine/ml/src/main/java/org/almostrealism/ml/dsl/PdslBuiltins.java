@@ -40,6 +40,7 @@ import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInts;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -53,7 +54,7 @@ import java.util.function.Supplier;
  * sequence_rope, mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
  * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt, attention,
  * shape, range, zeros, rope_freqs). {@link PdslInterpreter} evaluates a call's
- * arguments and routes the call here via {@link #call(String, List)}; domain
+ * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
  * {@link PdslInterpreter#registerPrimitive} instead of extending this class.
  *
@@ -66,18 +67,23 @@ final class PdslBuiltins {
 	/** Mixin instance providing the framework feature default methods. */
 	private static final PdslFeatures FEATURES = PdslFeatures.INSTANCE;
 
-	/** Built-ins are accessed only through {@link #call(String, List)}. */
+	/** Built-ins are accessed only through {@link #call(String, List, Set)}. */
 	private PdslBuiltins() { }
 
 
 	/**
 	 * Resolves and executes a built-in function by name.
 	 *
-	 * @param name Name of the function
-	 * @param args Evaluated arguments
+	 * @param name                   Name of the function
+	 * @param args                   Evaluated arguments
+	 * @param consumedBranchOperands the set of branch {@link Block}s already consumed as a
+	 *                               {@code scaled_dot_product} operand in the current build, to
+	 *                               which {@code scaled_dot_product} adds each branch it composes so
+	 *                               that reusing one is rejected rather than silently overwriting the
+	 *                               first product's consumer
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
-	static Object call(String name, List<Object> args) {
+	static Object call(String name, List<Object> args, Set<Block> consumedBranchOperands) {
 		switch (name) {
 			case "dense": return callDense(args);
 			case "conv1d": return callConv1d(args);
@@ -113,7 +119,7 @@ final class PdslBuiltins {
 			case "sequence_causal_mask": return callSequenceCausalMask(args);
 			case "key_mask": return callKeyMask(args);
 			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
-			case "scaled_dot_product": return callScaledDotProduct(args);
+			case "scaled_dot_product": return callScaledDotProduct(args, consumedBranchOperands);
 			case "sqrt": return callSqrt(args);
 			case "attention": return callAttention(args);
 			case "shape": return callShape(args);
@@ -907,17 +913,24 @@ final class PdslBuiltins {
 	 * whose output is the product's second operand: the branch runs before the stage that reads it,
 	 * and a backward pass carries the product's gradient with respect to the operand back into the
 	 * branch. This is how a self-attention layer computes its keys and values from its own input and
-	 * still trains them. A branch's output feeds one product.</p>
+	 * still trains them. A branch's output feeds one product: because {@code compose} wires the
+	 * branch in by replacing the branch's forward receptor, a second product reading the same branch
+	 * would silently displace the first product's consumer, so a branch already consumed as an
+	 * operand (tracked in {@code consumedBranchOperands}) is rejected rather than overwritten.</p>
 	 *
-	 * @param args two arguments: the second operand (a bound tensor, a producer or a branch) and the
-	 *             boolean {@code transpose}, true to transpose the operand's last two axes before the
-	 *             product
+	 * @param args                   two arguments: the second operand (a bound tensor, a producer or
+	 *                               a branch) and the boolean {@code transpose}, true to transpose the
+	 *                               operand's last two axes before the product
+	 * @param consumedBranchOperands the branches already consumed as an operand in this build; a
+	 *                               branch operand is added to it, and reuse of one is rejected
 	 * @return a factory that creates the batched-product layer for a 4-D input shape
+	 * @throws PdslParseException if the operand is a branch already consumed by another product
 	 * @see org.almostrealism.algebra.MatrixFeatures#scaledDotProduct
 	 * @see org.almostrealism.layers.LayerRoutingFeatures#compose(String, TraversalPolicy, Block,
 	 *      TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, Block> callScaledDotProduct(List<Object> args) {
+	private static Function<TraversalPolicy, Block> callScaledDotProduct(
+			List<Object> args, Set<Block> consumedBranchOperands) {
 		if (args.size() != 2) {
 			throw new PdslParseException(
 					"scaled_dot_product() expects 2 arguments (other, transpose), got " + args.size());
@@ -928,8 +941,12 @@ final class PdslBuiltins {
 		}
 		boolean transpose = (Boolean) args.get(1);
 		if (args.get(0) instanceof Block) {
-			// TODO(review): compose replaces the branch's receptor, so a branch read by a second product silently loses its first consumer; reject reuse
 			Block branch = (Block) args.get(0);
+			if (!consumedBranchOperands.add(branch)) {
+				throw new PdslParseException("scaled_dot_product() operand is a branch already consumed"
+						+ " by another product; a branch feeds one product, so split a separate branch"
+						+ " for each product that reads it");
+			}
 			return scaledDotProductLayer(branch.getOutputShape(), transpose, (inputShape, outputShape) ->
 					FEATURES.compose("scaledDotProduct", inputShape, branch, outputShape,
 							(input, other) -> FEATURES.scaledDotProduct(
