@@ -156,16 +156,36 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * Embed a single compound token into a hidden-size vector, returning a
 	 * {@link CollectionProducer} pipeline for further composition.
 	 *
-	 * <p>For normal tokens, each attribute is embedded independently and the
-	 * results are concatenated. For special tokens (SOS/EOS), the
-	 * supplementary embedding + MLP is used instead.</p>
+	 * <p>Because the token is known when this producer is built, the relevant
+	 * branch is selected in Java rather than inside the kernel: an ordinary
+	 * token embeds as the concatenation of its attribute embeddings, a special
+	 * token (SOS/EOS/FILL) embeds through the supplementary embedding + MLP, and
+	 * a PAD token embeds as zeros. This keeps the compiled expression to the one
+	 * path that applies, instead of carrying every path masked by onset
+	 * comparisons as {@link #embedValues} must for the generator, where the token
+	 * is a kernel argument. Building both paths for every token (and, through
+	 * {@link #embedSequence}, for every token in a sequence) is what makes the
+	 * fused literal form expensive to compile.</p>
+	 *
+	 * <p>The result is numerically identical to {@link #embedValues} evaluated on
+	 * the same token's values.</p>
 	 *
 	 * @param token producer supplying the compound token to embed
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
 	public CollectionProducer embed(Producer<MidiCompoundToken> token) {
-		// TODO(review): every embed now carries the supplementary MLP; profileCompoundEmbedding (REAL_CONFIG) times out compiling it
-		return embedValues(cp(token.get().evaluate().pack()));
+		MidiCompoundToken value = token.get().evaluate();
+
+		if (value.isPAD()) {
+			return zeros(shape(config.hiddenSize));
+		}
+
+		if (value.isSpecial()) {
+			int supplementaryRow = (value.isEOS() || value.isFillEnd()) ? 1 : 0;
+			return embedSupplementary(c((double) supplementaryRow));
+		}
+
+		return embedAttributes(cp(value.pack()));
 	}
 
 	/**
