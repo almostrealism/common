@@ -69,7 +69,7 @@ quantity actually wanted is the **vector-Jacobian product** (VJP): the upstream 
 contracted with the Jacobian, which for a matrix multiply is just
 
 ```
-dW = gᵀ ⊗ x        (outer product; equivalently g · xᵀ)   — the weight gradient
+dW = g ⊗ x         (outer product; equivalently g · xᵀ)   — the weight gradient
 dx = Wᵀ · g                                                 — the input gradient
 ```
 
@@ -109,12 +109,20 @@ reached through a clean capability check with a fallback to the existing code fo
 
 In scope:
 
-1. **A VJP capability on the matrix-multiply computation.** Give the computation that backs
-   `matmul`/`dense` (the `weightedSum`/matrix-product computation in `MatrixFeatures`, and the
-   `CollectionProducer` it returns) a method that, given an operand to differentiate and the
+1. **A VJP capability on the matrix-multiply computation.** Give the computation(s) that back
+   `matmul`/`dense` a method that, given an operand to differentiate and the
    upstream output gradient, returns the contracted gradient directly (`Σ_t g_t ⊗ x_t` summed over
    every sequence/batch position for the weight operand, `Wᵀ · g` per position for the input
-   operand) expressed as ordinary `CollectionProducer` operations.
+   operand) expressed as ordinary `CollectionProducer` operations. Note that `matmul` does **not**
+   lower to a single computation type: for a matrix-by-vector or batch-of-vectors product with an
+   output dimension of 1000 or fewer it returns a `multiply(...).traverse(...).sum()` graph, and
+   only for larger outputs (or a genuine matrix-by-matrix product) does it reach
+   `weightedSum("matmul", ...)` (a `WeightedSumComputation`). The documented model's dense layers
+   feed sequence rows through the vector path, so the 256×64 / 192×64 / 128×64 weights of interest
+   may well take the `multiply`/`sum` lowering rather than `WeightedSumComputation`. The capability
+   must therefore attach to whichever computation the targeted workload actually produces — see the
+   Open questions, and confirm it with the profile (Approach 1) before choosing where the method
+   lives.
    Place it on the type that owns the matrix-multiply concept, as a general capability — not as a
    private helper on a layer or a `DefaultGradientPropagation` special case. Follow the existing
    `attemptDelta` precedent: a method that returns the optimized form when it applies and `null`
@@ -239,16 +247,32 @@ focused session on a macOS/Metal node.
 
 ## Open questions (for the approver / implementer)
 
-- **Where exactly the VJP method lives.** The matrix-multiply forward is built by `weightedSum` in
-  `MatrixFeatures`; the returned `CollectionProducer` is what `delta(...)` is called on. The method
-  should live wherever the delta of that producer is already decided (alongside `attemptDelta` /
-  the producer's own `delta` override), so both the weight and input call sites can reach it through
-  one capability check. The implementer should confirm the precise type by reading the producer
-  `matmul`/`dense` actually return before adding the method.
+- **Where exactly the VJP method lives.** `matmul` has more than one lowering, so "the computation
+  `matmul` returns" is not a single type. The matrix-by-matrix (and large-output) path builds a
+  `weightedSum`/`WeightedSumComputation`; the matrix-by-vector / batch-of-vectors path with output
+  ≤ 1000 builds a `multiply(...).traverse(...).sum()` graph instead, and `LayerFeatures.dense`
+  reshapes its input to sequence rows and calls `matmul`, so the documented model's weights may take
+  the latter path. A capability added only to `WeightedSumComputation` would then miss the main
+  workload, which would silently take the full-Jacobian fallback and leave the payoff on the table.
+  The implementer must confirm — from the profile (Approach 1), not by assumption — which
+  computation each targeted weight actually produces, and place the method so both lowerings in use
+  are covered (either a shared capability both producers expose, or a marker attached before the
+  product is lowered so it survives whichever graph is built). The method should still sit wherever
+  the delta of that producer is already decided (alongside `attemptDelta` / the producer's own
+  `delta` override), so both the weight and input call sites reach it through one capability check.
 - **How "matrix multiply" is recognized.** The fallback is only safe if recognition is precise —
-  it must fire for the dense/matmul weight products and nothing else. Prefer a structural check on
-  the computation type over a shape heuristic, so an unrelated op can never be misrecognized as a
-  matmul and given a wrong gradient.
+  it must fire for the dense/matmul weight products and nothing else. A bare type check on
+  `WeightedSumComputation` is **not** sufficient: that computation is shared by convolution,
+  attention and custom tensor contractions (see its own Javadoc), and `scaledDotProduct` constructs
+  it directly via `weightedSum("scaledDotProduct", ...)`. Worse, the operation name passed to
+  `AlgebraFeatures.weightedSum` ("matmul" vs "scaledDotProduct") is currently **discarded** — it is
+  not plumbed into the `WeightedSumComputation` constructor — so there is no stored marker to
+  distinguish a matmul from an attention score today. Recognizing matmul therefore requires either
+  (a) a dedicated, complete structural predicate that matches only the matmul lowerings, or (b)
+  plumbing an explicit matmul marker/metadata through `weightedSum` (and onto the `multiply`/`sum`
+  vector-path graph) so it can be checked downstream. Whichever is chosen, every non-matmul operator
+  must return `null` and fall back to the exact current path, so an unrelated op can never be
+  misrecognized as a matmul and given a wrong `Wᵀg`/outer-product gradient.
 - **Whether the budget re-run clears the baseline.** The doc's headroom numbers (bigram 3.78,
   trigram 3.07 on the held-out targets) say a better-trained byte model should clear 4.912 with
   margin, but the exact number of extra steps the speedup buys, and whether coverage or late-update
