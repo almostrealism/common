@@ -76,6 +76,24 @@ dx = Wᵀ · g                                                 — the input gra
 both of which the platform can already express as `matmul`/`weightedSum` over the small operand
 shapes — "about a million multiply-adds per weight," as the doc says, versus billions.
 
+**Reduction over the sequence (and any batch) axis.** The equations above are for a single input
+vector `x`. In the documented model the dense layers do not see one vector — they are applied over a
+whole sequence. `CausalLanguageModel`'s output is `(seqLen, vocab)` with `seqLen = 64` (see
+`CausalLanguageModelTest.SEQ_LEN` and the `assertOutputShape` helper), so a weight `W` is shared
+across all `seqLen` positions and each position contributes to its gradient. The weight VJP is
+therefore the **sum of the per-position outer products**, not a single one:
+
+```
+dW = Σ_t g_t ⊗ x_t     over every position t (and every batch element, once batch > 1)
+dx_t = Wᵀ · g_t         per position
+```
+
+The full-Jacobian path already performs this reduction implicitly (it contracts and sums over the
+whole output axis, which spans every position). The structure-aware VJP must reproduce it exactly:
+dropping the position/batch reduction would omit contributions and yield the wrong weight gradient.
+This is the single most important thing the equality gate below must catch, so its representative
+cases must use sequence-shaped inputs — not a single vector — for every shape tested.
+
 This is exactly Approach 2 ("Vector-Jacobian Products") in `docs/plans/SPARSE_GRADIENTS.md`: pass
 the aggregation intent (the upstream gradient) *into* the differentiation step so the contracted
 result is produced directly, instead of forming a full Jacobian and contracting afterward.
@@ -94,8 +112,9 @@ In scope:
 1. **A VJP capability on the matrix-multiply computation.** Give the computation that backs
    `matmul`/`dense` (the `weightedSum`/matrix-product computation in `MatrixFeatures`, and the
    `CollectionProducer` it returns) a method that, given an operand to differentiate and the
-   upstream output gradient, returns the contracted gradient directly (`gᵀ ⊗ x` for the weight
-   operand, `Wᵀ · g` for the input operand) expressed as ordinary `CollectionProducer` operations.
+   upstream output gradient, returns the contracted gradient directly (`Σ_t g_t ⊗ x_t` summed over
+   every sequence/batch position for the weight operand, `Wᵀ · g` per position for the input
+   operand) expressed as ordinary `CollectionProducer` operations.
    Place it on the type that owns the matrix-multiply concept, as a general capability — not as a
    private helper on a layer or a `DefaultGradientPropagation` special case. Follow the existing
    `attemptDelta` precedent: a method that returns the optimized form when it applies and `null`
@@ -111,7 +130,11 @@ In scope:
 3. **Correctness gate.** The VJP result must equal the full-Jacobian result, not merely "look
    trained." Add an A/B equality test that computes both forms for representative shapes
    (the output projection 256×64, a fused QKV 192×64, a feed-forward 128×64) and asserts they agree
-   to the FP32 noise floor, and confirm `CausalLanguageModelTest.gradientsMatchFiniteDifferences`
+   to the FP32 noise floor. Each case must feed a **sequence-shaped input** (the model's `seqLen` of
+   64 positions, not a single vector), so the test exercises the position/batch reduction
+   `dW = Σ_t g_t ⊗ x_t` — a VJP that computed only one position's outer product would still pass a
+   single-vector test but produce the wrong weight gradient in training. Also confirm
+   `CausalLanguageModelTest.gradientsMatchFiniteDifferences`
    still passes unchanged (it differentiates the whole assembled model, so it exercises the new
    path through every weight). These are the specification; they may not be weakened.
 
@@ -119,17 +142,27 @@ In scope:
    per-epoch time before and after, on the documentation configuration, on Metal. State the speedup
    as measured, not as "orders of magnitude" by assertion.
 
-5. **Cash the payoff.** Re-run `CausalLanguageModelTest.trainOnDocumentation` with the cheaper step.
-   With more steps inside the same 38-minute budget the model should cover more of the corpus and
-   approach the bigram/trigram headroom the doc documents. Two honest outcomes, both acceptable:
-   - The run now scores **below** the 4.912 unigram baseline and greedy generation produces more
-     than one distinct byte: the acceptance assertions in `CausalLanguageModelTest` turn green *for
-     the right reason* (a genuinely better model, measured apples-to-apples), and
-     `training-a-language-model.md` is updated with the new timing, curve, and generated sample.
-   - The step is measurably cheaper but the baseline is still not beaten within the budget: record
-     the new throughput and the new best held-out figure, and hand the recipe/scale question
-     (more epochs, larger context/depth, batch > 1) to a follow-up plan with evidence. This is a
-     finding, not a failure.
+5. **Cash the payoff.** A cheaper step does **not** train the model for longer on its own. The test
+   fixes the step count: `trainOnDocumentation` calls `optimizer.optimize(EPOCHS)` with `EPOCHS = 5`
+   and `TRAIN_WINDOWS = 110`, so it runs exactly 5 × 110 = 550 steps regardless of how fast each one
+   is. With a faster kernel the current configuration simply *finishes sooner* and leaves the rest
+   of the 38-minute budget unused; the held-out score would be unchanged. Turning the speedup into a
+   better model therefore requires an **explicit, measured** increase in the training budget —
+   raising `EPOCHS` and/or `TRAIN_WINDOWS` so the freed time is spent on more steps. Note that the
+   window spacing is derived from the step count (`trainStride = spanningStride(EPOCHS * TRAIN_WINDOWS)`),
+   so a larger budget reads more windows and covers the training region more densely rather than
+   re-reading the same 550. Make the budget change deliberately, report the old and new (steps,
+   wall-clock, bits-per-byte) side by side, and keep the comparison apples-to-apples (same corpus,
+   same held-out windows, same unigram baseline). Two honest outcomes, both acceptable:
+   - With the enlarged budget the run now scores **below** the 4.912 unigram baseline and greedy
+     generation produces more than one distinct byte: the acceptance assertions in
+     `CausalLanguageModelTest` turn green *for the right reason* (a genuinely better model, measured
+     apples-to-apples), and `training-a-language-model.md` is updated with the new budget, timing,
+     curve, and generated sample.
+   - The step is measurably cheaper and the budget was enlarged to use it, but the baseline is still
+     not beaten: record the new throughput, the new budget, and the new best held-out figure, and
+     hand the recipe/scale question (still more epochs, larger context/depth, batch > 1) to a
+     follow-up plan with evidence. This is a finding, not a failure.
 
 Out of scope (and must stay untouched): the subset/concat/projection sparse-Jacobian family and the
 masked-`Sum` reordering machinery from `feature/lora-gradients`; `sequenceCrossAttention`,
@@ -177,8 +210,10 @@ the *next* plan; none is this one.
   `CausalLanguageModelTest.gradientsMatchFiniteDifferences` still passes unchanged.
 - Measured warm step time and per-epoch time on the documentation configuration (Metal), before and
   after, reported with the profile that backs them — a real, stated speedup.
-- `CausalLanguageModelTest.trainOnDocumentation` re-run on the cheaper step, with the outcome
-  recorded honestly in `training-a-language-model.md`: either the baseline is beaten and the
+- `CausalLanguageModelTest.trainOnDocumentation` re-run on the cheaper step with an explicitly
+  enlarged training budget (`EPOCHS`/`TRAIN_WINDOWS`) so the freed wall-clock is spent on more
+  steps — the old and new (steps, wall-clock, bits-per-byte) reported side by side — with the
+  outcome recorded honestly in `training-a-language-model.md`: either the baseline is beaten and the
   acceptance assertions pass for the right reason, or the new throughput and best held-out figure
   are documented and the remaining gap is handed to a follow-up plan.
 - No change to the sparse-Jacobian/`Sum`-reordering machinery; `RepeatedDeltaComputationTests`

@@ -72,8 +72,9 @@ work available. The step cost — not the model, not the recipe, both of which t
 test and the recipe sweep have cleared — is what keeps the LM at the unigram rate: 550 batch-1 steps
 score only ~35 kB of a corpus whose bigram headroom is 3.78 bits/byte. Make the matrix-multiply
 weight gradient a structure-aware vector-Jacobian product (`gᵀ ⊗ x` instead of a materialized
-`[outSize, weightSize]` Jacobian — exactly Approach 2 in `SPARSE_GRADIENTS.md`) and the same
-38-minute budget buys many more steps. This is a Performance task whose payoff is the Proof-of-Value
+`[outSize, weightSize]` Jacobian — exactly Approach 2 in `SPARSE_GRADIENTS.md`) and, with the
+training budget (`EPOCHS`/`TRAIN_WINDOWS`) raised to spend the freed time, the same 38-minute budget
+buys many more steps. This is a Performance task whose payoff is the Proof-of-Value
 milestone two cycles have been reaching for: a model that finally beats its baseline and writes a
 readable byte about itself.
 
