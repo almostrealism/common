@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -722,6 +723,264 @@ public class CudaStreamRunnerSyncTest {
 		}
 
 		throw new AssertionError("recordEvent must propagate the recording failure");
+	}
+
+	/**
+	 * The {@code onHeld} hook of a submission runs only when the runner holds the submission
+	 * instead of launching it: not for a submission launched immediately, but for one held behind a
+	 * foreign dependency, and for one held only because an earlier submission is held. It runs before
+	 * {@code submit} returns.
+	 */
+	@Test(timeout = 30000)
+	public void onHeldRunsOnlyWhenSubmissionIsHeld() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		runner.submit(null, stream -> events.add("immediate"), null,
+				() -> events.add("immediate held"), null);
+		Assert.assertFalse("A submission launched immediately must not run onHeld",
+				events.contains("immediate held"));
+
+		runner.submit(null, stream -> events.add("foreign"), pending,
+				() -> events.add("foreign held"), null);
+		Assert.assertTrue("A submission held behind a foreign dependency must run onHeld before submit returns",
+				events.contains("foreign held"));
+
+		Semaphore behind = runner.submit(null, stream -> events.add("behind"), null,
+				() -> events.add("behind held"), null);
+		Assert.assertTrue("A submission held behind an earlier held one must run onHeld",
+				events.contains("behind held"));
+		Assert.assertFalse("A held submission must not launch before its turn", events.contains("behind"));
+
+		pending.countDown();
+		behind.waitFor();
+		Assert.assertTrue(events.indexOf("foreign") < events.indexOf("behind"));
+		runner.destroy();
+	}
+
+	/**
+	 * When the {@code onHeld} hook fails, the submission is rejected: its command never launches,
+	 * its completion callback runs so whatever it releases is not leaked, and the hook's failure is
+	 * thrown from {@code submit}.
+	 */
+	@Test(timeout = 30000)
+	public void onHeldFailureRejectsSubmission() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		try {
+			runner.submit(null, stream -> events.add("command"), pending,
+					() -> { throw new IllegalArgumentException("lease failed"); },
+					() -> events.add("complete"));
+			Assert.fail("A failing onHeld must reject the submission");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertEquals("lease failed", expected.getMessage());
+		}
+
+		pending.countDown();
+		runner.destroy();
+
+		Assert.assertTrue("The rejected submission's callback must run", events.contains("complete"));
+		Assert.assertFalse("The rejected submission must never launch", events.contains("command"));
+	}
+
+	/**
+	 * Once its completion thread has been interrupted, nothing would observe a new submission's
+	 * completion, so the runner refuses further work, running the refused submission's callback,
+	 * exactly as a destroyed runner does. Destroying it afterwards still releases the stream.
+	 *
+	 * @throws Exception if interrupted while waiting, or the completion thread cannot be reached
+	 */
+	@Test(timeout = 30000)
+	public void interruptedCompletionThreadRefusesLaterSubmissions() throws Exception {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new TeardownStream(events, null, null));
+
+		Thread completions = completionThread(runner);
+		completions.interrupt();
+		completions.join();
+
+		try {
+			runner.submit(null, stream -> events.add("command"), null, () -> events.add("complete"));
+			Assert.fail("A runner without a completion thread must refuse work");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage().contains("destroyed"));
+		}
+
+		Assert.assertEquals(List.of("complete"), events);
+
+		runner.destroy();
+		Assert.assertEquals("Destroying the runner must still release its stream",
+				List.of("complete", "released"), events);
+	}
+
+	/**
+	 * A {@code destroy()} that arrives while another is still waiting for the stream must not return
+	 * until that teardown has released the stream, and the stream is released only once.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the destroying threads
+	 */
+	@Test(timeout = 30000)
+	public void concurrentDestroyWaitsForTeardown() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch draining = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new TeardownStream(events, draining, gate));
+
+		Thread first = new Thread(runner::destroy, "first destroy");
+		first.start();
+		draining.await();
+
+		Thread second = new Thread(runner::destroy, "second destroy");
+		second.start();
+		second.join(500);
+		Assert.assertTrue("A concurrent destroy must wait for the teardown in progress", second.isAlive());
+
+		gate.countDown();
+		first.join();
+		second.join();
+
+		Assert.assertEquals("The stream must be released exactly once",
+				List.of("released"), events);
+	}
+
+	/**
+	 * Destroying the runner while a submission is held behind a foreign dependency that never
+	 * completes cancels the wait for that dependency, and the wait runs on a daemon thread, so a
+	 * dependency that is never satisfied can neither keep a thread blocked nor keep the JVM alive.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the wait to be cancelled
+	 */
+	@Test(timeout = 30000)
+	public void destroyCancelsDependencyWaitOnDaemonThread() throws InterruptedException {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
+		CountDownLatch waiting = new CountDownLatch(1);
+		CountDownLatch cancelled = new CountDownLatch(1);
+		AtomicReference<Thread> waiter = new AtomicReference<>();
+
+		Semaphore neverCompletes = () -> {
+			waiter.set(Thread.currentThread());
+			waiting.countDown();
+
+			try {
+				new CountDownLatch(1).await();
+			} catch (InterruptedException e) {
+				cancelled.countDown();
+			}
+		};
+
+		runner.submit(null, stream -> { }, neverCompletes, null);
+		waiting.await();
+		Assert.assertTrue("The dependency must be waited for on a daemon thread", waiter.get().isDaemon());
+
+		runner.destroy();
+		Assert.assertTrue("Destroying the runner must cancel the dependency wait",
+				cancelled.await(10, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * Two completions of the same runner merge into the one submitted later, in either order, and
+	 * so does a merge of several through {@link Semaphore#all(List)}. Completions of another runner,
+	 * or of another provider, do not merge.
+	 */
+	@Test(timeout = 30000)
+	public void completionsOfOneRunnerMergeIntoTheLater() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
+		CudaStreamRunner other = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
+
+		Semaphore first = runner.submit(null, stream -> { }, null, null);
+		Semaphore second = runner.submit(null, stream -> { }, null, null);
+		Semaphore elsewhere = other.submit(null, stream -> { }, null, null);
+
+		Assert.assertSame(second, first.merge(second));
+		Assert.assertSame(second, second.merge(first));
+		Assert.assertSame(second, Semaphore.all(List.of(first, second)));
+		Assert.assertNull("Completions of different runners must not merge", first.merge(elsewhere));
+		Assert.assertNull("A completion of another provider must not merge",
+				first.merge(new LatchSemaphore(1)));
+
+		runner.destroy();
+		other.destroy();
+	}
+
+	/**
+	 * A submission whose immediate launch fails settles in its turn: its callback does not run
+	 * before that of an earlier submission still on the device, and the failure is thrown only once
+	 * its callback has run. This order is what lets a later completion stand for an earlier one
+	 * (see {@link CudaSemaphore#merge}).
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the submitting thread
+	 */
+	@Test(timeout = 30000)
+	public void immediateLaunchFailureSettlesAfterEarlierSubmissions() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events, entered, gate));
+
+		runner.submit(null, stream -> { }, null, () -> events.add("first complete"));
+		entered.await();
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		Thread submitting = new Thread(() -> {
+			try {
+				runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); },
+						null, () -> events.add("second complete"));
+			} catch (IllegalStateException e) {
+				thrown.set(e);
+			}
+		});
+		submitting.start();
+		submitting.join(500);
+
+		Assert.assertTrue("The failure must wait for the earlier submission to settle", submitting.isAlive());
+		Assert.assertFalse(events.contains("second complete"));
+
+		gate.countDown();
+		submitting.join();
+
+		Assert.assertNotNull("The launch failure must reach the submitting thread", thrown.get());
+		Assert.assertEquals("launch failed", thrown.get().getMessage());
+		Assert.assertTrue(events.indexOf("first complete") < events.indexOf("second complete"));
+		runner.destroy();
+	}
+
+	/**
+	 * A {@link CUStream} for teardown tests: draining it optionally blocks on a gate, and releasing
+	 * it is recorded as {@code "released"}. Completion events are recorded as in
+	 * {@link RecordingStream} but not logged.
+	 */
+	private static final class TeardownStream extends CUStream {
+		/** The event log {@code "released"} is appended to. */
+		private final List<String> events;
+		/** Counted down when a drain begins, or {@code null}. */
+		private final CountDownLatch draining;
+		/** Releases a drain, or {@code null} if drains do not block. */
+		private final CountDownLatch gate;
+
+		/** Wraps a placeholder handle, optionally blocking drains on {@code gate}. */
+		private TeardownStream(List<String> events, CountDownLatch draining, CountDownLatch gate) {
+			super(null, 0L);
+			this.events = events;
+			this.draining = draining;
+			this.gate = gate;
+		}
+
+		@Override
+		public void synchronize() {
+			if (gate != null) {
+				draining.countDown();
+				awaitUninterruptibly(gate);
+			}
+		}
+
+		@Override
+		public CUEvent recordEvent() { return new RecordingEvent(new ArrayList<>()); }
+
+		@Override
+		public void release() { events.add("released"); }
 	}
 
 	/**

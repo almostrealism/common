@@ -76,6 +76,21 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 	private List<Gene<PackedCollection>> genes;
 	/** Cache of consolidated gene values used during evaluation. */
 	private PackedCollection consolidatedValues;
+	/** The number of {@link #projections} whose values {@link #consolidatedValues} holds. */
+	private int consolidatedCount;
+
+	/**
+	 * A gene spanning the factors of every gene in {@link #projections}, in order. The
+	 * weights and ranges of each member gene are views into this gene's weights and
+	 * ranges, so a single kernel initializes or refreshes the whole chromosome rather
+	 * than one or more kernels per gene. Built on first use and rebuilt when genes have
+	 * been added since.
+	 */
+	private ProjectedGene combined;
+	/** The number of {@link #projections} that {@link #combined} spans. */
+	private int combinedCount;
+	/** Holds the unnormalized random weights of every gene during {@link #initWeights(LongSupplier)}. */
+	private PackedCollection combinedScratch;
 
 	/**
 	 * Constructs a new {@code ProjectedChromosome} with the specified source data.
@@ -95,19 +110,93 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 	 * @param seeds a supplier providing random seeds for each gene
 	 */
 	public void initWeights(LongSupplier seeds) {
+		if (projections.isEmpty()) return;
+
+		ProjectedGene all = combinedGene();
+		int sourceLength = source.getShape().getTotalSize();
+
+		int offset = 0;
 		for (ProjectedGene gene : projections) {
-			gene.initWeights(seeds.getAsLong());
+			int len = gene.length();
+			gene.randomWeights(seeds.getAsLong(),
+					combinedScratch.range(shape(len, sourceLength), offset * sourceLength));
+			offset += len;
 		}
+
+		all.normalizeWeights(combinedScratch);
 	}
 
 	/**
 	 * Recomputes all factor values for all projected genes.
 	 * <p>This should be called after the source data has been modified.
+	 *
+	 * <p>The values of every gene are computed together by a single kernel. When
+	 * {@link #consolidateGeneValues()} has placed the values of every gene in one buffer,
+	 * the kernel writes them there directly; otherwise, as when genes were added after
+	 * consolidation, it writes them to a buffer of its own and each gene's share is copied
+	 * into that gene's values, which compiled computations may already refer to.</p>
 	 */
 	public void refreshValues() {
-		for (ProjectedGene gene : projections) {
-			gene.refreshValues();
+		if (projections.isEmpty()) return;
+
+		ProjectedGene all = combinedGene();
+
+		if (consolidatedValues != null && consolidatedCount == projections.size()) {
+			all.replaceValues(consolidatedValues);
+			all.refreshValues();
+			return;
 		}
+
+		all.refreshValues();
+
+		PackedCollection values = all.getValues();
+		int offset = 0;
+		for (ProjectedGene gene : projections) {
+			int len = gene.length();
+			gene.getValues().setFrom(0, values.range(shape(len), offset));
+			offset += len;
+		}
+	}
+
+	/**
+	 * Returns {@link #combined}, first building it if genes have been added since it was
+	 * last built. Building it copies the current weights and ranges of every gene into the
+	 * combined gene and makes each gene's weights and ranges views of the copy, so values
+	 * set before the genes were combined are kept, and ranges set afterwards through
+	 * {@link ProjectedGene#setRange(int, double, double)} are seen by the combined gene.
+	 *
+	 * @return the gene spanning every gene of this chromosome
+	 */
+	private ProjectedGene combinedGene() {
+		if (combined != null && combinedCount == projections.size()) return combined;
+
+		int total = projections.stream().mapToInt(ProjectedGene::length).sum();
+		int sourceLength = source.getShape().getTotalSize();
+
+		ProjectedGene all = new ProjectedGene(source,
+				new PackedCollection(shape(total, sourceLength).traverse(1)));
+		PackedCollection weights = all.getWeights();
+		PackedCollection ranges = all.getRanges();
+
+		int offset = 0;
+		for (ProjectedGene gene : projections) {
+			int len = gene.length();
+
+			PackedCollection geneWeights = weights.range(shape(len, sourceLength).traverse(1), offset * sourceLength);
+			geneWeights.setFrom(0, gene.getWeights());
+			gene.replaceWeights(geneWeights);
+
+			PackedCollection geneRanges = ranges.range(shape(len, 2).traverse(1), offset * 2);
+			geneRanges.setFrom(0, gene.getRanges());
+			gene.replaceRanges(geneRanges);
+
+			offset += len;
+		}
+
+		combined = all;
+		combinedCount = projections.size();
+		combinedScratch = new PackedCollection(shape(total, sourceLength));
+		return combined;
 	}
 
 	/**
@@ -149,6 +238,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 			offset += len;
 		}
 
+		consolidatedCount = projections.size();
 		return consolidatedValues;
 	}
 

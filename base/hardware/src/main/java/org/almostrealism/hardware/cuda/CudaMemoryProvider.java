@@ -19,6 +19,7 @@ package org.almostrealism.hardware.cuda;
 import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.AllocationCache;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.Console;
@@ -30,7 +31,9 @@ import org.almostrealism.io.SystemUtils;
  *
  * <p>Allocations are either managed (addressable from host and device) or device-only, as
  * decided by the data context from the device's capabilities. Host reads and writes go
- * through the driver's copy functions in both cases, which are correct for either kind.</p>
+ * through the driver's copy functions in both cases, which are correct for either kind. A
+ * copy between two managed allocations is made by the host instead, without a driver call
+ * (see {@link CUDeviceBuffer#copyFrom}).</p>
  *
  * <p>Allocation is bounded by a maximum reservation; exceeding it throws a
  * {@link HardwareException} with the message {@code "Memory Max Reached"}, as the other
@@ -41,8 +44,21 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
+	/**
+	 * Whether released buffers are kept for reuse rather than freed. Off by default; enabled with
+	 * {@code AR_HARDWARE_ALLOCATION_CACHE}. Reuse avoids the cost of allocating and freeing native
+	 * memory repeatedly (freeing synchronizes the device), which a workload such as a training loop
+	 * pays on every step, at the cost of holding memory against the reservation. When disabled, each
+	 * released buffer is freed at once and every allocation is made fresh.
+	 */
+	public static boolean enableAllocationCache =
+			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_CACHE").orElse(false);
+
 	/** The size in bytes above which an allocation is considered large. */
 	public static int largeAllocationSize = 40 * 1024 * 1024;
+
+	/** The largest released buffer, in bytes, kept for reuse rather than freed. */
+	public static long maxCachedAllocation = 16L * 1024 * 1024;
 
 	/** Sizes of allocations made by all CUDA memory providers. */
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("cudaAllocationSizes", 1024 * 1024);
@@ -62,8 +78,18 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	/** Whether allocations are managed rather than device-only. */
 	private final boolean managed;
 
-	/** The number of bytes currently allocated. */
+	/** The number of bytes currently allocated and in use. */
 	private long memoryUsed;
+
+	/**
+	 * Released buffers kept for reuse. Allocating a buffer and freeing one are each expensive
+	 * (freeing synchronizes the device), and a workload such as a training loop allocates the
+	 * same sizes over and over. Held buffers count toward the reservation, and are freed when an
+	 * allocation would otherwise exceed it. Reuse is governed by {@link #enableAllocationCache};
+	 * when it is off the cache is given a capacity of zero, so it holds nothing and the provider
+	 * allocates and frees every buffer directly.
+	 */
+	private final AllocationCache<CUDeviceBuffer> cache;
 
 	/**
 	 * Creates a provider.
@@ -78,6 +104,8 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.managed = managed;
+		this.cache = new AllocationCache<>(
+				enableAllocationCache ? memoryMax / 8 : 0, maxCachedAllocation);
 	}
 
 	@Override
@@ -122,11 +150,35 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	}
 
 	/**
-	 * Allocates a buffer of the given size, enforcing the maximum reservation.
+	 * Allocates a buffer of the given size, enforcing the maximum reservation. The driver rejects
+	 * an allocation of zero bytes, so an empty region is given a one-byte buffer; the reservation
+	 * accounts for the bytes actually allocated, which is also what is released when the buffer is.
 	 *
 	 * @throws HardwareException if the allocation would exceed the maximum reservation
 	 */
-	private CUDeviceBuffer buffer(long bytes) {
+	private CUDeviceBuffer buffer(long requested) {
+		long bytes = Math.max(requested, 1);
+
+		CUDeviceBuffer reused = cache.take(bytes);
+		if (reused != null) {
+			try {
+				reused.clear();
+			} catch (RuntimeException e) {
+				reused.release();
+				throw e;
+			}
+
+			synchronized (this) {
+				memoryUsed += bytes;
+			}
+
+			return reused;
+		}
+
+		if (getAllocatedMemory() + cache.getHeldBytes() + bytes > memoryMax) {
+			cache.flush(CUDeviceBuffer::release);
+		}
+
 		synchronized (this) {
 			if (memoryUsed + bytes > memoryMax) {
 				throw new HardwareException("Memory Max Reached");
@@ -147,22 +199,39 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		}
 	}
 
+	/**
+	 * Releases the buffer behind a freed allocation: it is kept for reuse if the cache has room
+	 * for it, and freed otherwise.
+	 *
+	 * @param ref the freed allocation
+	 */
 	@Override
 	protected void deallocate(NativeRef<CudaMemory> ref) {
 		try {
 			CUDeviceBuffer buf = ((CudaMemoryRef) ref).getBuffer();
 
-			synchronized (buf) {
-				if (buf.isReleased()) return;
-				buf.release();
-			}
+			if (buf.isReleased()) return;
 
 			synchronized (this) {
 				memoryUsed -= ref.getSize();
 			}
+
+			if (!cache.offer(ref.getSize(), buf)) {
+				buf.release();
+			}
 		} finally {
 			deallocationSizes.addEntry(ref.getSize());
 		}
+	}
+
+	/**
+	 * Frees the buffers kept for reuse, so that nothing remains allocated once the context is
+	 * released, and then destroys the provider. A buffer released afterwards is freed at once.
+	 */
+	@Override
+	public void destroy() {
+		cache.close(CUDeviceBuffer::release);
+		super.destroy();
 	}
 
 	@Override

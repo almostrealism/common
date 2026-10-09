@@ -790,8 +790,17 @@ export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 # full statement.
 export AR_HARDWARE_MEMORY_LOCATION=device   # OpenCL device memory (the only honored value)
 
-# Enable shared memory (Apple Silicon unified memory)
+# Shared memory between host kernels and an accelerator.
+# Unset (the default): enabled when Metal is selected. Host kernels then allocate
+# from Metal's memory, and every backend uses FP32. CUDA is not shared by default,
+# even on a device integrated with the host whose managed memory host code can
+# address; `enabled` shares it there. Set explicitly to override the decision.
+export AR_HARDWARE_SHARED_MEMORY=disabled
+
+# Enable the NIO shared-memory bridge (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
+
+<!-- TODO(review): document AR_HARDWARE_ALLOCATION_CACHE (CUDA released-buffer reuse, off by default) here -->
 ```
 
 ### Development vs Production

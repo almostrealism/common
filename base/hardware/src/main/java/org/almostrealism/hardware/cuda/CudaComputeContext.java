@@ -187,15 +187,19 @@ public class CudaComputeContext extends AbstractComputeContext<CudaDataContext> 
 		}
 	}
 
+	/**
+	 * Destroys the context. The stream runner is destroyed first, which waits for every kernel
+	 * still on the stream and runs their completion callbacks, so no instruction set's module is
+	 * unloaded while a kernel from it is still pending.
+	 */
 	@Override
 	public synchronized void destroy() {
 		super.destroy();
+		runner.destroy();
 
 		List<CudaOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(CudaOperatorMap::destroy);
 		instructionSets = null;
-
-		runner.destroy();
 	}
 
 	@Override

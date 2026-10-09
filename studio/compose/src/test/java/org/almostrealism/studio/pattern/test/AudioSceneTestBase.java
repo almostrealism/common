@@ -38,11 +38,13 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
@@ -185,6 +187,19 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	/** Minimum peak amplitude below which a rendered signal is considered silent. */
 	protected static final double SILENCE_THRESHOLD = 1e-4;
 
+	/** Every scene this test created through {@link #createBaselineScene(File, int)}. */
+	private final List<AudioScene<?>> createdScenes = new ArrayList<>();
+
+	/**
+	 * Destroys every scene this test created. A test that already destroyed one of
+	 * its scenes is unaffected, because {@link AudioScene#destroy()} is idempotent.
+	 */
+	@After
+	public void destroyCreatedScenes() {
+		createdScenes.forEach(AudioScene::destroy);
+		createdScenes.clear();
+	}
+
 	/**
 	 * Creates a baseline AudioScene with the default source count (6 channels).
 	 *
@@ -210,6 +225,8 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * setup. Real-time tests can use the default (6) because they render only small
 	 * buffers per tick.</p>
 	 *
+	 * <p>The scene belongs to this test and is destroyed when the test finishes.</p>
+	 *
 	 * @param samplesDir  directory containing sample WAV files
 	 * @param sourceCount number of source channels to create
 	 * @return configured AudioScene ready for genome assignment
@@ -218,6 +235,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
 
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount, delayLayers, SAMPLE_RATE);
+		createdScenes.add(scene);
 		scene.setTuning(new DefaultKeyboardTuning());
 
 		addChoices(scene, samplesDir);
