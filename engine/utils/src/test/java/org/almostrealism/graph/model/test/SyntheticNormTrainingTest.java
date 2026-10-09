@@ -248,13 +248,15 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	}
 
 	/**
-	 * Confirms that dense weight initialization actually draws from the seeded source rather
-	 * than ignoring it: two layers built from the same (shared) source draw different weights,
-	 * because the source advances as each layer consumes it. Were the source ignored,
-	 * {@link #seededWeightInitializationIsReproducible()} would still pass by coincidence of a
-	 * fresh unseeded source happening to repeat, so this guards the other direction.
+	 * Confirms that dense weight initialization consumes its source as it draws, rather than
+	 * emitting a fixed constant: two layers built in turn from the same shared source draw
+	 * different weights, because each draw advances the source. This rules out a degenerate
+	 * initialization that ignores the source and produces the same values every time — a case
+	 * {@link #seededWeightInitializationIsReproducible()} cannot catch, since identical
+	 * constants are also reproducible. Together the two tests establish that the seeded source
+	 * is both used ({@link #seededWeightInitializationIsReproducible()}) and advanced per draw
+	 * (this test).
 	 */
-	// TODO(review): javadoc reasoning is inaccurate — if the source were ignored, the reproducible test would fail, not pass by coincidence.
 	@Test(timeout = 60000)
 	public void seededWeightInitializationConsumesSource() {
 		PackedCollection first = initializeDenseWeights();
@@ -274,6 +276,20 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	}
 
 	/**
+	 * Confirms that the {@link #randnInit(PackedCollection, double)} path is also seeded. This
+	 * is the initialization site convolution filters and biases draw through (distinct from the
+	 * dense path the other two tests cover), so without this a regression could leave
+	 * convolution initialization unseeded while the dense tests still pass. Two instances whose
+	 * sources carry the same seed draw identical weights.
+	 */
+	@Test(timeout = 60000)
+	public void seededRandnInitIsReproducible() {
+		PackedCollection first = new SyntheticNormTrainingTest().initializeRandnWeights();
+		PackedCollection second = new SyntheticNormTrainingTest().initializeRandnWeights();
+		assertEquals(first, second);
+	}
+
+	/**
 	 * Builds a dense layer on this instance, runs its initialization, and returns the weights
 	 * it produced. The weights are drawn from {@link #getInitializationRandom()}.
 	 *
@@ -282,6 +298,19 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	private PackedCollection initializeDenseWeights() {
 		PackedCollection weights = new PackedCollection(shape(6, 6));
 		dense(shape(6), weights, false, true).setup().get().run();
+		return weights;
+	}
+
+	/**
+	 * Runs {@link #randnInit(PackedCollection, double)} on this instance and returns the weights
+	 * it produced. This exercises the same initialization path convolution filters and biases
+	 * use, drawing from {@link #getInitializationRandom()}.
+	 *
+	 * @return the initialized weight matrix, shape {@code (6, 6)}
+	 */
+	private PackedCollection initializeRandnWeights() {
+		PackedCollection weights = new PackedCollection(shape(6, 6));
+		randnInit(weights, 1.0).get().run();
 		return weights;
 	}
 }
