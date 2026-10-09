@@ -18,6 +18,7 @@ package org.almostrealism.audio.data.test;
 
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.FileWaveDataProvider;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -117,5 +118,57 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 		Assert.assertEquals(0L, provider.getCountLong());
 		Assert.assertEquals(0, provider.getChannelCount());
 		Assert.assertEquals(0.0, provider.getDuration(), 0.0);
+	}
+
+	/**
+	 * The shared load path records an unreadable file as corrupt: the first
+	 * {@link FileWaveDataProvider#load()} throws a {@link RuntimeException}
+	 * wrapping the underlying {@link IOException}, and a subsequent load
+	 * short-circuits to {@code null} because the file is now tracked as corrupt
+	 * rather than retried. This pins the fifth corrupt-tracking call site, which
+	 * the metadata-accessor tests do not reach.
+	 */
+	@Test(timeout = 60000)
+	public void loadTracksCorruptFileThenReturnsNull() {
+		File missing = new File(System.getProperty("java.io.tmpdir"),
+				"ar-filewaveprovider-load-missing-" + System.nanoTime() + ".wav");
+		ExposedProvider provider = new ExposedProvider(missing);
+
+		try {
+			provider.callLoad();
+			Assert.fail("Expected a RuntimeException for an unreadable file");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue("cause should be the underlying IOException",
+					expected.getCause() instanceof IOException);
+		}
+
+		Assert.assertNull("a corrupt file should load as null on subsequent access",
+				provider.callLoad());
+	}
+
+	/**
+	 * Exposes the protected {@link FileWaveDataProvider#load()} so the shared
+	 * corrupt-tracking load path can be exercised directly from this test
+	 * package, where {@link FileWaveDataProvider#get()} cannot reach the
+	 * corrupt-null branch (its validity predicate dereferences the loaded data).
+	 */
+	private static class ExposedProvider extends FileWaveDataProvider {
+		/**
+		 * Creates a provider for the given file.
+		 *
+		 * @param file the file to load
+		 */
+		ExposedProvider(File file) {
+			super(file);
+		}
+
+		/**
+		 * Invokes the inherited protected {@link FileWaveDataProvider#load()}.
+		 *
+		 * @return the loaded data, or {@code null} if the file is tracked as corrupt
+		 */
+		WaveData callLoad() {
+			return load();
+		}
 	}
 }
