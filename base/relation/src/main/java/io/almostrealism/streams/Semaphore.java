@@ -201,6 +201,12 @@ public interface Semaphore {
 	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
 	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
 	 *
+	 * <p>Each member is waited for on a {@link #CALLBACK_EXECUTOR} thread as soon as the
+	 * composite exists, which is what drives a member whose completion has to be requested.
+	 * The composite also records its members, so its own {@link #waitFor()} settles them
+	 * directly and is released by the last member's completion rather than by the thread that
+	 * counts the composite down (see {@link LatchSemaphore#waitFor()}).</p>
+	 *
 	 * @param semaphores the completions to merge; may contain nulls
 	 * @param combiner   produces the composite latch for a given number of members
 	 * @return a semaphore completing after all of the given semaphores, or {@code null}
@@ -228,6 +234,7 @@ public interface Semaphore {
 		if (members.size() == 1) return members.get(0);
 
 		LatchSemaphore combined = combiner.apply(members.size());
+		combined.compose(members);
 		for (Semaphore s : members) {
 			CALLBACK_EXECUTOR.execute(() -> {
 				try {

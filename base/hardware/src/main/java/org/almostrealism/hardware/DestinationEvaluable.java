@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
@@ -168,6 +169,17 @@ import java.util.stream.Stream;
  * new DestinationEvaluable<>(op, output).evaluate(batchA, batchB);
  * }</pre>
  *
+ * <h2>Membership in an Operation List</h2>
+ *
+ * <p>{@link org.almostrealism.hardware.computations.Assignment#get()} returns a
+ * {@link DestinationEvaluable} for an assignment whose source is a compiled kernel and whose
+ * destination is a {@link Provider}, so instances regularly appear as members of an
+ * {@link OperationList} that runs its members separately rather than as one kernel. As a
+ * {@link Submittable}, such a member is chained by {@link OperationListRunner} like any other
+ * kernel: it is issued after the previous member's completion without waiting for it on the
+ * host, and its own completion is waited only where the list ends or a member that cannot be
+ * chained needs everything ahead of it to be complete (see {@link #submit(Semaphore)}).</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>Not thread-safe. Each {@link DestinationEvaluable} instance should be used by a single
@@ -179,10 +191,11 @@ import java.util.stream.Stream;
  * @see MemoryBank
  * @see Evaluable
  * @see StreamingEvaluable
+ * @see Submittable
  * @see Provider
  */
 public class DestinationEvaluable<T extends MemoryBank> implements
-		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, Submittable, Destroyable, ConsoleFeatures {
 	/** The wrapped evaluable operation that produces results. */
 	private Evaluable<T> operation;
 
@@ -293,16 +306,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		if (operation instanceof Provider<T>) {
 			operation.into(destination).evaluate(args);
 		} else if (operation instanceof AcceleratedOperation) {
-			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
-			// Wait for the dispatch to be issued before reading the completion: until the whenReady
-			// callback runs, getSemaphore() returns the host-readiness latch (which fires once the
-			// kernel is encoded, not once its command buffer commits), so waiting it would let the
-			// host read a deferred/uncommitted result as stale zeros. awaitReady() ensures the
-			// operator's real device-completion semaphore is published first, so the wait below
-			// commits and completes the work. (AcceleratedComputationEvaluable.evaluate does the same.)
-			details.awaitReady();
-			details.getSemaphore().waitFor();
+			dispatch(args, null).getSemaphore().waitFor();
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
 			if (HardwareOperator.enableVerboseLog) log("Evaluating " + name + " kernel...");
@@ -438,12 +442,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (operation instanceof AcceleratedOperation) {
-			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination,
-							Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new),
-							dependsOn);
-			// Required before getSemaphore(); see the method javadoc
-			details.awaitReady();
+			AcceleratedProcessDetails details = dispatch(args, dependsOn);
 
 			if (downstream instanceof CompletionConsumer) {
 				((CompletionConsumer<T>) downstream).accept((T) destination, details.getSemaphore());
@@ -464,6 +463,67 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 				}
 			});
 		}
+	}
+
+	/**
+	 * Issues the evaluation into the destination, ordered after {@code dependsOn}, and returns
+	 * its completion without waiting for it.
+	 *
+	 * <p>This is what lets a composite chain this evaluation instead of completing it on the host.
+	 * {@link OperationListRunner} issues a {@link Submittable} member after the previous member's
+	 * completion and defers the wait to the end of the list; a member that is merely
+	 * {@link Runnable} instead costs a wait for everything issued ahead of it and then a wait for
+	 * its own result, and under a batching backend (Metal) each of those waits commits the open
+	 * command buffer and blocks until the GPU has run it.</p>
+	 *
+	 * <p>An {@link AcceleratedOperation} is dispatched exactly as
+	 * {@link #request(Object[], Semaphore, Consumer)} dispatches it: {@code dependsOn} is chained
+	 * into the dispatch (and its argument preparation) through the provider, and the returned
+	 * completion is the dispatch's own, read only once the dispatch has been issued. The
+	 * {@link Provider} and element-wise strategies of {@link #evaluate(Object...)} are host
+	 * evaluations with no device dispatch to chain into, so they wait for {@code dependsOn},
+	 * evaluate, and return {@code null}: the work has already completed.</p>
+	 *
+	 * @param dependsOn completion that must fire before the evaluation reads memory, or
+	 *                  {@code null} to begin a chain
+	 * @return the completion of the dispatch, or {@code null} when the evaluation was performed
+	 *         on the host and has already completed
+	 */
+	@Override
+	public Semaphore submit(Semaphore dependsOn) {
+		if (operation instanceof AcceleratedOperation) {
+			return dispatch(new Object[0], dependsOn).getSemaphore();
+		}
+
+		if (dependsOn != null) dependsOn.waitFor();
+		evaluate();
+		return null;
+	}
+
+	/**
+	 * Dispatches the wrapped {@link AcceleratedOperation} into the destination, ordered after
+	 * {@code dependsOn}, and returns once the dispatch has been issued.
+	 *
+	 * <p>The wait for the dispatch to be issued is what makes the returned details' completion
+	 * meaningful: until the operation's ready listener has run,
+	 * {@link AcceleratedProcessDetails#getSemaphore() getSemaphore()} returns the host-readiness
+	 * latch, which fires once the kernel is <em>encoded</em> rather than once its command buffer
+	 * completes. Waiting on, chaining on, or delivering against that latch would let a reader on
+	 * the host or on another {@code ComputeContext} observe a deferred, uncommitted result as stale
+	 * zeros. {@link AcceleratedProcessDetails#awaitReady() awaitReady} publishes the operator's
+	 * device completion first. ({@code AcceleratedComputationEvaluable} does the same.)</p>
+	 *
+	 * @param args      the input arguments ({@link MemoryData} instances)
+	 * @param dependsOn completion that must fire before the dispatch (and its argument
+	 *                  preparation) reads memory, or {@code null}
+	 * @return the issued dispatch, whose {@link AcceleratedProcessDetails#getSemaphore()
+	 *         semaphore} is its completion
+	 */
+	private AcceleratedProcessDetails dispatch(Object[] args, Semaphore dependsOn) {
+		AcceleratedProcessDetails details = ((AcceleratedOperation) operation).apply(destination,
+				Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new), dependsOn);
+		details.awaitReady();
+		return details;
 	}
 
 	/**

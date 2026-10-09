@@ -19,10 +19,14 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -149,6 +153,93 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 		// Release the composite's callback threads, which would otherwise stay parked
 		timeline.reach(3);
 		unmerged.waitFor();
+	}
+
+	/**
+	 * Waiting on a composite settles its members on the waiting thread itself, so the waiter is
+	 * released by the members' own completions rather than by the threads that count the
+	 * composite down once they have observed them. A member failure observed that way is still
+	 * rethrown to the waiter.
+	 */
+	@Test(timeout = 30000)
+	public void compositeWaitSettlesMembersOnWaitingThread() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+		first.release();
+		second.release();
+
+		combined.waitFor();
+		assertTrue("The waiting thread must settle the first member itself",
+				first.waitedBy(Thread.currentThread()));
+		assertTrue("The waiting thread must settle the second member itself",
+				second.waitedBy(Thread.currentThread()));
+
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failing = new RecordingCompletion(failure);
+		RecordingCompletion ok = new RecordingCompletion(null);
+
+		Semaphore mixed = Semaphore.all(Arrays.asList(failing, ok));
+		failing.release();
+		ok.release();
+
+		try {
+			mixed.waitFor();
+			Assert.fail("A member failure must reach the composite's waiter");
+		} catch (IllegalStateException e) {
+			assertTrue(e == failure);
+		}
+
+		assertTrue("A failing member must not stop the remaining members being settled",
+				ok.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A completion that records every thread that waits for it, and completes (or fails) once
+	 * {@link #release()} is called.
+	 */
+	private static class RecordingCompletion implements Semaphore {
+		/** Released once this completion has completed. */
+		private final CountDownLatch done = new CountDownLatch(1);
+		/** Every thread that has waited for this completion. */
+		private final Set<Thread> waiters = ConcurrentHashMap.newKeySet();
+		/** The failure every wait rethrows once released, or {@code null} to complete normally. */
+		private final RuntimeException failure;
+
+		/**
+		 * Creates a pending completion.
+		 *
+		 * @param failure the failure to report once released, or {@code null} to complete normally
+		 */
+		RecordingCompletion(RuntimeException failure) {
+			this.failure = failure;
+		}
+
+		/** Completes this completion, releasing every waiter. */
+		void release() { done.countDown(); }
+
+		/**
+		 * Returns whether the given thread has waited for this completion.
+		 *
+		 * @param thread the thread to look for
+		 * @return true if {@code thread} called {@link #waitFor()}
+		 */
+		boolean waitedBy(Thread thread) { return waiters.contains(thread); }
+
+		@Override
+		public void waitFor() {
+			waiters.add(Thread.currentThread());
+
+			try {
+				done.await();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
+			}
+
+			if (failure != null) throw failure;
+		}
 	}
 
 	/**

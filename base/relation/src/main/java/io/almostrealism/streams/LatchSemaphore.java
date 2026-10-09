@@ -16,6 +16,7 @@
 
 package io.almostrealism.streams;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -32,6 +33,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * down, so the latch is never pinned by a failure; the first such failure is rethrown from
  * {@link #waitFor()} once the count reaches zero, so a group failure reaches the waiter
  * rather than being lost.</p>
+ *
+ * <p>When this latch is the composite {@link Semaphore#all(List, java.util.function.IntFunction)}
+ * builds, it also knows the completions it stands for (see {@link #compose(List)}), and a wait
+ * settles them directly rather than waiting for the latch to be counted down.</p>
  */
 public class LatchSemaphore implements Semaphore {
 	/** The underlying latch used for synchronization. */
@@ -39,6 +44,13 @@ public class LatchSemaphore implements Semaphore {
 
 	/** The first failure observed among merged members, rethrown by {@link #waitFor()}. */
 	private final AtomicReference<Throwable> failure;
+
+	/**
+	 * The completions this latch is counted down for when it is the composite built by
+	 * {@link Semaphore#all(List, java.util.function.IntFunction)}, or {@code null} for a plain
+	 * latch.
+	 */
+	private volatile List<Semaphore> members;
 
 	/**
 	 * Constructs a semaphore whose {@link #waitFor()} returns after {@code count}
@@ -110,12 +122,54 @@ public class LatchSemaphore implements Semaphore {
 		if (t != null) failure.compareAndSet(null, t);
 	}
 
+	/**
+	 * Records the completions this latch is counted down for, as the composite that
+	 * {@link Semaphore#all(List, java.util.function.IntFunction)} builds over them.
+	 *
+	 * <p>{@code all} still starts a thread for each member that waits for it and counts this
+	 * latch down: those waits are what drive a member whose completion has to be requested
+	 * (a Metal dispatch whose command buffer is still open, for example) as soon as the
+	 * composite exists, and the latch they count down remains a valid completion for anything
+	 * that observes it. Knowing the members only changes how {@link #waitFor()} waits: it
+	 * settles each member itself, so the waiter is released by the last member's completion
+	 * directly, instead of by the thread that observed that completion counting the latch
+	 * down &mdash; one thread hand-off fewer on the path of every wait for a composite.</p>
+	 *
+	 * @param members the completions this composite stands for
+	 */
+	void compose(List<Semaphore> members) {
+		// TODO(review): re-attributed views (DefaultLatchSemaphore.withRequester, CudaSemaphore) share latch/failure but not members, so they fall back to latch.await()
+		this.members = members;
+	}
+
+	/**
+	 * Blocks until the guarded work has completed, then rethrows the first recorded failure.
+	 *
+	 * <p>For a composite (see {@link #compose(List)}) every member is settled in turn on the
+	 * calling thread: a member whose wait fails is recorded like any merged failure, and an
+	 * interrupt stops the wait early exactly as it does for the latch. Otherwise the latch
+	 * itself is awaited.</p>
+	 */
 	@Override
 	public void waitFor() {
-		try {
-			latch.await();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
+		List<Semaphore> settle = members;
+
+		if (settle == null) {
+			try {
+				latch.await();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		} else {
+			for (Semaphore member : settle) {
+				if (Thread.currentThread().isInterrupted()) break;
+
+				try {
+					member.waitFor();
+				} catch (Throwable e) {
+					fail(e);
+				}
+			}
 		}
 
 		Throwable t = failure.get();
