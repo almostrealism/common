@@ -148,7 +148,14 @@ In scope:
    to the FP32 noise floor. Each case must feed a **sequence-shaped input** (the model's `seqLen` of
    64 positions, not a single vector), so the test exercises the position/batch reduction
    `dW = Σ_t g_t ⊗ x_t` — a VJP that computed only one position's outer product would still pass a
-   single-vector test but produce the wrong weight gradient in training. Also confirm
+   single-vector test but produce the wrong weight gradient in training. The reference side of the
+   comparison must be the **full-Jacobian result, forced**: once Scope item 2 makes both call sites
+   prefer the VJP for every recognized matmul, the legacy path is no longer reachable through the
+   normal gradient API, so a test that simply calls that API twice would compare the VJP against
+   itself and prove nothing. The test must therefore force the exact fallback when computing its
+   reference — a separate baseline entry point, or a test-only switch that disables the capability
+   check — so the quantity it compares against is genuinely the unchanged `delta(...)`-then-contract
+   gradient and the asserted equality really is VJP-against-full-Jacobian. Also confirm
    `CausalLanguageModelTest.gradientsMatchFiniteDifferences`
    still passes unchanged (it differentiates the whole assembled model, so it exercises the new
    path through every weight). These are the specification; they may not be weakened.
@@ -221,7 +228,9 @@ the *next* plan; none is this one.
   `DefaultGradientPropagation` and `GradientFeatures.combineGradient` with an exact fallback for
   every non-matmul operator.
 - An A/B test asserts the VJP gradient equals the full-Jacobian gradient to the FP32 noise floor on
-  the output-projection, QKV, and feed-forward shapes, and
+  the output-projection, QKV, and feed-forward shapes — with the reference side computed through the
+  **forced** exact fallback (a separate baseline entry point or a test-only switch), not the
+  auto-selected path that now prefers the VJP — and
   `CausalLanguageModelTest.gradientsMatchFiniteDifferences` still passes unchanged.
 - Measured warm step time and per-epoch time on the documentation configuration (Metal), before and
   after, reported with the profile that backs them — a real, stated speedup.
