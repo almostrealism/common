@@ -233,4 +233,55 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 
 		log("Test 3.3 completed successfully");
 	}
+
+	/**
+	 * Confirms that {@link #getInitializationRandom()} makes dense weight initialization
+	 * reproducible: two instances whose sources carry the same seed draw identical weights.
+	 * This is the property the seeding in these tests relies on to keep the number of epochs
+	 * to the loss target — and so the running time — stable between runs.
+	 */
+	@Test(timeout = 60000)
+	public void seededWeightInitializationIsReproducible() {
+		PackedCollection first = new SyntheticNormTrainingTest().initializeDenseWeights();
+		PackedCollection second = new SyntheticNormTrainingTest().initializeDenseWeights();
+		assertEquals(first, second);
+	}
+
+	/**
+	 * Confirms that dense weight initialization actually draws from the seeded source rather
+	 * than ignoring it: two layers built from the same (shared) source draw different weights,
+	 * because the source advances as each layer consumes it. Were the source ignored,
+	 * {@link #seededWeightInitializationIsReproducible()} would still pass by coincidence of a
+	 * fresh unseeded source happening to repeat, so this guards the other direction.
+	 */
+	// TODO(review): javadoc reasoning is inaccurate — if the source were ignored, the reproducible test would fail, not pass by coincidence.
+	@Test(timeout = 60000)
+	public void seededWeightInitializationConsumesSource() {
+		PackedCollection first = initializeDenseWeights();
+		PackedCollection second = initializeDenseWeights();
+
+		double[] a = first.toArray();
+		double[] b = second.toArray();
+		boolean anyDifferent = false;
+		for (int i = 0; i < a.length; i++) {
+			if (a[i] != b[i]) {
+				anyDifferent = true;
+				break;
+			}
+		}
+
+		assertTrue("Seeded weight initialization must advance its source between layers", anyDifferent);
+	}
+
+	/**
+	 * Builds a dense layer on this instance, runs its initialization, and returns the weights
+	 * it produced. The weights are drawn from {@link #getInitializationRandom()}.
+	 *
+	 * @return the initialized weight matrix, shape {@code (6, 6)}
+	 */
+	private PackedCollection initializeDenseWeights() {
+		PackedCollection weights = new PackedCollection(shape(6, 6));
+		dense(shape(6), weights, false, true).setup().get().run();
+		return weights;
+	}
 }
