@@ -30,6 +30,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
+import java.util.Random;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -55,6 +56,23 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	 * Fixed coefficients for target functions.
 	 */
 	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
+
+	/**
+	 * The source of the initial weights of every layer these tests build. It is seeded so
+	 * that each run starts training from the same weights: how many epochs a model needs to
+	 * reach its loss target depends on where it starts, and with unseeded weights that
+	 * number, and so the running time, varied by a factor of two between runs.
+	 */
+	private final Random initializationRandom = new Random(0x5EED);
+
+	/** The source of the training inputs, seeded for the same reason as {@link #initializationRandom}. */
+	private final Random dataRandom = new Random(0xDA7A);
+
+	/** Draws initial weights from {@link #initializationRandom}. */
+	@Override
+	public Random getInitializationRandom() {
+		return initializationRandom;
+	}
 
 	/**
 	 * Simple element-wise linear function: output[i] = coeff[i] * input[i]
@@ -99,8 +117,8 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(10.0).add(1.0)
-							.multiply(rand(input.getShape()).add(-0.5))
+					rand(input.getShape(), dataRandom).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape(), dataRandom).add(-0.5))
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
@@ -148,8 +166,8 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(10.0).add(1.0)
-							.multiply(rand(input.getShape()).add(-0.5))
+					rand(input.getShape(), dataRandom).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape(), dataRandom).add(-0.5))
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
@@ -199,7 +217,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					rand(input.getShape(), dataRandom).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
 				.map(input -> {
