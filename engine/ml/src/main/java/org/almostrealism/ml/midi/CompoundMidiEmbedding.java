@@ -158,14 +158,24 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 *
 	 * <p>For normal tokens, each attribute is embedded independently and the
 	 * results are concatenated. For special tokens (SOS/EOS), the
-	 * supplementary embedding + MLP is used instead.</p>
+	 * supplementary embedding + MLP is used instead, and a pad token embeds as zeros.</p>
+	 *
+	 * <p>The token is known when the graph is built, so only the path it takes is
+	 * included; {@link #embedValues(Producer)} is the alternative for a token that is
+	 * only known at evaluation time, at the cost of carrying every path.</p>
 	 *
 	 * @param token producer supplying the compound token to embed
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
 	public CollectionProducer embed(Producer<MidiCompoundToken> token) {
-		// TODO(review): every embed now carries the supplementary MLP; profileCompoundEmbedding (REAL_CONFIG) times out compiling it
-		return embedValues(cp(token.get().evaluate().pack()));
+		MidiCompoundToken tok = token.get().evaluate();
+		if (tok.isPAD()) {
+			return zeros(shape(config.hiddenSize));
+		} else if (tok.isSpecial()) {
+			return embedSupplementary(c(tok.isEOS() || tok.isFillEnd() ? 1.0 : 0.0));
+		}
+
+		return embedAttributes(cp(tok.pack()));
 	}
 
 	/**
