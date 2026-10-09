@@ -1,5 +1,9 @@
 # Compute matrix-multiply weight gradients without materializing the Jacobian
 
+**Status:** Proposed — not yet implemented. This document is a plan awaiting approval; the
+branch it lives on changes only `docs/`. None of the deliverables below exist yet — there is no
+VJP implementation, no A/B equality test, no measured speedup, and no training-doc re-run. The
+title names the work the plan *proposes*, not work that has been done.
 **Category:** Performance (directly unblocking Proof of Value)
 **Branch:** `project/plan-20261009-171224`
 **Requires:** a macOS / Metal node (see `plan-20261009-171224-workstream.yaml`)
