@@ -18,11 +18,15 @@ package org.almostrealism.heredity.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGene;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 import java.util.stream.IntStream;
 
 /**
@@ -216,6 +220,87 @@ public class ProjectedGeneTests extends TestSuiteBase {
 		for (int i = 0; i < factors; i++) {
 			double expected = gene.valueAt(i).getResultant(null).get().evaluate().toDouble(0);
 			assertEquals(expected, combined.toDouble(i));
+		}
+	}
+
+	/**
+	 * Tests that a {@link ProjectedChromosome}, which initializes and refreshes all of its
+	 * genes with one kernel each, produces exactly the values that the same genes produce
+	 * when each is initialized and refreshed on its own with the same seeds, both when the
+	 * gene values are consolidated and when a gene was added after consolidation. Half of
+	 * the ranges are set before the genes are first combined and half after, so both must
+	 * reach the combined computation.
+	 */
+	@Test(timeout = 120000)
+	public void chromosomeMatchesIndividualGenes() {
+		assertChromosomeMatchesIndividualGenes(new int[] { 3, 1, 5, 2 }, 0);
+		assertChromosomeMatchesIndividualGenes(new int[] { 3, 1, 5, 2 }, 1);
+	}
+
+	/**
+	 * Builds a chromosome with genes of the given lengths, consolidating its gene values
+	 * before the last {@code addedAfterConsolidation} genes are added, and asserts that
+	 * the values it computes match those of independently initialized and refreshed genes.
+	 */
+	private void assertChromosomeMatchesIndividualGenes(int[] lengths, int addedAfterConsolidation) {
+		int sourceLength = 11;
+
+		PackedCollection source = new PackedCollection(shape(sourceLength));
+		rand(source.getShape()).multiply(4.0).add(-2.0).into(source.traverseEach()).evaluate();
+
+		ProjectedChromosome chromosome = new ProjectedChromosome(source);
+		List<ProjectedGene> combined = new ArrayList<>();
+		List<ProjectedGene> individual = new ArrayList<>();
+		for (int g = 0; g < lengths.length; g++) {
+			if (g == lengths.length - addedAfterConsolidation) {
+				chromosome.consolidateGeneValues();
+			}
+
+			combined.add(chromosome.addGene(lengths[g]));
+			individual.add(new ProjectedGene(source,
+					new PackedCollection(shape(lengths[g], sourceLength).traverse(1))));
+		}
+
+		if (addedAfterConsolidation == 0) {
+			chromosome.consolidateGeneValues();
+		}
+
+		applyRanges(combined.subList(0, 2), 0);
+		applyRanges(individual, 0);
+
+		Random seeds = new Random(5);
+		chromosome.initWeights(seeds::nextLong);
+		applyRanges(combined.subList(2, lengths.length), 2);
+		chromosome.refreshValues();
+
+		Random referenceSeeds = new Random(5);
+		for (ProjectedGene gene : individual) {
+			gene.initWeights(referenceSeeds.nextLong());
+			gene.refreshValues();
+		}
+
+		for (int g = 0; g < lengths.length; g++) {
+			for (int pos = 0; pos < lengths[g]; pos++) {
+				double expected = individual.get(g).valueAt(pos).getResultant(null).get().evaluate().toDouble(0);
+				double actual = combined.get(g).valueAt(pos).getResultant(null).get().evaluate().toDouble(0);
+				assertEquals(expected, actual);
+			}
+		}
+	}
+
+	/**
+	 * Sets a distinct range on every factor of the given genes, so that a value computed
+	 * against the wrong range cannot match. {@code first} is the index of the first gene
+	 * among all the genes being configured, so that the same gene always receives the
+	 * same ranges.
+	 */
+	private void applyRanges(List<ProjectedGene> genes, int first) {
+		for (int g = 0; g < genes.size(); g++) {
+			ProjectedGene gene = genes.get(g);
+			for (int pos = 0; pos < gene.length(); pos++) {
+				double min = -(first + g) - 0.25 * pos;
+				gene.setRange(pos, min, min + 1.0 + first + g + pos);
+			}
 		}
 	}
 
