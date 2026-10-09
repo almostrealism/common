@@ -29,6 +29,7 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.function.Function;
 
 /**
@@ -190,6 +191,111 @@ public class CudaBridgeTest {
 			Assert.fail("Compilation of invalid source should fail");
 		} catch (HardwareException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("undeclared"));
+		}
+	}
+
+	/**
+	 * A copy between two managed allocations is made by the host over their views, and copies
+	 * exactly the requested range: the elements on either side of it are untouched.
+	 */
+	@Test(timeout = 60000)
+	public void copyBetweenManagedAllocations() {
+		assertCopy(context::allocateManaged, context::allocateManaged);
+	}
+
+	/** A copy between device allocations, which the host cannot address, is made by the driver. */
+	@Test(timeout = 60000)
+	public void copyBetweenDeviceAllocations() {
+		assertCopy(context::allocate, context::allocate);
+	}
+
+	/** A copy from a managed allocation into a device allocation is made by the driver. */
+	@Test(timeout = 60000)
+	public void copyFromManagedToDeviceAllocation() {
+		assertCopy(context::allocateManaged, context::allocate);
+	}
+
+	/**
+	 * The host view of a managed allocation shows what a kernel wrote once the stream has
+	 * finished, and a kernel sees what was written through the view.
+	 */
+	@Test(timeout = 60000)
+	public void managedHostViewSharesKernelMemory() {
+		int n = 64;
+		CUModule module = context.loadModule(device.compile(MARK, "mark.cu"));
+		CUDeviceBuffer y = context.allocateManaged((long) n * Float.BYTES);
+		CUDeviceBuffer deviceOnly = context.allocate(Float.BYTES);
+
+		try {
+			Assert.assertTrue(y.isHostAccessible());
+			Assert.assertFalse(deviceOnly.isHostAccessible());
+
+			CUFunction mark = module.getFunction("mark");
+			mark.launch(stream, 1, n, new CUDeviceBuffer[] { y }, new int[] { 0 }, new int[] { n },
+					Float.BYTES, n / 2, 0);
+			stream.synchronize();
+
+			for (int i = 0; i < n; i++) {
+				Assert.assertEquals(i < n / 2 ? 1.0f : 0.0f, y.hostView().getFloat(i * Float.BYTES), 0.0f);
+			}
+
+			y.hostView().putFloat((n - 1) * Float.BYTES, 7.0f);
+			Assert.assertEquals(7.0f, read(y, n - 1, 1)[0], 0.0f);
+		} finally {
+			y.release();
+			deviceOnly.release();
+			module.release();
+		}
+	}
+
+	/**
+	 * Host access to a managed allocation goes through its view, but once the allocation is
+	 * released that access is refused, even though the view was created while it was live.
+	 */
+	@Test(timeout = 60000)
+	public void releasedManagedAllocationRefusesHostAccess() {
+		CUDeviceBuffer buffer = context.allocateManaged(4L * Float.BYTES);
+		buffer.setContents(new float[] { 1, 2, 3, 4 }, 0, 0, 4);
+		Assert.assertEquals(3.0f, read(buffer, 2, 1)[0], 0.0f);
+
+		buffer.release();
+
+		try {
+			read(buffer, 0, 4);
+			Assert.fail("Reading a released allocation should be refused");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("released"));
+		}
+	}
+
+	/**
+	 * Copies 100 elements from offset 3 of an allocation from {@code sources} to offset 5 of one
+	 * from {@code destinations}, and checks the destination before, within and after the range.
+	 */
+	private void assertCopy(Function<Long, CUDeviceBuffer> sources, Function<Long, CUDeviceBuffer> destinations) {
+		int n = 100;
+		CUDeviceBuffer source = sources.apply((long) (n + 6) * Float.BYTES);
+		CUDeviceBuffer destination = destinations.apply((long) (n + 10) * Float.BYTES);
+
+		try {
+			float[] values = new float[n + 6];
+			for (int i = 0; i < values.length; i++) values[i] = i + 1;
+
+			float[] fill = new float[n + 10];
+			Arrays.fill(fill, -1.0f);
+
+			source.setContents(values, 0, 0, values.length);
+			destination.setContents(fill, 0, 0, fill.length);
+			destination.copyFrom(source, 3L * Float.BYTES, 5L * Float.BYTES, (long) n * Float.BYTES);
+
+			float[] result = read(destination, 0, n + 10);
+			for (int i = 0; i < result.length; i++) {
+				float expected = i >= 5 && i < 5 + n ? values[i - 5 + 3] : -1.0f;
+				Assert.assertEquals("Element " + i, expected, result[i], 0.0f);
+			}
+		} finally {
+			source.release();
+			destination.release();
 		}
 	}
 

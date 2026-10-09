@@ -35,21 +35,28 @@ import java.util.concurrent.atomic.AtomicReference;
  * every effect of that callback.</p>
  *
  * <p>Knowing its {@link #getRunner() runner} is what lets a dependent submission to the same
- * runner skip any ordering work: the runner's stream already executes in submission order.</p>
+ * runner skip any ordering work: the runner's stream already executes in submission order. Its
+ * {@link #getSequence() sequence number} is what lets two completions of the same runner merge
+ * into one (see {@link #merge(Semaphore)}).</p>
  */
 public class CudaSemaphore extends DefaultLatchSemaphore {
 	/** The runner the work was submitted to. */
 	private final CudaStreamRunner runner;
+
+	/** The position of the submission among all submissions to {@link #runner}. */
+	private final long sequence;
 
 	/**
 	 * Creates the completion handle for a new submission.
 	 *
 	 * @param requester metadata of the operation the submission belongs to, or {@code null}
 	 * @param runner    the runner the work is submitted to
+	 * @param sequence  the position of the submission among all submissions to the runner
 	 */
-	CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner) {
+	CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner, long sequence) {
 		super(requester, 1);
 		this.runner = runner;
+		this.sequence = sequence;
 	}
 
 	/**
@@ -57,17 +64,22 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 *
 	 * @param requester metadata of the operation this completion is attributed to, or {@code null}
 	 * @param runner    the runner the work was submitted to
+	 * @param sequence  the position of the submission among all submissions to the runner
 	 * @param latch     the shared settlement latch
 	 * @param failure   the shared failure
 	 */
-	private CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner,
+	private CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner, long sequence,
 						  CountDownLatch latch, AtomicReference<Throwable> failure) {
 		super(requester, latch, failure);
 		this.runner = runner;
+		this.sequence = sequence;
 	}
 
 	/** Returns the runner the work was submitted to. */
 	public CudaStreamRunner getRunner() { return runner; }
+
+	/** Returns the position of the submission among all submissions to its runner. */
+	public long getSequence() { return sequence; }
 
 	/** Returns true once the submission has settled, successfully or not. */
 	public boolean isSettled() { return getLatch().getCount() == 0; }
@@ -90,8 +102,28 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 		super.waitFor();
 	}
 
+	/**
+	 * Merges with another completion of the same {@link CudaStreamRunner} into whichever of the
+	 * two was submitted later. A runner settles its submissions in submission order (see
+	 * {@link CudaStreamRunner#submit}), so the later one cannot settle before the earlier one has,
+	 * and a dependent submission to the same runner is ordered after both by the stream alone.
+	 * Completions of another runner, or of any other provider, are not merged.
+	 *
+	 * @param other another completion
+	 * @return the later completion when both belong to this runner, otherwise {@code null}
+	 */
+	@Override
+	public Semaphore merge(Semaphore other) {
+		if (!(other instanceof CudaSemaphore)) return null;
+
+		CudaSemaphore cuda = (CudaSemaphore) other;
+		if (cuda.runner != runner) return null;
+
+		return cuda.sequence > sequence ? cuda : this;
+	}
+
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new CudaSemaphore(requester, runner, getLatch(), getFailure());
+		return new CudaSemaphore(requester, runner, sequence, getLatch(), getFailure());
 	}
 }

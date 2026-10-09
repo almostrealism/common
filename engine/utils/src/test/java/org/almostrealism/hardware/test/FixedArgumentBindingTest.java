@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.profile.OperationMetadata;
@@ -23,11 +24,13 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
@@ -96,6 +99,62 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 			assertEquals(5.0, primed.toDouble(i));
 		}
 
+		PackedCollection result = requestBehindPendingDependency(ev, () -> a.fill(7.0));
+
+		for (int i = 0; i < size; i++) {
+			assertEquals(10.0, result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Requests a compiled kernel behind a dependency its backend cannot order after by itself, and
+	 * destroys one of the kernel's inputs before the dependency completes. A backend may defer the
+	 * whole dispatch, argument preparation included, until the dependency completes, so the input's
+	 * memory must stay protected across the wait: the kernel must still read the destroyed input's
+	 * values rather than released memory. As in {@link #requestIsNotHeldUntilDependencyCompletes},
+	 * the inputs are large enough to be bound directly.
+	 *
+	 * <p>This runs only where a GPU accelerator is available. The native CPU backend does not yet
+	 * protect such a dispatch: it prepares the arguments when the dispatch is requested and holds
+	 * them only with an expiring execution reservation, so a destroyed input is dispatched without
+	 * memory.</p>
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the delivery
+	 */
+	@Test(timeout = 60000)
+	public void inputDestroyedWhileDependencyPendingIsStillRead() throws InterruptedException {
+		Assume.assumeTrue("Requires a GPU accelerator",
+				Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU));
+
+		int size = 2 * MemoryDataArgumentMap.maxAggregateLength;
+
+		PackedCollection a = new PackedCollection(shape(size));
+		PackedCollection b = new PackedCollection(shape(size));
+		a.fill(2.0);
+		b.fill(3.0);
+
+		Evaluable<PackedCollection> ev = add(traverseEach(p(a)), traverseEach(p(b))).get();
+		assertEquals(5.0, ev.evaluate().toDouble(0));
+
+		PackedCollection result = requestBehindPendingDependency(ev, a::destroy);
+
+		for (int i = 0; i < size; i++) {
+			assertEquals(5.0, result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Requests {@code ev} with a dependency that has not completed, asserts that the result is
+	 * delivered while the dependency is still pending, runs {@code whilePending}, then completes the
+	 * dependency and waits for the dispatch to finish.
+	 *
+	 * @param ev           the compiled kernel to request
+	 * @param whilePending what to do after delivery and before the dependency completes
+	 * @return the delivered result, once the dispatch has finished
+	 * @throws InterruptedException if interrupted while waiting for the delivery
+	 */
+	private PackedCollection requestBehindPendingDependency(Evaluable<PackedCollection> ev,
+															 Runnable whilePending) throws InterruptedException {
 		DefaultLatchSemaphore pending = new DefaultLatchSemaphore(
 				new OperationMetadata("pendingDependency", "Dependency that has not completed"), 1);
 		CountDownLatch delivered = new CountDownLatch(1);
@@ -113,7 +172,7 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 			Assert.assertTrue("The result was not delivered while the dependency was pending",
 					delivered.await(30, TimeUnit.SECONDS));
 
-			a.fill(7.0);
+			whilePending.run();
 		} finally {
 			pending.countDown();
 		}
@@ -122,9 +181,7 @@ public class FixedArgumentBindingTest extends TestSuiteBase implements TestFeatu
 			completion.get().waitFor();
 		}
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(10.0, result.get().toDouble(i));
-		}
+		return result.get();
 	}
 
 	/**

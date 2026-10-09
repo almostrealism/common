@@ -438,7 +438,7 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 		if (args == null) return reservation;
 
 		for (MemoryData arg : args) {
-			if (arg == null) continue;
+			if (arg == null || isUnguarded(arg)) continue;
 
 			RAM ram = resolveRAM(arg);
 			if (ram == null) {
@@ -583,10 +583,31 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	}
 
 	/**
-	 * Resolves the underlying {@link RAM} object from a {@link MemoryData} argument.
+	 * Returns true if an argument's memory is present but is not native {@link RAM}, such as memory
+	 * on the JVM heap. A provider never frees such memory while it is still referenced, so there is
+	 * nothing for this guard to protect, and the argument is skipped without a warning. (An argument
+	 * with no memory at all is a different case: it is reported, because a kernel using it is
+	 * reading memory that is gone.)
 	 *
-	 * @param data the memory data to resolve
-	 * @return the backing {@link RAM}, or {@code null} if not resolvable
+	 * @param data the argument
+	 * @return whether the argument's memory needs no guarding
+	 */
+	private static boolean isUnguarded(MemoryData data) {
+		try {
+			Memory mem = data.getMem();
+			return mem != null && !(mem instanceof RAM);
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Resolves the native {@link RAM} behind an argument, or {@code null} if it has none: its
+	 * memory is gone (destroyed, or failing to report itself), or is not native memory at all
+	 * (see {@link #isUnguarded}).
+	 *
+	 * @param data the argument
+	 * @return the native memory behind it, or {@code null}
 	 */
 	private RAM resolveRAM(MemoryData data) {
 		try {

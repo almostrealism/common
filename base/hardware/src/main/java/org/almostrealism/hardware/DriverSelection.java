@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.cuda.CudaDataContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,6 +123,28 @@ public class DriverSelection {
 	 * @return whether shared memory between backends is wanted
 	 */
 	public boolean isSharedMemoryPreferred() { return sharedMemoryPreferred; }
+
+	/**
+	 * Whether host kernels share memory with a backend in the selection when
+	 * {@code AR_HARDWARE_SHARED_MEMORY} is not set: true when Metal, whose buffers live in the
+	 * host's unified memory, is selected.
+	 *
+	 * <p>CUDA on a device that allocates managed memory also provides memory host code can
+	 * address directly (see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}), but it is
+	 * not shared by default. With host kernels running on CUDA memory, native and CUDA work come
+	 * to depend on each other, and that combination stalls: a CUDA submission held behind a native
+	 * dependency holds back the later CUDA work the native side is waiting for. Sharing can still
+	 * be requested for CUDA explicitly.</p>
+	 *
+	 * @return whether memory is shared by default for this selection
+	 */
+	public boolean sharesMemoryByDefault() {
+		for (ComputeRequirement requirement : requirements) {
+			if (requirement.resolve() == ComputeRequirement.MTL) return true;
+		}
+
+		return false;
+	}
 
 	/**
 	 * Whether the selection requires all backends to agree on precision.

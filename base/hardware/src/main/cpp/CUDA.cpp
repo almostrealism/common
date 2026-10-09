@@ -332,6 +332,15 @@ CU_FN(void, memcpyDtoDAsync)(JNIEnv* env, jclass cls, jlong context, jlong desti
                                  (CUstream) stream), "cuMemcpyDtoDAsync");
 }
 
+CU_FN(jobject, hostView)(JNIEnv* env, jclass cls, jlong address, jlong bytes) {
+    jobject view = env->NewDirectByteBuffer((void*) address, bytes);
+    if (view == nullptr && !env->ExceptionCheck()) {
+        throwHardwareException(env, "NewDirectByteBuffer is not supported by this JVM");
+    }
+
+    return view;
+}
+
 /* ---------------------------------------------------------------- streams & events */
 
 CU_FN(jlong, streamCreate)(JNIEnv* env, jclass cls, jlong context) {

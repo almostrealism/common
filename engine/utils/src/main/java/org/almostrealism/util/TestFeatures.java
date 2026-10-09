@@ -735,8 +735,33 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than the specified tolerance
 	 */
 	default void assertSimilar(String msg, double a, double b, double r) {
+		assertSimilar(msg, a, b, r, 1.0);
+	}
+
+	/**
+	 * Asserts that two double values are similar within a specified relative tolerance,
+	 * where the values were computed by adding or subtracting terms as large as
+	 * {@code magnitude}.
+	 *
+	 * <p>A value that is the difference of large terms carries the rounding error of
+	 * those terms, which can be far larger than the value itself when the terms nearly
+	 * cancel. No implementation at the hardware precision can then match it to a fixed
+	 * fraction of its own size, so the absolute floor of the comparison, the hardware
+	 * epsilon, is applied relative to {@code magnitude} rather than to 1. A
+	 * {@code magnitude} of 1 or less leaves the comparison exactly as
+	 * {@link #assertSimilar(String, double, double, double)} makes it.</p>
+	 *
+	 * @param msg       context to report when the assertion fails, or {@code null}
+	 * @param a         the expected value
+	 * @param b         the actual value
+	 * @param r         the relative tolerance (e.g., 0.001 for 0.1% tolerance)
+	 * @param magnitude the sum of the magnitudes of the terms the expected value
+	 *                  was computed from
+	 * @throws AssertionError if the values differ by more than the tolerance
+	 */
+	default void assertSimilar(String msg, double a, double b, double r, double magnitude) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
-		double eps = Hardware.getLocalHardware().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon() * Math.max(1.0, magnitude);
 		double comp = Math.max(eps, r * gap);
 
 		double c = Math.abs(a - b);
