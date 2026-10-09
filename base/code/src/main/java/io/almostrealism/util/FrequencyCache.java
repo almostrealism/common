@@ -409,19 +409,43 @@ public class FrequencyCache<K, V> {
 	/**
 	 * Explicitly removes the entry for the given key from the cache.
 	 *
-	 * <p>If the key is present, its value is also removed from the reverse
-	 * cache and the eviction listener is invoked.</p>
+	 * <p>If the key is present, its value is removed from the reverse cache and
+	 * every key that shares that value (via the reverse map) is removed as well,
+	 * with the eviction listener invoked for each &mdash; the same contract the
+	 * capacity-enforcement path in {@link #prepareCapacity()} honours. Removing
+	 * only the named key would leave an alias key resolving to a value that has
+	 * already been dropped from the reverse cache and released through the
+	 * listener (whose native resources may have been destroyed).</p>
 	 *
 	 * @param key the key to remove
 	 */
 	public void evict(K key) {
-		CacheEntry e = cache.remove(key);
+		CacheEntry e = cache.get(key);
 		if (e == null) return;
 
-		reverseCache.remove(e.value);
+		removeEntry(e);
+	}
 
-		if (evictionListener != null) {
-			evictionListener.accept(key, e.value);
+	/**
+	 * Removes {@code entry}'s value from the reverse cache and every key in the
+	 * primary cache that references {@code entry}, invoking the eviction listener
+	 * for each removed key. Shared by the explicit {@link #evict(Object)} path and
+	 * the capacity-enforcement path so both uphold the value-deduplication contract
+	 * that evicting a value removes all keys sharing it.
+	 *
+	 * @param entry the entry to remove from both maps
+	 */
+	private void removeEntry(CacheEntry entry) {
+		reverseCache.remove(entry.value);
+
+		List<K> matchingKeys = cache.entrySet()
+				.stream().filter(e -> e.getValue() == entry)
+				.map(Map.Entry::getKey).collect(Collectors.toList());
+		for (K key : matchingKeys) {
+			cache.remove(key);
+			if (evictionListener != null) {
+				evictionListener.accept(key, entry.value);
+			}
 		}
 	}
 
@@ -487,19 +511,7 @@ public class FrequencyCache<K, V> {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
 					Comparator.comparing(e -> score(e.getValue())));
-			reverseCache.remove(ent.getKey());
-
-			List<K> matchingKeys = cache.entrySet()
-					.stream().filter(e -> e.getValue() == ent.getValue())
-					.map(e -> {
-						if (evictionListener != null) {
-							evictionListener.accept(e.getKey(), e.getValue().value);
-						}
-
-						return e;
-					})
-					.map(Map.Entry::getKey).collect(Collectors.toList());
-			matchingKeys.forEach(cache::remove);
+			removeEntry(ent.getValue());
 		}
 	}
 
