@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.OperationList;
@@ -25,10 +26,12 @@ import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Verifies that an {@link OperationList} chains its assignments of compiled kernels into
@@ -98,6 +101,44 @@ public class DestinationEvaluableChainingTest extends TestSuiteBase {
 
 		assertEquals((double) (baseline + 1), (double) commands.getCommitCount());
 		assertChained(src, dst);
+	}
+
+	/**
+	 * A {@link DestinationEvaluable} whose operation is evaluated on the host has no device
+	 * dispatch to chain into, so {@link DestinationEvaluable#submit} must wait for its dependency
+	 * before evaluating, complete the evaluation, and return no completion. The dependency here
+	 * supplies the value the operation reads, so a result written before the dependency was
+	 * waited would be zero rather than the supplied value.
+	 */
+	@Test(timeout = 60000)
+	public void hostEvaluationWaitsForDependencyAndCompletes() {
+		PackedCollection value = new PackedCollection(1);
+		PackedCollection dst = new PackedCollection(shape(SIZE, 1).traverse(1));
+		DestinationEvaluable<PackedCollection> evaluable =
+				new DestinationEvaluable<>(args -> value, dst);
+
+		AtomicInteger waits = new AtomicInteger();
+		Semaphore dependsOn = new Semaphore() {
+			@Override
+			public void waitFor() {
+				waits.incrementAndGet();
+				value.setMem(0, 7.0);
+			}
+		};
+
+		Assert.assertNull(evaluable.submit(dependsOn));
+		assertEquals(1, waits.get());
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(7.0, dst.toDouble(i));
+		}
+
+		value.setMem(0, 3.0);
+		Assert.assertNull("Beginning a chain on the host must also complete without a handle",
+				evaluable.submit(null));
+		assertEquals(1, waits.get());
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(3.0, dst.toDouble(i));
+		}
 	}
 
 	/**

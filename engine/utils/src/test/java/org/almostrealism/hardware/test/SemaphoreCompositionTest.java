@@ -220,6 +220,65 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A re-attributed view of a composite shares the composite's failure as well as its members:
+	 * a member failure observed while the view settles the members is rethrown to the view's
+	 * waiter, and the remaining members are still settled.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedCompositeRethrowsMemberFailure() {
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failing = new RecordingCompletion(failure);
+		RecordingCompletion ok = new RecordingCompletion(null);
+
+		OperationSemaphore combined = (OperationSemaphore) Semaphore.all(Arrays.asList(failing, ok),
+				count -> new DefaultLatchSemaphore((Semaphore) null, count));
+		Semaphore view = combined.withRequester(null);
+		failing.release();
+		ok.release();
+
+		try {
+			view.waitFor();
+			Assert.fail("A member failure must reach the waiter of a re-attributed composite");
+		} catch (IllegalStateException e) {
+			assertTrue(e == failure);
+		}
+
+		assertTrue("A failing member must not stop the view settling the remaining members",
+				ok.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A wait on a composite by an interrupted thread returns without blocking on members that
+	 * have not completed, exactly as an interrupted wait on a plain latch does, and leaves the
+	 * interrupt status set for the caller to observe.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedCompositeWaitReturnsWithoutSettlingMembers() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+
+		Thread.currentThread().interrupt();
+		try {
+			combined.waitFor();
+			assertTrue("The interrupt status must survive the wait", Thread.currentThread().isInterrupted());
+		} finally {
+			Thread.interrupted();
+		}
+
+		assertFalse("An interrupted wait must not settle the first member",
+				first.waitedBy(Thread.currentThread()));
+		assertFalse("An interrupted wait must not settle the second member",
+				second.waitedBy(Thread.currentThread()));
+
+		first.release();
+		second.release();
+		combined.waitFor();
+		assertTrue(first.waitedBy(Thread.currentThread()));
+		assertTrue(second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
 	 * A completion that records every thread that waits for it, and completes (or fails) once
 	 * {@link #release()} is called.
 	 */
