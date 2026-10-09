@@ -197,6 +197,39 @@ public class NextTokenDatasetTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The spanning stride is the largest at which the requested number of windows fit in the
+	 * region, so that reading two or more of them in order leaves fewer unread tokens at the
+	 * region's end than there are gaps between windows; a region too short
+	 * for that many windows, or a non-positive count, is rejected.
+	 */
+	@Test(timeout = 60000)
+	public void spanningStrideReachesRegionEnd() {
+		NextTokenDataset data = new NextTokenDataset(positions(30), VOCAB, 4, 1, 0);
+		Assert.assertEquals(5, data.spanningStride(6));
+		Assert.assertEquals(6, data.spanningStride(5));
+		Assert.assertEquals(25, data.spanningStride(1));
+		Assert.assertEquals(1, data.spanningStride(26));
+
+		for (int windows = 2; windows <= 26; windows++) {
+			NextTokenDataset spread = new NextTokenDataset(positions(30), VOCAB, 4, data.spanningStride(windows), 0);
+			Assert.assertTrue(spread.getAvailableWindowCount() >= windows);
+			int unread = 30 - (spread.getWindowStart(windows - 1) + 5);
+			Assert.assertTrue(unread >= 0);
+			Assert.assertTrue(windows + " windows leave " + unread + " tokens unread",
+					unread < windows - 1);
+		}
+
+		for (int windows : new int[] { 0, -1, 27 }) {
+			try {
+				data.spanningStride(windows);
+				Assert.fail("Expected IllegalArgumentException for " + windows + " windows");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertNotNull(expected.getMessage());
+			}
+		}
+	}
+
+	/**
 	 * A capped dataset restarts at the first window on every pass unless it rotates, in which
 	 * case each pass continues after the previous one and wraps around to the first window.
 	 */
