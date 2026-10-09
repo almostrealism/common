@@ -31,11 +31,17 @@ import java.nio.ByteOrder;
  * @see CUContext#allocateManaged(long)
  */
 public class CUDeviceBuffer extends CUObject {
+	/** Zero-filled host memory shared by {@link #clear()}, which only ever reads it. */
+	private static ByteBuffer zeroSource = ByteBuffer.allocateDirect(0);
+
 	/** Size of the allocation in bytes. */
 	private final long size;
 
 	/** Whether this is a managed allocation, addressable from the host. */
 	private final boolean managed;
+
+	/** A direct buffer over a managed allocation's contents, created on first use. */
+	private volatile ByteBuffer hostView;
 
 	/** Wraps an allocation. Obtain instances from {@link CUContext}. */
 	CUDeviceBuffer(CUContext context, long nativePointer, long size, boolean managed) {
@@ -100,9 +106,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * into this allocation, treated as an array of floats, starting at element {@code offset}.
 	 */
 	public void setContents(float[] source, int sourceOffset, int offset, int length) {
-		ByteBuffer buf = direct(length, Float.BYTES);
+		ByteBuffer buf = staged(offset, length, Float.BYTES, false);
 		buf.asFloatBuffer().put(source, sourceOffset, length);
-		write(buf, 0, (long) offset * Float.BYTES, (long) length * Float.BYTES);
+		store(buf, offset, Float.BYTES);
 	}
 
 	/**
@@ -110,9 +116,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * into this allocation, treated as an array of doubles, starting at element {@code offset}.
 	 */
 	public void setContents(double[] source, int sourceOffset, int offset, int length) {
-		ByteBuffer buf = direct(length, Double.BYTES);
+		ByteBuffer buf = staged(offset, length, Double.BYTES, false);
 		buf.asDoubleBuffer().put(source, sourceOffset, length);
-		write(buf, 0, (long) offset * Double.BYTES, (long) length * Double.BYTES);
+		store(buf, offset, Double.BYTES);
 	}
 
 	/**
@@ -120,9 +126,7 @@ public class CUDeviceBuffer extends CUObject {
 	 * starting at element {@code offset}, into {@code out} starting at {@code outOffset}.
 	 */
 	public void getContents(float[] out, int outOffset, int offset, int length) {
-		ByteBuffer buf = direct(length, Float.BYTES);
-		read(buf, 0, (long) offset * Float.BYTES, (long) length * Float.BYTES);
-		buf.asFloatBuffer().get(out, outOffset, length);
+		staged(offset, length, Float.BYTES, true).asFloatBuffer().get(out, outOffset, length);
 	}
 
 	/**
@@ -130,25 +134,125 @@ public class CUDeviceBuffer extends CUObject {
 	 * starting at element {@code offset}, into {@code out} starting at {@code outOffset}.
 	 */
 	public void getContents(double[] out, int outOffset, int offset, int length) {
-		ByteBuffer buf = direct(length, Double.BYTES);
-		read(buf, 0, (long) offset * Double.BYTES, (long) length * Double.BYTES);
-		buf.asDoubleBuffer().get(out, outOffset, length);
+		staged(offset, length, Double.BYTES, true).asDoubleBuffer().get(out, outOffset, length);
 	}
 
-	/** Returns a direct, native-order staging buffer for {@code count} elements of {@code elementSize} bytes. */
-	private static ByteBuffer direct(int count, int elementSize) {
-		return ByteBuffer.allocateDirect(count * elementSize).order(ByteOrder.nativeOrder());
+	/**
+	 * Returns a native-order buffer over {@code length} elements of {@code elementSize} bytes
+	 * starting at element {@code offset}, through which {@link #setContents} and
+	 * {@link #getContents} transfer values.
+	 *
+	 * <p>For a {@link #isHostAccessible() host accessible} allocation this is a slice of its
+	 * {@link #hostView() view}, so values move with no driver call; this is what makes reading
+	 * or writing a few elements at a time affordable. Otherwise it is a direct staging buffer,
+	 * which {@code load} fills from the allocation and {@link #store} writes back.</p>
+	 */
+	private ByteBuffer staged(int offset, int length, int elementSize, boolean load) {
+		long start = (long) offset * elementSize;
+		long bytes = (long) length * elementSize;
+
+		if (isHostAccessible()) {
+			checkRange(start, bytes);
+			return hostView().slice((int) start, (int) bytes).order(ByteOrder.nativeOrder());
+		}
+
+		ByteBuffer buf = ByteBuffer.allocateDirect(Math.toIntExact(bytes)).order(ByteOrder.nativeOrder());
+		if (load) read(buf, 0, start, bytes);
+		return buf;
+	}
+
+	/**
+	 * Writes a buffer returned by {@link #staged} back to the allocation at element
+	 * {@code offset}, unless it is a slice of the host view and so already in place.
+	 */
+	private void store(ByteBuffer buf, int offset, int elementSize) {
+		if (!isHostAccessible()) {
+			write(buf, 0, (long) offset * elementSize, buf.capacity());
+		}
 	}
 
 	/**
 	 * Copies {@code bytes} bytes from another allocation into this one, synchronously.
 	 * Offsets are in bytes.
+	 *
+	 * <p>When both allocations are {@link #isHostAccessible() accessible from the host}, the
+	 * copy is made by the host over their {@link #hostView() views}, without a driver call.
+	 * Otherwise it is a device-to-device copy by the driver. Neither form is ordered against
+	 * kernels queued on a stream, which do not run on the null stream, so a caller orders the
+	 * copy after any kernel that writes the source or uses the destination, as it would for
+	 * any host access to device memory.</p>
 	 */
 	public void copyFrom(CUDeviceBuffer source, long sourceOffset, long destinationOffset, long bytes) {
 		source.checkRange(sourceOffset, bytes);
 		checkRange(destinationOffset, bytes);
+
+		if (isHostAccessible() && source.isHostAccessible()) {
+			hostView().put((int) destinationOffset, source.hostView(), (int) sourceOffset, (int) bytes);
+			return;
+		}
+
 		CU.memcpyDtoD(getContextPointer(), getNativePointer() + destinationOffset,
 				source.getNativePointer() + sourceOffset, bytes);
+	}
+
+	/**
+	 * Sets every byte of this allocation to zero, restoring the state it was allocated in
+	 * (see {@link CUContext#allocate(long)}). A managed allocation is cleared by the host over
+	 * its {@link #hostView() view}; a device allocation by a copy from zero-filled host memory.
+	 * As with {@link #copyFrom}, the caller orders this after any kernel using the allocation.
+	 */
+	public void clear() {
+		ByteBuffer zeros = zeros(size);
+
+		if (isHostAccessible()) {
+			hostView().put(0, zeros, 0, (int) size);
+		} else {
+			write(zeros, 0, 0, size);
+		}
+	}
+
+	/**
+	 * Returns zero-filled direct memory of at least {@code bytes} bytes, replacing the shared
+	 * buffer with a larger one when it is too small.
+	 */
+	private static synchronized ByteBuffer zeros(long bytes) {
+		if (zeroSource.capacity() < bytes) {
+			zeroSource = ByteBuffer.allocateDirect(Math.toIntExact(bytes));
+		}
+
+		return zeroSource;
+	}
+
+	/**
+	 * Returns true if the host can read and write this allocation directly through
+	 * {@link #hostView()}: it is managed, and small enough to be viewed by one buffer.
+	 */
+	public boolean isHostAccessible() {
+		return managed && size <= Integer.MAX_VALUE;
+	}
+
+	/**
+	 * Returns a direct buffer over the whole of this allocation, created on first use. The
+	 * buffer is a view rather than a copy: writes through it are writes to the allocation.
+	 * It must not be used once the allocation is released.
+	 *
+	 * @throws UnsupportedOperationException if this allocation is not
+	 *                                       {@link #isHostAccessible() host accessible}
+	 */
+	public ByteBuffer hostView() {
+		if (!isHostAccessible()) {
+			throw new UnsupportedOperationException("Allocation is not accessible from the host");
+		}
+
+		long pointer = getContentPointer();
+
+		ByteBuffer view = hostView;
+		if (view == null) {
+			view = CU.hostView(pointer, size).order(ByteOrder.nativeOrder());
+			hostView = view;
+		}
+
+		return view;
 	}
 
 	/**

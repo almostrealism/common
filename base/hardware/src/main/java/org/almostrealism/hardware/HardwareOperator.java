@@ -30,6 +30,7 @@ import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.kernel.KernelWork;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -41,6 +42,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -347,6 +351,66 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 * @return The argument count
 	 */
 	protected abstract int getArgCount();
+
+	/**
+	 * Runs {@code dispatch} once {@code dependsOn} has completed, for a dependency the backend's
+	 * own ordering mechanism cannot express, and returns its completion without waiting for
+	 * either on the calling thread.
+	 *
+	 * <p>The whole dispatch is deferred, not only the launch: argument preparation may copy an
+	 * input into device memory, and the dependency may still be writing that input, so preparing
+	 * early would be as wrong as launching early.</p>
+	 *
+	 * <p>Because nothing is prepared until the dependency has completed, a {@link KernelMemoryGuard}
+	 * scheduling lease is held over the argument memory from the moment this returns until
+	 * {@code dispatch} has run and taken its own execution reservation, or until the deferred
+	 * completion settles without running, on a dependency failure. Without it an argument freed
+	 * while the dependency is still pending would be prepared or launched against released memory.
+	 * A lease, rather than a plain execution reservation, is used because the dependency may remain
+	 * pending longer than the deferred-release backstop, which a lease is exempt from. It is given
+	 * back as soon as {@code dispatch} returns, handing the memory to the dispatch's own execution
+	 * reservation, so a long-running (or hung) kernel is subject to the execution-guard backstop
+	 * exactly as a non-deferred dispatch is. The lease keeps the memory alive, but destroying an
+	 * argument still clears that object's reference to it, so {@code dispatch} receives its
+	 * arguments through the lease's
+	 * {@link KernelMemoryGuard.Reservation#deferredArguments deferred arguments}: an argument
+	 * destroyed in the meantime is dispatched against the memory the lease holds for it, exactly as
+	 * it would have been had the dispatch happened then, and an argument that has moved to other
+	 * memory has the lease extended to that memory before it is used. Once the deferred completion
+	 * has settled, any allocation a destroyed argument's view was given when it was moved to a
+	 * supported provider is freed.</p>
+	 *
+	 * @param dependsOn the completion the dispatch must follow, which the backend cannot order
+	 *                  after by itself
+	 * @param args      the raw arguments
+	 * @param dispatch  prepares the arguments it is given, takes its own execution reservation,
+	 *                  dispatches, and returns the dispatch's completion
+	 * @return the completion of the deferred dispatch
+	 */
+	protected Semaphore dispatchAfter(Semaphore dependsOn, Object[] args,
+									  Function<Object[], Semaphore> dispatch) {
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
+		AtomicBoolean leased = new AtomicBoolean(true);
+		Runnable releaseLease = () -> {
+			if (leased.compareAndSet(true, false)) lease.release();
+		};
+		Supplier<Object[]> deferred = lease.deferredArguments(args);
+		AtomicReference<Object[]> resolved = new AtomicReference<>();
+		Semaphore dispatched = dependsOn.then(() -> {
+			try {
+				resolved.set(deferred.get());
+				return dispatch.apply(resolved.get());
+			} finally {
+				releaseLease.run();
+			}
+		});
+		// Covers the dependency-failure path, where the dispatch never runs
+		dispatched.whenSettled(() -> {
+			releaseLease.run();
+			lease.releaseResolvedViews(args, resolved.get());
+		});
+		return dispatched;
+	}
 
 	/**
 	 * Prepares arguments for execution by validating and converting to {@link MemoryData}.

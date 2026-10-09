@@ -35,11 +35,8 @@ import org.jocl.cl_kernel;
 
 import java.lang.ref.Reference;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * {@link HardwareOperator} that executes compiled OpenCL kernels.
@@ -204,27 +201,9 @@ public class CLOperator extends HardwareOperator {
 	 * the command queue, so the whole dispatch is deferred until it completes, through
 	 * {@link Semaphore#then}: argument preparation may copy an input into device memory, and
 	 * the dependency may still be writing that input, so preparing early would be as wrong as
-	 * enqueueing early. The caller is not held up either way.</p>
-	 *
-	 * <p>The deferred dispatch does not prepare or enqueue its arguments until the dependency
-	 * has completed, so &mdash; exactly as the fallback copy guards its regions across its own
-	 * deferral &mdash; a {@link KernelMemoryGuard} scheduling lease is held over the argument
-	 * memory from the moment this returns until {@link #dispatch} has taken its own execution
-	 * reservation (or until the deferred completion settles without running, on a dependency
-	 * failure). Without it an argument freed while the dependency is still pending would be
-	 * prepared or enqueued against released memory. A lease (rather than a plain execution
-	 * reservation) is used because the dependency may remain pending longer than the
-	 * deferred-release backstop, which a lease is exempt from. {@link #dispatch} acquires its own
-	 * reservation once it runs; this one only covers the scheduling-to-execution window that
-	 * reservation cannot, and is given back as soon as that reservation exists so a long-running
-	 * (or hung) kernel is subject to the execution-guard backstop exactly as a non-deferred
-	 * dispatch is. The lease keeps the
-	 * memory alive, but destroying an argument still clears that object's reference to it, so
-	 * the deferred dispatch receives its arguments through the lease's
-	 * {@link KernelMemoryGuard.Reservation#deferredArguments deferred arguments}: an argument
-	 * destroyed in the meantime is dispatched against the memory the lease holds for it, exactly
-	 * as it would have been had the dispatch been enqueued then, and an argument that has moved
-	 * to other memory has the lease extended to that memory before it is used.</p>
+	 * enqueueing early. The caller is not held up either way. The deferral, and the
+	 * {@link org.almostrealism.hardware.mem.KernelMemoryGuard} scheduling lease that protects the
+	 * arguments across it, are those of {@link #dispatchAfter}.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
@@ -233,32 +212,7 @@ public class CLOperator extends HardwareOperator {
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) {
-			KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
-			AtomicBoolean leased = new AtomicBoolean(true);
-			Runnable releaseLease = () -> {
-				if (leased.compareAndSet(true, false)) lease.release();
-			};
-			Supplier<Object[]> deferred = lease.deferredArguments(args);
-			AtomicReference<Object[]> resolved = new AtomicReference<>();
-			Semaphore dispatched = dependsOn.then(() -> {
-				try {
-					resolved.set(deferred.get());
-					return dispatch(resolved.get(), null);
-				} finally {
-					// dispatch() has now taken its own execution guard, so the scheduling lease is
-					// redundant; releasing it hands the memory to that guard (and its 30s backstop)
-					// rather than exempting it for a possibly-unbounded kernel run.
-					releaseLease.run();
-				}
-			});
-			// Dependency-failure path: the work never runs, so give the lease back on settlement.
-			// Once the kernel has settled, free any allocation a destroyed argument's view was
-			// given when it was moved to a provider this operator supports.
-			dispatched.whenSettled(() -> {
-				releaseLease.run();
-				lease.releaseResolvedViews(args, resolved.get());
-			});
-			return dispatched;
+			return dispatchAfter(dependsOn, args, resolved -> dispatch(resolved, null));
 		}
 
 		return dispatch(args, (CLSemaphore) dependsOn);

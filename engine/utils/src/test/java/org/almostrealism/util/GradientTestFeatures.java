@@ -125,6 +125,29 @@ public interface GradientTestFeatures extends CodeFeatures {
 										  PackedCollection gradient,
 										  PackedCollection weights,
 										  PackedCollection bias) {
+		return normBackwards(xGroup, gradient, weights, bias, null);
+	}
+
+	/**
+	 * Computes the expected input gradient of a group normalization, as
+	 * {@link #normBackwards(PackedCollection, PackedCollection, PackedCollection, PackedCollection)}
+	 * does, and also writes into {@code magnitudes}, when it is not {@code null}, the
+	 * magnitude of the terms each element of that gradient is the difference of (see
+	 * {@link #dlDxGroupMagnitude}). Comparisons of the gradient should allow for the
+	 * rounding error of those terms.
+	 *
+	 * @param xGroup     the input values of the group
+	 * @param gradient   the gradient of the loss with respect to the output
+	 * @param weights    the scale applied after normalization, or {@code null}
+	 * @param bias       the bias applied after normalization (does not affect the result)
+	 * @param magnitudes receives the term magnitude of each element, or {@code null}
+	 * @return the expected gradient of the loss with respect to the input
+	 */
+	default PackedCollection normBackwards(PackedCollection xGroup,
+										  PackedCollection gradient,
+										  PackedCollection weights,
+										  PackedCollection bias,
+										  PackedCollection magnitudes) {
 		double eps = Hardware.getLocalHardware().epsilon();
 		int groupSize = xGroup.getShape().getTotalSize();
 
@@ -148,6 +171,11 @@ public interface GradientTestFeatures extends CodeFeatures {
 		PackedCollection dLdHatXGroupXHatGroup = cp(dLdHatXGroup).multiply(cp(xHatGroup)).evaluate();
 
 		double dLdHatXGroupXHatGroupMean = dLdHatXGroupXHatGroup.doubleStream().sum() / groupSize;
+
+		if (magnitudes != null) {
+			dlDxGroupMagnitude(dLdHatXGroup, dLdHatXGroupMean, xHatGroup, dLdHatXGroupXHatGroupMean)
+					.divide(c(stdG)).into(magnitudes.traverseEach()).evaluate();
+		}
 
 		return dlDxGroup(
 					dLdHatXGroup, dLdHatXGroupMean,
@@ -200,5 +228,28 @@ public interface GradientTestFeatures extends CodeFeatures {
 				.subtract(c(dLdHatXGroupMean))
 				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
 				.evaluate();
+	}
+
+	/**
+	 * Returns, for each element of the gradient
+	 * {@link #dlDxGroup(PackedCollection, double, PackedCollection, double)} computes from
+	 * the same arguments, the sum of the magnitudes of the three terms that element is the
+	 * difference of. Where those terms nearly cancel, the gradient is much smaller than
+	 * the terms, and its rounding error is proportional to this sum rather than to the
+	 * gradient itself.
+	 *
+	 * @param dLdHatXGroup the gradient of loss with respect to normalized input
+	 * @param dLdHatXGroupMean the mean of dLdHatXGroup
+	 * @param xHatGroup the normalized input
+	 * @param dLdHatXGroupXHatGroupMean the mean of dLdHatXGroup * xHatGroup
+	 * @return a producer of the term magnitude of each element
+	 */
+	default CollectionProducer dlDxGroupMagnitude(PackedCollection dLdHatXGroup,
+												 double dLdHatXGroupMean,
+												 PackedCollection xHatGroup,
+												 double dLdHatXGroupXHatGroupMean) {
+		return abs(cp(dLdHatXGroup))
+				.add(c(Math.abs(dLdHatXGroupMean)))
+				.add(abs(cp(xHatGroup)).multiply(c(Math.abs(dLdHatXGroupXHatGroupMean))));
 	}
 }

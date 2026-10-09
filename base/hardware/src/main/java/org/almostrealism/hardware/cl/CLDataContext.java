@@ -668,6 +668,10 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
 
+	/** Returns {@link #getMemoryProvider()}, whose memory host kernels can address directly. */
+	@Override
+	public MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() { return getMemoryProvider(); }
+
 	/**
 	 * Returns an appropriate memory provider based on the allocation size.
 	 * If a custom memory provider function has been set via thread-local,

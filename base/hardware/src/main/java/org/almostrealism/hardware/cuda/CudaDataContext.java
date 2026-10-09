@@ -17,6 +17,8 @@
 package org.almostrealism.hardware.cuda;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AcceleratorDataContext;
@@ -66,9 +68,7 @@ public class CudaDataContext extends AcceleratorDataContext<CudaMemoryProvider> 
 		cudaContext = device.retainPrimaryContext();
 
 		try {
-			boolean managed = MEMORY_MODE == null ?
-					device.isIntegrated() && device.isConcurrentManagedAccess() :
-					"managed".equalsIgnoreCase(MEMORY_MODE);
+			boolean managed = usesManagedMemory(device);
 
 			log("Hardware[" + getName() + "]: Using " + device.getName() + " (sm_" +
 					device.getArchitecture() + ") with " + (managed ? "managed" : "device") + " memory");
@@ -111,6 +111,51 @@ public class CudaDataContext extends AcceleratorDataContext<CudaMemoryProvider> 
 	public CUContext getCudaContext() {
 		ensureStarted();
 		return cudaContext;
+	}
+
+	/**
+	 * Returns true if a context for the configured device would allocate memory that host code can
+	 * address directly (see {@link #getHostAccessibleMemoryProvider()}), probing the device without
+	 * creating a context. This is what decides, before any context exists, whether memory can be
+	 * shared between this backend and host kernels. Returns false if no CUDA driver or device is
+	 * available.
+	 *
+	 * @return whether the configured device would allocate host-accessible memory
+	 */
+	public static boolean isHostAccessibleMemoryAvailable() {
+		try {
+			return usesManagedMemory(CUDevice.get(DEVICE_ORDINAL));
+		} catch (RuntimeException | LinkageError e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns true if allocations on the given device should be managed rather than device
+	 * memory: as requested by {@code AR_HARDWARE_CUDA_MEMORY}, or otherwise only when the device is
+	 * integrated with the host and supports concurrent managed access. On such a device managed
+	 * memory is the host's own memory, so sharing it costs nothing. On a discrete device, managed
+	 * memory would migrate pages across the bus whenever host code touched it, so device memory is
+	 * used unless managed memory is requested.
+	 *
+	 * @param device the device
+	 * @return whether to allocate managed memory
+	 */
+	private static boolean usesManagedMemory(CUDevice device) {
+		return MEMORY_MODE == null ?
+				device.isIntegrated() && device.isConcurrentManagedAccess() :
+				"managed".equalsIgnoreCase(MEMORY_MODE);
+	}
+
+	/**
+	 * Returns {@link #getMemoryProvider()} when it allocates managed memory, whose device address
+	 * is also a valid host address, and {@code null} for device memory, which host code cannot
+	 * dereference.
+	 */
+	@Override
+	public MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() {
+		CudaMemoryProvider provider = getMemoryProvider();
+		return provider.isManaged() ? provider : null;
 	}
 
 	/** Releases the retained primary context. */
