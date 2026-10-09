@@ -84,6 +84,9 @@ import java.util.function.Function;
  *       {@code [rows, size]} cache as a {@code [size]} vector, without reading the input</li>
  *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
  *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
+ *   <li>{@code scaled_dot_product(other, transpose)}, {@code key_mask(mask)},
+ *       {@code sequence_causal_mask()} - the stages of full-sequence attention; the operand of
+ *       {@code scaled_dot_product} is a tensor or a branch the layer has split off</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
  *   <li>{@code attention(...)}</li>
  * </ul>

@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -26,7 +28,9 @@ import java.util.OptionalDouble;
  *
  * <p>When {@code hyperbolic} is {@code false} this generates {@code tan(input)};
  * when {@code true} it generates {@code tanh(input)}. If the operand is a constant
- * the value is folded at construction time.</p>
+ * the value is folded at construction time. The derivative is
+ * {@code (1 - tanh(input)^2) * d(input)} for the hyperbolic tangent and
+ * {@code (1 + tan(input)^2) * d(input)} for the tangent.</p>
  */
 public class Tangent extends Expression<Double> {
 	/** When {@code true} this expression computes {@code tanh}; otherwise {@code tan}. */
@@ -80,6 +84,23 @@ public class Tangent extends Expression<Double> {
 	@Override
 	public boolean compare(Expression e) {
 		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Applies the chain rule with the derivative written in terms of this expression's own
+	 * value: {@code d tanh(u) = (1 - tanh(u)^2) du} and {@code d tan(u) = (1 + tan(u)^2) du}.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		CollectionExpression<?> childDelta = getChildren().get(0).delta(target);
+		Expression<? extends Number> square = multiply(this);
+		Expression<? extends Number> slope = hyperbolic
+				? new DoubleConstant(1.0).subtract(square)
+				: new DoubleConstant(1.0).add(square);
+		CollectionExpression<?> cofactor = new ConstantCollectionExpression(target.getShape(), slope);
+		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
 	/**

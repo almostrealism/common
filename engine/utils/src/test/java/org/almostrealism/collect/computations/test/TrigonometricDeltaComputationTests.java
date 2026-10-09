@@ -27,10 +27,11 @@ import org.junit.Test;
 import java.io.IOException;
 
 /**
- * Tests for trigonometric function gradients (sine, cosine).
+ * Tests for trigonometric function gradients (sine, cosine, hyperbolic tangent).
  * These tests verify both correctness and performance of the Producer-level
  * delta implementations in {@link org.almostrealism.collect.computations.CollectionSineComputation}
- * and {@link org.almostrealism.collect.computations.CollectionCosineComputation}.
+ * and {@link org.almostrealism.collect.computations.CollectionCosineComputation}, and the
+ * expression-level derivative of the hyperbolic tangent.
  *
  * @author Michael Murray
  */
@@ -105,6 +106,41 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		for (int i = 0; i < 5; i++) {
 			for (int j = 0; j < 5; j++) {
 				double expected = (i == j) ? -Math.sin(input.toDouble(i)) : 0.0;
+				assertEquals(expected, gradient.valueAt(i, j));
+			}
+		}
+	}
+
+	/**
+	 * Tests that d/dx[tanh(x)] = 1 - tanh(x)^2 for a simple scalar case, over arguments of both
+	 * signs and one close enough to saturation that the derivative is small. The hyperbolic tangent
+	 * is differentiated through the expression-level derivative of its {@code Tangent} expression.
+	 */
+	@Test(timeout = 120000)
+	public void hyperbolicTangentDeltaScalar() {
+		PackedCollection input = pack(-2.0, -0.5, 0.0, 0.75, 3.0);
+		CollectionProducer x = cp(input);
+
+		// tanh(x)
+		CollectionProducer tanhX = tanh(x);
+
+		// Verify forward pass
+		PackedCollection forward = tanhX.get().evaluate();
+		log("tanh(x) = " + forward.toArrayString());
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(Math.tanh(input.toDouble(i)), forward.toDouble(i));
+		}
+
+		// d/dx[tanh(x)] = 1 - tanh(x)^2
+		PackedCollection gradient = tanhX.delta(x).get().evaluate().reshape(5, 5);
+		log("d/dx[tanh(x)] = ");
+		gradient.traverse().print();
+
+		for (int i = 0; i < 5; i++) {
+			for (int j = 0; j < 5; j++) {
+				double t = Math.tanh(input.toDouble(i));
+				double expected = (i == j) ? 1.0 - t * t : 0.0;
 				assertEquals(expected, gradient.valueAt(i, j));
 			}
 		}
