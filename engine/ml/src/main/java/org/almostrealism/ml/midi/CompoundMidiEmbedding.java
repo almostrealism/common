@@ -157,8 +157,9 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * {@link CollectionProducer} pipeline for further composition.
 	 *
 	 * <p>For normal tokens, each attribute is embedded independently and the
-	 * results are concatenated. For special tokens (SOS/EOS), the
-	 * supplementary embedding + MLP is used instead, and a pad token embeds as zeros.</p>
+	 * results are concatenated. Special tokens use the supplementary embedding + MLP
+	 * instead: start and fill-start embed as row 0, end and fill-end as row 1, and a
+	 * pad token embeds as zeros.</p>
 	 *
 	 * <p>The token is known when the graph is built, so only the path it takes is
 	 * included; {@link #embedValues(Producer)} is the alternative for a token that is
