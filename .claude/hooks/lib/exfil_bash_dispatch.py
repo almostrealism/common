@@ -194,8 +194,6 @@ _COPY_FLAGS = {
                          "--hfsCompression", "--nohfsCompression", "--preserveHFSCompression",
                          "--nopreserveHFSCompression"),
                         ("--arch", "--bom", "--zlibCompressionLevel")),
-    # TODO(review): --backup-dir/--temp-dir/--partial-dir/--log-file (-T) write to their
-    # value, which is no longer checked against /Volumes and synced folders.
     "rsync": _CopyFlags("avzrlptgoDhPnuciqWxHAXSEmRbKkLOJ0yC8F", "efBTM",
                         ("--archive", "--verbose", "--compress", "--recursive", "--links",
                          "--perms", "--times", "--group", "--owner", "--devices", "--specials",
@@ -211,7 +209,8 @@ _COPY_FLAGS = {
                          "--log-file", "--chmod", "--chown", "--bwlimit", "--timeout",
                          "--backup-dir", "--suffix", "--link-dest", "--compare-dest",
                          "--copy-dest", "--files-from", "--port", "--password-file",
-                         "--max-size", "--min-size", "--info", "--debug")),
+                         "--max-size", "--min-size", "--info", "--debug"),
+                        ("-T", "--temp-dir", "--partial-dir", "--log-file", "--backup-dir")),
     "tee": _CopyFlags("aip", "", ("--append", "--ignore-interrupts", "--output-error")),
     "zip": _CopyFlags("rqvjDmTyXlLkuFfdSAcz0123456789@egw", "bOn",
                       ("--recurse-paths", "--quiet", "--verbose", "--junk-paths", "--symlinks",
@@ -293,6 +292,8 @@ def _copy_destinations(prog, args):
         return positionals
     if prog == "zip":
         return named + positionals[:1]
+    if prog == "rsync":
+        return named + positionals[-1:]
     if named:
         return named
     if prog == "install" and ("d" in "".join(a[1:] for a in args if a.startswith("-")

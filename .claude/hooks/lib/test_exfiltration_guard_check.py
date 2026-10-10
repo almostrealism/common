@@ -371,6 +371,8 @@ class BashNetworkTests(GuardFixture):
             "scp /Volumes/enclosure0/Models/x.gguf agent1@amd-halo:models/"))
         self.assertAllowed(self.bash(
             "rsync -a /Volumes/enclosure0/Models/x/ agent1@amd-halo:models/x/"))
+        self.assertAllowed(self.bash(
+            "rsync -a /Volumes/enclosure0/Models/x/ amd-halo:models/x/"))
 
     def test_copy_into_mounted_volume_blocks_in_every_form(self):
         """The destination is found however the tool names it: a target
@@ -378,6 +380,9 @@ class BashNetworkTests(GuardFixture):
         archive being written."""
         for cmd in ("cp -t /Volumes/USB/ a b", "mv a /Volumes/USB/",
                     "rsync -a --exclude .git src/ /Volumes/USB/x/",
+                    "rsync -a -b --backup-dir=/Volumes/USB/bk src/ dst/",
+                    "rsync -a --temp-dir=/Volumes/USB/tmp src/ dst/",
+                    "rsync -a --log-file=/Volumes/USB/log src/ dst/",
                     "tee /Volumes/USB/log.txt", "tee -a ~/Dropbox/log.txt",
                     "dd if=local.img of=/Volumes/USB/disk.img",
                     "tar -xf a.tar -C /Volumes/USB/x", "tar xzf a.tgz -C /Volumes/USB/x",
