@@ -391,6 +391,29 @@ class BashNetworkTests(GuardFixture):
             with self.subTest(cmd=cmd):
                 self.assertBlocked(self.bash(cmd), "cloud-synced")
 
+    def test_zip_temporary_directory_into_mounted_volume_blocks(self):
+        """`zip -b DIR` / `--temp-path DIR` writes the temporary archive into
+        DIR, so DIR is a destination just as the archive operand is."""
+        for cmd in ("zip -b /Volumes/USB/tmp /tmp/out.zip src",
+                    "zip --temp-path=/Volumes/USB/tmp /tmp/out.zip src",
+                    "zip --temp-path /Volumes/USB/tmp /tmp/out.zip src"):
+            with self.subTest(cmd=cmd):
+                self.assertBlocked(self.bash(cmd), "cloud-synced")
+        self.assertAllowed(self.bash("zip -b /tmp /tmp/out.zip src"))
+
+    def test_copy_to_computed_destination_blocks(self):
+        """A destination the shell expands at run time (`$DEST`, `$(...)`,
+        backticks) cannot be checked against the protected paths, so it is
+        refused; a computed source, and a literal destination, are not."""
+        for cmd in ('cp secret "$DEST"', "cp secret $DEST/out", "cp -t \"$DEST\" a b",
+                    'mv a "$(printf /Volumes/USB/out)"', "tee `echo /Volumes/USB/log`",
+                    "rsync -a src/ ${HOME}/x/"):
+            with self.subTest(cmd=cmd):
+                self.assertBlocked(self.bash(cmd), "computed at run time")
+        self.assertAllowed(self.bash('cp "$SRC" out'))
+        self.assertAllowed(self.bash("cp secret out"))
+        self.assertAllowed(self.bash("cp secret ~/plaindir/"))
+
     def test_copy_with_unrecognized_option_fails_closed(self):
         """An option the guard does not know makes the destination
         unidentifiable, so any volume path among the arguments blocks."""
@@ -457,6 +480,40 @@ class BashGitAndGhTests(GuardFixture):
         self.assertBlocked(self.bash("git -C ../elsewhere push origin"),
                            "points at another repository")
         self.assertBlocked(self.bash("git -C sub -C .. status"), "more than one -C")
+
+    def test_git_directory_option_expanded_by_shell_blocks(self):
+        """A `-C` path the shell expands (`$DIR`, `~/x`) would be resolved by
+        the guard as a literal name inside the work tree while git runs in
+        whatever the shell expands it to, so it is refused outright."""
+        for cmd in ('git -C "$DIR" push origin', "git -C $DIR status",
+                    "git -C ~/other-clone push origin", "git -C ~ status",
+                    "git -C sub/${X} push origin"):
+            with self.subTest(cmd=cmd):
+                self.assertBlocked(self.bash(cmd), "shell expands at run time")
+
+    def test_git_directory_option_into_nested_repository_blocks(self):
+        """A separate repository nested inside the work tree passes the
+        containment check but is not this project's work tree; with the
+        same allowlisted origin its content would otherwise be pushable."""
+        nested = os.path.join(self.root, "nested")
+        os.makedirs(nested)
+        _git(nested, "init", "-q", "-b", "main")
+        _git(nested, "remote", "add", "origin", "git@github.com:almostrealism/common.git")
+        self.assertBlocked(self.bash("git -C nested push origin HEAD"), "nested repository")
+        self.assertBlocked(self.bash(f"git -C {nested} status"), "nested repository")
+        os.makedirs(os.path.join(self.root, "plain"))
+        self.assertAllowed(self.bash("git -C plain status"))
+
+    def test_git_config_env_rewriting_remote_blocks(self):
+        """`--config-env` sets configuration from an environment variable, in
+        either the `=` or the separate-argument spelling, and rewrites the
+        remote or transport just as `-c` does."""
+        for cmd in ("git --config-env=remote.origin.url=URL push origin",
+                    "git --config-env remote.origin.url=URL push origin",
+                    "git --config-env=core.sshCommand=CMD fetch origin"):
+            with self.subTest(cmd=cmd):
+                self.assertBlocked(self.bash(cmd), "rewrites remote/transport configuration")
+        self.assertAllowed(self.bash("git --config-env=user.name=NAME status"))
 
     def test_git_in_tree_directory_option_push_checks_origin(self):
         """A push through an in-tree `-C` reaches the same origin check as a

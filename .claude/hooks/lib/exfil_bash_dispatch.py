@@ -24,8 +24,8 @@ if __name__ != "__main__" and not __package__:
 from exfil_bash_lex import (_DEFINITION, _DEV_TCP, _NETWORK_WORD, _SUBSTITUTION,
                              SUBSTITUTION_PLACEHOLDER, _find_exec, _simple_commands,
                              _split_heredocs, _strip_heredoc_bodies, _tokenize, _unwrap,
-                             GuardError, heredoc_substitutions, owner_repo,
-                             split_substitutions)
+                             GuardError, heredoc_substitutions, is_shell_expanded,
+                             owner_repo, split_substitutions)
 from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
@@ -215,7 +215,8 @@ _COPY_FLAGS = {
     "zip": _CopyFlags("rqvjDmTyXlLkuFfdSAcz0123456789@egw", "bOn",
                       ("--recurse-paths", "--quiet", "--verbose", "--junk-paths", "--symlinks",
                        "--move", "--update", "--freshen", "--test", "--encrypt"),
-                      ("--out", "--temp-path", "--suffixes"), ("-O", "--out")),
+                      ("--out", "--temp-path", "--temp-dir", "--suffixes"),
+                      ("-O", "--out", "-b", "--temp-path", "--temp-dir")),
     "tar": _CopyFlags("xctruAdvzjJpPkmhOSlwWaZBiGMUo", "fCbTXKNVLgHI",
                       ("--extract", "--get", "--create", "--append", "--update",
                        "--concatenate", "--catenate", "--delete", "--list", "--diff",
@@ -394,6 +395,12 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
                           f"publishes or uploads; denied")
     if prog in COPY_TOOLS:
         destinations = _copy_destinations(prog, argv[1:])
+        # TODO(review): computed args escape when destinations is None (cp --unknown f "$DEST").
+        computed = [a for a in destinations or [] if is_shell_expanded(a)]
+        if computed:
+            raise _GuardError(f"{prog} writes to {computed[0]!r}, a destination computed at run "
+                              f"time; the guard cannot tell where it points, so write it out "
+                              f"literally")
         suspects = argv[1:] if destinations is None else destinations
         if any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/") for a in suspects):
             raise _GuardError(f"{prog} writes into a cloud-synced folder or mounted volume; "

