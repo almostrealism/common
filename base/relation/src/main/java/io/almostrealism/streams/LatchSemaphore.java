@@ -158,8 +158,10 @@ public class LatchSemaphore implements Semaphore {
 	 *
 	 * <p>For a composite (see {@link #compose(List)}) every member is settled in turn on the
 	 * calling thread: a member whose wait fails is recorded like any merged failure, and an
-	 * interrupt stops the wait early exactly as it does for the latch. Otherwise the latch
-	 * itself is awaited.</p>
+	 * interrupt stops the wait early exactly as it does for the latch. A member wait that
+	 * throws because the waiting thread was interrupted is treated as that interrupt, not as a
+	 * failure of the member, so it neither reaches this waiter nor poisons later waits.
+	 * Otherwise the latch itself is awaited.</p>
 	 */
 	@Override
 	public void waitFor() {
@@ -178,6 +180,9 @@ public class LatchSemaphore implements Semaphore {
 				try {
 					member.waitFor();
 				} catch (Throwable e) {
+					// A member that reports this waiter's interrupt as a failure has not failed:
+					// recording it would rethrow it to every later waiter of the composite
+					if (Thread.currentThread().isInterrupted()) break;
 					fail(e);
 				}
 			}

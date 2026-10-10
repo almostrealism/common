@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Validates {@link Semaphore#all(List)}, the merge
@@ -270,6 +271,48 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 				first.waitedBy(Thread.currentThread()));
 		assertFalse("An interrupted wait must not settle the second member",
 				second.waitedBy(Thread.currentThread()));
+
+		first.release();
+		second.release();
+		combined.waitFor();
+		assertTrue(first.waitedBy(Thread.currentThread()));
+		assertTrue(second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A waiter interrupted while it settles a member that reports the interrupt by throwing
+	 * returns normally with its interrupt status set, rather than receiving the member's
+	 * exception as a group failure. That exception is not recorded on the composite either, so
+	 * a later waiter, once the members have actually completed, is released without a failure.
+	 */
+	@Test(timeout = 30000)
+	public void interruptDuringMemberWaitDoesNotFailComposite() throws InterruptedException {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(() -> {
+			try {
+				combined.waitFor();
+			} catch (Throwable t) {
+				thrown.set(t);
+			}
+
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		});
+
+		waiter.start();
+		while (!first.waitedBy(waiter)) Thread.sleep(1);
+		waiter.interrupt();
+		waiter.join();
+
+		Assert.assertNull("An interrupted waiter must not receive the interrupt as a member failure",
+				thrown.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse("An interrupted wait must not go on to settle the second member",
+				second.waitedBy(waiter));
 
 		first.release();
 		second.release();
