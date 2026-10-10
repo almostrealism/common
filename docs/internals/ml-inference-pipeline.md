@@ -833,22 +833,22 @@ Unlike autoregressive attention which processes one token at a time with KV cach
 `ProjectionFactory`, a selectable query/key `NormalizationType` and causal masking):
 
 - Processes all positions simultaneously with fused QKV projection
-- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed); like the
-  autoregressive block, its structure lives in a PDSL asset
-  (`engine/ml/src/main/resources/pdsl/sdpa.pdsl`), and `scaledDotProductAttention` is a thin
-  loader that binds the key and value tensors and chains the asset's `sdpa_scores`/`sdpa_context`
-  layers
+- Scores every query against every key with the scaled dot-product attention of
+  `engine/ml/src/main/resources/pdsl/sdpa.pdsl` (with a causal mask when requested); the
+  tensor-valued `scaledDotProductAttention` is a thin loader that binds the key and value tensors
+  and chains that asset's score and `sdpa_context` layers
 - Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
   single-position `ropeRotation`
 - No KV cache — the full K and V tensors are computed for each forward pass
 
-The same non-causal attention is also written out as PDSL layers in
+Like the autoregressive block, its structure lives in a PDSL asset,
 `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` (fused projection separated into one
 row per head by `slice`, `reshape` and `permute`, `sequence_rope`, and the `sdpa.pdsl` score and
-context layers), which a PDSL program can build directly with the two projection layers bound as
-arguments. These layers are forward only: the keys and values reach the score and context halves
-through `capture` stores, which pass no gradient back, so trainable attention uses
-`sequenceAttention`.
+context layers), and `sequenceAttention` is a thin loader that builds the two projections, binds
+the arguments and builds the layer for the requested query/key normalization, soft-cap and causal
+masking. The keys and values are branches of that layer which the score and context layers read
+as the operands of their products, so the backward pass carries gradients into the key and value
+projections as well as the query projection.
 
 ---
 

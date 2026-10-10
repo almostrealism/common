@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.LoRALinear;
@@ -28,11 +29,13 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,30 +44,34 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Holds the layers of {@code /pdsl/sequence_attention.pdsl} to the behaviour of
- * {@link AttentionFeatures#sequenceAttention} — parallel (full-sequence) multi-head self-attention
- * with rotary position embeddings. The feature method still assembles a Java
- * {@link SequentialBlock} (its key and value branches stay connected to the graph for training);
- * the asset is a forward-only PDSL description of the same computation.
+ * Holds the layers of {@code /pdsl/sequence_attention.pdsl}, which
+ * {@link AttentionFeatures#sequenceAttention} builds, to the Java assemblies they replaced —
+ * parallel (full-sequence) multi-head self-attention with rotary position embeddings, bidirectional
+ * or causal.
  *
- * <p>Every configuration is computed four ways over the same weights and input: by the feature
- * method {@code sequenceAttention}; by a fixed copy of that Java assembly with dense projections,
- * {@link Weights#javaAssembly}, so that the comparison is independent of later changes to the
- * feature method; by the asset layer built directly through {@link PdslLoader} with the arguments
- * its header documents; and by a reference computed on the host in double precision
+ * <p>Every configuration is computed several ways over the same weights and input: by the feature
+ * method {@code sequenceAttention}; by the asset layer built directly through {@link PdslLoader}
+ * with the arguments its header documents; by fixed copies of the Java assemblies, with dense
+ * projections, so that the comparison is independent of later changes to the feature method —
+ * {@link Weights#operandAssembly}, the assembly {@code sequenceAttention} built before it loaded the
+ * asset, whose key and value branches are operands of the attention products, and, for a
+ * bidirectional configuration, the earlier {@link Weights#javaAssembly}, whose keys and values reach
+ * the products through stores; and by a reference computed on the host in double precision
  * ({@link Weights#hostReference}), which uses no framework block and so pins the numerical contract
- * whatever builds the attention. The first three must agree to within float rounding and the
- * feature method must match the host reference.</p>
+ * whatever builds the attention. The framework computations must agree to within float rounding and
+ * the feature method must match the host reference.</p>
  *
  * <p>The configurations cover the three query/key normalization families (none, LayerNorm and
- * RMSNorm, with and without biases) crossed with plain and soft-capped scores, the value padding
- * mask and the key mask, the partial rotation of the Stable Audio diffusion transformer and the
- * full rotation of T5Gemma. Further tests run several forward passes through one compiled model
- * (the key and value stores are rewritten on every pass), pass a projection factory that wraps the
- * projections in low-rank adapters, and supply only one of the two query/key normalization
- * weights.</p>
+ * RMSNorm, with and without biases) crossed with plain and soft-capped scores, each bidirectional
+ * and causal, the value padding mask and the key mask, the partial rotation of the Stable Audio
+ * diffusion transformer and the full rotation of T5Gemma. The backward pass is pinned as well: the
+ * gradients of the fused projection, the output projection and the input must agree between the
+ * asset, the feature method and the operand assembly, and the key and value thirds of the fused
+ * projection must receive a gradient through the asset at all. Further tests run several forward
+ * passes through one compiled model, pass a projection factory that wraps the projections in
+ * low-rank adapters, and supply only one of the two query/key normalization weights.</p>
  */
-public class SequenceAttentionAssetTest extends TestSuiteBase implements AttentionFeatures {
+public class SequenceAttentionAssetTest extends TestSuiteBase implements AttentionFeatures, ModelTestFeatures {
 
 	/** Classpath location of the parallel self-attention asset. */
 	private static final String SEQUENCE_ATTENTION_ASSET = "/pdsl/sequence_attention.pdsl";
@@ -92,6 +99,18 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 
 	/** Agreement required between the feature method and the double-precision host reference. */
 	private static final double HOST_TOLERANCE = 1e-4;
+
+	/**
+	 * Agreement required between two gradients of the fused projection, relative to the largest
+	 * gradient magnitude of the third being compared.
+	 */
+	private static final double GRADIENT_TOLERANCE = 1e-5;
+
+	/**
+	 * Smallest largest-magnitude a third of the fused projection's gradient may have: below it the
+	 * third receives no gradient at all.
+	 */
+	private static final double MINIMUM_GRADIENT = 1e-3;
 
 	/** Valid positions of the padding mask: the last two positions are padding. */
 	private static final int PADDING_VALID = 3;
@@ -235,9 +254,116 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	}
 
 	/**
-	 * Computes one configuration four ways and checks that the asset, the feature method and the
-	 * Java assembly agree to within float rounding, and that the feature method matches the host
-	 * reference.
+	 * The asset carries gradients back through its key and value branches. A fixed output gradient
+	 * is propagated backward through the {@code sequence_attention_qk_layernorm} layer and through
+	 * {@code sequenceAttention}, and each third of the fused query/key/value projection must receive
+	 * the same gradient from both. The key and value thirds reach the output only through the two
+	 * attention products, so they receive a gradient only if the products read the key and value
+	 * branches as operands of the graph rather than as stored copies.
+	 */
+	@Test(timeout = 600000)
+	public void assetCarriesGradientsIntoKeysAndValues() {
+		Weights w = new Weights(NormalizationType.LAYER, true, false);
+		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection outputGradient = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+
+		double[] feature = backpropagate(w.feature(ProjectionFactory.dense(), null, null, 0.0),
+				input, outputGradient).projection();
+		double[] asset = backpropagate(w.asset("sequence_attention_qk_layernorm", null, null, 0.0),
+				input, outputGradient).projection();
+
+		String[] thirds = { "query", "key", "value" };
+		int size = DIM * DIM;
+		for (int t = 0; t < thirds.length; t++) {
+			double[] expected = Arrays.copyOfRange(feature, t * size, (t + 1) * size);
+			double[] actual = Arrays.copyOfRange(asset, t * size, (t + 1) * size);
+			double magnitude = maxDifference(expected, new double[size]);
+			assertTrue("the " + thirds[t] + " third of the projection receives no gradient through "
+					+ "sequenceAttention", magnitude > MINIMUM_GRADIENT);
+			assertTrue("the " + thirds[t] + " third of the projection receives no gradient through the asset",
+					maxDifference(actual, new double[size]) > MINIMUM_GRADIENT);
+			assertClose(thirds[t] + " third: asset vs sequenceAttention gradient", expected, actual,
+					GRADIENT_TOLERANCE * Math.max(1.0, magnitude));
+		}
+	}
+
+	/**
+	 * Causal self-attention without query/key normalization, with every feature of a head rotated
+	 * and no masks: the self-attention of a decoder language model.
+	 */
+	@Test(timeout = 300000)
+	public void causalMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_causal", null, false, true, 0.0, null, null, true);
+	}
+
+	/** Causal self-attention with soft-capped scores and a padding mask. */
+	@Test(timeout = 300000)
+	public void causalSoftcappedMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_softcapped_causal", null, false, true, 2.0, PADDING_VALID, null, true);
+	}
+
+	/** Causal self-attention with a LayerNorm of every query and key row and a key mask. */
+	@Test(timeout = 300000)
+	public void causalQkLayerNormMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_qk_layernorm_causal", NormalizationType.LAYER, true, false,
+				0.0, null, KEYS_VALID, true);
+	}
+
+	/** Causal self-attention with a LayerNorm of the queries and keys, soft-capped scores and both masks. */
+	@Test(timeout = 300000)
+	public void causalQkLayerNormSoftcappedMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_qk_layernorm_softcapped_causal", NormalizationType.LAYER, true, false,
+				2.0, PADDING_VALID, KEYS_VALID, true);
+	}
+
+	/** Causal self-attention with an RMSNorm of the queries and keys without biases and a padding mask. */
+	@Test(timeout = 300000)
+	public void causalQkRmsNormMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_qk_rmsnorm_causal", NormalizationType.RMS, false, false,
+				0.0, PADDING_VALID, null, true);
+	}
+
+	/** Causal self-attention with an RMSNorm of the queries and keys with biases, soft-capped scores and a key mask. */
+	@Test(timeout = 300000)
+	public void causalQkRmsNormSoftcappedMatchesJavaAssemblyAndHostReference() {
+		assertMatches("sequence_attention_qk_rmsnorm_softcapped_causal", NormalizationType.RMS, true, true,
+				2.0, null, KEYS_VALID, true);
+	}
+
+	/**
+	 * The backward pass of the Stable Audio diffusion transformer's self-attention (a LayerNorm of
+	 * the queries and keys, a padding mask) delivers the same gradients through the asset, through
+	 * {@code sequenceAttention} and through the operand assembly.
+	 */
+	@Test(timeout = 600000)
+	public void qkLayerNormGradientsMatchJavaAssembly() {
+		assertGradientsMatch("sequence_attention_qk_layernorm", NormalizationType.LAYER, true, false,
+				0.0, PADDING_VALID, null, false);
+	}
+
+	/**
+	 * The backward pass of a decoder language model's causal self-attention delivers the same
+	 * gradients through the asset, through {@code sequenceAttention} and through the operand assembly.
+	 */
+	@Test(timeout = 600000)
+	public void causalGradientsMatchJavaAssembly() {
+		assertGradientsMatch("sequence_attention_causal", null, false, true, 0.0, null, null, true);
+	}
+
+	/**
+	 * The backward pass of the T5Gemma encoder's self-attention (soft-capped scores, a key mask)
+	 * delivers the same gradients through the asset, through {@code sequenceAttention} and through
+	 * the operand assembly.
+	 */
+	@Test(timeout = 600000)
+	public void softcappedGradientsMatchJavaAssembly() {
+		assertGradientsMatch("sequence_attention_softcapped", null, false, true, 2.0, null, KEYS_VALID, false);
+	}
+
+	/**
+	 * Computes one bidirectional configuration five ways and checks that the asset, the feature
+	 * method and the two Java assemblies agree to within float rounding, and that the feature method
+	 * matches the host reference.
 	 *
 	 * @param layer      the asset layer that covers the configuration
 	 * @param qkNorm     the query/key normalization family, or {@code null} for none
@@ -251,6 +377,28 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	 */
 	private void assertMatches(String layer, NormalizationType qkNorm, boolean biases, boolean fullRotary,
 							   double softcap, Integer paddingValid, Integer keysValid) {
+		assertMatches(layer, qkNorm, biases, fullRotary, softcap, paddingValid, keysValid, false);
+	}
+
+	/**
+	 * Computes one configuration several ways and checks that they agree: the asset layer, the
+	 * feature method and the {@link Weights#operandAssembly operand assembly} to within float
+	 * rounding, the feature method to the host reference, and, for a bidirectional configuration,
+	 * the asset and the feature method also to the {@link Weights#javaAssembly stored-copy assembly}.
+	 *
+	 * @param layer        the asset layer that covers the configuration
+	 * @param qkNorm       the query/key normalization family, or {@code null} for none
+	 * @param biases       whether the normalization has biases
+	 * @param fullRotary   true to rotate every feature of a head, false for the leading half
+	 * @param softcap      the logit soft-cap, or {@code 0} for none
+	 * @param paddingValid the number of leading positions the padding mask marks valid, or
+	 *                     {@code null} for no padding mask
+	 * @param keysValid    the number of leading keys the key mask marks valid, or {@code null} for no
+	 *                     key mask
+	 * @param causal       whether each position attends only to itself and earlier positions
+	 */
+	private void assertMatches(String layer, NormalizationType qkNorm, boolean biases, boolean fullRotary,
+							   double softcap, Integer paddingValid, Integer keysValid, boolean causal) {
 		Weights w = new Weights(qkNorm, biases, fullRotary);
 		PackedCollection padding = paddingValid == null ? null : validPrefix(paddingValid);
 		PackedCollection keys = keysValid == null ? null : validPrefix(keysValid);
@@ -258,16 +406,79 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 		Producer<PackedCollection> keyMask = keys == null ? null : cp(keys);
 		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
 
-		double[] feature = run(w.feature(ProjectionFactory.dense(), paddingMask, keyMask, softcap), input);
-		double[] assembly = run(w.javaAssembly(paddingMask, keyMask, softcap), input);
+		double[] feature = run(w.feature(ProjectionFactory.dense(), paddingMask, keyMask, softcap, causal), input);
+		double[] operands = run(w.operandAssembly(paddingMask, keyMask, softcap, causal), input);
 		double[] asset = run(w.asset(layer, padding, keys, softcap), input);
 		double[] host = w.hostReference(input.doubleStream().toArray(),
 				padding == null ? null : padding.doubleStream().toArray(),
-				keys == null ? null : keys.doubleStream().toArray(), softcap);
+				keys == null ? null : keys.doubleStream().toArray(), softcap, causal);
 
-		assertClose(layer + ": asset vs Java assembly", assembly, asset, ASSEMBLY_TOLERANCE);
-		assertClose(layer + ": sequenceAttention vs Java assembly", assembly, feature, ASSEMBLY_TOLERANCE);
+		if (!causal) {
+			double[] assembly = run(w.javaAssembly(paddingMask, keyMask, softcap), input);
+			assertClose(layer + ": asset vs Java assembly", assembly, asset, ASSEMBLY_TOLERANCE);
+			assertClose(layer + ": sequenceAttention vs Java assembly", assembly, feature, ASSEMBLY_TOLERANCE);
+		}
+
+		assertClose(layer + ": asset vs operand assembly", operands, asset, ASSEMBLY_TOLERANCE);
+		assertClose(layer + ": sequenceAttention vs operand assembly", operands, feature, ASSEMBLY_TOLERANCE);
 		assertClose(layer + ": sequenceAttention vs host reference", host, feature, HOST_TOLERANCE);
+	}
+
+	/**
+	 * Propagates one output gradient backward through one configuration three ways — the asset
+	 * layer, the feature method and the {@link Weights#operandAssembly operand assembly} — and checks
+	 * that the gradients of the fused projection weight, the output projection weight and the input
+	 * agree, each relative to its largest magnitude.
+	 *
+	 * @param layer        the asset layer that covers the configuration
+	 * @param qkNorm       the query/key normalization family, or {@code null} for none
+	 * @param biases       whether the normalization has biases
+	 * @param fullRotary   true to rotate every feature of a head, false for the leading half
+	 * @param softcap      the logit soft-cap, or {@code 0} for none
+	 * @param paddingValid the number of leading positions the padding mask marks valid, or
+	 *                     {@code null} for no padding mask
+	 * @param keysValid    the number of leading keys the key mask marks valid, or {@code null} for no
+	 *                     key mask
+	 * @param causal       whether each position attends only to itself and earlier positions
+	 */
+	private void assertGradientsMatch(String layer, NormalizationType qkNorm, boolean biases, boolean fullRotary,
+									  double softcap, Integer paddingValid, Integer keysValid, boolean causal) {
+		Weights w = new Weights(qkNorm, biases, fullRotary);
+		PackedCollection padding = paddingValid == null ? null : validPrefix(paddingValid);
+		PackedCollection keys = keysValid == null ? null : validPrefix(keysValid);
+		Producer<PackedCollection> paddingMask = padding == null ? null : cp(padding);
+		Producer<PackedCollection> keyMask = keys == null ? null : cp(keys);
+		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection outputGradient = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+
+		Backward operands = backpropagate(w.operandAssembly(paddingMask, keyMask, softcap, causal),
+				input, outputGradient);
+		Map<String, Backward> builds = new HashMap<>();
+		builds.put("asset", backpropagate(w.asset(layer, padding, keys, softcap), input, outputGradient));
+		builds.put("sequenceAttention", backpropagate(
+				w.feature(ProjectionFactory.dense(), paddingMask, keyMask, softcap, causal), input, outputGradient));
+
+		builds.forEach((name, backward) -> {
+			assertGradientClose(layer + ": " + name + " fused projection gradient",
+					operands.projection(), backward.projection());
+			assertGradientClose(layer + ": " + name + " output projection gradient",
+					operands.output(), backward.output());
+			assertGradientClose(layer + ": " + name + " input gradient", operands.input, backward.input);
+		});
+	}
+
+	/**
+	 * Asserts that two gradients agree to within {@link #GRADIENT_TOLERANCE} of the larger of one and
+	 * the expected gradient's largest magnitude, and that the expected gradient is not trivially zero.
+	 *
+	 * @param label    a label for the messages
+	 * @param expected the reference gradient
+	 * @param actual   the gradient under test
+	 */
+	private void assertGradientClose(String label, double[] expected, double[] actual) {
+		double magnitude = maxDifference(expected, new double[expected.length]);
+		assertTrue(label + " is trivially zero", magnitude > MINIMUM_GRADIENT);
+		assertClose(label, expected, actual, GRADIENT_TOLERANCE * Math.max(1.0, magnitude));
 	}
 
 	/**
@@ -306,6 +517,77 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	private double[] run(Block block, PackedCollection input) {
 		try (CompiledModel compiled = compile(block)) {
 			return compiled.forward(input).doubleStream().toArray();
+		}
+	}
+
+	/**
+	 * Compiles a block with its backward pass, runs one forward pass over {@code input} and one
+	 * backward pass of {@code outputGradient}, and returns the gradients the backward pass delivers.
+	 *
+	 * @param block          the attention block
+	 * @param input          the sequence
+	 * @param outputGradient the gradient of the loss with respect to the block's output
+	 * @return the gradients of the two projection weights and of the input
+	 */
+	private Backward backpropagate(Block block, PackedCollection input, PackedCollection outputGradient) {
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(shape(BATCH, SEQ_LEN, DIM), gradientRecorder(recorded));
+		model.add(block);
+		try (CompiledModel compiled = model.compile(true, true)) {
+			compiled.forward(input);
+			double[] inputGradient = compiled.backward(outputGradient).doubleStream().toArray();
+			List<double[]> weightGradients = new ArrayList<>();
+			recorded.forEach(gradient -> weightGradients.add(gradient.doubleStream().toArray()));
+			return new Backward(weightGradients, inputGradient);
+		}
+	}
+
+	/**
+	 * The gradients one backward pass delivers through an attention block: one to every weight the
+	 * block trains, among them the fused query/key/value projection weight ({@code [3 * dim, dim]},
+	 * query rows first) and the output projection weight ({@code [dim, dim]}), and one to the input
+	 * sequence.
+	 */
+	private static final class Backward {
+		/** The weight gradients, one per weight, flattened. */
+		private final List<double[]> weights;
+
+		/** Gradient of the input sequence. */
+		private final double[] input;
+
+		/**
+		 * Holds the gradients of one backward pass.
+		 *
+		 * @param weights the weight gradients, one per weight, flattened
+		 * @param input   gradient of the input sequence
+		 */
+		Backward(List<double[]> weights, double[] input) {
+			this.weights = weights;
+			this.input = input;
+		}
+
+		/**
+		 * Returns the gradient of the one weight with the given number of values.
+		 *
+		 * @param size        the number of values of the weight
+		 * @param description the weight, for the failure message
+		 * @return the weight's gradient
+		 */
+		double[] weight(int size, String description) {
+			return weights.stream()
+					.filter(gradient -> gradient.length == size)
+					.findFirst()
+					.orElseThrow(() -> new AssertionError("No gradient recorded for the " + description));
+		}
+
+		/** Returns the gradient of the fused query/key/value projection weight, query rows first. */
+		double[] projection() {
+			return weight(3 * DIM * DIM, "fused projection");
+		}
+
+		/** Returns the gradient of the output projection weight. */
+		double[] output() {
+			return weight(DIM * DIM, "output projection");
 		}
 	}
 
@@ -352,8 +634,7 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	}
 
 	/**
-	 * One set of random self-attention weights and the four ways of computing the attention over
-	 * them.
+	 * One set of random self-attention weights and the ways of computing the attention over them.
 	 */
 	private final class Weights {
 		/** The query/key normalization family, or {@code null} for none. */
@@ -409,14 +690,31 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 		 */
 		Block feature(ProjectionFactory projections, Producer<PackedCollection> paddingMask,
 					  Producer<PackedCollection> keyMask, double softcap) {
-			return sequenceAttention(BATCH, SEQ_LEN, DIM, HEADS, qkv, out,
-					qNormWeight, qNormBias, kNormWeight, kNormBias, invFreq, projections,
-					qkNorm, paddingMask, keyMask, softcap);
+			return feature(projections, paddingMask, keyMask, softcap, false);
 		}
 
 		/**
-		 * A fixed copy of the Java assembly {@code sequenceAttention} builds, with dense
-		 * projections, as the reference the asset and the feature method are held to.
+		 * The attention built by the feature method, bidirectional or causal.
+		 *
+		 * @param projections the projection factory
+		 * @param paddingMask the padding mask, or {@code null}
+		 * @param keyMask     the key mask, or {@code null}
+		 * @param softcap     the logit soft-cap, or {@code 0}
+		 * @param causal      whether each position attends only to itself and earlier positions
+		 * @return the block
+		 */
+		Block feature(ProjectionFactory projections, Producer<PackedCollection> paddingMask,
+					  Producer<PackedCollection> keyMask, double softcap, boolean causal) {
+			return sequenceAttention(BATCH, SEQ_LEN, DIM, HEADS, qkv, out,
+					qNormWeight, qNormBias, kNormWeight, kNormBias, invFreq, projections,
+					qkNorm, paddingMask, keyMask, softcap, causal);
+		}
+
+		/**
+		 * A fixed copy of the Java assembly {@code sequenceAttention} built before the operand
+		 * assembly, with dense projections: the key and value branches write the stores the attention
+		 * reads back as constant tensors, so this assembly computes the forward pass only. It is the
+		 * reference the forward pass of every bidirectional layer is held to.
 		 *
 		 * @param paddingMask the padding mask, or {@code null}
 		 * @param keyMask     the key mask, or {@code null}
@@ -468,9 +766,81 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 		}
 
 		/**
+		 * A fixed copy of the Java assembly {@code sequenceAttention} built before it loaded the asset,
+		 * with dense projections. The key and value branches split off the fused projection are the
+		 * second operands of the two attention products, so a backward pass carries gradients into
+		 * them, and between the products the scores are scaled, soft-capped, key-masked and, for
+		 * causal attention, causally masked before the softmax. It is the reference the forward and
+		 * backward passes of every layer, bidirectional or causal, are held to.
+		 *
+		 * @param paddingMask the padding mask, or {@code null}
+		 * @param keyMask     the key mask, or {@code null}
+		 * @param softcap     the logit soft-cap, or {@code 0}
+		 * @param causal      whether each position attends only to itself and earlier positions
+		 * @return the block
+		 */
+		Block operandAssembly(Producer<PackedCollection> paddingMask, Producer<PackedCollection> keyMask,
+							  double softcap, boolean causal) {
+			TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
+			TraversalPolicy rowShape = shape(BATCH, HEADS, SEQ_LEN, DIM_HEAD);
+			TraversalPolicy scoreShape = shape(BATCH, HEADS, SEQ_LEN, SEQ_LEN);
+
+			SequentialBlock queries = new SequentialBlock(sequenceShape);
+			queries.add(ProjectionFactory.dense().create(sequenceShape, qkv,
+					AdapterConfig.TargetLayer.SELF_ATTENTION_QKV));
+			queries.reshape(BATCH, SEQ_LEN, 3, DIM);
+			List<Block> thirds = queries.split(shape(BATCH, SEQ_LEN, 1, DIM), 0);
+			SequentialBlock keyRows = (SequentialBlock) thirds.get(1).reshape(BATCH, SEQ_LEN, HEADS, DIM_HEAD);
+			SequentialBlock valueRows = (SequentialBlock) thirds.get(2).reshape(BATCH, SEQ_LEN, HEADS, DIM_HEAD);
+			queries.reshape(BATCH, SEQ_LEN, HEADS, DIM_HEAD);
+			queries.permute(0, 2, 1, 3);
+			keyRows.permute(0, 2, 1, 3);
+			valueRows.permute(0, 2, 1, 3);
+
+			if (qNormWeight != null) {
+				queries.add(norm(qkNorm, qNormWeight, qNormBias, EPSILON));
+				keyRows.add(norm(qkNorm, kNormWeight, kNormBias, EPSILON));
+			}
+			queries.add(applyRotaryPositionEmbedding(rowShape, invFreq));
+			keyRows.add(applyRotaryPositionEmbedding(rowShape, invFreq));
+			if (paddingMask != null) {
+				valueRows.add(scale(rowShape, 2, paddingMask));
+			}
+
+			SequentialBlock attend = new SequentialBlock(rowShape);
+			attend.add(compose("qkMatmul", rowShape, keyRows.getOutputShape(), scoreShape, keyRows,
+					(q, keys) -> scaledDotProduct(c(q), c(keys), true)));
+			attend.add(scale(1.0 / Math.sqrt(DIM_HEAD)));
+			if (softcap > 0.0) {
+				attend.add(layer("logitSoftcap", scoreShape, scoreShape,
+						logits -> tanh(c(logits).multiply(1.0 / softcap)).multiply(softcap)));
+			}
+			if (keyMask != null) {
+				CollectionProducer bias = c(keyMask).add(-1.0).multiply(MASKED_LOGIT_PENALTY);
+				attend.add(layer("keyMask", scoreShape, scoreShape,
+						logits -> add(c(logits), broadcast(scoreShape, 3, bias))));
+			}
+			if (causal) {
+				attend.add(layer("causalMask", scoreShape, scoreShape,
+						logits -> add(c(logits), causalLogitMask(scoreShape))));
+			}
+			SequentialBlock normalized = new SequentialBlock(scoreShape);
+			normalized.add(softmax(scoreShape, true));
+			attend.add(normalized);
+			attend.add(compose("attnValues", scoreShape, valueRows.getOutputShape(), rowShape, valueRows,
+					(scores, values) -> scaledDotProduct(c(scores), c(values))));
+			queries.add(attend);
+
+			queries.permute(0, 2, 1, 3);
+			queries.reshape(BATCH, SEQ_LEN, DIM);
+			queries.add(ProjectionFactory.dense().create(sequenceShape, out,
+					AdapterConfig.TargetLayer.SELF_ATTENTION_OUT));
+			return queries;
+		}
+
+		/**
 		 * The asset layer built directly through {@link PdslLoader}, bound as its header documents:
-		 * the two projections as dense layers, all-ones masks where a mask is absent, and fresh key
-		 * and value stores.
+		 * the two projections as dense layers and all-ones masks where a mask is absent.
 		 *
 		 * @param layer   the asset layer that covers the configuration
 		 * @param padding the padding mask, or {@code null}
@@ -492,8 +862,6 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 			args.put("inv_freq", invFreq);
 			args.put("padding_mask", padding == null ? validPrefix(SEQ_LEN) : padding);
 			args.put("key_mask", keys == null ? validPrefix(SEQ_LEN) : keys);
-			args.put("k_heads", new PackedCollection(shape(BATCH, HEADS, SEQ_LEN, DIM_HEAD)));
-			args.put("v_heads", new PackedCollection(shape(BATCH, HEADS, SEQ_LEN, DIM_HEAD)));
 			args.put("q_norm_weight", qNormWeight);
 			args.put("q_norm_bias", qNormBias);
 			args.put("k_norm_weight", kNormWeight);
@@ -517,6 +885,22 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 		 * @return the expected output, row-major {@code [seq_len, dim]}
 		 */
 		double[] hostReference(double[] x, double[] padding, double[] keys, double softcap) {
+			return hostReference(x, padding, keys, softcap, false);
+		}
+
+		/**
+		 * Computes the attention on the host in double precision as {@link #hostReference(double[],
+		 * double[], double[], double)} does, bidirectional or causal: when causal, every key after the
+		 * query's own position receives the masked-logit penalty before the softmax.
+		 *
+		 * @param x       the sequence, row-major {@code [seq_len, dim]}
+		 * @param padding the padding mask, or {@code null}
+		 * @param keys    the key mask, or {@code null}
+		 * @param softcap the logit soft-cap, or {@code 0}
+		 * @param causal  whether each position attends only to itself and earlier positions
+		 * @return the expected output, row-major {@code [seq_len, dim]}
+		 */
+		double[] hostReference(double[] x, double[] padding, double[] keys, double softcap, boolean causal) {
 			double[][][] projected = new double[3][HEADS * SEQ_LEN][DIM_HEAD];
 			double[] wqkv = qkv.doubleStream().toArray();
 			for (int s = 0; s < SEQ_LEN; s++) {
@@ -563,6 +947,9 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 						}
 						if (keys != null) {
 							score += (keys[j] - 1.0) * MASKED_LOGIT_PENALTY;
+						}
+						if (causal && j > i) {
+							score -= MASKED_LOGIT_PENALTY;
 						}
 						weights[j] = score;
 						max = Math.max(max, score);

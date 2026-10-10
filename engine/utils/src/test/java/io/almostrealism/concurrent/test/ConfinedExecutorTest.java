@@ -544,6 +544,75 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#runUninterruptibly} keeps waiting until the task has finished,
+	 * through an interrupt pending on entry and another arriving during the wait, so what the
+	 * task produced is visible when it returns; the caller's interrupt status is restored.
+	 * {@link ConfinedExecutor#run} would abandon the wait on the pending interrupt.
+	 */
+	@Test(timeout = 10000)
+	public void runUninterruptiblyWaitsThroughInterrupts() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch releaseTask = new CountDownLatch(1);
+		List<String> produced = Collections.synchronizedList(new ArrayList<>());
+
+		try {
+			AtomicReference<List<String>> seen = new AtomicReference<>();
+			AtomicBoolean interruptedAfter = new AtomicBoolean();
+			Thread caller = new Thread(() -> {
+				Thread.currentThread().interrupt();
+				executor.runUninterruptibly(() -> {
+					awaitLatch(releaseTask);
+					produced.add("result");
+				});
+				seen.set(new ArrayList<>(produced));
+				interruptedAfter.set(Thread.currentThread().isInterrupted());
+			});
+			caller.start();
+
+			caller.join(200);
+			assertTrue("An interrupt pending on entry must not abandon the wait", caller.isAlive());
+			caller.interrupt();
+			caller.join(200);
+			assertTrue("An interrupt arriving during the wait must not abandon it", caller.isAlive());
+
+			releaseTask.countDown();
+			caller.join(5000);
+
+			assertFalse(caller.isAlive());
+			assertEquals(List.of("result"), seen.get());
+			assertTrue("The caller's interrupt status must be restored", interruptedAfter.get());
+		} finally {
+			releaseTask.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * A failure of the task run by {@link ConfinedExecutor#runUninterruptibly} is rethrown to
+	 * the caller, and a destroyed executor refuses the task as {@link ConfinedExecutor#run} does.
+	 */
+	@Test(timeout = 10000)
+	public void runUninterruptiblyRethrowsFailureAndRefusesWhenDestroyed() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+
+		try {
+			executor.runUninterruptibly(() -> { throw new IllegalArgumentException("task failure"); });
+			Assert.fail("The task failure must be rethrown");
+		} catch (IllegalArgumentException expected) {
+			assertEquals("task failure", expected.getMessage());
+		}
+
+		executor.destroy();
+
+		try {
+			executor.runUninterruptibly(() -> { });
+			Assert.fail("A destroyed executor must refuse work");
+		} catch (IllegalStateException expected) {
+			assertFalse(executor.isActive());
+		}
+	}
+
+	/**
 	 * Waits for a latch, failing the calling task if interrupted.
 	 *
 	 * @param latch the latch to wait for
