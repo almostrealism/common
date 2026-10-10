@@ -156,36 +156,27 @@ public class CompoundMidiEmbedding implements LayerFeatures {
 	 * Embed a single compound token into a hidden-size vector, returning a
 	 * {@link CollectionProducer} pipeline for further composition.
 	 *
-	 * <p>Because the token is known when this producer is built, the relevant
-	 * branch is selected in Java rather than inside the kernel: an ordinary
-	 * token embeds as the concatenation of its attribute embeddings, a special
-	 * token (SOS/EOS/FILL) embeds through the supplementary embedding + MLP, and
-	 * a PAD token embeds as zeros. This keeps the compiled expression to the one
-	 * path that applies, instead of carrying every path masked by onset
-	 * comparisons as {@link #embedValues} must for the generator, where the token
-	 * is a kernel argument. Building both paths for every token (and, through
-	 * {@link #embedSequence}, for every token in a sequence) is what makes the
-	 * fused literal form expensive to compile.</p>
+	 * <p>For normal tokens, each attribute is embedded independently and the
+	 * results are concatenated. Special tokens use the supplementary embedding + MLP
+	 * instead: start and fill-start embed as row 0, end and fill-end as row 1, and a
+	 * pad token embeds as zeros.</p>
 	 *
-	 * <p>The result is numerically identical to {@link #embedValues} evaluated on
-	 * the same token's values.</p>
+	 * <p>The token is known when the graph is built, so only the path it takes is
+	 * included; {@link #embedValues(Producer)} is the alternative for a token that is
+	 * only known at evaluation time, at the cost of carrying every path.</p>
 	 *
 	 * @param token producer supplying the compound token to embed
 	 * @return CollectionProducer of shape (hiddenSize,) producing the embedding
 	 */
 	public CollectionProducer embed(Producer<MidiCompoundToken> token) {
-		MidiCompoundToken value = token.get().evaluate();
-
-		if (value.isPAD()) {
+		MidiCompoundToken tok = token.get().evaluate();
+		if (tok.isPAD()) {
 			return zeros(shape(config.hiddenSize));
+		} else if (tok.isSpecial()) {
+			return embedSupplementary(c(tok.isEOS() || tok.isFillEnd() ? 1.0 : 0.0));
 		}
 
-		if (value.isSpecial()) {
-			int supplementaryRow = (value.isEOS() || value.isFillEnd()) ? 1 : 0;
-			return embedSupplementary(c((double) supplementaryRow));
-		}
-
-		return embedAttributes(cp(value.pack()));
+		return embedAttributes(cp(tok.pack()));
 	}
 
 	/**

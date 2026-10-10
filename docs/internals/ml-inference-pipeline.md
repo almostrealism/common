@@ -859,6 +859,7 @@ through `capture` stores, which pass no gradient back, so trainable attention us
 | File | Description |
 |------|-------------|
 | `engine/ml/src/.../ml/AttentionFeatures.java` | Unified attention mechanisms (MHA, GQA, cross-attention, transformer blocks) |
+| `engine/ml/src/.../ml/SequenceAttentionFeatures.java` | Full-sequence attention (`sequenceAttention`, `scaledDotProductAttention`); `AttentionFeatures` extends it |
 | `engine/ml/src/.../ml/AutoregressiveModel.java` | Autoregressive generation loop with prompt/generation phases |
 | `engine/ml/src/.../ml/RotationFeatures.java` | RoPE implementations (single-position and full-sequence) |
 | `engine/ml/src/.../ml/StateDictionary.java` | Model weight loading from protobuf format |

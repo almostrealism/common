@@ -16,10 +16,16 @@ This module exists to:
 
 ### 1. Model Loading with StateDictionary
 
-StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT safetensors or PyTorch checkpoints. Weights must be exported to protobuf format first using the provided Python extraction scripts.
+StateDictionary loads model weights from either **protobuf format** (`.pb` files) or
+**safetensors checkpoints** (`.safetensors` files, including sharded checkpoints). When the
+source holds any `.safetensors` file it is read as a published checkpoint — its safetensors
+files are the weights and its other files (configuration, tokenizer) are ignored for weight
+loading; otherwise every file is read as a protobuf library. PyTorch (`.pt`/`.bin`) and GGUF
+checkpoints are not read directly; export those to one of the supported formats first using the
+provided Python extraction scripts.
 
-**Supported Format:** Protobuf (`CollectionLibraryData`)
-**NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
+**Supported Formats:** Protobuf (`CollectionLibraryData`), safetensors (`.safetensors`)
+**NOT Supported:** PyTorch checkpoints (`.pt`/`.bin`), GGUF
 
 ```java
 import org.almostrealism.ml.StateDictionary;
@@ -152,11 +158,13 @@ model.run(
 ```java
 import org.almostrealism.ml.AutoregressiveModel;
 
-// Wrap compiled model for token generation
-AutoregressiveModel generator = AutoregressiveModel.of(
+// Wrap compiled model for token generation. `position` is a single-element
+// collection the compiled model reads to index its KV cache and apply RoPE;
+// AutoregressiveModel maintains it on the device via reset()/advance().
+AutoregressiveModel<Integer> generator = AutoregressiveModel.of(
     compiledModel,
-    step -> log("Step: " + step),
-    tokenId -> tokenEmbeddings.get(tokenId)
+    position,
+    tokenId -> tokenEmbeddings.range(shape(dim), tokenId * dim)
 );
 
 // Set sampling temperature
@@ -297,27 +305,29 @@ Block block = transformerBlock(
 ### AutoregressiveModel
 
 ```java
-public class AutoregressiveModel {
-    public static AutoregressiveModel of(CompiledModel model,
-                                         IntConsumer stepConsumer,
-                                         IntFunction<PackedCollection<?>> tokenEmbed);
+public class AutoregressiveModel<T> implements Destroyable {
+    public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                                  PackedCollection position,
+                                                  IntFunction<PackedCollection> tokenEmbed);
 
     public void setTemperature(double temperature);
-    public int next();  // Generate next token
+    public T next();  // Generate next token
 }
 ```
 
 ### ByteLevelBPETokenizer
 
 ```java
-public abstract class ByteLevelBPETokenizer implements Tokenizer {
-    public int[] encodeAsInt(String text);
-    public String decodeAsInt(int[] tokens);
+public abstract class ByteLevelBPETokenizer {
+    public ByteLevelBPETokenizer(PreTokenizer preTokenizer);
 
-    public abstract int getBOSToken();
-    public abstract int getEOSToken();
-    public abstract int getPADToken();
-    public abstract int getUNKToken();
+    public int[] encode(String text, boolean addSpecialTokens);
+    public String decode(int[] tokenIds);
+
+    protected abstract int getBOSToken();
+    protected abstract int getEOSToken();
+    protected abstract int getPADToken();
+    protected abstract int getUNKToken();
 }
 ```
 
@@ -441,22 +451,22 @@ int token = generator.next();
 
 ```java
 public class MyTokenizer extends ByteLevelBPETokenizer {
-    @Override
-    public int getBOSToken() { return 1; }
-
-    @Override
-    public int getEOSToken() { return 2; }
-
-    @Override
-    public int getPADToken() { return 0; }
-
-    @Override
-    public int getUNKToken() { return 3; }
-
-    @Override
-    protected void loadVocabulary(String path) {
-        // Load vocabulary from file
+    public MyTokenizer(String tokenizerPath) throws IOException {
+        super(PreTokenizer.WHOLE_TEXT);
+        // load the vocabulary and merges from tokenizerPath
     }
+
+    @Override
+    protected int getBOSToken() { return 1; }
+
+    @Override
+    protected int getEOSToken() { return 2; }
+
+    @Override
+    protected int getPADToken() { return 0; }
+
+    @Override
+    protected int getUNKToken() { return 3; }
 }
 ```
 
