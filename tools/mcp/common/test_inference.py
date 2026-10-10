@@ -515,8 +515,17 @@ class OpenRouterTest(unittest.TestCase):
         self.backend().synthesize("prompt")
 
         body = self.posted_body()
-        self.assertEqual(body["reasoning"], {"effort": "none"})
+        # "none" disables reasoning via the documented ``enabled`` field rather
+        # than an ``effort`` level OpenRouter does not recognise.
+        self.assertEqual(body["reasoning"], {"enabled": False})
         self.assertEqual(body["provider"], {"data_collection": "deny"})
+
+    def test_an_effort_level_is_sent_as_reasoning_effort(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_REASONING"] = "medium"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["reasoning"], {"effort": "medium"})
 
     def test_empty_reasoning_setting_leaves_the_model_default(self):
         os.environ["AR_CONSULTANT_OPENROUTER_REASONING"] = ""

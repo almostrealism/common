@@ -733,10 +733,11 @@ class OpenRouterBackend(OpenAIChatBackend):
 
     Two request defaults matter for this workload:
 
-    * **Reasoning is off.** A consult answer is a few sentences grounded in
-      retrieved documentation. OpenRouter counts reasoning tokens against
-      ``max_tokens``, so a thinking model left at its default can spend the
-      whole budget reasoning and return nothing (while still being billed).
+    * **Reasoning is off** (``reasoning.enabled = false``). A consult answer is
+      a few sentences grounded in retrieved documentation. OpenRouter counts
+      reasoning tokens against ``max_tokens``, so a thinking model left at its
+      default can spend the whole budget reasoning and return nothing (while
+      still being billed).
     * **Providers that retain prompts are excluded.** Prompts carry the memory
       corpus, which holds notes about unpublished work.
 
@@ -747,11 +748,12 @@ class OpenRouterBackend(OpenAIChatBackend):
         AR_CONSULTANT_OPENROUTER_API_KEY       - The API key itself
         AR_CONSULTANT_OPENROUTER_MODEL         - Model slug
                                                  (default: minimax/minimax-m3)
-        AR_CONSULTANT_OPENROUTER_REASONING     - Reasoning effort sent as
-                                                 ``reasoning.effort``
-                                                 (default: none; empty string
-                                                 sends no reasoning field, which
-                                                 leaves the model's default)
+        AR_CONSULTANT_OPENROUTER_REASONING     - Reasoning control: ``none``
+                                                 (default) disables reasoning;
+                                                 ``high``/``medium``/``low`` set
+                                                 ``reasoning.effort``; an empty
+                                                 string sends no reasoning field,
+                                                 leaving the model's default
         AR_CONSULTANT_OPENROUTER_DATA_COLLECTION - ``deny`` (default) or
                                                  ``allow``; sent as
                                                  ``provider.data_collection``
@@ -759,9 +761,15 @@ class OpenRouterBackend(OpenAIChatBackend):
                                                  (default: https://openrouter.ai/api/v1)
     """
 
+    #: The reasoning setting that turns reasoning off rather than selecting an
+    #: effort level. OpenRouter's documented ``reasoning.effort`` values are
+    #: ``high``/``medium``/``low``, so "off" is a sentinel of our own, not one
+    #: of them; it is translated to ``{"enabled": false}`` in a request.
+    REASONING_OFF = "none"
+
     DEFAULT_MODEL = "minimax/minimax-m3"
     DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-    DEFAULT_REASONING = "none"
+    DEFAULT_REASONING = REASONING_OFF
     DEFAULT_DATA_COLLECTION = "deny"
 
     def __init__(
@@ -854,14 +862,35 @@ class OpenRouterBackend(OpenAIChatBackend):
 
     def request_fields(self) -> dict:
         fields = {"model": self.model}
-        if self.reasoning:
-            # TODO(review): confirm OpenRouter honours reasoning.effort="none"
-            # to disable reasoning (documented levels are high/medium/low;
-            # disabling may require reasoning.enabled=false or exclude=true).
-            fields["reasoning"] = {"effort": self.reasoning}
+        reasoning = self.reasoning_request()
+        if reasoning is not None:
+            fields["reasoning"] = reasoning
         if self.data_collection:
             fields["provider"] = {"data_collection": self.data_collection}
         return fields
+
+    def reasoning_request(self):
+        """Translate the configured reasoning setting into OpenRouter's field.
+
+        OpenRouter counts reasoning tokens against ``max_tokens``, so a thinking
+        model left on its default can spend a consult's whole budget reasoning
+        and return an empty (but billed) answer. Reasoning is therefore off by
+        default, expressed as ``{"enabled": false}`` — the field OpenRouter
+        documents for disabling reasoning. ``effort="none"`` is **not** a
+        documented level (the levels are ``high``/``medium``/``low``), so a
+        provider could silently ignore it and leave reasoning on.
+
+        Returns:
+            ``{"enabled": False}`` when reasoning is off (the default);
+            ``{"effort": <level>}`` when an effort level is configured; or
+            ``None`` when the setting is empty, which omits the field and
+            leaves the model's own default in place.
+        """
+        if not self.reasoning:
+            return None
+        if self.reasoning == self.REASONING_OFF:
+            return {"enabled": False}
+        return {"effort": self.reasoning}
 
     def _probe(self) -> bool:
         """Check the key against ``GET /key``, which costs no tokens.

@@ -69,11 +69,13 @@ in the controller's `.env`.
 
 Two request defaults are deliberate:
 
-- **Reasoning is off** (`reasoning.effort = "none"`). OpenRouter counts reasoning
+- **Reasoning is off** (`reasoning.enabled = false`). OpenRouter counts reasoning
   tokens against `max_tokens`, so a thinking model can spend a consult's whole
   budget reasoning and return an empty (but billed) answer. Set
-  `AR_CONSULTANT_OPENROUTER_REASONING` to an effort level to turn it on, or to an
-  empty string to leave the model's own default.
+  `AR_CONSULTANT_OPENROUTER_REASONING` to an effort level (`high`/`medium`/`low`,
+  sent as `reasoning.effort`) to turn it on, or to an empty string to leave the
+  model's own default. (`none`, the default, is a disable sentinel — not an
+  OpenRouter effort level.)
 - **Providers that retain prompts are excluded** (`provider.data_collection =
   "deny"`). Prompts carry the memory corpus. If a model has no compliant
   provider, requests fail; set `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=allow`
@@ -224,7 +226,7 @@ backend that is unreachable degrades rather than falling back to another one.
 | `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | (none) | JSON secret file `{"openrouter-api-key": ...}` (read first) |
 | `AR_CONSULTANT_OPENROUTER_API_KEY` | (none) | OpenRouter API key, if not using the file |
 | `AR_CONSULTANT_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter model slug |
-| `AR_CONSULTANT_OPENROUTER_REASONING` | `none` | `reasoning.effort` to send; empty string sends none |
+| `AR_CONSULTANT_OPENROUTER_REASONING` | `none` | `none` disables reasoning (`reasoning.enabled=false`); `high`/`medium`/`low` set `reasoning.effort`; empty string sends no reasoning field |
 | `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION` | `deny` | `provider.data_collection`: `deny` or `allow` |
 | `AR_CONSULTANT_OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
