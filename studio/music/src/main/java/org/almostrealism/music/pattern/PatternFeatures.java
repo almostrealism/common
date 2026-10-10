@@ -380,7 +380,7 @@ public interface PatternFeatures extends CodeFeatures {
 											 Exception cause) {
 		warn("Note evaluation failed at frame " + noteStart + ": " + cause.getMessage());
 
-		if (isExhaustionFailure(cause)) {
+		if (OperatorPoolExhaustedException.isInCauseChain(cause)) {
 			throw new IllegalStateException(
 					"Pattern rendering aborted at frame " + noteStart
 							+ " — runtime native-lib template class pool exhausted"
@@ -397,24 +397,6 @@ public interface PatternFeatures extends CodeFeatures {
 							+ " (causeClass=" + cause.getClass().getName() + ")",
 					cause);
 		}
-	}
-
-	/**
-	 * Walks the cause chain of the given throwable and returns {@code true} if
-	 * any link is an {@link OperatorPoolExhaustedException}.
-	 *
-	 * @param t the throwable to inspect
-	 * @return {@code true} when the chain contains an operator-pool exhaustion cause
-	 */
-	private static boolean isExhaustionFailure(Throwable t) {
-		Throwable cursor = t;
-		while (cursor != null) {
-			if (cursor instanceof OperatorPoolExhaustedException) {
-				return true;
-			}
-			cursor = cursor.getCause();
-		}
-		return false;
 	}
 
 	/**

@@ -181,15 +181,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	}
 
 	/**
-	 * Incremented by {@link #clear()} whenever the current pattern managers are destroyed,
-	 * and by {@link #addPattern} whenever a pattern is added.
-	 * Render operations built by {@link #sum} capture the generation they were built
-	 * against and refuse to run once it has moved on, because the managers they reference
-	 * have released their native memory.
-	 */
-	private volatile int patternGeneration;
-
-	/**
 	 * Initializes the volume to 1.0. Releases any previously allocated volume
 	 * collection first, so re-initializing a live manager does not leak the native
 	 * memory backing the old one.
@@ -231,17 +222,8 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 				.flatMap(c -> c.getSources().stream()).toList();
 	}
 
-	/**
-	 * Returns a read-only view of the pattern layer managers.
-	 *
-	 * <p>The view reflects later changes, but cannot be used to mutate the pattern set:
-	 * every structural mutation must go through {@link #addPattern}, {@link #clear()} or
-	 * {@link #setSettings(Settings)}, which advance the pattern generation that stale
-	 * {@link #sum} operations are checked against and destroy removed managers.</p>
-	 *
-	 * @return an unmodifiable view of the pattern layer managers
-	 */
-	public List<PatternLayerManager> getPatterns() { return Collections.unmodifiableList(patterns); }
+	/** Returns the list of pattern layer managers. */
+	public List<PatternLayerManager> getPatterns() { return patterns; }
 
 	/**
 	 * Returns all pattern elements in {@code [start, end)}, grouped by choice.
@@ -363,11 +345,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	/**
 	 * Adds a new pattern and returns its manager.
 	 *
-	 * <p>Adding a pattern is a structural mutation of the pattern set, so it advances the
-	 * pattern generation: any render operation previously returned by {@link #sum} becomes
-	 * stale and throws {@link IllegalStateException} when run, as it does after
-	 * {@link #clear()}.</p>
-	 *
 	 * @param channel  the channel index
 	 * @param measures the duration in measures
 	 * @param melodic  whether the pattern is melodic
@@ -379,7 +356,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 						chromosomes.get(patterns.size()),
 						channel, measures, melodic);
 		patterns.add(pattern);
-		patternGeneration++;
 		return pattern;
 	}
 
@@ -464,16 +440,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * memory deterministically, which matters when settings are reloaded into a live
 	 * manager (see {@link #setSettings(Settings)}) as well as at teardown.</p>
 	 *
-	 * <p>Any render operation previously returned by {@link #sum} references the
-	 * destroyed managers, so it becomes stale: running it afterwards throws
-	 * {@link IllegalStateException} instead of evaluating against released memory.
-	 * Callers that replace the patterns of a live manager must rebuild their render
-	 * operations.</p>
+	 * <p>A render operation previously returned by {@link #sum} references the managers
+	 * destroyed here. Callers that replace the patterns of a live manager must rebuild
+	 * their render operations before running them; running a stale one renders against
+	 * released memory, as it would for any object used after it is destroyed.</p>
 	 */
 	public void clear() {
 		patterns.forEach(PatternLayerManager::destroy);
 		patterns.clear();
-		patternGeneration++;
 	}
 
 	/**
@@ -507,11 +481,9 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * normalization.</p>
 	 *
 	 * <p>The returned operation is bound to the pattern managers present when it is
-	 * built. If they are later replaced or destroyed (see {@link #clear()}) or a pattern
-	 * is added (see {@link #addPattern}), running it throws {@link IllegalStateException};
-	 * build a new operation instead. The guard also covers an operation built for a
-	 * channel that had no patterns at build time, so a channel that gains patterns after
-	 * the operation was built does not silently keep rendering as an empty channel.</p>
+	 * built. If the patterns are later replaced or destroyed (see {@link #clear()}),
+	 * build a new operation instead of running the old one, which would render against
+	 * the released managers.</p>
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
@@ -540,16 +512,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 			IntStream.range(0, patterns.size()).forEach(i ->
 					patterns.get(i).updateDestination(ctx));
 		}
-
-		// Guard before the empty-channel check so an op built for a channel with no
-		// patterns is also rejected once a later mutation gives that channel patterns.
-		int generation = patternGeneration;
-		op.add(() -> () -> {
-			if (generation != patternGeneration) {
-				throw new IllegalStateException("Pattern render operation is stale because its"
-						+ " patterns were replaced or destroyed after it was built");
-			}
-		});
 
 		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
 				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())

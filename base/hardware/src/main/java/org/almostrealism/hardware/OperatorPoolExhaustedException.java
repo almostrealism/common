@@ -43,4 +43,28 @@ public class OperatorPoolExhaustedException extends HardwareException {
 	public OperatorPoolExhaustedException(Exception cause) {
 		super("Could not obtain operator", cause);
 	}
+
+	/**
+	 * Returns {@code true} when the given throwable, or any throwable in its
+	 * cause chain, is an {@code OperatorPoolExhaustedException}.
+	 *
+	 * <p>Pool exhaustion is a terminal condition that is frequently wrapped by
+	 * the time it surfaces to a caller (for example inside a
+	 * {@link HardwareException} raised while evaluating a computation), so
+	 * callers that must distinguish exhaustion from an ordinary failure test
+	 * the whole chain rather than the top-level type.</p>
+	 *
+	 * @param t the throwable to inspect (may be {@code null})
+	 * @return {@code true} if the chain contains an operator-pool exhaustion
+	 */
+	public static boolean isInCauseChain(Throwable t) {
+		Throwable cursor = t;
+		while (cursor != null) {
+			if (cursor instanceof OperatorPoolExhaustedException) {
+				return true;
+			}
+			cursor = cursor.getCause();
+		}
+		return false;
+	}
 }

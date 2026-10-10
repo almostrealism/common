@@ -21,7 +21,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.ml.dsl.PdslLoader;
@@ -417,21 +416,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// on both channels, while a mono destination (or one with the master disabled)
 		// has no receptor for the channels it lacks and those are simply not written
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> master = output.getMaster(stereo);
-			if (master != null) {
-				outputLoopBody.add(master.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
-			}
-		}
+		Producer<PackedCollection> masterFrame = c(shape(1), p(masterOutput), p(bufferFrameIndex));
+		outputLoopBody.add(output.pushMaster(masterFrame));
 
 		// The health computation ends a render early from what these meters see
 		// (clipping, sustained silence); without them every genome runs full length
-		addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.MAIN,
-				c(shape(1), p(masterOutput), p(bufferFrameIndex)));
+		outputLoopBody.add(output.pushMeasures(ChannelInfo.Voicing.MAIN, masterFrame));
 		PackedCollection wetSignal = (PackedCollection) args.get("stem_efx");
 		if (wetSignal != null) {
-			addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.WET,
-					c(shape(1), p(wetSignal), p(bufferFrameIndex)));
+			outputLoopBody.add(output.pushMeasures(ChannelInfo.Voicing.WET,
+					c(shape(1), p(wetSignal), p(bufferFrameIndex))));
 		}
 
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
@@ -443,9 +437,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
 			if (stemChannels != null) {
 				for (int ch = 0; ch < channelCount; ch++) {
-					addStemPushes(stemAppends, output, channels.get(ch),
+					stemAppends.add(output.pushStem(channels.get(ch),
 							p(stemChannels.range(new TraversalPolicy(bufferSize),
-									ch * bufferSize)));
+									ch * bufferSize))));
 				}
 			}
 
@@ -462,22 +456,21 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 									.add(cp(stemReverb.range(
 											new TraversalPolicy(bufferSize), 0)))
 									.each()));
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fx));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(), p(fx)));
 				} else if (stemEfx != null) {
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
-							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(),
+							p(stemEfx.range(new TraversalPolicy(bufferSize), 0))));
 				} else if (stemReverb != null) {
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
-							p(stemReverb.range(new TraversalPolicy(bufferSize), 0)));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(),
+							p(stemReverb.range(new TraversalPolicy(bufferSize), 0))));
 				}
 			}
 		}
 
-		// Created and registered only after every fallible construction step above has
-		// succeeded, so a failure never leaves an orphaned stream holding a native ring.
+		// Created only after every fallible construction step above has succeeded, so a
+		// failure never leaves an orphaned stream. The runner owns it and stops it in reset().
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
-		scene.registerRenderStream(renderStream);
 
 		return new TemporalCellular() {
 			/**
@@ -560,45 +553,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
-	}
-
-	/**
-	 * Pushes the current frame to the measure {@link Receptor}s for the given
-	 * voicing, once per stereo channel, so the health computation's meters see
-	 * the same per-frame signal the CellList mixdown fed them. A voicing the
-	 * output does not monitor is skipped.
-	 *
-	 * @param ops     the operation list receiving the push operations
-	 * @param output  the destination routing
-	 * @param voicing the signal path voicing the frame belongs to
-	 * @param frame   producer of the current frame
-	 */
-	private void addMeasurePushes(OperationList ops, MultiChannelAudioOutput output,
-								  ChannelInfo.Voicing voicing,
-								  Producer<PackedCollection> frame) {
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> measure = output.getMeasure(voicing, stereo);
-			if (measure != null) ops.add(measure.push(frame));
-		}
-	}
-
-	/**
-	 * Pushes a captured buffer of frames to the stem {@link Receptor}s for the given
-	 * audio channel, once per stereo channel. The single fx stem — the audio channel
-	 * after the pattern channels, receiving the efx and reverb buses summed — is the
-	 * stem layout consumers of these renders expect, matching the CellList mixdown.
-	 *
-	 * @param ops          the operation list receiving the push operations
-	 * @param output       the destination routing
-	 * @param audioChannel the audio channel whose stem receives the frames
-	 * @param frames       producer of the captured frames to push
-	 */
-	private void addStemPushes(OperationList ops, MultiChannelAudioOutput output,
-							   int audioChannel, Producer<PackedCollection> frames) {
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> stem = output.getStem(audioChannel, stereo);
-			if (stem != null) ops.add(stem.push(frames));
-		}
 	}
 
 	/**

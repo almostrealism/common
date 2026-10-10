@@ -16,7 +16,9 @@
 
 package org.almostrealism.studio.health;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Aggregates audio receptors for the master mix, individual stems, and per-measure
@@ -221,6 +224,69 @@ public class MultiChannelAudioOutput {
 		} else {
 			return master.get(channel);
 		}
+	}
+
+	/**
+	 * Builds operations pushing the given frame to both master-mix stereo receptors,
+	 * once per stereo channel. A stereo channel whose receptor is absent (a mono or
+	 * disabled master) is skipped.
+	 *
+	 * @param frame producer of the frame to push
+	 * @return the push operations, empty when master output is disabled
+	 */
+	public Supplier<Runnable> pushMaster(Producer<PackedCollection> frame) {
+		return pushToStereo("Master Push", frame, this::getMaster);
+	}
+
+	/**
+	 * Builds operations pushing the given frame to the measure receptors of the given
+	 * voicing, once per stereo channel. A stereo channel the output does not monitor
+	 * is skipped.
+	 *
+	 * @param voicing the signal path voicing the frame belongs to
+	 * @param frame   producer of the frame to push
+	 * @return the push operations, empty when measure monitoring is disabled
+	 */
+	public Supplier<Runnable> pushMeasures(ChannelInfo.Voicing voicing,
+										   Producer<PackedCollection> frame) {
+		return pushToStereo("Measure Push", frame,
+				stereo -> getMeasure(voicing, stereo));
+	}
+
+	/**
+	 * Builds operations pushing the given frames to the stem receptors of the given
+	 * audio channel, once per stereo channel. A stereo channel the output does not
+	 * capture is skipped.
+	 *
+	 * @param audioChannel the audio channel whose stem receives the frames
+	 * @param frames       producer of the frames to push
+	 * @return the push operations, empty when stem output is disabled
+	 */
+	public Supplier<Runnable> pushStem(int audioChannel,
+									   Producer<PackedCollection> frames) {
+		return pushToStereo("Stem Push", frames,
+				stereo -> getStem(audioChannel, stereo));
+	}
+
+	/**
+	 * Builds operations pushing the given frame to the receptor each stereo channel
+	 * resolves to, skipping a stereo channel with no receptor. Shared by
+	 * {@link #pushMaster}, {@link #pushMeasures}, and {@link #pushStem}, which differ
+	 * only in which receptor family the lookup draws from.
+	 *
+	 * @param name   the operation list name
+	 * @param frame  producer of the frame to push
+	 * @param lookup the per-stereo-channel receptor lookup
+	 * @return the push operations, empty when none of the receptors are present
+	 */
+	private Supplier<Runnable> pushToStereo(String name, Producer<PackedCollection> frame,
+			Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>> lookup) {
+		OperationList ops = new OperationList(name);
+		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
+			Receptor<PackedCollection> receptor = lookup.apply(stereo);
+			if (receptor != null) ops.add(receptor.push(frame));
+		}
+		return ops;
 	}
 
 	/** Returns {@code true} if measure monitoring is active. */

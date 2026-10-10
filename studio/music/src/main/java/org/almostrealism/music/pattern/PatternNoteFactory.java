@@ -116,9 +116,6 @@ public class PatternNoteFactory {
 
 			if (blend) {
 				l = layerEnvelopes.getEnvelope(i).apply(params, voicing, l);
-			} else {
-//				l = volumeEnvelope.apply(params, l);
-//				l = filterEnvelope.apply(params, l);
 			}
 
 			layers.add(l);

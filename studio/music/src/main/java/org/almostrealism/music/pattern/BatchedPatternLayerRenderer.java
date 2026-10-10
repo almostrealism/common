@@ -505,7 +505,9 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 				for (int l = 0; l < layers; l++) {
 					PackedCollection src = in.getSources()[l];
-					copyRow(boundSources[l], row * sourceLength, src,
+					// Bulk collection-to-collection marshalling copy assembling the batch
+					// input row, not element-wise host computation.
+					boundSources[l].setFrom(row * sourceLength, src, 0,
 							Math.min(src.getMemLength(), sourceLength));
 				}
 
@@ -597,7 +599,9 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 				for (int l = 0; l < layers; l++) {
 					PackedCollection src = in.getSources()[l];
-					copyRow(boundSources[l], row * sourceLength, src,
+					// Bulk collection-to-collection marshalling copy assembling the batch
+					// input row, not element-wise host computation.
+					boundSources[l].setFrom(row * sourceLength, src, 0,
 							Math.min(src.getMemLength(), sourceLength));
 					scalars[renderer.percRatioColumn(l) * bucketN + row]
 							= in.getScalar(BatchedNoteInputs.ratioIndex(l));
@@ -662,19 +666,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 		return ((required + SOURCE_BUCKET - 1) / SOURCE_BUCKET) * SOURCE_BUCKET;
 	}
 
-	/**
-	 * Copies a per-note source buffer into one row of the batched source buffer.
-	 * This is a bulk collection-to-collection marshalling copy assembling the
-	 * batch input, not element-wise host computation.
-	 *
-	 * @param dest        the batched {@code [bucketN, sourceLength]} source buffer
-	 * @param frameOffset the flat destination offset ({@code row * sourceLength})
-	 * @param src         the note's source buffer of length {@code sourceLength}
-	 * @param length      the number of samples to copy
-	 */
-	private void copyRow(PackedCollection dest, int frameOffset, PackedCollection src, int length) {
-		dest.setFrom(frameOffset, src, 0, length);
-	}
 
 	/**
 	 * Gathers and memoizes the melodic destinations for the given elements.
