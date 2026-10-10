@@ -17,13 +17,19 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Validates {@link Semaphore#all(List)}, the merge
@@ -149,6 +155,298 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 		// Release the composite's callback threads, which would otherwise stay parked
 		timeline.reach(3);
 		unmerged.waitFor();
+	}
+
+	/**
+	 * Waiting on a composite settles its members on the waiting thread itself, so the waiter is
+	 * released by the members' own completions rather than by the threads that count the
+	 * composite down once they have observed them. A member failure observed that way is still
+	 * rethrown to the waiter.
+	 */
+	@Test(timeout = 30000)
+	public void compositeWaitSettlesMembersOnWaitingThread() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+		first.release();
+		second.release();
+
+		combined.waitFor();
+		assertTrue("The waiting thread must settle the first member itself",
+				first.waitedBy(Thread.currentThread()));
+		assertTrue("The waiting thread must settle the second member itself",
+				second.waitedBy(Thread.currentThread()));
+
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failing = new RecordingCompletion(failure);
+		RecordingCompletion ok = new RecordingCompletion(null);
+
+		Semaphore mixed = Semaphore.all(Arrays.asList(failing, ok));
+		failing.release();
+		ok.release();
+
+		try {
+			mixed.waitFor();
+			Assert.fail("A member failure must reach the composite's waiter");
+		} catch (IllegalStateException e) {
+			assertTrue(e == failure);
+		}
+
+		assertTrue("A failing member must not stop the remaining members being settled",
+				ok.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A view of a composite re-attributed to another requester settles the composite's members
+	 * on the waiting thread exactly as the composite itself does, rather than falling back to
+	 * waiting for the threads that count the shared latch down.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedCompositeSettlesMembersOnWaitingThread() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+
+		OperationSemaphore combined = (OperationSemaphore) Semaphore.all(Arrays.asList(first, second),
+				count -> new DefaultLatchSemaphore((Semaphore) null, count));
+		Semaphore view = combined.withRequester(null);
+		first.release();
+		second.release();
+
+		view.waitFor();
+		assertTrue("The re-attributed view must settle the first member on the waiting thread",
+				first.waitedBy(Thread.currentThread()));
+		assertTrue("The re-attributed view must settle the second member on the waiting thread",
+				second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A re-attributed view of a composite shares the composite's failure as well as its members:
+	 * a member failure observed while the view settles the members is rethrown to the view's
+	 * waiter, and the remaining members are still settled.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedCompositeRethrowsMemberFailure() {
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failing = new RecordingCompletion(failure);
+		RecordingCompletion ok = new RecordingCompletion(null);
+
+		OperationSemaphore combined = (OperationSemaphore) Semaphore.all(Arrays.asList(failing, ok),
+				count -> new DefaultLatchSemaphore((Semaphore) null, count));
+		Semaphore view = combined.withRequester(null);
+		failing.release();
+		ok.release();
+
+		try {
+			view.waitFor();
+			Assert.fail("A member failure must reach the waiter of a re-attributed composite");
+		} catch (IllegalStateException e) {
+			assertTrue(e == failure);
+		}
+
+		assertTrue("A failing member must not stop the view settling the remaining members",
+				ok.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A wait on a composite by an interrupted thread returns without blocking on members that
+	 * have not completed, exactly as an interrupted wait on a plain latch does, and leaves the
+	 * interrupt status set for the caller to observe.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedCompositeWaitReturnsWithoutSettlingMembers() {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+
+		Thread.currentThread().interrupt();
+		try {
+			combined.waitFor();
+			assertTrue("The interrupt status must survive the wait", Thread.currentThread().isInterrupted());
+		} finally {
+			Thread.interrupted();
+		}
+
+		assertFalse("An interrupted wait must not settle the first member",
+				first.waitedBy(Thread.currentThread()));
+		assertFalse("An interrupted wait must not settle the second member",
+				second.waitedBy(Thread.currentThread()));
+
+		first.release();
+		second.release();
+		combined.waitFor();
+		assertTrue(first.waitedBy(Thread.currentThread()));
+		assertTrue(second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A waiter interrupted while it settles a member that reports the interrupt by throwing
+	 * returns normally with its interrupt status set, rather than receiving the member's
+	 * exception as a group failure. That exception is not recorded on the composite either, so
+	 * a later waiter, once the members have actually completed, is released without a failure.
+	 */
+	@Test(timeout = 30000)
+	public void interruptDuringMemberWaitDoesNotFailComposite() throws InterruptedException {
+		RecordingCompletion first = new RecordingCompletion(null);
+		RecordingCompletion second = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(first, second));
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(() -> {
+			try {
+				combined.waitFor();
+			} catch (Throwable t) {
+				thrown.set(t);
+			}
+
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		});
+
+		waiter.start();
+		while (!first.waitedBy(waiter)) Thread.sleep(1);
+		waiter.interrupt();
+		waiter.join();
+
+		Assert.assertNull("An interrupted waiter must not receive the interrupt as a member failure",
+				thrown.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse("An interrupted wait must not go on to settle the second member",
+				second.waitedBy(waiter));
+
+		first.release();
+		second.release();
+		combined.waitFor();
+		assertTrue(first.waitedBy(Thread.currentThread()));
+		assertTrue(second.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * A waiter interrupted while it settles a deferred member (the {@link Semaphore#then}
+	 * completion of a dependency that has not completed) returns promptly with its interrupt
+	 * status set, as an interrupted wait on the composite's latch would, instead of staying
+	 * blocked until the deferred work starts. The composite still completes normally later.
+	 */
+	@Test(timeout = 30000)
+	public void interruptDuringDeferredMemberWaitReturns() throws InterruptedException {
+		DefaultLatchSemaphore dependency = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore deferred = dependency.then(() -> null);
+		RecordingCompletion other = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(deferred, other));
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(() -> {
+			try {
+				combined.waitFor();
+			} catch (Throwable t) {
+				thrown.set(t);
+			}
+
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "SemaphoreCompositionTest waiter");
+
+		waiter.start();
+		Thread.sleep(100);
+		waiter.interrupt();
+		waiter.join(10000);
+
+		assertFalse("An interrupted waiter must not stay blocked on a deferred member", waiter.isAlive());
+		Assert.assertNull(thrown.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse("An interrupted wait must not go on to settle the next member", other.waitedBy(waiter));
+
+		dependency.countDown();
+		other.release();
+		combined.waitFor();
+		assertTrue(other.waitedBy(Thread.currentThread()));
+	}
+
+	/**
+	 * {@link Semaphore#waitForUninterruptibly()} on a composite whose first member has already
+	 * failed does not end at an interrupt with that failure while another member is still
+	 * pending: the failure is rethrown only once every member has settled, and the interrupt
+	 * status is restored.
+	 */
+	@Test(timeout = 30000)
+	public void uninterruptibleWaitSettlesMembersBeforeFailure() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failed = new RecordingCompletion(failure);
+		RecordingCompletion pending = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(failed, pending));
+		failed.release();
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(combined::waitForUninterruptibly, "SemaphoreCompositionTest waiter");
+		waiter.setUncaughtExceptionHandler((t, e) -> {
+			thrown.set(e);
+			interruptKept.set(t.isInterrupted());
+		});
+		waiter.setDaemon(true);
+
+		waiter.start();
+		while (!pending.waitedBy(waiter)) Thread.sleep(1);
+		waiter.interrupt();
+		waiter.join(200);
+
+		assertTrue("An interrupt must not end the wait while a member is pending", waiter.isAlive());
+		Assert.assertNull(thrown.get());
+
+		pending.release();
+		waiter.join(10000);
+
+		assertFalse(waiter.isAlive());
+		assertTrue("The member failure must reach the waiter once every member settled",
+				thrown.get() == failure);
+		assertTrue("The interrupt status must be restored", interruptKept.get());
+	}
+
+	/**
+	 * A completion that records every thread that waits for it, and completes (or fails) once
+	 * {@link #release()} is called.
+	 */
+	private static class RecordingCompletion implements Semaphore {
+		/** Released once this completion has completed. */
+		private final CountDownLatch done = new CountDownLatch(1);
+		/** Every thread that has waited for this completion. */
+		private final Set<Thread> waiters = ConcurrentHashMap.newKeySet();
+		/** The failure every wait rethrows once released, or {@code null} to complete normally. */
+		private final RuntimeException failure;
+
+		/**
+		 * Creates a pending completion.
+		 *
+		 * @param failure the failure to report once released, or {@code null} to complete normally
+		 */
+		RecordingCompletion(RuntimeException failure) {
+			this.failure = failure;
+		}
+
+		/** Completes this completion, releasing every waiter. */
+		void release() { done.countDown(); }
+
+		/**
+		 * Returns whether the given thread has waited for this completion.
+		 *
+		 * @param thread the thread to look for
+		 * @return true if {@code thread} called {@link #waitFor()}
+		 */
+		boolean waitedBy(Thread thread) { return waiters.contains(thread); }
+
+		@Override
+		public void waitFor() {
+			waiters.add(Thread.currentThread());
+
+			try {
+				done.await();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new IllegalStateException("Interrupted before this completion was released", e);
+			}
+
+			if (failure != null) throw failure;
+		}
 	}
 
 	/**

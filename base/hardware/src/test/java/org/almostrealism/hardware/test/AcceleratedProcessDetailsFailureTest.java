@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
@@ -26,6 +27,7 @@ import org.junit.Test;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies that a failure raised by a {@link AcceleratedProcessDetails#whenReady(Runnable)}
@@ -116,6 +118,45 @@ public class AcceleratedProcessDetailsFailureTest {
 		Assert.assertSame(failure, thrown.getCause());
 	}
 
+	/**
+	 * When the last argument is delivered asynchronously and processing the arguments fails,
+	 * the listener that would issue the dispatch can never run. The failure must still settle
+	 * the readiness latch and reach {@code awaitReady}, which otherwise waits for a dispatch
+	 * that will never be issued (and, being uninterruptible, could never be released). The
+	 * failure is also rethrown to the thread that delivered the argument.
+	 */
+	@Test(timeout = 30000)
+	public void argumentProcessingFailureReachesAwaitReady() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("argument replacement failed");
+		MemoryReplacementManager failing = new MemoryReplacementManager(null, null, null) {
+			@Override
+			public Object[] processArguments(Object[] args) {
+				throw failure;
+			}
+		};
+
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[1], 0, failing, SEPARATE_THREAD);
+		details.setReadyLatch(new DefaultLatchSemaphore((OperationMetadata) null, 1));
+
+		AtomicBoolean ran = new AtomicBoolean();
+		details.whenReady(() -> ran.set(true));
+
+		AtomicReference<Throwable> delivered = new AtomicReference<>();
+		Thread producer = new Thread(() -> details.result(0, new Object()), "argument producer");
+		producer.setUncaughtExceptionHandler((t, e) -> delivered.set(e));
+		producer.setDaemon(true);
+		producer.start();
+		producer.join(10000);
+
+		Assert.assertFalse(producer.isAlive());
+		Assert.assertSame("the delivering thread must see the failure", failure, delivered.get());
+
+		HardwareException thrown = awaitFailure(details);
+		Assert.assertSame(failure, thrown.getCause());
+		Assert.assertFalse("the listener must not run without processed arguments", ran.get());
+	}
+
 	/** A listener that completes normally leaves {@code awaitReady} returning normally. */
 	@Test(timeout = 30000)
 	public void successfulListenerDoesNotThrow() {
@@ -126,5 +167,47 @@ public class AcceleratedProcessDetailsFailureTest {
 		details.awaitReady();
 
 		Assert.assertTrue("the listener should have run before awaitReady returned", ran.get());
+	}
+
+	/**
+	 * An interrupt does not end {@code awaitReady} before the dispatch has been issued: the
+	 * waiter returns only once the readiness latch fires, so the completion it reads is the
+	 * one the dispatch published rather than the unfired readiness latch, and its interrupt
+	 * status is restored.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedAwaitReadyWaitsForIssuedDispatch() throws InterruptedException {
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[0], 0, new MemoryReplacementManager(null, null, null), SEPARATE_THREAD);
+		DefaultLatchSemaphore ready = new DefaultLatchSemaphore((OperationMetadata) null, 1);
+		details.setReadyLatch(ready);
+
+		Semaphore published = () -> { };
+		AtomicReference<Semaphore> observed = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+
+		Thread waiter = new Thread(() -> {
+			Thread.currentThread().interrupt();
+			details.awaitReady();
+			observed.set(details.getSemaphore());
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "awaitReady waiter");
+		waiter.setDaemon(true);
+		waiter.start();
+
+		waiter.join(200);
+		Assert.assertTrue("an interrupt pending on entry must not end the wait", waiter.isAlive());
+		waiter.interrupt();
+		waiter.join(200);
+		Assert.assertTrue("an interrupt during the wait must not end it", waiter.isAlive());
+
+		details.setSemaphore(published);
+		ready.countDown();
+		waiter.join(10000);
+
+		Assert.assertFalse(waiter.isAlive());
+		Assert.assertSame("the waiter must read the issued dispatch's completion",
+				published, observed.get());
+		Assert.assertTrue("the interrupt status must be restored", interruptKept.get());
 	}
 }

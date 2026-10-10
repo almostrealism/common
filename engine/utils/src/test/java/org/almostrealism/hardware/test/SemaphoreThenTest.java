@@ -26,6 +26,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.Assert.assertSame;
+
 /**
  * Validates {@link Semaphore#then(java.util.function.Supplier)} and the
  * {@link DeferredSemaphore} it returns, the chaining primitive that lets a backend order a
@@ -173,5 +175,109 @@ public class SemaphoreThenTest extends TestSuiteBase {
 		failing.whenSettled(settled::countDown);
 
 		assertTrue(settled.await(10, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * A waiter interrupted while the dependency is still pending returns promptly with its
+	 * interrupt status set, rather than staying blocked until the work starts; the chained
+	 * semaphore is unaffected and can still be waited for once the dependency completes.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedWaitReturnsWhileDependencyPending() throws InterruptedException {
+		LatchSemaphore dependency = new LatchSemaphore(1);
+		AtomicBoolean workRan = new AtomicBoolean(false);
+
+		Semaphore chained = dependency.then(() -> {
+			workRan.set(true);
+			return null;
+		});
+
+		AtomicBoolean returned = new AtomicBoolean(false);
+		AtomicBoolean interruptKept = new AtomicBoolean(false);
+		Thread waiter = new Thread(() -> {
+			chained.waitFor();
+			interruptKept.set(Thread.currentThread().isInterrupted());
+			returned.set(true);
+		}, "SemaphoreThenTest waiter");
+
+		waiter.start();
+		Thread.sleep(100);
+		waiter.interrupt();
+		waiter.join(10000);
+
+		assertFalse("An interrupted waiter must not stay blocked on a pending dependency", waiter.isAlive());
+		assertTrue(returned.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse(workRan.get());
+
+		dependency.countDown();
+		chained.waitFor();
+		assertTrue(workRan.get());
+	}
+
+	/**
+	 * {@link Semaphore#waitForUninterruptibly()} returns only once the semaphore has completed,
+	 * through an interrupt pending on entry and another arriving during the wait, and restores
+	 * the interrupt status afterwards. {@link Semaphore#waitFor()} would return on the first.
+	 */
+	@Test(timeout = 30000)
+	public void waitForUninterruptiblyWaitsThroughInterrupts() throws InterruptedException {
+		LatchSemaphore pending = new LatchSemaphore(1);
+		AtomicBoolean released = new AtomicBoolean(false);
+		AtomicBoolean completedFirst = new AtomicBoolean(false);
+		AtomicBoolean interruptKept = new AtomicBoolean(false);
+
+		Thread waiter = new Thread(() -> {
+			Thread.currentThread().interrupt();
+			pending.waitForUninterruptibly();
+			completedFirst.set(released.get());
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "SemaphoreThenTest uninterruptible waiter");
+
+		waiter.start();
+		waiter.join(200);
+		assertTrue("An interrupt pending on entry must not end the wait", waiter.isAlive());
+		waiter.interrupt();
+		waiter.join(200);
+		assertTrue("An interrupt arriving during the wait must not end it", waiter.isAlive());
+
+		released.set(true);
+		pending.countDown();
+		waiter.join(10000);
+
+		assertFalse(waiter.isAlive());
+		assertTrue("The wait must return only after the semaphore completed", completedFirst.get());
+		assertTrue("The interrupt status must be restored", interruptKept.get());
+	}
+
+	/**
+	 * {@link Semaphore#waitForUninterruptibly()} on a semaphore that has already completed
+	 * returns at once even when the caller is interrupted, and a failure is rethrown exactly as
+	 * by {@link Semaphore#waitFor()}; in both cases the interrupt status is restored.
+	 */
+	@Test(timeout = 30000)
+	public void waitForUninterruptiblyReturnsCompletedAndRethrowsFailure() {
+		LatchSemaphore completed = new LatchSemaphore(1);
+		completed.countDown();
+
+		Thread.currentThread().interrupt();
+		completed.waitForUninterruptibly();
+		assertTrue("The interrupt status must be restored", Thread.interrupted());
+
+		LatchSemaphore failed = new LatchSemaphore(1);
+		IllegalStateException failure = new IllegalStateException("member failed");
+		failed.fail(failure);
+		failed.countDown();
+
+		Thread.currentThread().interrupt();
+		IllegalStateException thrown = null;
+		try {
+			failed.waitForUninterruptibly();
+		} catch (IllegalStateException e) {
+			thrown = e;
+		}
+
+		assertTrue("The interrupt status must be restored after a failure", Thread.interrupted());
+		assertSame(failure, thrown);
 	}
 }
