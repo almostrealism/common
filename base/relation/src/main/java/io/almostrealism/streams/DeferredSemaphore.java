@@ -17,7 +17,7 @@
 package io.almostrealism.streams;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
 /**
@@ -64,6 +64,11 @@ public class DeferredSemaphore implements Semaphore {
 	/**
 	 * Waits for the work to start and then for its completion.
 	 *
+	 * <p>The wait for the work to start is interruptible: an interrupt returns at once with
+	 * the interrupt status set, as an interrupted wait on a latch does, so a waiter (such as
+	 * a composite settling its members) is never pinned by a dependency that has not
+	 * completed.</p>
+	 *
 	 * @throws RuntimeException if the dependency or the work failed
 	 */
 	@Override
@@ -71,8 +76,11 @@ public class DeferredSemaphore implements Semaphore {
 		Semaphore completion;
 
 		try {
-			completion = started.join();
-		} catch (CompletionException e) {
+			completion = started.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return;
+		} catch (ExecutionException e) {
 			Throwable cause = e.getCause();
 			if (cause instanceof RuntimeException) throw (RuntimeException) cause;
 			if (cause instanceof Error) throw (Error) cause;

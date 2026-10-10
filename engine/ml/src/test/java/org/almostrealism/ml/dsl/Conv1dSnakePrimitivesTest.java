@@ -27,6 +27,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -206,7 +207,7 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	public void conv1dRejectsWrongArgumentCount() {
 		PackedCollection weight = new PackedCollection(shape(2, 2, 3));
 		try {
-			PdslBuiltins.call("conv1d", List.of(weight, 1));
+			PdslBuiltins.call("conv1d", List.of(weight, 1), new HashSet<>());
 			Assert.fail("conv1d should reject a two-argument call");
 		} catch (PdslParseException expected) {
 			// expected
@@ -218,7 +219,7 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	public void snakeRejectsWrongArgumentCount() {
 		PackedCollection alpha = new PackedCollection(shape(3));
 		try {
-			PdslBuiltins.call("snake", List.of(alpha));
+			PdslBuiltins.call("snake", List.of(alpha), new HashSet<>());
 			Assert.fail("snake should reject a one-argument call");
 		} catch (PdslParseException expected) {
 			// expected
@@ -323,7 +324,7 @@ public class Conv1dSnakePrimitivesTest extends TestSuiteBase implements LayerRou
 	public void convTranspose1dRejectsWrongArgumentCount() {
 		PackedCollection weight = new PackedCollection(shape(2, 2, 3));
 		try {
-			PdslBuiltins.call("conv_transpose1d", List.of(weight, 2, 1));
+			PdslBuiltins.call("conv_transpose1d", List.of(weight, 2, 1), new HashSet<>());
 			Assert.fail("conv_transpose1d should reject a three-argument call");
 		} catch (PdslParseException expected) {
 			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("output_padding"));
