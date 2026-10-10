@@ -210,7 +210,20 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * therefore ordered after the foreign work with no host wait and no forced commit. If the
 	 * foreign work never completes, the buffer never completes — the same exposure a blocking
 	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
-	 * before the dispatch is encoded.</p>
+	 * on the calling thread before the dispatch is encoded.</p>
+	 *
+	 * <p>Neither that wait nor the wait for the dispatch to be encoded is ended by an interrupt
+	 * of the calling thread, whose interrupt status is restored before this method returns: a
+	 * dispatch encoded before its dependency completed would read stale memory, and a call that
+	 * returned before encoding would have no completion to return.</p>
+	 *
+	 * <p><b>Ordering contract:</b> a dispatch is ordered after exactly what {@code dependsOn}
+	 * names, and is encoded before this method returns, so a dispatch submitted after another
+	 * {@code submit} has returned is encoded after it. Concurrent calls (neither having
+	 * returned before the other began) are not ordered with respect to each other: they are
+	 * encoded in whatever order they are admitted, and a call waiting for an unbridged foreign
+	 * dependency admits others meanwhile. A dispatch that must follow another names that
+	 * one's completion as its {@code dependsOn}.</p>
 	 *
 	 * <p><b>Bridge event lifecycle:</b> the per-bridge event is released with its buffer's
 	 * completion callbacks. On the success path the buffer's encoded wait guarantees the host
@@ -225,7 +238,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
-	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
+	 * @param dependsOn  the completion this dispatch depends on (a {@link MetalSemaphore} of this
+	 *                   runner, or any foreign {@link Semaphore}), or {@code null}
 	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
 	 * @return this dispatch's completion semaphore
 	 */
@@ -234,11 +248,34 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		executor.requireOffConfinedThread();
+
+		// An unbridged foreign dependency is waited here, on the caller's thread, never on the
+		// executor's: settling it may need this runner (a composite over this runner's own
+		// semaphores completes each of them through complete(), which runs on the executor).
+		// An interrupt must not end the wait early, or the dispatch would be encoded before
+		// the work it is ordered after has completed
+		Semaphore order = dependsOn;
+		if (order != null && !enableHostSignaledBridges && !ordersAfter(order)) {
+			order.waitForUninterruptibly();
+			order = null;
+		}
+
 		synchronized (admission) {
-			encode(requester, command, dependsOn, onComplete, result);
+			encode(requester, command, order, onComplete, result);
 		}
 
 		return result.get(0);
+	}
+
+	/**
+	 * Returns true if {@code dependsOn} is the completion of a dispatch submitted to this runner,
+	 * which {@link #submit} orders on the GPU rather than bridging as a foreign dependency.
+	 *
+	 * @param dependsOn a completion, or {@code null}
+	 * @return true if {@code dependsOn} is a {@link MetalSemaphore} of this runner
+	 */
+	public boolean ordersAfter(Semaphore dependsOn) {
+		return dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this;
 	}
 
 	/**
@@ -253,9 +290,9 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 */
 	private void encode(OperationMetadata requester, MetalCommand command,
 						Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
-		executor.run(() -> {
-			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
-					((MetalSemaphore) dependsOn).getRunner() == this;
+		// Uninterruptible: submit returns the completion this task adds to result
+		executor.runUninterruptibly(() -> {
+			boolean sameRunner = ordersAfter(dependsOn);
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
@@ -264,11 +301,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			if (dependency != null) {
 				waitValue = dependency.getCommandBuffer() == openBuffer ?
 						dependency.getPriorBufferValue() : dependency.getValue();
-			}
-
-			if (foreign != null && !enableHostSignaledBridges) {
-				foreign.waitFor();
-				foreign = null;
 			}
 
 			// A bridged dispatch must start a fresh buffer: the foreign completion may itself

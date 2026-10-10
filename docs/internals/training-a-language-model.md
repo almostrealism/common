@@ -14,8 +14,8 @@ general rule that `ModelOptimizer` owns the training loop.
 | Next-token dataset | `NextTokenDataset` (`org.almostrealism.ml`) | Input `(seqLen)` token ids, target `(seqLen, vocab)` one-hot rows of the tokens shifted by one. `split` partitions the source tokens into contiguous regions before windowing, so no window crosses the train/held-out seam. |
 | One-hot rows | `VectorFeatures.oneHotRows` | One producer for the whole `(rows, classes)` matrix. |
 | Token embedding | `LayerFeatures.embedding` | Gathers table rows with `CollectionFeatures.rows`; gradients reach the table (`EmbeddingTests`). |
-| Causal attention | `SequenceAttentionFeatures` | `sequenceAttention(..., causal)` adds `causalLogitMask` (zero for key `j <= i`, a large negative penalty otherwise) to the logits before the key-axis softmax, alongside any per-key mask. Reached from `TransformerBlockFeatures.transformerBlock(..., causal)` through the `AttentionFeatures.selfAttention` variant seam; `DifferentialAttentionFeatures` rejects `causal = true`. |
-| Gradients into K and V | `SequenceAttentionFeatures.scaledDotProductAttention(..., Block k, Block v, ...)` | K and V are wired into the two attention products as auxiliary inputs (`LayerRoutingFeatures.compose`), so the fused QKV weight receives gradients in all three slices (`SequenceAttentionGradientTest`). |
+| Causal attention | `SequenceAttentionFeatures` | `sequenceAttention(..., causal)` builds a causal layer of `sequence_attention.pdsl`, whose score half's `sequence_causal_mask` stage adds `causalLogitMask` (zero for key `j <= i`, a large negative penalty otherwise) to the logits before the key-axis softmax, alongside any per-key mask. Reached from `TransformerBlockFeatures.transformerBlock(..., causal)` through the `AttentionFeatures.selfAttention` variant seam; `DifferentialAttentionFeatures` rejects `causal = true`. |
+| Gradients into K and V | `sequence_attention.pdsl`, the PDSL `scaled_dot_product` built-in | The keys and values are branches of the attention layer, and `scaled_dot_product` takes a branch as its second operand, wiring it into the product as an auxiliary input (`LayerRoutingFeatures.compose`), so the fused QKV weight receives gradients in all three slices (`SequenceAttentionGradientTest`). |
 | Loss | `logSoftmax` + `NegativeLogLikelihood` | The model ends in a `(seqLen, vocab)` output, so the loss is the mean over positions; `NegativeLogLikelihood.gradient` is `-target / rows`, the gradient of that mean. |
 | Model | `CausalLanguageModel` (a `Model`) and `CausalLanguageModelConfig` (a `TransformerConfig`) | Embedding, `depth` pre-norm RMS blocks with causal RoPE attention and a SiLU-gated feed-forward, final RMS norm, output projection, log-softmax, assembled when the model is constructed. Weights live in a `StateDictionary`; the configuration owns their shapes and keys and creates fresh ones. |
 | Optimizer | `AdamOptimizer` set with `Model.setParameterUpdate` | `CausalLanguageModel` starts with updates disabled, so Adam must be set before the model is compiled for training. |
@@ -30,6 +30,9 @@ buffers: a finite-difference check showed the K and V slices of the fused QKV we
 gradient of exactly zero while the Q slice matched. The fused projection is now split with the
 query part as the main path and the key and value parts as branches pushed ahead of it, and the
 branches feed the products through `compose`, whose backward pass propagates into both inputs.
+That structure is the `sequence_attention.pdsl` asset `sequenceAttention` builds: its `keys` and
+`values` branches are the operands of the `scaled_dot_product` stages of the score and context
+layers.
 The same buffering pattern remains in `sequenceCrossAttention`, `TransformerResamplingFeatures`
 and `DifferentialAttentionFeatures`; those paths do not yet deliver gradients to their K/V
 projections.
