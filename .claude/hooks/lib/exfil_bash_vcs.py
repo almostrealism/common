@@ -77,14 +77,45 @@ def _git_call(argv):
     return argv[j], argv[j + 1:], opts
 
 
-def _check_git(argv, ctx):
-    sub, args, opts = _git_call(argv)
+def _git_working_dir(ctx, opts):
+    """The directory a git invocation runs in, after its global options.
+
+    ``-C`` inside this project's work tree only changes where git runs, so
+    it is followed; ``-C`` anywhere else, and ``--git-dir`` / ``--work-tree``
+    at all, point git at another repository and are a block. Successive
+    ``-C`` options compose in git, which the guard does not follow, so more
+    than one is a block too. Returns ``ctx.command_cwd`` itself when there
+    is no ``-C``.
+    """
+    c_values = []
     for opt, value in opts:
-        if opt in ("-C", "--git-dir", "--work-tree"):
+        if opt in ("--git-dir", "--work-tree"):
             raise _GuardError(f"git {opt} points at another repository; only this project's "
                               f"origin may be pushed to")
         if opt == "-c" and _GIT_CONFIG_SENSITIVE.match(value):
             raise _GuardError(f"git -c {value!r} rewrites remote/transport configuration; denied")
+        if opt == "-C":
+            c_values.append(value)
+    if not c_values:
+        return ctx.command_cwd
+    if len(c_values) > 1:
+        raise _GuardError("git with more than one -C; the guard does not compose successive "
+                          "directory changes, so pass a single -C")
+    target = c_values[0]
+    base = ctx.require_cwd("git -C")
+    resolved = os.path.realpath(target if os.path.isabs(target) else os.path.join(base, target))
+    toplevel = os.path.realpath(ctx.project_toplevel)
+    if os.path.commonpath([resolved, toplevel]) != toplevel:
+        raise _GuardError(f"git -C {target} points at another repository ({resolved}); only "
+                          f"this project's origin may be pushed to")
+    return resolved
+
+
+def _check_git(argv, ctx):
+    sub, args, opts = _git_call(argv)
+    cwd = _git_working_dir(ctx, opts)
+    if cwd is not ctx.command_cwd:
+        ctx = ctx.at(cwd)
     if sub in GIT_BLOCKED_SUBCOMMANDS:
         raise _GuardError(f"git {sub} sends data or credentials somewhere else; denied")
     if sub == "remote" and args and args[0] in _GIT_REMOTE_MUTATORS:

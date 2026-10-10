@@ -154,6 +154,26 @@ bypass what this server rejects, and clamps `postCompletionTimeoutSeconds` to th
 of this rule for interactive agent use: it rejects `test_group`/`test_groups` (CI-shard
 reproduction) outright and caps `timeout_minutes` at 40.
 
+## Letting a Job Edit Agent Tooling (`.claude/hooks/`)
+
+Two operator-only `workstream_submit_task` flags govern two separate gates, and a
+job that must edit `.claude/hooks/` or `.claude/settings.json` needs both of them
+lifted:
+
+| Flag | Gate it lifts | Where it acts |
+|------|---------------|---------------|
+| `sensitive_file_protection_enabled=False` | The harness's test-file and CI-file staging locks, and the controller-signed `Sensitive-File-Bypass` commit trailer | Harness side only (`GitCommitHandler`, `FileStager`); never reaches the agent subprocess |
+| `skip_agent_permission_prompts=True` | The agent runtime's own per-call refusal of writes under `.claude/`, environment and credential files ("... which is a sensitive file") | The agent subprocess: Claude Code is launched with `--permission-mode bypassPermissions` (`ClaudeCodeRunner.buildCommandLine`) |
+
+`sensitive_file_protection_enabled=False` on its own does **not** let the agent
+write under `.claude/hooks/`: every Edit, Write and Bash write there is still
+refused. `skip_agent_permission_prompts=True` is also required, unless the
+workstream's agent-permission-bypass branch prefixes already match the job's
+target branch (`Workstream.applyCapabilities`). On a `ci/...` branch the CI-file
+lock already exempts `.claude/hooks/`, so the permission-prompt bypass is the
+flag that decides whether the edit can be made at all. Neither flag can be set by
+an in-flight coding agent.
+
 ## Environment Variables
 
 | Variable | Default | Description |

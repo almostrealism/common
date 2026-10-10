@@ -87,6 +87,223 @@ SYSTEM_PREFIXES = ("/bin/", "/sbin/", "/usr/", "/opt/homebrew/", "/opt/local/",
                    "/Library/", "/System/", "/Applications/", "/nix/")
 
 
+class _CopyFlags:
+    """The option grammar of one copy tool, as far as the guard needs it to
+    tell destination operands from source operands.
+
+    ``dest_flags`` names the options whose value is a destination (``-t``
+    for cp, ``-O`` for zip). Any option outside the known sets makes the
+    argument shape ambiguous, and the caller then falls back to treating
+    every argument as a possible destination.
+    """
+
+    def __init__(self, bool_short, value_short="", bool_long=(), value_long=(),
+                 dest_flags=()):
+        self.bool_short = bool_short
+        self.value_short = value_short
+        self.bool_long = frozenset(bool_long)
+        self.value_long = frozenset(value_long)
+        self.dest_flags = frozenset(dest_flags)
+
+    def parse(self, args, old_style_bundle=False):
+        """Return ``(positionals, flag_values)`` for ``args``, or ``None``
+        when an option is not one this grammar knows. ``flag_values`` maps
+        each value-taking option seen (``-f`` or ``--file``) to its values.
+        With ``old_style_bundle`` a dashless first argument is a bundle of
+        short options whose values are taken from the following arguments
+        in order (``tar xf a.tar``)."""
+        positionals, values = [], {}
+        i, options_done = 0, False
+        while i < len(args):
+            a = args[i]
+            old_style = False
+            if options_done or a == "-" or not a.startswith("-"):
+                if not (old_style_bundle and i == 0 and a.isalpha()):
+                    positionals.append(a)
+                    i += 1
+                    continue
+                a, old_style = "-" + a, True
+            elif a == "--":
+                options_done = True
+                i += 1
+                continue
+            if a.startswith("--"):
+                name, eq, value = a.partition("=")
+                if name in self.value_long:
+                    if not eq:
+                        i += 1
+                        if i >= len(args):
+                            return None
+                        value = args[i]
+                    values.setdefault(name, []).append(value)
+                elif name not in self.bool_long:
+                    return None
+                i += 1
+                continue
+            letters, pending = a[1:], []
+            for k, ch in enumerate(letters):
+                if ch in self.value_short:
+                    rest = letters[k + 1:]
+                    if rest and not old_style:
+                        values.setdefault("-" + ch, []).append(rest)
+                        break
+                    pending.append("-" + ch)
+                    if not old_style:
+                        break
+                elif ch not in self.bool_short:
+                    return None
+            for flag in pending:
+                i += 1
+                if i >= len(args):
+                    return None
+                values.setdefault(flag, []).append(args[i])
+            i += 1
+        return positionals, values
+
+    def destinations(self, values):
+        """The values of every destination-valued option in ``values``."""
+        return [v for flag in self.dest_flags for v in values.get(flag, [])]
+
+
+_TARGET_DIR = ("-t", "--target-directory")
+_COPY_FLAGS = {
+    "cp": _CopyFlags("aRrHLPfinpvXcxslubdTFZ", "tS",
+                     ("--archive", "--recursive", "--force", "--interactive",
+                      "--no-clobber", "--preserve", "--verbose", "--no-target-directory",
+                      "--parents", "--link", "--symbolic-link", "--update", "--dereference",
+                      "--no-dereference", "--one-file-system", "--remove-destination",
+                      "--sparse", "--backup", "--reflink", "--no-preserve"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "mv": _CopyFlags("finvuFhT", "tS",
+                     ("--force", "--interactive", "--no-clobber", "--verbose", "--update",
+                      "--backup", "--no-target-directory", "--strip-trailing-slashes"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "ln": _CopyFlags("sfFhinvLPrT", "tS",
+                     ("--symbolic", "--force", "--interactive", "--no-dereference",
+                      "--verbose", "--relative", "--logical", "--physical",
+                      "--no-target-directory", "--backup"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "install": _CopyFlags("bCcdpsvMDUT", "gmoftBS",
+                          ("--compare", "--directory", "--preserve-timestamps", "--strip",
+                           "--verbose", "--no-target-directory", "--backup"),
+                          ("--group", "--mode", "--owner", "--target-directory", "--suffix"),
+                          _TARGET_DIR),
+    "ditto": _CopyFlags("vVckxzj", "",
+                        ("--rsrc", "--norsrc", "--extattr", "--noextattr", "--qtn", "--noqtn",
+                         "--acl", "--noacl", "--keepParent", "--sequesterRsrc", "--nocache",
+                         "--hfsCompression", "--nohfsCompression", "--preserveHFSCompression",
+                         "--nopreserveHFSCompression"),
+                        ("--arch", "--bom", "--zlibCompressionLevel")),
+    # TODO(review): --backup-dir/--temp-dir/--partial-dir/--log-file (-T) write to their
+    # value, which is no longer checked against /Volumes and synced folders.
+    "rsync": _CopyFlags("avzrlptgoDhPnuciqWxHAXSEmRbKkLOJ0yC8F", "efBTM",
+                        ("--archive", "--verbose", "--compress", "--recursive", "--links",
+                         "--perms", "--times", "--group", "--owner", "--devices", "--specials",
+                         "--human-readable", "--progress", "--partial", "--delete",
+                         "--dry-run", "--update", "--checksum", "--inplace", "--quiet",
+                         "--whole-file", "--hard-links", "--acls", "--xattrs", "--sparse",
+                         "--stats", "--itemize-changes", "--mkpath", "--delete-after",
+                         "--delete-excluded", "--no-perms", "--no-owner", "--no-group",
+                         "--ignore-existing", "--size-only", "--copy-links", "--safe-links",
+                         "--one-file-system", "--remove-source-files"),
+                        ("--exclude", "--include", "--exclude-from", "--include-from",
+                         "--filter", "--rsh", "--rsync-path", "--temp-dir", "--partial-dir",
+                         "--log-file", "--chmod", "--chown", "--bwlimit", "--timeout",
+                         "--backup-dir", "--suffix", "--link-dest", "--compare-dest",
+                         "--copy-dest", "--files-from", "--port", "--password-file",
+                         "--max-size", "--min-size", "--info", "--debug")),
+    "tee": _CopyFlags("aip", "", ("--append", "--ignore-interrupts", "--output-error")),
+    "zip": _CopyFlags("rqvjDmTyXlLkuFfdSAcz0123456789@egw", "bOn",
+                      ("--recurse-paths", "--quiet", "--verbose", "--junk-paths", "--symlinks",
+                       "--move", "--update", "--freshen", "--test", "--encrypt"),
+                      ("--out", "--temp-path", "--suffixes"), ("-O", "--out")),
+    "tar": _CopyFlags("xctruAdvzjJpPkmhOSlwWaZBiGMUo", "fCbTXKNVLgHI",
+                      ("--extract", "--get", "--create", "--append", "--update",
+                       "--concatenate", "--catenate", "--delete", "--list", "--diff",
+                       "--compare", "--verbose", "--gzip", "--gunzip", "--bzip2", "--xz",
+                       "--zstd", "--no-same-owner", "--same-owner", "--preserve-permissions",
+                       "--keep-old-files", "--overwrite", "--to-stdout", "--auto-compress",
+                       "--exclude-vcs", "--numeric-owner", "--wildcards", "--absolute-names",
+                       "--dereference", "--one-file-system", "--totals"),
+                      ("--file", "--directory", "--exclude", "--strip-components",
+                       "--transform", "--owner", "--group", "--mode", "--files-from",
+                       "--exclude-from", "--use-compress-program", "--format", "--sort",
+                       "--mtime")),
+}
+_TAR_EXTRACT = frozenset({"x", "--extract", "--get"})
+_TAR_WRITE = frozenset({"c", "r", "u", "A", "--create", "--append", "--update",
+                        "--concatenate", "--catenate", "--delete"})
+_TAR_READ = frozenset({"t", "d", "--list", "--diff", "--compare"})
+
+
+def _tar_destinations(args):
+    """Where a ``tar`` invocation writes: the ``-C`` directory when it
+    extracts, the ``-f`` archive when it creates or appends, nothing when
+    it only lists. ``None`` when the mode cannot be determined."""
+    flags = _COPY_FLAGS["tar"]
+    parsed = flags.parse(args, old_style_bundle=True)
+    if parsed is None:
+        return None
+    _, values = parsed
+    words = set()
+    for i, a in enumerate(args):
+        if a == "--":
+            break
+        if a.startswith("--"):
+            words.add(a.split("=", 1)[0])
+        elif a.startswith("-") or (i == 0 and a.isalpha()):
+            for ch in a.lstrip("-"):
+                if ch in flags.value_short:
+                    break
+                words.add(ch)
+    modes = [m for m in (_TAR_EXTRACT, _TAR_WRITE, _TAR_READ) if words & m]
+    if len(modes) != 1:
+        return None
+    if modes[0] is _TAR_EXTRACT:
+        return values.get("-C", []) + values.get("--directory", [])
+    if modes[0] is _TAR_WRITE:
+        return values.get("-f", []) + values.get("--file", [])
+    return []
+
+
+def _copy_destinations(prog, args):
+    """The arguments a copy tool writes to, or ``None`` when its argument
+    shape is ambiguous (an option the guard does not know, or a tool whose
+    operands it does not enumerate) and every argument must be treated as a
+    possible destination.
+
+    Reading from a mounted volume or a cloud-synced folder is not an
+    upload; writing into one is, so only the destination is checked.
+    """
+    if prog == "cat":
+        return []
+    if prog == "dd":
+        return [a[3:] for a in args if a.startswith("of=")]
+    if prog == "tar":
+        return _tar_destinations(args)
+    flags = _COPY_FLAGS.get(prog)
+    if flags is None:
+        return None
+    parsed = flags.parse(args)
+    if parsed is None:
+        return None
+    positionals, values = parsed
+    named = flags.destinations(values)
+    if prog == "tee":
+        return positionals
+    if prog == "zip":
+        return named + positionals[:1]
+    if named:
+        return named
+    if prog == "install" and ("d" in "".join(a[1:] for a in args if a.startswith("-")
+                                            and not a.startswith("--"))
+                              or "--directory" in args):
+        return positionals
+    if prog == "ln" and len(positionals) < 2:
+        return []
+    return positionals[-1:]
+
+
 def _check_program_file(prog_token, ctx, depth):
     """Scripts invoked by path (or found on PATH outside a system prefix) are scanned."""
     if "/" in prog_token:
@@ -174,10 +391,12 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if prog in BLOCKED_SUBCOMMANDS and any(a in BLOCKED_SUBCOMMANDS[prog] for a in argv[1:]):
         raise _GuardError(f"{prog} {' '.join(a for a in argv[1:] if a in BLOCKED_SUBCOMMANDS[prog])} "
                           f"publishes or uploads; denied")
-    if prog in COPY_TOOLS and any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/")
-                                  for a in argv[1:]):
-        raise _GuardError(f"{prog} touches a cloud-synced folder or mounted volume; copying data "
-                          f"there is an upload")
+    if prog in COPY_TOOLS:
+        destinations = _copy_destinations(prog, argv[1:])
+        suspects = argv[1:] if destinations is None else destinations
+        if any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/") for a in suspects):
+            raise _GuardError(f"{prog} writes into a cloud-synced folder or mounted volume; "
+                              f"copying data there is an upload")
     if prog in UPLOAD_TOOLS:
         return _check_upload_tool(prog, argv, piped, ctx)
     if prog in SSH_FAMILY:

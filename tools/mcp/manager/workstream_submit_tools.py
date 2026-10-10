@@ -232,6 +232,14 @@ def workstream_submit_task(
             forge or substitute the bypass because it does not have access to
             the signing secret. This flag is operator-controlled at job
             submission time and is NEVER settable by the agent itself.
+            It acts only on the harness side (staging and the commit
+            trailer); it never reaches the agent subprocess. On its own it
+            does NOT let the agent write under ``.claude/hooks/`` or
+            ``.claude/settings.json``: the agent runtime still refuses those
+            writes ("... which is a sensitive file"). A job that must edit
+            that tooling also needs ``skip_agent_permission_prompts=True``,
+            or a workstream whose agent-permission-bypass branch prefixes
+            match its target branch.
         skip_agent_permission_prompts: When ``True``, this one job's agent
             session is launched with the agent runtime's interactive
             permission prompts bypassed (for Claude Code,

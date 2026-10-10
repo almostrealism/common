@@ -359,6 +359,39 @@ class BashNetworkTests(GuardFixture):
         self.assertEqual("block", self.bash("cp f ~/Dropbox/")["action"])
         self.assertEqual("block", self.bash("cp f /Volumes/USB/")["action"])
 
+    def test_copy_from_mounted_volume_allows(self):
+        """Only the destination of a copy is an upload. Reading from a mounted
+        volume or a synced folder into the work tree, or onward to an
+        allowlisted lab host, moves nothing off the machine's control."""
+        self.assertAllowed(self.bash("cp /Volumes/USB/f ."))
+        self.assertAllowed(self.bash("cat /Volumes/USB/notes.txt"))
+        self.assertAllowed(self.bash("dd if=/Volumes/USB/disk.img of=local.img"))
+        self.assertAllowed(self.bash("tar -cf out.tar /Volumes/USB/src"))
+        self.assertAllowed(self.bash(
+            "scp /Volumes/enclosure0/Models/x.gguf agent1@amd-halo:models/"))
+        self.assertAllowed(self.bash(
+            "rsync -a /Volumes/enclosure0/Models/x/ agent1@amd-halo:models/x/"))
+
+    def test_copy_into_mounted_volume_blocks_in_every_form(self):
+        """The destination is found however the tool names it: a target
+        directory flag, an output operand, an extraction directory or an
+        archive being written."""
+        for cmd in ("cp -t /Volumes/USB/ a b", "mv a /Volumes/USB/",
+                    "rsync -a --exclude .git src/ /Volumes/USB/x/",
+                    "tee /Volumes/USB/log.txt", "tee -a ~/Dropbox/log.txt",
+                    "dd if=local.img of=/Volumes/USB/disk.img",
+                    "tar -xf a.tar -C /Volumes/USB/x", "tar xzf a.tgz -C /Volumes/USB/x",
+                    "tar -cf /Volumes/USB/out.tar src", "zip -r /Volumes/USB/o.zip src",
+                    "ln -s a /Volumes/USB/link", "install -d /Volumes/USB/dir"):
+            with self.subTest(cmd=cmd):
+                self.assertBlocked(self.bash(cmd), "cloud-synced")
+
+    def test_copy_with_unrecognized_option_fails_closed(self):
+        """An option the guard does not know makes the destination
+        unidentifiable, so any volume path among the arguments blocks."""
+        self.assertBlocked(self.bash("cp --unknown-flag /Volumes/USB/f ."), "cloud-synced")
+        self.assertBlocked(self.bash("gzip -c /Volumes/USB/f"), "cloud-synced")
+
 
 class BashGitAndGhTests(GuardFixture):
 
@@ -405,6 +438,28 @@ class BashGitAndGhTests(GuardFixture):
         self.assertEqual("block", self.bash("git push --receive-pack=x origin")["action"])
         self.assertEqual("block", self.bash("git send-email HEAD~1")["action"])
         self.assertAllowed(self.bash("git config --get remote.origin.url"))
+
+    def test_git_in_tree_directory_option_allows(self):
+        """`git -C` into this project's own work tree only changes where git
+        runs; it is followed rather than refused."""
+        os.makedirs(os.path.join(self.root, "sub"))
+        self.assertAllowed(self.bash(f"git -C {self.root} status"))
+        self.assertAllowed(self.bash("git -C sub log --oneline -1"))
+
+    def test_git_directory_option_outside_tree_blocks(self):
+        self.assertBlocked(self.bash(f"git -C {self.outside_dir} status"),
+                           "points at another repository")
+        self.assertBlocked(self.bash("git -C ../elsewhere push origin"),
+                           "points at another repository")
+        self.assertBlocked(self.bash("git -C sub -C .. status"), "more than one -C")
+
+    def test_git_in_tree_directory_option_push_checks_origin(self):
+        """A push through an in-tree `-C` reaches the same origin check as a
+        plain push from that directory."""
+        self.assertAllowed(self.bash(f"git -C {self.root} push origin HEAD"))
+        _git(self.root, "remote", "set-url", "origin", "git@github.com:someone-else/dump.git")
+        self.assertBlocked(self.bash(f"git -C {self.root} push origin HEAD"),
+                           "not an allowlisted git remote")
 
     def test_git_reads_allow(self):
         for cmd in ("git status", "git diff --stat", "git fetch origin", "git pull --ff-only",
