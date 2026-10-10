@@ -169,10 +169,11 @@ lifted:
 write under `.claude/hooks/`: every Edit, Write and Bash write there is still
 refused. `skip_agent_permission_prompts=True` is also required, unless the
 workstream's agent-permission-bypass branch prefixes already match the job's
-target branch (`Workstream.applyCapabilities`). On a `ci/...` branch the CI-file
-lock already exempts `.claude/hooks/`, so the permission-prompt bypass is the
-flag that decides whether the edit can be made at all. Neither flag can be set by
-an in-flight coding agent.
+target branch (`Workstream.applyCapabilities`). The pipeline's CI-file lock
+(`check-ci-file-lock.sh`) covers only `.github/workflows/`, `.github/actions/` and
+`tools/ci/`, never `.claude/hooks/`, so it is not what stands in the way of such an
+edit: the permission-prompt bypass is the flag that decides whether the edit can be
+made at all. Neither flag can be set by an in-flight coding agent.
 
 ## Environment Variables
 
