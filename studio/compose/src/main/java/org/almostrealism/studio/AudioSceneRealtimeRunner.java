@@ -401,8 +401,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
 		Runnable renderOp = renderOps.get();
-		PatternRenderStream renderStream = new PatternRenderStream(
-				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
@@ -474,6 +472,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				}
 			}
 		}
+
+		// Created and registered only after every fallible construction step above has
+		// succeeded, so a failure never leaves an orphaned stream holding a native ring.
+		PatternRenderStream renderStream = new PatternRenderStream(
+				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+		scene.registerRenderStream(renderStream);
 
 		return new TemporalCellular() {
 			/**

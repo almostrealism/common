@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -50,6 +51,22 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link PatternFeatures} to access that path and the batched-output
  * accumulation boundary, per the standard {@code Features} mixin convention.</p>
  *
+ * <p>Only notes that start in the current window (sampling offset {@code == 0}) are
+ * batched: their per-window kernel shape is fixed, so the compiled kernel is reused
+ * across ticks. A note continuing from an earlier window reads from a growing
+ * within-note offset; batching it bloats the shared per-dispatch source length (every
+ * row pays the longest continuation's read), which measured a net loss, so continuing
+ * notes are rendered per-note (once, then cached).</p>
+ *
+ * <h2>Transient note ownership</h2>
+ *
+ * <p>Percussion destinations are freshly gathered every tick and owned by the
+ * {@link #render} call, so each note's offset-argument {@link PackedCollection} is
+ * {@link RenderedNoteAudio#destroy() destroyed} after dispatch rather than left for GC.
+ * Melodic destinations are memoized and owned by the {@link #gatherCache gather cache},
+ * which releases them via {@link #clearGatherCache()}, so they are not destroyed per
+ * tick.</p>
+ *
  * <h2>Shared compiled kernel</h2>
  *
  * <p>The compiled batched kernel is fixed-shape at construction time. To share
@@ -65,16 +82,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * <h2>Gather and envelopes</h2>
  *
  * <p>Melodic gathers are memoized ({@link #gatherCache}) because their note
- * sources are stable raw sample references. Percussion is not cached — each
- * gather builds {@code fit()} source copies that are freed between ticks — so
- * percussion re-gathers fresh on every tick with a future-side window filter.
+ * sources are stable raw sample references. Percussion is not cached — it is
+ * re-gathered fresh on every tick with a future-side window filter, and its
+ * transient destinations are owned by the {@link #render} call (each note's
+ * offset argument is released after dispatch). Both paths hold the library-owned
+ * raw channel buffers directly (no per-gather copy), so neither owns sample data.
  * Per-row ADSR envelopes are generated in-kernel from {@code [N]} ADSR scalar
  * columns (filter and volume); there are no per-sample envelope inputs.</p>
  *
  * @see BatchedPatternRenderer
  * @see PatternLayerManager#enableBatched
  */
-public final class BatchedPatternLayerRenderer implements PatternFeatures {
+public final class BatchedPatternLayerRenderer implements PatternFeatures, Destroyable {
 
 	/**
 	 * Note-count buckets used to share compiled batched kernels across ticks
@@ -125,8 +144,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * Melodic gathers depend only on element, repetition offset, voicing and stereo channel
 	 * (scale/automation geometry is constant within an epoch), and their note sources are
 	 * stable raw sample references (no per-gather copy), so they are safe to memoize across
-	 * ticks. Percussion is excluded — it builds per-gather {@code fit()} source copies that are
-	 * freed between ticks, so caching them would dangle.
+	 * ticks. Percussion is excluded — it is re-gathered fresh each tick and its transient
+	 * destinations are owned by the render call, so it is not keyed here.
 	 *
 	 * @param element the source pattern element (identity-compared)
 	 * @param offset  the repetition measure offset
@@ -198,16 +217,24 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	}
 
 	/**
-	 * Returns the smallest bucket N {@code >=} the given note count, or the
-	 * largest bucket when the count exceeds {@link #BUCKETS}.
+	 * Returns the smallest bucket N {@code >=} the given note count. A dispatch
+	 * sizes its per-note rows by this bucket, so a count larger than
+	 * {@link #maxBucket()} cannot be dispatched at once and is rejected; callers
+	 * split such batches into chunks of at most {@link #maxBucket()} notes.
 	 *
-	 * @param n raw note count for the current tick
+	 * @param n raw note count for the current dispatch
 	 * @return the chosen bucket N
+	 * @throws IllegalArgumentException if {@code n} exceeds {@link #maxBucket()}
 	 */
 	public static int bucketFor(int n) {
 		for (int b : BUCKETS) {
 			if (b >= n) return b;
 		}
+		throw new IllegalArgumentException("Note count exceeds the largest batch bucket");
+	}
+
+	/** Returns the largest note count a single batched dispatch can hold. */
+	public static int maxBucket() {
 		return BUCKETS[BUCKETS.length - 1];
 	}
 
@@ -217,7 +244,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * the construction parameters beyond the shape — sample rate and filter order — are
 	 * part of the cache key so differently-configured dispatch sites never share.
 	 *
-	 * @param bucket       the bucket-N (one of {@link #BUCKETS}, or larger if oversized)
+	 * @param bucket       the bucket-N (one of {@link #BUCKETS})
 	 * @param sourceLength per-note source buffer length (already source-bucketed)
 	 * @param targetLength per-note row length (the render window width)
 	 * @return the renderer compiled for that shape
@@ -250,7 +277,19 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * {@link BatchedPatternRenderer#buildBatchedSssChainPlacedFromScalars},
 	 * percussion via
 	 * {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}) — see
-	 * the class javadoc.</p>
+	 * the class javadoc. A note carrying a melodic-SSS record that starts in this
+	 * window is batched; a note continuing from an earlier tick is rendered
+	 * per-note from its within-note sampling offset.</p>
+	 *
+	 * <p>Melodic destinations are memoized by the gather cache and owned by it;
+	 * percussion destinations are transient — re-gathered fresh each call rather than
+	 * cached — skipping (future-side, provably safe) elements whose earliest note begins
+	 * at or after the window — an element's earliest note is at measure
+	 * {@code offset + getPosition()} and its repeats only move later, so skipping
+	 * it cannot drop an overlapping note; the one-buffer margin absorbs frame
+	 * rounding. The transient percussion notes are gathered within a protected
+	 * scope and {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally}
+	 * even if a later element's gather fails, so a partial gather does not leak.</p>
 	 *
 	 * @param sceneContext scene context containing the destination buffer
 	 * @param audioContext note audio context
@@ -273,74 +312,54 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		int endFrame = startFrame + frameCount;
 
 		long genStart = System.nanoTime();
-		List<RenderedNoteAudio> destinations;
-		if (melodic) {
-			// Melodic note sources are stable raw sample references (resolveSourceAndRatio uses
-			// wave.getChannelData directly, with no per-gather copy), so the gathered destinations
-			// are safe to memoize across ticks within a cache epoch — removing the dominant
-			// per-buffer gather cost on the dense melodic channels. Cleared when the cache epoch
-			// advances (genome/arrangement swap), the same staleness contract as the note-audio cache.
-			int epoch = PatternLayerManager.currentCacheEpoch();
-			if (epoch != gatherEpoch) {
-				gatherCache.clear();
-				gatherEpoch = epoch;
-			}
-			ChannelInfo.Voicing voicing = audioContext.getVoicing();
-			ChannelInfo.StereoChannel channel = audioContext.getAudioChannel();
-			destinations = elements.stream()
-					.map(e -> gatherCache.computeIfAbsent(
-							new GatherKey(e, offset, voicing, channel),
-							k -> e.getNoteDestinations(true, offset, sceneContext, audioContext)))
-					.flatMap(List::stream)
-					.toList();
-		} else {
-			// Percussion builds per-gather fit() source copies that are freed between ticks, so its
-			// destinations cannot be cached. Re-gather fresh, skipping (future-side, provably safe)
-			// elements whose earliest note begins at/after this window: an element's earliest note
-			// is at measure (offset + getPosition()) and repeats only move later, so skipping it
-			// cannot drop an overlapping note. The one-buffer margin absorbs frame rounding.
-			long futureCutoff = (long) endFrame + frameCount;
-			destinations = elements.stream()
-					.filter(e -> sceneContext.frameForPosition(offset + e.getPosition()) < futureCutoff)
-					.map(e -> e.getNoteDestinations(false, offset, sceneContext, audioContext))
-					.flatMap(List::stream)
-					.toList();
-		}
-		gatherNanos.addAndGet(System.nanoTime() - genStart);
+		// Percussion destinations are owned here; melodic ones by the gather cache.
+		boolean transientDestinations = !melodic;
+		List<RenderedNoteAudio> destinations = new ArrayList<>();
 
-		// Collect notes overlapping [startFrame, endFrame). The batched path can
-		// dispatch when every overlapping note carries a melodic-SSS input record;
-		// a note continuing from an earlier tick is rendered from its within-note
-		// sampling offset (computed per note in dispatchBatched).
 		List<RenderedNoteAudio> batchNow = new ArrayList<>();
 		List<RenderedNoteAudio> perNote = new ArrayList<>();
-		for (RenderedNoteAudio note : destinations) {
-			int noteStart = note.getOffset();
-			if (note.getExpectedFrameCount() > 0) {
-				int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
-				if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) continue;
-			} else if (noteStart >= endFrame) {
-				continue;
-			}
-			// Batch only notes that START in this window (sampling offset == 0): their per-window
-			// kernel shape is fixed, so the compiled kernel is reused across ticks. A note continuing
-			// from an earlier window reads from a growing within-note offset; batching it bloats the
-			// shared per-dispatch source length (every row pays the longest continuation's read),
-			// which measured a net loss, so continuing notes are rendered per-note (once, then cached).
-			if (note.getBatchedInputs() != null && noteStart >= startFrame) {
-				batchNow.add(note);
+		try {
+			if (melodic) {
+				destinations = gatherMelodic(elements, offset, sceneContext, audioContext);
 			} else {
-				perNote.add(note);
+				long futureCutoff = (long) endFrame + frameCount;
+				for (PatternElement element : elements) {
+					if (sceneContext.frameForPosition(offset + element.getPosition()) < futureCutoff) {
+						destinations.addAll(
+								element.getNoteDestinations(false, offset, sceneContext, audioContext));
+					}
+				}
 			}
-		}
+			gatherNanos.addAndGet(System.nanoTime() - genStart);
 
-		if (!batchNow.isEmpty()) {
-			dispatchBatched(batchNow, startFrame, frameCount, destination);
-			batchedDispatchCount.incrementAndGet();
-		}
-		if (!perNote.isEmpty()) {
-			fallbackCount.incrementAndGet();
-			renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			for (RenderedNoteAudio note : destinations) {
+				int noteStart = note.getOffset();
+				if (note.getExpectedFrameCount() > 0) {
+					int noteEstimatedEnd = noteStart + note.getExpectedFrameCount();
+					if (noteEstimatedEnd <= startFrame || noteStart >= endFrame) continue;
+				} else if (noteStart >= endFrame) {
+					continue;
+				}
+				// Batch only notes that start in this window (sampling offset == 0); a
+				// continuing note is rendered per-note. See the class javadoc for why.
+				if (note.getBatchedInputs() != null && noteStart >= startFrame) {
+					batchNow.add(note);
+				} else {
+					perNote.add(note);
+				}
+			}
+
+			if (!batchNow.isEmpty()) {
+				dispatchBatched(batchNow, startFrame, frameCount, destination);
+			}
+			if (!perNote.isEmpty()) {
+				fallbackCount.incrementAndGet();
+				renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			}
+		} finally {
+			if (transientDestinations) {
+				destinations.forEach(RenderedNoteAudio::destroy);
+			}
 		}
 	}
 
@@ -376,8 +395,11 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 				}
 				sub.add(note);
 			}
-			if (!sub.isEmpty()) {
-				dispatchWindow(sub, subStart, subWidth, destination, ws);
+			// Each dispatch holds at most maxBucket() notes; a denser sub-window is
+			// split into chunks whose outputs accumulate into the same slice.
+			for (int from = 0; from < sub.size(); from += maxBucket()) {
+				int to = Math.min(sub.size(), from + maxBucket());
+				dispatchWindow(sub.subList(from, to), subStart, subWidth, destination, ws);
 			}
 		}
 	}
@@ -388,6 +410,12 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * fused melodic-SSS kernel sized to this window, and accumulates the placed,
 	 * summed output into {@code destination} starting at {@code destBaseOffset}.
 	 *
+	 * <p>Each invocation runs exactly one fused kernel and is therefore one
+	 * batched dispatch, so {@link #batchedDispatchCount} is incremented here.
+	 * A single {@link #dispatchBatched} call can drive several invocations — one
+	 * per sub-window, and one per chunk when a sub-window exceeds
+	 * {@link #maxBucket()} notes — and each is counted independently.</p>
+	 *
 	 * @param notes         the notes overlapping this sub-window (size {@code >= 1})
 	 * @param windowStart   the sub-window's absolute start frame
 	 * @param windowWidth   the sub-window's frame count (per-note row length)
@@ -396,6 +424,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 */
 	private void dispatchWindow(List<RenderedNoteAudio> notes, int windowStart,
 								int windowWidth, PackedCollection destination, int destBaseOffset) {
+		batchedDispatchCount.incrementAndGet();
+
 		// A channel is homogeneous (all melodic OR all percussion), so the first note's
 		// kind classifies the whole window; percussion takes the strict-subset path.
 		if (!notes.get(0).getBatchedInputs().isMelodic()) {
@@ -644,5 +674,87 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 */
 	private void copyRow(PackedCollection dest, int frameOffset, PackedCollection src, int length) {
 		dest.setFrom(frameOffset, src, 0, length);
+	}
+
+	/**
+	 * Gathers and memoizes the melodic destinations for the given elements.
+	 *
+	 * <p>Melodic note sources are stable raw sample references (the gather uses
+	 * {@code wave.getChannelData} directly, with no per-gather copy), so the gathered
+	 * destinations are safe to memoize across ticks within a cache epoch — removing
+	 * the dominant per-buffer gather cost on the dense melodic channels. The cache is
+	 * discarded when the cache epoch advances (genome/arrangement swap), the same
+	 * staleness contract as the note-audio cache; {@link #clearGatherCache()} releases
+	 * the per-note offset arguments it owns as it does so.</p>
+	 *
+	 * <p>Package-private so tests can populate the gather cache without a full render
+	 * dispatch and then verify its teardown.</p>
+	 *
+	 * @param elements     the elements to gather
+	 * @param offset       the repetition measure offset
+	 * @param sceneContext the scene context
+	 * @param audioContext the note audio context (supplies the voicing and channel)
+	 * @return the flattened melodic destinations
+	 */
+	List<RenderedNoteAudio> gatherMelodic(List<PatternElement> elements, double offset,
+										  AudioSceneContext sceneContext,
+										  NoteAudioContext audioContext) {
+		int epoch = PatternLayerManager.currentCacheEpoch();
+		if (epoch != gatherEpoch) {
+			clearGatherCache();
+			gatherEpoch = epoch;
+		}
+		ChannelInfo.Voicing voicing = audioContext.getVoicing();
+		ChannelInfo.StereoChannel channel = audioContext.getAudioChannel();
+		return elements.stream()
+				.map(e -> gatherCache.computeIfAbsent(
+						new GatherKey(e, offset, voicing, channel),
+						k -> e.getNoteDestinations(true, offset, sceneContext, audioContext)))
+				.flatMap(List::stream)
+				.toList();
+	}
+
+	/**
+	 * Releases the memoized melodic gathers, destroying the per-note offset arguments
+	 * they own before dropping the entries.
+	 *
+	 * <p>Each memoized {@link RenderedNoteAudio} owns a single-element offset-argument
+	 * {@link PackedCollection}; nothing else references it, so without this release it
+	 * would survive until the renderer is garbage collected, recreating across scene
+	 * churn the retention the teardown path exists to prevent. The notes' batched
+	 * sources are stable raw sample references the notes do not own and are left
+	 * untouched (see {@link RenderedNoteAudio#destroy()}).</p>
+	 *
+	 * <p>Package-private so the owning {@link PatternLayerManager} can release the
+	 * memoized gathers when it detaches its layer hierarchy (a {@code refresh()} or
+	 * {@code setExplicitElements()}), which drops the {@link PatternElement} instances
+	 * these entries are keyed by without advancing the cache epoch.</p>
+	 */
+	void clearGatherCache() {
+		gatherCache.values().forEach(notes -> notes.forEach(RenderedNoteAudio::destroy));
+		gatherCache.clear();
+	}
+
+	/**
+	 * Returns the number of memoized melodic gather entries. Package-private so tests
+	 * can verify that {@link #destroy()} and an epoch advance release them, without
+	 * widening the public surface.
+	 *
+	 * @return the number of entries in the melodic gather cache
+	 */
+	int gatherCacheSize() {
+		return gatherCache.size();
+	}
+
+	/**
+	 * Releases the native memory this renderer owns by clearing its melodic gather
+	 * cache (see {@link #clearGatherCache()}). The JVM-wide compiled-renderer cache
+	 * ({@link #rendererCache}) is deliberately not torn down here: it is shared across
+	 * every pattern, scene, and genome and outlives any single renderer. Idempotent: a
+	 * repeated call finds an empty cache.
+	 */
+	@Override
+	public void destroy() {
+		clearGatherCache();
 	}
 }

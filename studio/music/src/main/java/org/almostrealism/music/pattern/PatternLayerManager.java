@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Evaluable;
@@ -120,7 +121,7 @@ import java.util.stream.Stream;
  *
  * @author Michael Murray
  */
-public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
+public class PatternLayerManager implements PatternFeatures, HeredityFeatures, Destroyable {
 	/** Number of genes in the envelope automation chromosome per layer. */
 	public static int AUTOMATION_GENE_LENGTH = 6;
 	/** Maximum number of layers supported per pattern. */
@@ -197,6 +198,73 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
 	/**
+	 * Manager-owned automation parameter collections, one allocated per {@link #layer}
+	 * call and shared by that layer's elements. They back native memory, so each is
+	 * released on every path that detaches the layer that referenced it:
+	 * {@link #removeLayer()} frees the layer's own collection, {@link #clear()} frees the
+	 * whole generation (so a {@link #refresh()} does not leak the prior one),
+	 * {@link #setExplicitElements} frees any genome-generated collections before
+	 * installing external content, and {@link #destroy()} frees whatever remains.
+	 * Externally supplied elements installed by {@link #setExplicitElements} never carry
+	 * a manager-allocated collection, so they are not tracked here and are left untouched.
+	 */
+	private final List<PackedCollection> automationParameterData = new ArrayList<>();
+
+	/**
+	 * Serializes rendering against structural mutation and cache release.
+	 *
+	 * <p>{@link #sum} operations may run on render-ahead producer threads while the
+	 * owning thread assigns a new genome (which {@link #refresh() refreshes} the layer
+	 * hierarchy), detaches layers, or tears the manager down. Those paths release the
+	 * {@link #noteAudioCache} and the batched renderer's gather cache, which are plain
+	 * (non-thread-safe) maps whose entries a concurrent render may be reading. Holding
+	 * this lock around the render body and around every release/mutation path means a
+	 * release waits for an in-flight render to finish, and a render never observes a
+	 * half-cleared cache, destroyed note audio, or a partially rebuilt hierarchy.</p>
+	 */
+	private final Object renderLock = new Object();
+
+	/**
+	 * Set by {@link #destroy()} once the manager's caches, automation data and batched
+	 * renderer have been released, and read by {@link #sum} before it renders. Both
+	 * guard it with {@link #renderLock}, so a render that acquires the lock after a
+	 * teardown observes it and refuses to run against released memory rather than
+	 * dereferencing it.
+	 *
+	 * <p>This closes the one window the {@link PatternSystemManager#sum} generation
+	 * guard leaves open: a render-ahead tick can pass that guard and only then have the
+	 * owning thread call {@link PatternSystemManager#clear()}, which destroys this
+	 * manager before the tick reaches {@link #sum}. Rendering a torn-down manager would
+	 * read its destroyed automation parameter collections and batched renderer. The flag
+	 * makes {@link #sum} throw {@link IllegalStateException} in that case, matching the
+	 * stale-operation contract of {@link PatternSystemManager#sum}.</p>
+	 */
+	private boolean destroyed;
+
+	/**
+	 * Returns this manager's note-audio cache. Package-private: it exposes the cache
+	 * so tests in this package can verify that {@link #destroy()} releases it, without
+	 * widening the public surface.
+	 *
+	 * @return the note-audio cache
+	 */
+	NoteAudioCache getNoteAudioCache() {
+		return noteAudioCache;
+	}
+
+	/**
+	 * Returns the manager-owned automation parameter collections tracked for release.
+	 * Package-private: it exposes the tracking list so tests in this package can verify
+	 * that {@link #clear()} and {@link #destroy()} release the collections, without
+	 * widening the public surface.
+	 *
+	 * @return the tracked automation parameter collections
+	 */
+	List<PackedCollection> getAutomationParameterData() {
+		return automationParameterData;
+	}
+
+	/**
 	 * When {@code true}, {@link #noteAudioCache} is never cleared or evicted in
 	 * {@link #sum}, so a continuously looped arrangement reuses the same rendered
 	 * note audio across passes with no re-evaluation and no per-loop deallocation
@@ -240,6 +308,46 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 */
 	static int currentCacheEpoch() {
 		return cacheEpoch.get();
+	}
+
+	/**
+	 * Releases the native memory held by this manager's {@link #noteAudioCache}.
+	 *
+	 * <p>Each cached entry is a standalone copy owned by the cache (see
+	 * {@link NoteAudioCache}), so without an explicit release they are reclaimed
+	 * only once the manager becomes unreachable and the reference queue runs. When
+	 * many scenes are built and discarded in sequence (for example the repeated
+	 * render attempts a render-until-audible search performs), deferring that
+	 * reclamation lets the retained note audio accumulate across attempts. Clearing
+	 * the cache on teardown frees it deterministically instead.</p>
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+
+		synchronized (renderLock) {
+			noteAudioCache.clear();
+			releaseAutomationParameterData();
+
+			BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+			if (renderer != null) {
+				renderer.destroy();
+			}
+
+			destroyed = true;
+		}
+	}
+
+	/**
+	 * Destroys the manager-owned automation parameter collections tracked in
+	 * {@link #automationParameterData} and empties the tracking list. Each collection is
+	 * allocated by {@link #layer} and shared only by the elements of the layer that
+	 * created it, so once those layers are removed nothing else references it and it can
+	 * be freed. Idempotent: a repeated call finds an empty list.
+	 */
+	private void releaseAutomationParameterData() {
+		automationParameterData.forEach(PackedCollection::destroy);
+		automationParameterData.clear();
 	}
 
 	/**
@@ -621,11 +729,21 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	/**
 	 * Adds a layer using the given parameter set.
 	 *
+	 * <p>The per-layer automation parameter collection is allocated independently
+	 * (via {@code new PackedCollection}) rather than through
+	 * {@link PackedCollection#factory()}. It is shared by every element of the layer
+	 * for the layer's lifetime, so it is long-lived and outlives any render stage.
+	 * When a {@link Heap} is active, {@code factory()} would return an alias into the
+	 * heap's backing store, which the tracked {@link #releaseAutomationParameterData()}
+	 * {@code destroy()} call cannot free (it reports an attempt to destroy an alias).
+	 * Standard allocation keeps the deterministic per-layer release effective
+	 * regardless of whether a heap is active when the layer is built.</p>
+	 *
 	 * @param params the parameter set for this layer
 	 */
 	protected void layer(ParameterSet params) {
-		PackedCollection automationParams =
-				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH);
+		PackedCollection automationParams = new PackedCollection(AUTOMATION_GENE_LENGTH);
+		automationParameterData.add(automationParams);
 		automationParamEvaluables.computeIfAbsent(depth(), d -> {
 			Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);
 			return concat(shape(AUTOMATION_GENE_LENGTH),
@@ -683,23 +801,92 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		increment();
 	}
 
-	/** Removes the most recently added layer from the hierarchy. */
+	/**
+	 * Removes the most recently added layer from the hierarchy, releasing the
+	 * manager-owned automation parameter collection that layer referenced.
+	 *
+	 * <p>Each {@link #layer} call allocates one collection shared only by the elements
+	 * of the layer it creates, and detaching that layer removes the last reference to
+	 * it, so it is destroyed here rather than left tracked until teardown. The release
+	 * keeps {@link #automationParameterData} aligned with the active layers across
+	 * every detachment path, not only {@link #clear()} and {@link #destroy()}.</p>
+	 *
+	 * <p>Detaching a layer also drops the {@link PatternElement} instances that the
+	 * render caches are keyed by, so {@link #releaseRenderCaches()} is invoked here as
+	 * well. Without it a direct {@code removeLayer()} after rendering would strand the
+	 * melodic gather's offset arguments (and, under persistent caching, the note audio)
+	 * until an epoch advance or teardown, unlike {@link #clear()} and
+	 * {@link #setExplicitElements}.</p>
+	 */
 	public void removeLayer() {
-		layerParams.remove(layerParams.size() - 1);
-		decrement();
+		synchronized (renderLock) {
+			layerParams.remove(layerParams.size() - 1);
+			decrement();
+			releaseLastAutomationParameterData();
+			releaseRenderCaches();
 
-		if (depth() <= 0) return;
-		if (depth() <= 1) {
-			roots.clear();
-			return;
+			if (depth() <= 0) return;
+			if (depth() <= 1) {
+				roots.clear();
+				return;
+			}
+
+			roots.forEach(layer -> layer.getLastParent().setChild(null));
 		}
-
-		roots.forEach(layer -> layer.getLastParent().setChild(null));
 	}
 
-	/** Removes all layers from the hierarchy. */
+	/**
+	 * Destroys and removes the most recently tracked automation parameter collection,
+	 * if any. The deepest layer's collection is the last appended, so a
+	 * {@link #removeLayer()} releases exactly the collection that layer referenced.
+	 * Guarded against an empty list so a detachment with no tracked collection (for
+	 * example after {@link #setExplicitElements}) is a no-op rather than a fault.
+	 */
+	private void releaseLastAutomationParameterData() {
+		if (automationParameterData.isEmpty()) return;
+		automationParameterData.remove(automationParameterData.size() - 1).destroy();
+	}
+
+	/**
+	 * Removes all layers from the hierarchy, releasing the manager-owned automation
+	 * parameter collections those layers referenced so they do not leak across a
+	 * {@link #refresh()}.
+	 */
 	public void clear() {
-		while (depth() > 0) removeLayer();
+		synchronized (renderLock) {
+			while (depth() > 0) removeLayer();
+			releaseAutomationParameterData();
+			releaseRenderCaches();
+		}
+	}
+
+	/**
+	 * Releases the render caches keyed by this manager's current {@link PatternElement}
+	 * instances, so detaching the layer hierarchy does not strand them.
+	 *
+	 * <p>Both the per-manager {@link #noteAudioCache} and the batched renderer's memoized
+	 * melodic gather cache are keyed by the pattern elements. A {@link #removeLayer()},
+	 * {@link #refresh()} or {@link #setExplicitElements} drops those elements without
+	 * advancing the global {@link #cacheEpoch}, so the entries from the detached hierarchy
+	 * would otherwise never be hit again and would accumulate (one native offset-argument
+	 * allocation per gathered note, plus a cached audio copy per note) until an epoch advance
+	 * or teardown. Clearing them here bounds the retention to the live hierarchy. Idempotent:
+	 * a repeated call finds empty caches, and the renderer may not have been materialised
+	 * yet.</p>
+	 *
+	 * <p>Holds {@link #renderLock}, so the release waits for any {@link #sum} running on a
+	 * render-ahead thread rather than clearing (and destroying audio in) maps that render
+	 * is still reading.</p>
+	 */
+	private void releaseRenderCaches() {
+		synchronized (renderLock) {
+			noteAudioCache.clear();
+
+			BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+			if (renderer != null) {
+				renderer.clearGatherCache();
+			}
+		}
 	}
 
 	/**
@@ -720,21 +907,31 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * @param elements the pattern elements to install (copied defensively)
 	 */
 	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
-		roots.clear();
-		layerParams.clear();
-		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
-		layerParams.add(new ParameterSet());
-		layerCount = 1;
+		synchronized (renderLock) {
+			releaseAutomationParameterData();
+			releaseRenderCaches();
+			roots.clear();
+			layerParams.clear();
+			roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
+			layerParams.add(new ParameterSet());
+			layerCount = 1;
+		}
 	}
 
-	/** Refreshes the pattern by clearing and regenerating all layers. */
+	/**
+	 * Refreshes the pattern by clearing and regenerating all layers. The rebuild holds
+	 * {@link #renderLock}, so a concurrent {@link #sum} sees either the previous or the
+	 * regenerated hierarchy, never a partially rebuilt one.
+	 */
 	public void refresh() {
-		clear();
-		if (layerParams.size() != depth())
-			throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
-											" != " + layerChoiceChromosome.length() + ")");
+		synchronized (renderLock) {
+			clear();
+			if (layerParams.size() != depth())
+				throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
+												" != " + layerChoiceChromosome.length() + ")");
 
-		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+			IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+		}
 	}
 
 	/**
@@ -766,12 +963,26 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * Uses the {@link NoteAudioCache} to avoid re-evaluating notes that span
 	 * multiple buffers.</p>
 	 *
+	 * <p>When caching is not persistent and the rendered range reaches the end of
+	 * the arrangement, the note-audio cache is released after the render: a later
+	 * pass restarts at frame 0 (which clears the cache) and a one-shot render never
+	 * asks for these frames again, so the final window's entries — standalone copies
+	 * already summed into the destination and referenced by nothing else — are freed
+	 * now rather than left reachable until the next frame-0 clear or teardown. This
+	 * bounds the native memory a completed render retains in a renderer shared across
+	 * arrangements, matching the per-tick eviction done mid-render. {@code cachePersist}
+	 * deliberately keeps the audio for looped reuse and is left untouched.</p>
+	 *
 	 * @param context Supplier for AudioSceneContext with destination buffer
 	 * @param voicing Target voicing (MAIN or WET)
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
 	 * @param startFrame Supplier for the starting frame (absolute position)
 	 * @param frameCount Number of frames to render
-	 * @return Operation that renders elements within the frame range
+	 * @return Operation that renders elements within the frame range. Running it throws
+	 *         {@link IllegalStateException} if the manager was {@link #destroy() destroyed}
+	 *         after the operation was built, so a render-ahead tick that reaches a manager
+	 *         torn down by {@link PatternSystemManager#clear()} refuses to run rather than
+	 *         dereferencing released memory.
 	 *
 	 * @see PatternFeatures#render
 	 */
@@ -786,20 +997,34 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				() -> () -> {
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
-					int currentEpoch = cacheEpoch.get();
-					if (observedCacheEpoch != currentEpoch) {
-						// Arrangement switched: discard audio rendered for the previous
-						// genome so the new arrangement renders fresh.
-						observedCacheEpoch = currentEpoch;
-						noteAudioCache.clear();
-					} else if (!cachePersist) {
-						if (frame == 0) {
+
+					synchronized (renderLock) {
+						if (destroyed) {
+							throw new IllegalStateException("Pattern render operation is stale"
+									+ " because its manager was destroyed after it was built");
+						}
+
+						int currentEpoch = cacheEpoch.get();
+						if (observedCacheEpoch != currentEpoch) {
+							// Arrangement switched: discard audio rendered for the previous
+							// genome so the new arrangement renders fresh.
+							observedCacheEpoch = currentEpoch;
 							noteAudioCache.clear();
-						} else {
-							noteAudioCache.evictBefore(frame);
+						} else if (!cachePersist) {
+							if (frame == 0) {
+								noteAudioCache.clear();
+							} else {
+								noteAudioCache.evictBefore(frame);
+							}
+						}
+						sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
+
+						// Release the final window's note audio once a non-persistent render
+						// reaches the arrangement end (see method javadoc).
+						if (!cachePersist && frame + frameCount >= ctx.getFrames()) {
+							noteAudioCache.clear();
 						}
 					}
-					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
 				});
 	}
 

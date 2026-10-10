@@ -733,15 +733,76 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private record DeferredRelease<R extends RAM>(NativeRef<R> ref, long deferredAt) { }
 
 	/**
+	 * Total prevented double-free attempts across all providers, used to cap how many are
+	 * reported in full. A prevented double free is functionally harmless — the second
+	 * release is skipped, not carried out — but under heavy allocation churn (for example a
+	 * long real-time render that caches and evicts many note buffers) it can recur in the
+	 * millions, and each full report captures and prints the current thread's whole stack
+	 * trace. Left unbounded, that reporting alone dominates run time; capping it keeps the
+	 * diagnostic without letting it starve the workload.
+	 */
+	private static final AtomicLong doubleFreeAttempts = new AtomicLong();
+
+	/** Number of prevented double frees reported in full before falling back to a periodic count. */
+	private static final long DOUBLE_FREE_DETAIL_LIMIT = 64;
+
+	/** Interval, in prevented double frees past the detail limit, between compact running-total lines. */
+	private static final long DOUBLE_FREE_SUMMARY_INTERVAL = 100_000;
+
+	/**
+	 * How much of a prevented double free is reported, decided by its process-wide ordinal.
+	 */
+	enum DoubleFreeReport {
+		/** The full report, including allocation, first-free and current stack traces. */
+		DETAIL,
+
+		/** A single compact line carrying the running total of prevented double frees. */
+		SUMMARY,
+
+		/** Nothing is reported. */
+		NONE;
+
+		/**
+		 * Returns how the prevented double free with the given 1-based process-wide
+		 * ordinal is reported: in full for the first {@link HardwareMemoryProvider#DOUBLE_FREE_DETAIL_LIMIT}
+		 * attempts, then as a running total on every multiple of
+		 * {@link HardwareMemoryProvider#DOUBLE_FREE_SUMMARY_INTERVAL}, and otherwise not at all.
+		 *
+		 * @param attempt the 1-based ordinal of the prevented double free
+		 * @return the extent of the report
+		 */
+		static DoubleFreeReport forAttempt(long attempt) {
+			if (attempt <= DOUBLE_FREE_DETAIL_LIMIT) return DETAIL;
+			return attempt % DOUBLE_FREE_SUMMARY_INTERVAL == 0 ? SUMMARY : NONE;
+		}
+	}
+
+	/**
 	 * Logs a warning that a double-free of the given reference was prevented, including
 	 * the allocation stack trace and (when available) the stack trace of the first
 	 * successful release. Skips the warning during provider destruction, where extra
 	 * deallocation attempts are routine and not bug indicators.
 	 *
+	 * <p>The full report — which captures and prints the current stack trace — is emitted
+	 * only for the first {@link #DOUBLE_FREE_DETAIL_LIMIT} prevented double frees. Beyond
+	 * that a compact running total is emitted every {@link #DOUBLE_FREE_SUMMARY_INTERVAL}
+	 * attempts, so a workload that legitimately churns many buffers is not throttled by the
+	 * cost of the diagnostic itself while the signal that double frees are occurring is
+	 * retained.</p>
+	 *
 	 * @param ref The native reference whose second free was suppressed
 	 */
 	private void warnDoubleFree(NativeRef<T> ref) {
 		if (destroying || !RAM.enableWarnings) return;
+
+		long attempt = doubleFreeAttempts.incrementAndGet();
+		DoubleFreeReport report = DoubleFreeReport.forAttempt(attempt);
+		if (report == DoubleFreeReport.SUMMARY) {
+			warn("Skipping double deallocate (" + attempt + " prevented so far; per-attempt"
+					+ " detail suppressed after the first " + DOUBLE_FREE_DETAIL_LIMIT + ")");
+		}
+
+		if (report != DoubleFreeReport.DETAIL) return;
 
 		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
 		StackTraceElement[] alloc = ref.getAllocationStackTrace();

@@ -65,6 +65,13 @@ class PatternRenderBuffers implements Destroyable {
 	private int regionIndex;
 
 	/**
+	 * Render-ahead streams created by runner builds against this scene. They are kept
+	 * across {@link #consolidate} calls because a runner built earlier keeps its producer
+	 * thread rendering patterns until it is reset, regardless of later builds.
+	 */
+	private final List<PatternRenderStream> streams = new ArrayList<>();
+
+	/**
 	 * Allocates (or replaces) the consolidated buffer and clears the render-cell list,
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
@@ -189,8 +196,29 @@ class PatternRenderBuffers implements Destroyable {
 	 */
 	PackedCollection getBuffer() { return buffer; }
 
+	/**
+	 * Records a render-ahead stream whose producer thread renders this scene's patterns,
+	 * so that {@link #stopStreams()} and {@link #destroy()} can halt it before the
+	 * pattern state it reads is torn down.
+	 *
+	 * @param stream the render-ahead stream to track
+	 */
+	void addStream(PatternRenderStream stream) { streams.add(stream); }
+
+	/**
+	 * Stops every tracked render-ahead producer thread. A producer left running keeps
+	 * invoking pattern rendering, which mutates per-pattern note-audio caches; stopping
+	 * it first is what makes releasing those caches on scene teardown safe. Streams that
+	 * are already stopped are unaffected.
+	 */
+	void stopStreams() { streams.forEach(PatternRenderStream::stop); }
+
 	@Override
 	public void destroy() {
+		// TODO(review): PR #609 also destroys the stream in PdslRunner.destroy(); reconcile ownership on merge (ring would be freed twice).
+		streams.forEach(PatternRenderStream::destroy);
+		streams.clear();
+
 		if (buffer != null) {
 			buffer.destroy();
 			buffer = null;

@@ -28,9 +28,14 @@ import java.util.Map;
  * once and the result is cached. Subsequent buffer ticks that overlap the
  * same note retrieve the cached audio instead of re-evaluating.</p>
  *
- * <p>The cache is keyed by absolute frame offset. Before each buffer tick,
- * {@link #evictBefore(int)} should be called to remove entries for notes
- * that have ended before the current buffer's start frame.</p>
+ * <p>The cache is keyed by a note's absolute frame offset together with a
+ * stable per-note {@code identity}. Coincident notes (chords, layered voices)
+ * that begin at the same frame therefore keep distinct entries rather than
+ * overwriting one another. The identity must be equal across buffer ticks for
+ * the same note (so a note spanning buffers hits its own cached audio) and
+ * distinct between different notes sharing an offset. Before each buffer tick,
+ * {@link #evictBefore(int)} should be called to remove entries for notes that
+ * have ended before the current buffer's start frame.</p>
  *
  * @see PatternFeatures
  * @see RenderedNoteAudio
@@ -38,32 +43,45 @@ import java.util.Map;
  * @author Michael Murray
  */
 public class NoteAudioCache {
-	/** Map from absolute frame offset to cached audio data. */
-	private final Map<Integer, PackedCollection> cache = new HashMap<>();
+	/**
+	 * Composite cache key: a note's absolute frame offset plus a stable identity
+	 * that distinguishes coincident notes sharing that offset. {@code identity}
+	 * may be {@code null}, in which case the offset alone identifies the entry.
+	 *
+	 * @param offset   the note's absolute frame offset
+	 * @param identity the stable per-note identity, or {@code null}
+	 */
+	private record Key(int offset, RenderedNoteAudio.Identity identity) {}
+
+	/** Map from composite note key to cached audio data. */
+	private final Map<Key, PackedCollection> cache = new HashMap<>();
 
 	/**
-	 * Returns cached audio for a note at the given offset, or null if not cached.
+	 * Returns cached audio for the note at the given offset and identity, or null
+	 * if not cached.
 	 *
 	 * @param noteOffset the note's absolute frame offset
+	 * @param identity   the stable per-note identity, or {@code null}
 	 * @return the cached audio, or null
 	 */
-	public PackedCollection get(int noteOffset) {
-		return cache.get(noteOffset);
+	public PackedCollection get(int noteOffset, RenderedNoteAudio.Identity identity) {
+		return cache.get(new Key(noteOffset, identity));
 	}
 
 	/**
-	 * Stores evaluated audio for a note at the given offset.
+	 * Stores evaluated audio for the note at the given offset and identity.
+	 *
+	 * <p>Audio displaced for the same note (same offset and identity) is destroyed:
+	 * each cached entry is a standalone copy owned by the cache (renderNotes copies
+	 * the evaluated note audio into a fresh {@link PackedCollection} before caching),
+	 * so the displaced entry would otherwise be orphaned and leak native memory.</p>
 	 *
 	 * @param noteOffset the note's absolute frame offset
+	 * @param identity   the stable per-note identity, or {@code null}
 	 * @param audio the evaluated audio data
 	 */
-	public void put(int noteOffset, PackedCollection audio) {
-		// Destroy any previously cached audio displaced at this offset. Multiple
-		// notes can share a frame offset (chords, layered voices); each cached entry is
-		// a standalone copy owned by the cache (renderPerNote copies the evaluated note
-		// audio into a fresh PackedCollection before caching), so the displaced entry
-		// would otherwise be orphaned and leak native memory.
-		PackedCollection previous = cache.put(noteOffset, audio);
+	public void put(int noteOffset, RenderedNoteAudio.Identity identity, PackedCollection audio) {
+		PackedCollection previous = cache.put(new Key(noteOffset, identity), audio);
 		if (previous != null && previous != audio) {
 			previous.destroy();
 		}
@@ -79,7 +97,7 @@ public class NoteAudioCache {
 	 */
 	public void evictBefore(int currentStartFrame) {
 		cache.entrySet().removeIf(entry -> {
-			int noteStart = entry.getKey();
+			int noteStart = entry.getKey().offset();
 			int noteEnd = noteStart + entry.getValue().getShape().getCount();
 			if (noteEnd <= currentStartFrame) {
 				// Free the GPU/native memory backing the evicted note audio; without

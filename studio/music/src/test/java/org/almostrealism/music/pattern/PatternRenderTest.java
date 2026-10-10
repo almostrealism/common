@@ -1,0 +1,629 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.music.pattern;
+
+import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.AudioTestFeatures;
+import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.audio.tone.Scale;
+import org.almostrealism.audio.tone.WesternChromatic;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.music.arrange.AudioSceneContext;
+import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.music.notes.FileNoteSource;
+import org.almostrealism.music.notes.NoteAudioChoice;
+import org.almostrealism.music.notes.NoteAudioContext;
+import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.PatternNoteAudio;
+import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.DoubleFunction;
+import java.util.function.DoubleUnaryOperator;
+
+/**
+ * End-to-end rendering tests for a percussive pattern built from explicit
+ * elements over a generated sample. A one-measure pattern with a single hit a
+ * quarter of the way in is repeated over a two-measure arrangement, so the output
+ * must be silent before each hit and between the hits, and both repetitions must
+ * be identical.
+ *
+ * <p>The central property is that rendering the arrangement buffer by buffer
+ * through {@link PatternAudioBuffer} (which exercises the note cache and its
+ * eviction) produces the same audio as rendering it in a single call.</p>
+ */
+public class PatternRenderTest extends TestSuiteBase implements AudioTestFeatures {
+
+	/** Frames per measure: half a second. */
+	private static final int MEASURE_FRAMES = OutputLine.sampleRate / 2;
+
+	/** Total frames of the two-measure arrangement. */
+	private static final int TOTAL_FRAMES = 2 * MEASURE_FRAMES;
+
+	/** Size of each streaming buffer; deliberately not a divisor of the arrangement. */
+	private static final int BUFFER_SIZE = 4096;
+
+	/** Duration of the generated sample in seconds. */
+	private static final double SAMPLE_SECONDS = 0.1;
+
+	/** The rendered channel. */
+	private static final ChannelInfo CHANNEL =
+			new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+
+	/**
+	 * Creates a pattern system with one percussive one-measure pattern on channel 0
+	 * holding a single hit at a quarter measure.
+	 *
+	 * @return the pattern system
+	 */
+	private PatternSystemManager system() {
+		return system(1);
+	}
+
+	/**
+	 * Creates a pattern system with one percussive one-measure pattern on channel 0
+	 * holding {@code hits} identical, coincident hits at a quarter measure, each
+	 * backed by a {@link #SAMPLE_SECONDS}-long sample.
+	 *
+	 * @param hits the number of coincident hits
+	 * @return the pattern system
+	 */
+	private PatternSystemManager system(int hits) {
+		return system(hits, SAMPLE_SECONDS);
+	}
+
+	/**
+	 * Creates a pattern system with one percussive one-measure pattern on channel 0
+	 * holding {@code hits} identical, coincident hits at a quarter measure, each
+	 * backed by a {@code sampleSeconds}-long sample.
+	 *
+	 * @param hits the number of coincident hits
+	 * @param sampleSeconds the duration of the generated sample in seconds
+	 * @return the pattern system
+	 */
+	private PatternSystemManager system(int hits, double sampleSeconds) {
+		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
+				new FileNoteSource(getNamedTestWavPath("render_hit_" + sampleSeconds + ".wav",
+						330.0, sampleSeconds, true), WesternChromatic.C1), 0, 9, false);
+		choice.setTuning(new DefaultKeyboardTuning());
+
+		PatternSystemManager psm = new PatternSystemManager(List.of(choice),
+				PatternSystemManagerTest.chromosomes(1));
+		psm.init();
+		List<PatternElement> elements = new ArrayList<>();
+		for (int i = 0; i < hits; i++) {
+			elements.add(new PatternElement(new PatternNote(0.1, 0.5, 0.9), 0.25));
+		}
+
+		psm.addPattern(0, 1.0, false).setExplicitElements(choice, elements);
+		return psm;
+	}
+
+	/**
+	 * Creates the scene context for the two-measure arrangement.
+	 *
+	 * @param destination the destination buffer
+	 * @return the context
+	 */
+	private static AudioSceneContext context(PackedCollection destination) {
+		AudioSceneContext context = new AudioSceneContext();
+		context.setMeasures(2);
+		context.setFrames(TOTAL_FRAMES);
+		context.setFrameForPosition(pos -> (int) (pos * MEASURE_FRAMES));
+		context.setTimeForDuration(d -> d * 0.5);
+		context.setScaleForPosition(pos -> Scale.of(WesternChromatic.C1));
+		context.setChannels(List.of(CHANNEL));
+		context.setDestination(destination);
+		return context;
+	}
+
+	/**
+	 * Renders the whole arrangement in one call of the pattern's sum operation.
+	 *
+	 * @param psm the pattern system
+	 * @return the rendered frames
+	 */
+	private static double[] renderAtOnce(PatternSystemManager psm) {
+		PackedCollection destination = new PackedCollection(TOTAL_FRAMES);
+		AudioSceneContext context = context(destination);
+		PatternLayerManager plm = psm.getPatterns().get(0);
+		plm.updateDestination(context);
+		plm.sum(() -> context, CHANNEL.getVoicing(), CHANNEL.getAudioChannel(),
+				() -> 0, TOTAL_FRAMES).get().run();
+		double[] rendered = destination.toArray(0, TOTAL_FRAMES);
+		destination.destroy();
+		return rendered;
+	}
+
+	/**
+	 * Renders the arrangement buffer by buffer and concatenates the buffers. The
+	 * output buffer the {@link PatternAudioBuffer} allocates is released once the
+	 * frames have been copied out.
+	 *
+	 * @param psm the pattern system
+	 * @return the rendered frames
+	 */
+	private static double[] renderInBuffers(PatternSystemManager psm) {
+		int[] frame = { 0 };
+		AudioSceneContext context = context(null);
+		PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context, CHANNEL,
+				BUFFER_SIZE, () -> frame[0]);
+
+		try {
+			Assert.assertEquals(BUFFER_SIZE, buffer.getBufferSize());
+			Assert.assertSame(CHANNEL, buffer.getChannel());
+			Assert.assertNotNull(buffer.getOutputProducer());
+
+			Runnable tick = buffer.prepareBatch().get();
+			double[] result = new double[TOTAL_FRAMES];
+			for (int start = 0; start < TOTAL_FRAMES; start += BUFFER_SIZE) {
+				frame[0] = start;
+				tick.run();
+
+				int length = Math.min(BUFFER_SIZE, TOTAL_FRAMES - start);
+				double[] out = buffer.getOutputBuffer().toArray(0, length);
+				for (int i = 0; i < length; i++) {
+					result[start + i] = out[i];
+				}
+			}
+
+			return result;
+		} finally {
+			buffer.getOutputBuffer().destroy();
+		}
+	}
+
+	/**
+	 * Returns the largest absolute sample in {@code [from, to)}.
+	 *
+	 * @param audio the audio
+	 * @param from  the first frame
+	 * @param to    the frame after the last
+	 * @return the peak magnitude
+	 */
+	private static double peak(double[] audio, int from, int to) {
+		double max = 0.0;
+		for (int i = from; i < to; i++) {
+			max = Math.max(max, Math.abs(audio[i]));
+		}
+		return max;
+	}
+
+	/**
+	 * Asserts the expected placement of the two hits: silence before each, sound
+	 * after each onset, and identical audio for both repetitions.
+	 *
+	 * @param audio the rendered arrangement
+	 */
+	private static void assertHitPlacement(double[] audio) {
+		int first = (int) (0.25 * MEASURE_FRAMES);
+		int second = (int) (1.25 * MEASURE_FRAMES);
+		int sampleFrames = (int) (SAMPLE_SECONDS * OutputLine.sampleRate);
+
+		Assert.assertEquals("silence before the first hit", 0.0, peak(audio, 0, first), 0.0);
+		Assert.assertTrue("the first hit sounds", peak(audio, first, first + sampleFrames) > 0.01);
+		Assert.assertEquals("silence between the hits", 0.0,
+				peak(audio, first + sampleFrames + 1, second), 0.0);
+		Assert.assertTrue("the second hit sounds", peak(audio, second, second + sampleFrames) > 0.01);
+
+		for (int i = 0; i < sampleFrames; i++) {
+			Assert.assertEquals("repetitions differ at offset " + i,
+					audio[first + i], audio[second + i], 1e-6);
+		}
+	}
+
+	/** The per-note render path places each repetition of the hit at its onset. */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void perNoteRenderPlacesHits() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system()) {
+			assertHitPlacement(renderAtOnce(psm));
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * Rendering buffer by buffer with the per-note path (note cache enabled)
+	 * produces the same audio as rendering the arrangement in one call, and the
+	 * pattern system volume scales the result.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void bufferedRenderMatchesSingleRender() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system()) {
+			double[] whole = renderAtOnce(psm);
+			double[] buffered = renderInBuffers(psm);
+			assertHitPlacement(buffered);
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, whole[i], buffered[i], 1e-6);
+			}
+
+			psm.setVolume(0.5);
+			double[] quiet = renderInBuffers(psm);
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, 0.5 * whole[i], quiet[i], 1e-6);
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A non-persistent note-audio cache is released once a buffered render reaches the
+	 * end of the arrangement. The sample here spans the whole arrangement, so the note's
+	 * cached audio never ends before a buffer start and {@link NoteAudioCache#evictBefore}
+	 * never removes it; only the end-of-render release empties the cache. The cache
+	 * therefore still holds the note while the buffers before the end render, and is
+	 * empty once the final buffer — the one that reaches the arrangement end — has run.
+	 * This guards against a completed one-shot render retaining its final window until the
+	 * next frame-0 clear or teardown.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void nonPersistentCacheReleasedAtRenderEnd() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system(1, 1.5)) {
+			NoteAudioCache cache = psm.getPatterns().get(0).getNoteAudioCache();
+
+			AudioSceneContext context = context(null);
+			int[] frame = { 0 };
+			PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context, CHANNEL,
+					BUFFER_SIZE, () -> frame[0]);
+
+			try {
+				Runnable tick = buffer.prepareBatch().get();
+				int lastStart = ((TOTAL_FRAMES - 1) / BUFFER_SIZE) * BUFFER_SIZE;
+
+				for (int start = 0; start < lastStart; start += BUFFER_SIZE) {
+					frame[0] = start;
+					tick.run();
+				}
+
+				Assert.assertTrue("the spanning note is cached while the buffers before the end render",
+						cache.size() >= 1);
+
+				frame[0] = lastStart;
+				tick.run();
+
+				Assert.assertEquals("the note-audio cache is released once the render reaches the end",
+						0, cache.size());
+			} finally {
+				buffer.getOutputBuffer().destroy();
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * The batched render path places the hits the same way and is also
+	 * independent of how the arrangement is divided into buffers.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void batchedRenderMatchesAcrossBuffers() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		try (PatternSystemManager psm = system()) {
+			BatchedPatternLayerRenderer.resetCounters();
+			double[] whole = renderAtOnce(psm);
+			assertHitPlacement(whole);
+			Assert.assertTrue("the batched renderer must dispatch (fallbacks: "
+							+ BatchedPatternLayerRenderer.fallbackCount.get() + ")",
+					BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0);
+
+			long dispatchesBefore = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+			double[] buffered = renderInBuffers(psm);
+			Assert.assertTrue("the buffered render must also dispatch the batched renderer",
+					BatchedPatternLayerRenderer.batchedDispatchCount.get() > dispatchesBefore);
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, whole[i], buffered[i], 1e-6);
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * More coincident notes than the largest batch bucket holds are split across
+	 * several dispatches rather than overrunning the bucket: every note is
+	 * rendered, so the result is the single-hit render scaled by the note count.
+	 * Because each chunk is a separate kernel dispatch, the oversized render also
+	 * records more dispatches than the single-hit render of the same arrangement.
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void batchedRenderSplitsOversizedBatches() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		int hits = BatchedPatternLayerRenderer.maxBucket() + 88;
+
+		try (PatternSystemManager singleSystem = system();
+			 PatternSystemManager manySystem = system(hits)) {
+			BatchedPatternLayerRenderer.resetCounters();
+			double[] single = renderAtOnce(singleSystem);
+			long singleDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+			Assert.assertTrue("the single-hit render must dispatch", singleDispatches > 0);
+
+			BatchedPatternLayerRenderer.resetCounters();
+			double[] many = renderAtOnce(manySystem);
+			long manyDispatches = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+			Assert.assertTrue("the batched renderer must dispatch", manyDispatches > 0);
+			Assert.assertTrue("an oversized batch records multiple dispatches", manyDispatches >= 2);
+			Assert.assertTrue("chunking the oversized batch adds dispatches",
+					manyDispatches > singleDispatches);
+			Assert.assertEquals("no note falls back to the per-note path",
+					0, BatchedPatternLayerRenderer.fallbackCount.get());
+
+			double scale = peak(single, 0, TOTAL_FRAMES) * hits;
+			Assert.assertTrue("the hits sound", scale > 0.0);
+			for (int i = 0; i < TOTAL_FRAMES; i++) {
+				Assert.assertEquals("frame " + i, hits * single[i], many[i], 1e-4 * scale);
+			}
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A channel with no patterns contributes nothing: its operation leaves the
+	 * destination untouched even when the system volume is not unity.
+	 */
+	@Test(timeout = 120000)
+	public void channelWithoutPatternsIsSilent() {
+		try (PatternSystemManager psm = system();
+			 PackedCollection destination = new PackedCollection(BUFFER_SIZE).fill(1.0)) {
+			psm.setVolume(0.5);
+
+			AudioSceneContext context = context(destination);
+			psm.sum(() -> context, new ChannelInfo(7, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT),
+					() -> 0, BUFFER_SIZE).get().run();
+
+			double[] out = destination.toArray(0, BUFFER_SIZE);
+			for (int i = 0; i < BUFFER_SIZE; i++) {
+				Assert.assertEquals("frame " + i, 1.0, out[i], 0.0);
+			}
+		}
+	}
+
+	/**
+	 * Warming the note cache evaluates one note per element of every pattern, and
+	 * resetting a buffer clears whatever it held.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void warmNoteCacheEvaluatesEveryNote() {
+		try (PatternSystemManager psm = system();
+			 PackedCollection output = new PackedCollection(BUFFER_SIZE).fill(2.0)) {
+			psm.setVolume(0.5);
+
+			int evaluated = psm.warmNoteCache(channel -> context(null));
+			Assert.assertEquals(1, evaluated);
+
+			PatternAudioBuffer buffer = new PatternAudioBuffer(psm, () -> context(null), CHANNEL,
+					BUFFER_SIZE, () -> 0, output);
+			buffer.reset();
+			Assert.assertEquals(0.0, peak(buffer.getOutputBuffer().toArray(0, BUFFER_SIZE), 0, BUFFER_SIZE), 0.0);
+		}
+	}
+
+	/**
+	 * Warming the note cache releases each discarded evaluation's output, which must not
+	 * reach the sample data the note audio is read from: the same system still renders
+	 * both hits correctly afterwards.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void renderAfterWarmNoteCachePlacesHits() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system()) {
+			Assert.assertEquals(1, psm.warmNoteCache(channel -> context(null)));
+			assertHitPlacement(renderAtOnce(psm));
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A render operation built by {@link PatternSystemManager#sum} renders normally while
+	 * its patterns are current, but once they are cleared (and their native memory
+	 * released) running it throws rather than evaluating against destroyed collections.
+	 * An operation built after the patterns are replaced runs normally.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void renderOperationIsRejectedAfterPatternsCleared() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		try (PatternSystemManager psm = system();
+			 PackedCollection destination = new PackedCollection(TOTAL_FRAMES)) {
+			AudioSceneContext context = context(destination);
+			Runnable render = psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get();
+			render.run();
+			assertHitPlacement(destination.toArray(0, TOTAL_FRAMES));
+
+			psm.clear();
+			try {
+				render.run();
+				Assert.fail("a stale render operation must be rejected");
+			} catch (IllegalStateException expected) {
+				Assert.assertTrue(expected.getMessage().contains("stale"));
+			}
+
+			psm.addPattern(0, 1.0, false);
+			destination.clear();
+			psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get().run();
+			Assert.assertEquals("a rebuilt operation over an empty pattern renders silence",
+					0.0, peak(destination.toArray(0, TOTAL_FRAMES), 0, TOTAL_FRAMES), 0.0);
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * An operation built for a channel that has no patterns is rejected once a later
+	 * pattern addition changes the pattern set. While the operation is current it renders
+	 * silence, but after {@link PatternSystemManager#addPattern} advances the pattern
+	 * generation it throws rather than silently continuing to render nothing, so a caller
+	 * rebuilds it and picks up the newly added pattern.
+	 */
+	@Test(timeout = 120000)
+	public void renderOperationForEmptyChannelIsRejectedAfterPatternAdded() {
+		try (PatternSystemManager psm = new PatternSystemManager(
+				PatternSystemManagerTest.chromosomes(1));
+			 PackedCollection destination = new PackedCollection(TOTAL_FRAMES)) {
+			psm.init();
+			AudioSceneContext context = context(destination);
+			Runnable render = psm.sum(() -> context, CHANNEL, () -> 0, TOTAL_FRAMES).get();
+
+			render.run();
+			Assert.assertEquals("an empty-channel operation renders silence while current",
+					0.0, peak(destination.toArray(0, TOTAL_FRAMES), 0, TOTAL_FRAMES), 0.0);
+
+			psm.addPattern(CHANNEL.getPatternChannel(), 1.0, false);
+			try {
+				render.run();
+				Assert.fail("a stale empty-channel render operation must be rejected");
+			} catch (IllegalStateException expected) {
+				Assert.assertTrue(expected.getMessage().contains("stale"));
+			}
+		}
+	}
+
+	/**
+	 * Warming the note cache allocates a scratch destination per pattern to satisfy
+	 * {@link PatternLayerManager#updateDestination}; it exists only for the warm-up.
+	 * It must be released when the warm-up returns so repeated scene warm-ups do not
+	 * retain one native destination per pattern until garbage collection. The destination
+	 * remains tracked in the manager's destination map (replaced by the real destination on
+	 * the first render), so the test reads it back from there and asserts it is destroyed.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void warmNoteCacheReleasesScratchDestinations() {
+		try (PatternSystemManager psm = system()) {
+			psm.setVolume(0.5);
+
+			psm.warmNoteCache(channel -> context(null));
+
+			PatternLayerManager plm = psm.getPatterns().get(0);
+			List<PackedCollection> destinations = new ArrayList<>(plm.getDestination().values());
+			Assert.assertTrue("warm-up tracks exactly one scratch destination", destinations.size() == 1);
+			Assert.assertTrue("the warm-up scratch destination is released after warmNoteCache",
+					destinations.get(0).isDestroyed());
+		}
+	}
+
+	/**
+	 * A note whose producer factory yields no audio is skipped by the warm-up rather
+	 * than counted, and the transient notes gathered for the warm-up are still
+	 * released afterwards.
+	 */
+	@Test(timeout = 120000)
+	public void warmNoteCacheSkipsNotesWithoutAudio() {
+		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
+				new FileNoteSource(getNamedTestWavPath("render_hit.wav", 330.0, SAMPLE_SECONDS, true),
+						WesternChromatic.C1), 0, 9, false);
+		choice.setTuning(new DefaultKeyboardTuning());
+		SilentElement element = new SilentElement(new PatternNote(0.1, 0.5, 0.9), 0.25);
+
+		try (PatternSystemManager psm = new PatternSystemManager(List.of(choice),
+				PatternSystemManagerTest.chromosomes(1))) {
+			psm.init();
+			psm.addPattern(0, 1.0, false).setExplicitElements(choice, List.of(element));
+
+			Assert.assertEquals("a note without audio is not counted as evaluated",
+					0, psm.warmNoteCache(channel -> context(null)));
+			Assert.assertTrue("the warm-up gathered the element's note",
+					element.getGathered().size() == 1);
+			Assert.assertTrue("the producer factory was consulted", element.getAudioRequests() == 1);
+			Assert.assertNull("the gathered note's offset argument is released",
+					element.getGathered().get(0).getOffsetArg());
+		}
+	}
+
+	/**
+	 * A {@link PatternElement} whose note audio is absent ({@code null}), recording the
+	 * destinations it gathers and how many times its audio was requested.
+	 */
+	private static final class SilentElement extends PatternElement {
+		/** The destinations this element has produced, across every gather call. */
+		private final List<RenderedNoteAudio> gathered = new ArrayList<>();
+
+		/** The number of {@link #getNoteAudio} calls made so far. */
+		private int audioRequests;
+
+		/**
+		 * Creates a silent element with the given note and position.
+		 *
+		 * @param note     the main-voicing note
+		 * @param position the position of this element within its pattern, in measures
+		 */
+		SilentElement(PatternNote note, double position) {
+			super(note, position);
+		}
+
+		@Override
+		public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double offset,
+														   AudioSceneContext context,
+														   NoteAudioContext audioContext) {
+			List<RenderedNoteAudio> result = super.getNoteDestinations(melodic, offset, context, audioContext);
+			gathered.addAll(result);
+			return result;
+		}
+
+		@Override
+		public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
+													   Factor<PackedCollection> automationLevel,
+													   DoubleFunction<PatternNoteAudio> audioSelection,
+													   DoubleUnaryOperator timeForDuration,
+													   PackedCollection offset, int frameCount) {
+			audioRequests++;
+			return null;
+		}
+
+		/** Returns every destination produced so far. */
+		List<RenderedNoteAudio> getGathered() {
+			return gathered;
+		}
+
+		/** Returns the number of note audio requests made so far. */
+		int getAudioRequests() {
+			return audioRequests;
+		}
+	}
+}
