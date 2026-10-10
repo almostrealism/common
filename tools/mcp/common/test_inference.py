@@ -603,6 +603,12 @@ class OpenRouterTest(unittest.TestCase):
 
         self.assertEqual(OpenRouterBackend.load_api_key(), "")
 
+    def test_single_key_payload_with_an_unexpected_name_is_rejected(self):
+        self.use_key_file(json.dumps({"other": "sk-or-v1-secret"}))
+        os.environ["AR_CONSULTANT_OPENROUTER_API_KEY"] = "env-key"
+
+        self.assertEqual(OpenRouterBackend.load_api_key(), "env-key")
+
     def test_auto_prefers_a_local_model_over_the_paid_one(self):
         local = FakeBackend(healthy=True, text="local")
         auto = AutoBackend(candidates=[local, self.backend()])

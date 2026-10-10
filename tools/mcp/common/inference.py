@@ -794,6 +794,10 @@ class OpenRouterBackend(OpenAIChatBackend):
     #: Name of the secret, and the key that holds it in a secret payload file.
     SECRET_NAME = "openrouter-api-key"
 
+    #: Generic fallback key accepted in a secret payload, matching the
+    #: workspace-secret convention's single-key ``{"value": ...}`` form.
+    SECRET_VALUE_KEY = "value"
+
     @classmethod
     def load_api_key(cls) -> str:
         """Read the API key from its secret file, falling back to the environment.
@@ -802,8 +806,8 @@ class OpenRouterBackend(OpenAIChatBackend):
         appears in ``docker inspect`` output or a compose file. It follows the
         workspace-secret payload convention (flowtree/docs/operations/PROVIDERS.md):
         a JSON object keyed by the secret name,
-        ``{"openrouter-api-key": "sk-or-v1-..."}``, or a single-key payload
-        whose lone value is the key.
+        ``{"openrouter-api-key": "sk-or-v1-..."}``, or a ``value``-keyed
+        payload, ``{"value": "sk-or-v1-..."}``.
         """
         key_file = os.environ.get("AR_CONSULTANT_OPENROUTER_API_KEY_FILE", "").strip()
         if key_file and os.path.isfile(key_file):
@@ -827,8 +831,8 @@ class OpenRouterBackend(OpenAIChatBackend):
         if not isinstance(payload, dict):
             return ""
         value = payload.get(cls.SECRET_NAME)
-        if value is None and len(payload) == 1:
-            value = next(iter(payload.values()))
+        if value is None:
+            value = payload.get(cls.SECRET_VALUE_KEY)
         return value.strip() if isinstance(value, str) else ""
 
     @property
@@ -851,6 +855,9 @@ class OpenRouterBackend(OpenAIChatBackend):
     def request_fields(self) -> dict:
         fields = {"model": self.model}
         if self.reasoning:
+            # TODO(review): confirm OpenRouter honours reasoning.effort="none"
+            # to disable reasoning (documented levels are high/medium/low;
+            # disabling may require reasoning.enabled=false or exclude=true).
             fields["reasoning"] = {"effort": self.reasoning}
         if self.data_collection:
             fields["provider"] = {"data_collection": self.data_collection}
