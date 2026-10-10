@@ -174,4 +174,42 @@ public class SemaphoreThenTest extends TestSuiteBase {
 
 		assertTrue(settled.await(10, TimeUnit.SECONDS));
 	}
+
+	/**
+	 * A waiter interrupted while the dependency is still pending returns promptly with its
+	 * interrupt status set, rather than staying blocked until the work starts; the chained
+	 * semaphore is unaffected and can still be waited for once the dependency completes.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedWaitReturnsWhileDependencyPending() throws InterruptedException {
+		LatchSemaphore dependency = new LatchSemaphore(1);
+		AtomicBoolean workRan = new AtomicBoolean(false);
+
+		Semaphore chained = dependency.then(() -> {
+			workRan.set(true);
+			return null;
+		});
+
+		AtomicBoolean returned = new AtomicBoolean(false);
+		AtomicBoolean interruptKept = new AtomicBoolean(false);
+		Thread waiter = new Thread(() -> {
+			chained.waitFor();
+			interruptKept.set(Thread.currentThread().isInterrupted());
+			returned.set(true);
+		}, "SemaphoreThenTest waiter");
+
+		waiter.start();
+		Thread.sleep(100);
+		waiter.interrupt();
+		waiter.join(10000);
+
+		assertFalse("An interrupted waiter must not stay blocked on a pending dependency", waiter.isAlive());
+		assertTrue(returned.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse(workRan.get());
+
+		dependency.countDown();
+		chained.waitFor();
+		assertTrue(workRan.get());
+	}
 }

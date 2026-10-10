@@ -322,6 +322,47 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A waiter interrupted while it settles a deferred member (the {@link Semaphore#then}
+	 * completion of a dependency that has not completed) returns promptly with its interrupt
+	 * status set, as an interrupted wait on the composite's latch would, instead of staying
+	 * blocked until the deferred work starts. The composite still completes normally later.
+	 */
+	@Test(timeout = 30000)
+	public void interruptDuringDeferredMemberWaitReturns() throws InterruptedException {
+		DefaultLatchSemaphore dependency = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore deferred = dependency.then(() -> null);
+		RecordingCompletion other = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(deferred, other));
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(() -> {
+			try {
+				combined.waitFor();
+			} catch (Throwable t) {
+				thrown.set(t);
+			}
+
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "SemaphoreCompositionTest waiter");
+
+		waiter.start();
+		Thread.sleep(100);
+		waiter.interrupt();
+		waiter.join(10000);
+
+		assertFalse("An interrupted waiter must not stay blocked on a deferred member", waiter.isAlive());
+		Assert.assertNull(thrown.get());
+		assertTrue("The interrupt status must survive the wait", interruptKept.get());
+		assertFalse("An interrupted wait must not go on to settle the next member", other.waitedBy(waiter));
+
+		dependency.countDown();
+		other.release();
+		combined.waitFor();
+		assertTrue(other.waitedBy(Thread.currentThread()));
+	}
+
+	/**
 	 * A completion that records every thread that waits for it, and completes (or fails) once
 	 * {@link #release()} is called.
 	 */
