@@ -20,7 +20,7 @@ if __name__ != "__main__" and not __package__:
     if HERE not in sys.path:
         sys.path.insert(0, HERE)
 
-from exfil_bash_lex import GuardError, match_flag, owner_repo
+from exfil_bash_lex import GuardError, is_shell_expanded, match_flag, owner_repo
 
 
 # `gh` subcommands allowed at all, and the flags that turn an allowed one
@@ -52,7 +52,7 @@ _GIT_CONFIG_SENSITIVE = re.compile(
     r"^(remote\.|url\.|http\.|https\.|core\.sshcommand|credential\.|core\.gitproxy|"
     r"core\.askpass|gpg\.program|diff\.external|sendemail\.)", re.IGNORECASE)
 _GIT_GLOBAL_OPTS_WITH_ARG = {
-    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+    "-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--exec-path",
 }
 _GIT_PUSH_BLOCKED_FLAGS = ("--repo", "--receive-pack", "--exec")
 
@@ -77,14 +77,56 @@ def _git_call(argv):
     return argv[j], argv[j + 1:], opts
 
 
-def _check_git(argv, ctx):
-    sub, args, opts = _git_call(argv)
+def _git_working_dir(ctx, opts):
+    """The directory a git invocation runs in, after its global options.
+
+    ``-C`` inside this project's work tree only changes where git runs, so
+    it is followed — provided the repository git finds there is this
+    project's own work tree, not a nested repository inside it. ``-C``
+    anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``), and
+    ``--git-dir`` / ``--work-tree`` at all, point git at another repository
+    and are a block. ``-c`` and ``--config-env`` that set remote or
+    transport configuration are a block. Successive ``-C`` options compose
+    in git, which the guard does not follow, so more than one is a block
+    too. Returns ``ctx.command_cwd`` itself when there is no ``-C``.
+    """
+    c_values = []
     for opt, value in opts:
-        if opt in ("-C", "--git-dir", "--work-tree"):
+        if opt in ("--git-dir", "--work-tree"):
             raise _GuardError(f"git {opt} points at another repository; only this project's "
                               f"origin may be pushed to")
-        if opt == "-c" and _GIT_CONFIG_SENSITIVE.match(value):
-            raise _GuardError(f"git -c {value!r} rewrites remote/transport configuration; denied")
+        if opt in ("-c", "--config-env") and _GIT_CONFIG_SENSITIVE.match(value):
+            raise _GuardError(f"git {opt} {value!r} rewrites remote/transport configuration; denied")
+        if opt == "-C":
+            c_values.append(value)
+    if not c_values:
+        return ctx.command_cwd
+    if len(c_values) > 1:
+        raise _GuardError("git with more than one -C; the guard does not compose successive "
+                          "directory changes, so pass a single -C")
+    target = c_values[0]
+    if is_shell_expanded(target) or target.startswith("~"):
+        raise _GuardError(f"git -C {target} names a directory the shell expands at run time; "
+                          f"the guard cannot confirm it is inside this project, so write the "
+                          f"path out literally")
+    base = ctx.require_cwd("git -C")
+    resolved = os.path.realpath(target if os.path.isabs(target) else os.path.join(base, target))
+    toplevel = os.path.realpath(ctx.project_toplevel)
+    if os.path.commonpath([resolved, toplevel]) != toplevel:
+        raise _GuardError(f"git -C {target} points at another repository ({resolved}); only "
+                          f"this project's origin may be pushed to")
+    rc, top = ctx.git.run(["rev-parse", "--show-toplevel"], cwd=resolved)
+    if rc == 0 and os.path.realpath(top.strip()) != toplevel:
+        raise _GuardError(f"git -C {target} selects a nested repository ({top.strip()}); only "
+                          f"this project's own work tree may be used")
+    return resolved
+
+
+def _check_git(argv, ctx):
+    sub, args, opts = _git_call(argv)
+    cwd = _git_working_dir(ctx, opts)
+    if cwd is not ctx.command_cwd:
+        ctx = ctx.at(cwd)
     if sub in GIT_BLOCKED_SUBCOMMANDS:
         raise _GuardError(f"git {sub} sends data or credentials somewhere else; denied")
     if sub == "remote" and args and args[0] in _GIT_REMOTE_MUTATORS:
