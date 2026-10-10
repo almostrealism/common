@@ -18,7 +18,7 @@ Git context (repo_url, branch) is auto-detected from the working directory when 
 
 ## Inference Backends
 
-The consultant supports four inference backends, selected by auto-detection or the `AR_CONSULTANT_BACKEND` environment variable.
+The consultant supports five inference backends, selected by auto-detection or the `AR_CONSULTANT_BACKEND` environment variable.
 
 ### Auto-Detection Order
 
@@ -27,7 +27,10 @@ When `AR_CONSULTANT_BACKEND` is unset or `"auto"` (the default), the server trie
 1. **llama.cpp** -- checks `localhost:8084`, then `mac-studio:8084` as fallback
 2. **Ollama** -- checks `localhost:11434`
 3. **MLX** -- checks if `mlx-lm` is importable (Apple Silicon only)
-4. **Degraded** -- no model; retrieval-only responses marked `degraded: true`
+4. **OpenRouter** -- only when an API key is configured; paid per token, so it is
+   tried after every local model and auto-detection moves back to a local model
+   as soon as one comes up
+5. **Degraded** -- no model; retrieval-only responses marked `degraded: true`
 
 Detection is re-run whenever the current choice goes stale, so **no restart is
 needed** when a model comes up or goes away. Start `llama-server` mid-session and
@@ -37,6 +40,49 @@ check is not a network round trip; set it to `0` in tests to probe every time.
 
 Because health is re-probed rather than fixed at startup, `consultant_status`
 always agrees with what the other tools will actually do.
+
+### OpenRouter (hosted)
+
+For when no lab machine can be spared to run a model. Requests go to
+OpenRouter's OpenAI-compatible API and are billed per token.
+
+```bash
+export AR_CONSULTANT_BACKEND=openrouter          # or auto, to prefer a local model
+export AR_CONSULTANT_OPENROUTER_API_KEY_FILE=/path/to/consultant__openrouter-api-key.json
+export AR_CONSULTANT_OPENROUTER_MODEL=minimax/minimax-m3   # the default
+```
+
+The key file follows the workspace-secret convention
+(`flowtree/docs/operations/PROVIDERS.md`): a JSON object keyed by the secret
+name, created with mode `0600`.
+
+```json
+{ "openrouter-api-key": "sk-or-v1-..." }
+```
+
+In the controller deployment it is the consultant's own key, kept apart from
+the OpenRouter keys the opencode agents use:
+`/Users/Shared/flowtree/secrets/consultant__openrouter-api-key.json` on the host,
+mounted at `/secrets/consultant__openrouter-api-key.json` (see
+`flowtree/runtime/controller/docker-compose.yml`). Set `AR_CONSULTANT_BACKEND`
+in the controller's `.env`.
+
+Two request defaults are deliberate:
+
+- **Reasoning is off** (`reasoning.effort = "none"`). OpenRouter counts reasoning
+  tokens against `max_tokens`, so a thinking model can spend a consult's whole
+  budget reasoning and return an empty (but billed) answer. Set
+  `AR_CONSULTANT_OPENROUTER_REASONING` to an effort level to turn it on, or to an
+  empty string to leave the model's own default.
+- **Providers that retain prompts are excluded** (`provider.data_collection =
+  "deny"`). Prompts carry the memory corpus. If a model has no compliant
+  provider, requests fail; set `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=allow`
+  only if that trade is acceptable.
+
+The health probe calls `GET /key`, which costs nothing, and reports the backend
+down when the key has no credit left, so auto-detection moves on instead of
+failing every request with HTTP 402. The provider's error message (for example
+"Insufficient credits") is returned as the degraded consult's reason.
 
 ### llama.cpp (Recommended)
 
@@ -170,11 +216,17 @@ backend that is unreachable degrades rather than falling back to another one.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AR_CONSULTANT_BACKEND` | `auto` | Backend selection: `llamacpp`, `ollama`, `mlx`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_BACKEND` | `auto` | Backend selection: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
 | `AR_CONSULTANT_LLAMACPP_URL` | `localhost:8084` (host) / `host.docker.internal:8084` (container) | llama.cpp server URL |
 | `AR_CONSULTANT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
 | `AR_CONSULTANT_MODEL` | `qwen2.5-coder:32b-instruct-q4_K_M` | Ollama model name |
 | `AR_CONSULTANT_MLX_MODEL` | `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` | MLX model path |
+| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | (none) | JSON secret file `{"openrouter-api-key": ...}` (read first) |
+| `AR_CONSULTANT_OPENROUTER_API_KEY` | (none) | OpenRouter API key, if not using the file |
+| `AR_CONSULTANT_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter model slug |
+| `AR_CONSULTANT_OPENROUTER_REASONING` | `none` | `reasoning.effort` to send; empty string sends none |
+| `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION` | `deny` | `provider.data_collection`: `deny` or `allow` |
+| `AR_CONSULTANT_OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
 | `AR_INFERENCE_HEALTH_TTL` | `30` | Seconds a backend health probe is trusted before re-probing; `0` probes every time |
 | `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
