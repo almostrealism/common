@@ -24,8 +24,8 @@ if __name__ != "__main__" and not __package__:
 from exfil_bash_lex import (_DEFINITION, _DEV_TCP, _NETWORK_WORD, _SUBSTITUTION,
                              SUBSTITUTION_PLACEHOLDER, _find_exec, _simple_commands,
                              _split_heredocs, _strip_heredoc_bodies, _tokenize, _unwrap,
-                             GuardError, heredoc_substitutions, is_shell_expanded,
-                             owner_repo, split_substitutions)
+                             GuardError, heredoc_substitutions, is_glob_or_brace,
+                             is_shell_expanded, owner_repo, split_substitutions)
 from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
@@ -266,6 +266,35 @@ def _tar_destinations(args):
     return []
 
 
+def _check_tar_filter(args):
+    """Refuse the ``tar`` options that run an external program as a filter.
+
+    ``--use-compress-program``/``-I`` names a program tar pipes the whole
+    archive through, and ``--to-command`` runs one per extracted file; either
+    can be ``curl -T -`` (or any sender), streaming archive data to a host the
+    guard never sees while the only operand it inspects is the local archive.
+    The short form is ``-I`` (capital — lowercase ``i`` is ``--ignore-zeros``),
+    which can also appear inside a short-option cluster or an old-style bundle.
+    """
+    # TODO(review): matches only exact long-option spellings; GNU tar accepts
+    # unambiguous abbreviations (--use=, --use-com=, --to-c=) that bypass this.
+    for i, a in enumerate(args):
+        if a == "--":
+            break
+        name = a.split("=", 1)[0]
+        if name in ("--use-compress-program", "--to-command"):
+            raise _GuardError(f"tar {name} runs a program as a filter, which can send the "
+                              f"archive to another host; denied")
+        bundle = None
+        if a.startswith("-") and not a.startswith("--"):
+            bundle = a[1:]
+        elif i == 0 and a.isalpha():
+            bundle = a
+        if bundle and "I" in bundle:
+            raise _GuardError("tar -I/--use-compress-program runs a program as a filter, which "
+                              "can send the archive to another host; denied")
+
+
 def _copy_destinations(prog, args):
     """The arguments a copy tool writes to, or ``None`` when its argument
     shape is ambiguous (an option the guard does not know, or a tool whose
@@ -394,14 +423,24 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
         raise _GuardError(f"{prog} {' '.join(a for a in argv[1:] if a in BLOCKED_SUBCOMMANDS[prog])} "
                           f"publishes or uploads; denied")
     if prog in COPY_TOOLS:
+        if prog == "tar":
+            _check_tar_filter(argv[1:])
         destinations = _copy_destinations(prog, argv[1:])
-        # TODO(review): computed args escape when destinations is None (cp --unknown f "$DEST").
-        computed = [a for a in destinations or [] if is_shell_expanded(a)]
+        # When the destination cannot be identified — an option the guard does
+        # not know, or a tool whose operands it does not enumerate (gzip, xz,
+        # unzip, …) — every argument is a possible destination and is checked
+        # as one, so a computed path does not slip through the None fallback.
+        suspects = argv[1:] if destinations is None else destinations
+        computed = [a for a in suspects if is_shell_expanded(a)]
         if computed:
             raise _GuardError(f"{prog} writes to {computed[0]!r}, a destination computed at run "
                               f"time; the guard cannot tell where it points, so write it out "
                               f"literally")
-        suspects = argv[1:] if destinations is None else destinations
+        globbed = [a for a in suspects if is_glob_or_brace(a)]
+        if globbed:
+            raise _GuardError(f"{prog} writes to {globbed[0]!r}, a destination the shell expands "
+                              f"at run time; the guard cannot tell where it points, so write it "
+                              f"out literally")
         if any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/") for a in suspects):
             raise _GuardError(f"{prog} writes into a cloud-synced folder or mounted volume; "
                               f"copying data there is an upload")

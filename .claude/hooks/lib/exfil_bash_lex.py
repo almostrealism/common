@@ -72,6 +72,21 @@ def is_shell_expanded(token):
     return "$" in token or "`" in token
 
 
+_GLOB_OR_BRACE = re.compile(r"[*?\[]|\{[^{}]*(?:,|\.\.)[^{}]*\}")
+
+
+def is_glob_or_brace(token):
+    """Whether the shell may expand ``token`` into one or more *other* words by
+    pathname (glob) or brace expansion at run time: an unquoted ``*``, ``?`` or
+    ``[`` class, or a ``{a,b}`` / ``{m..n}`` brace list. Such a token does not
+    name the path the guard sees — ``cp secret /V*`` reaches the guard as the
+    literal ``/V*`` yet the shell expands it to ``/Volumes`` — so a destination
+    spelled this way cannot be checked as one. The tokenizer has already removed
+    quoting, so a quoted literal metacharacter is treated the same way: a false
+    positive the guard accepts under its fail-closed rule."""
+    return bool(_GLOB_OR_BRACE.search(token))
+
+
 def match_flag(tok, flags, allow_attached=True):
     """The ``(flag, value)`` from ``flags`` that ``tok`` spells, or ``(None, None)``.
 

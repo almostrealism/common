@@ -20,7 +20,8 @@ if __name__ != "__main__" and not __package__:
     if HERE not in sys.path:
         sys.path.insert(0, HERE)
 
-from exfil_bash_lex import GuardError, is_shell_expanded, match_flag, owner_repo
+from exfil_bash_lex import (GuardError, is_glob_or_brace, is_shell_expanded,
+                            match_flag, owner_repo)
 
 
 # `gh` subcommands allowed at all, and the flags that turn an allowed one
@@ -82,11 +83,13 @@ def _git_working_dir(ctx, opts):
 
     ``-C`` inside this project's work tree only changes where git runs, so
     it is followed — provided the repository git finds there is this
-    project's own work tree, not a nested repository inside it. ``-C``
-    anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``), and
-    ``--git-dir`` / ``--work-tree`` at all, point git at another repository
-    and are a block. ``-c`` and ``--config-env`` that set remote or
-    transport configuration are a block. Successive ``-C`` options compose
+    project's own work tree, not a nested repository inside it (a nested
+    work tree or a bare repo both resolve to their own git directory). ``-C``
+    anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``, a glob
+    or brace list), and ``--git-dir`` / ``--work-tree`` at all, point git at
+    another repository and are a block. ``-c`` and ``--config-env`` that set
+    remote or transport configuration, or whose value the shell computes, are
+    a block. Successive ``-C`` options compose
     in git, which the guard does not follow, so more than one is a block
     too. Returns ``ctx.command_cwd`` itself when there is no ``-C``.
     """
@@ -95,8 +98,14 @@ def _git_working_dir(ctx, opts):
         if opt in ("--git-dir", "--work-tree"):
             raise _GuardError(f"git {opt} points at another repository; only this project's "
                               f"origin may be pushed to")
-        if opt in ("-c", "--config-env") and _GIT_CONFIG_SENSITIVE.match(value):
-            raise _GuardError(f"git {opt} {value!r} rewrites remote/transport configuration; denied")
+        if opt in ("-c", "--config-env"):
+            if is_shell_expanded(value):
+                raise _GuardError(f"git {opt} {value!r} is computed at run time; the guard "
+                                  f"cannot tell what configuration it sets, so write it out "
+                                  f"literally")
+            if _GIT_CONFIG_SENSITIVE.match(value):
+                raise _GuardError(f"git {opt} {value!r} rewrites remote/transport "
+                                  f"configuration; denied")
         if opt == "-C":
             c_values.append(value)
     if not c_values:
@@ -105,7 +114,7 @@ def _git_working_dir(ctx, opts):
         raise _GuardError("git with more than one -C; the guard does not compose successive "
                           "directory changes, so pass a single -C")
     target = c_values[0]
-    if is_shell_expanded(target) or target.startswith("~"):
+    if is_shell_expanded(target) or is_glob_or_brace(target) or target.startswith("~"):
         raise _GuardError(f"git -C {target} names a directory the shell expands at run time; "
                           f"the guard cannot confirm it is inside this project, so write the "
                           f"path out literally")
@@ -115,9 +124,16 @@ def _git_working_dir(ctx, opts):
     if os.path.commonpath([resolved, toplevel]) != toplevel:
         raise _GuardError(f"git -C {target} points at another repository ({resolved}); only "
                           f"this project's origin may be pushed to")
-    rc, top = ctx.git.run(["rev-parse", "--show-toplevel"], cwd=resolved)
-    if rc == 0 and os.path.realpath(top.strip()) != toplevel:
-        raise _GuardError(f"git -C {target} selects a nested repository ({top.strip()}); only "
+    # Containment means ``resolved`` is under the work tree, not that it is the
+    # work tree: a repository nested inside it (its own ``.git``, or a bare repo
+    # with no work tree at all) also passes. Compare the git directory git
+    # actually selects — an in-tree plain directory resolves up to this
+    # project's ``.git`` (allowed); a nested repository resolves to its own.
+    rc, gitdir = ctx.git.run(["rev-parse", "--absolute-git-dir"], cwd=resolved)
+    rc_proj, proj_gitdir = ctx.git.run(["rev-parse", "--absolute-git-dir"], cwd=toplevel)
+    if rc == 0 and rc_proj == 0 and (
+            os.path.realpath(gitdir.strip()) != os.path.realpath(proj_gitdir.strip())):
+        raise _GuardError(f"git -C {target} selects a nested repository ({gitdir.strip()}); only "
                           f"this project's own work tree may be used")
     return resolved
 
