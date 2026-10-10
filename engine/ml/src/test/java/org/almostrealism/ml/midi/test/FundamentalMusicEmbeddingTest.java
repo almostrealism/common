@@ -242,6 +242,42 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verify that the build-time {@link CompoundMidiEmbedding#embed(MidiCompoundToken)} path,
+	 * which includes only the branch the already-known token takes, produces the same
+	 * embedding as the evaluation-time {@link CompoundMidiEmbedding#embedValues(org.almostrealism.collect.CollectionProducer)}
+	 * path, which carries every branch and selects among them arithmetically. This pins the
+	 * equivalence the path-selecting {@code embed} relies on for an ordinary token (whose
+	 * attribute embeddings are non-trivial), a special token (EOS), and a pad token, so a
+	 * regression in either path's branch selection is caught.
+	 */
+	@Test(timeout = 60000)
+	public void testEmbedMatchesEmbedValuesForEachTokenClass() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(config);
+
+		List<MidiCompoundToken> tokens = Arrays.asList(
+				new MidiCompoundToken(100, 50, 5, 0, 0, 80),
+				MidiCompoundToken.eos(),
+				MidiCompoundToken.pad());
+
+		int hidden = config.hiddenSize;
+		for (MidiCompoundToken token : tokens) {
+			PackedCollection pathSelected = embedding.embed(token).evaluate();
+			PackedCollection allBranches = embedding.embedValues(cp(token.pack())).evaluate();
+
+			assertEquals("embed and embedValues must agree on output size for " + token,
+					hidden, pathSelected.getShape().getTotalSize());
+			assertEquals("embed and embedValues must agree on output size for " + token,
+					hidden, allBranches.getShape().getTotalSize());
+
+			for (int i = 0; i < hidden; i++) {
+				assertEquals("embed must match embedValues for " + token + " at index " + i,
+						allBranches.toDouble(i), pathSelected.toDouble(i), 1e-6);
+			}
+		}
+	}
+
+	/**
 	 * Verify that the same token produces identical embeddings on repeated calls.
 	 */
 	@Test(timeout = 60000)
