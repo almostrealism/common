@@ -49,6 +49,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static org.junit.Assert.assertNull;
+
 /**
  * Validates the two guarantees that make {@link Semaphore} chaining safe to use everywhere,
  * so that internal machinery can always thread a {@code dependsOn} through
@@ -425,6 +427,70 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			dependent.waitFor();
 			assertTrue("The dependent dispatch's buffer must complete", dependentRan.get());
 		} finally {
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+	}
+
+	/**
+	 * Pins the ordering contract of {@link MetalCommandRunner#submit} with
+	 * {@link MetalCommandRunner#enableHostSignaledBridges} disabled: a submission waiting for a
+	 * pending foreign dependency waits on its own thread and does not hold up an independent
+	 * submission from another thread, and it is encoded (and its {@code submit} returns) only
+	 * once the dependency has completed.
+	 *
+	 * <p>Two concurrent submissions carry no order with respect to each other; only
+	 * {@code dependsOn} orders a dispatch. When the unbridged wait ran on the runner's single
+	 * executor, the independent submission queued behind it until the foreign work finished.</p>
+	 */
+	@Test(timeout = 60000)
+	public void unbridgedForeignWaitDoesNotBlockOtherSubmits() throws InterruptedException {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = false;
+
+		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
+		AtomicReference<Semaphore> waiting = new AtomicReference<>();
+		AtomicReference<Throwable> waitingFailure = new AtomicReference<>();
+		Thread waiter = new Thread(() -> {
+			try {
+				waiting.set(runner.submit(null, buffer -> { }, foreign, null));
+			} catch (Throwable t) {
+				waitingFailure.set(t);
+			}
+		});
+
+		try {
+			waiter.start();
+			Thread.sleep(200);
+			assertTrue("The submission must be waiting for its foreign dependency", waiter.isAlive());
+
+			AtomicBoolean independentRan = new AtomicBoolean();
+			Semaphore independent = runner.submit(null, buffer -> { }, null,
+					() -> independentRan.set(true));
+			independent.waitFor();
+			assertTrue("An independent submission must complete while the other waits",
+					independentRan.get());
+			assertNull("The dependent submission must not be encoded before its dependency",
+					waiting.get());
+			assertTrue(waiter.isAlive());
+
+			foreign.countDown();
+			waiter.join(30000);
+			assertFalse("The dependent submission must return once its dependency completes",
+					waiter.isAlive());
+			assertNull(waitingFailure.get());
+			assertTrue("The dependent submission must be encoded on this runner",
+					runner.ordersAfter(waiting.get()));
+			waiting.get().waitFor();
+		} finally {
+			foreign.countDown();
+			waiter.join(30000);
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}

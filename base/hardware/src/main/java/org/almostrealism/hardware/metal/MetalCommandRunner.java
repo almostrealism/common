@@ -210,7 +210,15 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * therefore ordered after the foreign work with no host wait and no forced commit. If the
 	 * foreign work never completes, the buffer never completes — the same exposure a blocking
 	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
-	 * before the dispatch is encoded.</p>
+	 * on the calling thread before the dispatch is encoded.</p>
+	 *
+	 * <p><b>Ordering contract:</b> a dispatch is ordered after exactly what {@code dependsOn}
+	 * names, and is encoded before this method returns, so a dispatch submitted after another
+	 * {@code submit} has returned is encoded after it. Concurrent calls (neither having
+	 * returned before the other began) are not ordered with respect to each other: they are
+	 * encoded in whatever order they are admitted, and a call waiting for an unbridged foreign
+	 * dependency admits others meanwhile. A dispatch that must follow another names that
+	 * one's completion as its {@code dependsOn}.</p>
 	 *
 	 * <p><b>Bridge event lifecycle:</b> the per-bridge event is released with its buffer's
 	 * completion callbacks. On the success path the buffer's encoded wait guarantees the host
@@ -225,7 +233,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
-	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
+	 * @param dependsOn  the completion this dispatch depends on (a {@link MetalSemaphore} of this
+	 *                   runner, or any foreign {@link Semaphore}), or {@code null}
 	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
 	 * @return this dispatch's completion semaphore
 	 */
