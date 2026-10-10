@@ -447,7 +447,7 @@ where `age = (clock - lastAccessTime) / clock`. Entries with the lowest score ar
 - Eviction of a value removes all keys sharing it
 - No metadata duplication
 
-**Eviction listener:** `DefaultComputer` registers `(key, mgr) -> mgr.destroy()` to release native resources when a manager is evicted.
+**Eviction listener:** `DefaultComputer` registers `(key, mgr) -> mgr.destroy()` to release native resources when a manager is evicted. The listener fires once per removed value, not once per aliasing key, so a manager shared by several cache keys is destroyed exactly once — whether it is removed by capacity enforcement, an explicit `evict(key)` (which also drops every alias key), or a key update that leaves it unreferenced.
 
 **Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(cacheKey, () -> mgr)` (where `cacheKey` is `signature:contextId`). This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
 

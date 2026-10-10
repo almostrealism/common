@@ -800,7 +800,13 @@ export AR_HARDWARE_SHARED_MEMORY=disabled
 # Enable the NIO shared-memory bridge (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
 
-<!-- TODO(review): document AR_HARDWARE_ALLOCATION_CACHE (CUDA released-buffer reuse, off by default) here -->
+# Keep released CUDA buffers for reuse instead of freeing them immediately.
+# Off by default; enabled with AR_HARDWARE_ALLOCATION_CACHE. Reuse avoids the cost of
+# repeatedly allocating and freeing native memory (freeing synchronizes the device) that a
+# workload such as a training loop otherwise pays on every step, at the cost of holding the
+# cached memory against the reservation (freed when an allocation would exceed it). When
+# disabled, each released buffer is freed at once and every allocation is made fresh.
+export AR_HARDWARE_ALLOCATION_CACHE=enabled   # CUDA released-buffer reuse (off by default)
 ```
 
 ### Development vs Production
