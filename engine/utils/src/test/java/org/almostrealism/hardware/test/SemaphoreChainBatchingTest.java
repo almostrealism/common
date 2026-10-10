@@ -385,6 +385,86 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression: with {@link MetalCommandRunner#enableHostSignaledBridges} disabled, a dispatch
+	 * whose foreign dependency is a composite over one of the runner's own dispatches must be
+	 * submitted successfully, with the dependency settled before the dispatch is encoded.
+	 *
+	 * <p>A composite's wait settles each member on the waiting thread, and settling one of this
+	 * runner's dispatches runs on the runner's executor. When the unbridged foreign wait ran on
+	 * that executor, the member's wait was rejected there ("A task on the confined thread cannot
+	 * wait for work queued behind itself") and the submission failed.</p>
+	 */
+	@Test(timeout = 60000)
+	public void unbridgedCompositeOverOwnDispatchSubmits() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = false;
+
+		try {
+			AtomicBoolean firstRan = new AtomicBoolean();
+			Semaphore first = runner.submit(null, buffer -> { }, null, () -> firstRan.set(true));
+			DefaultLatchSemaphore other = new DefaultLatchSemaphore((Semaphore) null, 1);
+			other.countDown();
+
+			Semaphore composite = Semaphore.all(List.of(first, other));
+			assertFalse("The composite must be foreign to the runner", runner.ordersAfter(composite));
+
+			AtomicBoolean dependentRan = new AtomicBoolean();
+			Semaphore dependent = runner.submit(null, buffer -> { }, composite,
+					() -> dependentRan.set(true));
+
+			assertTrue("The dependency must be settled before the dispatch is encoded",
+					firstRan.get());
+
+			dependent.waitFor();
+			assertTrue("The dependent dispatch's buffer must complete", dependentRan.get());
+		} finally {
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+	}
+
+	/**
+	 * {@link MetalCommandRunner#ordersAfter(Semaphore)} identifies exactly the completions of
+	 * the runner's own dispatches: not {@code null}, not a host latch, and not the completion of
+	 * another runner's dispatch.
+	 */
+	@Test(timeout = 60000)
+	public void ordersAfterOnlyOwnDispatches() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		MTLCommandQueue queue = metal.getMtlDevice().newCommandQueue();
+		MetalCommandRunner other = new MetalCommandRunner(queue);
+
+		try {
+			Semaphore own = runner.submit(null, buffer -> { }, null, null);
+			Semaphore foreign = other.submit(null, buffer -> { }, null, null);
+
+			assertTrue(runner.ordersAfter(own));
+			assertFalse(runner.ordersAfter(foreign));
+			assertTrue(other.ordersAfter(foreign));
+			assertFalse(runner.ordersAfter(null));
+			assertFalse(runner.ordersAfter(new DefaultLatchSemaphore((Semaphore) null, 1)));
+
+			own.waitFor();
+			foreign.waitFor();
+		} finally {
+			other.destroy();
+			queue.release();
+		}
+	}
+
+	/**
 	 * Regression: destroying a runner while threads are still waiting for one of its command
 	 * buffers off the runner's thread must neither fail those waits nor leak the buffer.
 	 *

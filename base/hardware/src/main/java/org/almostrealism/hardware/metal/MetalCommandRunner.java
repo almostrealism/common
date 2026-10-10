@@ -234,11 +234,32 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		executor.requireOffConfinedThread();
+
+		// An unbridged foreign dependency is waited here, on the caller's thread, never on the
+		// executor's: settling it may need this runner (a composite over this runner's own
+		// semaphores completes each of them through complete(), which runs on the executor)
+		Semaphore order = dependsOn;
+		if (order != null && !enableHostSignaledBridges && !ordersAfter(order)) {
+			order.waitFor();
+			order = null;
+		}
+
 		synchronized (admission) {
-			encode(requester, command, dependsOn, onComplete, result);
+			encode(requester, command, order, onComplete, result);
 		}
 
 		return result.get(0);
+	}
+
+	/**
+	 * Returns true if {@code dependsOn} is the completion of a dispatch submitted to this runner,
+	 * which {@link #submit} orders on the GPU rather than bridging as a foreign dependency.
+	 *
+	 * @param dependsOn a completion, or {@code null}
+	 * @return true if {@code dependsOn} is a {@link MetalSemaphore} of this runner
+	 */
+	public boolean ordersAfter(Semaphore dependsOn) {
+		return dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this;
 	}
 
 	/**
@@ -254,8 +275,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	private void encode(OperationMetadata requester, MetalCommand command,
 						Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
 		executor.run(() -> {
-			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
-					((MetalSemaphore) dependsOn).getRunner() == this;
+			boolean sameRunner = ordersAfter(dependsOn);
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
@@ -264,11 +284,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			if (dependency != null) {
 				waitValue = dependency.getCommandBuffer() == openBuffer ?
 						dependency.getPriorBufferValue() : dependency.getValue();
-			}
-
-			if (foreign != null && !enableHostSignaledBridges) {
-				foreign.waitFor();
-				foreign = null;
 			}
 
 			// A bridged dispatch must start a fresh buffer: the foreign completion may itself
