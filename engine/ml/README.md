@@ -587,10 +587,13 @@ for query/key normalization, an optional per-position `paddingMask` (zeroes mask
 vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
 `AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
 shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
-and no masking. Query/key normalization takes both weights or neither. The same non-causal
-attention is also described by the layers of the `sequence_attention.pdsl` asset, which a PDSL
-program can build directly with the two projection layers bound as arguments; those layers are
-forward only (their key and value stores pass no gradient back).
+and no masking. Query/key normalization takes both weights or neither. The structure itself is
+the `sequence_attention.pdsl` asset: `sequenceAttention` builds the two projections from the
+factory, binds them with the weights and masks, and builds the asset layer for the requested
+query/key normalization, soft-cap and causal masking. A PDSL program can build the same layers
+directly with the two projection layers bound as arguments. The keys and values are branches of
+the layer that the attention products read as operands, so the backward pass trains the key and
+value projections as well as the query projection.
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 

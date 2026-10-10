@@ -38,7 +38,9 @@ import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
 import java.util.Objects;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +86,9 @@ import java.util.function.Function;
  *       {@code [rows, size]} cache as a {@code [size]} vector, without reading the input</li>
  *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
  *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
+ *   <li>{@code scaled_dot_product(other, transpose)}, {@code key_mask(mask)},
+ *       {@code sequence_causal_mask()} - the stages of full-sequence attention; the operand of
+ *       {@code scaled_dot_product} is a tensor or a branch the layer has split off</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
  *   <li>{@code attention(...)}</li>
  * </ul>
@@ -1001,7 +1006,7 @@ public class PdslInterpreter {
 			return registered.dispatch(args, new EnvContext(env));
 		}
 
-		Object builtinResult = tryCallBuiltin(name, args);
+		Object builtinResult = tryCallBuiltin(name, args, env.build);
 		if (builtinResult != null) return builtinResult;
 
 		if (constructing) {
@@ -1108,12 +1113,14 @@ public class PdslInterpreter {
 	 * library itself lives in {@link PdslBuiltins}; the interpreter only routes
 	 * already-evaluated arguments to it.
 	 *
-	 * @param name Name of the function
-	 * @param args Evaluated arguments
+	 * @param name  Name of the function
+	 * @param args  Evaluated arguments
+	 * @param build the state of the current build, whose record of the branches already consumed as
+	 *              a {@code scaled_dot_product} operand lets that built-in reject reuse of a branch
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
-	private Object tryCallBuiltin(String name, List<Object> args) {
-		return PdslBuiltins.call(name, args);
+	private Object tryCallBuiltin(String name, List<Object> args, Build build) {
+		return PdslBuiltins.call(name, args, build.consumedBranchOperands);
 	}
 
 	// ---- Multi-channel statement-level dispatch ----
@@ -1369,6 +1376,14 @@ public class PdslInterpreter {
 		private final ComputeRequirement[] requirements;
 		/** Names of the layers whose bodies are being interpreted, outermost first. */
 		private final List<String> constructing = new ArrayList<>();
+		/**
+		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} operand in this
+		 * build, identified by reference. {@code compose} wires a branch in by replacing its forward
+		 * receptor, so a branch read by a second product would silently displace the first product's
+		 * consumer; {@code scaled_dot_product} adds each branch operand here and rejects a second use.
+		 */
+		private final Set<Block> consumedBranchOperands =
+				Collections.newSetFromMap(new IdentityHashMap<>());
 		/** Creates a build with the given compute requirements. */
 		Build(ComputeRequirement... requirements) { this.requirements = requirements; }
 		/** Returns whether the layer {@code name} is under construction. */
