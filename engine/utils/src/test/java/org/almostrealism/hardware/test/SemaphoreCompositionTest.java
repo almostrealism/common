@@ -363,6 +363,46 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link Semaphore#waitForUninterruptibly()} on a composite whose first member has already
+	 * failed does not end at an interrupt with that failure while another member is still
+	 * pending: the failure is rethrown only once every member has settled, and the interrupt
+	 * status is restored.
+	 */
+	@Test(timeout = 30000)
+	public void uninterruptibleWaitSettlesMembersBeforeFailure() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("member failed");
+		RecordingCompletion failed = new RecordingCompletion(failure);
+		RecordingCompletion pending = new RecordingCompletion(null);
+		Semaphore combined = Semaphore.all(Arrays.asList(failed, pending));
+		failed.release();
+
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		Thread waiter = new Thread(combined::waitForUninterruptibly, "SemaphoreCompositionTest waiter");
+		waiter.setUncaughtExceptionHandler((t, e) -> {
+			thrown.set(e);
+			interruptKept.set(t.isInterrupted());
+		});
+		waiter.setDaemon(true);
+
+		waiter.start();
+		while (!pending.waitedBy(waiter)) Thread.sleep(1);
+		waiter.interrupt();
+		waiter.join(200);
+
+		assertTrue("An interrupt must not end the wait while a member is pending", waiter.isAlive());
+		Assert.assertNull(thrown.get());
+
+		pending.release();
+		waiter.join(10000);
+
+		assertFalse(waiter.isAlive());
+		assertTrue("The member failure must reach the waiter once every member settled",
+				thrown.get() == failure);
+		assertTrue("The interrupt status must be restored", interruptKept.get());
+	}
+
+	/**
 	 * A completion that records every thread that waits for it, and completes (or fails) once
 	 * {@link #release()} is called.
 	 */

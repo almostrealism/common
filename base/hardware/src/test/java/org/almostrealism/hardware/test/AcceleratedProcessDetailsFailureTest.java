@@ -143,13 +143,8 @@ public class AcceleratedProcessDetailsFailureTest {
 		details.whenReady(() -> ran.set(true));
 
 		AtomicReference<Throwable> delivered = new AtomicReference<>();
-		Thread producer = new Thread(() -> {
-			try {
-				details.result(0, new Object());
-			} catch (Throwable e) {
-				delivered.set(e);
-			}
-		}, "argument producer");
+		Thread producer = new Thread(() -> details.result(0, new Object()), "argument producer");
+		producer.setUncaughtExceptionHandler((t, e) -> delivered.set(e));
 		producer.setDaemon(true);
 		producer.start();
 		producer.join(10000);

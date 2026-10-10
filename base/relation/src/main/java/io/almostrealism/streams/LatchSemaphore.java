@@ -162,6 +162,11 @@ public class LatchSemaphore implements Semaphore {
 	 * throws because the waiting thread was interrupted is treated as that interrupt, not as a
 	 * failure of the member, so it neither reaches this waiter nor poisons later waits.
 	 * Otherwise the latch itself is awaited.</p>
+	 *
+	 * <p>A wait that an interrupt ends early returns with the interrupt status set and does
+	 * not rethrow a failure already recorded: the work has not settled, so a caller that
+	 * repeats the wait (see {@link Semaphore#waitForUninterruptibly()}) receives the failure
+	 * only once every member has.</p>
 	 */
 	@Override
 	public void waitFor() {
@@ -172,20 +177,24 @@ public class LatchSemaphore implements Semaphore {
 				latch.await();
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
+				return;
 			}
 		} else {
 			for (Semaphore member : settle) {
-				if (Thread.currentThread().isInterrupted()) break;
+				if (Thread.currentThread().isInterrupted()) return;
 
 				try {
 					member.waitFor();
 				} catch (Throwable e) {
 					// A member that reports this waiter's interrupt as a failure has not failed:
 					// recording it would rethrow it to every later waiter of the composite
-					if (Thread.currentThread().isInterrupted()) break;
+					if (Thread.currentThread().isInterrupted()) return;
 					fail(e);
 				}
 			}
+
+			// The last member's wait may itself have been ended early by an interrupt
+			if (Thread.currentThread().isInterrupted()) return;
 		}
 
 		Throwable t = failure.get();
