@@ -70,6 +70,10 @@ public class FrequencyCacheEvictAliasTest extends TestSuiteBase {
 	 * The eviction listener releases the resources a value holds. Once {@code evict}
 	 * has fired the listener for a shared value, no remaining key may hand that value
 	 * back out — doing so is a use-after-release of whatever the listener destroyed.
+	 *
+	 * <p>The value is a single deduplicated object, so the listener must fire exactly
+	 * once for it regardless of how many keys aliased it. Firing once per alias key
+	 * would release (and typically destroy) the same native resources repeatedly.</p>
 	 */
 	@Test(timeout = 5000)
 	public void evictDoesNotLeaveAKeyPointingToAReleasedValue() {
@@ -83,10 +87,42 @@ public class FrequencyCacheEvictAliasTest extends TestSuiteBase {
 
 		cache.evict("k1");
 
-		Assert.assertTrue("Evicting the shared value must release it", released.contains("shared"));
+		Assert.assertEquals("A deduplicated value must be released exactly once, "
+				+ "not once per aliasing key", 1, released.size());
+		Assert.assertEquals("Evicting the shared value must release that value",
+				"shared", released.get(0));
 
 		String stillReachable = cache.get("k2");
 		Assert.assertNull("No key may return a value whose resources were already released",
 				stillReachable);
+	}
+
+	/**
+	 * Three keys aliasing one value must still release that value exactly once on
+	 * explicit eviction, and remove all three keys. This guards the per-value release
+	 * contract against any alias count, not just two.
+	 */
+	@Test(timeout = 5000)
+	public void evictReleasesSharedValueOnceForManyAliases() {
+		FrequencyCache<String, String> cache = new FrequencyCache<>(10, 0.5);
+
+		List<String> released = new ArrayList<>();
+		cache.setEvictionListener((key, value) -> released.add(value));
+
+		cache.put("k1", "shared");
+		cache.put("k2", "shared");
+		cache.put("k3", "shared");
+
+		Assert.assertEquals("All three keys should collapse onto a single value", 1, cache.size());
+
+		cache.evict("k2");
+
+		Assert.assertEquals("A value shared by three keys must be released exactly once",
+				1, released.size());
+		Assert.assertEquals("shared", released.get(0));
+		Assert.assertFalse("k1 aliasing the evicted value must be removed", cache.containsKey("k1"));
+		Assert.assertFalse("k2 the evicted key must be removed", cache.containsKey("k2"));
+		Assert.assertFalse("k3 aliasing the evicted value must be removed", cache.containsKey("k3"));
+		Assert.assertEquals("No distinct values should remain", 0, cache.size());
 	}
 }
