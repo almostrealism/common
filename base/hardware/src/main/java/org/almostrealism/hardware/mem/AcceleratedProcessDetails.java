@@ -317,7 +317,6 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *                           failure as its cause
 	 */
 	public void awaitReady() {
-		// TODO(review): latch never fires if checkReady's processArguments throws, and this wait can no longer be interrupted
 		if (readyLatch != null) readyLatch.waitForUninterruptibly();
 
 		Throwable failure = listenerFailure;
@@ -539,6 +538,28 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Settles the pending listeners with {@code failure} instead of running them: the failure is
+	 * recorded for {@link #awaitReady()} to rethrow, and the {@link #readyLatch readiness latch}
+	 * is counted down once for each listener discarded, exactly as {@link #notifyListeners()}
+	 * counts it down for a listener that throws.
+	 *
+	 * @param failure the failure that prevents the listeners from running
+	 */
+	private void failListeners(Throwable failure) {
+		List<Runnable> pending;
+
+		synchronized (this) {
+			pending = new ArrayList<>(listeners);
+			listeners.clear();
+		}
+
+		listenerFailure = failure;
+		if (readyLatch == null) return;
+
+		pending.forEach(r -> readyLatch.countDown());
+	}
+
+	/**
 	 * Checks if all arguments are ready and triggers listener notification if so.
 	 *
 	 * <p>If all arguments are available (no nulls in originalArguments), this method:
@@ -553,13 +574,23 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * path, where it would otherwise still be held by this method for the whole duration of
 	 * listener execution, reintroducing the same deadlock hazard {@link #notifyListeners()}
 	 * itself already avoids.</p>
+	 *
+	 * <p>If argument processing fails, the listeners can never run, so the failure is settled
+	 * in their place (see {@link #failListeners(Throwable)}) before it is rethrown: otherwise
+	 * a thread in {@link #awaitReady()} would wait for a dispatch that will never be issued,
+	 * and the failure would be lost on whichever thread delivered the last argument.</p>
 	 */
 	protected void checkReady() {
 		synchronized (this) {
 			if (!isReady()) return;
 
 			if (arguments == null) {
-				arguments = replacementManager.processArguments(originalArguments);
+				try {
+					arguments = replacementManager.processArguments(originalArguments);
+				} catch (RuntimeException | Error e) {
+					failListeners(e);
+					throw e;
+				}
 			}
 		}
 

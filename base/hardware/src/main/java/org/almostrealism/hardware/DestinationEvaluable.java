@@ -482,7 +482,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * completion is the dispatch's own, read only once the dispatch has been issued. The
 	 * {@link Provider} and element-wise strategies of {@link #evaluate(Object...)} are host
 	 * evaluations with no device dispatch to chain into, so they wait for {@code dependsOn},
-	 * evaluate, and return {@code null}: the work has already completed.</p>
+	 * evaluate, and return {@code null}: the work has already completed. That wait is not ended
+	 * by an interrupt (whose status is restored afterwards), since evaluating early would read
+	 * memory {@code dependsOn} has not yet produced.</p>
 	 *
 	 * @param dependsOn completion that must fire before the evaluation reads memory, or
 	 *                  {@code null} to begin a chain
@@ -495,7 +497,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 			return dispatch(new Object[0], dependsOn).getSemaphore();
 		}
 
-		if (dependsOn != null) dependsOn.waitFor();
+		// Uninterruptible: evaluating before dependsOn has fired would read what it has not produced
+		if (dependsOn != null) dependsOn.waitForUninterruptibly();
 		evaluate();
 		return null;
 	}

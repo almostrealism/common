@@ -118,6 +118,50 @@ public class AcceleratedProcessDetailsFailureTest {
 		Assert.assertSame(failure, thrown.getCause());
 	}
 
+	/**
+	 * When the last argument is delivered asynchronously and processing the arguments fails,
+	 * the listener that would issue the dispatch can never run. The failure must still settle
+	 * the readiness latch and reach {@code awaitReady}, which otherwise waits for a dispatch
+	 * that will never be issued (and, being uninterruptible, could never be released). The
+	 * failure is also rethrown to the thread that delivered the argument.
+	 */
+	@Test(timeout = 30000)
+	public void argumentProcessingFailureReachesAwaitReady() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("argument replacement failed");
+		MemoryReplacementManager failing = new MemoryReplacementManager(null, null, null) {
+			@Override
+			public Object[] processArguments(Object[] args) {
+				throw failure;
+			}
+		};
+
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[1], 0, failing, SEPARATE_THREAD);
+		details.setReadyLatch(new DefaultLatchSemaphore((OperationMetadata) null, 1));
+
+		AtomicBoolean ran = new AtomicBoolean();
+		details.whenReady(() -> ran.set(true));
+
+		AtomicReference<Throwable> delivered = new AtomicReference<>();
+		Thread producer = new Thread(() -> {
+			try {
+				details.result(0, new Object());
+			} catch (Throwable e) {
+				delivered.set(e);
+			}
+		}, "argument producer");
+		producer.setDaemon(true);
+		producer.start();
+		producer.join(10000);
+
+		Assert.assertFalse(producer.isAlive());
+		Assert.assertSame("the delivering thread must see the failure", failure, delivered.get());
+
+		HardwareException thrown = awaitFailure(details);
+		Assert.assertSame(failure, thrown.getCause());
+		Assert.assertFalse("the listener must not run without processed arguments", ran.get());
+	}
+
 	/** A listener that completes normally leaves {@code awaitReady} returning normally. */
 	@Test(timeout = 30000)
 	public void successfulListenerDoesNotThrow() {

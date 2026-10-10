@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DestinationEvaluable;
@@ -31,7 +32,9 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies that an {@link OperationList} chains its assignments of compiled kernels into
@@ -138,6 +141,57 @@ public class DestinationEvaluableChainingTest extends TestSuiteBase {
 		assertEquals(1, waits.get());
 		for (int i = 0; i < SIZE; i++) {
 			assertEquals(3.0, dst.toDouble(i));
+		}
+	}
+
+	/**
+	 * An interrupt of the submitting thread must not let a host evaluation run before its
+	 * dependency has fired: {@link DestinationEvaluable#submit} would otherwise evaluate memory
+	 * the dependency has not yet produced, and the next member of the list would read a stale
+	 * result. The dependency here supplies the value the operation reads and fires only after
+	 * the submitting thread has been interrupted both before and during the wait, so a result of
+	 * zero means the evaluation ran early. The interrupt status must be restored afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void interruptedHostEvaluationWaitsForDependency() throws InterruptedException {
+		PackedCollection value = new PackedCollection(1);
+		PackedCollection dst = new PackedCollection(shape(SIZE, 1).traverse(1));
+		DestinationEvaluable<PackedCollection> evaluable =
+				new DestinationEvaluable<>(args -> value, dst);
+
+		LatchSemaphore dependsOn = new LatchSemaphore(1);
+		AtomicReference<Semaphore> returned = new AtomicReference<>(dependsOn);
+		AtomicBoolean interruptKept = new AtomicBoolean();
+		AtomicReference<Throwable> failure = new AtomicReference<>();
+
+		Thread submitter = new Thread(() -> {
+			try {
+				Thread.currentThread().interrupt();
+				returned.set(evaluable.submit(dependsOn));
+				interruptKept.set(Thread.interrupted());
+			} catch (Throwable e) {
+				failure.set(e);
+			}
+		}, "host submit");
+		submitter.setDaemon(true);
+		submitter.start();
+
+		submitter.join(200);
+		Assert.assertTrue("an interrupt pending on entry must not end the wait", submitter.isAlive());
+		submitter.interrupt();
+		submitter.join(200);
+		Assert.assertTrue("an interrupt during the wait must not end it", submitter.isAlive());
+
+		value.setMem(0, 5.0);
+		dependsOn.countDown();
+		submitter.join(30000);
+
+		Assert.assertFalse(submitter.isAlive());
+		Assert.assertNull(failure.get());
+		Assert.assertNull(returned.get());
+		Assert.assertTrue("the interrupt status must be restored", interruptKept.get());
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(5.0, dst.toDouble(i));
 		}
 	}
 
