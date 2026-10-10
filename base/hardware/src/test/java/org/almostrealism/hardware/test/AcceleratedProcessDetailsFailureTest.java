@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
@@ -26,6 +27,7 @@ import org.junit.Test;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies that a failure raised by a {@link AcceleratedProcessDetails#whenReady(Runnable)}
@@ -126,5 +128,47 @@ public class AcceleratedProcessDetailsFailureTest {
 		details.awaitReady();
 
 		Assert.assertTrue("the listener should have run before awaitReady returned", ran.get());
+	}
+
+	/**
+	 * An interrupt does not end {@code awaitReady} before the dispatch has been issued: the
+	 * waiter returns only once the readiness latch fires, so the completion it reads is the
+	 * one the dispatch published rather than the unfired readiness latch, and its interrupt
+	 * status is restored.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedAwaitReadyWaitsForIssuedDispatch() throws InterruptedException {
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[0], 0, new MemoryReplacementManager(null, null, null), SEPARATE_THREAD);
+		DefaultLatchSemaphore ready = new DefaultLatchSemaphore((OperationMetadata) null, 1);
+		details.setReadyLatch(ready);
+
+		Semaphore published = () -> { };
+		AtomicReference<Semaphore> observed = new AtomicReference<>();
+		AtomicBoolean interruptKept = new AtomicBoolean();
+
+		Thread waiter = new Thread(() -> {
+			Thread.currentThread().interrupt();
+			details.awaitReady();
+			observed.set(details.getSemaphore());
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "awaitReady waiter");
+		waiter.setDaemon(true);
+		waiter.start();
+
+		waiter.join(200);
+		Assert.assertTrue("an interrupt pending on entry must not end the wait", waiter.isAlive());
+		waiter.interrupt();
+		waiter.join(200);
+		Assert.assertTrue("an interrupt during the wait must not end it", waiter.isAlive());
+
+		details.setSemaphore(published);
+		ready.countDown();
+		waiter.join(10000);
+
+		Assert.assertFalse(waiter.isAlive());
+		Assert.assertSame("the waiter must read the issued dispatch's completion",
+				published, observed.get());
+		Assert.assertTrue("the interrupt status must be restored", interruptKept.get());
 	}
 }

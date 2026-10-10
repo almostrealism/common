@@ -105,6 +105,22 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	}
 
 	/**
+	 * Behaves as {@link #run(Runnable)}, except that an interrupt never abandons the wait: the
+	 * caller always waits until the task has finished, and its interrupt status, whether it was
+	 * set before the call or arrived during it, is restored afterwards.
+	 *
+	 * <p>This is for a caller that reads what the task produced as soon as the call returns, and
+	 * would otherwise find nothing there if an interrupt let it proceed before the task ran.</p>
+	 *
+	 * @param task the work to run
+	 * @throws IllegalStateException if this executor has been destroyed, or if called from a
+	 *                               task already running on the confined thread
+	 */
+	public void runUninterruptibly(Runnable task) {
+		await(submit(task), false);
+	}
+
+	/**
 	 * Runs a task on the confined thread and waits for it to finish, or, if this executor is
 	 * destroyed before the task can be submitted, runs {@code refused} on the calling thread
 	 * instead, inside the same task scope.

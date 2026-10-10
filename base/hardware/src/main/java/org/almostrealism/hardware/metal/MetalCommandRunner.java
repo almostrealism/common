@@ -212,6 +212,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
 	 * on the calling thread before the dispatch is encoded.</p>
 	 *
+	 * <p>Neither that wait nor the wait for the dispatch to be encoded is ended by an interrupt
+	 * of the calling thread, whose interrupt status is restored before this method returns: a
+	 * dispatch encoded before its dependency completed would read stale memory, and a call that
+	 * returned before encoding would have no completion to return.</p>
+	 *
 	 * <p><b>Ordering contract:</b> a dispatch is ordered after exactly what {@code dependsOn}
 	 * names, and is encoded before this method returns, so a dispatch submitted after another
 	 * {@code submit} has returned is encoded after it. Concurrent calls (neither having
@@ -246,10 +251,12 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 		// An unbridged foreign dependency is waited here, on the caller's thread, never on the
 		// executor's: settling it may need this runner (a composite over this runner's own
-		// semaphores completes each of them through complete(), which runs on the executor)
+		// semaphores completes each of them through complete(), which runs on the executor).
+		// An interrupt must not end the wait early, or the dispatch would be encoded before
+		// the work it is ordered after has completed
 		Semaphore order = dependsOn;
 		if (order != null && !enableHostSignaledBridges && !ordersAfter(order)) {
-			order.waitFor();
+			order.waitForUninterruptibly();
 			order = null;
 		}
 
@@ -283,7 +290,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 */
 	private void encode(OperationMetadata requester, MetalCommand command,
 						Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
-		executor.run(() -> {
+		// Uninterruptible: submit returns the completion this task adds to result
+		executor.runUninterruptibly(() -> {
 			boolean sameRunner = ordersAfter(dependsOn);
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;

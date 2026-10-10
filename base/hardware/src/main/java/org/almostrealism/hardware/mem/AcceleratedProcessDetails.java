@@ -308,11 +308,17 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
 	 * the one it depends on.
 	 *
+	 * <p>An interrupt does not end the wait early: until the latch fires,
+	 * {@link #getSemaphore()} would return the unfired latch rather than the dispatch's
+	 * completion, letting a caller chain or wait on work that has not been issued. The
+	 * interrupt status is restored once the dispatch has been issued.</p>
+	 *
 	 * @throws HardwareException if a {@link #whenReady(Runnable)} listener failed, with that
 	 *                           failure as its cause
 	 */
 	public void awaitReady() {
-		if (readyLatch != null) readyLatch.waitFor();
+		// TODO(review): latch never fires if checkReady's processArguments throws, and this wait can no longer be interrupted
+		if (readyLatch != null) readyLatch.waitForUninterruptibly();
 
 		Throwable failure = listenerFailure;
 		if (failure != null) {
