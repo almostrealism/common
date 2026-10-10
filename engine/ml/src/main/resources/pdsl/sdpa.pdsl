@@ -2,28 +2,42 @@
  * Scaled dot-product attention over a whole sequence at once (parallel, non-autoregressive):
  * softmax(mask(softcap(Q Kᵀ / sqrt(dim_head)))) V.
  *
- * This file replaces the Java assembly that used to live in
- * AttentionFeatures.scaledDotProductAttention, which built the same stages as a SequentialBlock:
- * a batched Q Kᵀ product, a scale, an optional logit soft-cap, an optional key mask, a softmax and
- * a batched A V product. AttentionFeatures.scaledDotProductAttention is now a thin loader that
- * binds the key and value tensors and chains these layers; the structure is here.
+ * This file replaces the Java assemblies that used to live in
+ * SequenceAttentionFeatures.scaledDotProductAttention, which built the same stages as a
+ * SequentialBlock: a batched Q Kᵀ product, a scale, an optional logit soft-cap, an optional key
+ * mask, an optional causal mask, a softmax and a batched A V product. scaledDotProductAttention is
+ * now a thin loader that binds the key and value tensors and chains these layers, and the
+ * self-attention layers of /pdsl/sequence_attention.pdsl call them directly; the structure is here.
  *
  * It is the full-sequence counterpart of the autoregressive `attend` layer of /pdsl/attention.pdsl:
  * `attend` scores one query per head against a growing KV cache one token at a time, while this
  * scores every query position against every key position in one pass. The two share the same
  * shape: scores → scale → mask → softmax → weighted sum of values.
  *
- * The attention is split into its two halves — the score half `sdpa_scores` (up to the softmax)
- * and the context half `sdpa_context` (the weighted sum) — so that a caller wanting the attention
- * weights (a cross-attention visualization, say) can observe them between the halves without a
- * capture stage inside the graph. The score half has a plain form and a soft-capped form; the
- * caller selects one.
+ * The attention is split into its two halves — a score half (up to the softmax) and the context
+ * half `sdpa_context` (the weighted sum) — so that a caller wanting the attention weights (a
+ * cross-attention visualization, say) can observe them between the halves without a capture stage
+ * inside the graph. The score half has four forms, one per combination of its two optional stages,
+ * and the caller selects one:
  *
- * Shapes (batch is 1): the query input is [batch, heads, queries, dim_head]; the key and value
- * tensors k and v are [batch, heads, keys, dim_head]; the scores are [batch, heads, queries, keys];
- * the context output is [batch, heads, queries, dim_head]. key_mask is one validity value per key,
- * [batch, keys], with one for a key that may be attended and zero for one that may not; an all-ones
- * mask adds zero and leaves every score unchanged.
+ *                     bidirectional             causal
+ *   plain logits      sdpa_scores               sdpa_scores_causal
+ *   soft-capped       sdpa_scores_softcapped    sdpa_scores_softcapped_causal
+ *
+ * Shapes (batch is 1): the query input is [batch, heads, queries, dim_head]; the keys k and values v
+ * are [batch, heads, keys, dim_head]; the scores are [batch, heads, queries, keys]; the context
+ * output is [batch, heads, queries, dim_head].
+ *
+ * The keys and values. k and v are either tensors the caller binds, or branches of the calling
+ * layer — the keys and values a self-attention layer computes from its own input (see
+ * /pdsl/sequence_attention.pdsl). A branch is the second operand of its product: the product reads
+ * the branch's output, and a backward pass carries the product's gradient back into the branch.
+ *
+ * The masks. key_mask is one validity value per key, [batch, keys], with one for a key that may be
+ * attended and zero for one that may not; an all-ones mask adds zero and leaves every score
+ * unchanged. The causal forms also remove every key after the query's own position, so each
+ * position attends only to itself and the positions before it, as a decoder language model
+ * requires.
  */
 
 /**
@@ -61,6 +75,48 @@ layer sdpa_scores_softcapped(k: weight, key_mask: weight, dim_head: int, softcap
     tanh_act()
     scale(softcap)
     key_mask(key_mask)
+    softmax()
+}
+
+/**
+ * The causal score half: as `sdpa_scores`, with every key after the query's own position masked
+ * out of the softmax, so query i attends only to keys 0 to i.
+ *
+ *   scaled_dot_product(k, true)     Q Kᵀ                            [batch, heads, queries, keys]
+ *   scale(1 / sqrt(dim_head))       / sqrt(d_k)                     [batch, heads, queries, keys]
+ *   key_mask(key_mask)              -bias on invalid key columns    [batch, heads, queries, keys]
+ *   sequence_causal_mask()          -bias on every key j > i        [batch, heads, queries, keys]
+ *   softmax()                       normalize over the key axis     [batch, heads, queries, keys]
+ */
+layer sdpa_scores_causal(k: weight, key_mask: weight, dim_head: int) {
+    scaled_dot_product(k, true)
+    scale(1 / sqrt(dim_head))
+    key_mask(key_mask)
+    sequence_causal_mask()
+    softmax()
+}
+
+/**
+ * The causal score half with logit soft-capping: as `sdpa_scores_softcapped`, with every key after
+ * the query's own position masked out of the softmax.
+ *
+ *   scaled_dot_product(k, true)     Q Kᵀ                            [batch, heads, queries, keys]
+ *   scale(1 / sqrt(dim_head))       / sqrt(d_k)                     [batch, heads, queries, keys]
+ *   scale(1 / softcap)              soft-cap: softcap * tanh(x / softcap)
+ *   tanh_act()
+ *   scale(softcap)
+ *   key_mask(key_mask)              -bias on invalid key columns    [batch, heads, queries, keys]
+ *   sequence_causal_mask()          -bias on every key j > i        [batch, heads, queries, keys]
+ *   softmax()                       normalize over the key axis     [batch, heads, queries, keys]
+ */
+layer sdpa_scores_softcapped_causal(k: weight, key_mask: weight, dim_head: int, softcap: float) {
+    scaled_dot_product(k, true)
+    scale(1 / sqrt(dim_head))
+    scale(1 / softcap)
+    tanh_act()
+    scale(softcap)
+    key_mask(key_mask)
+    sequence_causal_mask()
     softmax()
 }
 

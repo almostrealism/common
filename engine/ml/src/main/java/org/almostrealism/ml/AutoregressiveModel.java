@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
@@ -26,6 +27,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -49,7 +51,10 @@ import java.util.function.Supplier;
  * <p>For standard integer-token text models use the
  * {@link #of(CompiledModel, PackedCollection, IntFunction)} factory, which returns
  * {@code AutoregressiveModel<Integer>} and handles all sampling infrastructure internally.
- * For compound or structured token types, use the generic constructor directly.</p>
+ * For compound or structured token types, use the generic constructor directly. A generator
+ * whose decoding state is more than a forward pass over a fixed input, such as
+ * {@link SlidingWindowAutoregressiveModel}, extends this class and overrides
+ * {@link #load(Object)}, {@link #forward()} and {@link #sample(PackedCollection)}.</p>
  *
  * <h2>Position</h2>
  * <p>The caller supplies the single-element collection that its computation graph reads as
@@ -93,6 +98,13 @@ import java.util.function.Supplier;
  * }
  * }</pre>
  *
+ * <h2>Lifecycle</h2>
+ * <p>{@link #destroy()} releases the compiled position operations this class creates. The
+ * position, temperature and generation steps passed to the constructor are not released,
+ * because they may be shared with other parts of the computation graph. A generator that
+ * allocates resources of its own, such as its input buffers or a compiled model, is a subclass
+ * that overrides {@link #destroy()} to release them.</p>
+ *
  * <h2>Token Selection Process</h2>
  * <p>The {@link #next()} method implements the following logic:</p>
  * <ol>
@@ -104,7 +116,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  * @see CompiledModel
  */
-public class AutoregressiveModel<T> {
+public class AutoregressiveModel<T> implements Destroyable {
 
 	/** Singleton for accessing {@link DistributionFeatures#softmax} from static context. */
 	private static final DistributionFeatures DIST = new DistributionFeatures() {};
@@ -183,6 +195,18 @@ public class AutoregressiveModel<T> {
 	}
 
 	/**
+	 * Creates an autoregressive model whose subclass implements the generation steps by
+	 * overriding {@link #load(Object)}, {@link #forward()} and {@link #sample(PackedCollection)},
+	 * all three of which it must override.
+	 *
+	 * @param position    single-element collection holding the sequence position
+	 * @param temperature single-element collection holding the sampling temperature
+	 */
+	protected AutoregressiveModel(PackedCollection position, PackedCollection temperature) {
+		this(position, null, null, null, temperature);
+	}
+
+	/**
 	 * Returns the device-resident collection holding the current sequence position.
 	 *
 	 * @return the position collection shared with the model's computation graph
@@ -220,6 +244,21 @@ public class AutoregressiveModel<T> {
 	public void advance() {
 		advancePosition.run();
 		this.currentStep++;
+	}
+
+	/**
+	 * Releases the compiled position operations this class creates; both releases are attempted
+	 * even when the first fails. The position, temperature and generation steps passed to the
+	 * constructor are not released. A subclass that allocates resources of its own overrides
+	 * this method to release them, releasing its compiled operations before the memory they
+	 * read and calling this method. The generator cannot be used afterwards; a repeated call is
+	 * harmless.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.releaseAll(List.<Runnable>of(
+				() -> Destroyable.destroy(resetPosition),
+				() -> Destroyable.destroy(advancePosition)));
 	}
 
 	/**
@@ -297,17 +336,67 @@ public class AutoregressiveModel<T> {
 	 */
 	public T next() {
 		if (currentStep < promptLength) {
-			token.accept(prompt[currentStep]);
-			cachedOutput = forward.get();
+			load(prompt[currentStep]);
+			cachedOutput = forward();
 			currentToken = prompt[currentStep];
 		} else {
-			currentToken = sample.apply(cachedOutput);
-			token.accept(currentToken);
-			cachedOutput = forward.get();
+			currentToken = sample(cachedOutput);
+			load(currentToken);
+			cachedOutput = forward();
 		}
 
 		advance();
 		return currentToken;
+	}
+
+	/**
+	 * Loads a token into the model input before the forward pass of the current step. Applies
+	 * the token consumer given to the constructor.
+	 *
+	 * @param t the token fed at the current position
+	 */
+	protected void load(T t) {
+		requireStep("load", token).accept(t);
+	}
+
+	/**
+	 * Runs the forward pass of the current step. Uses the forward supplier given to the
+	 * constructor.
+	 *
+	 * @return the model output, from which the next token is sampled
+	 */
+	protected PackedCollection forward() {
+		return requireStep("forward", forward).get();
+	}
+
+	/**
+	 * Selects the next token from the output of the previous forward pass. Applies the sample
+	 * function given to the constructor.
+	 *
+	 * @param output the model output of the previous step
+	 * @return the selected token
+	 */
+	protected T sample(PackedCollection output) {
+		return requireStep("sample", sample).apply(output);
+	}
+
+	/**
+	 * Returns a generation step given to the constructor, failing when it is absent because a
+	 * subclass created through {@link #AutoregressiveModel(PackedCollection, PackedCollection)}
+	 * did not override the method that uses it.
+	 *
+	 * @param <S>  the type of the step
+	 * @param name the name of the overridable method that uses the step
+	 * @param step the step, or null
+	 * @return the step
+	 * @throws IllegalStateException if {@code step} is null
+	 */
+	private <S> S requireStep(String name, S step) {
+		if (step == null) {
+			throw new IllegalStateException(getClass().getSimpleName() + " must override " + name);
+		}
+
+		return step;
 	}
 
 	/**
@@ -397,26 +486,49 @@ public class AutoregressiveModel<T> {
 	 * the embedding directly into {@code input}, so no intermediate result is copied
 	 * through the host.
 	 *
+	 * <p>The loader owns the token-value buffer and the compiled operation it creates, and
+	 * {@link TokenLoader#destroy() destroying} it releases them; {@code input} remains the
+	 * caller's, and so is the loader: the generator that creates it releases it.</p>
+	 *
 	 * @param <T>       the token type
 	 * @param input     the model input the embedding is written into
 	 * @param values    how many values a token packs
 	 * @param pack      writes a token's values into a collection of {@code values} elements
 	 * @param embedding builds the embedding of the values behind the given producer
-	 * @return a consumer that loads a token into {@code input} before a forward pass
+	 * @return a loader that writes a token into {@code input} before a forward pass
 	 */
-	public static <T> Consumer<T> tokenLoader(PackedCollection input, int values,
-											  BiConsumer<T, PackedCollection> pack,
-											  Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
+	public static <T> TokenLoader<T> tokenLoader(PackedCollection input, int values,
+												 BiConsumer<T, PackedCollection> pack,
+												 Function<Producer<PackedCollection>, Producer<PackedCollection>> embedding) {
 		Ops ops = Ops.o();
 		PackedCollection tokenValues = new PackedCollection(values);
 		TraversalPolicy shape = ops.shape(input.getShape().getTotalSize());
 		Runnable load = Process.optimized(ops.a(ops.cp(input.reshape(shape)),
 				ops.c(embedding.apply(ops.cp(tokenValues))).reshape(shape))).get();
 
-		return token -> {
-			pack.accept(token, tokenValues);
-			load.run();
+		return new TokenLoader<>() {
+			@Override
+			public void accept(T token) {
+				pack.accept(token, tokenValues);
+				load.run();
+			}
+
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.<Runnable>of(
+						() -> Destroyable.destroy(load),
+						tokenValues::destroy));
+			}
 		};
+	}
+
+	/**
+	 * Loads tokens into a model input, as created by {@link #tokenLoader}, and releases the
+	 * resources it loads with when destroyed.
+	 *
+	 * @param <T> the token type
+	 */
+	public interface TokenLoader<T> extends Consumer<T>, Destroyable {
 	}
 
 	/**
@@ -429,6 +541,10 @@ public class AutoregressiveModel<T> {
 	 *   <li>Executes the compiled model's forward pass for logits</li>
 	 *   <li>Samples the next token using temperature scaling and softmax</li>
 	 * </ul>
+	 *
+	 * <p>The returned model owns the input buffer, temperature and sampling operations created
+	 * here, so {@link #destroy()} releases them; {@code model}, {@code position} and the
+	 * embeddings returned by {@code tokenEmbed} remain the caller's.</p>
 	 *
 	 * @param model      the compiled transformer model
 	 * @param position   single-element collection that {@code model} reads as the sequence
@@ -464,7 +580,18 @@ public class AutoregressiveModel<T> {
 				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
 				sample,
-				temperature);
+				temperature) {
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.<Runnable>of(
+						super::destroy,
+						() -> Destroyable.destroy(indexOfMax),
+						() -> Destroyable.destroy(rescale),
+						() -> Destroyable.destroy(softmax),
+						in::destroy,
+						temperature::destroy));
+			}
+		};
 	}
 
 }

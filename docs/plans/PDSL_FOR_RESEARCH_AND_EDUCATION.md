@@ -5,6 +5,35 @@ construct, hierarchical weight binding, explicit KV-cache parameters and the pur
 safetensors reader (`SafetensorsReference`) have landed; the per-item notes below mark what
 is done and what remains.
 
+## Resume here
+
+Last worked on 2026-10-05; everything listed as implemented is merged to master. In order:
+
+1. **The Phase 1 gate: Qwen2.5-0.5B-Instruct on real weights.** Nothing past this point has
+   been checked against a real checkpoint.
+   - **Needs from the project owner:** the checkpoint downloaded to a directory the agent
+     can read (agents cannot reach `huggingface.co`). For example:
+     `huggingface-cli download Qwen/Qwen2.5-0.5B-Instruct --local-dir /Users/Shared/models/Qwen2.5-0.5B-Instruct`.
+     Also a reference to compare against: logits or greedy tokens for one fixed prompt from
+     PyTorch `transformers`.
+   - **Code needed first:** the Qwen tokenizer must read a checkpoint's `tokenizer.json` /
+     `vocab.json` + `merges.txt`; today it reads only its own `tokenizer.bin` format.
+     `new StateDictionary(dir)` already reads the safetensors weights.
+2. **`embed(table, token)`** (Phase 1 item 2). With it, the model file starts from the token
+   id rather than from an embedding row that Java looked up.
+3. **`transformer(block, position)`** ("Form follows the picture", idea 3). This replaces the
+   20-argument call in `qwen2.pdsl` / `qwen3.pdsl` with one line. Do it before writing more
+   model files, since every new model file is shaped by it.
+4. **Stack slicing** (`stack weights.model.layers[..18]`), which every intervention example
+   needs.
+5. Phase 2 (runner, shape trace, positioned errors) and data imports; then Phase 3.
+
+Known limits to keep in mind:
+- A single `FileMapping` covers at most 2 GB, so 5 GB safetensors shards need range mappings
+  before any model larger than about 1B parameters loads.
+- The project compiles with `-source 17` on a newer JDK, so post-17 JDK APIs
+  (`Float.float16ToFloat`) compile locally but are wrong. Use `org.almostrealism.io.Bits`.
+
 ## Decisions
 
 These were settled with the project owner on 2026-10-04.
@@ -74,9 +103,13 @@ alongside a short sequence of variants with the changed lines highlighted:
 **Every snippet shown publicly must be a file that a test loads and runs.** The published
 pages and the tests read the same files, so a page cannot drift away from code that works.
 
-## Where PDSL is today
+## Where PDSL was when this plan began
 
-The current state was surveyed on 2026-10-04. Citations are against that tree.
+This section is the survey of 2026-10-04, kept as the baseline the plan was written against.
+Citations are against that tree. Since then, the model-level structure has moved to
+`qwen2.pdsl` / `qwen3.pdsl` (only the embedding lookup and sampling remain in Java). Weight
+binding, `zeros`, `rope_freqs` and per-layer KV caches exist. The `weight("key")` and
+`state_dict` stubs are gone. The phase notes below are the current state.
 
 ### Already expressed in PDSL
 
@@ -233,7 +266,7 @@ import "distress_direction.pb" as distress      // data: a CollectionLibraryData
 
 model qwen_steered(...) {
     ...
-    accum { add(distress["direction"], strength) }
+    accum { add(distress.direction, strength) }
     ...
 }
 ```
@@ -241,7 +274,8 @@ model qwen_steered(...) {
 How this should work:
 
 - **A `.pb` import is data, not structure.** Each entry of its `CollectionLibraryData` becomes
-  a named, read-only weight, reached as `alias["key"]`. A library with a single entry may
+  a named, read-only weight, reached by path as `alias.key`, the same way checkpoint weights
+  are (string keys were removed from the language). A library with a single entry may
   also be used by its alias alone (`add(distress, strength)`). The `.pb` extension, or the
   file's first bytes, tells the loader which kind of import it is.
 - **The same rules apply as for `.pdsl` imports.** Imports come before definitions, the cache
@@ -287,17 +321,22 @@ Each phase ends at a gate. Work does not move to the next phase until its gate i
      `zeros([seq_len, dim])`.
    - The old `state attention_cache` block could not express this, because a called layer is
      built in the program scope: every layer of one build would have shared one cache.
-4. **A layer signature that takes `config` and a weight prefix,** so the call site inside the
-   loop stays one line. The existing long-argument layers remain for Java callers.
-   - **Not done yet.** The shipped files pass each weight by its full Hugging Face name
-     inside the loop. That is long, but every name is visible, and that may be the better
-     teaching form; decide after the first published page.
-5. **`qwen.pdsl`** as a shipped asset, used by `Qwen3` in place of its Java loop. The Java
-   class keeps tokenization, weight loading and the generation loop.
+4. **A layer that takes one block of weights**, so the call inside the stack is one line:
+   `transformer(block, position)`. This supersedes the earlier idea of passing a config and
+   a weight prefix; see "Form follows the picture", idea 3. **Not done yet:** the shipped files
+   still pass every weight as its own argument.
+5. **Model files used by `Qwen3`** (implemented). `/pdsl/qwen2.pdsl` (Qwen2 / Qwen2.5:
+   biases, no QK-norm) and `/pdsl/qwen3.pdsl` (QK-norm, no biases) hold the layers, the final
+   norm and the tied output projection. `Qwen3.model()` picks one by whether the checkpoint has
+   `q_norm` weights. The Java class keeps tokenization, the embedding lookup and the
+   generation loop. `QwenModelFileTest` checks both files against the previous Java assembly on
+   synthetic weights.
 
-**Gate:** the PDSL-built Qwen2.5-0.5B-Instruct produces the same logits as the current Java
-path on a fixed prompt (bit-exact, or within the tolerance the existing PyTorch comparison
-uses). All existing Qwen tests pass unchanged.
+**Gate:** the PDSL-built Qwen2.5-0.5B-Instruct, loaded from its published safetensors
+checkpoint, produces the same logits as PyTorch `transformers` on a fixed prompt (within the
+tolerance the earlier PyTorch comparison in `engine/ml/qwen/STATUS.md` used). All existing
+Qwen tests pass unchanged. Parity with the previous Java assembly on synthetic weights is
+already established; this gate is about real weights.
 
 ### Phase 2: tooling for a person, not a programmer
 

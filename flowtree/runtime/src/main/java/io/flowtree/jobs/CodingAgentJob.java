@@ -1515,6 +1515,11 @@ public class CodingAgentJob extends GitManagedJob {
         return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
 
+    /** Returns paths of files that are new or modified since the base branch, excluding scratch space. */
+    List<String> extractChangedFilePaths() {
+        return new ArrayList<>(ReviewRule.snapshotChangedFiles(this));
+    }
+
     /**
      * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
      * or {@code "commit_rule_recovered"}). Populated on the first call to {@link #getCommitMessage()}.

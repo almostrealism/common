@@ -1029,7 +1029,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
-			Random randn = randn(weightShape);
+			Random randn = randn(weightShape, getInitializationRandom());
 			setup.add(() -> randn::refresh);
 			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
 			if (biases != null) {
@@ -1135,6 +1135,22 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Returns the source of the random values that layers created through this instance
+	 * draw their initial weights from, or {@code null} to draw them from an unseeded
+	 * source, which is the default.
+	 *
+	 * <p>Returning a seeded {@link java.util.Random} makes weight initialization
+	 * reproducible: layers built in the same order draw the same weights on every run.
+	 * Values are drawn when a layer's setup runs, so the source is consumed in the order
+	 * the layers are initialized.</p>
+	 *
+	 * @return the random source for weight initialization, or {@code null}
+	 */
+	default java.util.Random getInitializationRandom() {
+		return null;
+	}
+
+	/**
 	 * Returns a setup operation that initializes the given weight collection with random
 	 * normal values scaled by the given factor.
 	 *
@@ -1145,7 +1161,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	@Override
 	default Supplier<Runnable> randnInit(PackedCollection weights, double scale) {
 		OperationList setup = new OperationList();
-		Random randn = randn(shape(weights));
+		Random randn = randn(shape(weights), getInitializationRandom());
 		setup.add(() -> randn::refresh);
 		setup.add(a(p(weights.each()), multiply(randn.traverseEach(), c(scale).traverse(0))));
 		return setup;

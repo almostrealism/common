@@ -115,6 +115,11 @@ class EnforcementRunner implements ConsoleFeatures {
             rules.add(new MavenDependencyProtectionRule());
         }
         rules.addAll(job.getCustomEnforcementRules());
+        if (reviewRule != null) {
+            // One session per changed class: after the content-protection rules, so that a
+            // branch touching many classes cannot spend the total attempt cap before they run.
+            rules.add(new ObjectOrientedDesignRule());
+        }
         if (job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()) {
             // Checked after the content rules above, right before the final
             // commit-message check -- see StagingSkipRule's class javadoc.

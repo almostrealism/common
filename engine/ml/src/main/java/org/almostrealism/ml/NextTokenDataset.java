@@ -248,6 +248,28 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 	}
 
 	/**
+	 * Returns the largest stride at which the given number of windows of this dataset's length
+	 * fit in its region, each with all {@code seqLen + 1} of its tokens inside the region. Reading
+	 * that many windows in order at this stride spreads them evenly from the start of the region
+	 * to its end; at a smaller stride, such as {@code seqLen} for non-overlapping windows in a
+	 * region with more windows than are read, they would cover only the region's first part.
+	 *
+	 * @param windows the number of windows to be read
+	 * @return the stride, at least one
+	 * @throws IllegalArgumentException if {@code windows} is not positive or the region cannot hold
+	 *                                  that many windows at a stride of one
+	 */
+	public int spanningStride(int windows) {
+		int span = end - start - seqLen - 1;
+		if (windows <= 0 || span < windows - 1) {
+			throw new IllegalArgumentException("A region of " + (end - start) + " tokens cannot hold " +
+					windows + " windows of " + seqLen + " positions");
+		}
+
+		return windows == 1 ? Math.max(1, span) : Math.max(1, span / (windows - 1));
+	}
+
+	/**
 	 * Sets whether successive passes continue through the windows where the previous pass
 	 * stopped (cycling back to the first window after the last) instead of restarting at the
 	 * first window. This only matters when the window count is capped.
