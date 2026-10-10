@@ -286,8 +286,12 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 					hidden, pathSelected.getShape().getTotalSize());
 			assertEquals("embed and embedValues must agree on output size for " + token,
 					hidden, allBranches.getShape().getTotalSize());
-			assertEquals("embed must match embedValues for " + token,
-					0.0, largestDeviation(allBranches, pathSelected), 1e-6);
+			// The two paths compile to differently fused kernels, so the supplementary MLP
+			// accumulates in a different order; the deviation is measured relative to the
+			// output's magnitude so float rounding passes while a wrong branch or row does not.
+			double magnitude = Math.max(1.0, largestDeviation(0.0, allBranches));
+			assertEquals("embed must match embedValues (relative to magnitude " + magnitude + ") for " + token,
+					0.0, largestDeviation(allBranches, pathSelected) / magnitude, 1e-6);
 		}
 
 		// The fixture must actually discriminate the branches, otherwise the equivalence above
