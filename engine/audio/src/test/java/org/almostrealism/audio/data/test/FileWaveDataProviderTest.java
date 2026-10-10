@@ -79,8 +79,9 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A mono fixture reports a single channel, and a repeated sample-rate access
-	 * (served from the cached field on the second call) agrees with the first.
+	 * A mono fixture reports a single channel, and once read every accessor is
+	 * served from its cached field: the values survive deletion of the file,
+	 * which would otherwise fail the read and mark the file corrupt.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -89,7 +90,14 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 		File file = writeWav(1, 50);
 		FileWaveDataProvider provider = new FileWaveDataProvider(file);
 
-		Assert.assertEquals(provider.getSampleRate(), provider.getSampleRate());
+		Assert.assertEquals(SAMPLE_RATE, provider.getSampleRate());
+		Assert.assertEquals(1, provider.getChannelCount());
+		Assert.assertEquals(50L, provider.getCountLong());
+		Assert.assertEquals(50.0 / 44100.0, provider.getDuration(), 1e-9);
+
+		Assert.assertTrue(file.delete());
+
+		Assert.assertEquals(SAMPLE_RATE, provider.getSampleRate());
 		Assert.assertEquals(1, provider.getChannelCount());
 		Assert.assertEquals(50L, provider.getCountLong());
 		Assert.assertEquals(50.0 / 44100.0, provider.getDuration(), 1e-9);
