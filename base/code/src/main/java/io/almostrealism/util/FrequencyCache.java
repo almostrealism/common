@@ -517,7 +517,9 @@ public class FrequencyCache<K, V> {
 	 * For each eviction, the entry with the lowest {@link #score(CacheEntry)}
 	 * is removed from the reverse cache. All keys in the primary cache that
 	 * reference the same entry are also removed, with the eviction listener
-	 * invoked for each.</p>
+	 * invoked once for the removed value (not once per aliasing key) &mdash; the
+	 * same once-per-value contract {@link #removeEntry(CacheEntry)} applies to the
+	 * explicit {@link #evict(Object)} path.</p>
 	 */
 	protected synchronized void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
