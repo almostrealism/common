@@ -45,6 +45,7 @@ from tools.fleet.github_poller import (
     fetch_run_jobs,
     fetch_runners,
     fetch_runs,
+    is_carried_over,
     poll_and_store,
     run_poll_loop,
     runner_state_of,
@@ -903,6 +904,72 @@ class PollAndStoreDependencyTests(unittest.TestCase):
             "SELECT job_id, is_entry_point, queue_wait_seconds FROM job_event ORDER BY job_id"
         ).fetchall()
         self.assertEqual([("1", 1, 30.0), ("2", 0, 45.0), ("3", 0, 300.0)], rows)
+
+
+class CarriedOverJobTests(unittest.TestCase):
+    """A re-run attempt's copy of a job an earlier attempt already ran is not
+    an execution: GitHub stamps it ``created_at`` at the re-run but keeps the
+    original ``started_at``/``completed_at``. Recording it gave the capacity
+    dashboard negative waits of many hours and counted the runner time twice."""
+
+    ORIGINAL = {"id": 1, "name": "changes", "created_at": "2026-09-29T05:54:36Z",
+                "started_at": "2026-09-29T05:54:38Z", "completed_at": "2026-09-29T05:54:45Z"}
+    COPY = {"id": 2, "name": "changes", "created_at": "2026-09-29T15:12:11Z",
+            "started_at": "2026-09-29T05:54:38Z", "completed_at": "2026-09-29T05:54:45Z"}
+
+    def setUp(self):
+        self.store = FleetStore(":memory:")
+        self.store.init_schema()
+
+    def tearDown(self):
+        self.store.close()
+
+    def _poll(self, jobs, **kwargs):
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[{"id": 1}]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=jobs):
+            return poll_and_store("acme/repo", "tok", self.store, **kwargs)
+
+    def test_a_job_that_started_before_it_was_created_is_carried_over(self):
+        self.assertTrue(is_carried_over(self.COPY))
+
+    def test_a_job_that_started_at_or_after_creation_is_not_carried_over(self):
+        self.assertFalse(is_carried_over(self.ORIGINAL))
+        same_second = dict(self.ORIGINAL, started_at=self.ORIGINAL["created_at"])
+        self.assertFalse(is_carried_over(same_second))
+
+    def test_a_job_missing_a_timestamp_is_not_carried_over(self):
+        self.assertFalse(is_carried_over({"id": 3, "created_at": "2026-09-29T15:12:11Z"}))
+        self.assertFalse(is_carried_over({"id": 3, "started_at": "2026-09-29T05:54:38Z"}))
+
+    def test_poll_and_store_does_not_record_a_carried_over_job_or_its_steps(self):
+        copy = dict(self.COPY, steps=[{"number": 1, "name": "checkout",
+                                       "started_at": "2026-09-29T05:54:38Z",
+                                       "completed_at": "2026-09-29T05:54:40Z"}])
+        count = self._poll([self.ORIGINAL, copy])
+        self.assertEqual(1, count)
+        self.assertEqual([("1",)], self.store._conn.execute("SELECT job_id FROM job_event").fetchall())
+        self.assertEqual(0, self.store.job_step_count())
+
+    def test_a_carried_over_dependency_still_supplies_its_completion_time(self):
+        """Re-running only the failed job ``test`` copies its passing
+        dependency ``build``; the re-run ``test`` waited from its own creation,
+        and the copy's ``completed_at`` is still when ``build`` really finished."""
+        build_copy = {"id": 10, "name": "build", "created_at": "2026-09-29T15:00:00Z",
+                      "started_at": "2026-09-29T05:00:00Z", "completed_at": "2026-09-29T05:10:00Z"}
+        test_rerun = {"id": 11, "name": "test", "created_at": "2026-09-29T15:00:01Z",
+                      "started_at": "2026-09-29T15:00:31Z", "completed_at": "2026-09-29T15:20:00Z"}
+        seen = []
+
+        def _completed(run_obj, job_obj, run_jobs):
+            seen.append(list(run_jobs))
+            return "2026-09-29T05:10:00Z"
+
+        self._poll([build_copy, test_rerun],
+                   resolve_needs=lambda run_obj, job_obj: [] if job_obj["name"] == "build" else ["build"],
+                   resolve_dependency_completed_at=_completed)
+        self.assertEqual([[build_copy, test_rerun]], seen)
+        self.assertEqual([("11", 0, 30.0)], self.store._conn.execute(
+            "SELECT job_id, is_entry_point, queue_wait_seconds FROM job_event").fetchall())
 
 
 class PollLoopWiringTests(unittest.TestCase):

@@ -165,8 +165,9 @@ reproduction) outright and caps `timeout_minutes` at 40.
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
-| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
-| `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | The consultant's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [the consultant README](../consultant/README.md#openrouter-hosted) |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 
