@@ -48,7 +48,7 @@ import java.util.Optional;
  */
 public class BooleanConstant extends Constant<Boolean> {
 	/** The constant boolean value. */
-	private boolean value;
+	private final boolean value;
 
 	/**
 	 * Constructs a new boolean constant with the specified value.

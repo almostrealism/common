@@ -18,6 +18,7 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
@@ -50,6 +51,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -596,6 +599,39 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals("-3", Constant.of((short) -3).getExpression(lang));
 		assertRenderingRefused(Constant.of("x"), lang);
 		assertRenderingRefused(new ConstantValue<>(Object.class, new Object()), lang);
+	}
+
+	/**
+	 * A numeric constant without a dedicated constant type is rendered through the language's
+	 * literal formatting: floating-point values follow the precision, which replaces
+	 * non-finite values that have no literal of their own, and integral values that do not
+	 * fit a {@code long} are refused rather than truncated.
+	 */
+	@Test(timeout = 30000)
+	public void constantValueRendersThroughLanguageFormatting() {
+		LanguageOperations fp64 = new LanguageOperationsStub();
+		LanguageOperations fp32 = new LanguageOperationsStub() {
+			@Override
+			public Precision getPrecision() { return Precision.FP32; }
+		};
+
+		Assert.assertEquals("1.5", Constant.of(1.5f).getExpression(fp64));
+		Assert.assertEquals("1.5f", Constant.of(1.5f).getExpression(fp32));
+		Assert.assertEquals("0.0", Constant.of(Float.NaN).getExpression(fp64));
+		Assert.assertEquals("0.0f", Constant.of(Float.NaN).getExpression(fp32));
+		Assert.assertEquals(String.valueOf(Double.MAX_VALUE),
+				Constant.of(Float.POSITIVE_INFINITY).getExpression(fp64));
+		Assert.assertEquals(-Float.MAX_VALUE + "f",
+				Constant.of(Float.NEGATIVE_INFINITY).getExpression(fp32));
+		Assert.assertEquals("0.25", Constant.of(new BigDecimal("0.25")).getExpression(fp64));
+		Assert.assertEquals("1.5", new ConstantValue<>(Double.class, 1.5).getExpression(fp64));
+
+		Assert.assertEquals("12", Constant.of((byte) 12).getExpression(fp32));
+		Assert.assertEquals(String.valueOf(Long.MAX_VALUE),
+				Constant.of(BigInteger.valueOf(Long.MAX_VALUE)).getExpression(fp64));
+		Assert.assertEquals(String.valueOf(Long.MIN_VALUE),
+				Constant.of(BigInteger.valueOf(Long.MIN_VALUE)).getExpression(fp64));
+		assertRenderingRefused(Constant.of(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE)), fp64);
 	}
 
 	/**

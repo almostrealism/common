@@ -18,6 +18,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.lang.LanguageOperations;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Objects;
 
 /**
@@ -46,15 +48,20 @@ public class ConstantValue<T> extends Constant<T> {
 	}
 
 	/**
-	 * Renders a numeric value in its own textual form, since a number of a type without a
-	 * dedicated constant expression has no language-specific literal format. A value that is
-	 * not a number has no literal in generated code at all, and rendering its text (a string
-	 * without quotes, an object's {@code toString}) would produce invalid source, so it is
-	 * refused instead.
+	 * Renders a numeric value through the language's literal formatting, exactly as the
+	 * dedicated constant types do. A floating-point value ({@link Float}, {@link Double},
+	 * {@link BigDecimal}) is formatted by the language {@link io.almostrealism.code.Precision},
+	 * which also normalizes non-finite values that have no literal of their own; any other
+	 * number is formatted as an integral literal, and a {@link BigInteger} that does not fit
+	 * in 64 bits is refused rather than silently truncated. A value that is not a number
+	 * has no literal in generated code at all, and rendering its text (a string without
+	 * quotes, an object's {@code toString}) would produce invalid source, so it is refused
+	 * as well.
 	 *
-	 * @param lang the language operations (not consulted)
-	 * @return the numeric value as text
-	 * @throws UnsupportedOperationException if the value is not a {@link Number}
+	 * @param lang the language operations whose literal formatting is used
+	 * @return the numeric value as a literal of the target language
+	 * @throws UnsupportedOperationException if the value is not a {@link Number}, or is an
+	 *                                       integer too large for 64 bits
 	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
@@ -62,7 +69,17 @@ public class ConstantValue<T> extends Constant<T> {
 			throw new UnsupportedOperationException("No literal representation for a constant of " + getType());
 		}
 
-		return String.valueOf(value);
+		Number number = (Number) value;
+
+		if (number instanceof Float || number instanceof Double || number instanceof BigDecimal) {
+			return lang.getPrecision().stringForDouble(number.doubleValue());
+		} else if (number instanceof BigInteger) {
+			if (((BigInteger) number).bitLength() >= Long.SIZE) {
+				throw new UnsupportedOperationException("No literal representation for " + number + " of " + getType());
+			}
+		}
+
+		return lang.stringForLong(number.longValue());
 	}
 
 	/**
