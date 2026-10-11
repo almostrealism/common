@@ -61,6 +61,19 @@ public class Greater extends Comparison {
 
 	@Override
 	protected boolean compare(double left, double right) {
+		return holds(left, right, orEqual);
+	}
+
+	/**
+	 * Evaluates this comparison on two numeric values without constructing a node, so
+	 * that {@link #of(Expression, Expression, boolean)} can fold constant operands.
+	 *
+	 * @param left    the left value
+	 * @param right   the right value
+	 * @param orEqual {@code true} for {@code >=}, {@code false} for {@code >}
+	 * @return whether {@code left > right}, or {@code left >= right} when {@code orEqual}
+	 */
+	private static boolean holds(double left, double right, boolean orEqual) {
 		return orEqual ? left >= right : left > right;
 	}
 
@@ -102,14 +115,13 @@ public class Greater extends Comparison {
 	 * @return a boolean constant if both operands are constant, otherwise a {@link Greater}
 	 */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
-		Greater greater = new Greater(left, right, orEqual);
 		OptionalDouble ld = left.doubleValue();
 		OptionalDouble rd = right.doubleValue();
 
 		if (ld.isPresent() && rd.isPresent()) {
-			return new BooleanConstant(greater.compare(ld.getAsDouble(), rd.getAsDouble()));
+			return new BooleanConstant(holds(ld.getAsDouble(), rd.getAsDouble(), orEqual));
 		}
 
-		return greater;
+		return new Greater(left, right, orEqual);
 	}
 }

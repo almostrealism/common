@@ -311,6 +311,44 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * {@link Greater#of(Expression, Expression, boolean)} and
+	 * {@link Less#of(Expression, Expression, boolean)} fold two constant operands into the
+	 * {@link BooleanConstant} the comparison evaluates to, honouring the strict/inclusive
+	 * distinction at equality, and keep a comparison node when either operand is not
+	 * constant.
+	 */
+	@Test(timeout = 30000)
+	public void comparisonsFoldConstantOperands() {
+		assertFolded(true, Greater.of(e(3), e(2), false));
+		assertFolded(false, Greater.of(e(2), e(3), false));
+		assertFolded(false, Greater.of(e(2), e(2), false));
+		assertFolded(true, Greater.of(e(2), e(2), true));
+		assertFolded(false, Greater.of(e(-1.5), e(2.0), true));
+
+		assertFolded(true, Less.of(e(2), e(3), false));
+		assertFolded(false, Less.of(e(3), e(2), false));
+		assertFolded(false, Less.of(e(2), e(2), false));
+		assertFolded(true, Less.of(e(2), e(2), true));
+		assertFolded(true, Less.of(e(-1.5), e(2.0), true));
+
+		Assert.assertTrue(Greater.of(ref("x"), e(2), true) instanceof Greater);
+		Assert.assertTrue(Greater.of(e(2), ref("x"), false) instanceof Greater);
+		Assert.assertTrue(Less.of(ref("x"), e(2), true) instanceof Less);
+		Assert.assertTrue(Less.of(e(2), ref("x"), false) instanceof Less);
+	}
+
+	/**
+	 * Asserts that {@code folded} is a {@link BooleanConstant} holding {@code expected}.
+	 *
+	 * @param expected the value the folded comparison must hold
+	 * @param folded   the result of a comparison factory applied to constant operands
+	 */
+	private static void assertFolded(boolean expected, Expression<Boolean> folded) {
+		Assert.assertTrue(folded instanceof BooleanConstant);
+		Assert.assertEquals(Optional.of(expected), folded.booleanValue());
+	}
+
+	/**
 	 * Two nodes of the same class, operator and children that produce different result
 	 * types are different terms, so they neither match nor compare equal.
 	 */
