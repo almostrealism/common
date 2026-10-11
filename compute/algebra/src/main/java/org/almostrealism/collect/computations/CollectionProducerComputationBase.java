@@ -33,7 +33,6 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.calculus.InputStub;
 import org.almostrealism.calculus.VectorJacobianProduct;
@@ -314,8 +313,8 @@ public abstract class CollectionProducerComputationBase
 	 * </pre>
 	 *
 	 * <ol>
-	 *   <li>First tries the direct cases of {@link CollectionProducer#attemptDelta(Producer)}</li>
-	 *   <li>Matches the target among this computation's inputs using {@link AlgebraFeatures#matchInput}:
+	 *   <li>First tries the direct cases of {@link #attemptDirectDelta(Producer)}</li>
+	 *   <li>Matches the target among this computation's inputs using {@link #matchInput}:
 	 *       no match returns null, an independent target returns zeros</li>
 	 *   <li>If the target is a direct input, delegates to {@link #applyDeltaStrategy(Producer)}</li>
 	 *   <li>Otherwise multiplies df/dg, from {@link #isolatedDelta(Producer)}, by dg/dx</li>
@@ -326,7 +325,7 @@ public abstract class CollectionProducerComputationBase
 	 */
 	@Override
 	public CollectionProducer attemptDelta(Producer<?> target) {
-		CollectionProducer result = CollectionProducerComputation.super.attemptDelta(target);
+		CollectionProducer result = attemptDirectDelta(target);
 		if (result != null || !isChainRuleSupported()) return result;
 
 		if (!isFixedCount()) {
@@ -336,7 +335,7 @@ public abstract class CollectionProducerComputationBase
 
 		TraversalPolicy shape = getShape();
 		TraversalPolicy targetShape = shape(target);
-		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
 
 		if (match == null) {
 			return null;
@@ -346,7 +345,7 @@ public abstract class CollectionProducerComputationBase
 
 		Producer<?> in = match.get();
 
-		if (AlgebraFeatures.match(in, target)) {
+		if (in.refersTo(target)) {
 			return applyDeltaStrategy(target);
 		}
 

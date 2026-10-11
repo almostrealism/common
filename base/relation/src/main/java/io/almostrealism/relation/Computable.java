@@ -91,6 +91,21 @@ public interface Computable {
 	default boolean isReduction() { return false; }
 
 	/**
+	 * Determines whether this computation is semantically equivalent to another, which
+	 * may have a different implementation but produces the same results.
+	 *
+	 * <p>The default implementation uses {@link Object#equals(Object)}; implementations
+	 * override it to compare what actually identifies their value, such as an underlying
+	 * data source or a referenced kernel argument.</p>
+	 *
+	 * @param other the computation to compare against
+	 * @return {@code true} if this computation matches the other, {@code false} otherwise
+	 */
+	default boolean matches(Computable other) {
+		return equals(other);
+	}
+
+	/**
 	 * Returns {@code true} if the given object is a {@link Computable} with a constant value.
 	 *
 	 * @param c   the object to check

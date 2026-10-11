@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
@@ -36,8 +35,9 @@ public interface GradientFeatures extends ComparisonFeatures {
 
 	/**
 	 * Computes the derivative of a collection producer with respect to a target producer,
-	 * for use in automatic differentiation and gradient computation. A matrix-based delta
-	 * is attempted first; if unavailable, the computation falls back to the standard
+	 * for use in automatic differentiation and gradient computation. The
+	 * {@link CollectionProducer#attemptDirectDelta direct cases} are attempted first; if
+	 * unavailable, the computation falls back to the standard
 	 * {@link CollectionProducer#delta} mechanism.
 	 *
 	 * @param producer the collection producer to differentiate
@@ -45,10 +45,11 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 * @return a {@link CollectionProducer} representing the derivative
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
-		CollectionProducer result = MatrixFeatures.getInstance().attemptDelta(producer, target);
+		CollectionProducer p = CollectionFeatures.getInstance().c(producer);
+		CollectionProducer result = p.attemptDirectDelta(target);
 		if (result != null) return result;
 
-		return CollectionFeatures.getInstance().c(producer).delta(target);
+		return p.delta(target);
 	}
 
 	/**

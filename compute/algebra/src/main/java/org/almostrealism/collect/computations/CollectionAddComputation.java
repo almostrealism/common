@@ -22,7 +22,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -211,7 +210,7 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 		List<Producer<?>> terms = new ArrayList<>();
 
 		for (Producer<PackedCollection> operand : getInputs().stream().skip(1).collect(Collectors.toList())) {
-			if (AlgebraFeatures.cannotMatch(operand, target)) continue;
+			if (operand.cannotMatch(target)) continue;
 			if (shape(operand).getTotalSizeLong() != size) return null;
 
 			Producer<PackedCollection> term = operand.attemptVectorJacobianProduct(target, gradient);

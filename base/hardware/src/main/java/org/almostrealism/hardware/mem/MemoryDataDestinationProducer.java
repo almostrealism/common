@@ -20,6 +20,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -78,6 +79,17 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 
 	@Override
 	public Countable getDelegate() { return process; }
+
+	/**
+	 * Returns the match root of the process this destination is allocated for, when that
+	 * process is a {@link Producer}, since the destination holds that producer's value.
+	 *
+	 * @return the match root of the delegate producer, or this producer if there is none
+	 */
+	@Override
+	public Producer<?> getMatchRoot() {
+		return process instanceof Producer ? ((Producer<?>) process).getMatchRoot() : this;
+	}
 
 	@Override
 	public long getCountLong() {

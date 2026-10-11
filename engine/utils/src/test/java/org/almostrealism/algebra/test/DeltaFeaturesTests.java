@@ -18,8 +18,7 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
-import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -32,7 +31,7 @@ import java.util.stream.IntStream;
 /**
  * Tests for delta features computation on algebraic operations.
  */
-public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
+public class DeltaFeaturesTests extends TestSuiteBase implements MatrixFeatures {
 
 	/**
 	 * Tests embedded product delta generation.
@@ -55,7 +54,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 
 		// dy = f'(g(x))
 		//    = w2
-		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, x).get();
+		Producer<PackedCollection> in = c.matchInput(x).get();
 		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
 		PackedCollection dout = dy.evaluate(v);
 		dout.print();
@@ -93,7 +92,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 
 		// dy = f'(x)
 		//    = 2x
-		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, x).get();
+		Producer<PackedCollection> in = c.matchInput(x).get();
 		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
 		PackedCollection dout = dy.evaluate(v);
 		dout.print();
@@ -132,7 +131,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, cp(input)).get();
+		Producer<PackedCollection> in = c.matchInput(cp(input)).get();
 		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
@@ -167,7 +166,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection> in = AlgebraFeatures.matchInput(c, cp(input)).get();
+		Producer<PackedCollection> in = c.matchInput(cp(input)).get();
 		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();

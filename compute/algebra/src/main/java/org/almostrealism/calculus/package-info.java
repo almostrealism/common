@@ -20,8 +20,11 @@
  * <p>Provides infrastructure for automatic differentiation and gradient computation
  * over {@link io.almostrealism.relation.Producer} graphs. Differentiation is behaviour of
  * the producer being differentiated ({@link org.almostrealism.collect.CollectionProducer#delta});
- * the {@link org.almostrealism.calculus.DeltaFeatures} mixin supplies the stateless operations
- * that delta implementations compose, and {@link org.almostrealism.calculus.InputStub} isolates
- * an input when the chain rule is applied.</p>
+ * a computation declares how it differentiates with respect to one of several terms through a
+ * {@link org.almostrealism.calculus.MultiTermDeltaStrategy}, and
+ * {@link org.almostrealism.calculus.InputStub} isolates an input when the chain rule is applied.
+ * The matrix operations that delta implementations compose (for example
+ * {@link org.almostrealism.algebra.MatrixFeatures#expandAndMultiply}) live on
+ * {@link org.almostrealism.algebra.MatrixFeatures}.</p>
  */
 package org.almostrealism.calculus;

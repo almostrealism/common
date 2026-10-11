@@ -288,6 +288,15 @@ public class CollectionProviderProducer<T extends Shape>
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	/**
+	 * Returns {@code true}, since a provider introduces its value into the graph
+	 * rather than deriving it from inputs.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Generates a process with the specified child processes.
 	 *
 	 * <p>Since provider producers have no children, this method ignores the children

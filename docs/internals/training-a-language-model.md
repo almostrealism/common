@@ -97,7 +97,7 @@ with partly wrong gradients; the cause inside the sparse-Jacobian machinery is n
 ## Pairing axes by size
 
 Two operations in the dense layer relied on an implicit broadcast that pairs operands by their
-traversal count (`TraversalPolicy.alignTraversalAxes`) and so misread inputs whose sizes happen to
+traversal count (`TraversalAxisAlignment.align`) and so misread inputs whose sizes happen to
 coincide:
 
 - `matmul`'s multiply-and-sum lowering multiplied the `(m, n)` matrix with the `(rows, m, n)`

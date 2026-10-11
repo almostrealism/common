@@ -29,7 +29,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.computations.CollectionConcatenateComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
@@ -183,7 +183,7 @@ import java.util.stream.Stream;
  * @see PackedCollection
  * @see TraversalPolicy
  * @see MatrixFeatures
- * @see DeltaFeatures
+ * @see MultiTermDeltaStrategy
  */
 public interface CollectionFeatures extends GradientFeatures {
 	/** When true, logs a warning when operations are attempted on collections with no defined shape. */
@@ -256,7 +256,7 @@ public interface CollectionFeatures extends GradientFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, true);
+			int axis = resultShape.compatibleAxis(valueShape, true);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
@@ -506,7 +506,7 @@ public interface CollectionFeatures extends GradientFeatures {
 											Producer<PackedCollection> collection,
 											Producer<PackedCollection> index) {
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation("valueAtIndex", shape,
-				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				MultiTermDeltaStrategy.NONE, true,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx).toInt())),
 				collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
@@ -546,7 +546,7 @@ public interface CollectionFeatures extends GradientFeatures {
 											   Producer<PackedCollection> rowIndex) {
 		long rowLength = shape.length(shape.getDimensions() - 1);
 		return new DefaultTraversableExpressionComputation("rowAtIndex", shape,
-				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				MultiTermDeltaStrategy.NONE, true,
 				args -> CollectionExpression.create(shape, idx -> {
 					Expression<Integer> row = args[2].getValueAt(idx.divide(rowLength)).toInt();
 					return args[1].getValueAt(row.multiply(rowLength).add(idx.imod(rowLength)));
@@ -683,7 +683,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	default CollectionProducer compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Producer<PackedCollection>... arguments) {
-		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, arguments);
+		return compute(name, MultiTermDeltaStrategy.NONE, expression, arguments);
 	}
 
 	/**
@@ -699,7 +699,7 @@ public interface CollectionFeatures extends GradientFeatures {
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Function<List<String>, String> description,
 			Producer<PackedCollection>... arguments) {
-		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, description, arguments);
+		return compute(name, MultiTermDeltaStrategy.NONE, expression, description, arguments);
 	}
 
 	/**
@@ -712,7 +712,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * @return a collection producer implementing the computation
 	 */
 	default CollectionProducer compute(
-			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
+			String name, MultiTermDeltaStrategy deltaStrategy,
 			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Producer<PackedCollection>... arguments) {
 		return compute(name, deltaStrategy, expression, null, arguments);
@@ -729,7 +729,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * @return a collection producer implementing the computation
 	 */
 	default CollectionProducer compute(
-			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
+			String name, MultiTermDeltaStrategy deltaStrategy,
 			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Function<List<String>, String> description, Producer<PackedCollection>... arguments) {
 		return compute((shape, args) -> (Producer<PackedCollection>) new DefaultTraversableExpressionComputation(

@@ -24,6 +24,7 @@ import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -229,6 +230,15 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	}
 
 	/**
+	 * Returns {@code true}, since a stub stands in for an input of the computation
+	 * being differentiated and is matched only by its own identity.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Checks if this stub matches another algebraic object.
 	 *
 	 * <p>
@@ -241,19 +251,16 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	 * during chain rule application.
 	 * </p>
 	 *
-	 * @param other  the other algebraic object to compare
-	 * @param <A>  the algebraic type
+	 * @param other  the other computation to compare
 	 * @return true if this stub matches the other object
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
+	public boolean matches(Computable other) {
 		if (other instanceof InputStub<?> && getMetadata().getId() == ((InputStub<?>) other).getMetadata().getId()) {
 			return true;
-		} else if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).matches(other);
 		}
 
-		return false;
+		return producer.matches(other);
 	}
 
 	@Override

@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -294,6 +295,31 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		assertGradientsMatch(out, p(weights), cp(gradient), true, weightGradient, true);
 		assertGradientsMatch(out, x, cp(gradient), true, inputGradient, true);
 		assertGradientsMatch(out, z, cp(gradient), true, inputGradient, true);
+	}
+
+	/**
+	 * A sum offers no product when an operand that depends on the target is broadcast into
+	 * it (its size differs from the sum's), even though the other operand alone offers one,
+	 * nor when no operand depends on the target.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void sumDeclinesBroadcastAndIndependentOperands() {
+		int rows = 3;
+		int size = 4;
+		int nodes = 2;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		PackedCollection gradient = new PackedCollection(shape(1, rows, nodes)).randnFill();
+
+		CollectionProducer dense = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(cp(input));
+		CollectionProducer broadcast = dense.add(sum(p(weights)));
+		Assert.assertTrue(broadcast instanceof CollectionAddComputation);
+		Assert.assertNull(broadcast.attemptVectorJacobianProduct(p(weights), cp(gradient)));
+		Assert.assertNotNull(dense.attemptVectorJacobianProduct(p(weights), cp(gradient)));
+
+		CollectionProducer independent = cp(input).add(cp(input));
+		Assert.assertNull(independent.attemptVectorJacobianProduct(p(weights), cp(new PackedCollection(inputShape))));
 	}
 
 	/**

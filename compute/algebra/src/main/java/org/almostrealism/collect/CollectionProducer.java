@@ -23,8 +23,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
-import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.VectorJacobianProduct;
 
 import java.util.function.Function;
@@ -158,13 +159,13 @@ import java.util.function.Supplier;
  *
  * @author  Michael Murray
  * @see CollectionProducerBase
- * @see DeltaFeatures
+ * @see MatrixFeatures
  * @see PackedCollection
  * @see CollectionProducerComputation
  */
 public interface CollectionProducer extends
 		CollectionProducerBase<PackedCollection, CollectionProducer>,
-		DeltaFeatures {
+		MatrixFeatures {
 
 	@Override
 	default CollectionProducer reshape(int... dims) {
@@ -884,7 +885,53 @@ public interface CollectionProducer extends
 	 * @return a CollectionProducer for the gradient, or null if not computable
 	 */
 	default CollectionProducer attemptDelta(Producer<?> target) {
-		return attemptDelta(this, target);
+		return attemptDirectDelta(target);
+	}
+
+	/**
+	 * Attempts the cases of differentiation that need nothing beyond this producer's
+	 * identity and its {@link #getDeltaAlternate() delta alternate}, without descending
+	 * into its inputs:
+	 * <ul>
+	 *   <li>If this producer has a delta alternate, the delta of the alternate</li>
+	 *   <li>If this producer cannot depend on the target, zeros</li>
+	 *   <li>If this producer is the target, an identity matrix</li>
+	 *   <li>Otherwise, null to indicate that no direct form is available</li>
+	 * </ul>
+	 *
+	 * <p>Computations that override {@link #attemptDelta(Producer)} or
+	 * {@link #delta(Producer)} with their own derivative try these cases first.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the delta, in the shape of this producer followed by that of the target,
+	 *         or null if no direct form is available
+	 */
+	default CollectionProducer attemptDirectDelta(Producer<?> target) {
+		CollectionProducer alternate = getDeltaAlternate();
+		if (alternate != null) return alternate.delta(target);
+
+		TraversalPolicy shape = getShape();
+		TraversalPolicy targetShape = shape(target);
+
+		if (cannotMatch(target)) {
+			return zeros(shape.append(targetShape));
+		} else if (refersTo(target)) {
+			return identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+					.reshape(shape.append(targetShape));
+		}
+
+		return null;
+	}
+
+	/**
+	 * Returns the computation, equal in value to this one, whose delta is used in place of
+	 * this producer's own (see {@link DeltaAlternate} and
+	 * {@link #withDeltaAlternate(CollectionProducer)}).
+	 *
+	 * @return the delta alternate, or null if this producer has none
+	 */
+	default CollectionProducer getDeltaAlternate() {
+		return null;
 	}
 
 	/**

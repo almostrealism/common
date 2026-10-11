@@ -23,7 +23,6 @@ import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
 import org.almostrealism.algebra.computations.IdentityMatrixComputation;
-import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -150,6 +149,35 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
 		return new DiagonalMatrixComputation(diagonalShape, vector);
+	}
+
+	/**
+	 * Scales each row of a matrix by the corresponding element of a vector, computing
+	 * {@code diagonal(vector) . matrix} without forming the diagonal matrix.
+	 *
+	 * <p>
+	 * The vector is expanded along the columns of the matrix and multiplied element-wise.
+	 * When the matrix is an identity whose size matches the vector, the result is simply
+	 * {@link #diagonal(Producer) diagonal(vector)}. Delta implementations use this to apply
+	 * the chain rule for element-wise functions: d f(u)/dx = diag(f'(u)) . du/dx.
+	 * </p>
+	 *
+	 * @param vector  the row scale factors (must be 1-dimensional)
+	 * @param matrix  the matrix whose rows are scaled
+	 * @param <V>  the packed collection type
+	 * @return the row-scaled matrix
+	 * @throws IllegalArgumentException if vector is not 1-dimensional
+	 */
+	default <V extends PackedCollection> CollectionProducer expandAndMultiply(
+			CollectionProducer vector, CollectionProducer matrix) {
+		if (vector.getShape().getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+			return diagonal(vector);
+		} else {
+			CollectionProducer expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			return multiply(expanded, matrix);
+		}
 	}
 
 	/**
@@ -491,44 +519,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				reshape(leftShape, c(a)),
 				reshape(rightShape, c(b)))
 				.reshape(outputShape);
-	}
-
-	/**
-	 * Attempts to compute the delta (Jacobian/gradient) of a producer with respect to a target.
-	 *
-	 * <p>
-	 * This method is used in automatic differentiation to compute gradients. It handles
-	 * several special cases:
-	 * <ul>
-	 *   <li>If the producer implements {@link DeltaAlternate}, uses the alternative delta computation</li>
-	 *   <li>If the producer cannot match the target, returns zeros</li>
-	 *   <li>If the producer matches the target exactly, returns an identity matrix</li>
-	 *   <li>Otherwise, returns null to indicate no simplified delta is available</li>
-	 * </ul>
-	 * </p>
-	 *
-	 * @param producer  the producer to differentiate
-	 * @param target    the target variable to differentiate with respect to
-	 * @return the delta computation, or null if no simplified form is available
-	 */
-	default CollectionProducer attemptDelta(Producer<PackedCollection> producer,
-																		 Producer<?> target) {
-		if (producer instanceof DeltaAlternate) {
-			CollectionProducer alt = ((DeltaAlternate) producer).getDeltaAlternate();
-			if (alt != null) return alt.delta(target);
-		}
-
-		TraversalPolicy shape = shape(producer);
-		TraversalPolicy targetShape = shape(target);
-
-		if (AlgebraFeatures.cannotMatch(producer, target)) {
-			return zeros(shape.append(targetShape));
-		} else if (AlgebraFeatures.match(producer, target)) {
-			return identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-					.reshape(shape.append(targetShape));
-		}
-
-		return null;
 	}
 
 	/**

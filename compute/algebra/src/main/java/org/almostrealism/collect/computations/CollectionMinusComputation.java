@@ -22,7 +22,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -226,7 +225,7 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		CollectionProducer delta = attemptDirectDelta(target);
 		if (delta != null) return delta;
 
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);

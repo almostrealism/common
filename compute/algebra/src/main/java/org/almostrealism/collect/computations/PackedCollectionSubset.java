@@ -23,7 +23,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -327,7 +326,7 @@ public class PackedCollectionSubset
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
-		if (pos != null && AlgebraFeatures.match(getInputs().get(1), target)) {
+		if (pos != null && getInputs().get(1).refersTo(target)) {
 			TraversalPolicy outputShape = getShape();
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 			TraversalPolicy jacobianShape = outputShape.append(inputShape);

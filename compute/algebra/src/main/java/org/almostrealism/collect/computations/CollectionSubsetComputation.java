@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
-import org.almostrealism.algebra.AlgebraFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.Shape;
@@ -27,7 +26,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -233,7 +231,7 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
 		// First try the standard optimizations (same producer, no match, etc.)
-		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		CollectionProducer delta = attemptDirectDelta(target);
 		if (delta != null) {
 			return delta;
 		}
@@ -242,7 +240,7 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);
 
 		// Check if the input matches the target (the common case: d(subset(x))/dx)
-		if (AlgebraFeatures.match(input, target)) {
+		if (input.refersTo(target)) {
 			// Create a direct projection matrix
 			return createProjectionMatrix();
 		}

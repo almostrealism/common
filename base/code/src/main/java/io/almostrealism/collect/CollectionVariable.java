@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -265,12 +266,11 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 * and report a match. Otherwise, falls back to the default {@link CollectionExpression}
 	 * matching logic.
 	 *
-	 * @param other the other algebraic expression to compare against
-	 * @param <A>   the type of algebraic expression
+	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
+	public boolean matches(Computable other) {
 		if (other instanceof CollectionVariable) {
 			Supplier<?> a = getProducer();
 			Supplier<?> b = ((CollectionVariable) other).getProducer();

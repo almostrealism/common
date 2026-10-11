@@ -440,6 +440,17 @@ public class ReshapeProducer
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
 
+	/**
+	 * Returns the match root of the reshaped producer, since a reshape presents the
+	 * same values under a different shape.
+	 *
+	 * @return the match root of the wrapped producer
+	 */
+	@Override
+	public Producer<?> getMatchRoot() {
+		return producer.getMatchRoot();
+	}
+
 	@Override
 	public ReshapeProducer generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;

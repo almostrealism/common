@@ -27,7 +27,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -115,57 +115,54 @@ public interface CollectionProducerComputation extends
 	}
 
 	/**
-	 * Applies this computation's {@link #getDeltaStrategy() multi-term delta strategy}
-	 * to its own children, rebuilding this computation from the filtered terms when
-	 * the strategy requires it.
-	 *
-	 * <ul>
-	 *   <li><b>NONE:</b> Returns null</li>
-	 *   <li><b>IGNORE:</b> Returns identity matrix (for additive terms: d(a+b)/da = I)</li>
-	 *   <li><b>COMBINE:</b> Returns diagonal of non-target terms (for multiplicative: d(a.b)/da = diag(b))</li>
-	 * </ul>
-	 *
-	 * <p>Whatever the strategy, the result is null when the target appears in more than one
-	 * term, and zero when it appears in none.</p>
+	 * Differentiates this computation with respect to one of its own terms using its
+	 * {@link #getDeltaStrategy() multi-term delta strategy}.
 	 *
 	 * @param target  the variable to differentiate with respect to
 	 * @return the gradient computation, or null if the strategy does not apply
+	 * @see MultiTermDeltaStrategy#delta(CollectionProducerComputation, Producer)
 	 */
 	@Override
 	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
-		MultiTermDeltaStrategy strategy = getDeltaStrategy();
-		if (strategy == MultiTermDeltaStrategy.NONE) {
-			return null;
-		}
+		return getDeltaStrategy().delta(this, target);
+	}
 
-		List<Producer<?>> terms = getChildren().stream()
+	/**
+	 * Returns the terms of this computation, its destination first.
+	 *
+	 * @return the children of this computation as producers
+	 */
+	private List<Producer<?>> getTerms() {
+		return getChildren().stream()
 				.map(t -> (Producer<?>) t)
 				.collect(Collectors.toList());
-		long matches = terms.stream()
-				.filter(t -> AlgebraFeatures.match(t, target))
+	}
+
+	/**
+	 * Counts the terms of this computation that {@link Producer#refersTo refer to}
+	 * the given target.
+	 *
+	 * @param target  the producer to look for among this computation's terms
+	 * @return the number of matching terms
+	 */
+	default long countTerms(Producer<?> target) {
+		return getTerms().stream()
+				.filter(t -> t.refersTo(target))
 				.count();
+	}
 
-		if (matches == 0) {
-			return c(0);
-		} else if (matches > 1) {
-			return null;
-		}
-
-		int pSize = getShape().getTotalSize();
-		int tSize = shape(target).getTotalSize();
-		TraversalPolicy finalShape = getShape().append(shape(target));
-
-		switch (strategy) {
-			case IGNORE:
-				return identity(shape(pSize, tSize)).reshape(finalShape);
-			case COMBINE:
-				CollectionProducer result = generateFromTerms(terms.stream()
-						.filter(t -> !AlgebraFeatures.match(t, target))
-						.collect(Collectors.toList())).flatten();
-				return diagonal(result).reshape(finalShape);
-			default:
-				throw new IllegalArgumentException();
-		}
+	/**
+	 * Rebuilds this computation from every term except those that
+	 * {@link Producer#refersTo refer to} the given target. When a single
+	 * term remains, that term is returned directly.
+	 *
+	 * @param target  the term to leave out
+	 * @return this computation over the remaining terms
+	 */
+	default CollectionProducer excludeTerm(Producer<?> target) {
+		return generateFromTerms(getTerms().stream()
+				.filter(t -> !t.refersTo(target))
+				.collect(Collectors.toList()));
 	}
 
 	@Override

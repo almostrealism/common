@@ -90,7 +90,7 @@ public class MatrixMultiplyVectorJacobianProduct implements VectorJacobianProduc
 		CollectionProducer g = c(gradient).reshape(shape(r, m));
 
 		if (targetSize == mShape.getTotalSizeLong() &&
-				AlgebraFeatures.match(matrix, target) && AlgebraFeatures.cannotMatch(rows, target)) {
+				matrix.refersTo(target) && rows.cannotMatch(target)) {
 			CollectionProducer gt = g.enumerate(1, 1).reshape(shape(m, r));
 			CollectionProducer xt = c(rows).reshape(shape(r, n)).enumerate(1, 1).reshape(shape(n, r));
 			return gt.traverse(1).repeat(n)
@@ -98,7 +98,7 @@ public class MatrixMultiplyVectorJacobianProduct implements VectorJacobianProduc
 					.traverse(2).sum()
 					.reshape(shape(target));
 		} else if (targetSize == rowElements &&
-				AlgebraFeatures.match(rows, target) && AlgebraFeatures.cannotMatch(matrix, target)) {
+				rows.refersTo(target) && matrix.cannotMatch(target)) {
 			CollectionProducer wt = c(matrix).reshape(shape(m, n)).enumerate(1, 1).reshape(shape(n, m));
 			return g.traverse(1).repeat(n)
 					.multiply(wt.traverse(0).repeat(r))
