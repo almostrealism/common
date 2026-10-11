@@ -534,6 +534,29 @@ class OpenRouterTest(unittest.TestCase):
 
         self.assertNotIn("reasoning", self.posted_body())
 
+    def test_data_collection_allow_is_honoured(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = "allow"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "allow"})
+
+    def test_blank_data_collection_keeps_the_privacy_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = ""
+
+        self.backend().synthesize("prompt")
+
+        # A blank value must not silently drop the restriction, which would let
+        # prompts (carrying the memory corpus) route to retaining providers.
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "deny"})
+
+    def test_unrecognised_data_collection_keeps_the_privacy_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = "maybe"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "deny"})
+
     def test_model_comes_from_the_environment(self):
         os.environ["AR_CONSULTANT_OPENROUTER_MODEL"] = "vendor/other-model"
 

@@ -756,7 +756,11 @@ class OpenRouterBackend(OpenAIChatBackend):
                                                  leaving the model's default
         AR_CONSULTANT_OPENROUTER_DATA_COLLECTION - ``deny`` (default) or
                                                  ``allow``; sent as
-                                                 ``provider.data_collection``
+                                                 ``provider.data_collection``.
+                                                 A blank or unrecognised value
+                                                 falls back to ``deny`` so the
+                                                 privacy restriction is never
+                                                 silently dropped
         AR_CONSULTANT_OPENROUTER_URL           - API base URL
                                                  (default: https://openrouter.ai/api/v1)
     """
@@ -771,6 +775,13 @@ class OpenRouterBackend(OpenAIChatBackend):
     DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
     DEFAULT_REASONING = REASONING_OFF
     DEFAULT_DATA_COLLECTION = "deny"
+
+    #: The values OpenRouter documents for ``provider.data_collection``. Unlike
+    #: the reasoning field, a data-collection setting is a privacy control:
+    #: prompts carry the memory corpus, so a blank or unrecognised value must
+    #: never silently drop the restriction. Anything outside this set is
+    #: treated as unset and falls back to the privacy default.
+    DATA_COLLECTION_VALUES = ("deny", "allow")
 
     def __init__(
         self,
@@ -794,9 +805,12 @@ class OpenRouterBackend(OpenAIChatBackend):
         self.reasoning = os.environ.get(
             "AR_CONSULTANT_OPENROUTER_REASONING", self.DEFAULT_REASONING
         ).strip()
-        self.data_collection = os.environ.get(
-            "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION", self.DEFAULT_DATA_COLLECTION
-        ).strip()
+        self.data_collection = self.resolve_data_collection(
+            os.environ.get(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION",
+                self.DEFAULT_DATA_COLLECTION,
+            ).strip()
+        )
         super().__init__()
 
     #: Name of the secret, and the key that holds it in a secret payload file.
@@ -842,6 +856,35 @@ class OpenRouterBackend(OpenAIChatBackend):
         if value is None:
             value = payload.get(cls.SECRET_VALUE_KEY)
         return value.strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def resolve_data_collection(cls, setting: str) -> str:
+        """Normalise a data-collection setting, keeping the privacy default.
+
+        A blank value (compose passing ``${VAR:-}`` through, or the variable
+        set to an empty string) or any value OpenRouter does not document is
+        treated as unset and falls back to :attr:`DEFAULT_DATA_COLLECTION`.
+        This is deliberately stricter than the reasoning setting: an empty
+        reasoning value omits the field to take the model's default, but a
+        prompt carries the memory corpus, so an empty or unrecognised
+        data-collection value must never drop the restriction that keeps it
+        off prompt-retaining providers.
+
+        Args:
+            setting: The already-stripped configured value.
+
+        Returns:
+            One of :attr:`DATA_COLLECTION_VALUES`.
+        """
+        if setting in cls.DATA_COLLECTION_VALUES:
+            return setting
+        if setting:
+            log.warning(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=%r is not one of %s; "
+                "keeping the privacy default %r",
+                setting, cls.DATA_COLLECTION_VALUES, cls.DEFAULT_DATA_COLLECTION,
+            )
+        return cls.DEFAULT_DATA_COLLECTION
 
     @property
     def name(self) -> str:

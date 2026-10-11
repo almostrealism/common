@@ -227,7 +227,7 @@ backend that is unreachable degrades rather than falling back to another one.
 | `AR_CONSULTANT_OPENROUTER_API_KEY` | (none) | OpenRouter API key, if not using the file |
 | `AR_CONSULTANT_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter model slug |
 | `AR_CONSULTANT_OPENROUTER_REASONING` | `none` | `none` disables reasoning (`reasoning.enabled=false`); `high`/`medium`/`low` set `reasoning.effort`; empty string sends no reasoning field |
-| `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION` | `deny` | `provider.data_collection`: `deny` or `allow` |
+| `AR_CONSULTANT_OPENROUTER_DATA_COLLECTION` | `deny` | `provider.data_collection`: `deny` or `allow`; a blank or unrecognised value falls back to `deny` so the privacy restriction is never silently dropped |
 | `AR_CONSULTANT_OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
 | `AR_INFERENCE_HEALTH_TTL` | `30` | Seconds a backend health probe is trusted before re-probing; `0` probes every time |
