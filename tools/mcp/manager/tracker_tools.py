@@ -189,6 +189,7 @@ def tracker_create_task(
     workstream_id: str = "",
     status: str = "open",
     priority: int = 0,
+    stage: str = "",
 ) -> dict:
     """Create a new tracker task.
 
@@ -203,6 +204,8 @@ def tracker_create_task(
         status: Task status. Either "open" (default) or "closed".
         priority: Signed integer in the range [-2, 2]. Defaults to 0.
             -2 = Lowest, -1 = Low, 0 = Medium, 1 = High, 2 = Highest.
+        stage: Readiness stage: "backlog", "ready" or "declined". Omit to
+            let the tracker apply its default, "backlog".
 
     Returns:
         dict with ok=True and the created task record.
@@ -220,6 +223,8 @@ def tracker_create_task(
         payload["release_id"] = release_id
     if workstream_id:
         payload["workstream_id"] = workstream_id
+    if stage:
+        payload["stage"] = stage
     return server._tracker_post("/v1/tasks", payload)
 
 
@@ -352,6 +357,7 @@ def tracker_update_task(
     project_id: str = "",
     release_id: str = "",
     workstream_id: str = "",
+    stage: str = "",
 ) -> dict:
     """Update an existing tracker task.
 
@@ -376,6 +382,10 @@ def tracker_update_task(
             "null" to clear.
         workstream_id: New workstream ID. Omit to leave unchanged. Pass
             "null" to clear.
+        stage: New readiness stage: "backlog", "ready" (a planning agent
+            may claim it) or "declined". Omit to leave unchanged. A task
+            is claimed only when it is also open, unlinked to a
+            workstream, unblocked, and in the release being planned.
 
     Returns:
         dict with ok=True and the updated task record.
@@ -399,6 +409,8 @@ def tracker_update_task(
         payload["status"] = status
     if priority != -999:
         payload["priority"] = priority
+    if stage:
+        payload["stage"] = stage
     for field, val in [("project_id", project_id),
                        ("release_id", release_id),
                        ("workstream_id", workstream_id)]:
