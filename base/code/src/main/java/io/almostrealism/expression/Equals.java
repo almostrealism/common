@@ -17,12 +17,12 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
@@ -30,7 +30,8 @@ import java.util.OptionalLong;
  * An equality comparison expression ({@code ==}) between two sub-expressions.
  *
  * <p>Provides several simplification passes: constant folding, bounds-based static
- * resolution, Mask propagation, quotient expansion, and constant consolidation across
+ * resolution, reductions offered by the left-hand side itself (see
+ * {@link Expression#equalityWith(Expression)}), and constant consolidation across
  * both sides of the equality.</p>
  */
 public class Equals extends Comparison {
@@ -70,13 +71,29 @@ public class Equals extends Comparison {
 
 	@Override
 	public boolean isSingleIndex() {
-		if (getLeft() instanceof KernelIndex) {
+		if (getLeft().isKernelIndex()) {
 			return getRight().doubleValue().isPresent();
-		} else if (getRight() instanceof KernelIndex) {
+		} else if (getRight().isKernelIndex()) {
 			return getLeft().doubleValue().isPresent();
 		}
 
 		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Reports the left-hand side when the right-hand side is the constant {@code value},
+	 * which is the canonical "terms == constant" form produced by {@link #create}.</p>
+	 */
+	@Override
+	public Optional<Expression<?>> equalityOperand(double value) {
+		OptionalDouble right = getRight().doubleValue();
+		if (right.isPresent() && right.getAsDouble() == value) {
+			return Optional.of(getLeft());
+		}
+
+		return Optional.empty();
 	}
 
 	@Override
@@ -126,21 +143,8 @@ public class Equals extends Comparison {
 			}
 		}
 
-		if (left instanceof Mask && right.doubleValue().isPresent()) {
-			OptionalDouble masked = ((Mask) left).getMaskedValue().doubleValue();
-			if (masked.isPresent() && masked.getAsDouble() == right.doubleValue().getAsDouble()) {
-				return left;
-			}
-		}
-
-		if (enableExpandQuotient && !left.isFP() && !right.isFP() && left instanceof Quotient) {
-			Quotient q = (Quotient) left;
-			Expression<?> d = q.getDenominator();
-
-			if (d instanceof Constant) {
-				return create(q.getNumerator(), right.multiply(d));
-			}
-		}
+		Optional<Expression<?>> reduced = left.equalityWith(right);
+		if (reduced.isPresent()) return reduced.get();
 
 		// Canonicalize to the form "terms == constant" by moving non-constant terms to the
 		// left and constants to the right. This is valuable because it exposes simplifications

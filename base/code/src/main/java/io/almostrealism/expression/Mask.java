@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
  * A mask expression that evaluates to a value when a boolean condition is true,
@@ -97,6 +98,23 @@ public class Mask<T extends Number> extends Conditional<T> {
 
 	@Override
 	public boolean isMasked() { return true; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A mask compared against the constant it masks reduces to the mask itself.</p>
+	 */
+	@Override
+	public Optional<Expression<?>> equalityWith(Expression<?> other) {
+		OptionalDouble masked = getMaskedValue().doubleValue();
+		OptionalDouble value = other.doubleValue();
+
+		if (masked.isPresent() && value.isPresent() && masked.getAsDouble() == value.getAsDouble()) {
+			return Optional.of(this);
+		}
+
+		return Optional.empty();
+	}
 
 	/**
 	 * Creates a mask expression, applying constant-folding and zero-value short-circuits.

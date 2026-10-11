@@ -276,10 +276,10 @@ public abstract class Expression<T> implements
 
 		for (int i = 0; i < children.size(); i++) {
 			Expression<?> child = children.get(i);
-			childDepth = Math.max(childDepth, child.depth);
-			c += child.nodeCount;
-			childCost += child.computeCost;
-			childLong = childLong || child.containsLong;
+			childDepth = Math.max(childDepth, child.treeDepth());
+			c += child.countNodes();
+			childCost += child.totalComputeCost();
+			childLong = childLong || child.containsLong();
 			childHash = (childHash % 2713) * (child.hash % 2713);
 		}
 
@@ -600,6 +600,19 @@ public abstract class Expression<T> implements
 
 		OptionalLong low = lowerBound();
 		return low.isPresent() && low.getAsLong() > value;
+	}
+
+	/**
+	 * Returns a simplified form of the equality {@code this == other} that follows from
+	 * the structure of this expression, if there is one. {@link Equals} consults the
+	 * left-hand side of every equality it creates; subtypes that know how an equality
+	 * against them reduces (for example {@link Mask} and {@link Quotient}) override this.
+	 *
+	 * @param other  the right-hand side of the equality
+	 * @return the simplified equality; empty if this expression offers none (the default)
+	 */
+	public Optional<Expression<?>> equalityWith(Expression<?> other) {
+		return Optional.empty();
 	}
 
 	/**
@@ -1007,9 +1020,17 @@ public abstract class Expression<T> implements
 		}
 
 		if (context == null || context.getKernelMaximum().isEmpty())
-			simplified.isSimple = true;
+			simplified.markSimple();
 
 		return simplified;
+	}
+
+	/**
+	 * Records that this expression is fully simplified, so that {@link #isSimple()}
+	 * reports it as needing no further simplification.
+	 */
+	private void markSimple() {
+		isSimple = true;
 	}
 
 	/**
@@ -1245,7 +1266,7 @@ public abstract class Expression<T> implements
 					if (ScopeSettings.isDeepSimplification())
 						simplified[i] = simplified[i].getSimplified(context);
 
-					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+					simplified[i].children().forEach(Expression::markSeriesSimplificationChild);
 				}
 			} finally {
 				altered = altered || simplified[i] != children.get(i);
@@ -1253,12 +1274,30 @@ public abstract class Expression<T> implements
 		}
 
 		if (altered) {
-			Expression simple = generate(List.of(simplified)).populate(this);
-			simple.seriesProvider = provider;
-			return simple;
+			return generate(List.of(simplified)).populate(this).simplifiedBy(provider);
 		} else {
 			return this;
 		}
+	}
+
+	/**
+	 * Records that this expression is part of the result of a series simplification,
+	 * so that it is not itself considered for series simplification again.
+	 */
+	private void markSeriesSimplificationChild() {
+		isSeriesSimplificationChild = true;
+	}
+
+	/**
+	 * Records the series provider that simplified this expression, so that a later
+	 * simplification with the same provider returns it unchanged.
+	 *
+	 * @param provider the series provider used for the simplification
+	 * @return this expression
+	 */
+	private Expression<T> simplifiedBy(KernelSeriesProvider provider) {
+		seriesProvider = provider;
+		return this;
 	}
 
 	/**

@@ -205,7 +205,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 		if (result != null) return result;
 
-		boolean fixedCount = Countable.isFixedCount(getProducer());
+		boolean fixedCount = isFixedCount();
 
 		if (getShape().getTotalSize() == 1 && fixedCount) {
 			return (Expression) reference(e(0));

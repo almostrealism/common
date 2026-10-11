@@ -145,24 +145,24 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 
 		if (replaceCondition) {
-			Expression<?> exp = context.getSeriesProvider().getSeries(condition);
-			Optional<Boolean> r = exp.booleanValue();
+			Expression<?> series = context.getSeriesProvider().getSeries(condition);
+			Optional<Boolean> r = series.booleanValue();
 
 			if (r.isPresent()) {
 				return r.get() ? positive : negative;
-			} else if (exp instanceof Equals) {
-				OptionalDouble d = ((Equals) exp).getRight().doubleValue();
+			}
 
-				if (d.isPresent() && d.getAsDouble() == 1.0) {
-					exp = ((Equals) exp).getLeft();
+			Optional<Expression<?>> indicator = series.equalityOperand(1.0);
 
-					if (rd.isPresent() && rd.getAsDouble() == 0) {
-						return exp.multiply(positive);
-					} else if (ld.isPresent() && ld.getAsDouble() == 0) {
-						return exp.add(1).imod(2).multiply(negative);
-					} else {
-						return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
-					}
+			if (indicator.isPresent()) {
+				Expression<?> exp = indicator.get();
+
+				if (rd.isPresent() && rd.getAsDouble() == 0) {
+					return exp.multiply(positive);
+				} else if (ld.isPresent() && ld.getAsDouble() == 0) {
+					return exp.add(1).imod(2).multiply(negative);
+				} else {
+					return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
 				}
 			}
 		}
@@ -221,12 +221,10 @@ public class Conditional<T extends Number> extends Expression<T> {
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
 
-		if (enableInputBranchWarning && condition instanceof Equals && ld.isPresent()) {
-			OptionalDouble value = ((Equals) condition).getRight().doubleValue();
-			if (value.isPresent() && value.getAsDouble() == ld.getAsDouble()) {
-				Scope.console.features(Conditional.class)
-						.warn("Conditional output is equivalent to a branch of the condition");
-			}
+		if (enableInputBranchWarning && ld.isPresent()
+				&& condition.equalityOperand(ld.getAsDouble()).isPresent()) {
+			Scope.console.features(Conditional.class)
+					.warn("Conditional output is equivalent to a branch of the condition");
 		}
 
 		if (rd.isPresent() && ld.isPresent() && rd.getAsDouble() == ld.getAsDouble()) {

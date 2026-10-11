@@ -82,6 +82,22 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When {@link Equals#enableExpandQuotient} is set, an integer quotient by a constant
+	 * is expanded by multiplying both sides of the equality by the denominator.</p>
+	 */
+	@Override
+	public Optional<Expression<?>> equalityWith(Expression<?> other) {
+		if (!Equals.enableExpandQuotient || isFP() || other.isFP()) return Optional.empty();
+
+		Expression<?> d = getDenominator();
+		if (d.longValue().isEmpty()) return Optional.empty();
+
+		return Optional.of(Equals.create(getNumerator(), other.multiply(d)));
+	}
+
+	/**
 	 * Returns the effective denominator of this quotient. For a two-operand
 	 * quotient {@code a / b}, returns {@code b}. For multi-operand quotients
 	 * {@code a / b / c / ...}, returns the product {@code b * c * ...}.
