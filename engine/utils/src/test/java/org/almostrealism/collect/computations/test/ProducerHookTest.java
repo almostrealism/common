@@ -306,6 +306,31 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * {@link MultiTermDeltaStrategy#COMBINE} differentiates a product with respect to one
+	 * factor as the diagonal of the other factors, and declines (returns null) when the
+	 * target is more than one of the terms.
+	 */
+	@Test(timeout = 60000)
+	public void multiTermDeltaCombine() {
+		CollectionProducer a = cp(pack(1.0, 2.0, 3.0));
+		CollectionProducer product = a.multiply(cp(pack(4.0, 5.0, 6.0)));
+		Assert.assertTrue(product instanceof CollectionProducerComputation);
+
+		CollectionProducer diagonal =
+				MultiTermDeltaStrategy.COMBINE.delta((CollectionProducerComputation) product, a);
+		Assert.assertEquals(3, diagonal.getShape().length(0));
+		Assert.assertEquals(3, diagonal.getShape().length(1));
+		assertValues(diagonal.evaluate(),
+				4.0, 0.0, 0.0,
+				0.0, 5.0, 0.0,
+				0.0, 0.0, 6.0);
+
+		CollectionProducer twice = a.add(a);
+		Assert.assertTrue(twice instanceof CollectionProducerComputation);
+		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta((CollectionProducerComputation) twice, a));
+	}
+
+	/**
 	 * Asserts that a collection holds exactly the given values.
 	 *
 	 * @param actual   the evaluated collection
