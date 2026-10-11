@@ -207,9 +207,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return adjustType(getType(),
-					intMod(getChildren().get(0).value(indexValues).longValue(),
-							getChildren().get(1).value(indexValues).longValue()));
+			return adjustType(intMod(getChildren().get(0).value(indexValues).longValue(),
+					getChildren().get(1).value(indexValues).longValue()));
 		}
 	}
 
@@ -468,7 +467,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 			if (demoteMod || demoteInput) {
 				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
-				Expression<? extends Number> converted = Constant.exactInteger(l);
+				Expression<? extends Number> converted = ExpressionFeatures.getInstance().e(l);
 				return demoteMod ? create(input, converted, false)
 						: create(converted, mod, false);
 			}

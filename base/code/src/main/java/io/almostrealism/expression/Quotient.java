@@ -231,7 +231,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				value = value / children[i].longValue();
 			}
 
-			return adjustType(getType(), value);
+			return adjustType(value);
 		}
 	}
 
@@ -246,7 +246,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (isFP()) {
 			return numerator.doubleValue() / denominator.doubleValue();
 		} else {
-			return adjustType(getType(), numerator.longValue() / denominator.longValue());
+			return adjustType(numerator.longValue() / denominator.longValue());
 		}
 	}
 

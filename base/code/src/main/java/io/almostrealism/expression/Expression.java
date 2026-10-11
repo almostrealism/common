@@ -46,7 +46,6 @@ import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -131,7 +130,7 @@ import java.util.stream.IntStream;
 public abstract class Expression<T> implements
 		KernelTree<Expression<?>>, SequenceGenerator, Signature,
 		ExpressionFeatures, ConsoleFeatures, ExpressionArithmetic<T>,
-		ExpressionProperties<T>, ExpressionRendering<T> {
+		ExpressionProperties<T>, ExpressionRendering<T>, ExpressionReferences {
 
 	/**
 	 * Optional listener for recording timing metrics of expression operations.
@@ -261,14 +260,32 @@ public abstract class Expression<T> implements
 	 * <p>This method also validates that the expression does not exceed size limits
 	 * defined in {@link ScopeSettings}.</p>
 	 *
+	 * <p>Every expression node runs this once at construction, and compilation constructs
+	 * millions of nodes, so the child metrics are gathered in a single pass over the
+	 * children rather than one stream pipeline per metric.</p>
+	 *
 	 * @throws ExpressionException if the expression exceeds maximum depth or node count limits
 	 */
 	protected void init() {
-		ScopeSettings.reviewChildren(getChildren());
+		List<Expression<?>> children = getChildren();
+		ScopeSettings.reviewChildren(children);
 
-		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
+		int childDepth = -1;
+		long c = 0;
+		long childCost = 0;
+		boolean childLong = false;
+		int childHash = 1;
 
-		long c = getChildren().stream().mapToLong(e -> e.nodeCount).sum();
+		for (int i = 0; i < children.size(); i++) {
+			Expression<?> child = children.get(i);
+			childDepth = Math.max(childDepth, child.depth);
+			c += child.nodeCount;
+			childCost += child.computeCost;
+			childLong = childLong || child.containsLong;
+			childHash = (childHash % 2713) * (child.hash % 2713);
+		}
+
+		this.depth = childDepth + 1;
 
 		if (type == null) {
 			throw new ExpressionException("Expression requires a type", depth, c);
@@ -278,16 +295,13 @@ public abstract class Expression<T> implements
 			this.nodeCount = Math.toIntExact(c + 1);
 		}
 
-		this.computeCost = getChildren().stream().mapToLong(e -> e.computeCost).sum() + getComputeCost();
+		this.computeCost = childCost + getComputeCost();
+		this.containsLong = (getType() == Long.class || childLong) && intValue().isEmpty();
 
-		this.containsLong = (getType() == Long.class ||
-				getChildren().stream().anyMatch(e -> e.containsLong))
-				&& intValue().isEmpty();
-
-		if (getChildren().isEmpty()) {
+		if (children.isEmpty()) {
 			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
 		} else {
-			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
+			hash = (short) childHash;
 		}
 
 		if (depth > ScopeSettings.maxDepth) {
@@ -383,7 +397,10 @@ public abstract class Expression<T> implements
 	 *
 	 * <p>This is commonly used for index substitution during code generation or when
 	 * inlining expressions. If this expression does not contain the specified index,
-	 * it returns itself unchanged for efficiency.</p>
+	 * it returns itself unchanged for efficiency; otherwise the substitution is applied
+	 * to each child. The index expressions ({@link io.almostrealism.sequence.DefaultIndex},
+	 * {@link io.almostrealism.sequence.IndexChild}) override this to be replaced themselves
+	 * when the index has their name.</p>
 	 *
 	 * @param index the index to replace
 	 * @param e the expression to substitute for the index
@@ -391,10 +408,6 @@ public abstract class Expression<T> implements
 	 */
 	public Expression<T> withIndex(Index index, Expression<?> e) {
 		if (!containsIndex(index)) return this;
-
-		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
-			return (Expression) e;
-		}
 
 		return generate(getChildren().stream()
 				.map(c -> c.withIndex(index, e))
@@ -417,17 +430,18 @@ public abstract class Expression<T> implements
 	/**
 	 * Returns all {@link Index} instances referenced anywhere in this expression subtree.
 	 *
-	 * <p>The result is computed once and cached for subsequent calls. For leaf nodes that
-	 * are themselves indices, returns a singleton set containing that index. For other
-	 * leaf nodes, returns an empty set.</p>
+	 * <p>The result is computed once and cached for subsequent calls. A leaf node references
+	 * no index and returns an empty set; the index expressions
+	 * ({@link io.almostrealism.sequence.DefaultIndex}, {@link io.almostrealism.sequence.IndexChild})
+	 * override this to return a singleton set containing themselves.</p>
 	 *
 	 * <p>This method is essential for determining which indices an expression depends on,
 	 * which is used for parallelization decisions and code generation.</p>
 	 *
 	 * @return an unmodifiable set of all indices referenced in this expression
 	 */
+	@Override
 	public Set<Index> getIndices() {
-		if (this instanceof Index) return Set.of((Index) this);
 		if (indices != null) return indices;
 		if (getChildren().isEmpty()) return Collections.emptySet();
 
@@ -457,26 +471,16 @@ public abstract class Expression<T> implements
 	 *   <li>Some members of the set would exceed {@link Integer#MAX_VALUE}</li>
 	 * </ul>
 	 *
+	 * <p>This base implementation combines the options required by each child. A
+	 * {@link io.almostrealism.sequence.DefaultIndex} overrides it to answer for itself, and
+	 * operations whose structure narrows the domain (such as {@link Sum}, {@link Mod} and
+	 * {@link Quotient}) override it to account for that structure.</p>
+	 *
 	 * @param index the index to analyze
 	 * @return an {@link Optional} containing the set of required index values,
 	 *         or empty if the domain cannot be determined or would be too large
 	 */
 	public Optional<Set<Integer>> getIndexOptions(Index index) {
-		if (this instanceof Index) {
-			if (!Objects.equals(this, index)) {
-				return Optional.of(Collections.emptySet());
-			}
-
-			OptionalLong limit = getLimit();
-			if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
-				return Optional.empty();
-			}
-
-			return Optional.of(
-					IntStream.range(0, Math.toIntExact(limit.getAsLong()))
-						.boxed().collect(Collectors.toSet()));
-		}
-
 		Set<Integer> options = new HashSet<>();
 
 		for (Expression<?> e : getChildren()) {
@@ -517,140 +521,6 @@ public abstract class Expression<T> implements
 	 * @return {@code true} if this expression tree contains any long-typed expressions
 	 */
 	public boolean containsLong() { return containsLong; }
-
-	/**
-	 * Checks if this expression contains the specified expression anywhere in its subtree.
-	 *
-	 * <p>Uses structural equality ({@link #equals(Object)}) for comparison.</p>
-	 *
-	 * @param e the expression to search for
-	 * @return {@code true} if the expression is found in this subtree
-	 */
-	public boolean contains(Expression e) {
-		if (this.equals(e)) return true;
-		if (getChildren().isEmpty()) return false;
-		return getChildren().stream().anyMatch(c -> c.contains(e));
-	}
-
-	/**
-	 * Checks if this expression references the specified index anywhere in its subtree.
-	 *
-	 * <p>Indices are compared by name using {@link Index#getName()}.</p>
-	 *
-	 * @param idx the index to search for
-	 * @return {@code true} if the index is referenced in this subtree
-	 */
-	public boolean containsIndex(Index idx) {
-		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
-			return true;
-		} else if (getChildren().isEmpty()) {
-			return false;
-		}
-
-		return getChildren().stream().anyMatch(e -> e.containsIndex(idx));
-	}
-
-	/**
-	 * Checks if this expression references the specified variable anywhere in its subtree.
-	 *
-	 * @param var the variable to search for
-	 * @return {@code true} if the variable is referenced in this subtree
-	 */
-	public boolean containsReference(Variable var) {
-		return getChildren().stream().anyMatch(e -> e.containsReference(var));
-	}
-
-	/**
-	 * Checks whether this expression tree references any variable named in {@code names}.
-	 *
-	 * <p>This is the name-based counterpart to {@link #containsReference(Variable)}, for
-	 * callers that hold variable names rather than {@link Variable} instances. Like that
-	 * method, this base implementation delegates to the children; the reference subclasses
-	 * ({@link StaticReference}, {@link InstanceReference}) override it to match their own
-	 * referent name.</p>
-	 *
-	 * @param names the variable names to look for
-	 * @return true if any matching reference is found anywhere in this subtree
-	 */
-	public boolean containsReference(Set<String> names) {
-		return getChildren().stream().anyMatch(e -> e.containsReference(names));
-	}
-
-	/**
-	 * Determines whether this expression yields the same value on every iteration of a
-	 * loop. The expression is loop-variant if it references one of the loop indices, a
-	 * loop-assigned scalar (by name), or an element of an array the loop writes (whose
-	 * value changes as the loop runs).
-	 *
-	 * @param loopVariantNames names of the loop index and scalars assigned in the loop
-	 * @param writtenArrays    the arrays written inside the loop
-	 * @param loopIndices      indices from the loop and any nested loops
-	 * @return true if this expression's value cannot change across iterations
-	 */
-	public boolean isLoopInvariant(Set<String> loopVariantNames,
-								   Collection<Variable<?, ?>> writtenArrays, List<Index> loopIndices) {
-		for (Index idx : loopIndices) {
-			if (containsIndex(idx)) return false;
-		}
-
-		for (Variable<?, ?> var : getDependencies()) {
-			if (var.getName() != null && loopVariantNames.contains(var.getName())) return false;
-		}
-
-		for (Index idx : getIndices()) {
-			if (idx.getName() != null && loopVariantNames.contains(idx.getName())) return false;
-		}
-
-		if (containsReference(loopVariantNames)) return false;
-
-		for (Variable<?, ?> array : writtenArrays) {
-			if (containsReference(array)) return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * Collects all variable, index, and {@link StaticReference} names referenced
-	 * by this expression tree in a single traversal.
-	 *
-	 * <p>This method gathers names from three sources at each node:</p>
-	 * <ul>
-	 *   <li>{@link Index} nodes — the index name</li>
-	 *   <li>{@link StaticReference} nodes — the reference name</li>
-	 *   <li>Leaf nodes — names from {@link #getDependencies()} and {@link #getIndices()}</li>
-	 * </ul>
-	 *
-	 * <p>The combined set represents every named entity this expression depends on,
-	 * which is useful for variance analysis, dependency tracking, and scope optimization.</p>
-	 *
-	 * @param names the output set to which all referenced names are added
-	 */
-	public void collectReferencedNames(Set<String> names) {
-		if (this instanceof Index) {
-			String name = ((Index) this).getName();
-			if (name != null) names.add(name);
-		}
-
-		if (this instanceof StaticReference) {
-			String name = ((StaticReference<?>) this).getName();
-			if (name != null) names.add(name);
-		}
-
-		List<Expression<?>> children = getChildren();
-		if (children.isEmpty()) {
-			for (Variable<?, ?> var : getDependencies()) {
-				if (var.getName() != null) names.add(var.getName());
-			}
-			for (Index idx : getIndices()) {
-				if (idx.getName() != null) names.add(idx.getName());
-			}
-		}
-
-		for (Expression<?> child : children) {
-			child.collectReferencedNames(names);
-		}
-	}
 
 	/**
 	 * Returns the kernel series that describes the repetition pattern of this expression.
@@ -773,6 +643,25 @@ public abstract class Expression<T> implements
 	 */
 	public Number evaluate(Number... children) {
 		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Converts a numeric value computed for this expression to the Java type that
+	 * represents its result type.
+	 *
+	 * <p>For a floating-point expression, returns the value as a double. For an integer
+	 * expression, returns an integer if the value fits within integer range, otherwise a
+	 * long; any other expression type also receives a long.</p>
+	 *
+	 * @param value the numeric value to convert
+	 * @return the value converted to the Java type of this expression's result
+	 */
+	protected Number adjustType(Number value) {
+		if (isFP()) return value.doubleValue();
+
+		long l = value.longValue();
+		if (isInt() && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) return (int) l;
+		return l;
 	}
 
 	/**
@@ -967,7 +856,10 @@ public abstract class Expression<T> implements
 			seq = ArrayIndexSequence.of(type, (SequenceGenerator) this, index, len);
 		}
 
-		cacheSeq(exp, seq);
+		if (kernelSeqCache != null && exp != null) {
+			kernelSeqCache.put(exp, seq);
+		}
+
 		return seq;
 	}
 
@@ -1094,8 +986,11 @@ public abstract class Expression<T> implements
 	 *
 	 * @return a list of all variables referenced in this expression tree
 	 */
+	@Override
 	public List<Variable<?, ?>> getDependencies() {
-		return new ArrayList<>(dependencies(getChildren().toArray(new Expression[0])));
+		Set<Variable<?, ?>> dependencies = new HashSet<>();
+		for (Expression<?> child : getChildren()) dependencies.addAll(child.getDependencies());
+		return new ArrayList<>(dependencies);
 	}
 
 	/**
@@ -1156,11 +1051,14 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		boolean identical = children.size() == getChildren().size() &&
-				IntStream.range(0, children.size())
-						.map(i -> children.get(i) == getChildren().get(i) ? 1 : 0)
-						.sum() == children.size();
-		return identical ? this : recreate(children);
+		List<Expression<?>> current = getChildren();
+		if (children.size() != current.size()) return recreate(children);
+
+		for (int i = 0; i < children.size(); i++) {
+			if (children.get(i) != current.get(i)) return recreate(children);
+		}
+
+		return this;
 	}
 
 	/**
@@ -1289,8 +1187,6 @@ public abstract class Expression<T> implements
 					continue i;
 				}
 
-				if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
-
 				Set<Index> indices = simplified[i].getIndices();
 				Index target = null;
 
@@ -1331,7 +1227,10 @@ public abstract class Expression<T> implements
 	 * Checks if this expression should be considered for series simplification at the given depth.
 	 *
 	 * <p>Series simplification converts index-dependent expressions into precomputed series
-	 * when beneficial for performance. The decision depends on expression complexity and depth.</p>
+	 * when beneficial for performance. The decision depends on expression complexity and depth,
+	 * as judged by {@link ScopeSettings#isSeriesSimplificationTarget(Expression, int)}. A
+	 * {@link Constant} and the index expressions, which a series could only reproduce, override
+	 * this to never be targets.</p>
 	 *
 	 * @param depth the current recursion depth
 	 * @return {@code true} if this expression is a candidate for series simplification
@@ -1359,13 +1258,47 @@ public abstract class Expression<T> implements
 		if (!Objects.equals(countNodes(), e.countNodes())) return false;
 		if (!Objects.equals(hash, e.hash)) return false;
 
-		if (getChildren().size() != e.getChildren().size()) return false;
-		if (IntStream.range(0, getChildren().size())
-				.anyMatch(i -> !Objects.equals(getChildren().get(i), e.getChildren().get(i)))) {
-			return false;
+		List<Expression<?>> children = getChildren();
+		List<Expression<?>> other = e.getChildren();
+		if (children.size() != other.size()) return false;
+
+		for (int i = 0; i < children.size(); i++) {
+			if (!Objects.equals(children.get(i), other.get(i))) return false;
 		}
 
 		return true;
+	}
+
+	/**
+	 * Returns the condition under which this expression and {@code other} are the same term.
+	 *
+	 * <p>Where {@link #compare(Expression)} decides structural equality outright, the match
+	 * is itself an expression, which may depend on the indices the two trees contain. Two
+	 * expressions of different classes, or with different numbers of children, never match;
+	 * two leaves match where they are {@link #eq(Expression) equal}; and any other pair
+	 * matches where every child matches the corresponding child of {@code other}. An
+	 * {@link InstanceReference} matches another reference to the same variable where their
+	 * indices are equal. When the answer does not depend on any index, the condition is a
+	 * {@link BooleanConstant}.</p>
+	 *
+	 * @param other the expression to match against
+	 * @return a boolean expression that holds wherever this expression matches {@code other}
+	 */
+	public Expression<Boolean> matches(Expression<?> other) {
+		if (getClass() != other.getClass()) return new BooleanConstant(false);
+
+		List<Expression<?>> children = getChildren();
+		List<Expression<?>> others = other.getChildren();
+		if (children.size() != others.size()) return new BooleanConstant(false);
+		if (children.isEmpty()) return eq(other);
+
+		Expression<Boolean> childMatches[] = new Expression[children.size()];
+
+		for (int i = 0; i < childMatches.length; i++) {
+			childMatches[i] = children.get(i).matches(others.get(i));
+		}
+
+		return Conjunction.of(childMatches);
 	}
 
 	/**
@@ -1494,32 +1427,6 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Converts a numeric value to the appropriate Java type for the given expression type.
-	 *
-	 * <p>For floating-point types, returns the value as a double. For integer types,
-	 * returns an integer if the value fits within integer range, otherwise returns a long.</p>
-	 *
-	 * @param type the target numeric type class
-	 * @param value the numeric value to convert
-	 * @return the value converted to the appropriate type
-	 */
-	public static Number adjustType(Class<? extends Number> type, Number value) {
-		boolean fp = type == Double.class;
-
-		if (fp) {
-			return value.doubleValue();
-		} else {
-			long l = value.longValue();
-
-			if (type == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
-				return (int) l;
-			} else {
-				return l;
-			}
-		}
-	}
-
-	/**
 	 * Sorts expressions by depth in descending order (deepest first).
 	 *
 	 * <p>This is useful for processing expressions in bottom-up order, ensuring
@@ -1553,27 +1460,4 @@ public abstract class Expression<T> implements
 		return lang;
 	}
 
-	/**
-	 * Caches an index sequence for an expression string if caching is enabled.
-	 *
-	 * @param exp the expression string key
-	 * @param seq the index sequence to cache
-	 */
-	private static void cacheSeq(String exp, IndexSequence seq) {
-		if (kernelSeqCache != null && exp != null) {
-			kernelSeqCache.put(exp, seq);
-		}
-	}
-
-	/**
-	 * Collects all variable dependencies from a set of expressions.
-	 *
-	 * @param expressions the expressions to analyze
-	 * @return a set of all variables referenced by any of the expressions
-	 */
-	private static Set<Variable<?, ?>> dependencies(Expression expressions[]) {
-		Set<Variable<?, ?>> dependencies = new HashSet<>();
-		for (Expression e : expressions) dependencies.addAll(e.getDependencies());
-		return dependencies;
-	}
 }

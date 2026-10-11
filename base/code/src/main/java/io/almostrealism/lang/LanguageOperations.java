@@ -63,6 +63,19 @@ public interface LanguageOperations {
 	}
 
 	/**
+	 * Formats a boolean value as a literal appropriate for this language backend.
+	 *
+	 * <p>The default is {@code true} or {@code false}. A backend that represents booleans
+	 * as integers overrides this to render the integer literal instead.</p>
+	 *
+	 * @param value the boolean value to format
+	 * @return the language-specific literal string
+	 */
+	default String stringForBoolean(boolean value) {
+		return String.valueOf(value);
+	}
+
+	/**
 	 * Returns the language-specific literal or constant for the mathematical constant pi.
 	 *
 	 * @return a string expression for pi

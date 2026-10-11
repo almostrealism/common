@@ -20,9 +20,15 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ScopeSettings;
 
+import java.util.Collections;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -113,6 +119,70 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 
 	@Override
 	public boolean isPossiblyNegative() { return false; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index contains the given index when the two have the same name.</p>
+	 */
+	@Override
+	public boolean containsIndex(Index idx) {
+		return Objects.equals(getName(), idx.getName()) || super.containsIndex(idx);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is replaced by the given expression when the index being replaced
+	 * has its name.</p>
+	 */
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		if (Objects.equals(getName(), index.getName())) return (Expression) e;
+		return super.withIndex(index, e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index references itself.</p>
+	 */
+	@Override
+	public Set<Index> getIndices() {
+		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Producing every value of an index requires every one of its values, from zero up
+	 * to its limit, and no value of any other index.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		if (!Objects.equals(this, index)) {
+			return Optional.of(Collections.emptySet());
+		}
+
+		OptionalLong limit = getLimit();
+		if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
+			return Optional.empty();
+		}
+
+		return Optional.of(
+				IntStream.range(0, Math.toIntExact(limit.getAsLong()))
+					.boxed().collect(Collectors.toSet()));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is already the series of its own values, so it is never a target.</p>
+	 */
+	@Override
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return false;
+	}
 
 	@Override
 	public boolean isValue(IndexValues values) {

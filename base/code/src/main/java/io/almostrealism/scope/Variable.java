@@ -251,6 +251,20 @@ public class Variable<T, V extends Variable<T, ?>>
 		return deps;
 	}
 
+	/**
+	 * Determines whether {@code other} stands for the same data as this variable, so that a
+	 * reference to one is a reference to the other. Unlike {@link #equals(Object)}, which
+	 * requires every property of the two variables to agree, a variable is identified by its
+	 * name; subclasses may also recognize variables of other names that stand for the same
+	 * data.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if {@code other} stands for the same data as this variable
+	 */
+	public boolean isSameAs(Variable<?, ?> other) {
+		return Objects.equals(getName(), other.getName());
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Variable)) return false;

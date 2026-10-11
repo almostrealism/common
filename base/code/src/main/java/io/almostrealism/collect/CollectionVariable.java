@@ -24,6 +24,7 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
@@ -280,6 +281,19 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		}
 
 		return CollectionExpression.super.matches(other);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A collection variable also stands for the same data as any {@link Algebraic}
+	 * variable it {@link #matches(Algebraic) matches}, whatever their names, so that a
+	 * reference to an argument still matches the target of a derivative when the two
+	 * variables are produced by matching producers.</p>
+	 */
+	@Override
+	public boolean isSameAs(Variable<?, ?> other) {
+		return super.isSameAs(other) || (other instanceof Algebraic && matches((Algebraic) other));
 	}
 
 	/**

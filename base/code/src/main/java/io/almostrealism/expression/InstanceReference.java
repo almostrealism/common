@@ -175,4 +175,20 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) e;
 		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reference matches another reference whose referent {@link Variable#isSameAs is the
+	 * same} as its own, wherever their indices are equal. It never matches any other kind of
+	 * expression.</p>
+	 */
+	@Override
+	public Expression<Boolean> matches(Expression<?> other) {
+		if (!(other instanceof InstanceReference)) return new BooleanConstant(false);
+
+		InstanceReference<?, ?> ref = (InstanceReference<?, ?>) other;
+		if (!getReferent().isSameAs(ref.getReferent())) return new BooleanConstant(false);
+		return getIndex().eq(ref.getIndex());
+	}
 }

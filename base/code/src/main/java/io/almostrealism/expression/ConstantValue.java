@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.Objects;
 
 /**
@@ -42,6 +44,16 @@ public class ConstantValue<T> extends Constant<T> {
 		this.value = value;
 		init();
 	}
+
+	/**
+	 * Renders the value in its own textual form, since a value of arbitrary type has no
+	 * language-specific literal format.
+	 *
+	 * @param lang the language operations (not consulted)
+	 * @return the value as text
+	 */
+	@Override
+	public String getExpression(LanguageOperations lang) { return String.valueOf(value); }
 
 	@Override
 	public boolean compare(Expression e) {
