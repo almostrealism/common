@@ -171,4 +171,25 @@ public class ShellElectronDistributionTest extends TestSuiteBase {
 		Assert.assertArrayEquals("an out-of-range p total of 7 must add no p electrons",
 				new int[] { 0, 0, 0 }, occupancy(shell, 1, 3));
 	}
+
+	/**
+	 * A negative subshell total contributes no electrons at all, exactly as an above-capacity
+	 * total does. This exercises the lower side of the distribution's range guard (a total below
+	 * one) for the p, d and f subshells, which the above-capacity {@link
+	 * #outOfRangePTotalContributesNoElectrons()} case does not reach.
+	 */
+	@Test(timeout = 10000)
+	public void negativeTotalContributesNoElectrons() {
+		int[] pOcc = occupancy(Shell.second(1, -1), 1, 3);
+		Assert.assertArrayEquals("a negative p total must add no p electrons",
+				new int[] { 0, 0, 0 }, pOcc);
+
+		int[] dOcc = occupancy(Shell.third(1, 0, -3), 2, 5);
+		Assert.assertArrayEquals("a negative d total must add no d electrons",
+				new int[] { 0, 0, 0, 0, 0 }, dOcc);
+
+		int[] fOcc = occupancy(Shell.fourth(1, 0, 0, -5), 3, 7);
+		Assert.assertArrayEquals("a negative f total must add no f electrons",
+				new int[] { 0, 0, 0, 0, 0, 0, 0 }, fOcc);
+	}
 }
