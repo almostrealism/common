@@ -17,6 +17,7 @@
 package org.almostrealism.studio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -37,6 +38,8 @@ import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -371,6 +374,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * (advancing the cursor) and {@code WaveOutput.write} gates on the minimum frame count
 	 * across channels, so the mono master is pushed to both stereo writers each frame.</p>
 	 *
+	 * <p><b>Construction rollback.</b> The returned runner owns and destroys every native
+	 * resource allocated here (the per-buffer frame index, the compiled mixdown model, and
+	 * the optional effects-sum scratch buffer). Because that ownership transfers only when
+	 * the runner is successfully returned, each allocation is registered in a rollback list
+	 * as it is made and the whole list is released if any later construction step — pattern
+	 * buffer preparation, model compilation, output wiring, or the {@link PatternRenderStream}
+	 * constructor — throws, so a failed build strands no native memory until garbage
+	 * collection.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -385,6 +397,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Frame index within the current buffer, driven by the output-streaming loop
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
 
+		List<Runnable> rollback = new ArrayList<>();
+		rollback.add(bufferFrameIndex::destroy);
+
+		try {
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
 		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
@@ -419,6 +435,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 		Map<String, Object> args = adapter.buildArgsMap();
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
+		rollback.add(compiled::destroy);
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
@@ -467,6 +484,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 					// Summed once per tick, so the writers push plain memory
 					PackedCollection fx = new PackedCollection(bufferSize);
 					fxStemSum[0] = fx;
+					rollback.add(fx::destroy);
 					stemAppends.add(a("PDSL FX Stem Sum",
 							cp(fx).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
@@ -587,6 +605,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				if (fxStemSum[0] != null) fxStemSum[0].destroy();
 			}
 		};
+		} catch (RuntimeException | Error constructionFailure) {
+			Collections.reverse(rollback);
+			try {
+				Destroyable.releaseAll(rollback);
+			} catch (RuntimeException | Error cleanupFailure) {
+				constructionFailure.addSuppressed(cleanupFailure);
+			}
+			throw constructionFailure;
+		}
 	}
 
 	/**
