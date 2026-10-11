@@ -381,4 +381,18 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		Assert.assertTrue(new TraversalPolicy(3, 1).trim().equalsIgnoreAxis(new TraversalPolicy(3)));
 		Assert.assertTrue(new TraversalPolicy(2, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(2)));
 	}
+
+	/**
+	 * Trimming a zero-dimension policy must return safely rather than evaluating
+	 * {@code length(getDimensions() - 1)} with an index of {@code -1}. The
+	 * {@code getDimensions() > 1} guard in {@link TraversalPolicy#trim()}
+	 * short-circuits before the length lookup, so a zero-dimension policy
+	 * (created with the {@code tolerateZero=true} constructor) is returned
+	 * unchanged instead of throwing an {@link ArrayIndexOutOfBoundsException}.
+	 */
+	@Test(timeout = 10000)
+	public void trimZeroDimensionPolicyReturnsSafely() {
+		TraversalPolicy trimmed = new TraversalPolicy(true).trim();
+		Assert.assertEquals(0, trimmed.getDimensions());
+	}
 }
