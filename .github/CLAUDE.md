@@ -833,6 +833,17 @@ jobs were separate workflows with byte-identical triggers; merging them keeps th
 Actions sidebar navigable without changing what any of them does, and each job
 added since — `plan-release-task` among them — lands here for the same reason.
 
+Every job first asks the controller whether it accepts automated jobs
+(`tools/ci/automated-intake.sh`, `GET /api/config/accept-automated-jobs`), and
+runs its cadence gate only when the answer is yes. A round creates its branch
+and workstream before it submits its agent job, so with intake closed — by
+hand, or by the deploy workflow while it drains — the refused submission used
+to leave an orphaned branch and workstream behind, and the orphaned branch
+then held off the next round for the 24-hour grace window. The check fails
+closed, and `force` does not lift it: reopen intake instead. No step before
+the gate may push a branch, register or archive a workstream, or submit a job;
+`tools/tests/test_automated_intake.py` checks that.
+
 The six QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`) share a shape:
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
