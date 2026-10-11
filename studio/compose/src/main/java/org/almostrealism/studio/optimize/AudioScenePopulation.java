@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -454,51 +455,27 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * @throws IOException if an I/O error occurs during serialization
 	 */
 	public static <G> void store(List<Genome<G>> genomes, OutputStream s) throws IOException {
-		GenomeData genomeData = new GenomeData();
-		for (Genome<G> genome : genomes) {
-			genomeData.addGenome(genome);
-		}
+		List<double[]> parameters = genomes.stream()
+				.map(genome -> ((ProjectedGenome) genome).getParameters().toArray())
+				.collect(Collectors.toList());
 
-		ObjectMapper mapper = new ObjectMapper();
-		mapper.writeValue(s, genomeData);
+		new ObjectMapper().writeValue(s, parameters);
 	}
 
 	/**
-	 * Deserializes a list of {@link Genome} instances from the given JSON input stream.
+	 * Deserializes a list of {@link Genome} instances from the given JSON input stream. Each
+	 * entry is the {@code double[]} parameter array of a {@link ProjectedGenome}, from which the
+	 * genome is reconstructed.
 	 *
 	 * @param in the input stream containing serialized genome JSON
 	 * @return the deserialized list of genomes
 	 * @throws IOException if an I/O error occurs during deserialization
 	 */
 	public static List<Genome<PackedCollection>> read(InputStream in) throws IOException {
-		ObjectMapper mapper = new ObjectMapper();
-		GenomeData data = mapper.readValue(in, GenomeData.class);
-		return data.getGenomes();
-	}
+		double[][] parameters = new ObjectMapper().readValue(in, double[][].class);
 
-	/**
-	 * JSON serialization container for genome data. Stores each genome as a {@code double[]}
-	 * array of its {@link ProjectedGenome} parameter values.
-	 */
-	static class GenomeData extends ArrayList<double[]> implements CodeFeatures {
-		/**
-		 * Appends the parameter array of the given genome to this list.
-		 *
-		 * @param genome the genome to add; must be a {@link ProjectedGenome}
-		 */
-		public void addGenome(Genome genome) {
-			this.add(((ProjectedGenome) genome).getParameters().toArray());
-		}
-
-		/**
-		 * Converts the stored {@code double[]} arrays back into a list of {@link ProjectedGenome} instances.
-		 *
-		 * @return the deserialized genome list
-		 */
-		public List<Genome<PackedCollection>> getGenomes() {
-			return stream()
-					.map(params -> new ProjectedGenome(pack(params)))
-					.collect(Collectors.toList());
-		}
+		return Arrays.stream(parameters)
+				.map(params -> (Genome<PackedCollection>) new ProjectedGenome(PackedCollection.of(params)))
+				.collect(Collectors.toList());
 	}
 }
