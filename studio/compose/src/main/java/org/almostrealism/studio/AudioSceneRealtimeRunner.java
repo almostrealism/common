@@ -167,7 +167,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
 
 		if (MixdownManager.enablePdslMixdown) {
-			if (supportsPdsl(resolved)) {
+			if (MixdownManager.supportsPdslMixdown(resolved)) {
 				return createPdsl(output, resolved, bufferSize);
 			}
 
@@ -176,41 +176,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		}
 
 		return createCellList(output, resolved, bufferSize);
-	}
-
-	/**
-	 * Returns whether the PDSL mixdown path supports the given channel selection.
-	 *
-	 * <p>Two selection shapes are supported:</p>
-	 * <ul>
-	 *   <li><b>Any single channel</b> {@code [c]} — including the non-zero selection from
-	 *       {@link AudioScene#renderChannel}. The adapter maps bank position 0 to channel
-	 *       {@code c}'s genome (via {@link MixdownManagerPdslAdapter.Config#channel(int)}),
-	 *       so the PDSL render reads the same genes the CellList path reads for that
-	 *       channel.</li>
-	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
-	 *       — the full-scene render. Here the channel mapping is the identity, so the
-	 *       per-channel genome reads land on the matching pattern channels.</li>
-	 * </ul>
-	 *
-	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
-	 * validated and renders through the CellList runner instead: the cross-channel
-	 * transmission feedback grid is indexed by bank position rather than scene channel,
-	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
-	 *
-	 * @param channels the resolved channel indices
-	 * @return true when the PDSL path can faithfully render this selection
-	 */
-	private boolean supportsPdsl(List<Integer> channels) {
-		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
-
-		// Any single channel is supported — the adapter maps its genome reads to the
-		// selected channel index, so a non-zero [c] renders channel c's genes.
-		if (channels.size() == 1) return true;
-
-		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
-		return IntStream.range(0, channels.size())
-				.allMatch(i -> channels.get(i) == i);
 	}
 
 	/**
@@ -348,7 +313,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 *       automation, cross-channel transmission feedback grid) — <b>migrated</b>;</li>
 	 *   <li>the reverb network ({@code delay_network}) — <b>migrated</b>;</li>
 	 *   <li>single-channel and zero-based contiguous multi-channel selections are both
-	 *       supported (see {@link #supportsPdsl}); the adapter maps per-channel genome
+	 *       supported (see {@link MixdownManager#supportsPdslMixdown}); the adapter maps per-channel genome
 	 *       reads to the selected scene channels.</li>
 	 * </ul>
 	 *

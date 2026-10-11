@@ -166,12 +166,13 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		enableGenome(templateGenome);
 
-		if (temporal != null) {
-			temporal.destroy();
-			temporal = null;
-		}
-
 		try {
+			if (temporal != null) {
+				DestroyableTemporalCellular previous = temporal;
+				temporal = null;
+				previous.destroy();
+			}
+
 			this.temporal = scene.runnerRealTime(output, channels, bufferSize);
 		} finally {
 			disableGenome();
