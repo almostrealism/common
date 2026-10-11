@@ -20,9 +20,6 @@ import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Optional;
 
@@ -39,7 +36,7 @@ import java.util.Optional;
  * <p>The static {@link #create} factory methods can short-circuit the conditional when the
  * comparison result is statically known via {@link #staticComparison}.</p>
  */
-public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter implements ConsoleFeatures {
+public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter {
 	/**
 	 * Whether to attempt a static pre-check of whether the reference and compareTo expressions
 	 * can possibly match, allowing early elimination of the conditional.
@@ -118,9 +115,6 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 		return false;
 	}
-
-	@Override
-	public Console console() { return Scope.console; }
 
 	/**
 	 * Builds the comparison of the {@code reference} and {@code compareTo} values at the given

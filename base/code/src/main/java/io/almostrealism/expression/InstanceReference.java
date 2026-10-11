@@ -96,6 +96,9 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	public Expression<?> getIndex() { return index; }
 
 	@Override
+	public boolean isVariableReference() { return true; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (var instanceof ArrayVariable) {
 			ArrayVariable v = (ArrayVariable) var;
@@ -181,7 +184,8 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	 *
 	 * <p>A reference is identified by its referent rather than its children: two references
 	 * match where their referents {@link Variable#refersToSameValue stand for the same value}
-	 * and their indices are equal.</p>
+	 * and their indices are equal. A reference without an index (such as a scalar reference)
+	 * matches only another reference without an index.</p>
 	 */
 	@Override
 	public Expression<Boolean> structuralEq(Expression<?> operand) {
@@ -189,6 +193,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) operand;
 		if (!var.refersToSameValue(alt.var)) return new BooleanConstant(false);
+		if (index == null || alt.index == null) return new BooleanConstant(index == alt.index);
 		return index.eq(alt.index);
 	}
 }

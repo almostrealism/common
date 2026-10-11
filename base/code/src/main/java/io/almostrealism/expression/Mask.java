@@ -50,7 +50,7 @@ public class Mask<T extends Number> extends Conditional<T> {
 
 	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
-		if (getMaskedValue() instanceof InstanceReference) {
+		if (getMaskedValue().isVariableReference()) {
 			return getMaskedValue().assign(exp);
 		}
 

@@ -18,7 +18,6 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.Index;
@@ -185,7 +184,7 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 			warn("localIndex is irrelevant");
 		}
 
-		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {
+		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()).isVariableReference()) {
 			return null;
 		}
 

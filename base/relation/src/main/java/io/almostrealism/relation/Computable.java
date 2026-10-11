@@ -269,4 +269,20 @@ public interface Computable {
 
 		return false;
 	}
+
+	/**
+	 * Returns {@code true} if the given object is a {@link Computable} that declares itself
+	 * row-monomial (see {@link #isRowMonomial()}).
+	 *
+	 * @param c   the object to check
+	 * @param <T> the object type
+	 * @return {@code true} if the object is a row-monomial computable
+	 */
+	static <T> boolean rowMonomial(T c) {
+		if (c instanceof Computable) {
+			return ((Computable) c).isRowMonomial();
+		}
+
+		return false;
+	}
 }

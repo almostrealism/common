@@ -93,17 +93,11 @@ public class MatrixMultiplyVectorJacobianProduct implements VectorJacobianProduc
 				matrix.refersTo(target) && rows.cannotMatch(target)) {
 			CollectionProducer gt = g.enumerate(1, 1).reshape(shape(m, r));
 			CollectionProducer xt = c(rows).reshape(shape(r, n)).enumerate(1, 1).reshape(shape(n, r));
-			return gt.traverse(1).repeat(n)
-					.multiply(xt.traverse(0).repeat(m))
-					.traverse(2).sum()
-					.reshape(shape(target));
+			return multiplyTransposed(gt, xt).reshape(shape(target));
 		} else if (targetSize == rowElements &&
 				rows.refersTo(target) && matrix.cannotMatch(target)) {
 			CollectionProducer wt = c(matrix).reshape(shape(m, n)).enumerate(1, 1).reshape(shape(n, m));
-			return g.traverse(1).repeat(n)
-					.multiply(wt.traverse(0).repeat(r))
-					.traverse(2).sum()
-					.reshape(shape(target));
+			return multiplyTransposed(g, wt).reshape(shape(target));
 		}
 
 		return null;

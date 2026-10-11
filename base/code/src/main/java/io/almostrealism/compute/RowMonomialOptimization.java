@@ -116,9 +116,7 @@ public class RowMonomialOptimization implements ProcessOptimizationStrategy {
 
 		if (!enabled) return null;
 
-		boolean anyRowMonomial = children.stream().anyMatch(child ->
-				child instanceof Computable && ((Computable) child).isRowMonomial());
-		if (!anyRowMonomial) return null;
+		if (children.stream().noneMatch(Computable::rowMonomial)) return null;
 
 		return generate(parent, children, false);
 	}

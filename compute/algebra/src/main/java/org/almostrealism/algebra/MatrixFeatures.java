@@ -180,6 +180,37 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	}
 
 	/**
+	 * Multiplies a matrix by the transpose of another, computing {@code a · bᵀ} as an
+	 * element-wise product of repeated rows followed by a sum, so that both operands are
+	 * read along their rows and neither transpose is materialized.
+	 *
+	 * <p>
+	 * Entry {@code (i, j)} of the result is the dot product of row {@code i} of {@code a}
+	 * with row {@code j} of {@code b}. Unlike {@link #matmul(Producer, Producer)}, the
+	 * result carries no structure-aware vector-Jacobian product, which makes it suitable
+	 * for forming gradients themselves.
+	 * </p>
+	 *
+	 * @param a  the left matrix, of shape {@code (p, k)}
+	 * @param b  the right matrix, of shape {@code (q, k)}, whose transpose is applied
+	 * @return the product, of shape {@code (p, q)}
+	 * @throws IllegalArgumentException if either operand is not 2-dimensional or
+	 *                                  their rows differ in length
+	 */
+	default CollectionProducer multiplyTransposed(CollectionProducer a, CollectionProducer b) {
+		TraversalPolicy aShape = shape(a);
+		TraversalPolicy bShape = shape(b);
+		if (aShape.getDimensions() != 2 || bShape.getDimensions() != 2 ||
+				aShape.length(1) != bShape.length(1)) {
+			throw new IllegalArgumentException();
+		}
+
+		return a.traverse(1).repeat(bShape.length(0))
+				.multiply(b.traverse(0).repeat(aShape.length(0)))
+				.traverse(2).sum();
+	}
+
+	/**
 	 * Performs matrix multiplication between a matrix and a vector or between two matrices.
 	 *
 	 * <p>

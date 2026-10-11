@@ -717,6 +717,12 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Returns {@code true} if this expression reads a declared {@link Variable} directly,
+	 * so its value is only known at runtime and can be the destination of an assignment.
+	 */
+	public boolean isVariableReference() { return false; }
+
+	/**
 	 * Returns {@link Long Long.class} if this expression is typed as {@link Integer}
 	 * but its bounds analysis indicates values that can exceed the 32-bit signed
 	 * integer range. Otherwise returns this expression's own type.

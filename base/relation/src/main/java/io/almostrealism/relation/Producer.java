@@ -261,6 +261,7 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 			return Optional.of(matched.get(0));
 		}
 
+		// TODO(review): a null Optional encodes "ambiguous"; consider a result type that names the three cases
 		return null;
 	}
 

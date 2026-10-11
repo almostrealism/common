@@ -282,18 +282,18 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * Two collection variables match if their underlying producers are both {@link Computable}
-	 * and report a match. Otherwise, falls back to the default {@link CollectionExpression}
-	 * matching logic.
+	 * This variable matches another {@link Variable} if their producers are both
+	 * {@link Computable} and report a match. Otherwise, falls back to the default
+	 * {@link CollectionExpression} matching logic.
 	 *
 	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
 	 */
 	@Override
 	public boolean matches(Computable other) {
-		if (other instanceof CollectionVariable) {
+		if (other instanceof Variable) {
 			Supplier<?> a = getProducer();
-			Supplier<?> b = ((CollectionVariable) other).getProducer();
+			Supplier<?> b = ((Variable<?, ?>) other).getProducer();
 			if (a instanceof Computable && b instanceof Computable) {
 				return ((Computable) a).matches((Computable) b);
 			}
