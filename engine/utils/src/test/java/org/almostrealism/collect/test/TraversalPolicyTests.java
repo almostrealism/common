@@ -383,6 +383,29 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that {@link TraversalPolicy#broadcast} leaves an axis that already has the
+	 * target length unchanged, repeats an axis of length one up to it, and rejects any
+	 * other length.
+	 */
+	@Test(timeout = 10000)
+	public void broadcast() {
+		TraversalPolicy full = new TraversalPolicy(4, 6);
+		Assert.assertSame(full, full.broadcast(0, 4));
+
+		TraversalPolicy repeated = new TraversalPolicy(1, 6).broadcast(0, 4);
+		assertEquals(4, repeated.length(0));
+		assertEquals(6, repeated.length(1));
+		assertEquals(24, repeated.getTotalSizeLong());
+
+		try {
+			new TraversalPolicy(3, 6).broadcast(0, 4);
+			Assert.fail("An axis of length 3 should not broadcast to length 4");
+		} catch (IllegalArgumentException expected) {
+			// Only an axis of length one can be broadcast
+		}
+	}
+
+	/**
 	 * Trimming an all-ones shape must not throw. {@link TraversalPolicy#trim()}
 	 * removes trailing unit dimensions, but a single-element collection such as
 	 * {@code (1)} or {@code (1, 1)} is a legal shape whose trailing unit cannot
