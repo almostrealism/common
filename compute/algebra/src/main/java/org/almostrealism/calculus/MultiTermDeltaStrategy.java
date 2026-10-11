@@ -16,6 +16,7 @@
 
 package org.almostrealism.calculus;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -96,14 +97,15 @@ public enum MultiTermDeltaStrategy implements MatrixFeatures {
 	 */
 	public CollectionProducer delta(CollectionProducerComputation computation, Producer<?> target) {
 		long matches = computation.countTerms(target);
+		TraversalPolicy jacobianShape = computation.getShape().append(shape(target));
 
 		if (matches == 0) {
-			return c(0);
+			return zeros(jacobianShape);
 		} else if (matches > 1) {
 			return null;
 		}
 
-		return termDelta(computation, target).reshape(computation.getShape().append(shape(target)));
+		return termDelta(computation, target).reshape(jacobianShape);
 	}
 
 	/**

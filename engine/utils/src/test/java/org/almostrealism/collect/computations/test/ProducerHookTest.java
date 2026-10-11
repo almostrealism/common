@@ -22,8 +22,10 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.VectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -271,6 +273,36 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		assertValues(dynamic.attemptDirectDelta(dynamic).evaluate(),
 				1.0, 0.0,
 				0.0, 1.0);
+	}
+
+	/**
+	 * A multi-term strategy returns a Jacobian shaped as the computation's shape followed by
+	 * the target's shape: zeros of that shape for a target in none of the terms, and the
+	 * identity for an additive term; {@link MultiTermDeltaStrategy#NONE} declines.
+	 */
+	@Test(timeout = 60000)
+	public void multiTermDeltaShapes() {
+		CollectionProducer a = cp(pack(1.0, 2.0, 3.0));
+		CollectionProducer sum = a.add(cp(pack(4.0, 5.0, 6.0)));
+		Assert.assertTrue(sum instanceof CollectionProducerComputation);
+		CollectionProducerComputation computation = (CollectionProducerComputation) sum;
+
+		CollectionProducer independent =
+				MultiTermDeltaStrategy.IGNORE.delta(computation, cp(pack(7.0, 8.0)));
+		Assert.assertEquals(2, independent.getShape().getDimensions());
+		Assert.assertEquals(3, independent.getShape().length(0));
+		Assert.assertEquals(2, independent.getShape().length(1));
+		assertValues(independent.evaluate(), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+		CollectionProducer term = MultiTermDeltaStrategy.IGNORE.delta(computation, a);
+		Assert.assertEquals(3, term.getShape().length(0));
+		Assert.assertEquals(3, term.getShape().length(1));
+		assertValues(term.evaluate(),
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
+
+		Assert.assertNull(MultiTermDeltaStrategy.NONE.delta(computation, a));
 	}
 
 	/**
