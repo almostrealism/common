@@ -146,12 +146,16 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * downstream consumers (e.g. {@code StableDurationHealthComputation}) must use this same
 	 * value as their iteration size.
 	 *
-	 * <p>A runner retained from an earlier {@code init(...)} call is destroyed once the
-	 * replacement has been built successfully, so its frame buffer, compiled model, and
-	 * render stream are released rather than left reachable only through the garbage
-	 * collector. The old runner is kept until the new one is built so that a construction
-	 * failure leaves the previously initialized runner intact rather than clearing the
-	 * field and stranding the old native resources.</p>
+	 * <p>A runner retained from an earlier {@code init(...)} call is destroyed before the
+	 * replacement is built, so its frame buffer, compiled model, and render stream are
+	 * released rather than left reachable only through the garbage collector. It must be
+	 * retired first — not kept as a fallback — because building the replacement rebuilds
+	 * the scene's single active cell graph ({@link AudioScene#getCells} and
+	 * {@link AudioScene#prepareRenderBuffers} destroy the previous {@code activeCells}),
+	 * so the old runner's captured cells cannot survive the rebuild regardless. The field
+	 * is cleared before the rebuild, so a construction failure leaves the population with
+	 * no runner (rather than a runner whose cells have already been destroyed underneath
+	 * it) and a subsequent {@code init(...)} starts clean.</p>
 	 *
 	 * @param templateGenome the genome used to configure the scene during initialization
 	 * @param output         the multi-channel audio output that receives rendered audio
@@ -162,14 +166,16 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		enableGenome(templateGenome);
 
-		DestroyableTemporalCellular previous = this.temporal;
+		if (temporal != null) {
+			temporal.destroy();
+			temporal = null;
+		}
+
 		try {
 			this.temporal = scene.runnerRealTime(output, channels, bufferSize);
 		} finally {
 			disableGenome();
 		}
-
-		if (previous != null && previous != this.temporal) previous.destroy();
 	}
 
 	/**
