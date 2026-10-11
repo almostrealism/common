@@ -508,10 +508,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		}
 
-		// Removing multiples can leave a bare inner modulus, so this applies to that too
-		if (input instanceof Mod && !input.isFP()) {
-			Expression<?> reduced = ((Mod<?>) input).reducedModulo(m);
-			if (reduced != null) return reduced;
+		// Applied after removing multiples, which can leave a bare inner modulus
+		if (!input.isFP()) {
+			Optional<Expression<?>> reduced = input.reducedModulo(m);
+			if (reduced.isPresent()) return reduced.get();
 		}
 
 		OptionalLong u = input.upperBound();
@@ -520,14 +520,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		if (!input.isFP()) {
-			if (enableInnerSumSimplify && input instanceof Sum) {
-				Expression<?> simple = ((Sum<?>) input).scaledRemainder()
-						.map(remainder -> remainder.modulo(m))
-						.orElse(null);
-				if (simple != null)
-					return simple;
-			}
-
 			if (enableMod2Optimization && m > 0 && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
 				return And.of(input, new IntegerConstant((int) m - 1));
 			}
@@ -537,10 +529,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Reduces {@code this % m} when this modulus and {@code m} are multiples of
-	 * one another.
+	 * {@inheritDoc}
 	 *
-	 * <p>When this modulus equals {@code m}, or (with
+	 * <p>An integer modulus reduces when this modulus and {@code m} are multiples
+	 * of one another. When this modulus equals {@code m}, or (with
 	 * {@link #enableRedundantModReplacement}) {@code m} is a multiple of it, the
 	 * outer modulus cannot change the result and this expression is returned
 	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
@@ -548,24 +540,21 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 *
 	 * <p>A zero modulus on either side has no defined result, so no reduction
 	 * is attempted and the divisibility checks never divide by zero.</p>
-	 *
-	 * @param m the outer modulus
-	 * @return the reduced expression, or {@code null} if this modulus is not a
-	 *         known non-zero constant related to {@code m}
 	 */
-	private Expression<?> reducedModulo(long m) {
+	@Override
+	protected Optional<Expression<?>> reducedModulo(long m) {
 		OptionalLong inner = getRight().longValue();
-		if (inner.isEmpty()) return null;
+		if (fp || inner.isEmpty()) return Optional.empty();
 
 		long n = inner.getAsLong();
-		if (n == 0 || m == 0) return null;
+		if (n == 0 || m == 0) return Optional.empty();
 
 		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
-			return this;
+			return Optional.of(this);
 		} else if (n % m == 0) {
-			return new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false);
+			return Optional.of(new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false));
 		}
 
-		return null;
+		return Optional.empty();
 	}
 }

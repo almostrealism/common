@@ -104,6 +104,32 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	/**
+	 * Determines the numeric result type of an arithmetic n-ary operation combining the
+	 * given operands. Returns {@code Double.class} if any operand is floating-point,
+	 * {@code Long.class} if any operand is a non-{@code Integer} integral type, otherwise
+	 * {@code Integer.class}.
+	 *
+	 * @param operands the operand expressions
+	 * @return the promoted numeric type
+	 * @throws UnsupportedOperationException if any operand's type is not a {@link Number} subtype
+	 */
+	protected static Class<? extends Number> promotedType(List<? extends Expression<?>> operands) {
+		boolean ln = false;
+
+		for (Expression<?> e : operands) {
+			if (!Number.class.isAssignableFrom(e.getType())) {
+				throw new UnsupportedOperationException();
+			} else if (e.isFP()) {
+				return Double.class;
+			} else if (!Objects.equals(e.getType(), Integer.class)) {
+				ln = true;
+			}
+		}
+
+		return ln ? Long.class : Integer.class;
+	}
+
+	/**
 	 * Validates that the given operand array is non-null and contains at least two elements.
 	 *
 	 * @param values the array of operand expressions to validate

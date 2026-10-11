@@ -153,7 +153,9 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	 * {@inheritDoc}
 	 *
 	 * <p>A reference matches another reference whose referent {@link Variable#isSameAs is the
-	 * same} as its own, wherever their indices are equal. It never matches any other kind of
+	 * same} as its own, wherever their supplementary indices are equal. When neither reference
+	 * has a supplementary index, their positions are compared instead, and two references to
+	 * the variable as a whole (with no position) match. It never matches any other kind of
 	 * expression.</p>
 	 */
 	@Override
@@ -162,10 +164,10 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 		InstanceReference<?, ?> ref = (InstanceReference<?, ?>) other;
 		if (!getReferent().isSameAs(ref.getReferent())) return new BooleanConstant(false);
-		if (getIndex() == null || ref.getIndex() == null) {
-			return new BooleanConstant(getIndex() == ref.getIndex());
-		}
+		if (index != null && ref.index != null) return index.eq(ref.index);
+		if (index != null || ref.index != null) return new BooleanConstant(false);
+		if (pos == null || ref.pos == null) return new BooleanConstant(pos == ref.pos);
 
-		return getIndex().eq(ref.getIndex());
+		return pos.eq(ref.pos);
 	}
 }

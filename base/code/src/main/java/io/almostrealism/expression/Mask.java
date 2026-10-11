@@ -60,13 +60,18 @@ public class Mask<T extends Number> extends Conditional<T> {
 		return Mask.of(getMask(), value);
 	}
 
+	/**
+	 * Assigns to the masked value, which is the only branch of a mask that can be an
+	 * assignment target. Whether the assignment is supported is decided by the masked
+	 * value itself.
+	 *
+	 * @param exp the expression to assign
+	 * @return the assignment to the masked value
+	 * @throws UnsupportedOperationException if the masked value is not an assignment target
+	 */
 	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
-		if (getMaskedValue() instanceof InstanceReference) {
-			return getMaskedValue().assign(exp);
-		}
-
-		return super.assign(exp);
+		return getMaskedValue().assign(exp);
 	}
 
 	@Override

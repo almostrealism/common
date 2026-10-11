@@ -240,6 +240,29 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * Element references that carry no supplementary index match where their positions are
+	 * equal, rather than at every position, and never match an element reference that does
+	 * carry a supplementary index.
+	 */
+	@Test(timeout = 30000)
+	public void referencesWithoutIndexMatchByPosition() {
+		ArrayVariable<Double> a = new ArrayVariable<>(Double.class, "a", e(8));
+
+		Assert.assertEquals(Optional.of(true), new InstanceReference<>(a, e(2), null)
+				.matches(new InstanceReference<>(a, e(2), null)).booleanValue());
+		Assert.assertEquals(Optional.of(false), new InstanceReference<>(a, e(2), null)
+				.matches(new InstanceReference<>(a, e(3), null)).booleanValue());
+		Assert.assertEquals(Optional.of(false), a.ref()
+				.matches(new InstanceReference<>(a, e(2), null)).booleanValue());
+		Assert.assertEquals(Optional.of(false), element(a, 2)
+				.matches(new InstanceReference<>(a, e(2), null)).booleanValue());
+
+		DefaultIndex i = new DefaultIndex("i", 8);
+		Assert.assertEquals(e(2).eq(i), new InstanceReference<>(a, e(2), null)
+				.matches(new InstanceReference<>(a, i, null)));
+	}
+
+	/**
 	 * A reference is rendered by the variable it refers to: an array element is dereferenced
 	 * at its position, a whole array and a variable that is not an array are rendered by name.
 	 */

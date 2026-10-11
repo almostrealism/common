@@ -632,6 +632,23 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Returns an expression equivalent to the integer modulus {@code this % m}
+	 * that this expression can derive from its own structure, for example by
+	 * recognising that the modulus is redundant.
+	 *
+	 * <p>This is consulted by {@link Mod} when it simplifies an integer modulus
+	 * by a known constant. The default reports no reduction; subclasses whose
+	 * structure admits one override it.</p>
+	 *
+	 * @param m the constant modulus
+	 * @return the reduced expression, or empty if this expression admits no
+	 *         structural reduction modulo {@code m}
+	 */
+	protected Optional<Expression<?>> reducedModulo(long m) {
+		return Optional.empty();
+	}
+
+	/**
 	 * Evaluates this expression given concrete values for its children.
 	 *
 	 * <p>This is the core evaluation method that subclasses must override to implement
@@ -663,31 +680,6 @@ public abstract class Expression<T> implements
 		long l = value.longValue();
 		if (isInt() && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) return (int) l;
 		return l;
-	}
-
-	/**
-	 * Determines the numeric result type of an operation combining the given operands.
-	 * Returns {@code Double.class} if any operand is floating-point, {@code Long.class}
-	 * if any operand is a non-{@code Integer} integral type, otherwise {@code Integer.class}.
-	 *
-	 * @param operands the operand expressions
-	 * @return the promoted numeric type
-	 * @throws UnsupportedOperationException if any operand's type is not a {@link Number} subtype
-	 */
-	protected static Class<? extends Number> promotedType(List<? extends Expression<?>> operands) {
-		boolean ln = false;
-
-		for (Expression<?> e : operands) {
-			if (!Number.class.isAssignableFrom(e.getType())) {
-				throw new UnsupportedOperationException();
-			} else if (e.isFP()) {
-				return Double.class;
-			} else if (!Objects.equals(e.getType(), Integer.class)) {
-				ln = true;
-			}
-		}
-
-		return ln ? Long.class : Integer.class;
 	}
 
 	/**

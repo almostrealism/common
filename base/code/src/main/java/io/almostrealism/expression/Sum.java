@@ -436,6 +436,19 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer sum of the form {@code k * x + (x % k)} reduces through
+	 * {@link ScaledRemainder#modulo(long)} when {@link Mod#enableInnerSumSimplify}
+	 * is set.</p>
+	 */
+	@Override
+	protected Optional<Expression<?>> reducedModulo(long m) {
+		if (!Mod.enableInnerSumSimplify || isFP()) return Optional.empty();
+		return scaledRemainder().map(remainder -> remainder.modulo(m));
+	}
+
+	/**
 	 * Creates and post-processes a sum expression.
 	 *
 	 * @param values the operand expressions to add together
