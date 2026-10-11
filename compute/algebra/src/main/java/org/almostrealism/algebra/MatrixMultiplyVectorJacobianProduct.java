@@ -91,12 +91,12 @@ public class MatrixMultiplyVectorJacobianProduct implements VectorJacobianProduc
 
 		if (targetSize == mShape.getTotalSizeLong() &&
 				matrix.refersTo(target) && rows.cannotMatch(target)) {
-			CollectionProducer gt = g.enumerate(1, 1).reshape(shape(m, r));
-			CollectionProducer xt = c(rows).reshape(shape(r, n)).enumerate(1, 1).reshape(shape(n, r));
+			CollectionProducer gt = g.transpose().reshape(shape(m, r));
+			CollectionProducer xt = c(rows).reshape(shape(r, n)).transpose().reshape(shape(n, r));
 			return multiplyTransposed(gt, xt).reshape(shape(target));
 		} else if (targetSize == rowElements &&
 				rows.refersTo(target) && matrix.cannotMatch(target)) {
-			CollectionProducer wt = c(matrix).reshape(shape(m, n)).enumerate(1, 1).reshape(shape(n, m));
+			CollectionProducer wt = c(matrix).reshape(shape(m, n)).transpose().reshape(shape(n, m));
 			return multiplyTransposed(g, wt).reshape(shape(target));
 		}
 

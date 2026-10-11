@@ -64,6 +64,29 @@ def owner_repo(url):
     return m.group(1).lower(), f"{m.group(2)}/{m.group(3)}".lower()
 
 
+def is_shell_expanded(token):
+    """Whether the shell may expand ``token`` into a different word at run
+    time: a parameter expansion, or a command substitution (which reaches
+    the guard as ``SUBSTITUTION_PLACEHOLDER`` or a backtick). Such a token
+    names a path the guard cannot see, so it cannot be checked as one."""
+    return "$" in token or "`" in token
+
+
+_GLOB_OR_BRACE = re.compile(r"[*?\[]|\{[^{}]*(?:,|\.\.)[^{}]*\}")
+
+
+def is_glob_or_brace(token):
+    """Whether the shell may expand ``token`` into one or more *other* words by
+    pathname (glob) or brace expansion at run time: an unquoted ``*``, ``?`` or
+    ``[`` class, or a ``{a,b}`` / ``{m..n}`` brace list. Such a token does not
+    name the path the guard sees — ``cp secret /V*`` reaches the guard as the
+    literal ``/V*`` yet the shell expands it to ``/Volumes`` — so a destination
+    spelled this way cannot be checked as one. The tokenizer has already removed
+    quoting, so a quoted literal metacharacter is treated the same way: a false
+    positive the guard accepts under its fail-closed rule."""
+    return bool(_GLOB_OR_BRACE.search(token))
+
+
 def match_flag(tok, flags, allow_attached=True):
     """The ``(flag, value)`` from ``flags`` that ``tok`` spells, or ``(None, None)``.
 
@@ -127,6 +150,11 @@ _KEYWORD_TOKENS = frozenset({
     "!", "time", "esac",
 })
 _REDIRECT_TOKENS = frozenset({">", ">>", "<", ">&", "<&", "<>", ">|", "&>", "&>>", "<<<"})
+# The redirection operators that name a file the shell writes the command's
+# output into (the word after them is a destination), as opposed to the input
+# forms (``<``, ``<&``, ``<<<``). ``<>`` opens for reading and writing, so its
+# target can be written and is included.
+_OUTPUT_REDIRECT_TOKENS = frozenset({">", ">>", ">&", "&>", "&>>", ">|", "<>"})
 _HEREDOC_START = re.compile(r"<<-?\s*(?P<q>['\"]?)(?P<word>[A-Za-z_][A-Za-z0-9_]*)(?P=q)")
 _DEV_TCP = re.compile(r"/dev/(?:tcp|udp)/([^/\s'\"]+)/")
 _SUBSTITUTION = re.compile(r"\$\(|`|<\(|>\(")
@@ -439,26 +467,37 @@ def _split_operators(tok):
 
 
 def _simple_commands(tokens):
-    """Split a token stream into (argv, piped_in, has_heredoc, subshells) simple commands.
+    """Split a token stream into (argv, piped_in, has_heredoc, subshells, redirects) simple commands.
 
     ``subshells`` identifies the ``( … )`` groups a command sits inside, outermost
     first, each by a number unique within the command line: a ``cd`` in a
     subshell ends with it, and two sibling groups at the same depth are still
     two different subshells, which the caller needs in order to know where
     each command runs.
+
+    ``redirects`` is the command's output-redirection targets — the word after
+    ``>``, ``>>``, ``&>``, ``>|`` and the other output forms — which a shell
+    writes to just as a copy tool writes to its destination operand. Without
+    them ``cat secret > /Volumes/USB/out`` reduces to ``cat secret`` and the
+    destination disappears, so the caller checks them as destinations too.
     """
     commands, current, piped, heredoc = [], [], False, False
     at_start = True
     skip_words = False
     subshells = []
+    redirects = []
     opened = 0
     i = 0
 
     def flush(next_piped):
-        nonlocal current, piped, heredoc, at_start, skip_words
-        if current:
-            commands.append((current, piped, heredoc, tuple(subshells)))
+        nonlocal current, piped, heredoc, at_start, skip_words, redirects
+        # A command with no program but a redirection target (`> /Volumes/USB/out`)
+        # is still run by the shell, which creates and writes that file, so it is
+        # kept — with an empty argv — so the caller can check the target.
+        if current or redirects:
+            commands.append((current, piped, heredoc, tuple(subshells), redirects))
         current, piped, heredoc, at_start, skip_words = [], next_piped, False, True, False
+        redirects = []
 
     while i < len(tokens):
         tok = tokens[i]
@@ -481,6 +520,10 @@ def _simple_commands(tokens):
         if tok in _REDIRECT_TOKENS:
             if current and current[-1].isdigit():
                 current.pop()
+            if (tok in _OUTPUT_REDIRECT_TOKENS and i + 1 < len(tokens)
+                    and tokens[i + 1] not in _SEPARATOR_TOKENS
+                    and tokens[i + 1] not in _REDIRECT_TOKENS):
+                redirects.append(tokens[i + 1].translate(_UNSHIELD))
             i += 2
             continue
         if at_start and tok in _KEYWORD_TOKENS:
@@ -500,30 +543,124 @@ def _simple_commands(tokens):
     return commands
 
 
-def _unwrap(argv):
-    """Drop env assignments and wrapper programs; return the real argv."""
+# ``env`` options that re-parse or relocate the command, which the wrapper
+# loop cannot follow: ``-S``/``--split-string`` splits a single string back
+# into assignments and a program, and ``-C``/``--chdir`` runs it in another
+# directory. Either defeats the analysis, so the guard fails closed.
+_ENV_LONG_REJECTED = ("--split-string", "--chdir")
+# ``env`` options that consume the following argument as their value, so the
+# walk skips that value rather than mistaking it for another option or (worse)
+# for the program: ``env -u NAME git …`` unsets ``NAME`` and runs ``git``, so
+# ``NAME`` is not the command. ``-a``/``--argv0`` set the spoofed ``argv[0]``.
+# The attached (``-uNAME``) and ``=``-joined (``--unset=NAME``) spellings carry
+# their own value and are not followed by a separate one.
+_ENV_SHORT_WITH_ARG = frozenset({"-u", "-a"})
+_ENV_LONG_WITH_ARG = ("--unset", "--argv0")
+
+
+def _env_option_end(args):
+    """The index in ``args`` just past ``env``'s leading options.
+
+    The wrapper loop needs to know where ``env``'s own options stop and the
+    assignments and program begin. An option that takes a value hides the next
+    token, so it is consumed here: left unskipped, ``env -u X GIT_DIR=… git
+    push`` handed back ``X`` as the program and the ``GIT_DIR`` assignment went
+    unchecked. ``-u``/``--unset`` (unset a variable) and ``-a``/``--argv0`` take
+    a value in their separate spelling; the attached and ``=``-joined spellings
+    carry their own.
+
+    Fails closed on an option the loop cannot follow: ``env -S``/
+    ``--split-string`` re-parses its single argument into a whole command, and
+    ``env -C``/``--chdir`` relocates the command — in the attached (``-S'…'``),
+    separate, ``=``-joined and unambiguous-abbreviation spellings (``env``
+    resolves ``getopt_long`` prefixes). ``--`` ends the options at ``i + 1``; a
+    plain ``env FOO=bar git`` reaches the assignments with nothing skipped.
+    """
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--":
+            return i + 1
+        if not tok.startswith("-") or tok == "-":
+            return i
+        if tok.startswith("--"):
+            name = tok.split("=", 1)[0]
+            if any(opt.startswith(name) for opt in _ENV_LONG_REJECTED):
+                raise GuardError("env --split-string/--chdir re-parses or relocates the command, "
+                                 "which the guard cannot follow; write the command out without it")
+            if "=" not in tok and any(opt.startswith(name) for opt in _ENV_LONG_WITH_ARG):
+                i += 2
+                continue
+            i += 1
+            continue
+        if "S" in tok[1:] or "C" in tok[1:]:
+            raise GuardError("env -S/-C re-parses or relocates the command, which the guard "
+                             "cannot follow; write the command out without it")
+        i += 2 if tok in _ENV_SHORT_WITH_ARG else 1
+    return i
+
+
+# A leading env assignment, allowing bash's append form ``NAME+=value``. The
+# optional ``+`` must be matched here so that ``GIT_DIR+=/tmp/other.git git push``
+# is recognised as an assignment rather than read as the program name; the ``+``
+# is then stripped from the captured name by ``_split_assignment`` so the value
+# reaches the git check under the real variable name.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
+
+
+def _split_assignment(word):
+    """Split an assignment word into ``(name, value)``, dropping a trailing
+    ``+`` from an append assignment (``NAME+=value``)."""
+    name, _eq, value = word.partition("=")
+    if name.endswith("+"):
+        name = name[:-1]
+    return name, value
+
+
+def unwrap_with_env(argv):
+    """Drop env assignments and wrapper programs; return ``(real argv, env)``.
+
+    ``env`` is the ``(name, value)`` assignments the shell applies to the
+    command before running it — the leading ``VAR=value`` words and those after
+    an ``env`` wrapper. They are stripped so the real program is visible, and
+    returned rather than discarded because an assignment can change what the
+    command operates on: ``GIT_DIR=/tmp/other.git git push`` reaches the guard
+    as a plain push unless the assignment is preserved for the git check.
+    """
     argv = list(argv)
+    env = []
     for _ in range(8):
-        while argv and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]):
-            argv.pop(0)
+        while argv and _ASSIGNMENT.match(argv[0]):
+            name, value = _split_assignment(argv.pop(0))
+            env.append((name, value))
         if not argv:
-            return argv
+            return argv, env
         prog = os.path.basename(argv[0])
         if prog not in WRAPPERS:
-            return argv
+            return argv, env
         if prog == "command" and len(argv) > 1 and argv[1] in ("-v", "-V"):
-            return []
-        with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
+            return [], env
         rest = argv[1:]
-        j = 0
-        while j < len(rest) and rest[j].startswith("-"):
-            j += 2 if rest[j] in with_arg else 1
         if prog == "env":
-            while j < len(rest) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", rest[j]):
+            j = _env_option_end(rest)
+        else:
+            with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
+            j = 0
+            while j < len(rest) and rest[j].startswith("-"):
+                j += 2 if rest[j] in with_arg else 1
+        if prog == "env":
+            while j < len(rest) and _ASSIGNMENT.match(rest[j]):
+                name, value = _split_assignment(rest[j])
+                env.append((name, value))
                 j += 1
         j += _WRAPPER_POSITIONALS.get(prog, 0)
         argv = rest[j:]
-    return argv
+    return argv, env
+
+
+def _unwrap(argv):
+    """Drop env assignments and wrapper programs; return the real argv."""
+    return unwrap_with_env(argv)[0]
 
 
 def _find_exec(argv):

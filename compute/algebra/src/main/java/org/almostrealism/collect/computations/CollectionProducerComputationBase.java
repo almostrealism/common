@@ -717,12 +717,14 @@ public abstract class CollectionProducerComputationBase
 	 * allowing efficient traversal of multi-dimensional input data.
 	 * 
 	 * @param index The index expression for the current computation position
-	 * @return Array of traversable expressions for each input argument
+	 * @return Array of traversable expressions for each input argument, with a {@code null}
+	 *         entry for any input that has no traversable kernel argument
 	 */
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = getArgumentForInput(getInputs().get(i)).getTraversableExpression();
+			ArrayVariable<?> arg = getArgumentForInput(getInputs().get(i));
+			vars[i] = arg == null ? null : arg.getTraversableExpression();
 		}
 		return vars;
 	}

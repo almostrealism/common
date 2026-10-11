@@ -18,6 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Nameable;
@@ -135,15 +136,31 @@ public class Variable<T, V extends Variable<T, ?>>
 
 	/**
 	 * Determines whether this variable and another stand for the same value, so that
-	 * references to them may be treated as references to the same thing. By default
-	 * two variables are equivalent when their names match; subclasses that know more
-	 * about where their value comes from extend this.
+	 * references to them may be treated as references to the same thing. Two variables
+	 * are equivalent when their names match, or when they
+	 * {@link #hasMatchingProducer(Variable) are produced by matching computations}
+	 * even though they are named differently.
 	 *
 	 * @param other the variable to compare against
 	 * @return {@code true} if both variables stand for the same value
 	 */
 	public boolean refersToSameValue(Variable<?, ?> other) {
-		return Objects.equals(getName(), other.getName());
+		return Objects.equals(getName(), other.getName()) || hasMatchingProducer(other);
+	}
+
+	/**
+	 * Determines whether the {@link #getProducer() producer} of this variable and that
+	 * of another are both {@link Computable} and {@link Computable#matches(Computable) match},
+	 * so that both variables hold the value of the same computation.
+	 *
+	 * @param other the variable to compare against
+	 * @return {@code true} if the producers of both variables match
+	 */
+	public boolean hasMatchingProducer(Variable<?, ?> other) {
+		Supplier<?> a = getProducer();
+		Supplier<?> b = other.getProducer();
+		return a instanceof Computable && b instanceof Computable
+				&& ((Computable) a).matches((Computable) b);
 	}
 
 	/**

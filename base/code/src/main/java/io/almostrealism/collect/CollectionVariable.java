@@ -193,7 +193,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		Supplier<?> producer = getUnwrappedProducer();
+		TraversableExpression<Double> producer = getTraversableProducer();
 
 		// TODO  This process of falling back when TraversableExpression
 		// TODO  returns null shouldn't really be necessary, but there
@@ -202,8 +202,8 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		// TODO  types are TraversableExpressions or not.
 		Expression<Double> result = null;
 
-		if (producer instanceof TraversableExpression) {
-			result = ((TraversableExpression<Double>) producer).getValueAt(index);
+		if (producer != null) {
+			result = producer.getValueAt(index);
 		}
 
 		if (result != null) return result;
@@ -237,14 +237,28 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
-	 * A collection variable is an opaque input unless its producer is itself a
-	 * {@link TraversableExpression}, whose values are computed rather than read.
+	 * A collection variable is an opaque input unless its producer, looking through a
+	 * {@link Delegated} producer to its delegate, is itself a {@link TraversableExpression},
+	 * whose values are computed rather than read.
 	 *
-	 * @return {@code true} if the producer is not a {@link TraversableExpression}
+	 * @return {@code true} if the unwrapped producer is not a {@link TraversableExpression}
 	 */
 	@Override
 	public boolean isOpaqueInput() {
-		return !(getProducer() instanceof TraversableExpression);
+		return getTraversableProducer() == null;
+	}
+
+	/**
+	 * Returns the producer of this variable, looking through a {@link Delegated} producer
+	 * to its delegate, when that producer is a {@link TraversableExpression} whose values
+	 * can be computed directly rather than read from the argument.
+	 *
+	 * @return the unwrapped producer as a {@link TraversableExpression}, or {@code null}
+	 *         if it is not one
+	 */
+	protected TraversableExpression<Double> getTraversableProducer() {
+		Supplier<?> producer = getUnwrappedProducer();
+		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
 	}
 
 	/**
@@ -271,10 +285,10 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		Supplier<?> producer = getUnwrappedProducer();
+		TraversableExpression<Double> producer = getTraversableProducer();
 
-		if (producer instanceof TraversableExpression) {
-			return ((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		if (producer != null) {
+			return producer.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
 
 		return CollectionExpression.super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
@@ -282,36 +296,20 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * This variable matches another {@link Variable} if their producers are both
-	 * {@link Computable} and report a match. Otherwise, falls back to the default
-	 * {@link CollectionExpression} matching logic.
+	 * This variable matches another {@link Variable} if
+	 * {@link Variable#hasMatchingProducer(Variable) their producers match}. Otherwise,
+	 * falls back to the default {@link CollectionExpression} matching logic.
 	 *
 	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
 	 */
 	@Override
 	public boolean matches(Computable other) {
-		if (other instanceof Variable) {
-			Supplier<?> a = getProducer();
-			Supplier<?> b = ((Variable<?, ?>) other).getProducer();
-			if (a instanceof Computable && b instanceof Computable) {
-				return ((Computable) a).matches((Computable) b);
-			}
+		if (other instanceof Variable && hasMatchingProducer((Variable<?, ?>) other)) {
+			return true;
 		}
 
 		return CollectionExpression.super.matches(other);
-	}
-
-	/**
-	 * Extends name equivalence with {@link #matches(Computable)}, so that two collection
-	 * variables whose producers match stand for the same value even when named differently.
-	 *
-	 * @param other the variable to compare against
-	 * @return {@code true} if both variables stand for the same value
-	 */
-	@Override
-	public boolean refersToSameValue(Variable<?, ?> other) {
-		return super.refersToSameValue(other) || (other instanceof Computable && matches((Computable) other));
 	}
 
 	/**

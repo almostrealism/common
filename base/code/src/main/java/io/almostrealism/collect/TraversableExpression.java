@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.relation.Computable;
@@ -184,7 +185,7 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 			warn("localIndex is irrelevant");
 		}
 
-		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()).isVariableReference()) {
+		if (getValueAt(DefaultIndex.temporary()).isVariableReference()) {
 			return null;
 		}
 

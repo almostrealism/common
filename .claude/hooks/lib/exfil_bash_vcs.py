@@ -20,7 +20,8 @@ if __name__ != "__main__" and not __package__:
     if HERE not in sys.path:
         sys.path.insert(0, HERE)
 
-from exfil_bash_lex import GuardError, match_flag, owner_repo
+from exfil_bash_lex import (GuardError, is_glob_or_brace, is_shell_expanded,
+                            match_flag, owner_repo)
 
 
 # `gh` subcommands allowed at all, and the flags that turn an allowed one
@@ -50,11 +51,72 @@ GIT_BLOCKED_SUBCOMMANDS = frozenset({
 _GIT_REMOTE_MUTATORS = frozenset({"add", "set-url", "rename"})
 _GIT_CONFIG_SENSITIVE = re.compile(
     r"^(remote\.|url\.|http\.|https\.|core\.sshcommand|credential\.|core\.gitproxy|"
-    r"core\.askpass|gpg\.program|diff\.external|sendemail\.)", re.IGNORECASE)
+    r"core\.askpass|gpg\.program|diff\.external|sendemail\.|branch\.|include\.|"
+    r"includeif\.)", re.IGNORECASE)
 _GIT_GLOBAL_OPTS_WITH_ARG = {
-    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+    "-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--exec-path",
 }
 _GIT_PUSH_BLOCKED_FLAGS = ("--repo", "--receive-pack", "--exec")
+# Environment variables that point git at a different repository, index or
+# object store. They do the same thing as ``--git-dir`` / ``--work-tree`` but
+# through the environment, so ``GIT_DIR=/tmp/other.git git push origin HEAD``
+# looks like an ordinary push while git operates elsewhere.
+_GIT_REPO_SELECTING_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_INDEX_FILE",
+})
+# Environment variables that override git's configuration or transport. They
+# are the environment-borne equivalents of the ``-c`` / ``--config-env`` and
+# remote/transport settings the guard already refuses on the command line:
+# ``GIT_CONFIG_COUNT`` + ``GIT_CONFIG_KEY_n`` / ``GIT_CONFIG_VALUE_n`` inject
+# config (including ``remote.origin.url``) after the guard has read the on-disk
+# origin; ``GIT_CONFIG`` / ``GIT_CONFIG_GLOBAL`` / ``GIT_CONFIG_SYSTEM`` point
+# config at an attacker-controlled file; and ``GIT_SSH`` / ``GIT_SSH_COMMAND``
+# / ``GIT_PROXY_COMMAND`` / ``GIT_ASKPASS`` / ``GIT_EXTERNAL_DIFF`` run an
+# arbitrary program as the transport. ``GIT_CONFIG_PARAMETERS`` is a second
+# channel for the same ``-c`` config overrides (git reads it as a list of
+# ``'key'='value'`` pairs), so it can rewrite ``remote.origin.url`` after the
+# guard has read the on-disk origin just as ``GIT_CONFIG_COUNT`` can.
+# ``GIT_EXEC_PATH`` is where git looks up its subcommands and the
+# ``git-remote-*`` transport helpers; pointing it at an attacker-controlled
+# directory replaces the transport with an arbitrary program, so it is the
+# environment-borne equivalent of the ``--exec-path`` option refused below.
+# ``GIT_PAGER`` / ``GIT_EDITOR`` are not here and stay allowed.
+_GIT_CONFIG_TRANSPORT_ENV = frozenset({
+    "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND",
+    "GIT_ASKPASS", "GIT_EXTERNAL_DIFF", "GIT_EXEC_PATH",
+})
+# The indexed config variables come in numbered pairs, so they are matched by
+# prefix rather than enumerated.
+_GIT_CONFIG_TRANSPORT_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")
+# ``HOME`` / ``XDG_CONFIG_HOME`` relocate where git reads its user/global
+# config from, so pointing them at an attacker-controlled directory loads a
+# config that can rewrite ``remote.origin.url`` — the same outcome as
+# ``GIT_CONFIG_GLOBAL``, through a different door.
+_GIT_CONFIG_SEARCH_ENV = frozenset({"HOME", "XDG_CONFIG_HOME"})
+# Standard proxy variables route git's connection through another host. They
+# are honoured by git's HTTP transport regardless of case, so they are matched
+# case-insensitively.
+_PROXY_ENV_NAMES = frozenset({"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"})
+
+
+def _is_proxy_env(name):
+    """Whether ``name`` is a standard proxy variable (case-insensitive)."""
+    return name.lower() in _PROXY_ENV_NAMES
+
+
+def is_repo_selecting_or_transport_env(name):
+    """Whether ``name`` is a git environment variable that selects another
+    repository, overrides git's configuration or transport, relocates where
+    git reads its config, or routes the connection through another host.
+
+    Shared with the dispatch module so that an ``export``/``declare`` of one of
+    these in a separate simple command (``export GIT_DIR=…; git …``) is refused
+    at the export, where the leading-assignment capture cannot see it."""
+    return (name in _GIT_REPO_SELECTING_ENV or name in _GIT_CONFIG_TRANSPORT_ENV
+            or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES)
+            or name in _GIT_CONFIG_SEARCH_ENV or _is_proxy_env(name))
 
 
 def _git_call(argv):
@@ -77,14 +139,85 @@ def _git_call(argv):
     return argv[j], argv[j + 1:], opts
 
 
-def _check_git(argv, ctx):
-    sub, args, opts = _git_call(argv)
+def _git_working_dir(ctx, opts):
+    """The directory a git invocation runs in, after its global options.
+
+    ``-C`` inside this project's work tree only changes where git runs, so
+    it is followed — provided the repository git finds there is this
+    project's own work tree, not a nested repository inside it (a nested
+    work tree or a bare repo both resolve to their own git directory). ``-C``
+    anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``, a glob
+    or brace list), and ``--git-dir`` / ``--work-tree`` at all, point git at
+    another repository and are a block. ``--exec-path=DIR`` points git at
+    another set of helper programs (``git-remote-*``) and is a block when a
+    value is given; a bare ``--exec-path`` only prints the path and stays
+    allowed. ``-c`` and ``--config-env`` that set
+    remote or transport configuration, or whose value the shell computes, are
+    a block. Successive ``-C`` options compose
+    in git, which the guard does not follow, so more than one is a block
+    too. Returns ``ctx.command_cwd`` itself when there is no ``-C``.
+    """
+    c_values = []
     for opt, value in opts:
-        if opt in ("-C", "--git-dir", "--work-tree"):
+        if opt in ("--git-dir", "--work-tree"):
             raise _GuardError(f"git {opt} points at another repository; only this project's "
                               f"origin may be pushed to")
-        if opt == "-c" and _GIT_CONFIG_SENSITIVE.match(value):
-            raise _GuardError(f"git -c {value!r} rewrites remote/transport configuration; denied")
+        if opt == "--exec-path" and value:
+            raise _GuardError("git --exec-path points git at another set of helper programs "
+                              "(git-remote-*), which can replace the transport; denied")
+        if opt in ("-c", "--config-env"):
+            if is_shell_expanded(value):
+                raise _GuardError(f"git {opt} {value!r} is computed at run time; the guard "
+                                  f"cannot tell what configuration it sets, so write it out "
+                                  f"literally")
+            if _GIT_CONFIG_SENSITIVE.match(value):
+                raise _GuardError(f"git {opt} {value!r} rewrites remote/transport "
+                                  f"configuration; denied")
+        if opt == "-C":
+            c_values.append(value)
+    if not c_values:
+        return ctx.command_cwd
+    if len(c_values) > 1:
+        raise _GuardError("git with more than one -C; the guard does not compose successive "
+                          "directory changes, so pass a single -C")
+    target = c_values[0]
+    if is_shell_expanded(target) or is_glob_or_brace(target) or target.startswith("~"):
+        raise _GuardError(f"git -C {target} names a directory the shell expands at run time; "
+                          f"the guard cannot confirm it is inside this project, so write the "
+                          f"path out literally")
+    base = ctx.require_cwd("git -C")
+    resolved = os.path.realpath(target if os.path.isabs(target) else os.path.join(base, target))
+    toplevel = os.path.realpath(ctx.project_toplevel)
+    if os.path.commonpath([resolved, toplevel]) != toplevel:
+        raise _GuardError(f"git -C {target} points at another repository ({resolved}); only "
+                          f"this project's origin may be pushed to")
+    # Containment means ``resolved`` is under the work tree, not that it is the
+    # work tree: a repository nested inside it (its own ``.git``, or a bare repo
+    # with no work tree at all) also passes. Compare the git directory git
+    # actually selects — an in-tree plain directory resolves up to this
+    # project's ``.git`` (allowed); a nested repository resolves to its own.
+    rc, gitdir = ctx.git.run(["rev-parse", "--absolute-git-dir"], cwd=resolved)
+    rc_proj, proj_gitdir = ctx.git.run(["rev-parse", "--absolute-git-dir"], cwd=toplevel)
+    if rc == 0 and rc_proj == 0 and (
+            os.path.realpath(gitdir.strip()) != os.path.realpath(proj_gitdir.strip())):
+        raise _GuardError(f"git -C {target} selects a nested repository ({gitdir.strip()}); only "
+                          f"this project's own work tree may be used")
+    return resolved
+
+
+def _check_git(argv, ctx, env=()):
+    for name, _value in env:
+        if name in _GIT_REPO_SELECTING_ENV:
+            raise _GuardError(f"git with {name} set points it at another repository; only this "
+                              f"project's origin may be pushed to")
+        if is_repo_selecting_or_transport_env(name):
+            raise _GuardError(f"git with {name} set overrides its configuration or transport, "
+                              f"relocates the config git reads, or routes the connection through "
+                              f"another host, which can rewrite the remote; denied")
+    sub, args, opts = _git_call(argv)
+    cwd = _git_working_dir(ctx, opts)
+    if cwd is not ctx.command_cwd:
+        ctx = ctx.at(cwd)
     if sub in GIT_BLOCKED_SUBCOMMANDS:
         raise _GuardError(f"git {sub} sends data or credentials somewhere else; denied")
     if sub == "remote" and args and args[0] in _GIT_REMOTE_MUTATORS:

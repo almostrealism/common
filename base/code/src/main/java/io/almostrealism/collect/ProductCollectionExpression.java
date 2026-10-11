@@ -53,9 +53,10 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>When the diagonal optimisation is enabled and the target appears exactly once among
-	 * the operands, returns a {@link DiagonalCollectionExpression} whose diagonal values are
-	 * the product of the remaining operands. Otherwise delegates to the parent implementation.</p>
+	 * <p>When the diagonal optimisation is enabled, the target appears exactly once among
+	 * the operands, and at least one other operand exists that does not reference it, returns
+	 * a {@link DiagonalCollectionExpression} whose diagonal values are the product of the
+	 * remaining operands. Otherwise delegates to the parent implementation.</p>
 	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
@@ -74,16 +75,12 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 			}
 		});
 
-		DefaultIndex index = generateTemporaryIndex();
+		DefaultIndex index = DefaultIndex.temporary();
 
-		if (matches.size() != 1 ||
+		if (matches.size() != 1 || others.isEmpty() ||
 				others.stream().map(e -> e.getValueAt(index))
 						.anyMatch(target::isReferencedBy)) {
 			return super.delta(target);
-		}
-
-		if (others.isEmpty()) {
-			throw new UnsupportedOperationException();
 		}
 
 		TraversalPolicy shape = getShape().append(target.getShape());

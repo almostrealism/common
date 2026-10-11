@@ -19,8 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -153,9 +151,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return ExpressionMatchingCollectionExpression.create(
-				new ConstantCollectionExpression(target.getShape(), this),
-				target, e(1), e(0));
+		return deltaUnlessTarget(target, constantZero(target.getShape()));
 	}
 
 	/** {@inheritDoc} Recreates the reference using the same variable but new position children. */
@@ -184,8 +180,9 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	 *
 	 * <p>A reference is identified by its referent rather than its children: two references
 	 * match where their referents {@link Variable#refersToSameValue stand for the same value}
-	 * and their indices are equal. A reference without an index (such as a scalar reference)
-	 * matches only another reference without an index.</p>
+	 * and their indices are equal. A reference without an index matches only another
+	 * reference without an index, and then only where their positions are equal; a scalar
+	 * reference, which has no position either, matches only another scalar reference.</p>
 	 */
 	@Override
 	public Expression<Boolean> structuralEq(Expression<?> operand) {
@@ -193,7 +190,9 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) operand;
 		if (!var.refersToSameValue(alt.var)) return new BooleanConstant(false);
-		if (index == null || alt.index == null) return new BooleanConstant(index == alt.index);
-		return index.eq(alt.index);
+		if (index != null && alt.index != null) return index.eq(alt.index);
+		if (index != null || alt.index != null) return new BooleanConstant(false);
+		if (pos == null || alt.pos == null) return new BooleanConstant(pos == alt.pos);
+		return pos.eq(alt.pos);
 	}
 }

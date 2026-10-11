@@ -85,8 +85,9 @@ public enum MultiTermDeltaStrategy implements MatrixFeatures {
 
 	/**
 	 * Computes the gradient of the given computation with respect to one of its own terms.
-	 * Whatever the strategy, the result is null when the target appears in more than one
-	 * term, and zero when it appears in none.
+	 * For every strategy that differentiates terms, the result is null when the target
+	 * appears in more than one term, and zero when it appears in none; {@link #NONE}
+	 * always returns null.
 	 *
 	 * @param computation  the multi-term computation being differentiated
 	 * @param target       the term to differentiate with respect to

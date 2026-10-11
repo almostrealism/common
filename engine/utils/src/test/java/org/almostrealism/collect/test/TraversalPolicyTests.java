@@ -381,4 +381,39 @@ public class TraversalPolicyTests extends TestSuiteBase {
 			// An empty shape cannot fill any target
 		}
 	}
+
+	/**
+	 * Trimming an all-ones shape must not throw. {@link TraversalPolicy#trim()}
+	 * removes trailing unit dimensions, but a single-element collection such as
+	 * {@code (1)} or {@code (1, 1)} is a legal shape whose trailing unit cannot
+	 * be stripped without leaving zero dimensions. The documented contract is to
+	 * return "the trimmed policy, or this policy if no trailing unit dimensions
+	 * exist", so trim must stop at the final dimension rather than recursing into
+	 * an empty shape — which the {@code tolerateZero=false} constructor rejects
+	 * with {@link IllegalArgumentException}. A normal trailing-unit trim
+	 * ({@code (3, 1)} to {@code (3)}) must still work.
+	 */
+	@Test(timeout = 10000)
+	public void trimAllOnesShapeKeepsFinalDimension() {
+		Assert.assertTrue(new TraversalPolicy(1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+
+		Assert.assertTrue(new TraversalPolicy(3, 1).trim().equalsIgnoreAxis(new TraversalPolicy(3)));
+		Assert.assertTrue(new TraversalPolicy(2, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(2)));
+	}
+
+	/**
+	 * Trimming a zero-dimension policy must return safely rather than evaluating
+	 * {@code length(getDimensions() - 1)} with an index of {@code -1}. The
+	 * {@code getDimensions() > 1} guard in {@link TraversalPolicy#trim()}
+	 * short-circuits before the length lookup, so a zero-dimension policy
+	 * (created with the {@code tolerateZero=true} constructor) is returned
+	 * unchanged instead of throwing an {@link ArrayIndexOutOfBoundsException}.
+	 */
+	@Test(timeout = 10000)
+	public void trimZeroDimensionPolicyReturnsSafely() {
+		TraversalPolicy trimmed = new TraversalPolicy(true).trim();
+		Assert.assertEquals(0, trimmed.getDimensions());
+	}
 }

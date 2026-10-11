@@ -20,14 +20,19 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Verifies {@link Expression#structuralEq(Expression)}, its {@link InstanceReference}
@@ -90,6 +95,40 @@ public class StructuralEqualityTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * References that carry a position but no supplementary index are distinguished by
+	 * their positions, so references to different elements of the same referent differ.
+	 */
+	@Test(timeout = 30000)
+	public void positionedReferencesWithoutIndex() {
+		Variable<Double, ?> x = new Variable<>("x", Double.class);
+		InstanceReference<Double, ?> atZero = new InstanceReference<>(x, e(0), null);
+
+		Assert.assertTrue(known(atZero.structuralEq(new InstanceReference<>(x, e(0), null))));
+		Assert.assertFalse(known(atZero.structuralEq(new InstanceReference<>(x, e(1), null))));
+		Assert.assertFalse(known(atZero.structuralEq(new InstanceReference<>(x))));
+		Assert.assertFalse(known(new InstanceReference<>(x).structuralEq(atZero)));
+	}
+
+	/**
+	 * A collection variable whose producer is a {@link Delegated} wrapper around a computed
+	 * {@link TraversableExpression} is not an opaque input, because its values are computed
+	 * rather than read; a wrapper around a producer that is not traversable still is.
+	 */
+	@Test(timeout = 30000)
+	public void delegatedComputedProducerIsNotOpaque() {
+		Producer<PackedCollection> computed = cp(new PackedCollection(4)).add(cp(new PackedCollection(4)));
+		Assert.assertTrue(computed instanceof TraversableExpression);
+
+		CollectionVariable<?> delegatedComputed = new CollectionVariable<>("dc",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(computed));
+		Assert.assertFalse(delegatedComputed.isOpaqueInput());
+
+		CollectionVariable<?> delegatedOpaque = new CollectionVariable<>("do",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(() -> null));
+		Assert.assertTrue(delegatedOpaque.isOpaqueInput());
+	}
+
+	/**
 	 * For ordinary expressions the comparison is structural: equal trees match, while
 	 * trees of different classes or arity are statically different.
 	 */
@@ -116,6 +155,26 @@ public class StructuralEqualityTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * Differently named variables stand for the same value when their producers match,
+	 * whichever kind of variable each one is and in whichever order they are compared.
+	 */
+	@Test(timeout = 30000)
+	public void refersToSameValueByMatchingProducer() {
+		Producer<PackedCollection> computed = cp(new PackedCollection(4)).add(cp(new PackedCollection(4)));
+		Producer<PackedCollection> other = cp(new PackedCollection(4)).add(cp(new PackedCollection(4)));
+
+		ArrayVariable<?> plain = new ArrayVariable<>("a", (Supplier) computed);
+		CollectionVariable<?> collection = new CollectionVariable<>("b", new TraversalPolicy(4), (Supplier) computed);
+		CollectionVariable<?> unrelated = new CollectionVariable<>("c", new TraversalPolicy(4), (Supplier) other);
+
+		Assert.assertTrue(plain.hasMatchingProducer(collection));
+		Assert.assertTrue(plain.refersToSameValue(collection));
+		Assert.assertTrue(collection.refersToSameValue(plain));
+		Assert.assertFalse(collection.refersToSameValue(unrelated));
+		Assert.assertFalse(unrelated.refersToSameValue(plain));
+	}
+
+	/**
 	 * A plain array variable is not traversable, but one that delegates to a collection
 	 * variable answers with that collection variable, through any length of chain.
 	 */
@@ -134,5 +193,33 @@ public class StructuralEqualityTests extends TestSuiteBase implements Expression
 		Assert.assertSame(collection, nested.getTraversableExpression());
 
 		Assert.assertNull(new ArrayVariable<>(plain, e(1)).getTraversableExpression());
+	}
+
+	/**
+	 * A minimal {@link Delegated} supplier that wraps another supplier without being
+	 * traversable itself.
+	 */
+	private static class DelegatingSupplier implements Supplier<Object>, Delegated<Supplier<?>> {
+		/** The wrapped supplier. */
+		private final Supplier<?> delegate;
+
+		/**
+		 * Creates a wrapper around the given supplier.
+		 *
+		 * @param delegate the supplier to wrap
+		 */
+		DelegatingSupplier(Supplier<?> delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public Object get() {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public Supplier<?> getDelegate() {
+			return delegate;
+		}
 	}
 }

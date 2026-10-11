@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 
 import java.util.Optional;
@@ -33,7 +34,7 @@ import java.util.Optional;
  * structure (not at runtime), so it can be resolved at compile time when both sides are
  * constants or share the same sub-expression tree.</p>
  *
- * <p>The static {@link #create} factory methods can short-circuit the conditional when the
+ * <p>The static {@link #create} factory method can short-circuit the conditional when the
  * comparison result is statically known via {@link #staticComparison}.</p>
  */
 public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter {
@@ -139,27 +140,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	 *         or empty if this cannot be determined without evaluation
 	 */
 	protected Optional<Boolean> staticComparison() {
-		return comparisonAt(generateTemporaryIndex()).booleanValue();
-	}
-
-	/**
-	 * Creates a matching expression using constant positive and negative scalar values.
-	 *
-	 * <p>Delegates to {@link #create(CollectionExpression, CollectionExpression, CollectionExpression, CollectionExpression)}
-	 * after wrapping the scalars in {@link ConstantCollectionExpression} instances.</p>
-	 *
-	 * @param reference  the reference expression
-	 * @param compareTo  the comparison target expression
-	 * @param positive   the scalar value when the comparison is true
-	 * @param negative   the scalar value when the comparison is false
-	 * @return a collection expression implementing the conditional selection
-	 */
-	public static CollectionExpression create(
-			CollectionExpression reference, CollectionExpression compareTo,
-			Expression<?> positive, Expression<?> negative) {
-		return create(reference, compareTo,
-				new ConstantCollectionExpression(reference.getShape(), positive),
-				new ConstantCollectionExpression(reference.getShape(), negative));
+		return comparisonAt(DefaultIndex.temporary()).booleanValue();
 	}
 
 	/**

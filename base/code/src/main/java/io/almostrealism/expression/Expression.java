@@ -1250,6 +1250,17 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Simplifies this expression only when its node count exceeds {@code threshold},
+	 * avoiding the cost of simplification for expressions that are already small.
+	 *
+	 * @param threshold the node count above which simplification is applied
+	 * @return the simplified expression, or this expression if it is within the threshold
+	 */
+	public Expression<?> simplifyAbove(int threshold) {
+		return countNodes() > threshold ? simplify() : this;
+	}
+
+	/**
 	 * Simplifies this expression within the given kernel structure context.
 	 *
 	 * <p>This method delegates to {@link KernelTree#simplify(KernelStructureContext)}
