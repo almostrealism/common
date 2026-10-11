@@ -23,7 +23,6 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -31,7 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiFunction;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared
@@ -40,12 +38,6 @@ import java.util.function.BiFunction;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
-
-	/**
-	 * A configurable function that renders a variable-name and position string into a
-	 * dereferencing expression (e.g. {@code name[pos]}). Defaults to array-index notation.
-	 */
-	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	/** The variable being referenced. */
 	private Variable<T, ?> var;
@@ -95,29 +87,10 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	public Variable<T, ?> getReferent() { return var; }
 	public Expression<?> getIndex() { return index; }
 
+	/** {@inheritDoc} The referent renders the reference, at this reference's position. */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		if (var instanceof ArrayVariable) {
-			ArrayVariable v = (ArrayVariable) var;
-
-			if (v.getDelegate() == null) {
-				if (pos == null) {
-					// Reference to the whole array
-					return var.getName();
-				} else if (v.isDisableOffset() || !lang.isVariableOffsetSupported()) {
-					// Reference to a specific element
-					return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
-				} else {
-					// Reference to a specific element, with offset
-					return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
-				}
-			 } else {
-				throw new UnsupportedOperationException();
-			}
-		} else {
-			// warn("Reference to value which is not an ArrayVariable");
-			return var.getName();
-		}
+		return var.referenceExpression(lang, pos);
 	}
 
 	@Override
@@ -189,6 +162,10 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 		InstanceReference<?, ?> ref = (InstanceReference<?, ?>) other;
 		if (!getReferent().isSameAs(ref.getReferent())) return new BooleanConstant(false);
+		if (getIndex() == null || ref.getIndex() == null) {
+			return new BooleanConstant(getIndex() == ref.getIndex());
+		}
+
 		return getIndex().eq(ref.getIndex());
 	}
 }

@@ -21,7 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 /**
  * An n-ary infix expression that joins two or more sub-expressions with the same operator.
@@ -34,7 +34,7 @@ import java.util.stream.Stream;
 public class NAryExpression<T> extends Expression<T> {
 
 	/** The infix operator string used to join child expressions (e.g. {@code "+"}, {@code "&"}). */
-	private String operator;
+	private final String operator;
 
 	/**
 	 * Constructs an n-ary expression from a list of operands.
@@ -79,21 +79,28 @@ public class NAryExpression<T> extends Expression<T> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return concat(operator, getChildren().stream().map(expression -> expression.getWrappedExpression(lang)));
+		return getChildren().stream()
+				.map(expression -> expression.getWrappedExpression(lang))
+				.collect(Collectors.joining(" " + operator + " "));
 	}
 
 	@Override
 	public Expression<T> recreate(List<Expression<?>> children) {
-		if (children.isEmpty()) {
-			throw new IllegalArgumentException("NAryExpression must have at least 2 values");
-		}
-
 		return new NAryExpression<>(getType(), operator, children);
 	}
 
 	@Override
 	public boolean compare(Expression e) {
-		return super.compare(e) && operator.equals(((NAryExpression) e).operator);
+		return super.compare(e) && operator.equals(((NAryExpression<?>) e).getOperator());
+	}
+
+	/**
+	 * Returns the infix operator that joins the operands of this expression.
+	 *
+	 * @return the operator string, such as {@code "+"} or {@code "&"}
+	 */
+	public String getOperator() {
+		return operator;
 	}
 
 	/**
@@ -116,61 +123,5 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return values;
-	}
-
-	/**
-	 * Infers the numeric result type for a set of operand expressions passed as varargs.
-	 * Returns {@code Double.class} if any operand is floating-point, {@code Long.class}
-	 * if any operand is a non-integer integer type, otherwise {@code Integer.class}.
-	 *
-	 * @param values the operand expressions (must be {@link Expression} instances)
-	 * @return the promoted numeric type
-	 */
-	protected static Class<? extends Number> type(Object... values) {
-		return type(List.of(values));
-	}
-
-	/**
-	 * Infers the numeric result type for a set of operand expressions in an {@link Iterable}.
-	 * Returns {@code Double.class} if any operand is floating-point, {@code Long.class}
-	 * if any operand is a non-integer integer type, otherwise {@code Integer.class}.
-	 *
-	 * @param values an iterable of {@link Expression} instances
-	 * @return the promoted numeric type
-	 * @throws UnsupportedOperationException if any element is not an {@link Expression}
-	 *         or its type is not a {@link Number} subtype
-	 */
-	protected static Class<? extends Number> type(Iterable values) {
-		boolean ln = false;
-
-		for (Object o : values) {
-			if (!(o instanceof Expression)) {
-				throw new UnsupportedOperationException();
-			}
-
-			Expression<?> e = (Expression<?>) o;
-			if (!Number.class.isAssignableFrom(e.getType())) {
-				throw new UnsupportedOperationException();
-			} else if (e.isFP()) {
-				return Double.class;
-			} else if (!Objects.equals(e.getType(), Integer.class)) {
-				ln = true;
-			}
-		}
-
-		return ln ? Long.class : Integer.class;
-	}
-
-	/**
-	 * Concatenates a stream of code strings with the given separator between each element.
-	 *
-	 * @param separator the operator string to place between elements
-	 * @param values    a stream of per-operand code strings
-	 * @return the joined expression string
-	 */
-	private static String concat(String separator, Stream<String> values) {
-		StringBuilder buf = new StringBuilder();
-		values.map(s -> " " + separator + " " + s).forEach(buf::append);
-		return buf.toString().substring(separator.length() + 2);
 	}
 }

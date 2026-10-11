@@ -24,7 +24,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
@@ -262,8 +261,8 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * Two collection variables match if their underlying producers are both {@link Algebraic}
-	 * and report a match. Otherwise, falls back to the default {@link CollectionExpression}
+	 * Two collection variables match if they {@link #hasMatchingProducer have matching
+	 * producers}. Otherwise, falls back to the default {@link CollectionExpression}
 	 * matching logic.
 	 *
 	 * @param other the other algebraic expression to compare against
@@ -272,28 +271,11 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public <A extends Algebraic> boolean matches(A other) {
-		if (other instanceof CollectionVariable) {
-			Supplier<?> a = getProducer();
-			Supplier<?> b = ((CollectionVariable) other).getProducer();
-			if (a instanceof Algebraic && b instanceof Algebraic) {
-				return ((Algebraic) a).matches((Algebraic) b);
-			}
+		if (other instanceof CollectionVariable && hasMatchingProducer((CollectionVariable<?>) other)) {
+			return true;
 		}
 
 		return CollectionExpression.super.matches(other);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>A collection variable also stands for the same data as any {@link Algebraic}
-	 * variable it {@link #matches(Algebraic) matches}, whatever their names, so that a
-	 * reference to an argument still matches the target of a derivative when the two
-	 * variables are produced by matching producers.</p>
-	 */
-	@Override
-	public boolean isSameAs(Variable<?, ?> other) {
-		return super.isSameAs(other) || (other instanceof Algebraic && matches((Algebraic) other));
 	}
 
 	/**

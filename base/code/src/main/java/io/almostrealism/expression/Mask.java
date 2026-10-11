@@ -48,6 +48,18 @@ public class Mask<T extends Number> extends Conditional<T> {
 	public Expression<Boolean> getMask() { return (Expression<Boolean>) getChildren().get(0); }
 	public Expression<T> getMaskedValue() { return (Expression<T>) getChildren().get(1); }
 
+	/**
+	 * Returns an expression gated by this mask's guard, with the given value in place
+	 * of the masked value.
+	 *
+	 * @param value the expression returned when the mask is true
+	 * @param <V>   the numeric type of the value
+	 * @return the simplified masked expression
+	 */
+	public <V> Expression<V> withMaskedValue(Expression<V> value) {
+		return Mask.of(getMask(), value);
+	}
+
 	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
 		if (getMaskedValue() instanceof InstanceReference) {

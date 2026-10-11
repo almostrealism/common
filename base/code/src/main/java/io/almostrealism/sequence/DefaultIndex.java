@@ -20,15 +20,11 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.scope.ScopeSettings;
 
-import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -155,23 +151,11 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Producing every value of an index requires every one of its values, from zero up
-	 * to its limit, and no value of any other index.</p>
+	 * <p>An index answers for itself, as described by {@link Index#getIndexOptions(Index)}.</p>
 	 */
 	@Override
 	public Optional<Set<Integer>> getIndexOptions(Index index) {
-		if (!Objects.equals(this, index)) {
-			return Optional.of(Collections.emptySet());
-		}
-
-		OptionalLong limit = getLimit();
-		if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
-			return Optional.empty();
-		}
-
-		return Optional.of(
-				IntStream.range(0, Math.toIntExact(limit.getAsLong()))
-					.boxed().collect(Collectors.toSet()));
+		return Index.super.getIndexOptions(index);
 	}
 
 	/**

@@ -25,7 +25,6 @@ import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Optional;
@@ -497,22 +496,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
-		if (input instanceof Mod && !input.isFP()) {
-			Mod<Long> innerMod = (Mod) input;
-			OptionalLong inMod = innerMod.getChildren().get(1).longValue();
-
-			if (inMod.isPresent()) {
-				long n = inMod.getAsLong();
-
-				if (n == m || (enableRedundantModReplacement && m % n == 0)) {
-					return innerMod;
-				} else if (n % m == 0) {
-					return new Mod(innerMod.getChildren().get(0),
-							ExpressionFeatures.getInstance().e(m),
-							false);
-				}
-			}
-		} else if (enableRemoveMultiples) {
+		if (enableRemoveMultiples) {
 			int count = input.countNodes();
 
 			w: while (input instanceof Sum && !input.isFP()) {
@@ -524,18 +508,22 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		}
 
+		// Removing multiples can leave a bare inner modulus, so this applies to that too
+		if (input instanceof Mod && !input.isFP()) {
+			Expression<?> reduced = ((Mod<?>) input).reducedModulo(m);
+			if (reduced != null) return reduced;
+		}
+
 		OptionalLong u = input.upperBound();
 		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
 			return input;
 		}
 
 		if (!input.isFP()) {
-			if (input instanceof Mod) {
-				Expression simple = tryModSimplify((Mod) input, m);
-				if (simple != null)
-					return simple;
-			} else if (input instanceof Sum) {
-				Expression simple = trySumSimplify((Sum) input, m);
+			if (enableInnerSumSimplify && input instanceof Sum) {
+				Expression<?> simple = ((Sum<?>) input).scaledRemainder()
+						.map(remainder -> remainder.modulo(m))
+						.orElse(null);
 				if (simple != null)
 					return simple;
 			}
@@ -549,79 +537,32 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Attempts to simplify {@code (innerMod) % m} when the inner modulus is a
-	 * multiple of or equal to {@code m}.
+	 * Reduces {@code this % m} when this modulus and {@code m} are multiples of
+	 * one another.
 	 *
-	 * @param innerMod the inner mod expression
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
+	 * <p>When this modulus equals {@code m}, or (with
+	 * {@link #enableRedundantModReplacement}) {@code m} is a multiple of it, the
+	 * outer modulus cannot change the result and this expression is returned
+	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
+	 * is redundant and the dividend is reduced by {@code m} directly.</p>
+	 *
+	 * @param m the outer modulus
+	 * @return the reduced expression, or {@code null} if this modulus is not a
+	 *         known constant related to {@code m}
 	 */
-	private static Expression tryModSimplify(Mod<?> innerMod, long m) {
-		OptionalLong inMod = innerMod.getChildren().get(1).longValue();
+	private Expression<?> reducedModulo(long m) {
+		OptionalLong inner = getRight().longValue();
+		if (inner.isEmpty()) return null;
 
-		if (inMod.isPresent()) {
-			long n = inMod.getAsLong();
+		long n = inner.getAsLong();
 
-			if (n == m) {
-				return innerMod;
-			} else if (n % m == 0) {
-				return new Mod(innerMod.getChildren().get(0), Constant.of(m), false);
-			}
+		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
+			return this;
+		} else if (n % m == 0) {
+			return new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false);
 		}
 
 		return null;
-	}
-
-	/**
-	 * Attempts to simplify {@code (k * x + (x % k)) % m} patterns when {@code k}
-	 * divides {@code m} and structural conditions are met.
-	 *
-	 * @param innerSum the sum expression inside the mod
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
-	 */
-	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
-		if (!enableInnerSumSimplify || innerSum.getChildren().size() != 2) return null;
-
-		Product<?> product = (Product) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Product)
-				.findFirst().orElse(null);
-		if (product == null) return null;
-		if (product.getChildren().size() != 2) return null;
-
-		Expression<?> arg = product.getChildren()
-				.stream().filter(e -> e.longValue().isEmpty())
-				.findFirst().orElse(null);
-		if (arg == null) return null;
-
-		long constant = product.getChildren().stream()
-				.map(Expression::longValue)
-				.filter(OptionalLong::isPresent).findFirst()
-				.map(OptionalLong::getAsLong).orElse(-1L);
-		if (constant <= 0) return null;
-		if (m % constant != 0) return null;
-		if (constant > m) return null;
-
-		Mod<?> mod = (Mod) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Mod)
-				.findFirst().orElse(null);
-		if (mod == null) return null;
-		if (mod.isFP()) return null;
-		if (!mod.getChildren().get(0).equals(arg)) return null;
-		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
-		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
-
-		if (constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			return new Mod(arg, m0, false);
-		} else if (constant * constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
-			return Product.of(Mod.of(arg, m0, false), m1);
-		} else {
-			Console.root().warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
-			return null;
-		}
 	}
 
 	/**

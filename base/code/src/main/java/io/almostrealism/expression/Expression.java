@@ -25,7 +25,6 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.sequence.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
@@ -471,8 +470,10 @@ public abstract class Expression<T> implements
 	 *   <li>Some members of the set would exceed {@link Integer#MAX_VALUE}</li>
 	 * </ul>
 	 *
-	 * <p>This base implementation combines the options required by each child. A
-	 * {@link io.almostrealism.sequence.DefaultIndex} overrides it to answer for itself, and
+	 * <p>This base implementation combines the options required by each child. The index
+	 * expressions ({@link io.almostrealism.sequence.DefaultIndex},
+	 * {@link io.almostrealism.sequence.IndexChild}) override it to answer for themselves
+	 * ({@link Index#getIndexOptions(Index)}), and
 	 * operations whose structure narrows the domain (such as {@link Sum}, {@link Mod} and
 	 * {@link Quotient}) override it to account for that structure.</p>
 	 *
@@ -662,6 +663,31 @@ public abstract class Expression<T> implements
 		long l = value.longValue();
 		if (isInt() && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) return (int) l;
 		return l;
+	}
+
+	/**
+	 * Determines the numeric result type of an operation combining the given operands.
+	 * Returns {@code Double.class} if any operand is floating-point, {@code Long.class}
+	 * if any operand is a non-{@code Integer} integral type, otherwise {@code Integer.class}.
+	 *
+	 * @param operands the operand expressions
+	 * @return the promoted numeric type
+	 * @throws UnsupportedOperationException if any operand's type is not a {@link Number} subtype
+	 */
+	protected static Class<? extends Number> promotedType(List<? extends Expression<?>> operands) {
+		boolean ln = false;
+
+		for (Expression<?> e : operands) {
+			if (!Number.class.isAssignableFrom(e.getType())) {
+				throw new UnsupportedOperationException();
+			} else if (e.isFP()) {
+				return Double.class;
+			} else if (!Objects.equals(e.getType(), Integer.class)) {
+				ln = true;
+			}
+		}
+
+		return ln ? Long.class : Integer.class;
 	}
 
 	/**
@@ -1161,7 +1187,10 @@ public abstract class Expression<T> implements
 	 *
 	 * <p>This method first simplifies all children, then applies series simplification
 	 * if a series provider is available in the context. Series simplification can
-	 * convert expressions that depend on kernel indices into precomputed series.</p>
+	 * convert expressions that depend on kernel indices into precomputed series.
+	 * Whether a child can be evaluated is probed by assigning one of its indices,
+	 * preferring an index that determines the kernel index
+	 * ({@link Index#kernelIndexGranularity()}).</p>
 	 *
 	 * @param context the kernel structure context providing optimization hints
 	 * @param depth the current recursion depth for optimization decisions
@@ -1191,7 +1220,7 @@ public abstract class Expression<T> implements
 				Index target = null;
 
 				if (!indices.isEmpty()) {
-					target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
+					target = indices.stream().filter(idx -> idx.kernelIndexGranularity().isPresent()).findFirst()
 							.orElse(indices.stream().findFirst().orElse(null));
 				}
 

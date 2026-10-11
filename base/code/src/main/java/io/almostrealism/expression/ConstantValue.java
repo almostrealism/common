@@ -31,7 +31,7 @@ import java.util.Objects;
  */
 public class ConstantValue<T> extends Constant<T> {
 	/** The value held by this constant. */
-	private T value;
+	private final T value;
 
 	/**
 	 * Constructs a constant expression holding the given value.
@@ -55,8 +55,23 @@ public class ConstantValue<T> extends Constant<T> {
 	@Override
 	public String getExpression(LanguageOperations lang) { return String.valueOf(value); }
 
+	/**
+	 * Returns the value held by this constant. The inherited implementation only recognizes
+	 * integer, double and boolean values, so it would report an arbitrary held value as unknown.
+	 *
+	 * @return the value held by this constant
+	 */
+	@Override
+	public T getValue() { return value; }
+
+	/**
+	 * Compares this constant with another expression by value.
+	 *
+	 * @param e the expression to compare against
+	 * @return {@code true} if {@code e} is a {@link ConstantValue} holding an equal value
+	 */
 	@Override
 	public boolean compare(Expression e) {
-		return e instanceof ConstantValue && Objects.equals(((ConstantValue) e).value, value);
+		return e instanceof ConstantValue && Objects.equals(((ConstantValue<?>) e).getValue(), value);
 	}
 }

@@ -17,11 +17,14 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.ConstantValue;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
@@ -29,6 +32,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexChild;
@@ -205,6 +209,36 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * A reference without an index, such as the whole-variable reference a variable gives out
+	 * for itself, matches another such reference to the same variable and never matches a
+	 * reference to one of its elements.
+	 */
+	@Test(timeout = 30000)
+	public void referencesWithoutIndexMatchByReferent() {
+		ArrayVariable<Double> a = new ArrayVariable<>(Double.class, "a", e(8));
+		Variable<Integer, ?> s = Variable.integer("s");
+
+		Assert.assertEquals(Optional.of(true), a.ref().matches(a.ref()).booleanValue());
+		Assert.assertEquals(Optional.of(true), s.ref().matches(s.ref()).booleanValue());
+		Assert.assertEquals(Optional.of(false), a.ref().matches(element(a, 2)).booleanValue());
+		Assert.assertEquals(Optional.of(false), element(a, 2).matches(a.ref()).booleanValue());
+	}
+
+	/**
+	 * A reference is rendered by the variable it refers to: an array element is dereferenced
+	 * at its position, a whole array and a variable that is not an array are rendered by name.
+	 */
+	@Test(timeout = 30000)
+	public void referencesAreRenderedByTheirReferent() {
+		LanguageOperations lang = new LanguageOperationsStub();
+		ArrayVariable<Double> a = new ArrayVariable<>(Double.class, "a", e(8));
+
+		Assert.assertEquals("a[2]", element(a, 2).getExpression(lang));
+		Assert.assertEquals("a", a.ref().getExpression(lang));
+		Assert.assertEquals("s", Variable.integer("s").ref().getExpression(lang));
+	}
+
+	/**
 	 * Regenerating a node from its own children returns the node itself, while a changed
 	 * child produces a new node that includes the replacement.
 	 */
@@ -331,6 +365,31 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * A child index is opaque to index-domain analysis, like any other index: producing all
+	 * of its values requires every one of its own positions, up to the product of the limits
+	 * it is composed of, and no value of the parent or child index. Expressions over a child
+	 * index combine that domain, and an unbounded child index has no enumerable domain.
+	 */
+	@Test(timeout = 30000)
+	public void childIndexAnswersIndexOptionsForItself() {
+		DefaultIndex row = new DefaultIndex("row", 4);
+		DefaultIndex col = new DefaultIndex("col", 3);
+		IndexChild cell = Index.child(row, col);
+
+		Set<Integer> positions = new HashSet<>();
+		for (int i = 0; i < 12; i++) positions.add(i);
+
+		Assert.assertEquals(positions, cell.getIndexOptions(cell).orElseThrow());
+		Assert.assertEquals(positions, Product.of(cell, ref("x")).getIndexOptions(cell).orElseThrow());
+		Assert.assertTrue(cell.getIndexOptions(row).orElseThrow().isEmpty());
+		Assert.assertTrue(cell.getIndexOptions(col).orElseThrow().isEmpty());
+		Assert.assertTrue(cell.getIndexOptions(new DefaultIndex("other", 5)).orElseThrow().isEmpty());
+
+		IndexChild unbounded = Index.child(new DefaultIndex("free"), col);
+		Assert.assertTrue(unbounded.getIndexOptions(unbounded).isEmpty());
+	}
+
+	/**
 	 * Indices and constants are never targets of series simplification, which could only
 	 * reproduce them, while any other expression defers to the configured policy.
 	 */
@@ -384,5 +443,74 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals("true", new BooleanConstant(true).getExpression(lang));
 		Assert.assertEquals("1.5", Constant.of(1.5f).getExpression(lang));
 		Assert.assertEquals("7", Constant.of((short) 7).getWrappedExpression(lang));
+	}
+
+	/**
+	 * A constant holding a value of arbitrary type reports that value as its constant value,
+	 * so equal values hash alike and distinct values are distinguished by their hash.
+	 */
+	@Test(timeout = 30000)
+	public void constantValueReportsItsOwnValue() {
+		Assert.assertEquals(Short.valueOf((short) 7), Constant.of((short) 7).getValue());
+		Assert.assertEquals(Constant.of(1.5f).hashCode(), Constant.of(1.5f).hashCode());
+		Assert.assertNotEquals(Constant.of(1.5f).hashCode(), Constant.of(2.5f).hashCode());
+	}
+
+	/**
+	 * An n-ary expression reports the operator joining its operands, and its result type is
+	 * promoted from the operand types: any floating-point operand yields a double, any wider
+	 * integral operand a long, and integer operands alone an integer.
+	 */
+	@Test(timeout = 30000)
+	public void naryExpressionsReportOperatorAndPromotedType() {
+		Expression<Long> wide = new StaticReference<>(Long.class, "w");
+		Expression<Double> fp = new StaticReference<>(Double.class, "f");
+
+		Assert.assertEquals("+", ((Sum<?>) Sum.of(ref("x"), ref("y"))).getOperator());
+		Assert.assertEquals("*", ((Product<?>) Product.of(ref("x"), ref("y"))).getOperator());
+		Assert.assertEquals(Integer.class, Sum.of(ref("x"), ref("y")).getType());
+		Assert.assertEquals(Long.class, Sum.of(ref("x"), wide).getType());
+		Assert.assertEquals(Double.class, Product.of(ref("x"), wide, fp).getType());
+	}
+
+	/**
+	 * The bounds of a difference pair the minuend's bound with the opposite bound of each
+	 * subtrahend: subtracting a value in {@code [0, 5]} from one in {@code [0, 3]} can reach
+	 * as high as {@code 3} and as low as {@code -5}.
+	 */
+	@Test(timeout = 30000)
+	public void differenceBoundsUseOppositeSubtrahendBounds() {
+		Expression<Integer> small = kernel().imod(4);
+		Expression<Integer> large = kernel().imod(6);
+		Difference<Integer> diff = new Difference<>(small, large);
+
+		Assert.assertEquals(3, diff.upperBound(null).orElseThrow());
+		Assert.assertEquals(-5, diff.lowerBound(null).orElseThrow());
+
+		Difference<Integer> offset = new Difference<>(e(10), large);
+		Assert.assertEquals(10, offset.upperBound(null).orElseThrow());
+		Assert.assertEquals(5, offset.lowerBound(null).orElseThrow());
+		Assert.assertTrue(new Difference<>(small, ref("x")).upperBound(null).isEmpty());
+	}
+
+	/**
+	 * A product with a masked factor is the mask's guard applied to the product of the
+	 * masked value, and a product of an arithmetic generator with a constant is absorbed
+	 * into the generator's scale.
+	 */
+	@Test(timeout = 30000)
+	public void productDelegatesToMaskAndGenerator() {
+		Expression<Boolean> guard = kernel().lessThan(e(3));
+		Expression<?> masked = Product.of(Mask.of(guard, ref("x")), ref("y"));
+
+		Assert.assertTrue(masked instanceof Mask);
+		Assert.assertEquals(guard, ((Mask<?>) masked).getMask());
+		Assert.assertEquals(Product.of(ref("x"), ref("y")), ((Mask<?>) masked).getMaskedValue());
+
+		Expression<?> scaled = Product.of(ArithmeticGenerator.create(kernel(), 2, 3, 12), e(5));
+		Assert.assertTrue(scaled instanceof ArithmeticGenerator);
+		Assert.assertEquals(10, ((ArithmeticGenerator<?>) scaled).getScale());
+		Assert.assertEquals(3, ((ArithmeticGenerator<?>) scaled).getGranularity());
+		Assert.assertEquals(12, ((ArithmeticGenerator<?>) scaled).getMod());
 	}
 }

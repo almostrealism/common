@@ -24,6 +24,7 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -173,6 +174,17 @@ public class IndexChild extends Sum<Integer> implements Index {
 	@Override
 	public Set<Index> getIndices() {
 		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index answers for itself, as described by {@link Index#getIndexOptions(Index)},
+	 * rather than combining the options of the parent and child indices it is composed of.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		return Index.super.getIndexOptions(index);
 	}
 
 	/**

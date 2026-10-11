@@ -208,6 +208,17 @@ public interface LanguageOperations {
 	}
 
 	/**
+	 * Renders a reference to the element at a position of the named array.
+	 *
+	 * @param name     the name of the array
+	 * @param position the rendered position expression
+	 * @return the dereferencing expression (default: {@code name[position]})
+	 */
+	default String dereference(String name, String position) {
+		return name + "[" + position + "]";
+	}
+
+	/**
 	 * Returns {@code true} if this backend supports offset-based array access
 	 * (i.e. the generated code can apply a base offset to an array pointer).
 	 *
