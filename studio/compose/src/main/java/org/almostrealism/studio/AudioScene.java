@@ -1017,15 +1017,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			setup.add(() -> () -> patterns.setTuning(tuning));
 			setup.add(sections.setup());
 
-			// Consolidate render buffers into one root so the compiled Loop collapses
-			// all PatternAudioBuffer arguments into a single kernel argument.
-			renderBuffers.consolidate(channels.size(), bufferSize);
-			efx.consolidateFilterBuffers(channels.size(), bufferSize);
-
+			// Retire the previous cell graph before the buffer it carves views from.
 			if (activeCells != null) {
 				activeCells.destroy();
 				activeCells = null;
 			}
+
+			// Consolidate render buffers into one root so the compiled Loop collapses
+			// all PatternAudioBuffer arguments into a single kernel argument.
+			renderBuffers.consolidate(channels.size(), bufferSize);
+			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
 			CellList cells = cells(
 					getPatternCells(output, channels, ChannelInfo.StereoChannel.LEFT,
@@ -1074,13 +1075,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			setup.add(() -> () -> patterns.setTuning(tuning));
 			setup.add(sections.setup());
 
-			renderBuffers.consolidate(channels.size(), bufferSize);
-			efx.consolidateFilterBuffers(channels.size(), bufferSize);
-
+			// Retire the previous cell graph before the buffer it carves views from.
 			if (activeCells != null) {
 				activeCells.destroy();
 				activeCells = null;
 			}
+
+			renderBuffers.consolidate(channels.size(), bufferSize);
+			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
 			// WET cells are created only when efx is enabled — mirrors getPatternCells,
 			// which omits the WET voicing on the fast path.
