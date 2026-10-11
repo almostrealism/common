@@ -142,6 +142,8 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 	 *   <li>If the local index has a limit of 1, returns 0 (trivially unique)</li>
 	 *   <li>Creates an {@link ExpressionMatrix} mapping global/local indices to target indices</li>
 	 *   <li>Checks if columns follow a recognizable sequence pattern</li>
+	 *   <li>Returns null if the value has no symbolic form ({@link #getValueAt(Expression)}
+	 *       returns null) or is only a reference to a variable</li>
 	 *   <li>Evaluates actual values to find unique non-zero positions</li>
 	 * </ol>
 	 *
@@ -185,7 +187,10 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 			warn("localIndex is irrelevant");
 		}
 
-		if (getValueAt(DefaultIndex.temporary()).isVariableReference()) {
+		// A value with no symbolic form (a deferred producer) or one that is only a
+		// reference to a variable has no per-entry structure to analyse
+		Expression<T> sample = getValueAt(DefaultIndex.temporary());
+		if (sample == null || sample.isVariableReference()) {
 			return null;
 		}
 
