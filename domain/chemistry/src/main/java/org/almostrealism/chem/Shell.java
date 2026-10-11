@@ -755,28 +755,9 @@ public class Shell {
 	 * @return   an array of three values {@code [px, py, pz]}
 	 */
 	private static int[] p(int p) {
-		int px = 0;
-		int py = 0;
-		int pz = 0;
-		
-		switch (p) {
-			case 1:
-				px = 1; break;
-			case 2:
-				px = 1; py = 1; break;
-			case 3:
-				px = 1; py = 1; pz = 1; break;
-			case 4:
-				px = 2; py = 1; pz = 1; break;
-			case 5:
-				px = 2; py = 2; pz = 1; break;
-			case 6:
-				px = 2; py = 2; pz = 2; break;
-		}
-		
-		return new int[] { px, py, pz };
+		return distribute(p, 3);
 	}
-	
+
 	/**
 	 * Distributes a total d electron count across the five d orbitals (da-de)
 	 * using Hund's rule: one electron per orbital before pairing.
@@ -785,37 +766,9 @@ public class Shell {
 	 * @return   an array of five values {@code [da, db, dc, dd, de]}
 	 */
 	private static int[] d(int d) {
-		int da = 0;
-		int db = 0;
-		int dc = 0;
-		int dd = 0;
-		int de = 0;
-		
-		switch (d) {
-			case 1:
-				da = 1; break;
-			case 2:
-				da = 1; db = 1; break;
-			case 3:
-				da = 1; db = 1; dc = 1; break;
-			case 4:
-				da = 1; db = 1; dc = 1; dd = 1; break;
-			case 5:
-				da = 1; db = 1; dc = 1; dd = 1; de = 1; break;
-			case 6:
-				da = 2; db = 1; dc = 1; dd = 1; de = 1; break;
-			case 7:
-				da = 2; db = 2; dc = 1; dd = 1; de = 1; break;
-			case 8:
-				da = 2; db = 2; dc = 2; dd = 1; de = 1; break;
-			case 9:
-				da = 2; db = 2; dc = 2; dd = 2; de = 1; break;
-			case 10:
-				da = 2; db = 2; dc = 2; dd = 2; de = 2; break;
-		}
-		
-		return new int[] { da, db, dc, dd, de };
+		return distribute(d, 5);
 	}
+
 	/**
 	 * Distributes a total f electron count across the seven f orbitals (fa-fg)
 	 * using Hund's rule: one electron per orbital before pairing.
@@ -824,46 +777,36 @@ public class Shell {
 	 * @return   an array of seven values {@code [fa, fb, fc, fd, fe, ff, fg]}
 	 */
 	private static int[] f(int f) {
-		int fa = 0;
-		int fb = 0;
-		int fc = 0;
-		int fd = 0;
-		int fe = 0;
-		int ff = 0;
-		int fg = 0;
-		
-		switch (f) {
-			case 1:
-				fa = 1; break;
-			case 2:
-				fa = 1; fb = 1; break;
-			case 3:
-				fa = 1; fb = 1; fc = 1; break;
-			case 4:
-				fa = 1; fb = 1; fc = 1; fd = 1; break;
-			case 5:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; break;
-			case 6:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; break;
-			case 7:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 8:
-				fa = 2; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 9:
-				fa = 2; fb = 2; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 10:
-				fa = 2; fb = 2; fc = 2; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 11:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 1; ff = 1; fg = 1; break;
-			case 12:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 1; fg = 1; break;
-			case 13:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 2; fg = 1; break;
-			case 14:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 2; fg = 2; break;
+		return distribute(f, 7);
+	}
+
+	/**
+	 * Distributes a total electron count across the orbitals of a subshell using
+	 * Hund's rule: a single electron is placed in each orbital before any orbital
+	 * receives a second. For an in-range total {@code count} (1 to {@code 2 * orbitals}),
+	 * the first {@code count - orbitals} orbitals hold two electrons, the remaining
+	 * occupied orbitals hold one, and any orbital beyond {@code count} holds none. A
+	 * count outside that range (zero, negative, or above the subshell capacity)
+	 * distributes nothing, leaving every orbital unoccupied; callers that supply such
+	 * a total therefore contribute no subshell for this angular momentum.
+	 *
+	 * @param count    the total number of electrons in the subshell
+	 * @param orbitals the number of orbitals in the subshell (3 for p, 5 for d, 7 for f)
+	 * @return an array of per-orbital electron counts, ordered from the first orbital filled
+	 */
+	private static int[] distribute(int count, int orbitals) {
+		int[] occupancy = new int[orbitals];
+		if (count < 1 || count > 2 * orbitals) return occupancy;
+
+		for (int i = 0; i < orbitals; i++) {
+			if (i < count - orbitals) {
+				occupancy[i] = 2;
+			} else if (i < count) {
+				occupancy[i] = 1;
+			}
 		}
-		
-		return new int[] { fa, fb, fc, fd, fe, ff, fg };
+
+		return occupancy;
 	}
 
 	/**
