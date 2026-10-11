@@ -441,7 +441,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return the simplified modulo expression
 	 */
 	public static Expression of(Expression input, Expression mod, boolean fp) {
-		return Expression.process(create(input, mod, fp));
+		return create(input, mod, fp).process();
 	}
 
 	/**

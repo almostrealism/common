@@ -187,7 +187,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * @return a simplified or restructured expression representing the conditional
 	 */
 	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
-		return Expression.process(create(condition, positive, negative));
+		return create(condition, positive, negative).process();
 	}
 
 	/**

@@ -162,6 +162,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return allContained ? Optional.of(largest) : Optional.empty();
 	}
 
+	/** {@inheritDoc} Returns the operands of this sum. */
+	@Override
+	public List<Expression<?>> getTerms() {
+		return getChildren();
+	}
+
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		List<OptionalLong> values = getChildren().stream()
@@ -456,7 +462,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static <T> Expression<T> of(Expression... values) {
-		return Expression.process(create(values));
+		return Sum.<T>create(values).process();
 	}
 
 	/**

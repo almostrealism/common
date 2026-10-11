@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 /**
@@ -99,7 +98,7 @@ public class Equals extends Comparison {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression of(Expression<?> left, Expression<?> right) {
-		return Expression.process(create(left, right));
+		return create(left, right).process();
 	}
 
 	/**
@@ -118,11 +117,13 @@ public class Equals extends Comparison {
 		}
 
 		if (enableBoundedComparison) {
-			Expression<?> result = checkBounds(left, right);
-			if (result != null) return result;
+			OptionalLong l = left.longValue();
+			OptionalLong r = right.longValue();
 
-			result = checkBounds(right, left);
-			if (result != null) return result;
+			if ((r.isPresent() && left.excludesValue(r.getAsLong())) ||
+					(l.isPresent() && right.excludesValue(l.getAsLong()))) {
+				return new BooleanConstant(false);
+			}
 		}
 
 		if (left instanceof Mask && right.doubleValue().isPresent()) {
@@ -156,8 +157,8 @@ public class Equals extends Comparison {
 		// this is the point to gate the rewrite on the target ComputeContext (or a
 		// ComputeRequirements heuristic).
 		if (enableConsolidateConstants) {
-			List<Expression<?>> lTerms = extractTerms(left);
-			List<Expression<?>> rTerms = extractTerms(right);
+			List<Expression<?>> lTerms = left.getTerms();
+			List<Expression<?>> rTerms = right.getTerms();
 
 			List<Expression<?>> terms = new ArrayList<>();
 			long constant = 0;
@@ -191,46 +192,5 @@ public class Equals extends Comparison {
 		}
 
 		return new Equals(left, right);
-	}
-
-	/**
-	 * Extracts the additive terms from an expression: if it is a {@link Sum} the
-	 * children are returned; otherwise a singleton list containing the expression is returned.
-	 *
-	 * @param exp the expression to decompose
-	 * @return the list of additive terms
-	 */
-	protected static List<Expression<?>> extractTerms(Expression<?> exp) {
-		if (exp instanceof Sum) {
-			return ((Sum) exp).getChildren();
-		} else {
-			return List.of(exp);
-		}
-	}
-
-	/**
-	 * Uses the known bounds of {@code value} to determine statically whether it can
-	 * equal {@code anchor}. Returns a {@link BooleanConstant}(false) when the bounds
-	 * rule out equality; returns {@code null} when bounds are insufficient to decide.
-	 *
-	 * @param value  the expression whose bounds are checked
-	 * @param anchor the constant anchor expression
-	 * @return a false-constant expression if equality is impossible, or {@code null}
-	 */
-	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {
-		OptionalLong a = anchor.longValue();
-		if (!a.isPresent()) return null;
-
-		OptionalLong high = value.upperBound();
-		if (high.isPresent() && high.getAsLong() < a.getAsLong()) {
-			return new BooleanConstant(false);
-		}
-
-		OptionalLong low = value.lowerBound();
-		if (low.isPresent() && low.getAsLong() > a.getAsLong()) {
-			return new BooleanConstant(false);
-		}
-
-		return null;
 	}
 }

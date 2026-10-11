@@ -46,14 +46,24 @@ public class ConstantValue<T> extends Constant<T> {
 	}
 
 	/**
-	 * Renders the value in its own textual form, since a value of arbitrary type has no
-	 * language-specific literal format.
+	 * Renders a numeric value in its own textual form, since a number of a type without a
+	 * dedicated constant expression has no language-specific literal format. A value that is
+	 * not a number has no literal in generated code at all, and rendering its text (a string
+	 * without quotes, an object's {@code toString}) would produce invalid source, so it is
+	 * refused instead.
 	 *
 	 * @param lang the language operations (not consulted)
-	 * @return the value as text
+	 * @return the numeric value as text
+	 * @throws UnsupportedOperationException if the value is not a {@link Number}
 	 */
 	@Override
-	public String getExpression(LanguageOperations lang) { return String.valueOf(value); }
+	public String getExpression(LanguageOperations lang) {
+		if (!(value instanceof Number)) {
+			throw new UnsupportedOperationException("No literal representation for a constant of " + getType());
+		}
+
+		return String.valueOf(value);
+	}
 
 	/**
 	 * Returns the value held by this constant. The inherited implementation only recognizes
@@ -65,13 +75,15 @@ public class ConstantValue<T> extends Constant<T> {
 	public T getValue() { return value; }
 
 	/**
-	 * Compares this constant with another expression by value.
+	 * Compares this constant with another expression by declared type and value.
 	 *
 	 * @param e the expression to compare against
-	 * @return {@code true} if {@code e} is a {@link ConstantValue} holding an equal value
+	 * @return {@code true} if {@code e} is a {@link ConstantValue} of the same declared type
+	 *         holding an equal value
 	 */
 	@Override
 	public boolean compare(Expression e) {
-		return e instanceof ConstantValue && Objects.equals(((ConstantValue<?>) e).getValue(), value);
+		return e instanceof ConstantValue && e.getType() == getType()
+				&& Objects.equals(e.getValue(), value);
 	}
 }

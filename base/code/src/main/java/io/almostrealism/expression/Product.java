@@ -377,7 +377,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?>... values) {
-		return Expression.process(create(values));
+		return create(values).process();
 	}
 
 	/**

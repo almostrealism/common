@@ -17,6 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Delegated;
 import org.almostrealism.io.Describable;
 
 import java.util.stream.IntStream;
@@ -84,6 +85,24 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	 */
 	static <T> TraversalPolicy requireShape(String operation, T value) {
 		return asShape(operation, value).getShape();
+	}
+
+	/**
+	 * Returns the {@link TraversalPolicy} of {@code value} if it is a {@link Shape}, or of
+	 * its {@link Delegated#getDelegate() delegate} if {@code value} is {@link Delegated} and
+	 * the delegate is a {@link Shape}.
+	 *
+	 * @param value the object whose shape is wanted
+	 * @param <T>   the declared type of {@code value}
+	 * @return the shape of {@code value} or its delegate, or {@code null} if neither is a {@link Shape}
+	 */
+	static <T> TraversalPolicy shapeOf(T value) {
+		if (value instanceof Shape) return ((Shape<?>) value).getShape();
+		if (value instanceof Delegated && ((Delegated<?>) value).getDelegate() instanceof Shape) {
+			return ((Shape<?>) ((Delegated<?>) value).getDelegate()).getShape();
+		}
+
+		return null;
 	}
 
 	/**

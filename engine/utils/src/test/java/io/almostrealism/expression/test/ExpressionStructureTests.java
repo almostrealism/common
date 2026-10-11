@@ -572,6 +572,47 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * Constants holding equal values of arbitrary type are equal only when they also declare
+	 * the same type, since a constant advertises its declared type as its result type.
+	 */
+	@Test(timeout = 30000)
+	public void constantValueComparesDeclaredType() {
+		Assert.assertEquals(new ConstantValue<>(Integer.class, 1), new ConstantValue<>(Integer.class, 1));
+		Assert.assertNotEquals(new ConstantValue<Number>(Number.class, 1), new ConstantValue<>(Integer.class, 1));
+		Assert.assertNotEquals(new ConstantValue<>(Integer.class, 1), new ConstantValue<Number>(Number.class, 1));
+		Assert.assertNotEquals(new ConstantValue<>(Integer.class, 1), new ConstantValue<>(Integer.class, 2));
+	}
+
+	/**
+	 * A constant holding a value that is not a number has no literal in generated code, so
+	 * rendering it is refused rather than emitting its text as invalid source, while a
+	 * numeric value of the same constant class still renders.
+	 */
+	@Test(timeout = 30000)
+	public void constantValueRefusesNonNumericLiterals() {
+		LanguageOperations lang = new LanguageOperationsStub();
+
+		Assert.assertEquals("-3", Constant.of((short) -3).getExpression(lang));
+		assertRenderingRefused(Constant.of("x"), lang);
+		assertRenderingRefused(new ConstantValue<>(Object.class, new Object()), lang);
+	}
+
+	/**
+	 * Asserts that rendering {@code constant} throws {@link UnsupportedOperationException}.
+	 *
+	 * @param constant the constant whose rendering must be refused
+	 * @param lang     the language to render for
+	 */
+	private void assertRenderingRefused(Constant<?> constant, LanguageOperations lang) {
+		try {
+			String rendered = constant.getWrappedExpression(lang);
+			Assert.fail("Expected rendering to be refused, but produced " + rendered);
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertTrue(expected.getMessage().contains(constant.getType().getName()));
+		}
+	}
+
+	/**
 	 * An n-ary expression reports the operator joining its operands, and its result type is
 	 * promoted from the operand types: any floating-point operand yields a double, any wider
 	 * integral operand a long, and integer operands alone an integer.

@@ -56,7 +56,6 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * Abstract base class for all expressions in the code generation system.
@@ -585,6 +584,32 @@ public abstract class Expression<T> implements
 	 */
 	public boolean isPossiblyNegative() {
 		return lowerBound(null).orElse(-1) < 0;
+	}
+
+	/**
+	 * Checks whether the bounds of this expression prove that it can never
+	 * produce the given value.
+	 *
+	 * @param value  the value to test against the bounds of this expression
+	 * @return {@code true} if the value lies outside the known bounds;
+	 *         {@code false} if the bounds are insufficient to rule it out
+	 */
+	public boolean excludesValue(long value) {
+		OptionalLong high = upperBound();
+		if (high.isPresent() && high.getAsLong() < value) return true;
+
+		OptionalLong low = lowerBound();
+		return low.isPresent() && low.getAsLong() > value;
+	}
+
+	/**
+	 * Returns the additive terms of this expression. An expression that is not a
+	 * sum is its own single term; {@link Sum} overrides this to return its operands.
+	 *
+	 * @return the list of additive terms
+	 */
+	public List<Expression<?>> getTerms() {
+		return List.of(this);
 	}
 
 	/**
@@ -1421,33 +1446,31 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Processes an expression for use in code generation.
+	 * Prepares this expression for use in code generation.
 	 *
 	 * <p>This method performs two optimizations:</p>
 	 * <ol>
-	 *   <li>If the expression exceeds {@link ScopeSettings#maxNodeCount}, simplifies it</li>
+	 *   <li>If this expression exceeds {@link ScopeSettings#maxNodeCount}, simplifies it</li>
 	 *   <li>Checks the expression cache for an equivalent existing expression</li>
 	 * </ol>
 	 *
-	 * @param <T> the expression result type
-	 * @param e the expression to process
 	 * @return the processed expression, possibly simplified and/or deduplicated
-	 * @throws ExpressionException if the expression is too large and simplification doesn't help
+	 * @throws ExpressionException if this expression is too large and simplification doesn't help
 	 */
-	public static <T> Expression<T> process(Expression<T> e) {
-		int nodes = e.nodeCount;
-
-		if (e.countNodes() > ScopeSettings.maxNodeCount) {
-			e = (Expression<T>) e.simplify();
-
-			if (nodes == e.countNodes()) {
-				throw new ExpressionException(
-						"Large expression not improved by simplification",
-						e.treeDepth(), e.countNodes());
-			}
+	public Expression<T> process() {
+		if (countNodes() <= ScopeSettings.maxNodeCount) {
+			return ExpressionCache.match(this);
 		}
 
-		return ExpressionCache.match(e);
+		Expression<T> simplified = (Expression<T>) simplify();
+
+		if (simplified.countNodes() == countNodes()) {
+			throw new ExpressionException(
+					"Large expression not improved by simplification",
+					simplified.treeDepth(), simplified.countNodes());
+		}
+
+		return ExpressionCache.match(simplified);
 	}
 
 	/**
@@ -1466,28 +1489,6 @@ public abstract class Expression<T> implements
 			if (aDepth == bDepth) return 0;
 			return aDepth < bDepth ? 1 : -1;
 		};
-	}
-
-	/**
-	 * Sorts expressions by depth in descending order (deepest first).
-	 *
-	 * <p>This is useful for processing expressions in bottom-up order, ensuring
-	 * that children are processed before their parents.</p>
-	 *
-	 * @param expressions the expressions to sort
-	 * @return a new array containing the expressions sorted by depth
-	 * @throws UnsupportedOperationException if the sorting operation fails
-	 */
-	public static Expression[] sort(Expression... expressions) {
-		Expression result[] = IntStream.range(0, expressions.length)
-				.mapToObj(i -> expressions[i])
-				.sorted(depthOrder()).toArray(Expression[]::new);
-
-		if (result.length != expressions.length) {
-			throw new UnsupportedOperationException();
-		}
-
-		return result;
 	}
 
 	/**
