@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
@@ -226,7 +225,7 @@ public interface CollectionProducer extends
 
 		if (shape.getTraversalAxis() == 0 && shape.getDimensions() == 2 &&
 				shape.length(0) == shape.length(1) &&
-				Algebraic.isDiagonal(shape.length(0), this)) {
+				isDiagonal(shape.length(0))) {
 			// Square, diagonal, 2D matrices are symmetric
 			// and do not require any transformation
 			return this;

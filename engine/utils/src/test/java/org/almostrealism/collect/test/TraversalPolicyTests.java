@@ -360,4 +360,25 @@ public class TraversalPolicyTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/**
+	 * Verifies that {@link TraversalPolicy#repetitionsToFill} counts how many copies of a
+	 * shape make up a larger one, yields zero for a size that does not divide evenly while
+	 * {@link TraversalPolicy#enableDivisibleSizes} is set, and rejects an empty shape.
+	 */
+	@Test(timeout = 10000)
+	public void repetitionsToFill() {
+		TraversalPolicy target = new TraversalPolicy(4, 6);
+
+		assertEquals(4, new TraversalPolicy(6).repetitionsToFill(target));
+		assertEquals(1, new TraversalPolicy(24).repetitionsToFill(target));
+		assertEquals(0, new TraversalPolicy(5).repetitionsToFill(target));
+
+		try {
+			new TraversalPolicy(0).repetitionsToFill(target);
+			Assert.fail("An empty shape should not be repeatable");
+		} catch (IllegalArgumentException expected) {
+			// An empty shape cannot fill any target
+		}
+	}
 }

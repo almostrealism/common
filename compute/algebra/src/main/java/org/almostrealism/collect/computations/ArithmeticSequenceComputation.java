@@ -219,7 +219,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *
 	 * <p>Scaling by zero (or scaling a sequence whose values are all zero) collapses to a
 	 * {@link CollectionZerosComputation} rather than a degenerate sequence, so the result
-	 * is recognized as zero ({@code Algebraic.isZero}) by downstream algebraic
+	 * is recognized as zero ({@code Computable.isZero}) by downstream algebraic
 	 * optimizations — matching the behavior of the general multiplication path.</p>
 	 *
 	 * @param factor The scaling factor to apply

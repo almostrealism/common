@@ -17,17 +17,13 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.BooleanConstant;
-import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
-import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -41,7 +37,7 @@ import java.util.Optional;
  * constants or share the same sub-expression tree.</p>
  *
  * <p>The static {@link #create} factory methods can short-circuit the conditional when the
- * comparison result is statically known via {@link #checkPossibleMatch}.</p>
+ * comparison result is statically known via {@link #staticComparison}.</p>
  */
 public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter implements ConsoleFeatures {
 	/**
@@ -84,14 +80,13 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		Expression<Boolean> comparison = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
-		return conditional(comparison, positive.getValueAt(index), negative.getValueAt(index));
+		return conditional(comparisonAt(index), positive.getValueAt(index), negative.getValueAt(index));
 	}
 
 	@Override
 	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		ExpressionMatrix<Boolean> comparison = ExpressionMatrix.create(globalIndex, localIndex, targetIndex,
-				i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
+		ExpressionMatrix<Boolean> comparison =
+				ExpressionMatrix.create(globalIndex, localIndex, targetIndex, this::comparisonAt);
 		if (comparison == null) return null;
 
 		Expression<Boolean> allMatch = comparison.allMatch();
@@ -115,9 +110,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public boolean isIndexIndependent() {
-		DefaultIndex index = generateTemporaryIndex();
-		Expression<Boolean> compare = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
-		Optional<Boolean> alt = compare.booleanValue();
+		Optional<Boolean> alt = staticComparison();
 
 		if (alt.isPresent()) {
 			return alt.get() ? positive.isIndexIndependent() : negative.isIndexIndependent();
@@ -130,46 +123,29 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	public Console console() { return Scope.console; }
 
 	/**
-	 * Structurally compares two expressions for equality.
+	 * Builds the comparison of the {@code reference} and {@code compareTo} values at the given
+	 * index, using {@link Expression#structuralEq(Expression) structural equality}. A missing
+	 * value matches only another missing value.
 	 *
-	 * <p>For {@link InstanceReference} pairs, equality holds when the referent names match
-	 * (or both referents implement {@link Algebraic} and report a match) and the indices
-	 * are equal. For other expression types, equality requires the same class and recursively
-	 * equal children. If the class or child count differs, {@code false} is returned.</p>
-	 *
-	 * @param a the first expression
-	 * @param b the second expression
-	 * @return a boolean expression representing whether {@code a} equals {@code b}
+	 * @param index the index at which to compare
+	 * @return a boolean expression for whether the two values match at {@code index}
 	 */
-	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {
-		if (a == null && b == null) return new BooleanConstant(true);
-		if (a == null || b == null) return new BooleanConstant(false);
-		if (a.getClass() != b.getClass()) return new BooleanConstant(false);
+	protected Expression<Boolean> comparisonAt(Expression<?> index) {
+		Expression<?> r = reference.getValueAt(index);
+		Expression<?> c = compareTo.getValueAt(index);
+		if (r == null || c == null) return new BooleanConstant(r == c);
+		return r.structuralEq(c);
+	}
 
-		if (a instanceof InstanceReference) {
-			InstanceReference ra = (InstanceReference) a;
-			InstanceReference rb = (InstanceReference) b;
-
-			boolean eq = Objects.equals(ra.getReferent().getName(), rb.getReferent().getName());
-			eq = eq || (ra.getReferent() instanceof Algebraic && rb.getReferent() instanceof Algebraic &&
-					((Algebraic) ra.getReferent()).matches((Algebraic) rb.getReferent()));
-
-			if (eq) {
-				return ra.getIndex().eq(rb.getIndex());
-			}
-		} else if (a.getChildren().size() == b.getChildren().size()) {
-			if (a.getChildren().isEmpty()) return a.eq(b);
-
-			Expression<Boolean> comparisons[] = new Expression[a.getChildren().size()];
-
-			for (int i = 0; i < a.getChildren().size(); i++) {
-				comparisons[i] = compareExpressions(a.getChildren().get(i), b.getChildren().get(i));
-			}
-
-			return Conjunction.of(comparisons);
-		}
-
-		return new BooleanConstant(false);
+	/**
+	 * Determines whether the comparison is statically known, by comparing the {@code reference}
+	 * and {@code compareTo} values at a temporary index.
+	 *
+	 * @return {@code true} if the values always match, {@code false} if they never match,
+	 *         or empty if this cannot be determined without evaluation
+	 */
+	protected Optional<Boolean> staticComparison() {
+		return comparisonAt(generateTemporaryIndex()).booleanValue();
 	}
 
 	/**
@@ -195,9 +171,10 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	/**
 	 * Creates a matching expression, short-circuiting when the comparison is statically known.
 	 *
-	 * <p>If {@link #checkPossibleMatch} can statically determine that the reference always
-	 * equals (or never equals) the compareTo expression, the positive or negative operand
-	 * is returned directly without building a conditional expression.</p>
+	 * <p>When {@link #enablePossibleMatch} is set and the {@link #staticComparison() static
+	 * comparison} shows that the reference always equals (or never equals) the compareTo
+	 * expression, the positive or negative operand is returned directly instead of the
+	 * conditional expression.</p>
 	 *
 	 * @param reference  the reference expression
 	 * @param compareTo  the comparison target expression
@@ -208,35 +185,12 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	public static CollectionExpression create(
 			CollectionExpression reference, CollectionExpression compareTo,
 			CollectionExpression positive, CollectionExpression negative) {
-		Optional<Boolean> comp = checkPossibleMatch(reference, compareTo);
-		if (comp.isEmpty())
-			return new ExpressionMatchingCollectionExpression(reference, compareTo, positive, negative);
-		return comp.orElseThrow() ? positive : negative;
-	}
+		ExpressionMatchingCollectionExpression match =
+				new ExpressionMatchingCollectionExpression(reference, compareTo, positive, negative);
+		if (!enablePossibleMatch) return match;
 
-	/**
-	 * Checks whether the given reference and compareTo expressions can possibly match by evaluating
-	 * them at a temporary index and inspecting the resulting comparison expression.
-	 *
-	 * <p>Returns {@link Optional#empty()} when the result cannot be determined statically.
-	 * Only applies when {@link #enablePossibleMatch} is {@code true}.</p>
-	 *
-	 * @param reference  the reference expression
-	 * @param compareTo  the expression to compare against
-	 * @return an optional boolean: {@code true} if always matching, {@code false} if never matching,
-	 *         or empty if unknown
-	 */
-	protected static Optional<Boolean> checkPossibleMatch(CollectionExpression reference, CollectionExpression compareTo) {
-		if (!enablePossibleMatch) return Optional.empty();
-
-		DefaultIndex index = generateTemporaryIndex();
-		Expression r = reference.getValueAt(index);
-		Expression c = compareTo.getValueAt(index);
-		Expression<Boolean> comparison = compareExpressions(r, c);
-		if (comparison instanceof BooleanConstant) {
-			return comparison.booleanValue();
-		}
-
-		return Optional.empty();
+		Optional<Boolean> comp = match.staticComparison();
+		if (comp.isEmpty()) return match;
+		return comp.get() ? positive : negative;
 	}
 }

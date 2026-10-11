@@ -20,6 +20,10 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 /**
  * Fluent arithmetic, comparison, logical, and conversion operators for {@link Expression}.
  *
@@ -368,6 +372,33 @@ public interface ExpressionArithmetic<T> {
 	 */
 	public default Expression neq(Expression<?> operand) {
 		return NotEquals.of(self(), operand);
+	}
+
+	/**
+	 * Returns a structural equality comparison of this expression with another expression.
+	 *
+	 * <p>Unlike {@link #eq(Expression)}, which compares the two values as computed, this
+	 * compares the expression trees: the result is statically {@code false} when the two
+	 * have different classes or arities, an {@link #eq(Expression) eq} comparison when both
+	 * are leaves, and otherwise the conjunction of the pairwise structural comparison of
+	 * their children. Expressions whose identity is not captured by their children (such as
+	 * {@link InstanceReference}) override this.</p>
+	 *
+	 * @param operand the expression to compare against
+	 * @return a boolean expression that holds wherever the two expression trees match
+	 */
+	public default Expression<Boolean> structuralEq(Expression<?> operand) {
+		List<Expression<?>> children = self().getChildren();
+
+		if (self().getClass() != operand.getClass() || children.size() != operand.getChildren().size()) {
+			return new BooleanConstant(false);
+		}
+
+		if (children.isEmpty()) return eq(operand);
+
+		return Conjunction.of(IntStream.range(0, children.size())
+				.mapToObj(i -> children.get(i).structuralEq(operand.getChildren().get(i)))
+				.collect(Collectors.toList()));
 	}
 
 	/**

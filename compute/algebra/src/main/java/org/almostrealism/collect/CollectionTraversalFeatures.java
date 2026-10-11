@@ -41,9 +41,6 @@ import java.util.function.BiFunction;
  * @see CollectionFeatures
  */
 public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
-	/** When true, repeat operations are permitted even for producers with variable (non-fixed) counts. */
-	boolean enableVariableRepeat = false;
-
 	/**
 	 * Changes the traversal axis of a collection producer.
 	 * This operation modifies how the collection is traversed during computation

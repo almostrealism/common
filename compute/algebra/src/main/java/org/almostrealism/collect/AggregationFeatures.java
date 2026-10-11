@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
@@ -161,7 +160,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	default CollectionProducer sum(Producer<PackedCollection> input) {
 		TraversalPolicy targetShape = shape(input).replace(shape(1));
 
-		if (Algebraic.isZero(input)) {
+		if (input.isZero()) {
 			// Mathematical optimization: sum(zeros) = 0
 			return zeros(targetShape);
 		}

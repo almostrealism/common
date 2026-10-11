@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -236,7 +235,7 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 		// This handles both the direct case (input == target, where inputDelta is identity)
 		// and the indirect case (input depends on target through further computation)
 		CollectionProducer inputDelta = input.delta(target);
-		if (Algebraic.isZero(inputDelta)) {
+		if (inputDelta.isZero()) {
 			return new CollectionZerosComputation(jacobianShape);
 		}
 		return minus(inputDelta).reshape(jacobianShape);

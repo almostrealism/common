@@ -23,7 +23,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
-import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -35,7 +35,7 @@ import org.almostrealism.io.ConsoleFeatures;
  * <p>This interface combines several capabilities:
  * <ul>
  *   <li>{@link IndexSet} - Defines which indices are valid for this expression</li>
- *   <li>{@link Algebraic} - Enables algebraic optimizations (zero detection, identity checks)</li>
+ *   <li>{@link Computable} - Enables algebraic optimizations (zero detection, identity checks)</li>
  *   <li>{@link ExpressionFeatures} - Provides expression construction utilities</li>
  *   <li>{@link ConsoleFeatures} - Enables logging and debugging output</li>
  * </ul>
@@ -63,9 +63,9 @@ import org.almostrealism.io.ConsoleFeatures;
  * // Get value at index 5
  * Expression<Double> value = squared.getValueAt(e(5)); // Returns 25
  *
- * // Use with collection framework
- * CollectionExpression<?> collection = ...;
- * TraversableExpression<Double> traversable = TraversableExpression.traverse(collection);
+ * // Use with a kernel argument
+ * ArrayVariable<?> argument = ...;
+ * TraversableExpression<?> traversable = argument.getTraversableExpression();
  * if (traversable != null) {
  *     Expression<Double> first = traversable.getValueAt(e(0));
  * }
@@ -81,11 +81,11 @@ import org.almostrealism.io.ConsoleFeatures;
  * @param <T> the type of values produced by this expression (typically {@link Double})
  * @see CollectionExpression
  * @see IndexSet
- * @see Algebraic
+ * @see Computable
  * @author Michael Murray
  */
 @FunctionalInterface
-public interface TraversableExpression<T> extends IndexSet, Algebraic, ExpressionFeatures, ConsoleFeatures {
+public interface TraversableExpression<T> extends IndexSet, Computable, ExpressionFeatures, ConsoleFeatures {
 
 	/**
 	 * Retrieves the value at the specified multi-dimensional position.
@@ -221,50 +221,5 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	 */
 	default boolean isTraversable() {
 		return true;
-	}
-
-	/**
-	 * Attempts to obtain a {@link TraversableExpression} from an arbitrary object.
-	 *
-	 * <p>This utility method handles several cases:
-	 * <ul>
-	 *   <li>If the object is already a {@link TraversableExpression} and is traversable,
-	 *       returns it directly</li>
-	 *   <li>If the object implements {@link Delegated}, recursively checks the delegate</li>
-	 *   <li>Otherwise, returns null</li>
-	 * </ul>
-	 *
-	 * @param o the object to convert to a traversable expression
-	 * @return a {@link TraversableExpression} if conversion is possible, or null otherwise
-	 */
-	static TraversableExpression traverse(Object o) {
-		if (o instanceof TraversableExpression) {
-			if (!((TraversableExpression) o).isTraversable()) return null;
-			return (TraversableExpression) o;
-		} else if (o instanceof Delegated) {
-			return traverse(((Delegated) o).getDelegate());
-		} else {
-			return null;
-		}
-	}
-
-	/**
-	 * Checks if two {@link TraversableExpression} instances are equal.
-	 *
-	 * <p>This utility method handles null values safely:
-	 * <ul>
-	 *   <li>Returns true if both references point to the same object</li>
-	 *   <li>Returns false if either is null (but not both)</li>
-	 *   <li>Otherwise delegates to {@link Object#equals(Object)}</li>
-	 * </ul>
-	 *
-	 * @param a the first expression to compare
-	 * @param b the second expression to compare
-	 * @return {@code true} if the expressions are equal; {@code false} otherwise
-	 */
-	static boolean match(TraversableExpression<?> a, TraversableExpression<?> b) {
-		if (a == b) return true;
-		if (a == null || b == null) return false;
-		return a.equals(b);
 	}
 }

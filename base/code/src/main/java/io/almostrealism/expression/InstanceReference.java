@@ -175,4 +175,20 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) e;
 		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reference is identified by its referent rather than its children: two references
+	 * match where their referents {@link Variable#refersToSameValue stand for the same value}
+	 * and their indices are equal.</p>
+	 */
+	@Override
+	public Expression<Boolean> structuralEq(Expression<?> operand) {
+		if (!(operand instanceof InstanceReference)) return new BooleanConstant(false);
+
+		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) operand;
+		if (!var.refersToSameValue(alt.var)) return new BooleanConstant(false);
+		return index.eq(alt.index);
+	}
 }

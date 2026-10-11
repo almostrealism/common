@@ -26,14 +26,17 @@ import java.util.List;
 /**
  * The {@link TraversalAxisAlignment} of collection {@link Producer}s, which traverses each
  * producer to its aligned axis and repeats a smaller producer up to the aligned size.
- * A producer whose count is not fixed is only repeated when
- * {@link CollectionTraversalFeatures#enableVariableRepeat} is set.
+ * A producer whose count is not fixed is only repeated when {@link #enableVariableRepeat}
+ * is set.
  *
  * @author  Michael Murray
  * @see CollectionTraversalFeatures#alignTraversalAxes
  */
 public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Producer<PackedCollection>>
 		implements CollectionFeatures {
+	/** When true, producers with variable (non-fixed) counts are repeated like any other producer. */
+	public static boolean enableVariableRepeat = false;
+
 	/**
 	 * Creates an alignment of the given producers.
 	 *
@@ -55,8 +58,8 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 
 	/**
 	 * Repeats the given producer, unless its count is not fixed and
-	 * {@link CollectionTraversalFeatures#enableVariableRepeat} is not set, in which case
-	 * the producer is returned unchanged.
+	 * {@link #enableVariableRepeat} is not set, in which case the producer is returned
+	 * unchanged.
 	 *
 	 * @param repeat    the number of repetitions
 	 * @param producer  the producer to expand
@@ -64,7 +67,7 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 */
 	@Override
 	protected Producer<PackedCollection> expand(int repeat, Producer<PackedCollection> producer) {
-		if (CollectionTraversalFeatures.enableVariableRepeat || Countable.isFixedCount(producer)) {
+		if (enableVariableRepeat || Countable.isFixedCount(producer)) {
 			return repeat(repeat, producer);
 		}
 

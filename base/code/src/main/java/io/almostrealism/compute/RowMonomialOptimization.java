@@ -16,7 +16,7 @@
 
 package io.almostrealism.compute;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.relation.Computable;
 
 import java.util.Collection;
 import java.util.function.Function;
@@ -27,7 +27,7 @@ import java.util.stream.Stream;
  * so a downstream contraction can collapse it into a gather.
  *
  * <p>A row-monomial matrix has at most one non-zero entry per row (see
- * {@link Algebraic#isRowMonomial()}; a row may also be entirely zero); the Jacobian of a
+ * {@link Computable#isRowMonomial()}; a row may also be entirely zero); the Jacobian of a
  * subset, slice, or gather is such a matrix. When such a matrix is contracted (summed over
  * its column index) the reduction reduces to reading at most one element per row — a direct
  * gather — and the reduction machinery
@@ -56,7 +56,7 @@ import java.util.stream.Stream;
  * are preferred over that generality.</p>
  *
  * <h2>Recognition is conservative, and a false positive is still sound</h2>
- * <p>{@link Algebraic#isRowMonomial()} defaults to {@code false} and is only overridden by
+ * <p>{@link Computable#isRowMonomial()} defaults to {@code false} and is only overridden by
  * computations that are row-monomial by construction or that carry the property through from
  * an operand (an element-wise product with a row-monomial factor, or a sum whose single
  * non-zero operand is row-monomial), so this strategy acts only on
@@ -72,7 +72,7 @@ import java.util.stream.Stream;
  * therefore only gates <em>whether the collapse is attempted</em>, never <em>what value it
  * reads</em>, so a false positive costs at most a missed optimization, never correctness.</p>
  *
- * @see Algebraic#isRowMonomial()
+ * @see Computable#isRowMonomial()
  * @see CascadingOptimizationStrategy
  * @see ParallelismTargetOptimization
  * @see ProcessOptimizationStrategy
@@ -93,7 +93,7 @@ public class RowMonomialOptimization implements ProcessOptimizationStrategy {
 	 * Keeps row-monomial children inline so a downstream contraction can collapse them
 	 * to a gather.
 	 *
-	 * <p>If any child is recognised as row-monomial (via {@link Algebraic#isRowMonomial(Object)})
+	 * <p>If any child is recognised as row-monomial (via {@link Computable#isRowMonomial()})
 	 * this returns the parent regenerated with all children inline; otherwise it returns
 	 * {@code null} to defer to the next strategy in the chain.</p>
 	 *
@@ -116,7 +116,8 @@ public class RowMonomialOptimization implements ProcessOptimizationStrategy {
 
 		if (!enabled) return null;
 
-		boolean anyRowMonomial = children.stream().anyMatch(Algebraic::isRowMonomial);
+		boolean anyRowMonomial = children.stream().anyMatch(child ->
+				child instanceof Computable && ((Computable) child).isRowMonomial());
 		if (!anyRowMonomial) return null;
 
 		return generate(parent, children, false);

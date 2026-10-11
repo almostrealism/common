@@ -204,7 +204,7 @@ public class CollectionZerosComputationTest extends TestSuiteBase implements Col
 
 		// A zeros must never be isolated: no parent benefits from materialising a zero buffer
 		// rather than an inline constant. Reaching isolate() means an operation failed to respect
-		// Algebraic.isZero; it must fail loudly rather than silently embed the zeros.
+		// Computable.isZero; it must fail loudly rather than silently embed the zeros.
 		try {
 			zeros.isolate();
 			Assert.fail("zeros.isolate() must throw; a zeros must never be isolated");

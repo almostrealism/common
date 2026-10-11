@@ -181,6 +181,25 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * The matrix is repeated whole for every vector in the batch whatever axis it is
+	 * traversed along: a matrix traversed along its columns, if repeated at that axis,
+	 * would interleave its rows with the batch and pair the wrong matrix rows with the
+	 * vectors once the batch is longer than the matrix.
+	 */
+	@Test(timeout = 60000)
+	public void batchWithColumnTraversedMatrix() {
+		PackedCollection weights = pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3));
+
+		PackedCollection three = matmul(traverse(1, cp(weights)),
+				cp(pack(1, 0, 0, 0, 1, 0, 0, 0, 1).reshape(shape(3, 3))).traverse(1)).evaluate();
+		assertEquals(6, three.getShape().getTotalSize());
+		double[] expectedThree = {1, 4, 2, 5, 3, 6};
+		for (int i = 0; i < expectedThree.length; i++) {
+			assertEquals("Output[" + i + "]", expectedThree[i], three.toDouble(i));
+		}
+	}
+
+	/**
 	 * Benchmark compile times at different output sizes.
 	 */
 	@Test(timeout = 60000)

@@ -189,9 +189,6 @@ public interface CollectionFeatures extends GradientFeatures {
 	/** When true, logs a warning when operations are attempted on collections with no defined shape. */
 	boolean enableShapelessWarning = false;
 
-	/** When true, repeat operations are permitted for producers with variable (non-fixed) counts. */
-	boolean enableVariableRepeat = false;
-
 	// Should be flipped and removed
 	/** When true, uses the alternative delta computation path for index projection operations. */
 	boolean enableIndexProjectionDeltaAlt = true;

@@ -31,8 +31,8 @@ import java.util.stream.IntStream;
  * <p>An alignment first looks for a shape whose {@link TraversalPolicy#getSizeLong() size}
  * every value's {@link #shapeOf shape} exposes at some
  * {@link TraversalPolicy#compatibleAxis compatible axis}. Failing that, it chooses the largest
- * shape and repeats each smaller value up to it, along the depth at which their leading
- * dimensions {@link TraversalPolicy#matchDepth match}.</p>
+ * shape and {@link TraversalPolicy#repetitionsToFill repeats} each smaller value up to it,
+ * along the depth at which their leading dimensions {@link TraversalPolicy#matchDepth match}.</p>
  *
  * <p>The alignment derives each value's shape and adjusts the values itself, through the
  * {@link #shapeOf}, {@link #alignAxis} and {@link #expand} steps that a subclass for a
@@ -139,25 +139,9 @@ public abstract class TraversalAxisAlignment<V> {
 
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
-				long repeat;
-
-				if (shapes.get(i).getTotalSizeLong() == 0) {
-					throw new IllegalArgumentException();
-				}
-
-				if (TraversalPolicy.enableDivisibleSizes &&
-						shape.getTotalSizeLong() % shapes.get(i).getTotalSizeLong() != 0) {
-					repeat = 0;
-				} else {
-					repeat = shape.getTotalSizeLong() / shapes.get(i).getTotalSizeLong();
-				}
-
-				if (repeat > Integer.MAX_VALUE) {
-					throw new UnsupportedOperationException();
-				}
-
+				int repeat = shapes.get(i).repetitionsToFill(shape);
 				V v = alignAxis(matchDepths[i], values.get(i));
-				if (repeat > 1) v = expand(Math.toIntExact(repeat), v);
+				if (repeat > 1) v = expand(repeat, v);
 				vals.add(v);
 			}
 

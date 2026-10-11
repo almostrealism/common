@@ -16,7 +16,6 @@
 
 package org.almostrealism.calculus;
 
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -86,7 +85,7 @@ import java.util.List;
 // TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection> implements CollectionProducer,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>>,
-														Algebraic, OperationInfo {
+														OperationInfo {
 	/** The operation metadata used to identify this stub when matching inputs during differentiation. */
 	private final OperationMetadata metadata;
 

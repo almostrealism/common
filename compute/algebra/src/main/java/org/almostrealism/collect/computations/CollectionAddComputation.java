@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -249,8 +249,8 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * is attempted, never what value it reads.</p>
 	 *
 	 * @return true if exactly one operand is non-zero and that operand is row-monomial
-	 * @see Algebraic#isRowMonomial(Object)
-	 * @see Algebraic#isZero(Object)
+	 * @see Computable#isRowMonomial()
+	 * @see Computable#isZero()
 	 */
 	@Override
 	public boolean isRowMonomial() {
@@ -274,11 +274,11 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 		Producer<PackedCollection> nonZero = null;
 
 		for (Producer<PackedCollection> operand : operands) {
-			if (Algebraic.isZero(operand)) continue;
+			if (operand.isZero()) continue;
 			if (nonZero != null) return false;
 			nonZero = operand;
 		}
 
-		return nonZero != null && Algebraic.isRowMonomial(nonZero);
+		return nonZero != null && nonZero.isRowMonomial();
 	}
 }

@@ -18,10 +18,10 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Product;
 import io.almostrealism.sequence.DefaultIndex;
-import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A {@link UniformCollectionExpression} that computes the element-wise product of its operands.
@@ -59,9 +59,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		if (!enableDiagonalDelta ||
-				!(target instanceof CollectionVariable) ||
-				((CollectionVariable) target).getProducer() instanceof TraversableExpression) {
+		if (!enableDiagonalDelta || !target.isOpaqueInput()) {
 			return super.delta(target);
 		}
 
@@ -69,7 +67,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 		List<TraversableExpression<Double>> others = new ArrayList<>();
 
 		getOperands().forEach(e -> {
-			if (TraversableExpression.match(e, target)) {
+			if (Objects.equals(e, target)) {
 				matches.add(e);
 			} else {
 				others.add(e);
@@ -80,7 +78,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 
 		if (matches.size() != 1 ||
 				others.stream().map(e -> e.getValueAt(index))
-						.anyMatch(e -> e.containsReference((Variable) target))) {
+						.anyMatch(target::isReferencedBy)) {
 			return super.delta(target);
 		}
 

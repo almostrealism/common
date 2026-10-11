@@ -1525,4 +1525,32 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 		return i;
 	}
+
+	/**
+	 * Returns the number of times this shape must be repeated to fill the total size of
+	 * {@code target}. When {@link #enableDivisibleSizes} is set and the total size of
+	 * {@code target} is not a multiple of the total size of this shape, the result is zero.
+	 *
+	 * @param target the shape to fill
+	 * @return the number of repetitions of this shape that make up {@code target}
+	 * @throws IllegalArgumentException if this shape has no elements
+	 * @throws UnsupportedOperationException if the number of repetitions exceeds the range of an int
+	 * @see TraversalAxisAlignment
+	 */
+	public int repetitionsToFill(TraversalPolicy target) {
+		if (getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException("A shape with no elements cannot be repeated");
+		}
+
+		if (enableDivisibleSizes && target.getTotalSizeLong() % getTotalSizeLong() != 0) {
+			return 0;
+		}
+
+		long repeat = target.getTotalSizeLong() / getTotalSizeLong();
+		if (repeat > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return (int) repeat;
+	}
 }

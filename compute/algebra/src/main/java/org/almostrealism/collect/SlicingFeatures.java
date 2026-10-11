@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -467,7 +467,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	default CollectionProducerComputation enumerate(TraversalPolicy shape, Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, collection);
 
-		if (Algebraic.isZero(enumerate)) {
+		if (enumerate.isZero()) {
 			return zeros(enumerate.getShape());
 		}
 
@@ -485,7 +485,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	default CollectionProducerComputation enumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, stride, collection);
 
-		if (Algebraic.isZero(enumerate)) {
+		if (enumerate.isZero()) {
 			return zeros(enumerate.getShape());
 		}
 
@@ -522,7 +522,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * }</pre>
 	 * 
 	 * <p><strong>Optimization:</strong> If the input collection is zero (as determined by
-	 * {@link Algebraic#isZero(Object)}), this method returns an optimized zero collection
+	 * {@link Computable#isZero()}), this method returns an optimized zero collection
 	 * with the permuted shape instead of creating a full computation.</p>
 	 *
 	 * @param collection The input collection to permute. Must implement {@link io.almostrealism.collect.Shape}
@@ -540,7 +540,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * @see #zeros(io.almostrealism.collect.TraversalPolicy)
 	 */
 	default CollectionProducerComputation permute(Producer<?> collection, int... order) {
-		if (Algebraic.isZero(collection)) {
+		if (collection.isZero()) {
 			return zeros(shape(collection).permute(order).extentShape());
 		}
 
@@ -646,7 +646,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * and input positioning through TraversalPolicy objects.
 	 * 
 	 * <p>This method directly instantiates a {@link PackedCollectionPad} computation that implements
-	 * the padding logic. If the input collection is known to be zero (via {@link Algebraic#isZero}),
+	 * the padding logic. If the input collection is known to be zero (via {@link Computable#isZero()}),
 	 * this method optimizes by returning a zeros collection instead.</p>
 	 * 
 	 * <p><strong>Usage in Neural Networks:</strong></p>
@@ -665,10 +665,10 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * 
 	 * @see PackedCollectionPad
 	 * @see TraversalPolicy
-	 * @see Algebraic#isZero(Object) 
+	 * @see Computable#isZero() 
 	 */
 	default CollectionProducerComputation pad(TraversalPolicy shape, TraversalPolicy position, Producer<?> collection) {
-		if (Algebraic.isZero(collection)) {
+		if (collection.isZero()) {
 			return zeros(shape);
 		}
 

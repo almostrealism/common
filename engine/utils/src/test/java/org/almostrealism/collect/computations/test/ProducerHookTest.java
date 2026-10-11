@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -92,23 +92,23 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 
 	/**
 	 * Constant operands are folded into a single constant through
-	 * {@link Algebraic#getConstant}, for both sums and products.
+	 * {@link Computable#getConstant()}, for both sums and products.
 	 */
 	@Test(timeout = 60000)
 	public void constantOperandsFold() {
 		CollectionProducer product = multiply(c(2.0), c(3.0));
-		OptionalDouble productConstant = Algebraic.getConstant(product);
+		OptionalDouble productConstant = product.getConstant();
 		Assert.assertTrue(productConstant.isPresent());
 		Assert.assertEquals(6.0, productConstant.getAsDouble(), 0.0);
 		assertValues(product.evaluate(), 6.0);
 
 		CollectionProducer sum = c(2.0).add(c(3.0));
-		OptionalDouble sumConstant = Algebraic.getConstant(sum);
+		OptionalDouble sumConstant = sum.getConstant();
 		Assert.assertTrue(sumConstant.isPresent());
 		Assert.assertEquals(5.0, sumConstant.getAsDouble(), 0.0);
 		assertValues(sum.evaluate(), 5.0);
 
-		Assert.assertFalse(Algebraic.getConstant(c(2.0).add(cp(pack(1.0)))).isPresent());
+		Assert.assertFalse(c(2.0).add(cp(pack(1.0))).getConstant().isPresent());
 	}
 
 	/**
@@ -200,6 +200,77 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 
 		Assert.assertNull(reshaped.attemptVectorJacobianProduct(target, cp(pack(1.0, 2.0))));
 		Assert.assertNull(reshaped.attemptVectorJacobianProduct(cp(x), gradient));
+	}
+
+	/**
+	 * Producer matching: a reshape presents the value of the computation it wraps; a
+	 * producer, and anything referring to it, depends on itself, including a producer
+	 * that is neither a value source nor has any input that could contain it; inputs are
+	 * searched at any depth; and an input found through several operands is ambiguous.
+	 */
+	@Test(timeout = 60000)
+	public void producerMatching() {
+		Producer<PackedCollection> a = p(pack(1.0, 2.0, 3.0, 4.0));
+		Producer<PackedCollection> b = p(pack(5.0, 6.0, 7.0, 8.0));
+		CollectionProducer scaled = c(a).multiply(2.0);
+		CollectionProducer reshaped = scaled.reshape(shape(2, 2));
+
+		Assert.assertTrue(a.isMatchRoot());
+		Assert.assertFalse(scaled.isMatchRoot());
+		Assert.assertSame(scaled, reshaped.getMatchRoot());
+
+		Assert.assertTrue(a.cannotMatch(b));
+		Assert.assertFalse(a.cannotMatch(a));
+		Assert.assertTrue(scaled.cannotMatch(b));
+		Assert.assertFalse(scaled.cannotMatch(a));
+
+		Assert.assertTrue(scaled.refersTo(scaled));
+		Assert.assertTrue(reshaped.refersTo(scaled));
+		Assert.assertFalse(scaled.cannotMatch(scaled));
+		Assert.assertFalse(reshaped.cannotMatch(scaled));
+		Assert.assertFalse(scaled.cannotMatch(reshaped));
+
+		Assert.assertEquals(1, scaled.matchingInputs(a).size());
+		Assert.assertTrue(scaled.matchInput(b).isEmpty());
+		Assert.assertTrue(reshaped.containsMatch(a));
+		Assert.assertFalse(reshaped.containsMatch(b));
+
+		CollectionProducer sum = scaled.add(c(a));
+		Assert.assertEquals(2, sum.matchingInputs(a).size());
+		Assert.assertNull(sum.matchInput(a));
+		Assert.assertFalse(sum.cannotMatch(a));
+
+		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
+		Function<Object[], PackedCollection> function = args -> x;
+		DynamicCollectionProducer dynamic = new DynamicCollectionProducer(shape(4), function);
+		Assert.assertFalse(dynamic.isMatchRoot());
+		Assert.assertTrue(dynamic.matchingInputs(dynamic).isEmpty());
+		Assert.assertFalse(dynamic.cannotMatch(dynamic));
+		Assert.assertFalse(dynamic.reshape(shape(2, 2)).cannotMatch(dynamic));
+		Assert.assertTrue(dynamic.cannotMatch(a));
+	}
+
+	/**
+	 * The direct delta of a producer with respect to itself is the identity, not the zeros
+	 * of an independent producer, also for a producer that is neither a value source nor
+	 * has any inputs; with respect to an unrelated value it is zeros.
+	 */
+	@Test(timeout = 60000)
+	public void directDeltaWithRespectToItself() {
+		CollectionProducer scaled = cp(pack(1.0, 2.0, 3.0)).multiply(2.0);
+		assertValues(scaled.attemptDirectDelta(scaled).evaluate(),
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
+		assertValues(scaled.attemptDirectDelta(cp(pack(4.0, 5.0))).evaluate(),
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+		PackedCollection x = pack(1.0, 2.0);
+		Function<Object[], PackedCollection> function = args -> x;
+		DynamicCollectionProducer dynamic = new DynamicCollectionProducer(shape(2), function);
+		assertValues(dynamic.attemptDirectDelta(dynamic).evaluate(),
+				1.0, 0.0,
+				0.0, 1.0);
 	}
 
 	/**

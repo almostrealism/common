@@ -134,6 +134,19 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
+	 * Determines whether this variable and another stand for the same value, so that
+	 * references to them may be treated as references to the same thing. By default
+	 * two variables are equivalent when their names match; subclasses that know more
+	 * about where their value comes from extend this.
+	 *
+	 * @param other the variable to compare against
+	 * @return {@code true} if both variables stand for the same value
+	 */
+	public boolean refersToSameValue(Variable<?, ?> other) {
+		return Objects.equals(getName(), other.getName());
+	}
+
+	/**
 	 * Creates an {@link InstanceReference} pointing to this variable.
 	 *
 	 * <p>If this variable has a delegate, the reference will point to
@@ -215,6 +228,21 @@ public class Variable<T, V extends Variable<T, ?>>
 	 * @return the supplier that can produce evaluable values, or {@code null}
 	 */
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
+
+	/**
+	 * Returns the producer that actually provides this variable's values. If the
+	 * {@link #getProducer() producer} is {@link Delegated}, this is the producer it
+	 * delegates to; otherwise it is the producer itself.
+	 *
+	 * @return the delegate of the producer if it has one, otherwise the producer
+	 */
+	public Supplier<?> getUnwrappedProducer() {
+		if (producer instanceof Delegated) {
+			return (Supplier<?>) ((Delegated<?>) producer).getDelegate();
+		}
+
+		return producer;
+	}
 
 	/**
 	 * Sets the type of data this variable holds.

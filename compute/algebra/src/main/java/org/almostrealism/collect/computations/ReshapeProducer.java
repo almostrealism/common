@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -334,54 +333,34 @@ public class ReshapeProducer
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
-	 * Returns whether this reshape operation represents a zero value.
-	 * For algebraic producers, delegates to the underlying producer's zero check.
+	 * Returns whether this reshape operation represents a zero value,
+	 * which is the case exactly when the underlying producer does.
 	 * 
 	 * @return true if the reshaped collection represents zero values
 	 */
 	@Override
 	public boolean isZero() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isZero();
-		}
-
-		return TraversableExpression.super.isZero();
+		return producer.isZero();
 	}
 
 	@Override
 	public boolean isIdentity(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isIdentity(width);
-		}
-
-		return TraversableExpression.super.isIdentity(width);
+		return producer.isIdentity(width);
 	}
 
 	@Override
 	public boolean isDiagonal(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isDiagonal(width);
-		}
-
-		return TraversableExpression.super.isDiagonal(width);
+		return producer.isDiagonal(width);
 	}
 
 	@Override
 	public boolean isRowMonomial() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isRowMonomial();
-		}
-
-		return TraversableExpression.super.isRowMonomial();
+		return producer.isRowMonomial();
 	}
 
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).getDiagonalScalar(width);
-		}
-
-		return TraversableExpression.super.getDiagonalScalar(width);
+		return producer.getDiagonalScalar(width);
 	}
 
 	@Override

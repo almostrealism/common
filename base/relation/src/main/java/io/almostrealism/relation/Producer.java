@@ -266,24 +266,24 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 
 	/**
 	 * Returns {@code true} if it can be determined that this producer does not depend on
-	 * the target. Both are first reduced to their {@link #getMatchRoot() match roots}. Two
-	 * {@link #isMatchRoot() match roots} are independent unless they refer to the same
-	 * value; otherwise this producer is independent of the target when none of its inputs
-	 * contains it. The result is {@code false} whenever independence cannot be established,
-	 * including when several inputs contain the target.
-	 *
-	 * <p>Only the inputs of a producer that is not a match root are searched, so callers
-	 * check {@link #refersTo(Producer)} as well when this producer may be the target itself.</p>
+	 * the target. A producer that {@link #refersTo(Producer) refers to} the target depends
+	 * on it. Otherwise both are reduced to their {@link #getMatchRoot() match roots}: two
+	 * {@link #isMatchRoot() match roots} are independent, and any other producer is
+	 * independent of the target when none of its inputs contains it. The result is
+	 * {@code false} whenever independence cannot be established, including when several
+	 * inputs contain the target.
 	 *
 	 * @param target the producer to search for
 	 * @return {@code true} if this producer is known not to depend on the target
 	 */
 	default boolean cannotMatch(Producer<?> target) {
+		if (refersTo(target)) return false;
+
 		Producer<?> root = getMatchRoot();
 		Producer<?> targetRoot = target.getMatchRoot();
 
 		if (root.isMatchRoot() && targetRoot.isMatchRoot()) {
-			return !root.refersTo(targetRoot);
+			return true;
 		}
 
 		Optional<? extends Producer<?>> matched = root.matchInput(targetRoot);

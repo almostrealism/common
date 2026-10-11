@@ -258,7 +258,7 @@ source 1 as the fallback recognizer it ultimately rests on.
    is a selection (e.g. `SubsetProjectionComputation`, which is literally
    `Conditional(idx == expected, 1, 0)`) exposes that directly — e.g. an
    `isSelection()` / `getSelectionOffset(...)` capability, analogous to how
-   `Algebraic.isIdentity` is recognized today. The isolation strategy reads the
+   `Computable.isIdentity` is recognized today. The isolation strategy reads the
    capability instead of re-deriving it from raw expressions. Each
    selection-producing computation must advertise itself, but it is far cheaper
    and lower-risk than structural re-derivation, it composes (the same capability

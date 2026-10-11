@@ -722,7 +722,7 @@ public abstract class CollectionProducerComputationBase
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
+			vars[i] = getArgumentForInput(getInputs().get(i)).getTraversableExpression();
 		}
 		return vars;
 	}

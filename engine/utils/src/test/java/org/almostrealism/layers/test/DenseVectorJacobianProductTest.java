@@ -23,10 +23,14 @@ import org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionAddComputation;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.List;
+import java.util.function.Function;
 
 /**
  * Verifies that the structure-aware vector-Jacobian product of a dense layer's operator
@@ -254,6 +258,55 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		}
 
 		assertGradientsMatch(out, p(weights), cp(gradient), false, reference, true);
+	}
+
+	/**
+	 * A matrix multiplied by a reshape of itself has the target in both operands. Neither
+	 * half of the product accounts for both, so none is offered, rather than the matrix
+	 * half alone silently dropping the contribution of the rows. This holds for a computed
+	 * matrix and for a producer that is neither a value source nor has any inputs, whose
+	 * reshape cannot be found to depend on it by searching inputs.
+	 */
+	@Test(timeout = 60000)
+	public void matrixInBothOperandsDeclines() {
+		int n = 4;
+		PackedCollection weights = new PackedCollection(shape(n, n)).randnFill();
+		Producer<PackedCollection> gradient = cp(new PackedCollection(shape(n, n)).randnFill());
+		Function<Object[], PackedCollection> function = args -> weights;
+
+		CollectionProducer scaled = cp(weights).multiply(2.0);
+		CollectionProducer dynamic = new DynamicCollectionProducer(shape(n, n), function);
+
+		for (CollectionProducer matrix : List.of(scaled, dynamic)) {
+			MatrixMultiplyVectorJacobianProduct product =
+					new MatrixMultiplyVectorJacobianProduct(matrix, matrix.reshape(shape(n, n)));
+			Assert.assertNull(product.apply(matrix, gradient));
+			Assert.assertNull(product.apply(matrix.reshape(shape(n * n)), gradient));
+		}
+	}
+
+	/**
+	 * A residual connection {@code y = dense(x) + x}, where {@code x} is neither a value
+	 * source nor has any inputs, has the target as an operand of the sum. That operand
+	 * depends on the target although no input of it contains the target, so the sum offers
+	 * no product (the operand has none), rather than offering the dense term's
+	 * {@code Wᵀ · g_r} alone and dropping {@code g_r}. The dense term on its own still
+	 * offers its product.
+	 */
+	@Test(timeout = 60000)
+	public void residualOfDynamicInputDeclines() {
+		int rows = 3;
+		int size = 4;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(size, size)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		Producer<PackedCollection> gradient = cp(new PackedCollection(inputShape).randnFill());
+		Function<Object[], PackedCollection> function = args -> input;
+
+		CollectionProducer x = new DynamicCollectionProducer(inputShape, function);
+		CollectionProducer dense = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(x);
+		Assert.assertNotNull(dense.attemptVectorJacobianProduct(x, gradient));
+		Assert.assertNull(dense.add(x).attemptVectorJacobianProduct(x, gradient));
 	}
 
 	/**

@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Computable;
@@ -172,7 +171,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			CollectionProducer vector, CollectionProducer matrix) {
 		if (vector.getShape().getDimensions() != 1) {
 			throw new IllegalArgumentException();
-		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+		} else if (matrix.isIdentity(shape(vector).length(0))) {
 			return diagonal(vector);
 		} else {
 			CollectionProducer expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
@@ -203,8 +202,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * </p>
 	 *
 	 * <p>
-	 * On the vector-specific path the matrix is repeated for every vector explicitly
-	 * rather than left to an implicit broadcast against the repeated vectors, which, for a
+	 * On the vector-specific path the whole matrix is repeated for every vector explicitly
+	 * (along a new leading axis, whatever axis the matrix is traversed along) rather than left to an implicit broadcast against the repeated vectors, which, for a
 	 * batch holding exactly as many vectors as the matrix has rows, would pair each matrix
 	 * row with one vector instead of applying every row to every vector.
 	 * </p>
@@ -235,7 +234,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			vector = reshape(vShape, vector);
 		}
 
- 		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
+ 		if (vector.isZero() || matrix.isZero()) {
 			if (vShape.getDimensions() == 1) {
 				return zeros(shape(mShape.length(0), 1));
 			}
@@ -287,7 +286,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 				long vectors = vShape.getTotalSizeLong() / mShape.length(1);
 				CollectionProducer a = vectors > 1 && vShape.getTotalSizeLong() % mShape.length(1) == 0 ?
-						repeat((int) vectors, matrix).reshape(b.getShape()) : c(matrix);
+						repeat(0, (int) vectors, matrix).reshape(b.getShape()) : c(matrix);
 				CollectionProducer product = multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 				return vShape.length(vShape.getDimensions() - 1) == mShape.length(1) ?
 						product.withVectorJacobianProduct(
@@ -327,28 +326,28 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		int n = mShape.length(1);
 		int p = vectorShape.length(2);
 
-		if (Algebraic.isIdentity(vectorShape.length(1), matrix)) {
+		if (matrix.isIdentity(vectorShape.length(1))) {
 			return c(vector);
-		} else if (Algebraic.isIdentity(vectorShape.length(1), vector)) {
+		} else if (vector.isIdentity(vectorShape.length(1))) {
 			return c(matrix);
 		}
 
 		// Is the matrix just a scalar transform?
 		Optional<Computable> scalar =
-				Algebraic.getDiagonalScalar(vectorShape.length(1), matrix);
+				matrix.getDiagonalScalar(vectorShape.length(1));
 		if (scalar.isPresent() && scalar.get() instanceof Producer) {
 			return multiply(c(vector), (Producer<PackedCollection>) scalar.get());
 		}
 
 		// Is the vector just a scalar transform?
 		scalar =
-				Algebraic.getDiagonalScalar(mShape.length(0), vector);
+				vector.getDiagonalScalar(mShape.length(0));
 		if (b == 1 && scalar.isPresent() && scalar.get() instanceof Producer) {
 			return multiply(c(matrix), (Producer<PackedCollection>) scalar.get());
 		}
 
-		if (Algebraic.isDiagonal(vectorShape.length(1), matrix) ||
-				Algebraic.isDiagonal(mShape.length(0), vector)) {
+		if (matrix.isDiagonal(vectorShape.length(1)) ||
+				vector.isDiagonal(mShape.length(0))) {
 			console.features(MatrixFeatures.class)
 					.log("Matrix multiplication by diagonal matrix");
 		}

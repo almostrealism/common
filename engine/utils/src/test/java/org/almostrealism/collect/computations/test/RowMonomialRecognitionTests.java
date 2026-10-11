@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -28,7 +28,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Recognition tests for the {@link Algebraic#isRowMonomial()} capability.
+ * Recognition tests for the {@link Computable#isRowMonomial()} capability.
  *
  * <p>A row-monomial matrix has at most one non-zero entry per row (a row may also be
  * entirely zero). The Jacobian of a subset (slice) operation is row-monomial by
@@ -63,12 +63,12 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 		assertTrue("subset delta should be a SubsetProjectionComputation",
 				delta instanceof SubsetProjectionComputation);
 		assertTrue("subset delta should be recognized as row-monomial",
-				Algebraic.isRowMonomial(delta));
+				delta.isRowMonomial());
 	}
 
 	/**
 	 * The row-monomial property must survive a {@code reshape}: a reshape delegates
-	 * {@link Algebraic} queries to its inner producer, so reshaping a subset Jacobian
+	 * {@link io.almostrealism.relation.Computable} queries to its inner producer, so reshaping a subset Jacobian
 	 * preserves recognition.
 	 */
 	@Test(timeout = 60000)
@@ -83,7 +83,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 		CollectionProducer reshaped = delta.reshape(shape(k, n));
 
 		assertTrue("reshaped subset delta should still be recognized as row-monomial",
-				Algebraic.isRowMonomial(reshaped));
+				reshaped.isRowMonomial());
 	}
 
 	/**
@@ -101,7 +101,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 		CollectionProducer sum = cp(a).add(cp(b));
 
 		assertFalse("an element-wise sum should not be recognized as row-monomial",
-				Algebraic.isRowMonomial(sum));
+				sum.isRowMonomial());
 	}
 
 	/**
@@ -166,7 +166,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 		assertTrue("a Hadamard product of a row-monomial operand should be a CollectionProductComputation",
 				product instanceof CollectionProductComputation);
 		assertTrue("a Hadamard product with a row-monomial operand should be recognized as row-monomial",
-				Algebraic.isRowMonomial(product));
+				product.isRowMonomial());
 	}
 
 	/**
@@ -175,7 +175,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 	 * {@link CollectionAddComputation} must report {@code isRowMonomial() == true}. This is the
 	 * case a product-rule {@code delta} produces when the second term has a zero derivative,
 	 * and it is the true path of {@link CollectionAddComputation#isRowMonomial()}. The operand
-	 * is a {@link CollectionZerosComputation} (an {@link Algebraic#isZero(Object) algebraic
+	 * is a {@link CollectionZerosComputation} (an {@link Computable#isZero() algebraic
 	 * zero}, unlike a merely zero-valued collection) so the sum is not simplified away before
 	 * the recognition runs.
 	 */
@@ -192,7 +192,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 				new CollectionZerosComputation(shape(k, n)));
 
 		assertTrue("a sum of a row-monomial operand and an algebraic zero should be row-monomial",
-				Algebraic.isRowMonomial(sum));
+				sum.isRowMonomial());
 	}
 
 	/**
@@ -214,12 +214,12 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 				cp(in).subset(shape(k), off).delta(cp(in)));
 
 		assertFalse("a sum of two non-zero row-monomial operands should not be row-monomial",
-				Algebraic.isRowMonomial(sum));
+				sum.isRowMonomial());
 	}
 
 	/**
 	 * Regression guard for row-merging reshapes. A {@code reshape} delegates
-	 * {@link Algebraic#isRowMonomial()} to its inner producer unchanged, so reshaping a
+	 * {@link Computable#isRowMonomial()} to its inner producer unchanged, so reshaping a
 	 * {@code (k, n)} row-monomial Jacobian into a single {@code (1, k*n)} row leaves it
 	 * reporting {@code true} even though that merged row now holds {@code k} non-zero entries -
 	 * a genuine false positive. This test feeds such a reshaped operand into a contraction and
@@ -240,7 +240,7 @@ public class RowMonomialRecognitionTests extends TestSuiteBase {
 
 		CollectionProducer merged = cp(in).subset(shape(k), off).delta(cp(in)).reshape(shape(1, k * n));
 		assertTrue("a row-merging reshape delegates the flag unchanged, yielding a false positive",
-				Algebraic.isRowMonomial(merged));
+				merged.isRowMonomial());
 
 		PackedCollection dense = cp(in).subset(shape(k), off).delta(cp(in))
 				.reshape(shape(1, k * n)).sum().delta(cp(in)).get().evaluate();
