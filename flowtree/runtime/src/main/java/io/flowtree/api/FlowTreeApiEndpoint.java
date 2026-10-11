@@ -1047,6 +1047,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isRetrospectiveEnabled());
         json.append(",\"falsificationEnabled\":")
                 .append(factory.isFalsificationEnabled());
+        json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
         json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());

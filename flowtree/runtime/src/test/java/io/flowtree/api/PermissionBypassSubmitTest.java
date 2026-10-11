@@ -18,11 +18,7 @@ package io.flowtree.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.flowtree.Server;
-import io.flowtree.job.JobFactory;
 import io.flowtree.jobs.CodingAgentJobFactory;
-import io.flowtree.msg.NodeProxy;
-import io.flowtree.node.NodeGroup;
 import io.flowtree.workstream.Workstream;
 import org.junit.Before;
 import org.junit.Test;
@@ -30,10 +26,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -130,46 +123,5 @@ public class PermissionBypassSubmitTest extends FlowTreeApiSubmitTestBase {
     private CodingAgentJobFactory queuedFactory() {
         assertEquals(1, server.queued.size());
         return (CodingAgentJobFactory) server.queued.get(0);
-    }
-
-    /**
-     * Server double that reports one connected peer, so the endpoint dispatches, and captures
-     * every queued factory instead of distributing it.
-     */
-    private static class QueueCapturingServer extends Server {
-        /** Factories passed to {@link #addTask}, in submission order. */
-        final List<JobFactory> queued = new ArrayList<>();
-        /** Node group reporting a single (placeholder) peer. */
-        private final NodeGroup group;
-
-        /** Constructs the server without binding a listening socket (port 0). */
-        QueueCapturingServer() throws IOException {
-            super(ephemeralProperties());
-            group = new NodeGroup(ephemeralProperties(), this) {
-                @Override
-                public NodeProxy[] getServers() {
-                    return new NodeProxy[1];
-                }
-            };
-        }
-
-        @Override
-        public NodeGroup getNodeGroup() {
-            return group;
-        }
-
-        @Override
-        public boolean addTask(JobFactory task) {
-            queued.add(task);
-            return true;
-        }
-
-        /** Properties that skip server-socket binding and start no child nodes. */
-        private static Properties ephemeralProperties() {
-            Properties p = new Properties();
-            p.setProperty("server.port", "0");
-            p.setProperty("nodes.initial", "0");
-            return p;
-        }
     }
 }
