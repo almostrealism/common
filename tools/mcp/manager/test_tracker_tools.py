@@ -190,6 +190,36 @@ class TestTrackerTools(unittest.TestCase):
         payload = mock_put.call_args[0][1]
         self.assertEqual(payload["priority"], 0)
 
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_sets_stage(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1", "stage": "ready"}}
+        server.tracker_update_task("t1", stage="ready")
+        payload = mock_put.call_args[0][1]
+        self.assertEqual(payload, {"stage": "ready"})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_leaves_stage_alone_by_default(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_update_task("t1", status="closed")
+        payload = mock_put.call_args[0][1]
+        self.assertNotIn("stage", payload)
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_task_sets_stage(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_create_task("Fix bug", stage="ready")
+        self.assertEqual(mock_post.call_args[0][1]["stage"], "ready")
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_task_omits_stage_by_default(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_create_task("Fix bug")
+        self.assertNotIn("stage", mock_post.call_args[0][1])
+
     @patch.object(server, "_tracker_get")
     def test_tracker_list_tasks_with_sort_priority(self, mock_get):
         mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
