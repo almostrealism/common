@@ -4,6 +4,8 @@
 dense()/lora() create throwaway new LayerFeatures(){} although the interface extends
 LayerFeatures"
 **Release:** Common 0.76 (project "Common")
+**Status:** Proposal, awaiting approval. Nothing below is implemented yet: neither class
+exists, and `ProjectionFactory` and `LowRankAdapterSupport` are unchanged.
 
 ## Motivation
 
@@ -17,10 +19,13 @@ Features object is built on **every** `create(...)` call just to reach a default
 that the factory itself already inherits.
 
 Because the dense and LoRA strategies have no named type, a reader cannot see that they
-are real `ProjectionFactory` implementations, and the LoRA strategy is written out twice.
-The second copy is the lambda in `LowRankAdapterSupport.getProjectionFactory()`,
-and `LowRankAdapterSupport.loraOrDense(...)` repeats the same
-logic again.
+are real `ProjectionFactory` implementations, and the LoRA strategy ("targeted → new
+`LoRALinear` + register it, otherwise dense") is written out three times: in
+`ProjectionFactory.lora(...)`, in the lambda returned by
+`LowRankAdapterSupport.getProjectionFactory()`, and in the body of
+`LowRankAdapterSupport.loraOrDense(TraversalPolicy, PackedCollection, PackedCollection,
+TargetLayer)`. The three copies differ only in how a new adapter is registered (append to a
+caller-supplied list, or call `addLoraLayer`).
 
 ## Scope
 
@@ -37,14 +42,27 @@ In scope:
    convenience constructors that return instances of these classes. Remove both
    `new LayerFeatures() {}` expressions.
 4. Make `LowRankAdapterSupport.getProjectionFactory()` return a `LoRAProjectionFactory`
-   that registers through `this::addLoraLayer`, and make `loraOrDense(...)` delegate to
-   that factory. The LoRA strategy then exists in exactly one place. This is the same
-   "LoRA projection factory" the task names, so it is included rather than left behind as
-   a third copy (see Open Questions).
-5. Update the documentation that shows these factories: the `ProjectionFactory` class
-   javadoc example (its lambda calls an unqualified `dense(...)` that only compiles inside
-   a `LayerFeatures` implementor), `domain/graph/README.md` ("Using ProjectionFactory"
-   section), and `engine/ml/README.md` ("ProjectionFactory" section).
+   that registers through `this::addLoraLayer`, and make the four-argument
+   `loraOrDense(...)` build its own `LoRAProjectionFactory` the same way and call `create`
+   on it. The LoRA strategy then exists in exactly one place. This is the same "LoRA
+   projection factory" the task names, so it is included rather than left behind as a
+   second and third copy (see Open Questions). `loraOrDense` must **not** go through
+   `getProjectionFactory()`; see "`LowRankAdapterSupport`" under Approach for why.
+5. Update the documentation that shows these factories:
+   - The `ProjectionFactory` class javadoc. Its "LoRA" example is a lambda that calls an
+     unqualified `dense(...)`, which only compiles inside a `LayerFeatures` implementor;
+     replace it with `ProjectionFactory.lora(config, loraLayers)` and name the two classes
+     with `@see`.
+   - `domain/graph/README.md` ("Using ProjectionFactory") and `engine/ml/README.md`
+     ("ProjectionFactory"). Both examples call only `ProjectionFactory.dense()` and
+     `ProjectionFactory.lora(config, loraLayers)`, which keep working unchanged, so these
+     need at most a sentence naming `DenseProjectionFactory` / `LoRAProjectionFactory`, not
+     a rewrite. Add the two classes to the `domain/graph/README.md` LoRA class table
+     (which already lists `ProjectionFactory`).
+   - `docs/internals/ml-inference-pipeline.md` mentions `ProjectionFactory` only as a
+     parameter of `sequenceAttention` and needs no change.
+   <!-- TODO(review): docs/modules/graph.html and docs/modules/ml.html carry the same ProjectionFactory.lora examples as the two READMEs; decide whether they get the same one-sentence mention. -->
+
 
 Out of scope:
 
@@ -135,12 +153,25 @@ default ProjectionFactory getProjectionFactory() {
 
 default CellularLayer loraOrDense(TraversalPolicy inputShape, PackedCollection weights,
 								  PackedCollection bias, AdapterConfig.TargetLayer targetLayer) {
-	return getProjectionFactory().create(inputShape, weights, bias, targetLayer);
+	return new LoRAProjectionFactory(getAdapterConfig(), this::addLoraLayer)
+			.create(inputShape, weights, bias, targetLayer);
 }
 ```
 
 `getAdapterConfig()` is read when the factory is created, which is when it is read today.
 `loraOrDense` keeps reading the config per call, because it builds a fresh factory each time.
+The three-argument `loraOrDense` overload already delegates to the four-argument one and
+does not change.
+
+`loraOrDense` deliberately does not call `getProjectionFactory()`. That method is
+overridable, and in the one production implementor it *is* overridden: `DiffusionTransformer`
+declares a concrete `getProjectionFactory()` returning `ProjectionFactory.dense()`, and
+`LoRADiffusionTransformer` (which extends it and implements `LowRankAdapterSupport`) has to
+override it again with `LowRankAdapterSupport.super.getProjectionFactory()` — its javadoc
+explains that a concrete superclass method otherwise wins over the interface default. Any
+implementor in that position that omitted the override would see `loraOrDense` silently
+return dense layers if it were routed through `getProjectionFactory()`. Today `loraOrDense`
+is independent of that method, and the change should keep it so.
 
 ### Code-policy fit
 
@@ -152,7 +183,9 @@ its name says" rule.
 ## Success Criteria
 
 - `ProjectionFactory.java` contains no `new LayerFeatures() {}`. A repository-wide
-  `grep -rn "new LayerFeatures() {}" --include=*.java` finds none in production code.
+  `grep -rn "new LayerFeatures() {}" --include='*.java' .` (quote the glob; zsh rejects it
+  unquoted) returns nothing outside `target/`. Today its only two hits are the two
+  statics in `ProjectionFactory`.
 - `ProjectionFactory.dense()` returns a `DenseProjectionFactory`, and
   `ProjectionFactory.lora(...)` returns a `LoRAProjectionFactory`. Neither class creates
   anonymous Features instances.
@@ -167,22 +200,39 @@ its name says" rule.
   - `lora(config, list)` returns a `LoRALinear` for a targeted layer and adds it to the
     list, and returns a non-LoRA layer for an untargeted one without touching the list;
   - `lora(null, list)` and `lora(config, null)` follow the current null contracts;
-  - `LowRankAdapterSupport.getProjectionFactory()` registers adapters via `addLoraLayer`.
+  - `LowRankAdapterSupport.getProjectionFactory()` registers adapters via `addLoraLayer`;
+  - `loraOrDense(...)` still creates and registers a `LoRALinear` for a targeted layer when
+    the implementor overrides `getProjectionFactory()` to return `ProjectionFactory.dense()`
+    (the `DiffusionTransformer` situation described under Approach).
 - Existing tests pass unchanged, run as bounded selections:
-  - `engine/utils`: `LoRALinearTests`, `AdapterConfigTests` (exercises `loraOrDense`).
+  - `engine/utils`: `LoRALinearTests`, `AdapterConfigTests` (implements
+    `LowRankAdapterSupport` and exercises `loraOrDense`).
   - `engine/ml`: `SequenceAttentionAssetTest` (includes
     `adaptedProjectionsComeFromTheProjectionFactory`, the one test calling
     `ProjectionFactory.lora`), `CausalSequenceAttentionTest`,
     `TransformerBlockFeaturesTest`, `DifferentialAttentionTest`.
-  - `AttentionGradientScalingTest` (engine/ml) also uses `getProjectionFactory`. Run it
-    within the caps if its depth allows. Otherwise CI covers it.
+  - `AttentionGradientScalingTest#testLoRATransformerBlockGradient` (engine/ml,
+    `@TestDepth(1)`, 600 s timeout) reaches `LowRankAdapterSupport.getProjectionFactory()`
+    indirectly, through `LoRADiffusionTransformer.getProjectionFactory()`; the test does
+    not call the factory itself. Run it as a named method if time allows, otherwise leave
+    it to CI. `EndToEndFineTuningTest` (engine/ml) and `AggressiveFineTuningTest`
+    (studio/compose) also build a `LoRADiffusionTransformer` and are likewise CI's to
+    cover.
 
 ## Dependencies
 
-None. The task has no blockers, and the change is confined to `ar-graph`
-(`domain/graph`). New tests go in `engine/utils`, where `LoRALinearTests` and
-`AdapterConfigTests` already live. No `pom.xml` changes are needed. The work runs on any
-backend, so it has no platform requirement.
+None. The task has no blockers. The full set of files the work touches:
+
+- Production code, all in `ar-graph` (`domain/graph`, package `org.almostrealism.layers`):
+  new `DenseProjectionFactory.java` and `LoRAProjectionFactory.java`; edits to
+  `ProjectionFactory.java` and `LowRankAdapterSupport.java`. No production code in any
+  other module changes.
+- Tests, in `ar-utils` (`engine/utils`, package `org.almostrealism.layers.test`, where
+  `LoRALinearTests` and `AdapterConfigTests` already live): new `ProjectionFactoryTests.java`.
+- Documentation: `domain/graph/README.md` and `engine/ml/README.md` (Scope item 5).
+
+No `pom.xml` changes are needed: `engine/utils` tests already compile against
+`ar-graph`. The work runs on any backend, so it has no platform requirement.
 
 ## Open Questions
 
@@ -194,12 +244,25 @@ backend, so it has no platform requirement.
 2. **Inheritance vs. composition for the LoRA fallback.** The plan has
    `LoRAProjectionFactory extends DenseProjectionFactory`. The alternative is two sibling
    implementations of `ProjectionFactory`, each calling its own inherited `dense(...)`.
-   That duplicates a single line but avoids the subclass relationship.
+   That duplicates a single line but avoids the subclass relationship. A side effect of
+   inheritance to weigh: every LoRA factory is then `instanceof DenseProjectionFactory`,
+   so no code could use that type to mean "plain dense projections". Nothing does today.
 3. **Shared vs. fresh dense instance.** `dense()` could return a singleton because the
    class is stateless. The plan keeps fresh instances unless the approver prefers the
    constant.
+4. **`loraOrDense` independence from `getProjectionFactory()`.** The original draft of this
+   plan had `loraOrDense` call `getProjectionFactory().create(...)`. That would change
+   behaviour for any implementor whose `getProjectionFactory()` resolves to something
+   other than the interface default (see Approach), so the plan now has `loraOrDense`
+   construct its own `LoRAProjectionFactory`. If the approver would rather `loraOrDense`
+   follow an overridden `getProjectionFactory()` on purpose, that is a behaviour change
+   and should be stated as one.
+5. **Is `loraOrDense` still needed?** Its only caller is `AdapterConfigTests`; no
+   production code calls it. The plan keeps it (removing public API is outside the task),
+   but the approver may prefer to deprecate it in favour of `getProjectionFactory()`.
 
 ## Estimated Complexity
 
 Small. Two new classes of a few dozen lines each, two static methods and two default
-methods rewritten, three documentation spots updated, and one new test class.
+methods rewritten, the `ProjectionFactory` javadoc example replaced, a short mention added
+to two READMEs, and one new test class.
