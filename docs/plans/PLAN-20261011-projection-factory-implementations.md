@@ -3,7 +3,8 @@
 **Tracker task:** `7881b11f-127d-42fb-842f-35afd654c97e`: "ProjectionFactory: static
 dense()/lora() create throwaway new LayerFeatures(){} although the interface extends
 LayerFeatures"
-**Release:** Common 0.76 (project "Common")
+**Release:** the release this task is assigned to in tracker project "Common" (see the
+tracker task; the version itself is not repeated here because it changes)
 **Status:** Proposal, awaiting approval. Nothing below is implemented yet: neither class
 exists, and `ProjectionFactory` and `LowRankAdapterSupport` are unchanged.
 
@@ -171,6 +172,16 @@ default CellularLayer loraOrDense(TraversalPolicy inputShape, PackedCollection w
 The three-argument `loraOrDense` overload already delegates to the four-argument one and
 does not change.
 
+One dispatch detail shifts. Today the dense fallback in both `LowRankAdapterSupport`
+methods calls `dense(...)` on the implementor itself (`LowRankAdapterSupport extends
+LayerFeatures`), so an implementor that overrode
+`dense(TraversalPolicy, PackedCollection, PackedCollection, boolean, ComputeRequirement...)`
+would have its override used. After the change the fallback calls the factory's own
+inherited `LayerFeatures.dense(...)`. No implementor overrides that method today (the only
+`dense(TraversalPolicy, ...)` declarations are the two defaults in `LayerFeatures`; the
+implementors are `LoRADiffusionTransformer` and the test class `AdapterConfigTests`), so
+the behaviour is identical; see Open Question 6.
+
 `loraOrDense` deliberately does not call `getProjectionFactory()`. That method is
 overridable, and in the one production implementor it *is* overridden: `DiffusionTransformer`
 declares a concrete `getProjectionFactory()` returning `ProjectionFactory.dense()`, and
@@ -278,6 +289,14 @@ No `pom.xml` changes are needed: `engine/utils` tests already compile against
 5. **Is `loraOrDense` still needed?** Its only caller is `AdapterConfigTests`; no
    production code calls it. The plan keeps it (removing public API is outside the task),
    but the approver may prefer to deprecate it in favour of `getProjectionFactory()`.
+6. **Dense fallback no longer dispatches through the implementor.** As noted under
+   "`LowRankAdapterSupport`", a future `LowRankAdapterSupport` implementor that overrides
+   `LayerFeatures.dense(...)` would no longer see that override used for untargeted
+   projections. Nothing overrides it today. If the approver wants to preserve that hook,
+   `LoRAProjectionFactory` could take the fallback as a second `ProjectionFactory`
+   (defaulting to `ProjectionFactory.dense()`, with `LowRankAdapterSupport` passing a
+   factory that calls its own `dense(...)`); the plan does not do this because no caller
+   needs it.
 
 ## Estimated Complexity
 
