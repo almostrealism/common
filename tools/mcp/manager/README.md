@@ -121,6 +121,22 @@ carries the original for comparison plus a `notice` about the feature's state.
 See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
 for the full contract.
 
+## Optional Enforcement Phases
+
+Some post-primary enforcement phases are off by default and are enabled per job
+through a `workstream_submit_task` flag. Each flag is forwarded to the controller
+only when it is `True`, so an omitted (or `False`) flag leaves the phase off. The
+submit response echoes the effective setting so the caller can confirm it.
+
+| Flag | Controller field | Response echo | Phase it enables |
+|------|------------------|---------------|------------------|
+| `organizational_placement_enabled=True` | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files |
+| `object_oriented_review_enabled=True` | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: one design-review session per changed production class. Takes effect only while `review_enabled` is also `True` |
+
+Both are job-level settings; there is no workstream or workspace default for them.
+CI auto-resolve and auto-review submissions (`tools/ci/submit-agent-job.sh`) do not
+send either field, so those jobs run with both phases off.
+
 ## Test Execution Limits
 
 `workstream_submit_task` mechanically rejects submissions that would have an agent or

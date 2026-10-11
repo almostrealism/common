@@ -460,6 +460,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
 			+ " signature so callers can opt in to placement review for pre-merge jobs",
 			submitParams.contains("organizational_placement_enabled"));
+		assertTrue("workstream_submit_task must declare object_oriented_review_enabled in"
+			+ " signature so callers can opt in to the per-class design review",
+			submitParams.contains("object_oriented_review_enabled"));
 		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
 			submitParams.contains("retrospective_enabled"));

@@ -16,6 +16,8 @@
 
 package io.flowtree.api;
 
+import io.flowtree.JsonFieldExtractor;
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -31,13 +33,23 @@ import java.util.Map;
  */
 public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
 
+    /**
+     * Merges the way the submit endpoint does: the workstream's agentEnv with the
+     * body's {@code agentEnv} object on top, via {@link Workstream#agentEnvWith(Map)}.
+     */
+    private static Map<String, String> mergeAgentEnv(Map<String, String> workstreamEnv, String body) {
+        Workstream workstream = new Workstream("ws", "C", "#c");
+        workstream.setAgentEnv(workstreamEnv);
+        return workstream.agentEnvWith(JsonFieldExtractor.extractStringObject(body, "agentEnv"));
+    }
+
     /** Workstream agentEnv is used when the submission body has no agentEnv. */
     @Test(timeout = 5000)
     public void workstreamEnvUsedWhenSubmissionHasNoAgentEnv() {
         Map<String, String> ws = new HashMap<>();
         ws.put("MOSAIC_AGENT_MODE", "true");
 
-        Map<String, String> merged = FlowTreeApiEndpoint.mergeAgentEnv(ws, "{\"prompt\":\"hi\"}");
+        Map<String, String> merged = mergeAgentEnv(ws, "{\"prompt\":\"hi\"}");
 
         Assert.assertEquals("true", merged.get("MOSAIC_AGENT_MODE"));
         Assert.assertEquals(1, merged.size());
@@ -48,7 +60,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
     public void submissionAgentEnvInjectedWhenWorkstreamHasNone() {
         String body = "{\"prompt\":\"hi\",\"agentEnv\":{\"MOSAIC_AGENT_TOKEN\":\"tok-123\"}}";
 
-        Map<String, String> merged = FlowTreeApiEndpoint.mergeAgentEnv(null, body);
+        Map<String, String> merged = mergeAgentEnv(null, body);
 
         Assert.assertEquals("tok-123", merged.get("MOSAIC_AGENT_TOKEN"));
     }
@@ -61,7 +73,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
         ws.put("SHARED", "workstream");
         String body = "{\"agentEnv\":{\"SHARED\":\"submission\",\"MOSAIC_AGENT_TOKEN\":\"tok\"}}";
 
-        Map<String, String> merged = FlowTreeApiEndpoint.mergeAgentEnv(ws, body);
+        Map<String, String> merged = mergeAgentEnv(ws, body);
 
         Assert.assertEquals("true", merged.get("MOSAIC_AGENT_MODE"));   // workstream-only key kept
         Assert.assertEquals("submission", merged.get("SHARED"));        // submission overrides
@@ -71,7 +83,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
     /** Empty map when neither workstream nor submission provides agentEnv. */
     @Test(timeout = 5000)
     public void emptyWhenNeitherProvided() {
-        Map<String, String> merged = FlowTreeApiEndpoint.mergeAgentEnv(null, "{\"prompt\":\"hi\"}");
+        Map<String, String> merged = mergeAgentEnv(null, "{\"prompt\":\"hi\"}");
 
         Assert.assertTrue(merged.isEmpty());
     }

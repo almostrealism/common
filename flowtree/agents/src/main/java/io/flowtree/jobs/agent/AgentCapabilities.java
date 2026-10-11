@@ -16,6 +16,12 @@
 
 package io.flowtree.jobs.agent;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.flowtree.JsonFieldExtractor;
+
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
@@ -50,12 +56,16 @@ public record AgentCapabilities(
 
     /**
      * Canonical compact constructor that defensively copies the supported-model and
-     * supported-provider sets (via {@link Set#copyOf}), preventing mutation through
+     * supported-provider sets into unmodifiable sets, preventing mutation through
      * the caller's original reference, and substitutes an empty set for {@code null}.
+     * The copies keep the iteration order of the caller's sets, so a runner that
+     * lists its aliases ahead of full identifiers is advertised in that order.
      */
     public AgentCapabilities {
-        supportedModels = supportedModels == null ? Set.of() : Set.copyOf(supportedModels);
-        supportedProviders = supportedProviders == null ? Set.of() : Set.copyOf(supportedProviders);
+        supportedModels = supportedModels == null ? Set.of()
+                : Collections.unmodifiableSet(new LinkedHashSet<>(supportedModels));
+        supportedProviders = supportedProviders == null ? Set.of()
+                : Collections.unmodifiableSet(new LinkedHashSet<>(supportedProviders));
     }
 
     /**
@@ -83,5 +93,40 @@ public record AgentCapabilities(
         this(reportsCost, reportsTurns, supportsEffortLevel, supportsMaxBudget,
                 supportsMcpHttpTransport, supportsMcpStdioTransport,
                 supportsPermissionDenialReporting, supportedModels, Set.of());
+    }
+
+    /**
+     * Returns whether {@code model} is among the models these capabilities
+     * advertise. An empty {@link #supportedModels()} set means the runner is
+     * unconstrained, so every model is advertised.
+     *
+     * @param model the model identifier to look up
+     * @return {@code true} when the model is advertised or the set is unconstrained
+     */
+    public boolean advertisesModel(String model) {
+        return supportedModels.isEmpty() || supportedModels.contains(model);
+    }
+
+    /**
+     * Returns these capabilities as a JSON object whose field names are the
+     * record component names, which is the shape {@code GET /api/agents}
+     * advertises to clients choosing a runner.
+     *
+     * @return a new JSON object; never {@code null}
+     */
+    public ObjectNode toJson() {
+        ObjectNode json = JsonFieldExtractor.MAPPER.createObjectNode();
+        json.put("reportsCost", reportsCost);
+        json.put("reportsTurns", reportsTurns);
+        json.put("supportsEffortLevel", supportsEffortLevel);
+        json.put("supportsMaxBudget", supportsMaxBudget);
+        json.put("supportsMcpHttpTransport", supportsMcpHttpTransport);
+        json.put("supportsMcpStdioTransport", supportsMcpStdioTransport);
+        json.put("supportsPermissionDenialReporting", supportsPermissionDenialReporting);
+        ArrayNode models = json.putArray("supportedModels");
+        supportedModels.forEach(models::add);
+        ArrayNode providers = json.putArray("supportedProviders");
+        supportedProviders.forEach(providers::add);
+        return json;
     }
 }

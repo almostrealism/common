@@ -20,6 +20,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -854,6 +855,124 @@ public class Workstream {
         factory.setDispatchCapable(dispatchCapable);
         factory.setBypassAgentPermissionPrompts(jobGrantsPermissionBypass
                 || permitsAgentPermissionBypass(targetBranch));
+    }
+
+    /**
+     * Creates a job factory for {@code prompt} carrying this workstream's job
+     * defaults, targeting the workstream's default branch.
+     *
+     * @param prompt the prompt the job will run
+     * @return a factory configured from this workstream
+     * @see #newJobFactory(String, String)
+     */
+    public CodingAgentJob.Factory newJobFactory(String prompt) {
+        return newJobFactory(prompt, null);
+    }
+
+    /**
+     * Creates a job factory for {@code prompt} carrying this workstream's job
+     * defaults: allowed tools, agent environment, turn and budget limits,
+     * branches, checkout location, git identity, planning document, dependent
+     * repositories, and the tmux and wall-clock settings.
+     *
+     * <p>Every submission path starts from the same workstream state, so the
+     * defaults are applied here once rather than repeated by each path. A
+     * submission that carries its own value for a setting overrides it on the
+     * returned factory.</p>
+     *
+     * @param prompt       the prompt the job will run
+     * @param targetBranch the branch the job targets, or {@code null} for this
+     *                     workstream's default branch
+     * @return a factory configured from this workstream
+     */
+    public CodingAgentJob.Factory newJobFactory(String prompt, String targetBranch) {
+        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
+        factory.setAllowedTools(allowedTools);
+        factory.setAgentEnv(agentEnv);
+        factory.setMaxTurns(maxTurns);
+        factory.setMaxBudgetUsd(maxBudgetUsd);
+
+        String branch = targetBranch != null ? targetBranch : defaultBranch;
+        if (branch != null) {
+            factory.setTargetBranch(branch);
+            factory.setPushToOrigin(pushToOrigin);
+        }
+        if (baseBranch != null) factory.setBaseBranch(baseBranch);
+        if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
+        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        if (gitUserName != null) factory.setGitUserName(gitUserName);
+        if (gitUserEmail != null) factory.setGitUserEmail(gitUserEmail);
+        if (planningDocument != null) factory.setPlanningDocument(planningDocument);
+        if (dependentRepos != null && !dependentRepos.isEmpty()) factory.setDependentRepos(dependentRepos);
+        factory.setUseTmux(useTmux);
+        if (maxWallClockHours != null) factory.setMaxWallClockHours(maxWallClockHours);
+        return factory;
+    }
+
+    /**
+     * Creates a shell-command job factory for {@code command} carrying the
+     * subset of this workstream's job defaults a shell job uses: repository,
+     * branch, and checkout location. A shell job runs no agent and never
+     * commits, so agent configuration and git identity are not applied.
+     *
+     * @param command      the shell command the job will run
+     * @param targetBranch the branch the job checks out, or {@code null} for
+     *                     this workstream's default branch
+     * @return a factory configured from this workstream
+     * @see #newJobFactory(String, String)
+     */
+    public ShellCommandJob.Factory newShellJobFactory(String command, String targetBranch) {
+        ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
+        String branch = targetBranch != null ? targetBranch : defaultBranch;
+        if (branch != null) factory.setTargetBranch(branch);
+        if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
+        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        return factory;
+    }
+
+    /**
+     * Returns the Node labels a job submitted to this workstream must match:
+     * the submission's own labels when it carries any, otherwise this
+     * workstream's {@link #getRequiredLabels() default labels}. Unlike
+     * {@link #agentEnvWith(Map)} the two are not merged; job-level labels
+     * replace the workstream defaults entirely.
+     *
+     * @param submissionLabels the submission's labels; may be {@code null} or empty
+     * @return the effective labels, never {@code null}
+     */
+    public Map<String, String> requiredLabelsWith(Map<String, String> submissionLabels) {
+        if (submissionLabels != null && !submissionLabels.isEmpty()) return submissionLabels;
+        return requiredLabels != null ? requiredLabels : Collections.emptyMap();
+    }
+
+    /**
+     * Returns the status URL a job on this workstream reports to, served by
+     * the controller's API endpoint listening on {@code apiPort}.
+     *
+     * @param apiPort the controller API port
+     * @param jobId   the job's task ID
+     * @return the job's status URL, or {@code null} when {@code apiPort} is
+     *         not a bound port
+     */
+    public String jobUrl(int apiPort, String jobId) {
+        if (apiPort <= 0) return null;
+        return "http://0.0.0.0:" + apiPort + "/api/workstreams/" + workstreamId + "/jobs/" + jobId;
+    }
+
+    /**
+     * Returns this workstream's agent environment with a submission's own
+     * environment merged on top, the submission winning on key collisions.
+     * This is what lets a caller inject per-job environment, such as a
+     * short-lived bearer token, that cannot live in static workstream config.
+     *
+     * @param submissionEnv the submission's agent environment; may be {@code null}
+     * @return a new merged map, never {@code null}
+     */
+    public Map<String, String> agentEnvWith(Map<String, String> submissionEnv) {
+        Map<String, String> effective = new LinkedHashMap<>();
+        if (agentEnv != null) effective.putAll(agentEnv);
+        if (submissionEnv != null) effective.putAll(submissionEnv);
+        return effective;
     }
 
     /**

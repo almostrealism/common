@@ -81,7 +81,7 @@ class EnforcementRunner implements ConsoleFeatures {
      *
      * @return ordered list of active enforcement rules; never {@code null}
      */
-    private List<EnforcementRule> buildActiveRules() {
+    List<EnforcementRule> buildActiveRules() {
         List<EnforcementRule> rules = new ArrayList<>();
         if (job.isEnforceChanges()) {
             rules.add(new EnforceChangesRule());
@@ -115,7 +115,7 @@ class EnforcementRunner implements ConsoleFeatures {
             rules.add(new MavenDependencyProtectionRule());
         }
         rules.addAll(job.getCustomEnforcementRules());
-        if (reviewRule != null) {
+        if (reviewRule != null && job.isObjectOrientedReviewEnabled()) {
             // One session per changed class: after the content-protection rules, so that a
             // branch touching many classes cannot spend the total attempt cap before they run.
             rules.add(new ObjectOrientedDesignRule());

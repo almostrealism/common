@@ -28,10 +28,10 @@ whole path. All of it, in the same change:
 | Layer | File | What to add |
 |---|---|---|
 | Submission tool | `tools/mcp/manager/workstream_submit_tools.py` | parameter, docstring entry, `payload["<name>"]` |
-| HTTP submit | `io.flowtree.api.FlowTreeApiEndpoint#handleSubmit` | `extractJsonHasField` → `factory.set…` |
+| HTTP submit | `io.flowtree.api.FlowTreeApiEndpoint#handleSubmit` | `JsonFieldExtractor.hasField` → `factory.set…` |
 | Job record | `io.flowtree.api.FlowTreeApiEndpoint` submit response JSON | the field, so a caller can confirm what it got |
 | Factory | `io.flowtree.jobs.CodingAgentJobFactory` | field, accessors that call `set(...)`, decode case |
-| Factory → job | `io.flowtree.jobs.CodingAgentJobConfigurer` | `job.set…(factory.is…())` |
+| Factory → job | `io.flowtree.jobs.CodingAgentJobFactory#configure` | `job.set…(field)` |
 | Job | `io.flowtree.jobs.CodingAgentJob` | field, accessors |
 | Wire | `io.flowtree.jobs.CodingAgentJobCodec` | encode branch, decode case |
 | Behaviour | wherever the property takes effect | e.g. `InstructionPromptBuilder` |
@@ -52,7 +52,7 @@ problem, and never a reason to compress javadoc until the field fits.
 
 Both classes are already built for this. Cohesive groups of state have been
 extracted into collaborators (`PhaseRunnerConfig`, `RestartGovernor`,
-`JobSessionAccumulator`, `GitJobConfig`, `CodingAgentJobConfigurer`) with the
+`JobSessionAccumulator`, `GitJobConfig`, `PostCompletionConfig`) with the
 owning class delegating to them and its public API unchanged. Find the next
 cohesive group and do the same. If the factory and the job hold two
 implementations of the same idea, one collaborator shared by both removes

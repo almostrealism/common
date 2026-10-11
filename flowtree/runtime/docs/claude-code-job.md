@@ -891,12 +891,12 @@ The wall-clock ceiling travels between two wire keys:
 - `maxWallClockHours` (plain int, Factory-only): the hours the user supplied at submission
   on the `Factory`. Empty value means the job inherits the workstream default or
   `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`.
-- `maxWallClockMs` (plain long, milliseconds, Codec-only): the resolved ceiling the
-  `CodingAgentJobCodec` carries over the worker hop. A non-positive value is meaningful
+- `maxWallClockMs` (plain long, milliseconds, Job-only): the resolved ceiling the
+  job's `RestartGovernor` encodes for the worker hop. A non-positive value is meaningful
   and disables the ceiling rather than being dropped.
 
 These are the same setting at different granularities: the Factory speaks hours because
-that is what the submission API takes; the Codec speaks milliseconds because
+that is what the submission API takes; the job speaks milliseconds because
 `RestartGovernor.maxWallClock` is a `Duration`.
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
