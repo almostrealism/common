@@ -18,8 +18,10 @@
  * Calculus and differentiation utilities for the Almost Realism framework.
  *
  * <p>Provides infrastructure for automatic differentiation and gradient computation
- * over {@link io.almostrealism.relation.Producer} graphs. The key interface
- * {@link org.almostrealism.calculus.DeltaFeatures} defines how gradient (delta)
- * computations are constructed and propagated through the producer graph.</p>
+ * over {@link io.almostrealism.relation.Producer} graphs. Differentiation is behaviour of
+ * the producer being differentiated ({@link org.almostrealism.collect.CollectionProducer#delta});
+ * the {@link org.almostrealism.calculus.DeltaFeatures} mixin supplies the stateless operations
+ * that delta implementations compose, and {@link org.almostrealism.calculus.InputStub} isolates
+ * an input when the chain rule is applied.</p>
  */
 package org.almostrealism.calculus;

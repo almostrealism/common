@@ -33,7 +33,9 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
+import org.almostrealism.calculus.InputStub;
 import org.almostrealism.calculus.VectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -291,6 +293,96 @@ public abstract class CollectionProducerComputationBase
 	@Override
 	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
 		return vectorJacobianProduct == null ? null : vectorJacobianProduct.apply(target, gradient);
+	}
+
+	/**
+	 * Indicates whether {@link #attemptDelta(Producer)} may differentiate this computation
+	 * through an intermediate input using the multivariate chain rule. Subclasses whose
+	 * expression can be differentiated with respect to a stubbed input return true.
+	 *
+	 * @return true if chain rule differentiation is supported (default: false)
+	 */
+	public boolean isChainRuleSupported() {
+		return false;
+	}
+
+	/**
+	 * Attempts to compute the delta (gradient) of this computation with respect to a target,
+	 * applying the multivariate chain rule when {@link #isChainRuleSupported() supported}:
+	 * <pre>
+	 * For h(x) = f(g(x)), compute: dh/dx = (df/dg) . (dg/dx)
+	 * </pre>
+	 *
+	 * <ol>
+	 *   <li>First tries the direct cases of {@link CollectionProducer#attemptDelta(Producer)}</li>
+	 *   <li>Matches the target among this computation's inputs using {@link AlgebraFeatures#matchInput}:
+	 *       no match returns null, an independent target returns zeros</li>
+	 *   <li>If the target is a direct input, delegates to {@link #applyDeltaStrategy(Producer)}</li>
+	 *   <li>Otherwise multiplies df/dg, from {@link #isolatedDelta(Producer)}, by dg/dx</li>
+	 * </ol>
+	 *
+	 * @param target  the variable to differentiate with respect to
+	 * @return the gradient computation, or null if unable to compute
+	 */
+	@Override
+	public CollectionProducer attemptDelta(Producer<?> target) {
+		CollectionProducer result = CollectionProducerComputation.super.attemptDelta(target);
+		if (result != null || !isChainRuleSupported()) return result;
+
+		if (!isFixedCount()) {
+			warn("Cannot compute partial delta for variable Producer");
+			return null;
+		}
+
+		TraversalPolicy shape = getShape();
+		TraversalPolicy targetShape = shape(target);
+		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
+
+		if (match == null) {
+			return null;
+		} else if (match.isEmpty()) {
+			return zeros(shape.append(targetShape));
+		}
+
+		Producer<?> in = match.get();
+
+		if (AlgebraFeatures.match(in, target)) {
+			return applyDeltaStrategy(target);
+		}
+
+		if (!(in instanceof CollectionProducer)) return null;
+
+		CollectionProducer f = isolatedDelta(in);
+		CollectionProducer g = ((CollectionProducer) in).delta(target);
+
+		int finalLength = shape.getTotalSize();
+		int outLength = shape(in).getTotalSize();
+		int inLength = targetShape.getTotalSize();
+
+		return matmul(reshape(shape(finalLength, outLength), f),
+				reshape(shape(outLength, inLength), g))
+				.reshape(shape.append(targetShape));
+	}
+
+	/**
+	 * Computes the partial derivative of this computation with respect to one of its
+	 * inputs, holding every other input constant. The input is replaced by an
+	 * {@link InputStub} in a regenerated copy of this computation, and that copy is
+	 * differentiated with respect to the stub.
+	 *
+	 * @param input  the input of this computation to differentiate with respect to
+	 * @return the partial derivative of this computation with respect to the input
+	 */
+	public CollectionProducer isolatedDelta(Producer<?> input) {
+		InputStub stub = new InputStub((Producer) input);
+
+		List<Process<?, ?>> isolatedInputs = new ArrayList<>();
+		isolatedInputs.add(null);
+		getInputs().stream().skip(1)
+				.map(in -> input.equals(in) ? stub : (Process<?, ?>) in)
+				.forEach(isolatedInputs::add);
+
+		return generate(isolatedInputs).delta(stub);
 	}
 
 	/**

@@ -102,15 +102,16 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * corresponding elements across all input collections.
 	 * 
 	 * <p>This method includes optimizations for constant operations:
-	 * when all operands are {@link SingleConstantComputation} instances,
-	 * the method computes the sum directly and returns a new constant
-	 * computation, avoiding the overhead of the full computation pipeline.</p>
+	 * when every operand reports a uniform constant value via
+	 * {@link Algebraic#getConstant}, the method computes the sum directly and
+	 * returns a new constant computation, avoiding the overhead of the full
+	 * computation pipeline.</p>
 	 *
 	 * @param operands the list of collections to add together
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
-	 * 
-	 * @see SingleConstantComputation
+	 *
+	 * @see Algebraic#getConstant
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
@@ -204,12 +205,12 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 *
 	 * @param a the minuend (value to subtract from)
 	 * @param b the subtrahend (value to subtract)
-	 * @return a {@link CollectionProducerComputation} that performs epsilon-aware subtraction
+	 * @return a {@link CollectionProducer} that performs epsilon-aware subtraction
 	 * 
 	 * @see EpsilonConstantComputation
 	 * @see #equals(Producer, Producer, Producer, Producer)
 	 */
-	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+	default CollectionProducer subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
@@ -225,7 +226,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 
 		CollectionProducer difference = CollectionFeatures.getInstance().equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
-		return (CollectionProducerComputation) CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
+		return CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
 	}
 
 	/**
@@ -265,7 +266,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * <p>This method includes several optimizations:</p>
 	 * <ul>
 	 *   <li>Identity element detection (multiplication by 1.0)</li>
-	 *   <li>Constant multiplication optimization using {@link SingleConstantComputation}</li>
+	 *   <li>Constant multiplication optimization for operands with a known constant value</li>
 	 *   <li>When both operands are constants, computes the result directly</li>
 	 *   <li>Scalar constant multiplication optimization</li>
 	 * </ul>
@@ -275,8 +276,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @param b the second collection to multiply
 	 * @param shortCircuit optional pre-computed result for optimization
 	 * @return a {@link CollectionProducer} that generates the element-wise product
-	 * 
-	 * @see SingleConstantComputation
+	 *
+	 * @see Algebraic#getConstant
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
@@ -550,7 +551,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			TraversalPolicy shape = shape(exp);
 
 			if (shape.getTotalSizeLong() == 1) {
-				return (CollectionProducer) base;
+				return CollectionFeatures.getInstance().c(base);
 			} else {
 				return repeat(shape.getTotalSize(), base).reshape(shape);
 			}

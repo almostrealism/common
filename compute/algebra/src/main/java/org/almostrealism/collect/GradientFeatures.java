@@ -68,7 +68,7 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 */
 	default CollectionProducer combineGradient(
 			CollectionProducer func,
-			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
+			Producer<?> input, Producer<PackedCollection> gradient) {
 		CollectionProducer product = func.attemptVectorJacobianProduct(input, gradient);
 		if (product != null) {
 			return product.reshape(shape(shape(input).getTotalSize())).each();
@@ -94,7 +94,7 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 */
 	default CollectionProducer jacobianGradient(
 			CollectionProducer func,
-			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
+			Producer<?> input, Producer<PackedCollection> gradient) {
 		// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check 32-bit index overflow
 		int inSize = shape(input).getTotalSize();
 		int outSize = shape(gradient).getTotalSize();

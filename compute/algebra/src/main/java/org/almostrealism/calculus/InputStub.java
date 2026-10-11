@@ -37,7 +37,9 @@ import java.util.List;
  * A wrapper that isolates a producer for delta (gradient) computation in automatic differentiation.
  *
  * <p>
- * {@link InputStub} is used internally by {@link DeltaFeatures} to create isolated computational
+ * {@link InputStub} is used internally by
+ * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase#isolatedDelta}
+ * to create isolated computational
  * graphs during gradient computation. When computing partial derivatives using the chain rule,
  * it's necessary to treat certain inputs as independent variables while preserving their shape
  * and metadata.
@@ -78,8 +80,7 @@ import java.util.List;
  *
  * @param <T>  the packed collection type
  * @author  Michael Murray
- * @see DeltaFeatures#generateIsolatedDelta
- * @see DeltaFeatures#replaceInput
+ * @see org.almostrealism.collect.computations.CollectionProducerComputationBase#isolatedDelta
  */
 // TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection> implements CollectionProducer,

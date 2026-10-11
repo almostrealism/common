@@ -79,14 +79,13 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 * }</pre>
 	 */
 	default CollectionProducer max(Producer<PackedCollection> input) {
-		DynamicIndexProjectionProducerComputation projection =
+		CollectionMaxComputation max = new CollectionMaxComputation(input);
+		if (!enableIndexProjectionDeltaAlt) return max;
+
+		return max.withDeltaAlternate(
 				new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
 						(args, idx) -> args[2].getValueAt(idx).toInt(),
-						true, input, indexOfMax(input));
-
-		CollectionMaxComputation c = new CollectionMaxComputation(input);
-		if (enableIndexProjectionDeltaAlt) c.withDeltaAlternate(projection);
-		return c;
+						true, input, indexOfMax(input)));
 	}
 
 	/**
@@ -139,7 +138,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 * It's one of the most common aggregation operations in numerical computing.
 	 * 
 	 * @param input the collection to sum
-	 * @return a {@link CollectionProducerComputation} that generates a single-element collection containing the sum
+	 * @return a {@link CollectionProducer} that generates a single-element collection containing the sum
 	 * 
 	 *
 	 * <pre>{@code

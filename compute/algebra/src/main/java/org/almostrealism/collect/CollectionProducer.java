@@ -232,7 +232,7 @@ public interface CollectionProducer extends
 		}
 
 		CollectionProducerComputation result = enumerate(shape.getTraversalAxis() + 1, 1);
-		return (CollectionProducer) reshape(shape(result).trim(), result);
+		return result.reshape(shape(result).trim());
 	}
 
 	/**
@@ -243,7 +243,7 @@ public interface CollectionProducer extends
 	 */
 	default CollectionProducer transpose(int axis) {
 		CollectionProducerComputation result = traverse(axis - 1).enumerate(axis, 1);
-		return (CollectionProducer) reshape(shape(result).trim(), result);
+		return result.reshape(shape(result).trim());
 	}
 
 	/**
@@ -413,7 +413,7 @@ public interface CollectionProducer extends
 	 * @param value the collection to subtract
 	 * @return a computation for the result
 	 */
-	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> value) {
+	default CollectionProducer subtractIgnoreZero(Producer<PackedCollection> value) {
 		return subtractIgnoreZero(this, value);
 	}
 
@@ -997,7 +997,7 @@ public interface CollectionProducer extends
 	 * @return a producer for the combined gradient
 	 */
 	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
-		return combineGradient(this, (Producer<PackedCollection>) target, gradient);
+		return combineGradient(this, target, gradient);
 	}
 
 	/**
@@ -1008,5 +1008,18 @@ public interface CollectionProducer extends
 	 */
 	default MultiTermDeltaStrategy getDeltaStrategy() {
 		return MultiTermDeltaStrategy.NONE;
+	}
+
+	/**
+	 * Computes the gradient of this producer with respect to a target that appears
+	 * directly among its inputs, using this producer's own delta strategy.
+	 * Producers that combine several terms override this to apply their
+	 * {@link #getDeltaStrategy() multi-term delta strategy}.
+	 *
+	 * @param target  the variable to differentiate with respect to
+	 * @return the gradient computation, or null to use default behavior
+	 */
+	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
+		return null;
 	}
 }

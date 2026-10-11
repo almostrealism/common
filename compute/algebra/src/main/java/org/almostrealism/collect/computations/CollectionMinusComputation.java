@@ -215,7 +215,7 @@ public class CollectionMinusComputation extends TransitiveDeltaExpressionComputa
 	 * <p>For a negation operation f(x) = -x, the derivative is simply -I (negative identity).
 	 * For a composed operation f(g(x)) = -g(x), the chain rule gives d(-g)/dx = -(dg/dx).</p>
 	 *
-	 * <p>This override avoids the default chain rule path in {@code DeltaFeatures.attemptDelta},
+	 * <p>This override avoids the default chain rule path in {@code CollectionProducerComputationBase.attemptDelta},
 	 * which would compute {@code matmul(-I, dg/dx)} - an expensive matrix multiplication for
 	 * large Jacobians. Instead, this method directly negates the input's delta using
 	 * {@code minus(input.delta(target))}, which is mathematically equivalent but avoids

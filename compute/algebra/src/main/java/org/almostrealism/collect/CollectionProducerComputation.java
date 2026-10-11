@@ -26,21 +26,19 @@ import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -71,7 +69,7 @@ import java.util.stream.Stream;
  * <h2>Lifecycle</h2>
  * <pre>{@code
  * // 1. Create computation
- * CollectionProducerComputation<PackedCollection> comp = ...;
+ * CollectionProducerComputation comp = ...;
  *
  * // 2. Get evaluable (compiles to hardware)
  * Evaluable<PackedCollection> ev = comp.get();
@@ -116,21 +114,58 @@ public interface CollectionProducerComputation extends
 		return true;
 	}
 
+	/**
+	 * Applies this computation's {@link #getDeltaStrategy() multi-term delta strategy}
+	 * to its own children, rebuilding this computation from the filtered terms when
+	 * the strategy requires it.
+	 *
+	 * <ul>
+	 *   <li><b>NONE:</b> Returns null</li>
+	 *   <li><b>IGNORE:</b> Returns identity matrix (for additive terms: d(a+b)/da = I)</li>
+	 *   <li><b>COMBINE:</b> Returns diagonal of non-target terms (for multiplicative: d(a.b)/da = diag(b))</li>
+	 * </ul>
+	 *
+	 * <p>Whatever the strategy, the result is null when the target appears in more than one
+	 * term, and zero when it appears in none.</p>
+	 *
+	 * @param target  the variable to differentiate with respect to
+	 * @return the gradient computation, or null if the strategy does not apply
+	 */
 	@Override
-	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
-																			   Producer<?> target) {
-		Collection<Producer<?>> terms;
-
-		if (producer instanceof Parent) {
-			terms = ((Parent<?>) producer).getChildren().stream()
-					.map(t -> (Producer<?>) t)
-					.collect(Collectors.toList());
-		} else {
-			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
+	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
+		MultiTermDeltaStrategy strategy = getDeltaStrategy();
+		if (strategy == MultiTermDeltaStrategy.NONE) {
+			return null;
 		}
 
-		return deltaStrategyProcessor(producer.getDeltaStrategy(),
-				producerFactory(), shape(producer), target).apply(terms);
+		List<Producer<?>> terms = getChildren().stream()
+				.map(t -> (Producer<?>) t)
+				.collect(Collectors.toList());
+		long matches = terms.stream()
+				.filter(t -> AlgebraFeatures.match(t, target))
+				.count();
+
+		if (matches == 0) {
+			return c(0);
+		} else if (matches > 1) {
+			return null;
+		}
+
+		int pSize = getShape().getTotalSize();
+		int tSize = shape(target).getTotalSize();
+		TraversalPolicy finalShape = getShape().append(shape(target));
+
+		switch (strategy) {
+			case IGNORE:
+				return identity(shape(pSize, tSize)).reshape(finalShape);
+			case COMBINE:
+				CollectionProducer result = generateFromTerms(terms.stream()
+						.filter(t -> !AlgebraFeatures.match(t, target))
+						.collect(Collectors.toList())).flatten();
+				return diagonal(result).reshape(finalShape);
+			default:
+				throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -248,41 +283,25 @@ public interface CollectionProducerComputation extends
 	}
 
 	/**
-	 * Evaluates this computation and converts the result to a typed data adapter
-	 * using the provided factory function.
+	 * Generates a new {@link CollectionProducer} from a list of children, using the
+	 * structure of this computation as the template. The first child is the destination;
+	 * if only one term follows it, that term is returned directly.
 	 *
-	 * @param <T>     the type of the resulting data adapter
-	 * @param factory a function that creates a data adapter from the output shape
-	 * @return the evaluated and converted result
+	 * @param args  the children of the new computation, destination first
+	 * @return the computation over the given terms
 	 */
-	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
-		PackedCollection c = get().evaluate();
-		T data = factory.apply(c.getShape());
-		data.setDelegate(c, 0);
-		return data;
-	}
+	private CollectionProducer generateFromTerms(List<Producer<?>> args) {
+		List<Producer<?>> terms = new ArrayList<>();
+		args.stream().skip(1).forEach(terms::add);
 
-	/**
-	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
-	 * input producers, using the structure of this computation as the template.
-	 * If only one input (beyond the destination) is present, that input is returned directly.
-	 *
-	 * @return a function that takes a list of producers and returns a new CollectionProducer
-	 */
-	private Function<List<Producer<?>>, CollectionProducer> producerFactory() {
-		return args -> {
-			List<Producer<?>> terms = new ArrayList<>();
-			args.stream().skip(1).forEach(terms::add);
-
-			if (terms.isEmpty()) {
-				throw new IllegalArgumentException();
-			} else if (terms.size() == 1) {
-				return (CollectionProducer) terms.get(0);
-			} else {
-				return generate((List) args.stream()
-						.map(t -> (Process) t).collect(Collectors.toList()));
-			}
-		};
+		if (terms.isEmpty()) {
+			throw new IllegalArgumentException();
+		} else if (terms.size() == 1) {
+			return (CollectionProducer) terms.get(0);
+		} else {
+			return generate((List) args.stream()
+					.map(t -> (Process) t).collect(Collectors.toList()));
+		}
 	}
 
 	/**
