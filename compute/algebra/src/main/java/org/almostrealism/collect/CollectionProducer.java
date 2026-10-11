@@ -914,26 +914,9 @@ public interface CollectionProducer extends
 	 *         or {@code null} if no shortcut applies
 	 * @see org.almostrealism.calculus.VectorJacobianProduct
 	 */
+	@Override
 	default CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
 		return null;
-	}
-
-	/**
-	 * Attempts the structure-aware vector-Jacobian product of an arbitrary producer, as
-	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} does for a
-	 * {@link CollectionProducer}. A producer that is not a {@link CollectionProducer}
-	 * offers no such product, so {@code null} is returned for it and the caller must
-	 * contract the dense Jacobian.
-	 *
-	 * @param function the producer whose output the upstream gradient refers to
-	 * @param target   the producer with respect to which to differentiate
-	 * @param gradient the upstream gradient, with the same total size as {@code function}
-	 * @return the gradient with respect to {@code target}, or {@code null} if no shortcut applies
-	 */
-	static CollectionProducer attemptVectorJacobianProduct(Producer<?> function, Producer<?> target,
-														   Producer<PackedCollection> gradient) {
-		if (!(function instanceof CollectionProducer)) return null;
-		return ((CollectionProducer) function).attemptVectorJacobianProduct(target, gradient);
 	}
 
 	/**
@@ -987,32 +970,9 @@ public interface CollectionProducer extends
 	 * @param factor the constant to scale by
 	 * @return this producer scaled by {@code factor}, or {@code null} if no shortcut applies
 	 */
+	@Override
 	default CollectionProducer attemptMultiply(double factor) {
 		return null;
-	}
-
-	/**
-	 * Indicates whether this producer is itself a reduction, combining groups of its
-	 * input elements into single outputs (an aggregation or a weighted sum). A reduction
-	 * already compiles to an accumulation, so a reduction applied to its output (see
-	 * {@link AggregationFeatures#sum(Producer)}) is not re-expressed in another form.
-	 *
-	 * @return true if this producer reduces its input, false otherwise
-	 */
-	default boolean isReduction() {
-		return false;
-	}
-
-	/**
-	 * Indicates whether an arbitrary producer is a reduction, as {@link #isReduction()}
-	 * does for a {@link CollectionProducer}. A producer that is not a
-	 * {@link CollectionProducer} is not known to be a reduction.
-	 *
-	 * @param producer the producer to inspect
-	 * @return true if the producer reduces its input, false otherwise
-	 */
-	static boolean isReduction(Producer<?> producer) {
-		return producer instanceof CollectionProducer && ((CollectionProducer) producer).isReduction();
 	}
 
 	/**

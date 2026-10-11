@@ -1133,6 +1133,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
+	 * Returns the output shape of a kernel of length {@code len} that produces {@code count} elements
+	 * of this shape per pass, prepending a dimension for the repetitions unless the count is fixed or not exceeded.
+	 */
+	public TraversalPolicy forKernelLength(int count, boolean fixedCount, int len) {
+		int repetitions = fixedCount ? 0 : len / count;
+		return repetitions == 0 || len == count ? this : prependDimension(repetitions);
+	}
+
+	/**
 	 * Create a new {@link TraversalPolicy} which has the same dimensions,
 	 * but with a {@link #getTraversalAxis() traversal axis} which results
 	 * in a {@link #getSizeLong() size} that matches that of the specified

@@ -208,20 +208,19 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 		if (assigned != null) return assigned;
 
 		long size = getShape().getTotalSizeLong();
-		List<CollectionProducer> terms = new ArrayList<>();
+		List<Producer<?>> terms = new ArrayList<>();
 
 		for (Producer<PackedCollection> operand : getInputs().stream().skip(1).collect(Collectors.toList())) {
 			if (AlgebraFeatures.cannotMatch(operand, target)) continue;
 			if (shape(operand).getTotalSizeLong() != size) return null;
 
-			CollectionProducer term =
-					CollectionProducer.attemptVectorJacobianProduct(operand, target, gradient);
+			Producer<PackedCollection> term = operand.attemptVectorJacobianProduct(target, gradient);
 			if (term == null) return null;
 			terms.add(term);
 		}
 
 		if (terms.isEmpty()) return null;
-		return terms.size() == 1 ? terms.get(0) : add(new ArrayList<>(terms));
+		return terms.size() == 1 ? c(terms.get(0)) : add(terms);
 	}
 
 	/**

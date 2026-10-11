@@ -133,4 +133,32 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	default T evaluate(Object... args) {
 		return get().evaluate(args);
 	}
+
+	/**
+	 * Attempts to compute the gradient with respect to {@code target} directly from the
+	 * upstream gradient, without forming this computation's full Jacobian. Returns
+	 * {@code null} when this computation has no structure-aware shortcut for the target,
+	 * in which case the caller must contract the dense Jacobian.
+	 *
+	 * @param target   the producer with respect to which to differentiate
+	 * @param gradient the upstream gradient, with the same total size as this computation
+	 * @return the gradient with respect to {@code target} (same total size as the target),
+	 *         or {@code null} if no shortcut applies
+	 */
+	default Producer<T> attemptVectorJacobianProduct(Producer<?> target, Producer<T> gradient) {
+		return null;
+	}
+
+	/**
+	 * Attempts to scale this computation by a constant factor using a representation
+	 * specific to it, such as rescaling the parameters of a sequence rather than
+	 * wrapping it in a product. Returns {@code null} when this computation has no such
+	 * representation, in which case the caller must form the product.
+	 *
+	 * @param factor the constant to scale by
+	 * @return this computation scaled by {@code factor}, or {@code null} if no shortcut applies
+	 */
+	default Producer<T> attemptMultiply(double factor) {
+		return null;
+	}
 }

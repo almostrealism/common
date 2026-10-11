@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
@@ -307,7 +306,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		if (CollectionProducerBase.isDirectlyComputable(a) && CollectionProducerBase.isDirectlyComputable(b)) {
+		if (a.isDirectlyComputable() && b.isDirectlyComputable()) {
 			OptionalDouble constantA = Algebraic.getConstant(a);
 			OptionalDouble constantB = Algebraic.getConstant(b);
 
@@ -379,10 +378,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return minus(a);
 		}
 
-		CollectionProducer scaled = a instanceof CollectionProducer ?
-				((CollectionProducer) a).attemptMultiply(scale) : null;
+		Producer<PackedCollection> scaled = a.attemptMultiply(scale);
 		if (scaled != null) {
-			return scaled;
+			return CollectionFeatures.getInstance().c(scaled);
 		} else if (a.isConstant()) {
 			return multiply(shape(a), scale, a.get());
 		} else {

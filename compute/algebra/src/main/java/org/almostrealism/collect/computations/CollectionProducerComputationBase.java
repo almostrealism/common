@@ -130,7 +130,7 @@ public abstract class CollectionProducerComputationBase
 	 * during computation execution. Primarily used for debugging memory management issues.
 	 * 
 	 * @see #destinationLog(Runnable)
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	public static boolean enableDestinationLogging = false;
 
@@ -387,7 +387,7 @@ public abstract class CollectionProducerComputationBase
 	 * @param len The required length for the destination buffer
 	 * @return Adjusted memory bank, or null if length is invalid
 	 * @throws IllegalArgumentException if len is null
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	protected MemoryBank<PackedCollection> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
@@ -400,8 +400,7 @@ public abstract class CollectionProducerComputationBase
 			return null;
 		}
 
-		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
-				getShape(), getCount(), isFixedCount(), len);
+		TraversalPolicy shape = shapeForLength(len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {

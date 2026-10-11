@@ -72,6 +72,25 @@ public interface Computable {
 	default boolean isProvider() { return false; }
 
 	/**
+	 * Returns {@code true} if this computation can participate directly in kernel-level
+	 * evaluation without additional wrapping. Algebraic simplifications that replace one
+	 * operand with another are only applied to directly computable operands.
+	 *
+	 * @return {@code true} if this computation is directly computable, {@code false} otherwise
+	 */
+	default boolean isDirectlyComputable() { return false; }
+
+	/**
+	 * Returns {@code true} if this computation is itself a reduction, combining groups
+	 * of its input elements into single outputs (an aggregation or a weighted sum). A
+	 * reduction already compiles to an accumulation, so a reduction applied to its
+	 * output is not re-expressed in another form.
+	 *
+	 * @return {@code true} if this computation reduces its input, {@code false} otherwise
+	 */
+	default boolean isReduction() { return false; }
+
+	/**
 	 * Returns {@code true} if the given object is a {@link Computable} with a constant value.
 	 *
 	 * @param c   the object to check

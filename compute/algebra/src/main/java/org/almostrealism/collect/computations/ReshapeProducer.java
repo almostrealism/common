@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -564,7 +563,8 @@ public class ReshapeProducer
 	@Override
 	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
 		if (shape(producer).getTotalSizeLong() != shape(gradient).getTotalSizeLong()) return null;
-		return CollectionProducer.attemptVectorJacobianProduct(producer, target, gradient);
+		Producer<PackedCollection> product = producer.attemptVectorJacobianProduct(target, gradient);
+		return product == null ? null : c(product);
 	}
 
 	/**
@@ -601,7 +601,7 @@ public class ReshapeProducer
 	 */
 	@Override
 	public boolean isReduction() {
-		return CollectionProducer.isReduction(producer);
+		return producer.isReduction();
 	}
 
 	/**
@@ -610,7 +610,7 @@ public class ReshapeProducer
 	 */
 	@Override
 	public boolean isDirectlyComputable() {
-		return CollectionProducerBase.isDirectlyComputable(producer);
+		return producer.isDirectlyComputable();
 	}
 
 	/**

@@ -181,7 +181,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 			}
 		}
 
-		boolean tryUnaryWeighted = enableUnaryWeightedSum && !CollectionProducer.isReduction(input);
+		boolean tryUnaryWeighted = enableUnaryWeightedSum && !input.isReduction();
 
 		if (result == null && tryUnaryWeighted &&
 				shape(input).getSize() <= KernelPreferences.getWorkSubdivisionMinimum()) {

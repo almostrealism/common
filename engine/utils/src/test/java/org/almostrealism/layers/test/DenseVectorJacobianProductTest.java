@@ -19,6 +19,7 @@ package org.almostrealism.layers.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -203,6 +204,123 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		CollectionProducer product = matmul(p(a), traverse(0, p(b)));
 		Assert.assertEquals(15, product.getShape().getTotalSize());
 		assertGradientsMatch(product, p(a), cp(new PackedCollection(shape(5, 3)).randnFill()), false);
+	}
+
+	/**
+	 * When the rows are computed from the target rather than being the target, the product
+	 * cannot express the chain through that computation, so none is offered and the
+	 * gradient with respect to the target is the full-Jacobian gradient. The weight, which
+	 * the rows cannot depend on, still has its product.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void targetFeedingRowsFallsBack() {
+		TraversalPolicy inputShape = shape(1, 5, 6);
+		PackedCollection weights = new PackedCollection(shape(7, 6)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		PackedCollection gradient = new PackedCollection(shape(1, 5, 7)).randnFill();
+
+		Producer<PackedCollection> in = cp(input);
+		CollectionProducer out = (CollectionProducer) denseOperator(inputShape, weights, null)
+				.getResultant(sigmoid(in));
+
+		assertGradientsMatch(out, in, cp(gradient), false);
+		assertGradientsMatch(out, p(weights), cp(gradient), true);
+	}
+
+	/**
+	 * A matrix multiplied by its own rows ({@code y_r = W · w_r}) has the target in both
+	 * operands, which neither half of the product accounts for, so none is offered and the
+	 * gradient agrees with its definition {@code dW[a][b] = Σ_r g[r][a] W[r][b] + Σ_i g[a][i] W[i][b]}.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void matrixInBothOperandsFallsBack() {
+		int n = 4;
+		PackedCollection weights = new PackedCollection(shape(n, n)).randnFill();
+		PackedCollection gradient = new PackedCollection(shape(n, n)).randnFill();
+
+		CollectionProducer out = matmul(p(weights), traverse(1, p(weights)));
+		Assert.assertEquals(n * n, out.getShape().getTotalSize());
+
+		double[] w = weights.toArray(0, n * n);
+		double[] g = gradient.toArray(0, n * n);
+		double[] reference = new double[n * n];
+		for (int a = 0; a < n; a++) {
+			for (int b = 0; b < n; b++) {
+				for (int k = 0; k < n; k++) {
+					reference[a * n + b] += g[k * n + a] * w[k * n + b] + g[a * n + k] * w[k * n + b];
+				}
+			}
+		}
+
+		assertGradientsMatch(out, p(weights), cp(gradient), false, reference, true);
+	}
+
+	/**
+	 * The sum of two dense operators sharing a weight matrix offers a product for that
+	 * matrix which adds the products of both terms, {@code dW = Σ_r g_r ⊗ x_r + Σ_r g_r ⊗ z_r},
+	 * and for each input a product from the one term it appears in.
+	 */
+	@Test(timeout = 10 * 60000)
+	public void sharedWeightSumAddsTermProducts() {
+		int rows = 5;
+		int size = 6;
+		int nodes = 7;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection first = new PackedCollection(inputShape).randnFill();
+		PackedCollection second = new PackedCollection(inputShape).randnFill();
+		PackedCollection gradient = new PackedCollection(shape(1, rows, nodes)).randnFill();
+
+		Producer<PackedCollection> x = cp(first);
+		Producer<PackedCollection> z = cp(second);
+		CollectionProducer out = ((CollectionProducer) denseOperator(inputShape, weights, null).getResultant(x))
+				.add(denseOperator(inputShape, weights, null).getResultant(z));
+
+		double[] w = weights.toArray(0, nodes * size);
+		double[] xv = first.toArray(0, rows * size);
+		double[] zv = second.toArray(0, rows * size);
+		double[] g = gradient.toArray(0, rows * nodes);
+		double[] weightGradient = new double[nodes * size];
+		double[] inputGradient = new double[rows * size];
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < nodes; i++) {
+				for (int j = 0; j < size; j++) {
+					weightGradient[i * size + j] += g[r * nodes + i] * (xv[r * size + j] + zv[r * size + j]);
+					inputGradient[r * size + j] += g[r * nodes + i] * w[i * size + j];
+				}
+			}
+		}
+
+		assertGradientsMatch(out, p(weights), cp(gradient), true, weightGradient, true);
+		assertGradientsMatch(out, x, cp(gradient), true, inputGradient, true);
+		assertGradientsMatch(out, z, cp(gradient), true, inputGradient, true);
+	}
+
+	/**
+	 * The product declines, rather than computing a wrong gradient, whenever its operands
+	 * or the upstream gradient do not have the row structure it assumes, or the target is
+	 * not one of its operands.
+	 */
+	@Test(timeout = 60000)
+	public void productDeclinesUnstructuredArguments() {
+		Producer<PackedCollection> matrix = p(new PackedCollection(shape(3, 4)));
+		Producer<PackedCollection> rows = cp(new PackedCollection(shape(5, 4)));
+		Producer<PackedCollection> gradient = cp(new PackedCollection(shape(5, 3)));
+		MatrixMultiplyVectorJacobianProduct product = new MatrixMultiplyVectorJacobianProduct(matrix, rows);
+
+		Assert.assertEquals(12, product.apply(matrix, gradient).getShape().getTotalSize());
+		Assert.assertEquals(20, product.apply(rows, gradient).getShape().getTotalSize());
+
+		Assert.assertNull(product.apply(matrix, cp(new PackedCollection(shape(5, 4)))));
+		Assert.assertNull(product.apply(rows, cp(new PackedCollection(shape(14)))));
+		Assert.assertNull(product.apply(cp(new PackedCollection(shape(3, 4))), gradient));
+		Assert.assertNull(product.apply(cp(new PackedCollection(shape(5, 4))), gradient));
+
+		Assert.assertNull(new MatrixMultiplyVectorJacobianProduct(matrix, cp(new PackedCollection(shape(5, 3))))
+				.apply(matrix, cp(new PackedCollection(shape(15)))));
+		Producer<PackedCollection> cube = p(new PackedCollection(shape(2, 3, 4)));
+		Assert.assertNull(new MatrixMultiplyVectorJacobianProduct(cube, rows)
+				.apply(cube, cp(new PackedCollection(shape(30)))));
 	}
 
 	/**
