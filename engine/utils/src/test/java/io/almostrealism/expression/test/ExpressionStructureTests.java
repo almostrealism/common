@@ -28,6 +28,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Less;
+import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.NAryExpression;
@@ -328,6 +329,46 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 				new Method<>(Long.class, "a", "f", d),
 				new Method<>(Double.class, "a", "f", d),
 				new Method<>(Long.class, "a", "f", d));
+	}
+
+	/**
+	 * Two static references rendering the same code are still different terms when they
+	 * declare different result types, so {@link StaticReference#compare(Expression)} agrees
+	 * with {@link StaticReference#matches(Expression)} and incompatible references are never
+	 * deduplicated.
+	 */
+	@Test(timeout = 30000)
+	public void staticReferencesWithDifferentResultTypesAreDifferentTerms() {
+		assertAttributesDistinguish(
+				new StaticReference<>(Integer.class, "x"),
+				new StaticReference<>(Double.class, "x"),
+				new StaticReference<>(Integer.class, "x"));
+		Assert.assertNotEquals(new StaticReference<>(Integer.class, "x"),
+				new StaticReference<>(Integer.class, "y"));
+	}
+
+	/**
+	 * A mask compared against a constant reduces to the mask only when the constant equals
+	 * the masked value. Integral values are compared exactly, so two {@code long} values
+	 * that round to the same {@code double} are not confused, while fractional values are
+	 * still compared as floating-point numbers.
+	 */
+	@Test(timeout = 30000)
+	public void maskEqualityComparesIntegralValuesExactly() {
+		Expression<Boolean> guard = kernel().lessThan(e(3));
+
+		Mask<?> large = (Mask<?>) Mask.of(guard, new LongConstant(9007199254740993L));
+		Assert.assertEquals(Optional.empty(), large.equalityWith(new LongConstant(9007199254740992L)));
+		Assert.assertEquals(Optional.of(large), large.equalityWith(new LongConstant(9007199254740993L)));
+
+		Mask<?> integral = (Mask<?>) Mask.of(guard, e(2));
+		Assert.assertEquals(Optional.of(integral), integral.equalityWith(e(2.0)));
+		Assert.assertEquals(Optional.empty(), integral.equalityWith(e(3)));
+
+		Mask<?> fractional = (Mask<?>) Mask.of(guard, e(1.5));
+		Assert.assertEquals(Optional.of(fractional), fractional.equalityWith(e(1.5)));
+		Assert.assertEquals(Optional.empty(), fractional.equalityWith(e(2.5)));
+		Assert.assertEquals(Optional.empty(), fractional.equalityWith(ref("x")));
 	}
 
 	/**

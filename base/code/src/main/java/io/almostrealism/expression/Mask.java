@@ -23,6 +23,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalLong;
 
 /**
  * A mask expression that evaluates to a value when a boolean condition is true,
@@ -102,10 +103,20 @@ public class Mask<T extends Number> extends Conditional<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A mask compared against the constant it masks reduces to the mask itself.</p>
+	 * <p>A mask compared against the constant it masks reduces to the mask itself. Integral
+	 * values are compared exactly, so distinct {@code long} values that share a
+	 * floating-point representation are never treated as equal.</p>
 	 */
 	@Override
 	public Optional<Expression<?>> equalityWith(Expression<?> other) {
+		OptionalLong maskedLong = getMaskedValue().longValue();
+		OptionalLong valueLong = other.longValue();
+
+		if (maskedLong.isPresent() && valueLong.isPresent()) {
+			return maskedLong.getAsLong() == valueLong.getAsLong() ?
+					Optional.of(this) : Optional.empty();
+		}
+
 		OptionalDouble masked = getMaskedValue().doubleValue();
 		OptionalDouble value = other.doubleValue();
 

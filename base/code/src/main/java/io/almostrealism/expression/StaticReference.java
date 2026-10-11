@@ -132,17 +132,22 @@ public class StaticReference<T> extends Expression<T> {
 		return this;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Two static references are equal when they apply the
+	 * {@link #isSameOperation(Expression) same operation}, which includes having the same
+	 * result type, and render the same code.</p>
+	 */
 	@Override
 	public boolean compare(Expression expression) {
-		if (expression instanceof StaticReference) {
-			if (((StaticReference) expression).expression == null || this.expression == null) {
-				return Objects.equals(expression.getExpression(lang), getExpression(lang));
-			}
+		if (!isSameOperation(expression)) return false;
 
-			return Objects.equals(((StaticReference) expression).expression, this.expression);
+		if (((StaticReference) expression).expression == null || this.expression == null) {
+			return Objects.equals(expression.getExpression(lang), getExpression(lang));
 		}
 
-		return false;
+		return Objects.equals(((StaticReference) expression).expression, this.expression);
 	}
 
 	@Override
