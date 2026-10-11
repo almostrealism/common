@@ -1011,7 +1011,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the trimmed policy, or this policy if no trailing unit dimensions exist
 	 */
 	public TraversalPolicy trim() {
-		if (length(getDimensions() - 1) == 1) {
+		if (getDimensions() > 1 && length(getDimensions() - 1) == 1) {
 			return traverse(getDimensions() - 1)
 					.replace(new TraversalPolicy(true))
 					.traverse(getTraversalAxis())

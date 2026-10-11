@@ -360,4 +360,25 @@ public class TraversalPolicyTests extends TestSuiteBase {
 			}
 		}
 	}
+
+	/**
+	 * Trimming an all-ones shape must not throw. {@link TraversalPolicy#trim()}
+	 * removes trailing unit dimensions, but a single-element collection such as
+	 * {@code (1)} or {@code (1, 1)} is a legal shape whose trailing unit cannot
+	 * be stripped without leaving zero dimensions. The documented contract is to
+	 * return "the trimmed policy, or this policy if no trailing unit dimensions
+	 * exist", so trim must stop at the final dimension rather than recursing into
+	 * an empty shape — which the {@code tolerateZero=false} constructor rejects
+	 * with {@link IllegalArgumentException}. A normal trailing-unit trim
+	 * ({@code (3, 1)} to {@code (3)}) must still work.
+	 */
+	@Test(timeout = 10000)
+	public void trimAllOnesShapeKeepsFinalDimension() {
+		Assert.assertTrue(new TraversalPolicy(1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+
+		Assert.assertTrue(new TraversalPolicy(3, 1).trim().equalsIgnoreAxis(new TraversalPolicy(3)));
+		Assert.assertTrue(new TraversalPolicy(2, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(2)));
+	}
 }
