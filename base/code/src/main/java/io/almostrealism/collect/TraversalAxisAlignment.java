@@ -19,7 +19,6 @@ package io.almostrealism.collect;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.TreeSet;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -88,7 +87,9 @@ public abstract class TraversalAxisAlignment<V> {
 	/**
 	 * Aligns the traversal axes of the values of this alignment and combines the aligned values.
 	 * Identical total sizes are required when {@link TraversalPolicy#enableStrictSizes} is set
-	 * or no shape has more than one dimension.
+	 * or no shape has more than one dimension. Candidate targets are tried from the smallest
+	 * size up, preferring the largest total size among shapes of equal size so that no value
+	 * is truncated, and every distinct shape is tried even when another has the same size.
 	 *
 	 * @param <T>      the result type produced by {@code combine}
 	 * @param combine  a function that produces the final result from the aligned shape and values
@@ -100,8 +101,10 @@ public abstract class TraversalAxisAlignment<V> {
 		boolean requireIdenticalTotalSize = TraversalPolicy.enableStrictSizes ||
 				shapes.stream().noneMatch(s -> s.getDimensions() > 1);
 
-		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSizeLong));
-		sortedShapes.addAll(shapes);
+		List<TraversalPolicy> sortedShapes = shapes.stream().distinct()
+				.sorted(Comparator.comparing(TraversalPolicy::getSizeLong)
+						.thenComparing(Comparator.comparing(TraversalPolicy::getTotalSizeLong).reversed()))
+				.collect(Collectors.toList());
 
 		s: for (TraversalPolicy shape : sortedShapes) {
 			int[] compatibleAxes =
@@ -118,8 +121,9 @@ public abstract class TraversalAxisAlignment<V> {
 			return combine.apply(shape, vals);
 		}
 
-		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSizeLong).reversed());
-		sortedShapes.addAll(shapes);
+		sortedShapes = shapes.stream().distinct()
+				.sorted(Comparator.comparing(TraversalPolicy::getTotalSizeLong).reversed())
+				.collect(Collectors.toList());
 
 		long largest = sortedShapes.iterator().next().getTotalSizeLong();
 		int depth = sortedShapes.iterator().next().getDimensions();

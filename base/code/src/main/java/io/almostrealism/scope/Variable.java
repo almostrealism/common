@@ -149,16 +149,17 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
-	 * Determines whether the {@link #getProducer() producer} of this variable and that
-	 * of another are both {@link Computable} and {@link Computable#matches(Computable) match},
-	 * so that both variables hold the value of the same computation.
+	 * Determines whether the {@link #getUnwrappedProducer() unwrapped producer} of this
+	 * variable and that of another are both {@link Computable} and
+	 * {@link Computable#matches(Computable) match}, so that both variables hold the value
+	 * of the same computation even when either reaches it through a {@link Delegated} wrapper.
 	 *
 	 * @param other the variable to compare against
 	 * @return {@code true} if the producers of both variables match
 	 */
 	public boolean hasMatchingProducer(Variable<?, ?> other) {
-		Supplier<?> a = getProducer();
-		Supplier<?> b = other.getProducer();
+		Supplier<?> a = getUnwrappedProducer();
+		Supplier<?> b = other.getUnwrappedProducer();
 		return a instanceof Computable && b instanceof Computable
 				&& ((Computable) a).matches((Computable) b);
 	}
@@ -254,11 +255,7 @@ public class Variable<T, V extends Variable<T, ?>>
 	 * @return the delegate of the producer if it has one, otherwise the producer
 	 */
 	public Supplier<?> getUnwrappedProducer() {
-		if (producer instanceof Delegated) {
-			return (Supplier<?>) ((Delegated<?>) producer).getDelegate();
-		}
-
-		return producer;
+		return (Supplier<?>) Delegated.unwrap(producer);
 	}
 
 	/**

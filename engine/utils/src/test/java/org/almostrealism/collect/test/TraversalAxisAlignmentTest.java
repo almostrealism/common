@@ -133,4 +133,55 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 		assertEquals(6, aligned.get(0).getTotalSizeLong());
 		assertEquals(4, aligned.get(1).getTotalSizeLong());
 	}
+
+	/**
+	 * Without strict sizes, shapes whose items have the same size but whose total sizes
+	 * differ are both kept as candidate targets, and the larger one is chosen so that the
+	 * alignment covers every element of the larger value, in whichever order they are given.
+	 */
+	@Test(timeout = 10000)
+	public void prefersLargestTotalAmongEqualSizes() {
+		boolean strict = TraversalPolicy.enableStrictSizes;
+		TraversalPolicy.enableStrictSizes = false;
+
+		try {
+			TraversalPolicy small = shape(2, 3).traverse(1);
+			TraversalPolicy large = shape(4, 3).traverse(1);
+
+			for (TraversalPolicy[] order : new TraversalPolicy[][] { { small, large }, { large, small } }) {
+				ShapeAlignment alignment = new ShapeAlignment(order);
+				List<TraversalPolicy> aligned = new ArrayList<>();
+
+				TraversalPolicy result = alignment.align((shape, values) -> {
+					aligned.addAll(values);
+					return shape;
+				});
+
+				assertEquals(large, result);
+				assertEquals(2, aligned.size());
+				for (TraversalPolicy value : aligned) {
+					assertEquals(1, value.getTraversalAxis());
+					assertEquals(large.getSizeLong(), value.getSizeLong());
+				}
+				assertTrue("No value should be repeated", alignment.expansions.isEmpty());
+			}
+		} finally {
+			TraversalPolicy.enableStrictSizes = strict;
+		}
+	}
+
+	/**
+	 * With strict sizes, the same shapes have no common target by traversal, so the larger
+	 * one is chosen and the smaller one is repeated up to it.
+	 */
+	@Test(timeout = 10000)
+	public void strictSizesRepeatSmallerOfEqualSizes() {
+		TraversalPolicy large = shape(4, 3).traverse(1);
+		ShapeAlignment alignment = new ShapeAlignment(shape(2, 3).traverse(1), large);
+
+		TraversalPolicy result = alignment.align((shape, values) -> shape);
+
+		assertEquals(large, result);
+		assertEquals(List.of(2), alignment.expansions);
+	}
 }

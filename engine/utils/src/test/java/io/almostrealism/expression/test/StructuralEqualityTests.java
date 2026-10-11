@@ -175,6 +175,36 @@ public class StructuralEqualityTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * Producers are compared after unwrapping any {@link Delegated} wrapper, so differently
+	 * named variables that reach the same computation through wrappers, or one through a
+	 * wrapper and one directly, stand for the same value; a wrapper around an unrelated
+	 * computation, or around a supplier that is not a computation, does not.
+	 */
+	@Test(timeout = 30000)
+	public void refersToSameValueThroughDelegates() {
+		Producer<PackedCollection> computed = cp(new PackedCollection(4)).add(cp(new PackedCollection(4)));
+		Producer<PackedCollection> other = cp(new PackedCollection(4)).add(cp(new PackedCollection(4)));
+
+		CollectionVariable<?> wrappedA = new CollectionVariable<>("a",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(computed));
+		CollectionVariable<?> wrappedB = new CollectionVariable<>("b",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(computed));
+		CollectionVariable<?> direct = new CollectionVariable<>("c", new TraversalPolicy(4), (Supplier) computed);
+		CollectionVariable<?> wrappedOther = new CollectionVariable<>("d",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(other));
+		CollectionVariable<?> wrappedOpaque = new CollectionVariable<>("e",
+				new TraversalPolicy(4), (Supplier) new DelegatingSupplier(() -> null));
+
+		Assert.assertTrue(wrappedA.hasMatchingProducer(wrappedB));
+		Assert.assertTrue(wrappedA.refersToSameValue(wrappedB));
+		Assert.assertTrue(wrappedA.refersToSameValue(direct));
+		Assert.assertTrue(direct.refersToSameValue(wrappedB));
+		Assert.assertFalse(wrappedA.refersToSameValue(wrappedOther));
+		Assert.assertFalse(wrappedA.refersToSameValue(wrappedOpaque));
+		Assert.assertFalse(wrappedOpaque.refersToSameValue(wrappedA));
+	}
+
+	/**
 	 * A plain array variable is not traversable, but one that delegates to a collection
 	 * variable answers with that collection variable, through any length of chain.
 	 */

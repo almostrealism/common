@@ -23,6 +23,7 @@ import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -40,7 +41,7 @@ import java.util.OptionalLong;
  */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
 	/** Counter shared across all temporary indices to keep their names unique. */
-	private static long temporaryCount;
+	private static final AtomicLong temporaryCount = new AtomicLong();
 
 	/** The exclusive upper bound of this index, or empty if unbounded. */
 	private OptionalLong limit;
@@ -82,7 +83,7 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	 * @return a new {@link DefaultIndex} with a unique name
 	 */
 	public static DefaultIndex temporary() {
-		return new DefaultIndex("ci_" + temporaryCount++);
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement());
 	}
 
 	/**
@@ -92,7 +93,7 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	 * @return a new {@link DefaultIndex} with a unique name and the specified limit
 	 */
 	public static DefaultIndex temporary(int limit) {
-		return new DefaultIndex("ci_" + temporaryCount++, limit);
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement(), limit);
 	}
 
 	/**
