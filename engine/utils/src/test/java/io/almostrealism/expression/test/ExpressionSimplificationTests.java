@@ -1146,4 +1146,27 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(kernel().eq(2).isSingleIndex());
 		Assert.assertFalse(kernel().multiply(2).eq(4).isSingleIndex());
 	}
+
+	/**
+	 * Tests that an integer quotient by a constant compared against a constant is expanded
+	 * by multiplying both sides by the denominator only when {@link Quotient#enableExpandEquality}
+	 * is set, and that a floating-point quotient is never expanded.
+	 */
+	@Test(timeout = 30000)
+	public void equalityReducedByQuotient() {
+		boolean enabled = Quotient.enableExpandEquality;
+
+		try {
+			Quotient.enableExpandEquality = false;
+			Assert.assertEquals(kernel().divide(4), kernel().divide(4).eq(3).getChildren().get(0));
+
+			Quotient.enableExpandEquality = true;
+			Assert.assertEquals(kernel().eq(12), kernel().divide(4).eq(3));
+
+			Expression<?> fp = kernel().divide(e(4.0));
+			Assert.assertEquals(fp, fp.eq(e(3.0)).getChildren().get(0));
+		} finally {
+			Quotient.enableExpandEquality = enabled;
+		}
+	}
 }

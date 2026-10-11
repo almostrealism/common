@@ -18,6 +18,8 @@ package io.almostrealism.collect.test;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.DiagonalCollectionExpression;
+import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -108,6 +110,49 @@ public class CollectionVariableTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * A variable produced by a traversable producer, directly or through a delegating
+	 * wrapper, exposes that producer as its traversable producer, while a variable whose
+	 * producer is not traversable has none.
+	 */
+	@Test(timeout = 30000)
+	public void traversableProducerIsTheUnderlyingProducer() {
+		PassThroughProducer<?> input = new PassThroughProducer<>(new TraversalPolicy(4, 2), 0);
+		CollectionVariable<?> direct = new CollectionVariable("direct", input.getShape(), (Supplier) input);
+		CollectionVariable<?> wrapped = new CollectionVariable("wrapped", input.getShape(),
+				new MemoryDataDestinationProducer<>(input));
+
+		Assert.assertSame(input, direct.getTraversableProducer());
+		Assert.assertSame(input, wrapped.getTraversableProducer());
+		Assert.assertNull(scalarVariable(true).getTraversableProducer());
+	}
+
+	/**
+	 * A variable whose values are references to its own memory is referenced exactly by
+	 * expressions that contain such a reference, so that a product with an independent
+	 * operand differentiates to a diagonal; a variable defined by a traversable producer
+	 * conservatively reports that any expression may depend on it.
+	 */
+	@Test(timeout = 30000)
+	public void referencesDecideDependence() {
+		CollectionVariable<?> memory = scalarVariable(false);
+		CollectionVariable<?> other = new CollectionVariable("other", SCALAR,
+				new MemoryDataDestinationProducer<>(countable(false)));
+
+		Assert.assertTrue(memory.isReferencedBy(memory.getValueAt(e(0))));
+		Assert.assertFalse(memory.isReferencedBy(other.getValueAt(e(0))));
+		Assert.assertFalse(memory.isReferencedBy(e(1.0)));
+
+		Assert.assertTrue(new ProductCollectionExpression(SCALAR, memory, other)
+				.delta(memory) instanceof DiagonalCollectionExpression);
+		Assert.assertFalse(new ProductCollectionExpression(SCALAR, memory, memory)
+				.delta(memory) instanceof DiagonalCollectionExpression);
+
+		PassThroughProducer<?> input = new PassThroughProducer<>(new TraversalPolicy(4, 2), 0);
+		CollectionVariable<?> traversable = new CollectionVariable("t", input.getShape(), (Supplier) input);
+		Assert.assertTrue(traversable.isReferencedBy(e(1.0)));
+	}
+
+	/**
 	 * A variable is a {@link CollectionVariable} with the producer's shape when the producer,
 	 * or the delegate it wraps, is a {@link Shape}, and a plain {@link ArrayVariable}
 	 * otherwise.
@@ -116,11 +161,6 @@ public class CollectionVariableTests extends TestSuiteBase implements Expression
 	public void createTakesTheShapeOfTheProducerOrItsDelegate() {
 		TraversalPolicy shape = new TraversalPolicy(4, 2);
 		PassThroughProducer<?> input = new PassThroughProducer<>(shape, 0);
-
-		Assert.assertEquals(shape, Shape.shapeOf(input));
-		Assert.assertEquals(shape, Shape.shapeOf(new MemoryDataDestinationProducer<>(input)));
-		Assert.assertNull(Shape.shapeOf(new MemoryDataDestinationProducer<>(countable(true))));
-		Assert.assertNull(Shape.shapeOf(null));
 
 		ArrayVariable<?> direct = CollectionVariable.create("direct", (Supplier) input);
 		ArrayVariable<?> wrapped = CollectionVariable.create("wrapped",

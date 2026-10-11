@@ -90,21 +90,13 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 		Expression<Boolean> allMatch = comparison.allMatch();
 
-		if (allMatch != null) {
-			Optional<Boolean> alt = allMatch.booleanValue();
-
-			if (alt.isPresent()) {
-				if (alt.get()) {
-					return positive.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-				} else {
-					return negative.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-				}
-			}
-		} else {
+		if (allMatch == null) {
 			return comparison.uniqueMatchingOffset(globalIndex, e -> e.booleanValue().orElse(false));
 		}
 
-		return null;
+		return allMatch.booleanValue().map(this::select)
+				.map(selected -> selected.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex))
+				.orElse(null);
 	}
 
 	@Override
@@ -134,7 +126,17 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	 * @return the operand selected at every index, or empty if the selection depends on the index
 	 */
 	private Optional<CollectionExpression> getUniformSelection() {
-		return matchAt(generateTemporaryIndex()).booleanValue().map(matched -> matched ? positive : negative);
+		return matchAt(generateTemporaryIndex()).booleanValue().map(this::select);
+	}
+
+	/**
+	 * Returns the operand selected for the given outcome of the match.
+	 *
+	 * @param matched whether reference matches compareTo
+	 * @return {@code positive} if matched, otherwise {@code negative}
+	 */
+	private CollectionExpression select(boolean matched) {
+		return matched ? positive : negative;
 	}
 
 	/**

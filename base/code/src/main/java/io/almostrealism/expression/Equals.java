@@ -48,12 +48,6 @@ public class Equals extends Comparison {
 	public static boolean enableConsolidateConstants = true;
 
 	/**
-	 * When {@code true}, a quotient on the left side is expanded by multiplying both
-	 * sides by the denominator before creating the equality node.
-	 */
-	public static boolean enableExpandQuotient = false;
-
-	/**
 	 * Constructs an equality comparison between the given operands.
 	 *
 	 * @param left  the left-hand side
@@ -120,7 +114,7 @@ public class Equals extends Comparison {
 
 	/**
 	 * Creates an equality expression, applying constant folding, bounds checking,
-	 * Mask propagation, quotient expansion, and constant consolidation.
+	 * reductions offered by the left-hand side, and constant consolidation.
 	 *
 	 * @param left  the left-hand side
 	 * @param right the right-hand side
