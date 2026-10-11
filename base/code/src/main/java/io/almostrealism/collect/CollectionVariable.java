@@ -23,6 +23,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
@@ -268,8 +269,8 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * Two collection variables match if they {@link #hasMatchingProducer have matching
-	 * producers}. Otherwise, falls back to the default {@link CollectionExpression}
+	 * This variable matches any other {@link Variable} with which it
+	 * {@link #hasMatchingProducer has matching producers}. Otherwise, falls back to the default {@link CollectionExpression}
 	 * matching logic.
 	 *
 	 * @param other the other algebraic expression to compare against
@@ -278,7 +279,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public <A extends Algebraic> boolean matches(A other) {
-		if (other instanceof CollectionVariable && hasMatchingProducer((CollectionVariable<?>) other)) {
+		if (other instanceof Variable && hasMatchingProducer((Variable<?, ?>) other)) {
 			return true;
 		}
 

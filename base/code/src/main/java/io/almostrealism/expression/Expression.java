@@ -606,7 +606,9 @@ public abstract class Expression<T> implements
 	 * Returns a simplified form of the equality {@code this == other} that follows from
 	 * the structure of this expression, if there is one. {@link Equals} consults the
 	 * left-hand side of every equality it creates; subtypes that know how an equality
-	 * against them reduces (for example {@link Mask} and {@link Quotient}) override this.
+	 * against them reduces (for example {@link Mask}) override this. A reduction must preserve
+	 * the value of the equality for every value of its operands: under integer division,
+	 * for instance, {@code x / d == c} is not {@code x == c * d}, so {@link Quotient} offers none.
 	 *
 	 * @param other  the right-hand side of the equality
 	 * @return the simplified equality; empty if this expression offers none (the default)

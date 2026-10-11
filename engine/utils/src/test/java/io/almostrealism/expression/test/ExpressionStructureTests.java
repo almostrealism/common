@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression.test;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.BooleanConstant;
@@ -668,6 +669,33 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals(10, ((ArithmeticGenerator<?>) scaled).getScale());
 		Assert.assertEquals(3, ((ArithmeticGenerator<?>) scaled).getGranularity());
 		Assert.assertEquals(12, ((ArithmeticGenerator<?>) scaled).getMod());
+	}
+
+	/**
+	 * Assigning to a mask assigns to its masked value, whatever kind of assignment target
+	 * that value is, and a mask over a value that cannot be assigned to refuses the
+	 * assignment rather than producing one.
+	 */
+	@Test(timeout = 30000)
+	public void maskAssignsToItsMaskedValue() {
+		Expression<Boolean> guard = kernel().lessThan(e(3));
+		Expression<Integer> target = ref("x");
+		Expression<?> masked = Mask.of(guard, target);
+		Assert.assertTrue(masked instanceof Mask);
+
+		ExpressionAssignment<?> assignment = masked.assign(e(7));
+		Assert.assertSame(target, assignment.getDestination());
+		Assert.assertEquals(e(7), assignment.getExpression());
+
+		Expression<?> product = Mask.of(guard, Product.of(ref("x"), ref("y")));
+		Assert.assertTrue(product instanceof Mask);
+
+		try {
+			ExpressionAssignment<?> refused = product.assign(e(7));
+			Assert.fail("Expected assignment to be refused, but produced " + refused.getDestination());
+		} catch (UnsupportedOperationException expected) {
+			// A product is not an assignment target
+		}
 	}
 
 	/**

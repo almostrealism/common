@@ -65,13 +65,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static long maxCombinedDenominator = Integer.MAX_VALUE;
 
 	/**
-	 * When {@code true}, an equality whose left-hand side is an integer quotient by a
-	 * constant is expanded by multiplying both sides by the denominator
-	 * (see {@link #equalityWith(Expression)}).
-	 */
-	public static boolean enableExpandEquality = false;
-
-	/**
 	 * Constructs a quotient from a list of expressions where the first element is
 	 * the numerator and the remaining elements are denominators.
 	 *
@@ -87,23 +80,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	/** Returns the numerator of this quotient (the first child expression). */
 	public Expression<?> getNumerator() { return getChildren().get(0); }
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>When {@link #enableExpandEquality} is set, an integer quotient by a constant
-	 * is expanded by multiplying both sides of the equality by the denominator.</p>
-	 */
-	// TODO(review): x / d == c is not x == c * d under integer division (x in [c*d, c*d + d - 1] also matches)
-	@Override
-	public Optional<Expression<?>> equalityWith(Expression<?> other) {
-		if (!enableExpandEquality || isFP() || other.isFP()) return Optional.empty();
-
-		Expression<?> d = getDenominator();
-		if (d.longValue().isEmpty()) return Optional.empty();
-
-		return Optional.of(Equals.create(getNumerator(), other.multiply(d)));
-	}
 
 	/**
 	 * Returns the effective denominator of this quotient. For a two-operand

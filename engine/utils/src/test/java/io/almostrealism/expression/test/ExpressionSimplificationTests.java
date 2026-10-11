@@ -1148,25 +1148,22 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
-	 * Tests that an integer quotient by a constant compared against a constant is expanded
-	 * by multiplying both sides by the denominator only when {@link Quotient#enableExpandEquality}
-	 * is set, and that a floating-point quotient is never expanded.
+	 * Tests that an equality against an integer quotient keeps integer-division semantics:
+	 * {@code k / 4 == 3} must hold for every {@code k} in {@code [12, 15]}, so it can never be
+	 * rewritten as {@code k == 12}. A floating-point quotient is not expanded either.
 	 */
 	@Test(timeout = 30000)
-	public void equalityReducedByQuotient() {
-		boolean enabled = Quotient.enableExpandEquality;
+	public void equalityAgainstQuotientPreservesIntegerDivision() {
+		Expression<?> equality = kernel().divide(4).eq(3);
+		Assert.assertNotEquals(kernel().eq(12), equality);
 
-		try {
-			Quotient.enableExpandEquality = false;
-			Assert.assertEquals(kernel().divide(4), kernel().divide(4).eq(3).getChildren().get(0));
-
-			Quotient.enableExpandEquality = true;
-			Assert.assertEquals(kernel().eq(12), kernel().divide(4).eq(3));
-
-			Expression<?> fp = kernel().divide(e(4.0));
-			Assert.assertEquals(fp, fp.eq(e(3.0)).getChildren().get(0));
-		} finally {
-			Quotient.enableExpandEquality = enabled;
+		for (int k = 0; k < 24; k++) {
+			long expected = k / 4 == 3 ? 1 : 0;
+			Assert.assertEquals("k=" + k, expected,
+					equality.value(new IndexValues().put(kernel(), k)).longValue());
 		}
+
+		Expression<?> fp = kernel().divide(e(4.0));
+		Assert.assertEquals(fp, fp.eq(e(3.0)).getChildren().get(0));
 	}
 }
