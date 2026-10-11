@@ -55,11 +55,8 @@ public class Less extends Comparison {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		if (orEqual) {
-			return getChildren().get(0).getWrappedExpression(lang) + " <= " + getChildren().get(1).getWrappedExpression(lang);
-		} else{
-			return getChildren().get(0).getWrappedExpression(lang) + " < " + getChildren().get(1).getWrappedExpression(lang);
-		}
+		return getChildren().get(0).getWrappedExpression(lang) + (orEqual ? " <= " : " < ")
+				+ getChildren().get(1).getWrappedExpression(lang);
 	}
 
 	@Override
@@ -78,11 +75,11 @@ public class Less extends Comparison {
 	 *
 	 * <p>Two comparisons with the same operands are equal only if both are strict or
 	 * both are inclusive: {@code a < b} and {@code a <= b} differ at equality and must
-	 * never be substituted for one another by a structural cache.</p>
+	 * never be substituted for one another by a structural cache or match.</p>
 	 */
 	@Override
-	public boolean compare(Expression e) {
-		return super.compare(e) && orEqual == ((Less) e).orEqual;
+	protected boolean compareAttributes(Expression<?> other) {
+		return orEqual == ((Less) other).orEqual;
 	}
 
 	/**
@@ -105,18 +102,14 @@ public class Less extends Comparison {
 	 * @return a boolean constant if both operands are constant, otherwise a {@link Less}
 	 */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
+		Less less = new Less(left, right, orEqual);
 		OptionalDouble ld = left.doubleValue();
 		OptionalDouble rd = right.doubleValue();
 
 		if (ld.isPresent() && rd.isPresent()) {
-			if (orEqual) {
-				return ld.getAsDouble() <= rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
-			} else {
-				return ld.getAsDouble() < rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
-			}
+			return new BooleanConstant(less.compare(ld.getAsDouble(), rd.getAsDouble()));
 		}
 
-
-		return new Less(left, right, orEqual);
+		return less;
 	}
 }

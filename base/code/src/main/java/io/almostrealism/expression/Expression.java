@@ -962,14 +962,6 @@ public abstract class Expression<T> implements
 	public Expression<?> getSimplified(KernelStructureContext context, int depth) {
 		if (isSimple(context)) return this;
 
-		if (getClass() == Expression.class) {
-			if (ScopeSettings.enableExpressionWarnings)
-				warn("Unable to retrieve simplified expression");
-			return this;
-		}
-
-		// context = context.asNoOp();
-
 		Expression<?> simplified = simplify(context, depth);
 		if (simplified.isSimple(context)) return simplified;
 
@@ -1273,8 +1265,7 @@ public abstract class Expression<T> implements
 	public boolean compare(Expression e) {
 		if (this == e) return true;
 
-		if (type != e.getType()) return false;
-		if (!Objects.equals(getClass(), e.getClass())) return false;
+		if (!isSameOperation(e)) return false;
 		if (!Objects.equals(treeDepth(), e.treeDepth())) return false;
 		if (!Objects.equals(countNodes(), e.countNodes())) return false;
 		if (!Objects.equals(hash, e.hash)) return false;
@@ -1287,6 +1278,36 @@ public abstract class Expression<T> implements
 			if (!Objects.equals(children.get(i), other.get(i))) return false;
 		}
 
+		return true;
+	}
+
+	/**
+	 * Checks whether this node and {@code other} apply the same operation, ignoring their
+	 * children: they must have the same result type, be of the same class and carry the
+	 * same {@link #compareAttributes(Expression) attributes}. This is the node-local half
+	 * of both {@link #compare(Expression)} and {@link #matches(Expression)}, so the two
+	 * never disagree about which nodes can be the same term.
+	 *
+	 * @param other the expression to compare with
+	 * @return {@code true} if both nodes apply the same operation
+	 */
+	private boolean isSameOperation(Expression<?> other) {
+		return type == other.getType() && getClass() == other.getClass() && compareAttributes(other);
+	}
+
+	/**
+	 * Checks whether the state this node carries beyond its type, its class and its
+	 * children, such as an operator or a flag selecting between related operations, is the
+	 * same as that of {@code other}. Both {@link #compare(Expression)} and
+	 * {@link #matches(Expression)} call this only once they have established that the two
+	 * expressions are of the same class, so an override may cast {@code other} to its own
+	 * class. Without such state, the attributes of any two expressions of the same class
+	 * are equal.
+	 *
+	 * @param other an expression of the same class as this one
+	 * @return {@code true} if the node-local state of both expressions is equal
+	 */
+	protected boolean compareAttributes(Expression<?> other) {
 		return true;
 	}
 
@@ -1306,7 +1327,7 @@ public abstract class Expression<T> implements
 	 * @return a boolean expression that holds wherever this expression matches {@code other}
 	 */
 	public Expression<Boolean> matches(Expression<?> other) {
-		if (getClass() != other.getClass()) return new BooleanConstant(false);
+		if (!isSameOperation(other)) return new BooleanConstant(false);
 
 		List<Expression<?>> children = getChildren();
 		List<Expression<?>> others = other.getChildren();

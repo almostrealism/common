@@ -100,17 +100,17 @@ public class UnaryExpression<T> extends Expression<T> {
 	}
 
 	/**
-	 * Compares this unary expression with another expression for structural equality.
+	 * Compares the operator of this unary expression with that of another of the same class.
 	 * <p>
-	 * Two unary expressions are equal if they have the same structure (via superclass)
-	 * and the same operator string.
+	 * Two unary expressions are the same operation only if they apply the same operator
+	 * string, which is what distinguishes, for example, casts to different types.
 	 * </p>
 	 *
-	 * @param e the expression to compare with
-	 * @return true if the expressions are structurally equal, false otherwise
+	 * @param other the unary expression to compare with
+	 * @return true if both expressions apply the same operator, false otherwise
 	 */
 	@Override
-	public boolean compare(Expression e) {
-		return super.compare(e) && ((UnaryExpression) e).operator.equals(operator);
+	protected boolean compareAttributes(Expression<?> other) {
+		return ((UnaryExpression<?>) other).operator.equals(operator);
 	}
 }

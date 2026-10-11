@@ -23,16 +23,22 @@ import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.ConstantValue;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.Less;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.expression.Tangent;
+import io.almostrealism.expression.UnaryExpression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.DefaultIndex;
@@ -260,6 +266,77 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		DefaultIndex i = new DefaultIndex("i", 8);
 		Assert.assertEquals(e(2).eq(i), new InstanceReference<>(a, e(2), null)
 				.matches(new InstanceReference<>(a, i, null)));
+	}
+
+	/**
+	 * Two nodes of the same class over the same children are different terms when the state
+	 * the node carries itself differs: the operator of an n-ary or unary expression, whether
+	 * a comparison is inclusive, whether a tangent is hyperbolic, or the function a call
+	 * invokes. Such pairs neither match nor compare equal, while the same pairs with equal
+	 * state match unconditionally.
+	 */
+	@Test(timeout = 30000)
+	public void nodesWithDifferentAttributesNeverMatch() {
+		Expression<Double> d = new StaticReference<>(Double.class, "d");
+
+		assertAttributesDistinguish(
+				new NAryExpression<>(Integer.class, "&", ref("x"), ref("y")),
+				new NAryExpression<>(Integer.class, "|", ref("x"), ref("y")),
+				new NAryExpression<>(Integer.class, "&", ref("x"), ref("y")));
+		assertAttributesDistinguish(
+				new UnaryExpression<>(Integer.class, "-", ref("x")),
+				new UnaryExpression<>(Integer.class, "~", ref("x")),
+				new UnaryExpression<>(Integer.class, "-", ref("x")));
+		assertAttributesDistinguish(
+				new Less(ref("x"), ref("y"), false),
+				new Less(ref("x"), ref("y"), true),
+				new Less(ref("x"), ref("y"), false));
+		assertAttributesDistinguish(
+				new Greater(ref("x"), ref("y"), true),
+				new Greater(ref("x"), ref("y"), false),
+				new Greater(ref("x"), ref("y"), true));
+		assertAttributesDistinguish(Tangent.of(d, false), Tangent.of(d, true), Tangent.of(d, false));
+		assertAttributesDistinguish(
+				new Method<>(Double.class, "sin", d),
+				new Method<>(Double.class, "cos", d),
+				new Method<>(Double.class, "sin", d));
+		assertAttributesDistinguish(
+				new Method<>(Double.class, "a", "f", d),
+				new Method<>(Double.class, "b", "f", d),
+				new Method<>(Double.class, "a", "f", d));
+	}
+
+	/**
+	 * Two nodes of the same class, operator and children that produce different result
+	 * types are different terms, so they neither match nor compare equal.
+	 */
+	@Test(timeout = 30000)
+	public void nodesWithDifferentTypesNeverMatch() {
+		Expression<Integer> a = new NAryExpression<>(Integer.class, "&", ref("x"), ref("y"));
+		Expression<Long> b = new NAryExpression<>(Long.class, "&", ref("x"), ref("y"));
+
+		Assert.assertEquals(Optional.of(false), a.matches(b).booleanValue());
+		Assert.assertEquals(Optional.of(false), b.matches(a).booleanValue());
+		Assert.assertNotEquals(a, b);
+	}
+
+	/**
+	 * Asserts that {@code a} and {@code different}, which differ only in node-local state,
+	 * never match and are not equal, and that {@code a} and {@code same} match
+	 * unconditionally and are equal.
+	 *
+	 * @param a         the expression under test
+	 * @param different an expression of the same class and children with different state
+	 * @param same      an expression structurally identical to {@code a}
+	 */
+	private void assertAttributesDistinguish(Expression<?> a, Expression<?> different, Expression<?> same) {
+		Assert.assertSame(a.getClass(), different.getClass());
+		Assert.assertEquals(Optional.of(false), a.matches(different).booleanValue());
+		Assert.assertEquals(Optional.of(false), different.matches(a).booleanValue());
+		Assert.assertNotEquals(a, different);
+
+		Assert.assertEquals(Optional.of(true), a.matches(same).booleanValue());
+		Assert.assertEquals(a, same);
 	}
 
 	/**

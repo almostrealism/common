@@ -90,8 +90,8 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean compare(Expression e) {
-		return super.compare(e) && operator.equals(((NAryExpression<?>) e).getOperator());
+	protected boolean compareAttributes(Expression<?> other) {
+		return operator.equals(((NAryExpression<?>) other).getOperator());
 	}
 
 	/**
