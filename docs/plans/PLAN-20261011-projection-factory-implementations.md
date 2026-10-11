@@ -59,10 +59,18 @@ In scope:
      need at most a sentence naming `DenseProjectionFactory` / `LoRAProjectionFactory`, not
      a rewrite. Add the two classes to the `domain/graph/README.md` LoRA class table
      (which already lists `ProjectionFactory`).
+   - `docs/modules/graph.html` and `docs/modules/ml.html`, the HTML module pages linked
+     from `docs/index.html`. They are hand-maintained (no generator for `docs/modules/`
+     exists under `scripts/`) and mirror the two READMEs: `graph.html` has a
+     "Using ProjectionFactory" section with the same `dense()`/`lora(config, loraLayers)`
+     example and a class list with a `ProjectionFactory` entry; `ml.html` has a
+     "ProjectionFactory" section with the same example and lists
+     `LowRankAdapterSupport.getProjectionFactory()`. As with the READMEs, the examples keep
+     working; give each page the same one-sentence mention of the two classes, and add
+     `DenseProjectionFactory` / `LoRAProjectionFactory` entries next to `ProjectionFactory`
+     in the `graph.html` class list, so the pages do not drift from the READMEs.
    - `docs/internals/ml-inference-pipeline.md` mentions `ProjectionFactory` only as a
      parameter of `sequenceAttention` and needs no change.
-   <!-- TODO(review): docs/modules/graph.html and docs/modules/ml.html carry the same ProjectionFactory.lora examples as the two READMEs; decide whether they get the same one-sentence mention. -->
-
 
 Out of scope:
 
@@ -211,13 +219,21 @@ its name says" rule.
     `adaptedProjectionsComeFromTheProjectionFactory`, the one test calling
     `ProjectionFactory.lora`), `CausalSequenceAttentionTest`,
     `TransformerBlockFeaturesTest`, `DifferentialAttentionTest`.
-  - `AttentionGradientScalingTest#testLoRATransformerBlockGradient` (engine/ml,
-    `@TestDepth(1)`, 600 s timeout) reaches `LowRankAdapterSupport.getProjectionFactory()`
-    indirectly, through `LoRADiffusionTransformer.getProjectionFactory()`; the test does
-    not call the factory itself. Run it as a named method if time allows, otherwise leave
-    it to CI. `EndToEndFineTuningTest` (engine/ml) and `AggressiveFineTuningTest`
-    (studio/compose) also build a `LoRADiffusionTransformer` and are likewise CI's to
-    cover.
+  - `AttentionGradientScalingTest#testLoRADiffusionTransformerGradient` (engine/ml,
+    `@TestDepth(2)`, 600 s timeout) is the one test in that class that reaches the
+    factory: it builds a `LoRADiffusionTransformer`, whose model construction in
+    `DiffusionTransformer` passes `getProjectionFactory()` to the attention builders, and
+    `LoRADiffusionTransformer.getProjectionFactory()` resolves to
+    `LowRankAdapterSupport.super.getProjectionFactory()`. Run it as a named method if time
+    allows, otherwise leave it to CI. Do **not** count
+    `testLoRATransformerBlockGradient` (`@TestDepth(1)`) as coverage: its
+    `buildLoRATransformerBlock` helper constructs `LoRALinear` directly and never touches a
+    `ProjectionFactory`. `EndToEndFineTuningTest` (engine/ml) and
+    `AggressiveFineTuningTest` (studio/compose) also build a `LoRADiffusionTransformer`
+    and are likewise CI's to cover. The cheap, direct check of the
+    `LowRankAdapterSupport.getProjectionFactory()` default is the `ProjectionFactoryTests`
+    case above; the `LoRADiffusionTransformer` override is unchanged by this work and only
+    delegates to that default.
 
 ## Dependencies
 
@@ -229,7 +245,9 @@ None. The task has no blockers. The full set of files the work touches:
   other module changes.
 - Tests, in `ar-utils` (`engine/utils`, package `org.almostrealism.layers.test`, where
   `LoRALinearTests` and `AdapterConfigTests` already live): new `ProjectionFactoryTests.java`.
-- Documentation: `domain/graph/README.md` and `engine/ml/README.md` (Scope item 5).
+- Documentation: the `ProjectionFactory` javadoc (in the production file above),
+  `domain/graph/README.md`, `engine/ml/README.md`, `docs/modules/graph.html` and
+  `docs/modules/ml.html` (Scope item 5).
 
 No `pom.xml` changes are needed: `engine/utils` tests already compile against
 `ar-graph`. The work runs on any backend, so it has no platform requirement.
@@ -265,4 +283,4 @@ No `pom.xml` changes are needed: `engine/utils` tests already compile against
 
 Small. Two new classes of a few dozen lines each, two static methods and two default
 methods rewritten, the `ProjectionFactory` javadoc example replaced, a short mention added
-to two READMEs, and one new test class.
+to two READMEs and the two matching HTML module pages, and one new test class.
