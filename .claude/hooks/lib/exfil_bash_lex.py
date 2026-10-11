@@ -150,6 +150,11 @@ _KEYWORD_TOKENS = frozenset({
     "!", "time", "esac",
 })
 _REDIRECT_TOKENS = frozenset({">", ">>", "<", ">&", "<&", "<>", ">|", "&>", "&>>", "<<<"})
+# The redirection operators that name a file the shell writes the command's
+# output into (the word after them is a destination), as opposed to the input
+# forms (``<``, ``<&``, ``<<<``). ``<>`` opens for reading and writing, so its
+# target can be written and is included.
+_OUTPUT_REDIRECT_TOKENS = frozenset({">", ">>", ">&", "&>", "&>>", ">|", "<>"})
 _HEREDOC_START = re.compile(r"<<-?\s*(?P<q>['\"]?)(?P<word>[A-Za-z_][A-Za-z0-9_]*)(?P=q)")
 _DEV_TCP = re.compile(r"/dev/(?:tcp|udp)/([^/\s'\"]+)/")
 _SUBSTITUTION = re.compile(r"\$\(|`|<\(|>\(")
@@ -462,26 +467,34 @@ def _split_operators(tok):
 
 
 def _simple_commands(tokens):
-    """Split a token stream into (argv, piped_in, has_heredoc, subshells) simple commands.
+    """Split a token stream into (argv, piped_in, has_heredoc, subshells, redirects) simple commands.
 
     ``subshells`` identifies the ``( … )`` groups a command sits inside, outermost
     first, each by a number unique within the command line: a ``cd`` in a
     subshell ends with it, and two sibling groups at the same depth are still
     two different subshells, which the caller needs in order to know where
     each command runs.
+
+    ``redirects`` is the command's output-redirection targets — the word after
+    ``>``, ``>>``, ``&>``, ``>|`` and the other output forms — which a shell
+    writes to just as a copy tool writes to its destination operand. Without
+    them ``cat secret > /Volumes/USB/out`` reduces to ``cat secret`` and the
+    destination disappears, so the caller checks them as destinations too.
     """
     commands, current, piped, heredoc = [], [], False, False
     at_start = True
     skip_words = False
     subshells = []
+    redirects = []
     opened = 0
     i = 0
 
     def flush(next_piped):
-        nonlocal current, piped, heredoc, at_start, skip_words
+        nonlocal current, piped, heredoc, at_start, skip_words, redirects
         if current:
-            commands.append((current, piped, heredoc, tuple(subshells)))
+            commands.append((current, piped, heredoc, tuple(subshells), redirects))
         current, piped, heredoc, at_start, skip_words = [], next_piped, False, True, False
+        redirects = []
 
     while i < len(tokens):
         tok = tokens[i]
@@ -504,6 +517,10 @@ def _simple_commands(tokens):
         if tok in _REDIRECT_TOKENS:
             if current and current[-1].isdigit():
                 current.pop()
+            if (tok in _OUTPUT_REDIRECT_TOKENS and i + 1 < len(tokens)
+                    and tokens[i + 1] not in _SEPARATOR_TOKENS
+                    and tokens[i + 1] not in _REDIRECT_TOKENS):
+                redirects.append(tokens[i + 1].translate(_UNSHIELD))
             i += 2
             continue
         if at_start and tok in _KEYWORD_TOKENS:
@@ -523,19 +540,29 @@ def _simple_commands(tokens):
     return commands
 
 
-def _unwrap(argv):
-    """Drop env assignments and wrapper programs; return the real argv."""
+def unwrap_with_env(argv):
+    """Drop env assignments and wrapper programs; return ``(real argv, env)``.
+
+    ``env`` is the ``(name, value)`` assignments the shell applies to the
+    command before running it — the leading ``VAR=value`` words and those after
+    an ``env`` wrapper. They are stripped so the real program is visible, and
+    returned rather than discarded because an assignment can change what the
+    command operates on: ``GIT_DIR=/tmp/other.git git push`` reaches the guard
+    as a plain push unless the assignment is preserved for the git check.
+    """
     argv = list(argv)
+    env = []
     for _ in range(8):
         while argv and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]):
-            argv.pop(0)
+            name, _eq, value = argv.pop(0).partition("=")
+            env.append((name, value))
         if not argv:
-            return argv
+            return argv, env
         prog = os.path.basename(argv[0])
         if prog not in WRAPPERS:
-            return argv
+            return argv, env
         if prog == "command" and len(argv) > 1 and argv[1] in ("-v", "-V"):
-            return []
+            return [], env
         with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
         rest = argv[1:]
         j = 0
@@ -543,10 +570,17 @@ def _unwrap(argv):
             j += 2 if rest[j] in with_arg else 1
         if prog == "env":
             while j < len(rest) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", rest[j]):
+                name, _eq, value = rest[j].partition("=")
+                env.append((name, value))
                 j += 1
         j += _WRAPPER_POSITIONALS.get(prog, 0)
         argv = rest[j:]
-    return argv
+    return argv, env
+
+
+def _unwrap(argv):
+    """Drop env assignments and wrapper programs; return the real argv."""
+    return unwrap_with_env(argv)[0]
 
 
 def _find_exec(argv):

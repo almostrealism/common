@@ -25,7 +25,8 @@ from exfil_bash_lex import (_DEFINITION, _DEV_TCP, _NETWORK_WORD, _SUBSTITUTION,
                              SUBSTITUTION_PLACEHOLDER, _find_exec, _simple_commands,
                              _split_heredocs, _strip_heredoc_bodies, _tokenize, _unwrap,
                              GuardError, heredoc_substitutions, is_glob_or_brace,
-                             is_shell_expanded, owner_repo, split_substitutions)
+                             is_shell_expanded, owner_repo, split_substitutions,
+                             unwrap_with_env)
 from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
@@ -266,23 +267,48 @@ def _tar_destinations(args):
     return []
 
 
+# The ``tar`` long options whose value is run as an external program: a
+# compression filter the whole archive is piped through, a per-file command,
+# and a checkpoint action (``--checkpoint-action=exec=CMD`` runs CMD during
+# archiving). Any of them can be ``curl -T -`` or another sender.
+_TAR_PROGRAM_OPTIONS = ("--use-compress-program", "--to-command", "--checkpoint-action")
+# ``--checkpoint`` (the frequency, which runs nothing) is a prefix of
+# ``--checkpoint-action`` but must stay allowed, so it is matched exactly and
+# excluded.
+_TAR_PROGRAM_SAFE_EXACT = frozenset({"--checkpoint"})
+
+
+def _is_tar_program_long_option(name):
+    """Whether ``name`` spells, or unambiguously abbreviates, a ``tar`` long
+    option that runs an external program.
+
+    GNU tar resolves any unambiguous prefix of a long option to that option, so
+    ``--use-com``/``--to-c``/``--checkpoint-a`` reach tar as the full dangerous
+    option; matching only the exact spelling let them run the program past the
+    check. A token is refused when it is a prefix of one of the program-running
+    options (``--checkpoint``, which runs nothing, is matched exactly and kept
+    allowed)."""
+    if not name.startswith("--") or len(name) <= 2 or name in _TAR_PROGRAM_SAFE_EXACT:
+        return False
+    return any(option.startswith(name) for option in _TAR_PROGRAM_OPTIONS)
+
+
 def _check_tar_filter(args):
     """Refuse the ``tar`` options that run an external program as a filter.
 
     ``--use-compress-program``/``-I`` names a program tar pipes the whole
-    archive through, and ``--to-command`` runs one per extracted file; either
-    can be ``curl -T -`` (or any sender), streaming archive data to a host the
-    guard never sees while the only operand it inspects is the local archive.
-    The short form is ``-I`` (capital — lowercase ``i`` is ``--ignore-zeros``),
+    archive through, ``--to-command`` runs one per extracted file, and
+    ``--checkpoint-action=exec=CMD`` runs a command during archiving; any can be
+    ``curl -T -`` (or any sender), streaming archive data to a host the guard
+    never sees while the only operand it inspects is the local archive. The
+    short form is ``-I`` (capital — lowercase ``i`` is ``--ignore-zeros``),
     which can also appear inside a short-option cluster or an old-style bundle.
     """
-    # TODO(review): matches only exact long-option spellings; GNU tar accepts
-    # unambiguous abbreviations (--use=, --use-com=, --to-c=) that bypass this.
     for i, a in enumerate(args):
         if a == "--":
             break
         name = a.split("=", 1)[0]
-        if name in ("--use-compress-program", "--to-command"):
+        if _is_tar_program_long_option(name):
             raise _GuardError(f"tar {name} runs a program as a filter, which can send the "
                               f"archive to another host; denied")
         bundle = None
@@ -333,6 +359,30 @@ def _copy_destinations(prog, args):
     if prog == "ln" and len(positionals) < 2:
         return []
     return positionals[-1:]
+
+
+def _check_redirect_targets(targets):
+    """Hold a command's output-redirection targets to the copy-destination rules.
+
+    A shell redirection (``> f``, ``>> f``, ``&> f``, …) writes the command's
+    output into a file just as a copy tool writes to its destination operand, so
+    ``cat secret > /Volumes/USB/out`` is an upload no differently from
+    ``cp secret /Volumes/USB/out``. The same three tests apply: a computed
+    (``$DEST``) or glob/brace target cannot be checked and fails closed, and a
+    cloud-synced folder or mounted volume is refused.
+    """
+    for target in targets:
+        if is_shell_expanded(target):
+            raise _GuardError(f"a redirection writes to {target!r}, a destination computed at run "
+                              f"time; the guard cannot tell where it points, so write it out "
+                              f"literally")
+        if is_glob_or_brace(target):
+            raise _GuardError(f"a redirection writes to {target!r}, a destination the shell "
+                              f"expands at run time; the guard cannot tell where it points, so "
+                              f"write it out literally")
+        if SYNCED_FOLDER_PATTERNS.search(target) or target.startswith("/Volumes/"):
+            raise _GuardError("a redirection writes into a cloud-synced folder or mounted volume; "
+                              "copying data there is an upload")
 
 
 def _check_program_file(prog_token, ctx, depth):
@@ -388,7 +438,7 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if raw_first.startswith("$") or _SUBSTITUTION.search(raw_first):
         raise _GuardError(f"command name {raw_first!r} is computed at run time; the guard cannot "
                           f"tell what it runs")
-    argv = _unwrap(argv)
+    argv, env = unwrap_with_env(argv)
     if not argv:
         return ""
     if os.path.basename(argv[0]) == "find":
@@ -459,7 +509,7 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
         return _check_interpreter(prog, argv, piped, bodies if heredoc or bodies else [],
                                    ctx, depth, analyze_command)
     if prog == "git":
-        return _check_git(argv, ctx)
+        return _check_git(argv, ctx, env)
     if prog == "gh":
         return _check_gh(argv, ctx)
     scanned = _check_program_file(argv[0], ctx, depth)
@@ -516,7 +566,7 @@ def analyze_command(command, ctx, depth=0):
     cwd = ctx.command_cwd
     open_groups = []
     try:
-        for argv, piped, heredoc, subshells in commands:
+        for argv, piped, heredoc, subshells, redirects in commands:
             shared = 0
             while (shared < len(open_groups) and shared < len(subshells)
                    and open_groups[shared][0] == subshells[shared]):
@@ -525,6 +575,7 @@ def analyze_command(command, ctx, depth=0):
                 cwd = open_groups.pop()[1]
             for group in subshells[shared:]:
                 open_groups.append((group, cwd))
+            _check_redirect_targets(redirects)
             if argv and os.path.basename(argv[0]) in ("cd", "pushd"):
                 cwd = _follow_cd(argv, cwd)
                 continue
@@ -537,7 +588,7 @@ def analyze_command(command, ctx, depth=0):
     # directory, its substitutions are analyzed with the directory unknown,
     # so anything that depends on it fails closed.
     changes_directory = any(argv and os.path.basename(argv[0]) in ("cd", "pushd")
-                            for argv, _, _, _ in commands)
+                            for argv, _, _, _, _ in commands)
     body_ctx = ctx.at(None) if changes_directory else ctx
     for body in substitutions:
         reason = analyze_command(body, body_ctx, depth + 1)
@@ -551,7 +602,7 @@ def bash_targets(command, ctx):
     stripped, _ = _strip_heredoc_bodies(command)
     tokens = _tokenize(stripped) or []
     names = []
-    for argv, _, _, _ in _simple_commands(tokens):
+    for argv, _, _, _, _ in _simple_commands(tokens):
         unwrapped = _unwrap(argv)
         if unwrapped:
             names.append(os.path.basename(unwrapped[0]))

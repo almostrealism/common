@@ -56,6 +56,14 @@ _GIT_GLOBAL_OPTS_WITH_ARG = {
     "-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--exec-path",
 }
 _GIT_PUSH_BLOCKED_FLAGS = ("--repo", "--receive-pack", "--exec")
+# Environment variables that point git at a different repository, index or
+# object store. They do the same thing as ``--git-dir`` / ``--work-tree`` but
+# through the environment, so ``GIT_DIR=/tmp/other.git git push origin HEAD``
+# looks like an ordinary push while git operates elsewhere.
+_GIT_REPO_SELECTING_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_INDEX_FILE",
+})
 
 
 def _git_call(argv):
@@ -138,7 +146,11 @@ def _git_working_dir(ctx, opts):
     return resolved
 
 
-def _check_git(argv, ctx):
+def _check_git(argv, ctx, env=()):
+    for name, _value in env:
+        if name in _GIT_REPO_SELECTING_ENV:
+            raise _GuardError(f"git with {name} set points it at another repository; only this "
+                              f"project's origin may be pushed to")
     sub, args, opts = _git_call(argv)
     cwd = _git_working_dir(ctx, opts)
     if cwd is not ctx.command_cwd:
