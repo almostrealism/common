@@ -143,15 +143,13 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		if (corruptFiles.contains(getResourcePath())) return 0;
 
 		if (sampleRate == null) {
-			try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
-				long count = w.getNumFrames();
-				if (count > Integer.MAX_VALUE) throw new UnsupportedOperationException();
-				if (w.getSampleRate() > Integer.MAX_VALUE) throw new UnsupportedOperationException();
-				this.sampleRate = (int) w.getSampleRate();
-			} catch (IOException e) {
-				corruptFiles.add(getResourcePath());
-				throw new RuntimeException(e);
-			}
+			sampleRate = readTracking(() -> {
+				try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
+					if (w.getNumFrames() > Integer.MAX_VALUE) throw new UnsupportedOperationException();
+					if (w.getSampleRate() > Integer.MAX_VALUE) throw new UnsupportedOperationException();
+					return (int) w.getSampleRate();
+				}
+			});
 		}
 
 		return sampleRate;
@@ -162,13 +160,12 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		if (corruptFiles.contains(getResourcePath())) return 0;
 
 		if (count == null) {
-			try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
-				if (w.getNumFrames() > Integer.MAX_VALUE) throw new UnsupportedOperationException();
-				this.count = (int) w.getNumFrames();
-			} catch (IOException e) {
-				corruptFiles.add(getResourcePath());
-				throw new RuntimeException(e);
-			}
+			count = readTracking(() -> {
+				try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
+					if (w.getNumFrames() > Integer.MAX_VALUE) throw new UnsupportedOperationException();
+					return (int) w.getNumFrames();
+				}
+			});
 		}
 
 		return count;
@@ -179,12 +176,11 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		if (corruptFiles.contains(getResourcePath())) return 0.0;
 
 		if (duration == null) {
-			try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
-				this.duration = w.getDuration();
-			} catch (IOException e) {
-				corruptFiles.add(getResourcePath());
-				throw new RuntimeException(e);
-			}
+			duration = readTracking(() -> {
+				try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
+					return w.getDuration();
+				}
+			});
 		}
 
 		return duration;
@@ -195,12 +191,11 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		if (corruptFiles.contains(getResourcePath())) return 0;
 
 		if (channels == null) {
-			try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
-				this.channels = w.getNumChannels();
-			} catch (IOException e) {
-				corruptFiles.add(getResourcePath());
-				throw new RuntimeException(e);
-			}
+			channels = readTracking(() -> {
+				try (WavFile w = WavFile.openWavFile(new File(resourcePath))) {
+					return w.getNumChannels();
+				}
+			});
 		}
 
 		return channels;
@@ -216,15 +211,53 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 	protected WaveData load() {
 		if (corruptFiles.contains(getResourcePath())) return null;
 
-		try {
+		return readTracking(() -> {
 			if (WaveOutput.enableVerbose)
 				log("Loading " + resourcePath);
 
 			return WaveData.load(new File(resourcePath));
+		});
+	}
+
+	/**
+	 * Executes a read against this provider's file, recording the file as
+	 * corrupt so that later accesses are skipped rather than retried, and
+	 * rethrowing as an unchecked exception when it cannot be read. Centralizes
+	 * the corrupt-file bookkeeping shared by {@link #getSampleRate()},
+	 * {@link #getCountLong()}, {@link #getDuration()}, {@link #getChannelCount()}
+	 * and {@link #load()}.
+	 *
+	 * @param operation the read to perform
+	 * @param <T>       the type of value produced by the read
+	 * @return the value produced by {@code operation}
+	 * @throws RuntimeException wrapping any {@link IOException} encountered,
+	 *                          after marking the file corrupt
+	 */
+	private <T> T readTracking(FileOperation<T> operation) {
+		try {
+			return operation.read();
 		} catch (IOException e) {
 			corruptFiles.add(getResourcePath());
 			throw new RuntimeException(e);
 		}
+	}
+
+	/**
+	 * A read against the backing WAV file whose checked failures are funneled
+	 * through {@link #readTracking(FileOperation)} so corrupt-file tracking
+	 * lives in exactly one place.
+	 *
+	 * @param <T> the type of value produced by the read
+	 */
+	@FunctionalInterface
+	private interface FileOperation<T> {
+		/**
+		 * Reads a value from the backing WAV file.
+		 *
+		 * @return the value read
+		 * @throws IOException if the file cannot be opened or read
+		 */
+		T read() throws IOException;
 	}
 
 	@Override
