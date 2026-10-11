@@ -72,12 +72,15 @@ _GIT_REPO_SELECTING_ENV = frozenset({
 # origin; ``GIT_CONFIG`` / ``GIT_CONFIG_GLOBAL`` / ``GIT_CONFIG_SYSTEM`` point
 # config at an attacker-controlled file; and ``GIT_SSH`` / ``GIT_SSH_COMMAND``
 # / ``GIT_PROXY_COMMAND`` / ``GIT_ASKPASS`` / ``GIT_EXTERNAL_DIFF`` run an
-# arbitrary program as the transport. ``GIT_PAGER`` / ``GIT_EDITOR`` are not
-# here and stay allowed.
+# arbitrary program as the transport. ``GIT_CONFIG_PARAMETERS`` is a second
+# channel for the same ``-c`` config overrides (git reads it as a list of
+# ``'key'='value'`` pairs), so it can rewrite ``remote.origin.url`` after the
+# guard has read the on-disk origin just as ``GIT_CONFIG_COUNT`` can.
+# ``GIT_PAGER`` / ``GIT_EDITOR`` are not here and stay allowed.
 _GIT_CONFIG_TRANSPORT_ENV = frozenset({
     "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
-    "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
-    "GIT_EXTERNAL_DIFF",
+    "GIT_CONFIG_PARAMETERS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND",
+    "GIT_ASKPASS", "GIT_EXTERNAL_DIFF",
 })
 # The indexed config variables come in numbered pairs, so they are matched by
 # prefix rather than enumerated.

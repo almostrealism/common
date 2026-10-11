@@ -329,10 +329,26 @@ def _require_lab(host, prog, ctx):
 def _check_ssh_family(prog, argv, ctx):
     if prog == "rsync":
         for a in argv[1:]:
+            if a == "--":
+                break
             if a == "--rsync-path" or a.startswith("--rsync-path="):
                 raise _GuardError("rsync --rsync-path runs an arbitrary command on the remote "
                                   "host, which can forward the transferred data to an "
                                   "unallowlisted destination; denied")
+            # ``-e``/``--rsh`` substitutes the transport with an arbitrary
+            # command, which can forward the transferred data onward even to an
+            # allowlisted host. ``e`` is rsync's only lowercase short option
+            # that does this (capital ``-E`` is ``--executability``), so any
+            # single-dash cluster containing a lowercase ``e`` is refused along
+            # with the long spellings.
+            if a == "--rsh" or a.startswith("--rsh="):
+                raise _GuardError("rsync --rsh substitutes the transport with an arbitrary "
+                                  "command, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
+            if a.startswith("-") and not a.startswith("--") and "e" in a[1:]:
+                raise _GuardError("rsync -e substitutes the transport with an arbitrary command, "
+                                  "which can forward the transferred data to an unallowlisted "
+                                  "destination; denied")
     positionals, options = _ssh_positionals(argv, _SSH_VALUE_FLAGS)
     for flag, value in options:
         if flag == "-o" and re.match(r"(?i)^\s*(ProxyCommand|ProxyJump|LocalCommand|PermitLocalCommand)",
@@ -343,8 +359,6 @@ def _check_ssh_family(prog, argv, ctx):
                 _require_lab(hop, f"{prog} jump host", ctx)
         if flag == "-S" and prog == "scp":
             raise _GuardError("scp -S substitutes the transport program; denied")
-        if flag in ("-e", "--rsh") and prog == "rsync" and re.search(r"-J|ProxyCommand|ProxyJump", value):
-            raise _GuardError("rsync -e with a jump/proxy option; denied")
     hosts = []
     if prog == "ssh":
         if not positionals:

