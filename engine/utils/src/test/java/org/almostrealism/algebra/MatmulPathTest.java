@@ -5,6 +5,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -196,6 +197,49 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 		double[] expectedThree = {1, 4, 2, 5, 3, 6};
 		for (int i = 0; i < expectedThree.length; i++) {
 			assertEquals("Output[" + i + "]", expectedThree[i], three.toDouble(i));
+		}
+	}
+
+	/**
+	 * {@link MatrixFeatures#multiplyTransposed} computes {@code a · bᵀ}: entry {@code (i, j)}
+	 * is the dot product of row {@code i} of {@code a} with row {@code j} of {@code b}, for
+	 * operands with different row counts so that a swapped axis would change the shape.
+	 */
+	@Test(timeout = 60000)
+	public void multiplyTransposed() {
+		CollectionProducer a = cp(pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3)));
+		CollectionProducer b = cp(pack(1, 0, -1, 2, 1, 0, 0, 0, 3, 1, 1, 1).reshape(shape(4, 3)));
+
+		PackedCollection result = multiplyTransposed(a, b).evaluate();
+		assertEquals(shape(2, 4).getTotalSize(), result.getShape().getTotalSize());
+
+		double[] expected = {-2, 4, 9, 6, -2, 13, 18, 15};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals("Output[" + i + "]", expected[i], result.toDouble(i));
+		}
+	}
+
+	/**
+	 * {@link MatrixFeatures#multiplyTransposed} rejects operands that are not matrices or
+	 * whose rows differ in length.
+	 */
+	@Test(timeout = 60000)
+	public void multiplyTransposedRejectsMismatchedOperands() {
+		CollectionProducer matrix = cp(new PackedCollection(shape(2, 3)));
+		CollectionProducer[][] rejected = {
+				{ matrix, cp(new PackedCollection(shape(2, 4))) },
+				{ cp(new PackedCollection(shape(3))), matrix },
+				{ matrix, cp(new PackedCollection(shape(2, 3, 1))) }
+		};
+
+		for (CollectionProducer[] operands : rejected) {
+			try {
+				multiplyTransposed(operands[0], operands[1]);
+				Assert.fail("Expected " + operands[0].getShape() + " by the transpose of " +
+						operands[1].getShape() + " to be rejected");
+			} catch (IllegalArgumentException expected) {
+				// The operands are not compatible matrices
+			}
 		}
 	}
 

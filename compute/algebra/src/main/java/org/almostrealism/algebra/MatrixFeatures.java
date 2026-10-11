@@ -163,14 +163,13 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *
 	 * @param vector  the row scale factors (must be 1-dimensional)
 	 * @param matrix  the matrix whose rows are scaled
-	 * @param <V>  the packed collection type
 	 * @return the row-scaled matrix
 	 * @throws IllegalArgumentException if vector is not 1-dimensional
 	 */
-	default <V extends PackedCollection> CollectionProducer expandAndMultiply(
+	default CollectionProducer expandAndMultiply(
 			CollectionProducer vector, CollectionProducer matrix) {
 		if (vector.getShape().getDimensions() != 1) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Row scale factors must be 1-dimensional, not " + vector.getShape());
 		} else if (matrix.isIdentity(shape(vector).length(0))) {
 			return diagonal(vector);
 		} else {
@@ -202,7 +201,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalPolicy bShape = shape(b);
 		if (aShape.getDimensions() != 2 || bShape.getDimensions() != 2 ||
 				aShape.length(1) != bShape.length(1)) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot multiply " + aShape + " by the transpose of " + bShape);
 		}
 
 		return a.traverse(1).repeat(bShape.length(0))
