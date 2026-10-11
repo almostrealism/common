@@ -221,8 +221,11 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 
 				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 			} finally {
-				runner.reset();
-				runner.destroy();
+				try {
+					runner.reset();
+				} finally {
+					runner.destroy();
+				}
 			}
 		}
 	}
