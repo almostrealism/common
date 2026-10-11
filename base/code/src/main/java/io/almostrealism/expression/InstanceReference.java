@@ -106,9 +106,19 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 		return dependencies;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Variables are compared by the name of their {@link Variable#getRootDelegate() root
+	 * delegate}, because a reference to a variable that delegates to another is created as a
+	 * reference to the delegate. A view of {@code var} and {@code var} itself, or two views of
+	 * the same storage, are therefore treated as the same variable.</p>
+	 */
 	@Override
 	public boolean containsReference(Variable var) {
-		return Objects.equals(getReferent().getName(), var.getName()) || super.containsReference(var);
+		Variable<?, ?> referent = (Variable<?, ?>) getReferent().getRootDelegate();
+		Variable<?, ?> target = (Variable<?, ?>) var.getRootDelegate();
+		return Objects.equals(referent.getName(), target.getName()) || super.containsReference(var);
 	}
 
 	@Override

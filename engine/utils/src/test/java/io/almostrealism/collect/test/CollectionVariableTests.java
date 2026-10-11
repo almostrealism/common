@@ -153,6 +153,31 @@ public class CollectionVariableTests extends TestSuiteBase implements Expression
 	}
 
 	/**
+	 * A view that delegates to another variable stands for that variable's storage, so an
+	 * expression referencing the delegate under its own name depends on the view, and a
+	 * product of the view with that expression is not differentiated as a diagonal.
+	 */
+	@Test(timeout = 30000)
+	public void delegateReferencesDecideDependence() {
+		CollectionVariable<?> memory = scalarVariable(false);
+		CollectionVariable<?> view = new CollectionVariable("view", SCALAR,
+				new MemoryDataDestinationProducer<>(countable(false)));
+		view.setDelegate((ArrayVariable) memory);
+		view.setDelegateOffset(0);
+		CollectionVariable<?> other = new CollectionVariable("other", SCALAR,
+				new MemoryDataDestinationProducer<>(countable(false)));
+
+		Assert.assertTrue(view.isReferencedBy(memory.getValueAt(e(0))));
+		Assert.assertTrue(memory.isReferencedBy(view.getValueAt(e(0))));
+		Assert.assertFalse(view.isReferencedBy(other.getValueAt(e(0))));
+
+		Assert.assertFalse(new ProductCollectionExpression(SCALAR, view, memory)
+				.delta(view) instanceof DiagonalCollectionExpression);
+		Assert.assertTrue(new ProductCollectionExpression(SCALAR, view, other)
+				.delta(view) instanceof DiagonalCollectionExpression);
+	}
+
+	/**
 	 * A variable is a {@link CollectionVariable} with the producer's shape when the producer,
 	 * or the delegate it wraps, is a {@link Shape}, and a plain {@link ArrayVariable}
 	 * otherwise.
