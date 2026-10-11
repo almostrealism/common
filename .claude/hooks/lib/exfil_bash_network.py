@@ -327,6 +327,12 @@ def _require_lab(host, prog, ctx):
 
 
 def _check_ssh_family(prog, argv, ctx):
+    if prog == "rsync":
+        for a in argv[1:]:
+            if a == "--rsync-path" or a.startswith("--rsync-path="):
+                raise _GuardError("rsync --rsync-path runs an arbitrary command on the remote "
+                                  "host, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
     positionals, options = _ssh_positionals(argv, _SSH_VALUE_FLAGS)
     for flag, value in options:
         if flag == "-o" and re.match(r"(?i)^\s*(ProxyCommand|ProxyJump|LocalCommand|PermitLocalCommand)",

