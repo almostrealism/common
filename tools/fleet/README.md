@@ -164,6 +164,20 @@ total, per-runner utilization over the range, and hours per workflow step.
   `name:` expression, a file the API will not serve at that commit — is
   left `NULL` rather than guessed, and the dashboard's "Wait measured" tile
   says what share of jobs the wait figures cover.
+- **A re-run records only the jobs it actually runs.** Re-running a workflow
+  run gives the new attempt a fresh job id for every job it does not
+  re-execute, created at the re-run but carrying the earlier attempt's start
+  and finish times. The poller skips those copies (`is_carried_over`: a job
+  that started before it was created), since storing them counted the same
+  runner time twice and gave them negative waits of many hours. Copies a
+  poller without this check stored are removed with:
+
+  ```sql
+  BEGIN;
+  DELETE FROM job_step WHERE job_id IN (SELECT job_id FROM job_event WHERE started_at < created_at);
+  DELETE FROM job_event WHERE started_at < created_at;
+  COMMIT;
+  ```
 - **`job_event.labels`, and so `lane`/`platform`, are the executing
   runner's actual label set, not the job's requested `runs-on:` set.** A
   runner can carry extra/custom labels beyond what a job asked for, so a
