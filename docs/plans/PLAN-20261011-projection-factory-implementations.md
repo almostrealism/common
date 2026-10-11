@@ -38,7 +38,8 @@ In scope:
 2. Add a named class `LoRAProjectionFactory` in the same package. It is built from an
    `AdapterConfig` and a `Consumer<LoRALinear>` that receives each adapter it creates.
    For targeted layers it creates a `LoRALinear`. For all other layers it falls back to its
-   own inherited `dense(...)`.
+   own inherited `dense(...)` (or, if the approver picks option (b) of Open Question 6, to
+   a fallback `ProjectionFactory` it is given).
 3. Rewrite `ProjectionFactory.dense()` and `ProjectionFactory.lora(config, loraLayers)` as
    convenience constructors that return instances of these classes. Remove both
    `new LayerFeatures() {}` expressions.
@@ -177,10 +178,17 @@ methods calls `dense(...)` on the implementor itself (`LowRankAdapterSupport ext
 LayerFeatures`), so an implementor that overrode
 `dense(TraversalPolicy, PackedCollection, PackedCollection, boolean, ComputeRequirement...)`
 would have its override used. After the change the fallback calls the factory's own
-inherited `LayerFeatures.dense(...)`. No implementor overrides that method today (the only
-`dense(TraversalPolicy, ...)` declarations are the two defaults in `LayerFeatures`; the
-implementors are `LoRADiffusionTransformer` and the test class `AdapterConfigTests`), so
-the behaviour is identical; see Open Question 6.
+inherited `LayerFeatures.dense(...)`. No implementor in this repository overrides that
+method (the only `dense(TraversalPolicy, ...)` declarations are the two defaults in
+`LayerFeatures`; the implementors are `LoRADiffusionTransformer` and the test class
+`AdapterConfigTests`), so the behaviour inside this repository is identical. That is not
+proof for code outside it: `LowRankAdapterSupport` is a public interface of a published
+library, and `LayerFeatures.dense(...)` is a public, overridable default, so a downstream
+implementor that overrides `dense(...)` would get different layers for untargeted
+projections from both `getProjectionFactory().create(...)` and `loraOrDense(...)`. The
+sketch above accepts that break; whether to accept it or preserve the hook is a decision
+the approver must make before implementation starts — see Open Question 6, which also
+describes what each choice adds to the work.
 
 `loraOrDense` deliberately does not call `getProjectionFactory()`. That method is
 overridable, and in the one production implementor it *is* overridden: `DiffusionTransformer`
@@ -210,6 +218,9 @@ its name says" rule.
   anonymous Features instances.
 - The LoRA "targeted → `LoRALinear` + register, else dense" logic has exactly one
   definition (`LoRAProjectionFactory.create`).
+- The dense-fallback dispatch for `LowRankAdapterSupport` follows whichever option of
+  Open Question 6 the approver chose: under (a) the javadoc states the change; under (b)
+  the override-dispatch test below exists and passes.
 - `mvn clean install -DskipTests` succeeds, and the build validator (checkstyle,
   code_policy, test_timeouts, duplicate_code) reports no violations.
 - A new test class, `engine/utils/src/test/java/org/almostrealism/layers/test/ProjectionFactoryTests.java`
@@ -222,7 +233,10 @@ its name says" rule.
   - `LowRankAdapterSupport.getProjectionFactory()` registers adapters via `addLoraLayer`;
   - `loraOrDense(...)` still creates and registers a `LoRALinear` for a targeted layer when
     the implementor overrides `getProjectionFactory()` to return `ProjectionFactory.dense()`
-    (the `DiffusionTransformer` situation described under Approach).
+    (the `DiffusionTransformer` situation described under Approach);
+  - only if Open Question 6 option (b) is chosen: untargeted projections from a
+    `LowRankAdapterSupport` implementor that overrides `dense(...)` go through that
+    override, via both `getProjectionFactory()` and `loraOrDense(...)`.
 - Existing tests pass unchanged, run as bounded selections:
   - `engine/utils`: `LoRALinearTests`, `AdapterConfigTests` (implements
     `LowRankAdapterSupport` and exercises `loraOrDense`).
@@ -289,14 +303,32 @@ No `pom.xml` changes are needed: `engine/utils` tests already compile against
 5. **Is `loraOrDense` still needed?** Its only caller is `AdapterConfigTests`; no
    production code calls it. The plan keeps it (removing public API is outside the task),
    but the approver may prefer to deprecate it in favour of `getProjectionFactory()`.
-6. **Dense fallback no longer dispatches through the implementor.** As noted under
-   "`LowRankAdapterSupport`", a future `LowRankAdapterSupport` implementor that overrides
-   `LayerFeatures.dense(...)` would no longer see that override used for untargeted
-   projections. Nothing overrides it today. If the approver wants to preserve that hook,
-   `LoRAProjectionFactory` could take the fallback as a second `ProjectionFactory`
-   (defaulting to `ProjectionFactory.dense()`, with `LowRankAdapterSupport` passing a
-   factory that calls its own `dense(...)`); the plan does not do this because no caller
-   needs it.
+6. **Dense fallback no longer dispatches through the implementor (decision required).**
+   As noted under "`LowRankAdapterSupport`", a `LowRankAdapterSupport` implementor that
+   overrides `LayerFeatures.dense(...)` would no longer see that override used for
+   untargeted projections. Nothing in this repository overrides it, but downstream code
+   may, so this is a public-API compatibility break, not a no-op. The approver should pick
+   one option explicitly; the implementation must not leave it implicit:
+   - **(a) Accept the break** (what the Approach sketch does). Add a sentence to the
+     `getProjectionFactory()` and `loraOrDense(...)` javadoc saying untargeted projections
+     use `LayerFeatures.dense(...)` as inherited by the factory, not the implementor's
+     override, and say so in the commit message. No extra test.
+   - **(b) Preserve the hook.** `LoRAProjectionFactory` takes its fallback as a second
+     `ProjectionFactory` (the statics pass `ProjectionFactory.dense()`;
+     `LowRankAdapterSupport` passes `(shape, weights, bias, target) -> dense(shape,
+     weights, bias, false)`, which runs on the implementor and so keeps today's dispatch).
+     With a fallback field, `LoRAProjectionFactory` no longer needs to extend
+     `DenseProjectionFactory`, so this choice also settles Open Question 2 in favour of
+     composition, and the "Extending `DenseProjectionFactory`" rationale under Approach no
+     longer applies. Add a `ProjectionFactoryTests` case with a `LowRankAdapterSupport`
+     implementor whose `dense(...)` override is observable (for example, it counts calls
+     or returns a recognisable layer), asserting that an untargeted projection from both
+     `getProjectionFactory().create(...)` and `loraOrDense(...)` goes through the override.
+
+   Reviewer's note: (b) costs one constructor parameter and one test and removes the
+   compatibility question entirely, while (a) saves those but leaves a silent behaviour
+   change for downstream implementors. The original plan chose (a) because no in-repository
+   caller needs the hook.
 
 ## Estimated Complexity
 
