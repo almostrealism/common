@@ -790,12 +790,17 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * melodic gather's offset arguments (and, under persistent caching, the note audio)
 	 * until an epoch advance or teardown, unlike {@link #clear()} and
 	 * {@link #setExplicitElements}.</p>
+	 *
+	 * <p>The render-cache release runs first, before any layer state is mutated and before
+	 * the automation collection is destroyed, so a failure there leaves the layer hierarchy
+	 * consistent with {@link #layerParams} and still referencing live automation data rather
+	 * than freed memory.</p>
 	 */
 	public void removeLayer() {
+		releaseRenderCaches();
 		layerParams.remove(layerParams.size() - 1);
 		decrement();
 		releaseLastAutomationParameterData();
-		releaseRenderCaches();
 
 		if (depth() <= 0) return;
 		if (depth() <= 1) {
@@ -870,8 +875,8 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * @param elements the pattern elements to install (copied defensively)
 	 */
 	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
-		releaseAutomationParameterData();
 		releaseRenderCaches();
+		releaseAutomationParameterData();
 		roots.clear();
 		layerParams.clear();
 		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
