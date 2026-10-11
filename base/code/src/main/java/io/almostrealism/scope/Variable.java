@@ -234,6 +234,18 @@ public class Variable<T, V extends Variable<T, ?>>
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	/**
+	 * Returns the producer whose behavior actually defines this variable's data: the
+	 * {@link Delegated#getDelegate() delegate} of the {@link #getProducer() producer} when
+	 * the producer is {@link Delegated}, or the producer itself otherwise.
+	 *
+	 * @return the producer that underlies this variable, or {@code null}
+	 */
+	public Object getUnderlyingProducer() {
+		Supplier<?> p = getProducer();
+		return p instanceof Delegated ? ((Delegated<?>) p).getDelegate() : p;
+	}
+
+	/**
 	 * Sets the type of data this variable holds.
 	 *
 	 * @param type the Java class representing the data type; may be {@code null}

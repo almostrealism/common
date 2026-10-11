@@ -22,7 +22,6 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
 
@@ -109,19 +108,14 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable has a fixed element count.
-	 * This method checks if the underlying producer implements {@link Countable}
-	 * and reports a fixed count, unwrapping any delegation layers if present.
+	 * This method checks if the {@link #getUnderlyingProducer() underlying producer}
+	 * implements {@link Countable} and reports a fixed count.
 	 *
 	 * @return {@code true} if the element count is fixed and known at compile time,
 	 *         {@code false} otherwise
 	 */
 	public boolean isFixedCount() {
-		Supplier p = getProducer();
-		if (p instanceof Delegated) {
-			p = (Producer) ((Delegated<?>) p).getDelegate();
-		}
-
-		return Countable.isFixedCount(p);
+		return Countable.isFixedCount(getUnderlyingProducer());
 	}
 
 	/**
@@ -197,11 +191,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		Supplier producer = getProducer();
-
-		if (producer instanceof Delegated) {
-			producer = (Producer) ((Delegated<?>) producer).getDelegate();
-		}
+		Object producer = getUnderlyingProducer();
 
 		// TODO  This process of falling back when TraversableExpression
 		// TODO  returns null shouldn't really be necessary, but there
@@ -246,11 +236,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		Supplier producer = getProducer();
-
-		if (producer instanceof Delegated) {
-			producer = (Producer) ((Delegated<?>) producer).getDelegate();
-		}
+		Object producer = getUnderlyingProducer();
 
 		if (producer instanceof TraversableExpression) {
 			return ((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);

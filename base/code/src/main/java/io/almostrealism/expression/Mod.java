@@ -180,7 +180,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return {@code Math.floorMod(dividend, divisor)} when the dividend may be negative,
 	 *         otherwise {@code dividend % divisor}
 	 */
-	static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
+	private static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
 		return dividendPossiblyNegative ? Math.floorMod(dividend, divisor) : dividend % divisor;
 	}
 
@@ -528,7 +528,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 					return simple;
 			}
 
-			if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+			if (enableMod2Optimization && m > 0 && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
 				return And.of(input, new IntegerConstant((int) m - 1));
 			}
 		}
@@ -546,15 +546,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
 	 * is redundant and the dividend is reduced by {@code m} directly.</p>
 	 *
+	 * <p>A zero modulus on either side has no defined result, so no reduction
+	 * is attempted and the divisibility checks never divide by zero.</p>
+	 *
 	 * @param m the outer modulus
 	 * @return the reduced expression, or {@code null} if this modulus is not a
-	 *         known constant related to {@code m}
+	 *         known non-zero constant related to {@code m}
 	 */
 	private Expression<?> reducedModulo(long m) {
 		OptionalLong inner = getRight().longValue();
 		if (inner.isEmpty()) return null;
 
 		long n = inner.getAsLong();
+		if (n == 0 || m == 0) return null;
 
 		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
 			return this;
@@ -563,15 +567,5 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return null;
-	}
-
-	/**
-	 * Returns {@code true} if the given number is a positive power of two.
-	 *
-	 * @param number the value to test
-	 * @return {@code true} if {@code number} is a positive power of two
-	 */
-	private static boolean isPowerOf2(long number) {
-		return number > 0 && (number & (number - 1)) == 0;
 	}
 }

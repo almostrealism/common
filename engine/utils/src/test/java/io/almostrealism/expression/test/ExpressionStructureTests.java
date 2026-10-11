@@ -25,7 +25,9 @@ import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Mask;
+import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.lang.LanguageOperations;
@@ -93,6 +95,19 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	 */
 	private Expression<Double> element(ArrayVariable<Double> array, int position) {
 		return new InstanceReference<>(array, e(position), e(position));
+	}
+
+	/**
+	 * Returns the sum of the given operands, which must not simplify to anything other
+	 * than a {@link Sum}.
+	 *
+	 * @param operands the operands
+	 * @return the sum
+	 */
+	private Sum<?> sum(Expression<?>... operands) {
+		Expression<?> result = Sum.of(operands);
+		Assert.assertTrue(result instanceof Sum);
+		return (Sum<?>) result;
 	}
 
 	/**
@@ -512,5 +527,80 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals(10, ((ArithmeticGenerator<?>) scaled).getScale());
 		Assert.assertEquals(3, ((ArithmeticGenerator<?>) scaled).getGranularity());
 		Assert.assertEquals(12, ((ArithmeticGenerator<?>) scaled).getMod());
+	}
+
+	/**
+	 * A modulus of a modulus collapses when the two divisors are multiples of one another:
+	 * an outer divisor equal to, or a multiple of, the inner one leaves the inner modulus
+	 * unchanged, and an inner divisor that is a multiple of the outer one is dropped.
+	 * Unrelated divisors keep both levels.
+	 */
+	@Test(timeout = 30000)
+	public void nestedModulusReducesRelatedDivisors() {
+		Expression<?> x = ref("x");
+		Expression<?> inner = Mod.of(x, e(3), false);
+
+		Assert.assertEquals(inner, Mod.of(inner, e(3), false));
+		Assert.assertEquals(inner, Mod.of(inner, e(6), false));
+		Assert.assertEquals(Mod.of(x, e(3), false), Mod.of(Mod.of(x, e(12), false), e(3), false));
+
+		Expression<?> unrelated = Mod.of(Mod.of(x, e(5), false), e(3), false);
+		Assert.assertTrue(unrelated instanceof Mod);
+		Assert.assertEquals(Mod.of(x, e(5), false), unrelated.getChildren().get(0));
+	}
+
+	/**
+	 * A zero divisor on either level of a nested modulus is left unreduced rather than
+	 * throwing an {@link ArithmeticException} while the expression is being simplified.
+	 */
+	@Test(timeout = 30000)
+	public void nestedModulusWithZeroDivisorIsNotReduced() {
+		Expression<?> x = ref("x");
+
+		Expression<?> innerZero = Mod.of(x, e(0), false);
+		Expression<?> outer = Mod.of(innerZero, e(3), false);
+		Assert.assertTrue(outer instanceof Mod);
+		Assert.assertEquals(innerZero, outer.getChildren().get(0));
+		Assert.assertEquals(3, outer.getChildren().get(1).longValue().orElseThrow());
+
+		Expression<?> inner = Mod.of(x, e(3), false);
+		Expression<?> outerZero = Mod.of(inner, e(0), false);
+		Assert.assertTrue(outerZero instanceof Mod);
+		Assert.assertEquals(inner, outerZero.getChildren().get(0));
+		Assert.assertEquals(0, outerZero.getChildren().get(1).longValue().orElseThrow());
+	}
+
+	/**
+	 * {@code k * x + (x % k)} is recognised in either operand order, and its modulo and
+	 * quotient rewrites follow the identities the shape admits; a remainder whose divisor
+	 * differs from the scale, or whose dividend differs from the scaled operand, is not
+	 * recognised.
+	 */
+	@Test(timeout = 30000)
+	public void sumRecognisesScaledRemainder() {
+		Expression<?> x = ref("x");
+		Sum<?> scaled = sum(Product.of(e(3), x), Mod.of(x, e(3), false));
+		Sum<?> reversed = sum(Mod.of(x, e(3), false), Product.of(x, e(3)));
+
+		Assert.assertTrue(scaled.scaledRemainder().isPresent());
+		Assert.assertTrue(reversed.scaledRemainder().isPresent());
+
+		Sum.ScaledRemainder remainder = scaled.scaledRemainder().orElseThrow();
+		Assert.assertEquals(Mod.of(x, e(3), false), remainder.modulo(3));
+		Assert.assertEquals(Product.of(Mod.of(x, e(3), false), e(4)), remainder.modulo(9));
+		Assert.assertNull(remainder.modulo(6));
+		Assert.assertNull(remainder.modulo(4));
+		Assert.assertNull(remainder.modulo(2));
+
+		Assert.assertEquals(Quotient.of(x, e(2)), remainder.quotient(6));
+		Assert.assertNull(remainder.quotient(4));
+		Assert.assertNull(remainder.quotient(2));
+
+		Assert.assertTrue(sum(Product.of(e(3), x), Mod.of(x, e(5), false))
+				.scaledRemainder().isEmpty());
+		Assert.assertTrue(sum(Product.of(e(3), x), Mod.of(ref("y"), e(3), false))
+				.scaledRemainder().isEmpty());
+		Assert.assertTrue(sum(Product.of(e(3), x), ref("y"))
+				.scaledRemainder().isEmpty());
 	}
 }
