@@ -22,6 +22,7 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestSuiteBase;
@@ -29,6 +30,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Tests the routing of stereo channels to the {@link WaveOutput}s behind a
@@ -99,6 +101,62 @@ public class MultiChannelAudioOutputTest extends TestSuiteBase implements CellFe
 			MultiChannelAudioOutput out = new MultiChannelAudioOutput(master);
 			Assert.assertFalse(out.isMeasuresActive());
 			Assert.assertTrue(out.getMeasures(ChannelInfo.StereoChannel.LEFT).isEmpty());
+		}
+	}
+
+	/**
+	 * With a measures factory supplied, each distinct voicing/stereo-channel pair is
+	 * resolved to its own receptor, repeated lookups return the cached instance, and
+	 * {@link MultiChannelAudioOutput#getMeasures} returns only the receptors matching
+	 * the requested stereo channel. A push then covers both present stereo channels.
+	 */
+	@Test(timeout = 60000)
+	public void measuresActiveRoutePerStereoChannel() {
+		MultiChannelAudioOutput out = new MultiChannelAudioOutput(
+				(Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>>) null, null,
+				channel -> protein -> new OperationList(channel.toString()));
+
+		Assert.assertTrue(out.isMeasuresActive());
+
+		Receptor<PackedCollection> left =
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+		Assert.assertNotNull(left);
+		Assert.assertSame("a repeated lookup returns the cached receptor", left,
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+
+		Receptor<PackedCollection> right =
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.RIGHT);
+		Assert.assertNotSame("each stereo channel resolves to its own receptor", left, right);
+
+		List<Receptor<PackedCollection>> leftMeasures =
+				out.getMeasures(ChannelInfo.StereoChannel.LEFT);
+		Assert.assertEquals(1, leftMeasures.size());
+		Assert.assertSame(left, leftMeasures.get(0));
+
+		Producer<PackedCollection> frame = c(0.0);
+		Assert.assertEquals("a push covers both present stereo channels",
+				2, ((OperationList) out.pushMeasures(ChannelInfo.Voicing.MAIN, frame)).size());
+	}
+
+	/**
+	 * When two pattern channels share a voicing and stereo channel, the by-voicing
+	 * measure lookup is ambiguous and must reject the request rather than silently
+	 * returning one of the matches.
+	 */
+	@Test(timeout = 60000)
+	public void ambiguousMeasureLookupIsRejected() {
+		MultiChannelAudioOutput out = new MultiChannelAudioOutput(
+				(Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>>) null, null,
+				channel -> protein -> new OperationList(channel.toString()));
+
+		out.getMeasure(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+		out.getMeasure(new ChannelInfo(1, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+
+		try {
+			out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+			Assert.fail("an ambiguous by-voicing lookup must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// a single voicing/stereo pair must resolve to at most one receptor
 		}
 	}
 

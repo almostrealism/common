@@ -143,7 +143,9 @@ public class ChordProgressionManagerSettingsTest extends TestSuiteBase {
 		progression.setChordDepth(3);
 
 		for (int attempt = 0; attempt < 3; attempt++) {
-			genome.assignTo(new PackedCollection(4).fill(0.2 * attempt, 0.5, 0.9 - 0.3 * attempt, 0.1));
+			PackedCollection parameters = new PackedCollection(4).fill(0.2 * attempt, 0.5, 0.9 - 0.3 * attempt, 0.1);
+			genome.assignTo(parameters);
+			parameters.destroy();
 			progression.refreshParameters();
 
 			String regions = progression.getRegionString();

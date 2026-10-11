@@ -346,6 +346,8 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			Assert.assertEquals("Chord should produce one destination per scale position",
 					3, destinations.size());
+
+			destinations.forEach(RenderedNoteAudio::destroy);
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}
@@ -463,6 +465,8 @@ public class ScaleTraversalStrategyTest extends TestSuiteBase {
 
 			Assert.assertEquals("Sequence step should produce one destination",
 					1, destinations.size());
+
+			destinations.forEach(RenderedNoteAudio::destroy);
 		} finally {
 			PatternLayerManager.enableBatched = previousBatched;
 		}
