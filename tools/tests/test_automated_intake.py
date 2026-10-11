@@ -12,14 +12,16 @@ workflow.
 """
 
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from test_task_planning_gates import _ControllerStub, _run  # noqa: E402
+from test_task_planning_gates import _CI, _ControllerStub, _run  # noqa: E402
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "master-agent-dispatch.yaml")
@@ -76,6 +78,32 @@ class AutomatedIntakeScriptTests(unittest.TestCase):
     def test_a_missing_controller_url_is_an_error(self):
         code, _, _ = _run(_SCRIPT, {"CONTROLLER_URL": ""})
         self.assertEqual(1, code)
+
+    def _github_output_for(self, answer):
+        """Runs the script with a real ``GITHUB_OUTPUT`` file and returns its
+        contents, so the step-output path the workflow consumes is exercised
+        rather than only stdout (``_run`` strips ``GITHUB_OUTPUT``)."""
+        stub = _ControllerStub(claimable=answer)
+        self.addCleanup(stub.close)
+        full = dict(os.environ)
+        full["CONTROLLER_URL"] = stub.url + "/"
+        with tempfile.NamedTemporaryFile("r", suffix=".txt") as output:
+            full["GITHUB_OUTPUT"] = output.name
+            subprocess.run(["bash", os.path.join(_CI, _SCRIPT)], env=full,
+                           capture_output=True, text=True, timeout=60)
+            return output.read()
+
+    def test_an_accepting_controller_writes_open_true_to_github_output(self):
+        self.assertIn("open=true",
+                      self._github_output_for((200, {"acceptAutomatedJobs": True})))
+
+    def test_a_closed_intake_writes_open_false_to_github_output(self):
+        self.assertIn("open=false",
+                      self._github_output_for((200, {"acceptAutomatedJobs": False})))
+
+    def test_an_unexpected_answer_writes_open_false_to_github_output(self):
+        self.assertIn("open=false",
+                      self._github_output_for((200, {"acceptAutomatedJobs": "true"})))
 
 
 class AutomatedIntakeWiringTests(unittest.TestCase):
