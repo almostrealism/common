@@ -146,6 +146,9 @@ public class PatternElementTest extends TestSuiteBase {
 		Assert.assertEquals("NO_OVERLAP with a next position at the note keeps the original duration", 3.0,
 				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
 						0.5, 0.5, 3.0, 0.25), 1e-12);
+		Assert.assertEquals("NO_OVERLAP treats the 0.0 sentinel as missing for a negative position", 3.0,
+				NoteDurationStrategy.NO_OVERLAP.getLength(TWO_SECONDS_PER_MEASURE,
+						-1.0, 0.0, 3.0, 0.25), 1e-12);
 	}
 
 	/** {@link PatternElement#getNoteDuration} delegates to its strategy using its own selection. */

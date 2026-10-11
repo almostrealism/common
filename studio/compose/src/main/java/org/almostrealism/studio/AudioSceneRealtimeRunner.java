@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.Cells;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.DestroyableTemporalCellular;
@@ -235,7 +236,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
 		// matching the PDSL path's render-ahead position source.
-		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
+		Cells cells = scene.getCells(output, channels, bufferSize,
 				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
 				bufferFrameProducer);
 
@@ -288,14 +289,14 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			}
 
 			/**
-			 * No-op: the {@link CellList} this runner drives is the scene's active
-			 * cell list (retained by {@link AudioScene#getCells} and released by
-			 * {@link AudioScene#destroy()}), so this runner owns no native resource of
-			 * its own to release. The contract is honored so holders can destroy every
-			 * runner uniformly without testing the concrete strategy.
+			 * Releases the per-buffer frame index this runner allocated and captured
+			 * in its loop operations. The {@link CellList} this runner drives is the
+			 * scene's active cell list (retained by {@link AudioScene#getCells} and
+			 * released by {@link AudioScene#destroy()}), so it is left untouched here.
 			 */
 			@Override
 			public void destroy() {
+				bufferFrameIndex.destroy();
 			}
 		};
 	}
@@ -445,6 +446,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Whole buffers per tick, not per-frame pushes in the output loop, which
 		// multiplied the loop's operation count enough to break the realtime budget
 		OperationList stemAppends = new OperationList("PDSL Stem Appends");
+		// Holds the per-tick effects-sum scratch buffer (when both the efx and reverb
+		// stems are present) so the runner can release it on teardown; null otherwise.
+		final PackedCollection[] fxStemSum = {null};
 		if (output.isStemsActive()) {
 			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
 			if (stemChannels != null) {
@@ -462,6 +466,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				if (stemEfx != null && stemReverb != null) {
 					// Summed once per tick, so the writers push plain memory
 					PackedCollection fx = new PackedCollection(bufferSize);
+					fxStemSum[0] = fx;
 					stemAppends.add(a("PDSL FX Stem Sum",
 							cp(fx).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
@@ -568,7 +573,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			/**
 			 * Releases the native resources this runner created and owns: the
 			 * {@link PatternRenderStream} (its render-ahead ring and compiled slot
-			 * copies) and the compiled mixdown {@link CompiledModel}. The consolidated
+			 * copies), the compiled mixdown {@link CompiledModel}, the per-buffer
+			 * frame index captured in the output-streaming loop, and the effects-sum
+			 * scratch buffer when one was allocated for the stems path. The consolidated
 			 * render buffer is the scene's and is released by {@link AudioScene#destroy()},
 			 * so it is left untouched here.
 			 */
@@ -576,6 +583,8 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			public void destroy() {
 				renderStream.destroy();
 				compiled.destroy();
+				bufferFrameIndex.destroy();
+				if (fxStemSum[0] != null) fxStemSum[0].destroy();
 			}
 		};
 	}
