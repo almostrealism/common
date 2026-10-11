@@ -58,6 +58,35 @@ by git, and byte-identical to the blob in the index or in `HEAD`.
 and staged is not under version control, and neither is a modified tracked file —
 the bytes on disk are not the bytes anyone signed off on.
 
+## Design stance
+
+The guard's job is to stop **obvious, deliberate** attempts to move data
+somewhere else — a named transport variable, an option that swaps git's helper
+programs, a redirection into a synced folder. It is deliberately *not* a
+general-purpose sandbox, and in practice it is more protective than the day-to-day
+workload strictly needs. Where a case is genuinely ambiguous, or where failing
+closed would catch ordinary agent work that has nothing to do with exfiltration,
+the guard **allows rather than blocks**. Fixes target clear, deliberate routes;
+they do not fail closed on constructs the guard merely cannot resolve.
+
+This refines the threat-model preference for *deny when uncertain*: that
+preference still governs constructs that are specifically about transport or
+configuration — a computed `-c` config value, an unreadable `TAR_OPTIONS`, a
+program-running tar filter — where the only reason to spell it that way is to
+defeat inspection. It does **not** extend to generic, non-transport ambiguity that
+ordinary commands hit all the time.
+
+The standing accepted-open case is the **relative copy/redirection destination
+after a `cd` to an unknown directory** (e.g. `cd "$(mktemp -d)" && cp secret out`).
+When the working directory is computed at run time the guard cannot resolve a
+relative destination to decide whether it lands in a synced folder or mounted
+volume — but this is exactly the shape of ordinary agent work (make a scratch
+directory, write into it), so the guard leaves it allowed rather than block it.
+Tightening this to fail closed was considered and declined by operator decision;
+see the "Reading from such a folder" and computed-destination rows for the cases
+that *are* closed (a path spelled to reach a protected folder, or a destination
+the shell itself rewrites).
+
 ## Bypass classes considered
 
 The design worked through these. Each is either blocked by a rule or explicitly
@@ -100,7 +129,9 @@ keep working when any of those rules is changed.
 | `GIT_DIR=/other.git git push origin`, `env GIT_WORK_TREE=… git …`, `GIT_INDEX_FILE`/`GIT_OBJECT_DIRECTORY`/`GIT_COMMON_DIR`/`GIT_ALTERNATE_OBJECT_DIRECTORIES`/`GIT_NAMESPACE` | block for every git subcommand — a leading environment assignment (or one after an `env` wrapper) that selects another repository would otherwise make git operate elsewhere while the command read as ordinary; the assignments are preserved through unwrapping and checked. A benign variable (`GIT_PAGER=cat git log`) and a repository-selecting variable on a non-git command stay allowed |
 | `git -c "$C" push` / `git --config-env "$C" push` (the value the shell computes) | block — a computed config value cannot be matched against the sensitive-key list, so git could rewrite the remote while the guard checked the on-disk origin |
 | `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=… git push`, `GIT_CONFIG_PARAMETERS="'remote.origin.url'='…'" git push`, `GIT_SSH_COMMAND=… git …`, `GIT_CONFIG`/`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`, `GIT_SSH`/`GIT_PROXY_COMMAND`/`GIT_ASKPASS`/`GIT_EXTERNAL_DIFF` | block for every git subcommand — these are the environment-borne equivalents of `-c`/`--config-env` and the remote/transport settings: the indexed config pair and `GIT_CONFIG_PARAMETERS` (git's own channel for `-c` overrides, read as `'key'='value'` pairs) both inject config (including `remote.origin.url`) after the guard read the on-disk origin, and the transport variables run an arbitrary program. `GIT_PAGER`/`GIT_EDITOR` stay allowed |
+| `GIT_EXEC_PATH=/tmp/evil git push` (inline, exported, or via a wrapper), `git --exec-path=/tmp/evil push`, `git --exec-path /tmp/evil push` | block — `GIT_EXEC_PATH` and the `--exec-path` option both point git at another directory of helper programs, where an attacker's `git-remote-*` replaces the transport; the env form joins the configuration/transport predicate (refused inline, exported and through a wrapper) and the option is refused whenever a value is given. A bare `git --exec-path`, which only prints the path, stays allowed |
 | `export GIT_DIR=/other.git; git …`, `export GIT_SSH_COMMAND=…; git …`, `declare -x GIT_CONFIG_GLOBAL=…` | block — only an *exported* variable reaches a later git in a separate simple command, where the leading-assignment capture cannot see it, so the `export`/`declare`/`typeset` of a repository-selecting or configuration/transport git variable is refused at the export itself; `export EDITOR=vim` / `export GIT_PAGER=cat` stay allowed |
+| `export GIT_DIR+=/tmp/other.git`, `GIT_DIR+=/tmp/other.git git push`, `export RSYNC_RSH+=…` (bash's append assignment `NAME+=value`) | block — the append form sets the same variable as `NAME=value`, so a repository-selecting or transport variable smuggled through `+=` is caught too: the leading `+` is matched when recognising the assignment (otherwise `GIT_DIR+=…` reads as the program name and git runs unchecked) and then stripped from the captured name (otherwise `partition("=")` yields the harmless name `GIT_DIR+` and slips past the denylist); an ordinary `export PATH+=:/x` append stays allowed |
 | `git -C <dir>` inside this project's work tree | followed like a `cd`; a push from there still faces the pin check. More than one `-C` blocks, as does a `-C` the shell expands (`$DIR`, `~/x`, a glob or brace list) and a `-C` that selects a separate repository nested inside the work tree — a nested work tree or a bare repo alike, compared by the git directory git actually selects |
 | `cd /other/clone && git push origin` | effective directory tracked; pin check applies there |
 | `gh api -f`, `gh gist`, `gh release upload`, `gh pr create --body-file` | block |
@@ -122,6 +153,7 @@ keep working when any of those rules is changed.
 | `set -a` / `set -o allexport` (also inside a cluster, `set -ea`) | block — allexport exports every later plain assignment, so a subsequent `GIT_DIR=…` or `RSYNC_RSH=…` would reach a child command the leading-assignment capture never sees; the guard cannot follow that state across the script, so it fails closed when allexport is switched on, while turning it off (`set +a`, `set +o allexport`) stays allowed |
 | `find . -exec env GIT_DIR=… git push \;` | block — `find -exec` runs its command with its own leading `VAR=value` assignments, which were previously dropped along with the `-exec` wrapper; the exec command is now unwrapped with its environment and merged, so a repository-selecting or transport variable reaches the git check. A plain `find . -exec git status \;` stays allowed |
 | `RSYNC_RSH='curl -T - …' rsync …` (inline, `export RSYNC_RSH=…; rsync …`, or handed to a shell/interpreter wrapper) | block — `RSYNC_RSH` is the environment form of rsync's `-e`: it names the remote shell rsync runs, which can be an arbitrary command that forwards the data onward, so it is refused inline, exported for a later rsync, and through a wrapper, while an ordinary `rsync -av dir/ agent1@amd-halo:/tmp/` stays allowed |
+| `RSYNC_CONNECT_PROG='…' rsync …`, `RSYNC_PROXY=host:port rsync …` (inline, exported, or via a wrapper) | block — like `RSYNC_RSH`, these choose or redirect rsync's transport: `RSYNC_CONNECT_PROG` names the program rsync runs to open a daemon connection and `RSYNC_PROXY` routes that connection through an HTTP proxy host, so either sends the copied data through an attacker-chosen hop even to an allowlisted destination. Both join the rsync-transport predicate and are refused inline, exported and through a wrapper, while an ordinary `rsync -av dir/ agent1@amd-halo:/tmp/` stays allowed |
 | A shell redirection into a protected path (`cat secret > /Volumes/USB/out`, `>> ~/Dropbox/x`, `tar -cf - src > /Volumes/USB/out.tar`), including a redirection-only command with no program (`> /Volumes/USB/out`) | block — the redirection target is a destination just as a copy tool's operand is, so a mounted volume or synced folder is an upload and a computed (`> "$DEST"`) or glob/brace (`> /V*`) target fails closed; a command with no program but a redirect target is still kept and its target checked; a literal path, an fd duplication (`2>&1`), and reading *from* a volume (`cat /Volumes/USB/f > local.txt`) stay allowed |
 | A copy destination the shell computes — a parameter/command substitution (`cp f "$DEST"`, `mv f "$(…)"`) or a glob/brace expansion (`cp secret /V*`, `mv a /Volumes/{x,y}`) | block — a path the shell rewrites at run time cannot be checked; a computed source is allowed |
 | Reading from such a folder (`cp /Volumes/USB/f .`, `cat`, `dd if=`, `tar -cf out.tar /Volumes/…`) | allowed; only a write into one is an upload |

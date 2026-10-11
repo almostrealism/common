@@ -299,15 +299,20 @@ def _check_upload_tool(prog, argv, piped, ctx):
 _SSH_VALUE_FLAGS = frozenset({"-p", "-l", "-i", "-o", "-F", "-J", "-L", "-R", "-D", "-W",
                               "-b", "-c", "-e", "-m", "-O", "-Q", "-S", "-E", "-B", "-I", "-P"})
 
-# ``RSYNC_RSH`` names the remote shell rsync runs, exactly like the ``-e``
-# flag the guard already refuses: it can point rsync at an arbitrary program
-# (``ssh -oProxyCommand=…``, or any command at all) and so route a copy off
-# the host. It is refused inline, exported, and through a wrapper.
-_RSYNC_TRANSPORT_ENV = frozenset({"RSYNC_RSH"})
+# These environment variables choose or redirect rsync's transport, so any of
+# them can route a copy off the host even when the destination itself is
+# allowlisted. ``RSYNC_RSH`` names the remote shell rsync runs, exactly like the
+# ``-e`` flag the guard already refuses (``ssh -oProxyCommand=…``, or any command
+# at all). ``RSYNC_CONNECT_PROG`` names the program rsync runs to open a
+# daemon connection, and ``RSYNC_PROXY`` points the daemon connection through an
+# HTTP proxy host — either one sends the data through an attacker-chosen hop.
+# They are refused inline, exported, and through a wrapper.
+_RSYNC_TRANSPORT_ENV = frozenset({"RSYNC_RSH", "RSYNC_CONNECT_PROG", "RSYNC_PROXY"})
 
 
 def is_rsync_transport_env(name):
-    """Whether ``name`` sets rsync's remote shell (the env form of ``-e``)."""
+    """Whether ``name`` chooses or redirects rsync's transport (the remote
+    shell, the daemon-connection program, or an HTTP proxy)."""
     return name in _RSYNC_TRANSPORT_ENV
 
 

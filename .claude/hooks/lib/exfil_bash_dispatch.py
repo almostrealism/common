@@ -420,6 +420,8 @@ def _check_exported_env(args):
         if a.startswith("-"):
             continue
         name, eq, value = a.partition("=")
+        if eq and name.endswith("+"):
+            name = name[:-1]
         if is_shell_expanded(name) or is_glob_or_brace(name):
             raise _GuardError(f"export operand {a!r} names a variable the shell computes or "
                               f"expands, so the guard cannot tell which variables it sets; write "

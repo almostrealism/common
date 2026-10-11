@@ -77,11 +77,15 @@ _GIT_REPO_SELECTING_ENV = frozenset({
 # channel for the same ``-c`` config overrides (git reads it as a list of
 # ``'key'='value'`` pairs), so it can rewrite ``remote.origin.url`` after the
 # guard has read the on-disk origin just as ``GIT_CONFIG_COUNT`` can.
+# ``GIT_EXEC_PATH`` is where git looks up its subcommands and the
+# ``git-remote-*`` transport helpers; pointing it at an attacker-controlled
+# directory replaces the transport with an arbitrary program, so it is the
+# environment-borne equivalent of the ``--exec-path`` option refused below.
 # ``GIT_PAGER`` / ``GIT_EDITOR`` are not here and stay allowed.
 _GIT_CONFIG_TRANSPORT_ENV = frozenset({
     "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
     "GIT_CONFIG_PARAMETERS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND",
-    "GIT_ASKPASS", "GIT_EXTERNAL_DIFF",
+    "GIT_ASKPASS", "GIT_EXTERNAL_DIFF", "GIT_EXEC_PATH",
 })
 # The indexed config variables come in numbered pairs, so they are matched by
 # prefix rather than enumerated.
@@ -144,7 +148,10 @@ def _git_working_dir(ctx, opts):
     work tree or a bare repo both resolve to their own git directory). ``-C``
     anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``, a glob
     or brace list), and ``--git-dir`` / ``--work-tree`` at all, point git at
-    another repository and are a block. ``-c`` and ``--config-env`` that set
+    another repository and are a block. ``--exec-path=DIR`` points git at
+    another set of helper programs (``git-remote-*``) and is a block when a
+    value is given; a bare ``--exec-path`` only prints the path and stays
+    allowed. ``-c`` and ``--config-env`` that set
     remote or transport configuration, or whose value the shell computes, are
     a block. Successive ``-C`` options compose
     in git, which the guard does not follow, so more than one is a block
@@ -155,6 +162,9 @@ def _git_working_dir(ctx, opts):
         if opt in ("--git-dir", "--work-tree"):
             raise _GuardError(f"git {opt} points at another repository; only this project's "
                               f"origin may be pushed to")
+        if opt == "--exec-path" and value:
+            raise _GuardError("git --exec-path points git at another set of helper programs "
+                              "(git-remote-*), which can replace the transport; denied")
         if opt in ("-c", "--config-env"):
             if is_shell_expanded(value):
                 raise _GuardError(f"git {opt} {value!r} is computed at run time; the guard "

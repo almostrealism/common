@@ -600,6 +600,23 @@ def _env_option_end(args):
     return i
 
 
+# A leading env assignment, allowing bash's append form ``NAME+=value``. The
+# optional ``+`` must be matched here so that ``GIT_DIR+=/tmp/other.git git push``
+# is recognised as an assignment rather than read as the program name; the ``+``
+# is then stripped from the captured name by ``_split_assignment`` so the value
+# reaches the git check under the real variable name.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
+
+
+def _split_assignment(word):
+    """Split an assignment word into ``(name, value)``, dropping a trailing
+    ``+`` from an append assignment (``NAME+=value``)."""
+    name, _eq, value = word.partition("=")
+    if name.endswith("+"):
+        name = name[:-1]
+    return name, value
+
+
 def unwrap_with_env(argv):
     """Drop env assignments and wrapper programs; return ``(real argv, env)``.
 
@@ -613,8 +630,8 @@ def unwrap_with_env(argv):
     argv = list(argv)
     env = []
     for _ in range(8):
-        while argv and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]):
-            name, _eq, value = argv.pop(0).partition("=")
+        while argv and _ASSIGNMENT.match(argv[0]):
+            name, value = _split_assignment(argv.pop(0))
             env.append((name, value))
         if not argv:
             return argv, env
@@ -632,8 +649,8 @@ def unwrap_with_env(argv):
             while j < len(rest) and rest[j].startswith("-"):
                 j += 2 if rest[j] in with_arg else 1
         if prog == "env":
-            while j < len(rest) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", rest[j]):
-                name, _eq, value = rest[j].partition("=")
+            while j < len(rest) and _ASSIGNMENT.match(rest[j]):
+                name, value = _split_assignment(rest[j])
                 env.append((name, value))
                 j += 1
         j += _WRAPPER_POSITIONALS.get(prog, 0)
