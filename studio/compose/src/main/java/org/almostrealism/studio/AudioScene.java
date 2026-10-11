@@ -1276,9 +1276,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				List.of(channel), bufferSize);
 		int bufferCount = (frames + bufferSize - 1) / bufferSize;
 
-		Runnable setup = cells.setup().get();
-		Runnable tick = cells.tick().get();
 		try {
+			Runnable setup = cells.setup().get();
+			Runnable tick = cells.tick().get();
 			setup.run();
 			for (int b = 0; b < bufferCount; b++) {
 				tick.run();
@@ -1286,8 +1286,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			out.write().get().run();
 		} finally {
 			out.reset();
-			cells.reset();
-			cells.destroy();
+			try {
+				cells.reset();
+			} finally {
+				cells.destroy();
+			}
 		}
 		return outputPath;
 	}

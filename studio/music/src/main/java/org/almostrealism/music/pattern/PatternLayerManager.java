@@ -433,7 +433,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		}
 
 		context.getChannels().forEach(c -> {
-			if (c.getPatternChannel() == channel) {
+			if (c.matches(channel)) {
 				destination.put(
 						new ChannelInfo(c.getVoicing(), c.getAudioChannel()),
 						context.getDestination());

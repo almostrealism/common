@@ -173,6 +173,17 @@ public class ElementVoicingDetails {
 		this.target = target;
 	}
 
+	/**
+	 * Returns the key position to pitch this note to, which applies only to melodic
+	 * content: the {@link #getTarget() target} when this element {@link #isMelodic()
+	 * is melodic}, and {@code null} otherwise (percussive content is unpitched).
+	 *
+	 * @return the melodic pitch target, or {@code null} when this element is not melodic
+	 */
+	public KeyPosition<?> getMelodicTarget() {
+		return melodic ? target : null;
+	}
+
 	/** Returns the current note position in measures. */
 	public double getPosition() {
 		return position;

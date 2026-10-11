@@ -138,7 +138,7 @@ public class MultiChannelAudioOutput {
 	public Receptor<PackedCollection> getMeasure(ChannelInfo.Voicing voicing,
 													ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
-				retrieve(measures, match(voicing).and(match(audioChannel)));
+				retrieve(measures, c -> c.matches(voicing) && c.matches(audioChannel));
 		if (result != null) return result;
 
 		return getMeasure(new ChannelInfo(-1, voicing, audioChannel));
@@ -154,7 +154,7 @@ public class MultiChannelAudioOutput {
 	public Receptor<PackedCollection> getStem(int patternChannel,
 												 ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
-				retrieve(stems, match(patternChannel).and(match(audioChannel)));
+				retrieve(stems, c -> c.matches(patternChannel) && c.matches(audioChannel));
 		if (result != null) return result;
 
 		return getStem(new ChannelInfo(patternChannel, audioChannel));
@@ -170,7 +170,7 @@ public class MultiChannelAudioOutput {
 		if (measures == null) return List.of();
 
 		return measures.keySet().stream()
-				.filter(match(audioChannel))
+				.filter(c -> c.matches(audioChannel))
 				.map(measures::get)
 				.toList();
 	}
@@ -296,19 +296,19 @@ public class MultiChannelAudioOutput {
 	public boolean isStemsActive() { return stems != null; }
 
 	/**
-	 * Retrieves a single value from the map whose key matches the predicate.
+	 * Retrieves the single receptor whose channel matches the predicate, from one of
+	 * this output's receptor maps.
 	 *
-	 * @param map       the map to search
-	 * @param predicate the key predicate
-	 * @param <K>       key type
-	 * @param <V>       value type
-	 * @return the matching value, or {@code null} if no entry matches
-	 * @throws IllegalArgumentException if more than one entry matches
+	 * @param receptors the receptor map to search
+	 * @param predicate the channel predicate
+	 * @return the matching receptor, or {@code null} if no channel matches
+	 * @throws IllegalArgumentException if more than one channel matches
 	 */
-	protected <K, V> V retrieve(Map<K, V> map, Predicate<K> predicate) {
-		if (map == null) return null;
+	protected Receptor<PackedCollection> retrieve(Map<ChannelInfo, Receptor<PackedCollection>> receptors,
+												  Predicate<ChannelInfo> predicate) {
+		if (receptors == null) return null;
 
-		List<V> values = map.entrySet().stream()
+		List<Receptor<PackedCollection>> values = receptors.entrySet().stream()
 				.filter(e -> predicate.test(e.getKey()))
 				.map(Map.Entry::getValue)
 				.toList();
@@ -319,32 +319,5 @@ public class MultiChannelAudioOutput {
 		} else {
 			return values.get(0);
 		}
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given stereo channel.
-	 *
-	 * @param audioChannel the stereo channel to match
-	 */
-	protected Predicate<ChannelInfo> match(ChannelInfo.StereoChannel audioChannel) {
-		return c -> c.getAudioChannel() == audioChannel;
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given pattern channel index.
-	 *
-	 * @param patternChannel the pattern channel index to match
-	 */
-	protected Predicate<ChannelInfo> match(int patternChannel) {
-		return c -> c.getPatternChannel() == patternChannel;
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given voicing.
-	 *
-	 * @param voicing the voicing to match
-	 */
-	protected Predicate<ChannelInfo> match(ChannelInfo.Voicing voicing) {
-		return c -> c.getVoicing() == voicing;
 	}
 }

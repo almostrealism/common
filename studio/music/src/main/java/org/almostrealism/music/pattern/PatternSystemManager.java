@@ -514,7 +514,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 		}
 
 		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
-				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
+				.filter(i -> channel.matches(patterns.get(i).getChannel()))
 				.boxed().toList();
 
 		if (patternsForChannel.isEmpty()) {

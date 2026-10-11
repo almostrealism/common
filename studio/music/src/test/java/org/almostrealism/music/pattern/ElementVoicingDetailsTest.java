@@ -120,6 +120,25 @@ public class ElementVoicingDetailsTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ElementVoicingDetails#getMelodicTarget()} returns the target for melodic
+	 * content and {@code null} for unpitched (percussive) content, regardless of
+	 * whether a target happens to be set.
+	 */
+	@Test(timeout = 10000)
+	public void melodicTargetAppliesOnlyWhenMelodic() {
+		ElementVoicingDetails melodic = reference();
+		Assert.assertTrue(melodic.isMelodic());
+		Assert.assertEquals(WesternChromatic.C4, melodic.getMelodicTarget());
+
+		ElementVoicingDetails percussive = reference();
+		percussive.setMelodic(false);
+		Assert.assertNull("an unpitched element has no melodic target",
+				percussive.getMelodicTarget());
+		Assert.assertEquals("the raw target is retained even when unpitched",
+				WesternChromatic.C4, percussive.getTarget());
+	}
+
+	/**
 	 * The stereo channel is deliberately excluded from {@link ElementVoicingDetails}
 	 * equality and hash code. The LEFT and RIGHT renders of a note are kept distinct
 	 * in {@link org.almostrealism.music.pattern.NoteAudioCache} not by these details
