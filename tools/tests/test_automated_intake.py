@@ -108,6 +108,20 @@ class AutomatedIntakeWiringTests(unittest.TestCase):
                     for command in creating:
                         self.assertNotIn(command, step.get("run", ""))
 
+    def test_every_summary_reports_the_intake_decision(self):
+        """A closed intake must not read as a round in progress: every job's
+        summary reports the intake answer, and the QA summaries name the
+        empty reason a gate that never ran leaves behind."""
+        for name, job in self.jobs.items():
+            summary = next(s for s in job["steps"] if s["name"] == "Summary")
+            text = summary["run"] + str(summary.get("env", {}))
+            with self.subTest(job=name):
+                self.assertEqual("always()", summary.get("if"))
+                self.assertIn("steps.intake.outputs.open", text)
+                if "case \"${{ steps.decide.outputs.reason }}\"" in summary["run"]:
+                    self.assertIn('"") echo "Skipped: the cadence gate did not run',
+                                  summary["run"])
+
     def test_the_intake_check_reaches_the_controller_through_the_tunnel(self):
         for name, job in self.jobs.items():
             step = next(s for s in job["steps"] if s.get("id") == "intake")
