@@ -299,6 +299,22 @@ def _check_upload_tool(prog, argv, piped, ctx):
 _SSH_VALUE_FLAGS = frozenset({"-p", "-l", "-i", "-o", "-F", "-J", "-L", "-R", "-D", "-W",
                               "-b", "-c", "-e", "-m", "-O", "-Q", "-S", "-E", "-B", "-I", "-P"})
 
+# These environment variables choose or redirect rsync's transport, so any of
+# them can route a copy off the host even when the destination itself is
+# allowlisted. ``RSYNC_RSH`` names the remote shell rsync runs, exactly like the
+# ``-e`` flag the guard already refuses (``ssh -oProxyCommand=…``, or any command
+# at all). ``RSYNC_CONNECT_PROG`` names the program rsync runs to open a
+# daemon connection, and ``RSYNC_PROXY`` points the daemon connection through an
+# HTTP proxy host — either one sends the data through an attacker-chosen hop.
+# They are refused inline, exported, and through a wrapper.
+_RSYNC_TRANSPORT_ENV = frozenset({"RSYNC_RSH", "RSYNC_CONNECT_PROG", "RSYNC_PROXY"})
+
+
+def is_rsync_transport_env(name):
+    """Whether ``name`` chooses or redirects rsync's transport (the remote
+    shell, the daemon-connection program, or an HTTP proxy)."""
+    return name in _RSYNC_TRANSPORT_ENV
+
 
 def _ssh_positionals(argv, value_flags):
     """Positional arguments and the option values that matter for routing."""
@@ -327,6 +343,28 @@ def _require_lab(host, prog, ctx):
 
 
 def _check_ssh_family(prog, argv, ctx):
+    if prog == "rsync":
+        for a in argv[1:]:
+            if a == "--":
+                break
+            if a == "--rsync-path" or a.startswith("--rsync-path="):
+                raise _GuardError("rsync --rsync-path runs an arbitrary command on the remote "
+                                  "host, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
+            # ``-e``/``--rsh`` substitutes the transport with an arbitrary
+            # command, which can forward the transferred data onward even to an
+            # allowlisted host. ``e`` is rsync's only lowercase short option
+            # that does this (capital ``-E`` is ``--executability``), so any
+            # single-dash cluster containing a lowercase ``e`` is refused along
+            # with the long spellings.
+            if a == "--rsh" or a.startswith("--rsh="):
+                raise _GuardError("rsync --rsh substitutes the transport with an arbitrary "
+                                  "command, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
+            if a.startswith("-") and not a.startswith("--") and "e" in a[1:]:
+                raise _GuardError("rsync -e substitutes the transport with an arbitrary command, "
+                                  "which can forward the transferred data to an unallowlisted "
+                                  "destination; denied")
     positionals, options = _ssh_positionals(argv, _SSH_VALUE_FLAGS)
     for flag, value in options:
         if flag == "-o" and re.match(r"(?i)^\s*(ProxyCommand|ProxyJump|LocalCommand|PermitLocalCommand)",
@@ -337,8 +375,6 @@ def _check_ssh_family(prog, argv, ctx):
                 _require_lab(hop, f"{prog} jump host", ctx)
         if flag == "-S" and prog == "scp":
             raise _GuardError("scp -S substitutes the transport program; denied")
-        if flag in ("-e", "--rsh") and prog == "rsync" and re.search(r"-J|ProxyCommand|ProxyJump", value):
-            raise _GuardError("rsync -e with a jump/proxy option; denied")
     hosts = []
     if prog == "ssh":
         if not positionals:
