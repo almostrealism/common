@@ -305,6 +305,7 @@ jobs:
         run: |
           echo "## Project Manager" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Round in progress check:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }} (limit ${{ steps.branches.outputs.max_open_prs }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -319,7 +320,11 @@ jobs:
               echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ steps.intake.outputs.open }}" != "true" ]; then
+              echo "No new branch — the controller is not accepting automated jobs, or could not be asked." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi
 
 
@@ -504,6 +509,7 @@ jobs:
         if: always()
         env:
           RELEASE: ${{ steps.release.outputs.release }}
+          INTAKE: ${{ steps.intake.outputs.open }}
           DECIDE: ${{ steps.decide.outputs.reason }}
           OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
           CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
@@ -513,12 +519,15 @@ jobs:
             echo "## Task Planning"
             echo ""
             echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Automated intake open:** ${INTAKE:-not checked}"
             echo "**Round in progress check:** ${DECIDE:-not run}"
             echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
             echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
             echo ""
             if [ -n "$BRANCH" ]; then
               echo "Created \`$BRANCH\` and submitted an agent job to claim and plan the next task."
+            elif [ "$INTAKE" != "true" ]; then
+              echo "No task-planning round started: the controller is not accepting automated jobs, or could not be asked."
             else
               echo "No task-planning round started."
             fi
@@ -679,6 +688,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Documentation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "**Review window:** ${{ env.REVIEW_SINCE }}" >> "$GITHUB_STEP_SUMMARY"
@@ -688,6 +698,7 @@ jobs:
             echo "coding agent job to review documentation for staleness and open a PR with any fixes." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous documentation QA PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last review is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -853,6 +864,7 @@ jobs:
         run: |
           echo "## Defect Hunt" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -861,6 +873,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1157,6 +1170,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Test Coverage" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
             if [ -n "${{ steps.select.outputs.target }}" ]; then
@@ -1169,6 +1183,7 @@ jobs:
             fi
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous coverage-qa PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last coverage round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1336,6 +1351,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Consolidation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1344,6 +1360,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous consolidation PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last consolidation round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1523,6 +1540,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Performance" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1532,6 +1550,7 @@ jobs:
             echo "routed to a macOS Node (\`platform=macos\`) so the agent measures on Metal." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous performance PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last performance round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1708,6 +1727,7 @@ jobs:
         run: |
           echo "## Quality Assurance — PDSL Migration" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1716,6 +1736,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus at max effort (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous PDSL migration PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last PDSL migration round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;

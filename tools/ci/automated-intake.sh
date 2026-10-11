@@ -14,6 +14,11 @@
 # controller that cannot be reached, or that does not answer with a
 # boolean, would refuse the submission anyway, so no round starts.
 #
+# The answer is a snapshot, not a reservation: intake closed after this
+# check and before the round submits still orphans that round. Closing that
+# window needs a controller-side reservation; this check covers the common
+# case of a round starting while intake is already closed.
+#
 # Usage:
 #   automated-intake.sh
 #

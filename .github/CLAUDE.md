@@ -842,7 +842,13 @@ to leave an orphaned branch and workstream behind, and the orphaned branch
 then held off the next round for the 24-hour grace window. The check fails
 closed, and `force` does not lift it: reopen intake instead. No step before
 the gate may push a branch, register or archive a workstream, or submit a job;
-`tools/tests/test_automated_intake.py` checks that.
+`tools/tests/test_automated_intake.py` checks that, and that every job's
+summary reports the intake answer so a closed intake does not read as a round
+in progress. The check is a snapshot, not a reservation: intake closed in the
+seconds between it and the round's submission still orphans that round. Closing
+the window needs a controller-side reservation that the round takes before it
+creates its branch; until one exists, this check removes the common case (a
+round that starts while intake is already closed).
 
 The six QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`) share a shape:
