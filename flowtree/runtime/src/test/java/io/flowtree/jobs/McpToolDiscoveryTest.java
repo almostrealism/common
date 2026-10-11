@@ -701,11 +701,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
 			trackerCreateParams.contains("priority"));
+		assertTrue("tracker_create_task must declare stage in signature",
+			trackerCreateParams.contains("stage"));
 
 		List<String> trackerUpdateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
 		assertTrue("tracker_update_task must declare priority in signature",
 			trackerUpdateParams.contains("priority"));
+		assertTrue("tracker_update_task must declare stage in signature",
+			trackerUpdateParams.contains("stage"));
 
 		List<String> trackerListParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_list_tasks");

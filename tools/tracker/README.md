@@ -77,7 +77,7 @@ convention and mirror the REST API:
 | `tracker_create_release` | write | Create a release |
 | `tracker_update_release` | write | Update a release |
 | `tracker_delete_release` | write | Delete a release (tasks kept, FK set to NULL) |
-| `tracker_create_task` | write | Create a task |
+| `tracker_create_task` | write | Create a task (optionally set its `stage`; omit to let the tracker default to `backlog`) |
 | `tracker_get_task` | read | Fetch one task by ID (full record, workspace-scoped) |
 | `tracker_list_tasks` | read | List tasks with filtering, pagination, and optional headlines projection |
 | `tracker_update_task` | write | Update a task's fields, including its `stage` (mark it `ready` to queue it for planning) |
