@@ -34,6 +34,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
+import org.almostrealism.calculus.VectorJacobianProduct;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -153,7 +154,10 @@ public abstract class CollectionProducerComputationBase
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
 	private CollectionProducer deltaAlternate;
-	
+
+	/** Structure-aware gradient shortcut for this computation, or null if none is known. */
+	private VectorJacobianProduct vectorJacobianProduct;
+
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
 
@@ -246,7 +250,7 @@ public abstract class CollectionProducerComputationBase
 	 * in automatic differentiation scenarios.
 	 * 
 	 * @return The delta alternate producer, or null if none is set
-	 * @see #setDeltaAlternate(CollectionProducer)
+	 * @see #withDeltaAlternate(CollectionProducer)
 	 */
 	@Override
 	public CollectionProducer getDeltaAlternate() {
@@ -254,15 +258,39 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Sets the delta alternate producer for this computation.
-	 * This is used in automatic differentiation to provide an alternative
-	 * computation path for calculating derivatives and gradients.
-	 * 
-	 * @param deltaAlternate The delta alternate producer to set
-	 * @see #getDeltaAlternate()
+	 * Keeps the delta alternate producer for this computation, which
+	 * {@link #getDeltaAlternate()} returns to automatic differentiation.
+	 *
+	 * @param deltaAlternate The delta alternate producer, or null to clear it
+	 * @return this computation
 	 */
-	public void setDeltaAlternate(CollectionProducer deltaAlternate) {
+	@Override
+	public CollectionProducerComputationBase withDeltaAlternate(CollectionProducer deltaAlternate) {
 		this.deltaAlternate = deltaAlternate;
+		return this;
+	}
+
+	/**
+	 * Keeps the structure-aware vector-Jacobian product for this computation, which
+	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults so that the
+	 * backward pass can avoid materializing this computation's full Jacobian.
+	 *
+	 * @param vectorJacobianProduct the vector-Jacobian product, or null to clear it
+	 * @return this computation
+	 */
+	@Override
+	public CollectionProducerComputationBase withVectorJacobianProduct(VectorJacobianProduct vectorJacobianProduct) {
+		this.vectorJacobianProduct = vectorJacobianProduct;
+		return this;
+	}
+
+	/**
+	 * Returns the result of the assigned {@link VectorJacobianProduct}, or null if no
+	 * product has been assigned or it does not apply to the target.
+	 */
+	@Override
+	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
+		return vectorJacobianProduct == null ? null : vectorJacobianProduct.apply(target, gradient);
 	}
 
 	/**
@@ -558,6 +586,16 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
+	 * Keeps the short-circuit for use when this computation is evaluated.
+	 *
+	 * @see #setShortCircuit(Evaluable)
+	 */
+	@Override
+	public CollectionProducerComputationBase withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
+		return setShortCircuit(shortCircuit);
+	}
+
+	/**
 	 * Returns the custom description function for this computation.
 	 * This function can be used to generate human-readable descriptions
 	 * of the computation for debugging and profiling purposes.
@@ -816,43 +854,5 @@ public abstract class CollectionProducerComputationBase
 		} finally {
 			enableDestinationLogging = log;
 		}
-	}
-
-	/**
-	 * Assigns a delta alternate producer to the given producer for automatic differentiation.
-	 * This utility method handles unwrapping reshaped producers to set the delta alternate
-	 * on the underlying computation.
-	 *
-	 * <p>The method performs the following steps:</p>
-	 * <ul>
-	 *   <li>Unwraps {@link ReshapeProducer} to access the underlying computation</li>
-	 *   <li>Verifies the computation is a {@link CollectionProducerComputationBase}</li>
-	 *   <li>Assigns the alternate producer via {@link #setDeltaAlternate(CollectionProducer)}</li>
-	 * </ul>
-	 *
-	 * @param producer The producer to assign the delta alternate to
-	 * @param alternate The alternative producer to use for delta computations
-	 * @return The original producer (for method chaining)
-	 * @throws IllegalArgumentException if the producer is not a {@link CollectionProducerComputationBase}
-	 * @see #setDeltaAlternate(CollectionProducer)
-	 * @see ReshapeProducer
-	 */
-	public static CollectionProducer assignDeltaAlternate(
-			CollectionProducer producer, CollectionProducer alternate) {
-		Producer computation;
-
-		if (producer instanceof ReshapeProducer) {
-			computation = ((ReshapeProducer) producer).getComputation();
-		} else {
-			computation = producer;
-		}
-
-		if (computation instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase) computation).setDeltaAlternate(alternate);
-		} else {
-			throw new IllegalArgumentException();
-		}
-
-		return producer;
 	}
 }

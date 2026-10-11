@@ -98,9 +98,9 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	/** Seed of the weight initialization. */
 	private static final long SEED = 20260930L;
 	/** Adam learning rate of the first epoch. */
-	private static final double LEARNING_RATE = 1e-2;
+	private static final double LEARNING_RATE = 3e-3;
 	/** Adam learning rate of the last epoch; the rate decays linearly in between. */
-	private static final double FINAL_LEARNING_RATE = 1e-3;
+	private static final double FINAL_LEARNING_RATE = 3e-4;
 	/** Stride of the held-out windows (non-overlapping). */
 	private static final int HELD_OUT_STRIDE = SEQ_LEN;
 	/**
@@ -108,11 +108,11 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * the training stride is chosen so that the windows of all epochs together span the whole
 	 * training region once ({@link NextTokenDataset#spanningStride}).
 	 */
-	private static final int TRAIN_WINDOWS = 110;
+	private static final int TRAIN_WINDOWS = 150;
 	/** Maximum held-out windows evaluated at each epoch boundary, for the progress curve only. */
 	private static final int HELD_OUT_WINDOWS = 12;
 	/** Epochs passed to {@link ModelOptimizer#optimize(int)}. */
-	private static final int EPOCHS = 5;
+	private static final int EPOCHS = 20;
 	/** Fraction of the corpus bytes in the training region. */
 	private static final double TRAIN_FRACTION = 0.9;
 	/** The documentation-style prompt the trained model continues. */
@@ -312,6 +312,52 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		Assert.assertEquals(sum / SEQ_LEN, loss, 1e-4);
 		Assert.assertEquals(Math.log(VOCAB), loss, 0.5);
 		compiled.destroy();
+	}
+
+	/**
+	 * A causal model's output at a position depends only on the tokens up to it, so the same
+	 * weights over the same tokens must give the same rows whatever the context length. Running
+	 * the documented configuration at context {@link #SEQ_LEN} and at one position less compares
+	 * a model whose sequence length equals its embedding width (so the position count coincides
+	 * with the row count of the square and down projections) with one where nothing coincides;
+	 * an operation that pairs axes by size rather than by meaning changes only the first.
+	 */
+	@Test(timeout = 15 * 60000)
+	public void outputsDoNotDependOnContextLength() {
+		CausalLanguageModel full = newModel();
+		CausalLanguageModel shorter = new CausalLanguageModel(VOCAB, SEQ_LEN - 1, DIM, HEADS, DEPTH, FF_DIM,
+				full.getWeights());
+
+		int[] tokens = new ByteTokenizer().encodeAsInt(
+				"Java is the orchestration language; the computation graph is compiled to native code.");
+		double[] fullRows = forwardRows(full, tokens, SEQ_LEN);
+		double[] shorterRows = forwardRows(shorter, tokens, SEQ_LEN - 1);
+
+		for (int i = 0; i < shorterRows.length; i++) {
+			Assert.assertEquals("row " + i / VOCAB + " entry " + i % VOCAB, shorterRows[i], fullRows[i], 1e-4);
+		}
+
+		full.getWeights().destroy();
+	}
+
+	/**
+	 * Compiles a model for inference and returns its log-probabilities for the first window of
+	 * {@code seqLen} of the given tokens.
+	 *
+	 * @param lm     the model
+	 * @param tokens the token ids, more than {@code seqLen} of them
+	 * @param seqLen the model's context length
+	 * @return the {@code seqLen * VOCAB} output values, row by row
+	 */
+	private double[] forwardRows(CausalLanguageModel lm, int[] tokens, int seqLen) {
+		CompiledModel compiled = lm.compile(false);
+		NextTokenDataset window = new NextTokenDataset(tokens, VOCAB, seqLen, seqLen, 1);
+		try {
+			return compiled.forward(window.iterator().next().getInput()).toArray(0, seqLen * VOCAB);
+		} finally {
+			window.destroy();
+			compiled.destroy();
+		}
 	}
 
 	/**
@@ -526,8 +572,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		}
 
 		assertNonTrivialGeneration(new ByteTokenizer().encodeAsInt(GENERATION_PROMPT), generated[0], generated[1]);
-		// TODO(review): the documented configuration (all 83 held-out windows: 4.957 vs scored baseline 4.912) fails this
-		// assertion; the step budget (~550 steps at ~3.6 s each, dominated by Jacobian-based weight gradients) is the limit
+		// TODO(review): the documented configuration passes this assertion (all 83 held-out windows: 4.194 vs scored
+		// baseline 4.912) but still fails the generation assertion above (96 spaces); the gap is recipe and scale
 		Assert.assertTrue("held-out loss " + finalBits + " bits/byte did not beat the unigram baseline " +
 				unigramBits, finalBits < unigramBits);
 	}

@@ -330,6 +330,12 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return enableChainRule || super.isChainRuleSupported();
 	}
 
+	/** An aggregation reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
+	}
+
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);

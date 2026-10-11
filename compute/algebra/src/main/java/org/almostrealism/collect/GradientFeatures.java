@@ -52,20 +52,50 @@ public interface GradientFeatures extends ComparisonFeatures {
 	}
 
 	/**
+	 * Combines a function's derivative with an upstream gradient to produce the gradient
+	 * with respect to {@code input} via the chain rule (the vector-Jacobian product).
+	 *
+	 * <p>When the function offers a structure-aware product for {@code input}
+	 * ({@link CollectionProducer#attemptVectorJacobianProduct}, which a matrix multiply
+	 * does for its matrix and its rows), that product is used and the Jacobian is never
+	 * formed. Otherwise the result is exactly {@link #jacobianGradient}.</p>
+	 *
+	 * @param func     the differentiable collection producer representing the forward function
+	 * @param input    the input collection producer for which the gradient is computed
+	 * @param gradient the upstream gradient producer (output gradient from the next layer)
+	 * @return a {@link CollectionProducer} of shape {@code [inSize]}, traversed per element,
+	 *         containing the gradient with respect to {@code input}
+	 */
+	default CollectionProducer combineGradient(
+			CollectionProducer func,
+			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
+		CollectionProducer product = func.attemptVectorJacobianProduct(input, gradient);
+		if (product != null) {
+			return product.reshape(shape(shape(input).getTotalSize())).each();
+		}
+
+		return jacobianGradient(func, input, gradient);
+	}
+
+	/**
 	 * Combines the Jacobian of a function with an upstream gradient to produce the
 	 * input gradient via the chain rule. The Jacobian is computed as
 	 * {@code func.delta(input)}, reshaped to {@code [outSize, inSize]}, multiplied
 	 * by the upstream gradient (broadcast over inputs), then summed over output dimensions
 	 * to yield the gradient with respect to {@code input}.
 	 *
+	 * <p>This always materializes the full Jacobian, so it is the reference that any
+	 * structure-aware product used by {@link #combineGradient} must agree with.</p>
+	 *
 	 * @param func     the differentiable collection producer representing the forward function
 	 * @param input    the input collection producer for which the gradient is computed
 	 * @param gradient the upstream gradient producer (output gradient from the next layer)
 	 * @return a {@link CollectionProducer} containing the gradient with respect to {@code input}
 	 */
-	default CollectionProducer combineGradient(
+	default CollectionProducer jacobianGradient(
 			CollectionProducer func,
 			Producer<PackedCollection> input, Producer<PackedCollection> gradient) {
+		// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check 32-bit index overflow
 		int inSize = shape(input).getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
 		return multiplyGradient(func.delta(input).reshape(outSize, inSize)

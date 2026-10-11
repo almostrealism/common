@@ -22,9 +22,12 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -189,6 +192,36 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	public long getExpansionWidth() {
 		int operands = getChildren().size() - 1;
 		return Math.max(1L, operands);
+	}
+
+	/**
+	 * The gradient of a sum with respect to a target is the sum of the gradients of the
+	 * operands that depend on the target, each given the unchanged upstream gradient.
+	 * Operands that cannot depend on the target contribute nothing and are skipped. The
+	 * product is only available when every dependent operand has the full output size
+	 * (it is not broadcast into the sum) and offers its own vector-Jacobian product;
+	 * otherwise this returns null and the full Jacobian is used.
+	 */
+	@Override
+	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
+		CollectionProducer assigned = super.attemptVectorJacobianProduct(target, gradient);
+		if (assigned != null) return assigned;
+
+		long size = getShape().getTotalSizeLong();
+		List<CollectionProducer> terms = new ArrayList<>();
+
+		for (Producer<PackedCollection> operand : getInputs().stream().skip(1).collect(Collectors.toList())) {
+			if (AlgebraFeatures.cannotMatch(operand, target)) continue;
+			if (shape(operand).getTotalSizeLong() != size) return null;
+
+			CollectionProducer term =
+					CollectionProducer.attemptVectorJacobianProduct(operand, target, gradient);
+			if (term == null) return null;
+			terms.add(term);
+		}
+
+		if (terms.isEmpty()) return null;
+		return terms.size() == 1 ? terms.get(0) : add(new ArrayList<>(terms));
 	}
 
 	/**

@@ -1001,6 +1001,47 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 								PackedCollection biases,
 								boolean init,
 								ComputeRequirement... requirements) {
+		Factor<PackedCollection> operator = denseOperator(inputShape, weights, biases);
+		TraversalPolicy weightShape = weights.getShape();
+		int size = weightShape.length(1);
+		TraversalPolicy outputShape = inputShape
+				.replaceDimension(inputShape.getDimensions() - 1, weightShape.length(0));
+
+		OperationList setup = new OperationList("dense " + size + " init");
+		if (init) {
+			Random randn = randn(weightShape, getInitializationRandom());
+			setup.add(() -> randn::refresh);
+			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
+			if (biases != null) {
+				setup.add(a(p(biases.each()), c(0.0)));
+			}
+		}
+
+		return layer("dense " + size, inputShape.traverseEach(), outputShape.traverseEach(),
+				operator, biases != null ? List.of(weights, biases) : List.of(weights),
+				setup,
+				requirements);
+	}
+
+	/**
+	 * Builds the forward operator of a dense layer, {@code weights @ input + bias}, applied
+	 * to every row of the last axis of the input and reshaped to the input shape with its
+	 * last dimension replaced by the number of nodes. The bias is repeated for every row
+	 * explicitly, so it is added per node even when there are as many rows as nodes (an
+	 * implicit broadcast would then pair bias entries with rows). The matrix multiply carries its own
+	 * vector-Jacobian product (see {@link org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct}), which is reachable through the
+	 * bias addition and the output reshape, so the backward pass forms the weight and input
+	 * gradients without materializing the operator's Jacobian.
+	 *
+	 * @param inputShape the expected input shape, whose last dimension is the input size
+	 * @param weights    the weight matrix of shape {@code [nodes, size]}
+	 * @param biases     the bias vector of shape {@code [nodes]}, or {@code null} for no bias
+	 * @return the dense operator
+	 * @throws IllegalArgumentException if the weight matrix is not 2-D or the size does not match the input
+	 */
+	default Factor<PackedCollection> denseOperator(TraversalPolicy inputShape,
+												   PackedCollection weights,
+												   PackedCollection biases) {
 		TraversalPolicy weightShape = weights.getShape();
 		if (weightShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
@@ -1019,28 +1060,16 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		TraversalPolicy outputShape = inputShape
 				.replaceDimension(inputShape.getDimensions() - 1, nodes);
-		Factor<PackedCollection> operator = input -> {
+		int rows = flat.length(0);
+		return input -> {
 			input = reshape(flat, input);
-			CollectionProducer result = biases != null ?
-					matmul(p(weights), input).add(traverse(1, p(biases))) :
-					matmul(p(weights), input);
+			CollectionProducer result = matmul(p(weights), input);
+			if (biases != null) {
+				result = result.add(repeat(rows, p(biases)).reshape(result.getShape()));
+			}
+
 			return result.reshape(outputShape);
 		};
-
-		OperationList setup = new OperationList("dense " + size + " init");
-		if (init) {
-			Random randn = randn(weightShape, getInitializationRandom());
-			setup.add(() -> randn::refresh);
-			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
-			if (biases != null) {
-				setup.add(a(p(biases.each()), c(0.0)));
-			}
-		}
-
-		return layer("dense " + size, inputShape.traverseEach(), outputShape.traverseEach(),
-				operator, biases != null ? List.of(weights, biases) : List.of(weights),
-				setup,
-				requirements);
 	}
 
 	/**

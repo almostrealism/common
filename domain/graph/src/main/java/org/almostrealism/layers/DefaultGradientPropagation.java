@@ -48,6 +48,11 @@ import java.util.stream.Stream;
  *       is applied to the weights via the corresponding {@link ParameterUpdate}.</li>
  * </ul>
  *
+ * <p>Both gradients are formed by {@link #combineGradient}, which uses the operator's
+ * structure-aware vector-Jacobian product when it has one (a dense layer's matrix
+ * multiply does, for its weights and its input) and otherwise contracts the operator's
+ * full Jacobian with the upstream gradient.</p>
+ *
  * <p>Diagnostic flags ({@link #enableDiagnosticGrad}, {@link #enableDiagnosticWeight})
  * can be enabled to wrap operations in {@code OperationWithInfo} for profiling.</p>
  *
@@ -202,15 +207,8 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 			int weightSize = shape(weights[i]).getTotalSize();
 			Producer<PackedCollection> weightFlat = reshape(shape(weightSize), weights[i]);
 
-			Producer<PackedCollection> deltaOutDeltaWeight = function.get().delta(weights[i])
-					.reshape(outSize, weightSize)
-					.traverse(1)
-					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(weightSize))
-					.traverse(0)
-					.enumerate(1, 1)
-					.sum(1)
-					.reshape(shape(weightSize))
-					.each();
+			Producer<PackedCollection> deltaOutDeltaWeight =
+					combineGradient(function.get(), weights[i], gradient);
 
 			Supplier<Runnable> weightUpdateAssignment = updates[i].apply(getName(), weightFlat, deltaOutDeltaWeight);
 

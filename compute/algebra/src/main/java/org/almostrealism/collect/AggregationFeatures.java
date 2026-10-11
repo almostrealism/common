@@ -22,13 +22,10 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
-import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CumulativeProductComputation;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
-import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 
 import java.util.function.Function;
@@ -61,34 +58,34 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 * the largest value as a single-element collection.
 	 *
 	 * @param input the collection to find the maximum element in
-	 * @return a {@link CollectionProducerComputationBase} that generates the maximum value
-	 * 
+	 * @return a {@link CollectionProducer} that generates the maximum value
+	 *
 	 *
 	 * <pre>{@code
 	 * // Find maximum in a vector
 	 * CollectionProducer values = c(3.0, 7.0, 2.0, 9.0, 5.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> maximum = max(values);
+	 * CollectionProducer maximum = max(values);
 	 * // Result: Producer that generates [9.0]
-	 * 
+	 *
 	 * // Find maximum in a matrix (flattened)
 	 * CollectionProducer matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> matrixMax = max(matrix);
+	 * CollectionProducer matrixMax = max(matrix);
 	 * // Result: Producer that generates [8.0] (maximum across all elements)
-	 * 
+	 *
 	 * // Maximum of negative numbers
 	 * CollectionProducer negatives = c(-5.0, -2.0, -8.0, -1.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negMax = max(negatives);
+	 * CollectionProducer negMax = max(negatives);
 	 * // Result: Producer that generates [-1.0] (least negative = maximum)
 	 * }</pre>
 	 */
-	default CollectionProducerComputationBase max(Producer<PackedCollection> input) {
+	default CollectionProducer max(Producer<PackedCollection> input) {
 		DynamicIndexProjectionProducerComputation projection =
 				new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
 						(args, idx) -> args[2].getValueAt(idx).toInt(),
 						true, input, indexOfMax(input));
 
 		CollectionMaxComputation c = new CollectionMaxComputation(input);
-		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
+		if (enableIndexProjectionDeltaAlt) c.withDeltaAlternate(projection);
 		return c;
 	}
 
@@ -108,7 +105,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 *
 	 * @return A computation that produces the index of the maximum element
 	 */
-	default CollectionProducerComputationBase indexOfMax(Producer<PackedCollection> input) {
+	default CollectionProducer indexOfMax(Producer<PackedCollection> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
@@ -172,13 +169,6 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 		CollectionProducer result = null;
 
-		boolean isWeightedSum = input instanceof WeightedSumComputation ||
-				(input instanceof ReshapeProducer &&
-						((ReshapeProducer) input).getComputation() instanceof WeightedSumComputation);
-		boolean isAggregated = input instanceof AggregatedProducerComputation ||
-				(input instanceof ReshapeProducer &&
-						((ReshapeProducer) input).getComputation() instanceof AggregatedProducerComputation);
-
 		if (enableSubdivide && shape(input).getSize() > KernelPreferences.getWorkSubdivisionMinimum()) {
 			CollectionProducer sum = subdivide(input, this::sum);
 
@@ -191,7 +181,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 			}
 		}
 
-		boolean tryUnaryWeighted = enableUnaryWeightedSum && !isWeightedSum && !isAggregated;
+		boolean tryUnaryWeighted = enableUnaryWeightedSum && !CollectionProducer.isReduction(input);
 
 		if (result == null && tryUnaryWeighted &&
 				shape(input).getSize() <= KernelPreferences.getWorkSubdivisionMinimum()) {
@@ -209,8 +199,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 		if (result == null) {
 			return new CollectionSumComputation(input);
 		} else {
-			return CollectionProducerComputationBase.assignDeltaAlternate(
-					result, new CollectionSumComputation(input));
+			return result.withDeltaAlternate(new CollectionSumComputation(input));
 		}
 	}
 

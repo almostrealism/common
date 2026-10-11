@@ -16,13 +16,16 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.calculus.DeltaFeatures;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.calculus.VectorJacobianProduct;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -603,42 +606,38 @@ public interface CollectionProducer extends
 	/**
 	 * Returns the maximum element along the specified axis.
 	 *
-	 * @param <T>  the collection type
 	 * @param axis the axis to reduce over
 	 * @return a computation for the maximum value along the axis
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase max(int axis) {
+	default CollectionProducer max(int axis) {
 		return max(traverse(axis, this));
 	}
 
 	/**
 	 * Returns the maximum element across the entire collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the maximum value
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase max() {
+	default CollectionProducer max() {
 		return max(this);
 	}
 
 	/**
 	 * Returns the index of the maximum element in this collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the index of the maximum value
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase indexOfMax() {
+	default CollectionProducer indexOfMax() {
 		return indexOfMax(this);
 	}
 
 	/**
 	 * Returns the minimum element across this collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the minimum value
 	 * @throws UnsupportedOperationException always (not yet implemented)
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase min() {
+	default CollectionProducer min() {
 		// TODO  return min((Producer) this);
 		throw new UnsupportedOperationException();
 	}
@@ -901,6 +900,133 @@ public interface CollectionProducer extends
 		if (delta != null) return delta;
 
 		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Attempts to compute the gradient with respect to {@code target} directly from the
+	 * upstream gradient, without forming this computation's full Jacobian. Returns
+	 * {@code null} when this computation has no structure-aware shortcut for the target,
+	 * in which case the caller must contract the dense {@link #delta(Producer) Jacobian}.
+	 *
+	 * @param target   the producer with respect to which to differentiate
+	 * @param gradient the upstream gradient, with the same total size as this computation
+	 * @return the gradient with respect to {@code target} (same total size as the target),
+	 *         or {@code null} if no shortcut applies
+	 * @see org.almostrealism.calculus.VectorJacobianProduct
+	 */
+	default CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
+		return null;
+	}
+
+	/**
+	 * Attempts the structure-aware vector-Jacobian product of an arbitrary producer, as
+	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} does for a
+	 * {@link CollectionProducer}. A producer that is not a {@link CollectionProducer}
+	 * offers no such product, so {@code null} is returned for it and the caller must
+	 * contract the dense Jacobian.
+	 *
+	 * @param function the producer whose output the upstream gradient refers to
+	 * @param target   the producer with respect to which to differentiate
+	 * @param gradient the upstream gradient, with the same total size as {@code function}
+	 * @return the gradient with respect to {@code target}, or {@code null} if no shortcut applies
+	 */
+	static CollectionProducer attemptVectorJacobianProduct(Producer<?> function, Producer<?> target,
+														   Producer<PackedCollection> gradient) {
+		if (!(function instanceof CollectionProducer)) return null;
+		return ((CollectionProducer) function).attemptVectorJacobianProduct(target, gradient);
+	}
+
+	/**
+	 * Declares a structure-aware {@link VectorJacobianProduct} for this computation, to
+	 * be returned by {@link #attemptVectorJacobianProduct(Producer, Producer)}. The
+	 * product is an optimization of the backward pass, not a change to its result: a
+	 * producer that has nowhere to keep it ignores it and continues to be
+	 * differentiated through its dense {@link #delta(Producer) Jacobian}, which yields
+	 * the same gradient.
+	 *
+	 * @param product the vector-Jacobian product of this computation
+	 * @return this producer (for method chaining)
+	 */
+	default CollectionProducer withVectorJacobianProduct(VectorJacobianProduct product) {
+		return this;
+	}
+
+	/**
+	 * Declares an alternative computation whose {@link #delta(Producer) delta} is used
+	 * in place of this computation's own (see {@link DeltaAlternate}). The alternate
+	 * must compute the same values as this computation, so it changes how the gradient
+	 * is derived and never what it is: a producer that has nowhere to keep it ignores
+	 * it and is differentiated directly.
+	 *
+	 * @param alternate a computation equal in value to this one, with a cheaper delta
+	 * @return this producer (for method chaining)
+	 */
+	default CollectionProducer withDeltaAlternate(CollectionProducer alternate) {
+		return this;
+	}
+
+	/**
+	 * Declares an {@link Evaluable} that produces the same result as this computation
+	 * and may be used in its place when this computation is evaluated on its own. The
+	 * short-circuit is an optimization of evaluation, not a change to its result: a
+	 * producer that has nowhere to keep it ignores it and is evaluated in full.
+	 *
+	 * @param shortCircuit an evaluable equal in result to this computation
+	 * @return this producer (for method chaining)
+	 */
+	default CollectionProducer withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
+		return this;
+	}
+
+	/**
+	 * Attempts to scale this producer by a constant factor using a representation
+	 * specific to this producer, such as rescaling the parameters of a sequence rather
+	 * than wrapping it in a product. Returns {@code null} when this producer has no such
+	 * representation, in which case the caller must form the product.
+	 *
+	 * @param factor the constant to scale by
+	 * @return this producer scaled by {@code factor}, or {@code null} if no shortcut applies
+	 */
+	default CollectionProducer attemptMultiply(double factor) {
+		return null;
+	}
+
+	/**
+	 * Indicates whether this producer is itself a reduction, combining groups of its
+	 * input elements into single outputs (an aggregation or a weighted sum). A reduction
+	 * already compiles to an accumulation, so a reduction applied to its output (see
+	 * {@link AggregationFeatures#sum(Producer)}) is not re-expressed in another form.
+	 *
+	 * @return true if this producer reduces its input, false otherwise
+	 */
+	default boolean isReduction() {
+		return false;
+	}
+
+	/**
+	 * Indicates whether an arbitrary producer is a reduction, as {@link #isReduction()}
+	 * does for a {@link CollectionProducer}. A producer that is not a
+	 * {@link CollectionProducer} is not known to be a reduction.
+	 *
+	 * @param producer the producer to inspect
+	 * @return true if the producer reduces its input, false otherwise
+	 */
+	static boolean isReduction(Producer<?> producer) {
+		return producer instanceof CollectionProducer && ((CollectionProducer) producer).isReduction();
+	}
+
+	/**
+	 * Indicates whether this producer may be isolated into an independent process.
+	 * Isolation is permitted only when the process isolation settings allow it and
+	 * the total size of this producer's output does not exceed the maximum memory
+	 * reservation.
+	 *
+	 * @return true if isolation is permitted
+	 * @see Process#isolationPermitted(Supplier)
+	 */
+	default boolean isIsolationPermitted() {
+		return Process.isolationPermitted(this) &&
+				getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	/**

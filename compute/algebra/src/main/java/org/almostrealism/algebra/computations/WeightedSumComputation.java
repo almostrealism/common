@@ -62,8 +62,8 @@ import java.util.List;
  * TraversalPolicy weightPos = shape(3, 4);  // Position policy for x
  * TraversalPolicy groupShape = shape(1, 4); // Sum over dimension 1
  *
- * WeightedSumComputation<PackedCollection> matmul =
- *     new WeightedSumComputation<>(
+ * WeightedSumComputation matmul =
+ *     new WeightedSumComputation(
  *         resultShape, inputPos, weightPos,
  *         groupShape, groupShape,
  *         matrixA, vectorX
@@ -204,6 +204,12 @@ public class WeightedSumComputation
 
 		// Refresh the signature captured before the traversal policies were assigned
 		init();
+	}
+
+	/** A weighted sum reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
 	}
 
 	/**

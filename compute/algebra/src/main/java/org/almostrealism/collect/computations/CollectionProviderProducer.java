@@ -228,6 +228,14 @@ public class CollectionProviderProducer<T extends Shape>
 	public boolean isProvider() { return true; }
 
 	/**
+	 * A provided collection is directly available to a kernel as an argument.
+	 *
+	 * @return true
+	 */
+	@Override
+	public boolean isDirectlyComputable() { return true; }
+
+	/**
 	 * Creates a traversal view of this producer along the specified axis.
 	 *
 	 * <p>Delegates to the {@link CollectionFeatures#traverse(int, Producer)} helper method

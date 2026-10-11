@@ -1,9 +1,17 @@
 # Compute matrix-multiply weight gradients without materializing the Jacobian
 
-**Status:** Proposed — not yet implemented. This document is a plan awaiting approval; the
-branch it lives on changes only `docs/`. None of the deliverables below exist yet — there is no
-VJP implementation, no A/B equality test, no measured speedup, and no training-doc re-run. The
-title names the work the plan *proposes*, not work that has been done.
+**Status:** Implemented on this branch, with one deliverable short of the plan's first outcome.
+The VJP (`MatrixMultiplyVectorJacobianProduct`, attached by `MatrixFeatures.matmul`, exposed through
+`CollectionProducer.attemptVectorJacobianProduct`), the routing through
+`GradientFeatures.combineGradient` with `jacobianGradient` as the exact fallback, the A/B test
+(`DenseVectorJacobianProductTest`), the measurement and the enlarged-budget re-run are done; see
+`docs/internals/training-a-language-model.md`. Two findings changed the work. First, `matmul`'s
+multiply/sum lowering and the dense bias paired axes by size when the row count equaled the
+output width; the documented model hit it in its 64×64 and 64×128 projections, and both are fixed.
+Second, the full-Jacobian weight gradient is itself wrong for the 256×64 output projection, so the
+A/B gate compares that one weight against the definition rather than the Jacobian. The run now
+beats the unigram baseline (4.194 against 4.912), but greedy generation is still a single
+repeated byte.
 **Category:** Performance (directly unblocking Proof of Value)
 **Branch:** `project/plan-20261009-171224`
 **Requires:** a macOS / Metal node (see `plan-20261009-171224-workstream.yaml`)

@@ -106,6 +106,16 @@ public interface CollectionProducerComputation extends
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
 
+	/**
+	 * A collection computation is evaluated directly as a kernel.
+	 *
+	 * @return true
+	 */
+	@Override
+	default boolean isDirectlyComputable() {
+		return true;
+	}
+
 	@Override
 	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
 																			   Producer<?> target) {
@@ -120,7 +130,7 @@ public interface CollectionProducerComputation extends
 		}
 
 		return deltaStrategyProcessor(producer.getDeltaStrategy(),
-				producerFactory(this), shape(producer), target).apply(terms);
+				producerFactory(), shape(producer), target).apply(terms);
 	}
 
 	@Override
@@ -254,15 +264,12 @@ public interface CollectionProducerComputation extends
 
 	/**
 	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
-	 * input producers, using the structure of an existing computation as the template.
-	 * If only one non-null input is present, that input is returned directly.
+	 * input producers, using the structure of this computation as the template.
+	 * If only one input (beyond the destination) is present, that input is returned directly.
 	 *
-	 * @param <T>      the collection type of the computation
-	 * @param original the computation to use as a template for generating the new producer
 	 * @return a function that takes a list of producers and returns a new CollectionProducer
 	 */
-	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
-				producerFactory(CollectionProducerComputation original) {
+	private Function<List<Producer<?>>, CollectionProducer> producerFactory() {
 		return args -> {
 			List<Producer<?>> terms = new ArrayList<>();
 			args.stream().skip(1).forEach(terms::add);
@@ -272,23 +279,10 @@ public interface CollectionProducerComputation extends
 			} else if (terms.size() == 1) {
 				return (CollectionProducer) terms.get(0);
 			} else {
-				return original.generate((List) args.stream()
+				return generate((List) args.stream()
 						.map(t -> (Process) t).collect(Collectors.toList()));
 			}
 		};
-	}
-
-	/**
-	 * Returns true if the given producer may be isolated into an independent process.
-	 * Isolation is permitted only when the process supports it and the total collection
-	 * size does not exceed the maximum memory reservation limit.
-	 *
-	 * @param op the collection producer to test
-	 * @return true if isolation is permitted
-	 */
-	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
-		return Process.isolationPermitted(op) &&
-				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	/**

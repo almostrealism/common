@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -38,6 +39,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
+import org.almostrealism.calculus.VectorJacobianProduct;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -473,7 +475,7 @@ public class ReshapeProducer
 				}
 			}
 
-			return CollectionProducerComputation.isIsolationPermitted(this) ?
+			return isIsolationPermitted() ?
 					new CollectionProducerComputation.IsolatedProcess(this) :
 					this;
 		} else {
@@ -552,6 +554,63 @@ public class ReshapeProducer
 		}
 
 		return CollectionProducerParallelProcess.super.delta(target);
+	}
+
+	/**
+	 * A reshape only reinterprets the layout of its producer's values, so the
+	 * vector-Jacobian product of the reshaped result is the product of the
+	 * underlying producer, given the same gradient values.
+	 */
+	@Override
+	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
+		if (shape(producer).getTotalSizeLong() != shape(gradient).getTotalSizeLong()) return null;
+		return CollectionProducer.attemptVectorJacobianProduct(producer, target, gradient);
+	}
+
+	/**
+	 * Hands the product to the underlying producer, which
+	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults, since a
+	 * reshape preserves the order of values and the product therefore sees the same
+	 * gradient values whether it is reached through the reshape or directly.
+	 */
+	@Override
+	public ReshapeProducer withVectorJacobianProduct(VectorJacobianProduct product) {
+		if (producer instanceof CollectionProducer) {
+			((CollectionProducer) producer).withVectorJacobianProduct(product);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Hands the alternate to the underlying producer, whose delta this reshape
+	 * reinterprets in {@link #delta(Producer)}.
+	 */
+	@Override
+	public ReshapeProducer withDeltaAlternate(CollectionProducer alternate) {
+		if (producer instanceof CollectionProducer) {
+			((CollectionProducer) producer).withDeltaAlternate(alternate);
+		}
+
+		return this;
+	}
+
+	/**
+	 * A reshape only reinterprets the shape of the underlying producer, so it is a
+	 * reduction exactly when that producer is.
+	 */
+	@Override
+	public boolean isReduction() {
+		return CollectionProducer.isReduction(producer);
+	}
+
+	/**
+	 * A reshape only reinterprets the shape of the underlying producer, so it is
+	 * directly computable exactly when that producer is.
+	 */
+	@Override
+	public boolean isDirectlyComputable() {
+		return CollectionProducerBase.isDirectlyComputable(producer);
 	}
 
 	/**
