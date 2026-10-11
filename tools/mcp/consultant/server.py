@@ -15,7 +15,7 @@ Memory access is via the ar-memory HTTP service (see tools/mcp/memory/).
 If ar-memory is unavailable, memory features degrade gracefully.
 
 Environment variables:
-    AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
+    AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "openrouter", "passthrough", or "auto" (default)
     AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8084 on host, host.docker.internal:8084 in containers)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)

@@ -31,6 +31,7 @@ Synthesis = _mod.Synthesis
 LlamaCppBackend = _mod.LlamaCppBackend
 OllamaBackend = _mod.OllamaBackend
 MLXBackend = _mod.MLXBackend
+OpenRouterBackend = _mod.OpenRouterBackend
 PassthroughBackend = _mod.PassthroughBackend
 AutoBackend = _mod.AutoBackend
 create_backend = _mod.create_backend

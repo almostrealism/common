@@ -11,6 +11,7 @@ import json
 import os
 import socketserver
 import sys
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -23,6 +24,7 @@ from inference import (  # noqa: E402
     InferenceUnavailable,
     LlamaCppBackend,
     OllamaBackend,
+    OpenRouterBackend,
     PassthroughBackend,
     Synthesis,
     create_backend,
@@ -284,6 +286,7 @@ class CreateBackendTest(unittest.TestCase):
     def test_explicit_names_are_honoured(self):
         self.assertIsInstance(create_backend("llamacpp"), LlamaCppBackend)
         self.assertIsInstance(create_backend("ollama"), OllamaBackend)
+        self.assertIsInstance(create_backend("openrouter"), OpenRouterBackend)
         self.assertIsInstance(create_backend("passthrough"), PassthroughBackend)
 
     def test_unknown_name_is_rejected(self):
@@ -403,6 +406,253 @@ class LlamaCppLiveTest(unittest.TestCase):
 
         self.assertTrue(result.degraded)
         self.assertIsInstance(result, Synthesis)
+
+
+class _OpenRouterHandler(BaseHTTPRequestHandler):
+    """Stand-in for OpenRouter's ``/key`` and ``/chat/completions`` endpoints.
+
+    Records each request so tests can check what was actually sent, and
+    answers according to class-level knobs the test sets.
+    """
+
+    key = "test-key"
+    limit_remaining = 10.0
+    completion_status = 200
+    completion = {
+        "choices": [{"message": {"content": "a hosted summary"},
+                     "finish_reason": "stop"}],
+    }
+    requests = []
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _respond(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authorized(self):
+        return self.headers.get("Authorization") == f"Bearer {self.key}"
+
+    def do_GET(self):
+        _OpenRouterHandler.requests.append(("GET", self.path, None))
+        if not self._authorized():
+            self._respond(401, {"error": {"message": "invalid key"}})
+            return
+        self._respond(200, {"data": {"limit_remaining": self.limit_remaining}})
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length))
+        _OpenRouterHandler.requests.append(("POST", self.path, body))
+        if not self._authorized():
+            self._respond(401, {"error": {"message": "invalid key"}})
+            return
+        if self.completion_status != 200:
+            self._respond(
+                self.completion_status,
+                {"error": {"message": "Insufficient credits"}},
+            )
+            return
+        self._respond(200, self.completion)
+
+
+class OpenRouterTest(unittest.TestCase):
+    """The hosted backend: what it sends, and how it degrades."""
+
+    def setUp(self):
+        os.environ["AR_INFERENCE_HEALTH_TTL"] = "0"
+        self.addCleanup(os.environ.pop, "AR_INFERENCE_HEALTH_TTL", None)
+        for var in ("AR_CONSULTANT_OPENROUTER_MODEL",
+                    "AR_CONSULTANT_OPENROUTER_REASONING",
+                    "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION",
+                    "AR_CONSULTANT_OPENROUTER_API_KEY",
+                    "AR_CONSULTANT_OPENROUTER_API_KEY_FILE"):
+            saved = os.environ.pop(var, None)
+            if saved is not None:
+                self.addCleanup(os.environ.__setitem__, var, saved)
+
+        _OpenRouterHandler.limit_remaining = 10.0
+        _OpenRouterHandler.completion_status = 200
+        _OpenRouterHandler.completion = {
+            "choices": [{"message": {"content": "a hosted summary"},
+                         "finish_reason": "stop"}],
+        }
+        _OpenRouterHandler.requests = []
+
+        self.server = _LocalHTTPServer(("127.0.0.1", 0), _OpenRouterHandler)
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.shutdown)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/api/v1"
+
+    def backend(self, api_key="test-key"):
+        return OpenRouterBackend(api_key=api_key, base_url=self.url)
+
+    def posted_body(self):
+        posts = [r for r in _OpenRouterHandler.requests if r[0] == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0][1], "/api/v1/chat/completions")
+        return posts[0][2]
+
+    def test_synthesizes_with_the_configured_model(self):
+        backend = self.backend()
+
+        self.assertTrue(backend.available)
+        result = backend.synthesize("prompt", system="system")
+
+        self.assertFalse(result.degraded)
+        self.assertEqual(result.text, "a hosted summary")
+        body = self.posted_body()
+        self.assertEqual(body["model"], OpenRouterBackend.DEFAULT_MODEL)
+        self.assertEqual(body["messages"][0], {"role": "system", "content": "system"})
+
+    def test_reasoning_is_off_and_retaining_providers_are_excluded_by_default(self):
+        self.backend().synthesize("prompt")
+
+        body = self.posted_body()
+        # "none" disables reasoning via the documented ``enabled`` field rather
+        # than an ``effort`` level OpenRouter does not recognise.
+        self.assertEqual(body["reasoning"], {"enabled": False})
+        self.assertEqual(body["provider"], {"data_collection": "deny"})
+
+    def test_an_effort_level_is_sent_as_reasoning_effort(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_REASONING"] = "medium"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["reasoning"], {"effort": "medium"})
+
+    def test_empty_reasoning_setting_leaves_the_model_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_REASONING"] = ""
+
+        self.backend().synthesize("prompt")
+
+        self.assertNotIn("reasoning", self.posted_body())
+
+    def test_data_collection_allow_is_honoured(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = "allow"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "allow"})
+
+    def test_blank_data_collection_keeps_the_privacy_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = ""
+
+        self.backend().synthesize("prompt")
+
+        # A blank value must not silently drop the restriction, which would let
+        # prompts (carrying the memory corpus) route to retaining providers.
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "deny"})
+
+    def test_unrecognised_data_collection_keeps_the_privacy_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_DATA_COLLECTION"] = "maybe"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["provider"], {"data_collection": "deny"})
+
+    def test_model_comes_from_the_environment(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_MODEL"] = "vendor/other-model"
+
+        self.backend().synthesize("prompt")
+
+        self.assertEqual(self.posted_body()["model"], "vendor/other-model")
+
+    def test_empty_model_variable_means_the_default(self):
+        os.environ["AR_CONSULTANT_OPENROUTER_MODEL"] = ""
+
+        self.assertEqual(self.backend().model, OpenRouterBackend.DEFAULT_MODEL)
+
+    def test_missing_key_degrades_without_a_request(self):
+        backend = self.backend(api_key="")
+
+        self.assertFalse(backend.available)
+        result = backend.synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertIn("API key", result.reason)
+        self.assertEqual(_OpenRouterHandler.requests, [])
+
+    def test_exhausted_credit_reports_unavailable(self):
+        _OpenRouterHandler.limit_remaining = 0
+
+        self.assertFalse(self.backend().available)
+
+    def test_provider_error_message_reaches_the_reason(self):
+        _OpenRouterHandler.completion_status = 402
+
+        result = self.backend().synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertIn("402", result.reason)
+        self.assertIn("Insufficient credits", result.reason)
+
+    def test_answer_lost_to_reasoning_budget_is_degraded(self):
+        _OpenRouterHandler.completion = {
+            "choices": [{"message": {"content": "", "reasoning": "..."},
+                         "finish_reason": "length"}],
+        }
+
+        result = self.backend().synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+
+    def use_key_file(self, content):
+        """Point the backend at a temporary secret file holding ``content``."""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            f.write(content)
+            key_path = f.name
+        self.addCleanup(os.remove, key_path)
+        os.environ["AR_CONSULTANT_OPENROUTER_API_KEY_FILE"] = key_path
+
+    def test_key_is_read_from_its_secret_file(self):
+        self.use_key_file(json.dumps({"openrouter-api-key": "test-key"}))
+
+        backend = OpenRouterBackend(base_url=self.url)
+
+        self.assertTrue(backend.configured)
+        self.assertTrue(backend.available)
+
+    def test_single_value_secret_payload_is_accepted(self):
+        self.use_key_file(json.dumps({"value": "test-key"}))
+
+        self.assertEqual(OpenRouterBackend.load_api_key(), "test-key")
+
+    def test_unrecognised_secret_file_falls_back_to_the_environment(self):
+        self.use_key_file("sk-or-plain-text-is-not-the-convention")
+        os.environ["AR_CONSULTANT_OPENROUTER_API_KEY"] = "env-key"
+
+        self.assertEqual(OpenRouterBackend.load_api_key(), "env-key")
+
+    def test_payload_without_the_named_key_is_rejected(self):
+        self.use_key_file(json.dumps({"other": "a", "another": "b"}))
+
+        self.assertEqual(OpenRouterBackend.load_api_key(), "")
+
+    def test_single_key_payload_with_an_unexpected_name_is_rejected(self):
+        self.use_key_file(json.dumps({"other": "sk-or-v1-secret"}))
+        os.environ["AR_CONSULTANT_OPENROUTER_API_KEY"] = "env-key"
+
+        self.assertEqual(OpenRouterBackend.load_api_key(), "env-key")
+
+    def test_auto_prefers_a_local_model_over_the_paid_one(self):
+        local = FakeBackend(healthy=True, text="local")
+        auto = AutoBackend(candidates=[local, self.backend()])
+
+        self.assertEqual(auto.synthesize("prompt").text, "local")
+        self.assertEqual(_OpenRouterHandler.requests, [])
+
+    def test_auto_falls_back_to_openrouter_when_local_is_down(self):
+        local = FakeBackend(healthy=False)
+        auto = AutoBackend(candidates=[local, self.backend()])
+
+        self.assertEqual(auto.synthesize("prompt").text, "a hosted summary")
 
 
 if __name__ == "__main__":
