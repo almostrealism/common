@@ -6,6 +6,8 @@ Supports multiple backends:
               Linux containers with the server running on the Mac host)
   - ollama:   Ollama HTTP API
   - mlx:      MLX-LM for Apple Silicon (native macOS only)
+  - openrouter: OpenRouter's hosted OpenAI-compatible API (paid per token;
+              used when no local model can be spared)
   - passthrough: No model; returns retrieved context directly (fallback)
 
 The backend is selected via the AR_CONSULTANT_BACKEND environment variable.
@@ -276,6 +278,23 @@ class InferenceBackend(ABC):
     def name(self) -> str:
         """Human-readable backend name."""
 
+    @staticmethod
+    def chat_messages(prompt: str, system: Optional[str] = None) -> list:
+        """Build the chat message list every chat-style backend sends.
+
+        Args:
+            prompt: The user prompt.
+            system: Optional system prompt, sent first when present.
+
+        Returns:
+            A list of ``{"role", "content"}`` dicts.
+        """
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
     def _probe(self) -> bool:
         """Check whether the model is reachable right now.
 
@@ -487,14 +506,9 @@ class OllamaBackend(InferenceBackend):
         max_tokens: int = 1024,
         temperature: float = 0.3,
     ) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
         payload = json.dumps({
             "model": self.model,
-            "messages": messages,
+            "messages": self.chat_messages(prompt, system),
             "stream": False,
             "options": {
                 "num_predict": max_tokens,
@@ -519,10 +533,103 @@ class OllamaBackend(InferenceBackend):
 
 
 # ---------------------------------------------------------------------------
+# OpenAI-compatible chat completions
+# ---------------------------------------------------------------------------
+
+class OpenAIChatBackend(InferenceBackend):
+    """A backend that speaks the OpenAI ``/chat/completions`` protocol.
+
+    llama.cpp's server and OpenRouter accept the same request and return the
+    same response shape; they differ only in where the endpoint lives, how a
+    request is authenticated, and which extra request fields they honour.
+    Subclasses supply those three things and inherit the exchange itself.
+    """
+
+    #: Seconds to wait for a completion before treating the model as down.
+    TIMEOUT_SECONDS = 180
+
+    @abstractmethod
+    def completions_url(self) -> str:
+        """The full URL of the chat completions endpoint."""
+
+    def request_headers(self) -> dict:
+        """Headers sent with every request; subclasses add authentication."""
+        return {"Content-Type": "application/json"}
+
+    def request_fields(self) -> dict:
+        """Backend-specific fields merged into every request body."""
+        return {}
+
+    def generate(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.3,
+    ) -> str:
+        body = {
+            "messages": self.chat_messages(prompt, system),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+        body.update(self.request_fields())
+
+        req = urllib.request.Request(
+            self.completions_url(),
+            data=json.dumps(body).encode("utf-8"),
+            headers=self.request_headers(),
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.TIMEOUT_SECONDS) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            raise InferenceUnavailable(
+                self.name, f"HTTP {e.code}: {self.error_detail(e)}",
+            ) from e
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
+            raise InferenceUnavailable(self.name, str(e)) from e
+
+        choices = data.get("choices", [])
+        if not choices:
+            return ""
+        choice = choices[0]
+        content = choice.get("message", {}).get("content") or ""
+        if not content.strip() and choice.get("finish_reason") == "length":
+            # A reasoning model can spend the whole max_tokens budget
+            # thinking and return no answer at all.
+            log.warning(
+                "%s hit max_tokens=%d before producing an answer; reasoning "
+                "may be consuming the budget", self.name, max_tokens,
+            )
+        return content
+
+    @staticmethod
+    def error_detail(error: urllib.error.HTTPError) -> str:
+        """Extract a provider's error message from an HTTP error response.
+
+        OpenAI-compatible servers report failures as
+        ``{"error": {"message": ...}}``. That message (for example "insufficient
+        credits") is far more useful to whoever reads a degraded consult than
+        the bare status line.
+        """
+        try:
+            payload = json.loads(error.read())
+            message = payload.get("error", {}).get("message")
+            if message:
+                return str(message)
+        except (OSError, ValueError, AttributeError):
+            pass
+        return str(error.reason)
+
+
+# ---------------------------------------------------------------------------
 # llama.cpp backend
 # ---------------------------------------------------------------------------
 
-class LlamaCppBackend(InferenceBackend):
+class LlamaCppBackend(OpenAIChatBackend):
     """Inference via a llama.cpp server (llama-server).
 
     llama.cpp's server exposes an OpenAI-compatible ``/v1/chat/completions``
@@ -608,6 +715,251 @@ class LlamaCppBackend(InferenceBackend):
 
         return False
 
+    def completions_url(self) -> str:
+        return f"{self.base_url}/v1/chat/completions"
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter backend
+# ---------------------------------------------------------------------------
+
+class OpenRouterBackend(OpenAIChatBackend):
+    """Inference via OpenRouter's hosted, pay-per-token API.
+
+    For when no local machine can be spared to run a model. The model is any
+    OpenRouter slug, so moving between hosted models — or onto a local
+    llama.cpp server running the same open-weights model — is a configuration
+    change, not a code change.
+
+    Two request defaults matter for this workload:
+
+    * **Reasoning is off** (``reasoning.enabled = false``). A consult answer is
+      a few sentences grounded in retrieved documentation. OpenRouter counts
+      reasoning tokens against ``max_tokens``, so a thinking model left at its
+      default can spend the whole budget reasoning and return nothing (while
+      still being billed).
+    * **Providers that retain prompts are excluded.** Prompts carry the memory
+      corpus, which holds notes about unpublished work.
+
+    Environment variables:
+        AR_CONSULTANT_OPENROUTER_API_KEY_FILE  - JSON secret file holding the
+                                                 key as {"openrouter-api-key": ...}
+                                                 (preferred; read first)
+        AR_CONSULTANT_OPENROUTER_API_KEY       - The API key itself
+        AR_CONSULTANT_OPENROUTER_MODEL         - Model slug
+                                                 (default: minimax/minimax-m3)
+        AR_CONSULTANT_OPENROUTER_REASONING     - Reasoning control: ``none``
+                                                 (default) disables reasoning;
+                                                 ``high``/``medium``/``low`` set
+                                                 ``reasoning.effort``; an empty
+                                                 string sends no reasoning field,
+                                                 leaving the model's default
+        AR_CONSULTANT_OPENROUTER_DATA_COLLECTION - ``deny`` (default) or
+                                                 ``allow``; sent as
+                                                 ``provider.data_collection``.
+                                                 A blank or unrecognised value
+                                                 falls back to ``deny`` so the
+                                                 privacy restriction is never
+                                                 silently dropped
+        AR_CONSULTANT_OPENROUTER_URL           - API base URL
+                                                 (default: https://openrouter.ai/api/v1)
+    """
+
+    #: The reasoning setting that turns reasoning off rather than selecting an
+    #: effort level. OpenRouter's documented ``reasoning.effort`` values are
+    #: ``high``/``medium``/``low``, so "off" is a sentinel of our own, not one
+    #: of them; it is translated to ``{"enabled": false}`` in a request.
+    REASONING_OFF = "none"
+
+    DEFAULT_MODEL = "minimax/minimax-m3"
+    DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+    DEFAULT_REASONING = REASONING_OFF
+    DEFAULT_DATA_COLLECTION = "deny"
+
+    #: The values OpenRouter documents for ``provider.data_collection``. Unlike
+    #: the reasoning field, a data-collection setting is a privacy control:
+    #: prompts carry the memory corpus, so a blank or unrecognised value must
+    #: never silently drop the restriction. Anything outside this set is
+    #: treated as unset and falls back to the privacy default.
+    DATA_COLLECTION_VALUES = ("deny", "allow")
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self._api_key = api_key if api_key is not None else self.load_api_key()
+        # An empty variable means "unset": compose passes ${VAR:-} through
+        # as an empty string when the operator has not chosen a value.
+        self.model = (
+            model
+            or os.environ.get("AR_CONSULTANT_OPENROUTER_MODEL", "").strip()
+            or self.DEFAULT_MODEL
+        )
+        self.base_url = (
+            base_url
+            or os.environ.get("AR_CONSULTANT_OPENROUTER_URL", "").strip()
+            or self.DEFAULT_BASE_URL
+        ).rstrip("/")
+        self.reasoning = os.environ.get(
+            "AR_CONSULTANT_OPENROUTER_REASONING", self.DEFAULT_REASONING
+        ).strip()
+        self.data_collection = self.resolve_data_collection(
+            os.environ.get(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION",
+                self.DEFAULT_DATA_COLLECTION,
+            ).strip()
+        )
+        super().__init__()
+
+    #: Name of the secret, and the key that holds it in a secret payload file.
+    SECRET_NAME = "openrouter-api-key"
+
+    #: Generic fallback key accepted in a secret payload, matching the
+    #: workspace-secret convention's single-key ``{"value": ...}`` form.
+    SECRET_VALUE_KEY = "value"
+
+    @classmethod
+    def load_api_key(cls) -> str:
+        """Read the API key from its secret file, falling back to the environment.
+
+        The file form is what the controller deployment uses, so the key never
+        appears in ``docker inspect`` output or a compose file. It follows the
+        workspace-secret payload convention (flowtree/docs/operations/PROVIDERS.md):
+        a JSON object keyed by the secret name,
+        ``{"openrouter-api-key": "sk-or-v1-..."}``, or a ``value``-keyed
+        payload, ``{"value": "sk-or-v1-..."}``.
+        """
+        key_file = os.environ.get("AR_CONSULTANT_OPENROUTER_API_KEY_FILE", "").strip()
+        if key_file and os.path.isfile(key_file):
+            try:
+                with open(key_file) as f:
+                    payload = json.load(f)
+            except (OSError, ValueError) as e:
+                log.warning("Failed to read OpenRouter API key file: %s", e)
+            else:
+                key = cls.secret_value(payload)
+                if key:
+                    return key
+                log.warning(
+                    "OpenRouter API key file holds no %r entry", cls.SECRET_NAME,
+                )
+        return os.environ.get("AR_CONSULTANT_OPENROUTER_API_KEY", "").strip()
+
+    @classmethod
+    def secret_value(cls, payload) -> str:
+        """Extract the key from a secret payload, or return an empty string."""
+        if not isinstance(payload, dict):
+            return ""
+        value = payload.get(cls.SECRET_NAME)
+        if value is None:
+            value = payload.get(cls.SECRET_VALUE_KEY)
+        return value.strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def resolve_data_collection(cls, setting: str) -> str:
+        """Normalise a data-collection setting, keeping the privacy default.
+
+        A blank value (compose passing ``${VAR:-}`` through, or the variable
+        set to an empty string) or any value OpenRouter does not document is
+        treated as unset and falls back to :attr:`DEFAULT_DATA_COLLECTION`.
+        This is deliberately stricter than the reasoning setting: an empty
+        reasoning value omits the field to take the model's default, but a
+        prompt carries the memory corpus, so an empty or unrecognised
+        data-collection value must never drop the restriction that keeps it
+        off prompt-retaining providers.
+
+        Args:
+            setting: The already-stripped configured value.
+
+        Returns:
+            One of :attr:`DATA_COLLECTION_VALUES`.
+        """
+        if setting in cls.DATA_COLLECTION_VALUES:
+            return setting
+        if setting:
+            log.warning(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=%r is not one of %s; "
+                "keeping the privacy default %r",
+                setting, cls.DATA_COLLECTION_VALUES, cls.DEFAULT_DATA_COLLECTION,
+            )
+        return cls.DEFAULT_DATA_COLLECTION
+
+    @property
+    def name(self) -> str:
+        return f"openrouter ({self.model})"
+
+    @property
+    def configured(self) -> bool:
+        """Whether an API key is present at all."""
+        return bool(self._api_key)
+
+    def completions_url(self) -> str:
+        return f"{self.base_url}/chat/completions"
+
+    def request_headers(self) -> dict:
+        headers = super().request_headers()
+        headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
+    def request_fields(self) -> dict:
+        fields = {"model": self.model}
+        reasoning = self.reasoning_request()
+        if reasoning is not None:
+            fields["reasoning"] = reasoning
+        if self.data_collection:
+            fields["provider"] = {"data_collection": self.data_collection}
+        return fields
+
+    def reasoning_request(self):
+        """Translate the configured reasoning setting into OpenRouter's field.
+
+        OpenRouter counts reasoning tokens against ``max_tokens``, so a thinking
+        model left on its default can spend a consult's whole budget reasoning
+        and return an empty (but billed) answer. Reasoning is therefore off by
+        default, expressed as ``{"enabled": false}`` — the field OpenRouter
+        documents for disabling reasoning. ``effort="none"`` is **not** a
+        documented level (the levels are ``high``/``medium``/``low``), so a
+        provider could silently ignore it and leave reasoning on.
+
+        Returns:
+            ``{"enabled": False}`` when reasoning is off (the default);
+            ``{"effort": <level>}`` when an effort level is configured; or
+            ``None`` when the setting is empty, which omits the field and
+            leaves the model's own default in place.
+        """
+        if not self.reasoning:
+            return None
+        if self.reasoning == self.REASONING_OFF:
+            return {"enabled": False}
+        return {"effort": self.reasoning}
+
+    def _probe(self) -> bool:
+        """Check the key against ``GET /key``, which costs no tokens.
+
+        A key with no credit left is reported down: every completion would
+        fail with HTTP 402, and an auto-detecting caller should move on to a
+        backend that can answer.
+        """
+        if not self.configured:
+            return False
+        req = urllib.request.Request(
+            f"{self.base_url}/key", headers=self.request_headers(), method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read()).get("data", {})
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
+            log.info("OpenRouter not reachable at %s: %s", self.base_url, e)
+            return False
+
+        remaining = data.get("limit_remaining")
+        if remaining is not None and remaining <= 0:
+            log.warning("OpenRouter API key has no credit remaining")
+            return False
+        return True
+
     def generate(
         self,
         prompt: str,
@@ -615,34 +967,11 @@ class LlamaCppBackend(InferenceBackend):
         max_tokens: int = 1024,
         temperature: float = 0.3,
     ) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = json.dumps({
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            f"{self.base_url}/v1/chat/completions",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        if not self.configured:
+            raise InferenceUnavailable(self.name, "no OpenRouter API key is configured")
+        return super().generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature,
         )
-
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                data = json.loads(resp.read())
-                choices = data.get("choices", [])
-                if choices:
-                    return choices[0].get("message", {}).get("content", "")
-                return ""
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            raise InferenceUnavailable(self.name, str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -702,10 +1031,7 @@ class MLXBackend(InferenceBackend):
         self._load()
         from mlx_lm import generate as mlx_generate
 
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        messages = self.chat_messages(prompt, system)
 
         # Apply chat template if available
         if hasattr(self._tokenizer, "apply_chat_template"):
@@ -799,7 +1125,8 @@ class AutoBackend(InferenceBackend):
     def __init__(self, candidates: Optional[list] = None):
         self._candidates = (
             candidates if candidates is not None
-            else [LlamaCppBackend(), OllamaBackend(), MLXBackend()]
+            else [LlamaCppBackend(), OllamaBackend(), MLXBackend(),
+                  OpenRouterBackend()]
         )
         self._fallback = PassthroughBackend()
         self._delegate: InferenceBackend = self._fallback
@@ -890,7 +1217,9 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
       1. llama.cpp server (best for Linux container + Mac host setup)
       2. Ollama
       3. MLX (Apple Silicon, native macOS only)
-      4. Passthrough (no model)
+      4. OpenRouter (only when an API key is configured; paid, so local
+         models are always preferred when one is up)
+      5. Passthrough (no model)
 
     A backend is always returned. Detection failure is not an error here —
     it is reported per-request through :meth:`InferenceBackend.synthesize`,
@@ -898,8 +1227,8 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
     retrieval and starts synthesizing again once one comes up.
 
     Args:
-        backend_name: One of "llamacpp", "ollama", "mlx", "passthrough",
-                      or None / "auto" for auto-detection.
+        backend_name: One of "llamacpp", "ollama", "mlx", "openrouter",
+                      "passthrough", or None / "auto" for auto-detection.
 
     Returns:
         An InferenceBackend instance.
@@ -912,15 +1241,18 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
         return OllamaBackend()
     elif name == "mlx":
         return MLXBackend()
+    elif name == "openrouter":
+        return OpenRouterBackend()
     elif name == "passthrough":
         return PassthroughBackend()
     elif name == "auto":
         # Ordered llamacpp first (Linux container -> Mac host is the primary
-        # setup), then Ollama, then MLX. AutoBackend re-runs this selection
+        # setup), then Ollama, then MLX, then paid OpenRouter. AutoBackend re-runs this selection
         # whenever its choice goes stale.
         return AutoBackend()
     else:
         raise ValueError(
             f"Unknown backend: {name!r}. "
-            f"Supported: 'llamacpp', 'ollama', 'mlx', 'passthrough', 'auto'"
+            f"Supported: 'llamacpp', 'ollama', 'mlx', 'openrouter', "
+            f"'passthrough', 'auto'"
         )
