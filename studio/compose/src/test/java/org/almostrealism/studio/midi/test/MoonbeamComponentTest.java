@@ -277,6 +277,47 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	}
 
 	/**
+	 * {@link CompoundMidiEmbedding#embed(MidiCompoundToken)} selects the embedding path
+	 * in Java for a token known when the producer is built; for every token class it
+	 * must agree with the kernel that recognizes the token from its values. Start and
+	 * fill-start must both read supplementary row 0, end and fill-end row 1, pad must
+	 * embed as zeros, and an ordinary token must embed its attributes.
+	 */
+	@Test(timeout = 60_000)
+	public void testCompoundEmbeddingLiteralTokenMatchesKernel() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		StateDictionary weights = createRandomEmbeddingWeights(config);
+		CompoundMidiEmbedding embedding = new CompoundMidiEmbedding(weights, config);
+
+		PackedCollection values = new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
+		Evaluable<? extends PackedCollection> kernel =
+				Process.optimized(embedding.embedValues(p(values))).get();
+
+		PackedCollection start = supplementaryReference(weights, config, 0);
+		PackedCollection end = supplementaryReference(weights, config, 1);
+		assertEquals("Start", start, embedding.embed(MidiCompoundToken.sos()).evaluate());
+		assertEquals("Fill start", start, embedding.embed(MidiCompoundToken.fillStart()).evaluate());
+		assertEquals("End", end, embedding.embed(MidiCompoundToken.eos()).evaluate());
+		assertEquals("Fill end", end, embedding.embed(MidiCompoundToken.fillEnd()).evaluate());
+
+		MidiCompoundToken[] tokens = {
+				MidiCompoundToken.sos(), MidiCompoundToken.fillStart(),
+				MidiCompoundToken.eos(), MidiCompoundToken.fillEnd(),
+				MidiCompoundToken.pad(), new MidiCompoundToken(100, 50, 5, 7, 0, 80)
+		};
+
+		for (MidiCompoundToken token : tokens) {
+			PackedCollection literal = embedding.embed(token).evaluate();
+			Assert.assertEquals(token + " embedding size",
+					config.hiddenSize, literal.getShape().getTotalSize());
+			assertEquals(token.toString(), embedWith(kernel, values, token), literal);
+		}
+
+		Assert.assertEquals("Pad embeds as zeros", 0.0,
+				sum(cp(embedding.embed(MidiCompoundToken.pad()).evaluate()).abs()).evaluate().toDouble(0), 0.0);
+	}
+
+	/**
 	 * Writes a token's values into the argument of a compiled embedding and evaluates it.
 	 */
 	private PackedCollection embedWith(Evaluable<? extends PackedCollection> kernel,
