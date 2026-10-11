@@ -289,18 +289,26 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * render attempts a render-until-audible search performs), deferring that
 	 * reclamation lets the retained note audio accumulate across attempts. Clearing
 	 * the cache on teardown frees it deterministically instead.</p>
+	 *
+	 * <p>The note-audio cache, the automation parameter collections, and the batched
+	 * renderer are independent resources, so they are released through
+	 * {@link Destroyable#releaseAll(Iterable)}: a failure freeing one (for example a
+	 * cache entry whose {@code destroy()} throws) does not strand the others, and the
+	 * first failure is rethrown with any later ones attached as suppressed.</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
 
-		noteAudioCache.clear();
-		releaseAutomationParameterData();
-
 		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
-		if (renderer != null) {
-			renderer.destroy();
-		}
+		Destroyable.releaseAll(List.of(
+				noteAudioCache::clear,
+				this::releaseAutomationParameterData,
+				() -> {
+					if (renderer != null) {
+						renderer.destroy();
+					}
+				}));
 	}
 
 	/**

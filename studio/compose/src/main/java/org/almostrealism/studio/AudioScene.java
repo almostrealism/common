@@ -1358,20 +1358,31 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				DEFAULT_DURATION), libraryProvider, progress);
 	}
 
+	/**
+	 * Releases the native memory this scene owns: its section manager, pattern system,
+	 * active cell graph, consolidated render buffers, and effects buffers.
+	 *
+	 * <p>These are independent resources, so they are released through
+	 * {@link Destroyable#releaseAll(Iterable)}: a teardown failure in one (for example a
+	 * pattern cache entry whose {@code destroy()} throws) does not leave the others
+	 * allocated, and the scene is still deregistered from {@link #activeInstances}. The
+	 * first failure is rethrown with any later ones attached as suppressed.</p>
+	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		getSectionManager().destroy();
-		patterns.destroy();
-
-		if (activeCells != null) {
-			activeCells.destroy();
-			activeCells = null;
-		}
-
-		renderBuffers.destroy();
-		efx.destroyConsolidatedBuffers();
-		activeInstances.remove(this);
+		Destroyable.releaseAll(List.of(
+				() -> getSectionManager().destroy(),
+				patterns::destroy,
+				() -> {
+					if (activeCells != null) {
+						activeCells.destroy();
+						activeCells = null;
+					}
+				},
+				renderBuffers::destroy,
+				efx::destroyConsolidatedBuffers,
+				() -> activeInstances.remove(this)));
 	}
 
 	/**

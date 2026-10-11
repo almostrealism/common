@@ -333,6 +333,56 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	}
 
 	/**
+	 * A cache entry whose {@code destroy()} always throws, used to simulate a manager whose
+	 * note-audio cache fails during teardown. It releases its own native memory before
+	 * failing, so the simulated failure does not itself leak.
+	 */
+	private static class FailingDestroyCollection extends PackedCollection {
+		/** Allocates a single-entry collection whose teardown is rigged to fail. */
+		private FailingDestroyCollection() {
+			super(16);
+		}
+
+		@Override
+		public void destroy() {
+			super.destroy();
+			throw new IllegalStateException("simulated teardown failure");
+		}
+	}
+
+	/**
+	 * {@code destroy()} releases the manager-owned automation parameter collections even when
+	 * the note-audio cache fails to tear down. The cache is released first, so a failing
+	 * cache entry previously stranded the automation parameters behind the rethrown failure;
+	 * aggregating the independent releases through {@code Destroyable.releaseAll} frees them
+	 * regardless, and the original cache failure is the one rethrown.
+	 */
+	@Test(timeout = 120000)
+	public void destroyReleasesAutomationParametersDespiteCacheFailure() {
+		PatternLayerManager plm = manager(List.of(new NoteAudioChoice("no sources")), 4.0, false);
+
+		plm.setLayerCount(2);
+		List<PackedCollection> allocated = new ArrayList<>(plm.getAutomationParameterData());
+		Assert.assertTrue("one automation parameter collection is allocated per layer",
+				allocated.size() == 2);
+
+		plm.getNoteAudioCache().put(0, null, new FailingDestroyCollection());
+
+		try {
+			plm.destroy();
+			Assert.fail("destroy rethrows the cache teardown failure");
+		} catch (IllegalStateException e) {
+			Assert.assertEquals("simulated teardown failure", e.getMessage());
+		}
+
+		Assert.assertTrue("the automation parameter tracking list is emptied despite the cache failure",
+				plm.getAutomationParameterData().isEmpty());
+		allocated.forEach(c -> Assert.assertTrue(
+				"the automation parameters are released despite the cache failure",
+				c.isDestroyed()));
+	}
+
+	/**
 	 * Building layers while a {@link Heap} is active must not make the manager-owned
 	 * automation parameter collections heap aliases: an alias cannot be freed by the
 	 * tracked {@code destroy()} release ({@code MemoryDataAdapter.destroy()} reports an
