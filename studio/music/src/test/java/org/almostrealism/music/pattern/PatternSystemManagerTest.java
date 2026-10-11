@@ -207,6 +207,75 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A cache entry whose {@code destroy()} always throws, used to simulate a manager whose
+	 * teardown fails. It releases its own native memory before failing, so the simulated
+	 * failure does not itself leak.
+	 */
+	private static class FailingDestroyCollection extends PackedCollection {
+		/** Allocates a single-entry collection whose teardown is rigged to fail. */
+		private FailingDestroyCollection() {
+			super(16);
+		}
+
+		@Override
+		public void destroy() {
+			super.destroy();
+			throw new IllegalStateException("simulated teardown failure");
+		}
+	}
+
+	/**
+	 * {@code clear()} attempts to destroy every manager even when an earlier one fails, and
+	 * still empties the pattern list. The first teardown failure is rethrown, but a later
+	 * manager's cache is released rather than stranded behind the failure.
+	 */
+	@Test(timeout = 30000)
+	public void clearReleasesEveryManagerDespiteFailure() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(2));
+		PatternLayerManager failing = psm.addPattern(0, 2.0, false);
+		PatternLayerManager healthy = psm.addPattern(1, 2.0, false);
+		failing.getNoteAudioCache().put(0, null, new FailingDestroyCollection());
+		PackedCollection healthyAudio = seedCache(healthy);
+
+		try {
+			psm.clear();
+			Assert.fail("clear rethrows the teardown failure");
+		} catch (IllegalStateException e) {
+			Assert.assertEquals("simulated teardown failure", e.getMessage());
+		}
+
+		Assert.assertTrue("the list is detached before teardown, so it is emptied despite the failure",
+				psm.getPatterns().isEmpty());
+		Assert.assertTrue("a later manager is released despite the earlier failure",
+				healthyAudio.isDestroyed());
+	}
+
+	/**
+	 * {@code destroy()} still releases the manager-owned volume collection when
+	 * {@code clear()} reports a teardown failure, and rethrows that original failure rather
+	 * than replacing it with a cleanup failure.
+	 */
+	@Test(timeout = 30000)
+	public void destroyReleasesVolumeDespiteClearFailure() {
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(1));
+		psm.init();
+		PackedCollection volume = psm.getVolume();
+		PatternLayerManager failing = psm.addPattern(0, 2.0, false);
+		failing.getNoteAudioCache().put(0, null, new FailingDestroyCollection());
+
+		try {
+			psm.destroy();
+			Assert.fail("destroy rethrows the teardown failure from clear()");
+		} catch (IllegalStateException e) {
+			Assert.assertEquals("simulated teardown failure", e.getMessage());
+		}
+
+		Assert.assertTrue("the volume is freed even when clear() fails", volume.isDestroyed());
+		Assert.assertNull("the volume reference is cleared so a repeated teardown is safe",
+				psm.getVolume());
+	}
+
+	/**
 	 * Initializing under an active {@link Heap} must not make the manager-owned volume a
 	 * heap alias: an alias cannot be released by {@code destroy()} and would be invalidated
 	 * when the heap stage backing it is popped. The release and assertions run while the

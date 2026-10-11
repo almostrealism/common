@@ -183,13 +183,7 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if measure monitoring is disabled
 	 */
 	public Receptor<PackedCollection> getMeasure(ChannelInfo channel) {
-		if (measures == null) {
-			return null;
-		} else if (measuresFactory != null) {
-			return measures.computeIfAbsent(channel, measuresFactory);
-		} else {
-			return measures.get(channel);
-		}
+		return resolve(measures, measuresFactory, channel);
 	}
 
 	/**
@@ -200,13 +194,7 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if stem output is disabled
 	 */
 	public Receptor<PackedCollection> getStem(ChannelInfo channel) {
-		if (stems == null) {
-			return null;
-		} else if (stemsFactory != null) {
-			return stems.computeIfAbsent(channel, stemsFactory);
-		} else {
-			return stems.get(channel);
-		}
+		return resolve(stems, stemsFactory, channel);
 	}
 
 	/**
@@ -217,12 +205,30 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if master output is disabled
 	 */
 	public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
-		if (master == null) {
+		return resolve(master, masterFactory, channel);
+	}
+
+	/**
+	 * Resolves the receptor for {@code key} within one of this output's receptor
+	 * maps, creating it through {@code factory} on first access. Shared by
+	 * {@link #getMaster}, {@link #getStem(ChannelInfo)}, and
+	 * {@link #getMeasure(ChannelInfo)}, which differ only in the receptor family
+	 * and the key type they look up.
+	 *
+	 * @param map     the receptor map, or {@code null} when the family is disabled
+	 * @param factory the factory for an absent key, or {@code null} to look up only
+	 * @param key     the receptor key
+	 * @param <K>     the key type the family is indexed by
+	 * @return the receptor, or {@code null} if the family is disabled
+	 */
+	private <K> Receptor<PackedCollection> resolve(Map<K, Receptor<PackedCollection>> map,
+			Function<K, Receptor<PackedCollection>> factory, K key) {
+		if (map == null) {
 			return null;
-		} else if (masterFactory != null) {
-			return master.computeIfAbsent(channel, masterFactory);
+		} else if (factory != null) {
+			return map.computeIfAbsent(key, factory);
 		} else {
-			return master.get(channel);
+			return map.get(key);
 		}
 	}
 

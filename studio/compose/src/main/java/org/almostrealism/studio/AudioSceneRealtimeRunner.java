@@ -223,6 +223,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * contents change on {@link AudioScene#assignGenome}, so the runner can be reused
 	 * without recompilation.</p>
 	 *
+	 * <p><b>Construction rollback.</b> The returned runner owns and destroys the per-buffer
+	 * frame index allocated here. Because that ownership transfers only when the runner is
+	 * successfully returned, the allocation is registered in a rollback list as it is made
+	 * and released if a later construction step — {@link AudioScene#getCells}, the
+	 * per-frame operation, or loop-body construction — throws, so a failed build strands no
+	 * native memory until garbage collection. The {@link CellList} itself is the scene's
+	 * active cell list (released by {@link AudioScene#destroy()}), so it is not part of the
+	 * rollback.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -235,6 +244,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Per-buffer frame index for WaveCell external frame control; tracks position
 		// 0 to bufferSize-1 within each buffer.
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
+
+		List<Runnable> rollback = new ArrayList<>();
+		rollback.add(bufferFrameIndex::destroy);
+
+		try {
 		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
@@ -302,6 +316,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				bufferFrameIndex.destroy();
 			}
 		};
+		} catch (RuntimeException | Error constructionFailure) {
+			Collections.reverse(rollback);
+			try {
+				Destroyable.releaseAll(rollback);
+			} catch (RuntimeException | Error cleanupFailure) {
+				constructionFailure.addSuppressed(cleanupFailure);
+			}
+			throw constructionFailure;
+		}
 	}
 
 	/**
@@ -596,13 +619,19 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			 * scratch buffer when one was allocated for the stems path. The consolidated
 			 * render buffer is the scene's and is released by {@link AudioScene#destroy()},
 			 * so it is left untouched here.
+			 *
+			 * <p>These releases are independent, so they are aggregated with
+			 * {@link Destroyable#releaseAll(Iterable)}: a failure in any one of them still
+			 * runs the rest, so a cleanup-path exception cannot strand the remaining native
+			 * resources. The first failure is rethrown with any later ones suppressed.</p>
 			 */
 			@Override
 			public void destroy() {
-				renderStream.destroy();
-				compiled.destroy();
-				bufferFrameIndex.destroy();
-				if (fxStemSum[0] != null) fxStemSum[0].destroy();
+				Destroyable.releaseAll(List.of(
+						renderStream::destroy,
+						compiled::destroy,
+						bufferFrameIndex::destroy,
+						() -> { if (fxStemSum[0] != null) fxStemSum[0].destroy(); }));
 			}
 		};
 		} catch (RuntimeException | Error constructionFailure) {

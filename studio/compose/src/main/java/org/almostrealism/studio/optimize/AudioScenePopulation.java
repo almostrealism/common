@@ -146,6 +146,13 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * downstream consumers (e.g. {@code StableDurationHealthComputation}) must use this same
 	 * value as their iteration size.
 	 *
+	 * <p>A runner retained from an earlier {@code init(...)} call is destroyed once the
+	 * replacement has been built successfully, so its frame buffer, compiled model, and
+	 * render stream are released rather than left reachable only through the garbage
+	 * collector. The old runner is kept until the new one is built so that a construction
+	 * failure leaves the previously initialized runner intact rather than clearing the
+	 * field and stranding the old native resources.</p>
+	 *
 	 * @param templateGenome the genome used to configure the scene during initialization
 	 * @param output         the multi-channel audio output that receives rendered audio
 	 * @param channels       the channel indices to include, or {@code null} for all channels
@@ -154,8 +161,15 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		enableGenome(templateGenome);
-		this.temporal = scene.runnerRealTime(output, channels, bufferSize);
-		disableGenome();
+
+		DestroyableTemporalCellular previous = this.temporal;
+		try {
+			this.temporal = scene.runnerRealTime(output, channels, bufferSize);
+		} finally {
+			disableGenome();
+		}
+
+		if (previous != null && previous != this.temporal) previous.destroy();
 	}
 
 	/**

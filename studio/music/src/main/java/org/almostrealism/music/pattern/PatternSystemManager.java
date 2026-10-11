@@ -444,10 +444,19 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * destroyed here. Callers that replace the patterns of a live manager must rebuild
 	 * their render operations before running them; running a stale one renders against
 	 * released memory, as it would for any object used after it is destroyed.</p>
+	 *
+	 * <p>The list is detached before any manager is destroyed, and every manager is
+	 * released through {@link Destroyable#releaseAll(Iterable)} so that one failing
+	 * teardown neither leaves the later managers allocated nor prevents the list from
+	 * being emptied; the first failure is rethrown with any later ones attached as
+	 * suppressed.</p>
 	 */
 	public void clear() {
-		patterns.forEach(PatternLayerManager::destroy);
+		List<PatternLayerManager> removed = new ArrayList<>(patterns);
 		patterns.clear();
+		Destroyable.releaseAll(removed.stream()
+				.map(manager -> (Runnable) manager::destroy)
+				.collect(Collectors.toList()));
 	}
 
 	/**
@@ -460,16 +469,21 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * {@link #init()} and nulls the reference, so a repeated teardown is safe and the
 	 * native memory backing it is freed deterministically rather than left for the
 	 * garbage collector's reference queue.</p>
+	 *
+	 * <p>The pattern release and the volume release are independent, so they are
+	 * aggregated with {@link Destroyable#releaseAll(Iterable)}: the volume is freed even
+	 * when {@link #clear()} reports a teardown failure, and that original failure is the
+	 * one rethrown (with any volume-release failure attached as suppressed).</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		clear();
-
-		if (volume != null) {
-			volume.destroy();
-			volume = null;
-		}
+		Destroyable.releaseAll(List.of(this::clear, () -> {
+			if (volume != null) {
+				volume.destroy();
+				volume = null;
+			}
+		}));
 	}
 
 	/**
