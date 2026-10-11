@@ -51,7 +51,8 @@ GIT_BLOCKED_SUBCOMMANDS = frozenset({
 _GIT_REMOTE_MUTATORS = frozenset({"add", "set-url", "rename"})
 _GIT_CONFIG_SENSITIVE = re.compile(
     r"^(remote\.|url\.|http\.|https\.|core\.sshcommand|credential\.|core\.gitproxy|"
-    r"core\.askpass|gpg\.program|diff\.external|sendemail\.)", re.IGNORECASE)
+    r"core\.askpass|gpg\.program|diff\.external|sendemail\.|branch\.|include\.|"
+    r"includeif\.)", re.IGNORECASE)
 _GIT_GLOBAL_OPTS_WITH_ARG = {
     "-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--exec-path",
 }
@@ -85,17 +86,33 @@ _GIT_CONFIG_TRANSPORT_ENV = frozenset({
 # The indexed config variables come in numbered pairs, so they are matched by
 # prefix rather than enumerated.
 _GIT_CONFIG_TRANSPORT_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")
+# ``HOME`` / ``XDG_CONFIG_HOME`` relocate where git reads its user/global
+# config from, so pointing them at an attacker-controlled directory loads a
+# config that can rewrite ``remote.origin.url`` — the same outcome as
+# ``GIT_CONFIG_GLOBAL``, through a different door.
+_GIT_CONFIG_SEARCH_ENV = frozenset({"HOME", "XDG_CONFIG_HOME"})
+# Standard proxy variables route git's connection through another host. They
+# are honoured by git's HTTP transport regardless of case, so they are matched
+# case-insensitively.
+_PROXY_ENV_NAMES = frozenset({"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"})
+
+
+def _is_proxy_env(name):
+    """Whether ``name`` is a standard proxy variable (case-insensitive)."""
+    return name.lower() in _PROXY_ENV_NAMES
 
 
 def is_repo_selecting_or_transport_env(name):
     """Whether ``name`` is a git environment variable that selects another
-    repository, or overrides git's configuration or transport.
+    repository, overrides git's configuration or transport, relocates where
+    git reads its config, or routes the connection through another host.
 
     Shared with the dispatch module so that an ``export``/``declare`` of one of
     these in a separate simple command (``export GIT_DIR=…; git …``) is refused
     at the export, where the leading-assignment capture cannot see it."""
     return (name in _GIT_REPO_SELECTING_ENV or name in _GIT_CONFIG_TRANSPORT_ENV
-            or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES))
+            or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES)
+            or name in _GIT_CONFIG_SEARCH_ENV or _is_proxy_env(name))
 
 
 def _git_call(argv):
@@ -183,9 +200,10 @@ def _check_git(argv, ctx, env=()):
         if name in _GIT_REPO_SELECTING_ENV:
             raise _GuardError(f"git with {name} set points it at another repository; only this "
                               f"project's origin may be pushed to")
-        if name in _GIT_CONFIG_TRANSPORT_ENV or name.startswith(_GIT_CONFIG_TRANSPORT_ENV_PREFIXES):
+        if is_repo_selecting_or_transport_env(name):
             raise _GuardError(f"git with {name} set overrides its configuration or transport, "
-                              f"which can rewrite the remote or run an arbitrary program; denied")
+                              f"relocates the config git reads, or routes the connection through "
+                              f"another host, which can rewrite the remote; denied")
     sub, args, opts = _git_call(argv)
     cwd = _git_working_dir(ctx, opts)
     if cwd is not ctx.command_cwd:

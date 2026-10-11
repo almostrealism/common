@@ -510,6 +510,7 @@ jobs:
             ".claude/hooks/lib/exfil_bash_vcs.py"
             ".claude/hooks/lib/exfil_bash_dispatch.py"
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
+            ".claude/hooks/lib/test_exfiltration_guard_transport.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -1574,7 +1575,7 @@ jobs:
       # .claude/hooks/lib; its tests build scratch git repositories and
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
-        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The interface-bypass hook decides whether an edit is refused outright,
       # so its tests drive the same --stdin contract end to end, and need git to

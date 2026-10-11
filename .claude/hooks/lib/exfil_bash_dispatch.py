@@ -32,7 +32,7 @@ from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
                                  _check_raw_socket_tool, _check_ssh_family,
-                                 _check_upload_tool)
+                                 _check_upload_tool, is_rsync_transport_env)
 from exfil_bash_runner import (INTERPRETERS, MAX_SCRIPT_BYTES, SHELLS,
                                 _check_interpreter, _check_shell,
                                 _check_stdin_program, _follow_cd,
@@ -80,13 +80,63 @@ BLOCKED_SUBCOMMANDS = {
 }
 
 # Folders that sync to a cloud provider: a plain `cp` into one is an upload.
+# The name is matched at a path boundary — ``(?:^|/)NAME(?:/|$)`` — so a
+# trailing-slash-less destination (``~/Dropbox``) or a terminal component
+# (``/home/u/Dropbox``) is caught, while a longer name that merely contains one
+# of these words (``/home/u/Dropbox-backup``, ``/srv/BoxOffice/``) is not.
+# ``Mobile Documents`` keeps its substring match (it is iCloud's container and
+# never a path tail on its own).
+_SYNCED_FOLDER_NAMES = ("Dropbox", "Google Drive", "OneDrive", "CloudStorage",
+                        "Box Sync", "Box", "iCloud")
 SYNCED_FOLDER_PATTERNS = re.compile(
-    r"Mobile Documents|/Dropbox/|/Google Drive/|/OneDrive/|/CloudStorage/|"
-    r"/Box Sync/|/Box/|/iCloud", re.IGNORECASE)
+    r"Mobile Documents|(?:^|/)(?:"
+    + "|".join(re.escape(name) for name in _SYNCED_FOLDER_NAMES)
+    + r")(?:/|$)", re.IGNORECASE)
 COPY_TOOLS = frozenset({"cp", "mv", "rsync", "tee", "dd", "tar", "zip", "ln",
                         "install", "ditto", "cat", "unzip", "gzip", "bzip2", "xz"})
 SYSTEM_PREFIXES = ("/bin/", "/sbin/", "/usr/", "/opt/homebrew/", "/opt/local/",
                    "/Library/", "/System/", "/Applications/", "/nix/")
+
+
+def _is_protected_destination(path):
+    """Whether ``path`` literally names a cloud-synced folder or a mounted volume.
+
+    A cloud-synced folder (matched at a path boundary by ``SYNCED_FOLDER_PATTERNS``)
+    or ``/Volumes`` itself and anything under it is a destination that copying or
+    redirecting into would upload. The ``/Volumes`` test is boundary-safe — it
+    matches the mount root and its children, not an unrelated ``/Volumes-of-x``.
+    """
+    return bool(SYNCED_FOLDER_PATTERNS.search(path)) or (
+        path == "/Volumes" or path.startswith("/Volumes/"))
+
+
+def _points_into_protected(path, cwd):
+    """Whether ``path`` resolves into a protected destination, following symlinks.
+
+    The literal form (``/Volumes/USB/out``) is caught directly; this additionally
+    resolves the existing ancestors of ``path`` with ``realpath`` so a symlink
+    whose target is a cloud-synced folder or mounted volume (``ln -s /Volumes/USB
+    link; cp secret link/out``) is caught too. A computed (``$DEST``) or
+    glob/brace path cannot be resolved and is left to the earlier fail-closed
+    checks (returns ``False`` here). A relative path is joined onto ``cwd``; when
+    ``cwd`` is unknown a relative path cannot be resolved, and an ``OSError``
+    during resolution fails back to ``False`` — the literal check has already run.
+    """
+    if _is_protected_destination(path):
+        return True
+    if is_shell_expanded(path) or is_glob_or_brace(path):
+        return False
+    try:
+        if os.path.isabs(path):
+            base = path
+        elif cwd is not None:
+            base = os.path.join(cwd, path)
+        else:
+            return False
+        resolved = os.path.realpath(base)
+    except OSError:
+        return False
+    return _is_protected_destination(resolved)
 
 
 class _CopyFlags:
@@ -370,9 +420,17 @@ def _check_exported_env(args):
         if a.startswith("-"):
             continue
         name, eq, value = a.partition("=")
+        if is_shell_expanded(name) or is_glob_or_brace(name):
+            raise _GuardError(f"export operand {a!r} names a variable the shell computes or "
+                              f"expands, so the guard cannot tell which variables it sets; write "
+                              f"the name out literally (a value may still contain $, e.g. "
+                              f"export PATH=$PATH:/x)")
         if is_repo_selecting_or_transport_env(name):
             raise _GuardError(f"export of {name} points a later git command at another repository "
                               f"or overrides its configuration or transport; denied")
+        if is_rsync_transport_env(name):
+            raise _GuardError(f"export of {name} sets the remote shell a later rsync runs, which "
+                              f"can route a copy off the host; denied")
         if name == "TAR_OPTIONS":
             if eq:
                 _check_tar_options_value(value)
@@ -401,8 +459,37 @@ def _check_wrapper_env(env):
             raise _GuardError(f"{name} is set for a shell or interpreter that runs another "
                               f"command, which inherits it and can point git at another "
                               f"repository or override its configuration or transport; denied")
+        if is_rsync_transport_env(name):
+            raise _GuardError(f"{name} is set for a shell or interpreter that runs another "
+                              f"command, which inherits it and can route an rsync copy off the "
+                              f"host; denied")
         if name == "TAR_OPTIONS":
             _check_tar_options_value(value)
+
+
+def _enables_allexport(args):
+    """Whether a ``set`` invocation turns on allexport (``-a`` / ``-o allexport``).
+
+    With allexport on, every subsequent plain ``VAR=value`` assignment is
+    exported, so a later ``GIT_DIR=…`` or ``RSYNC_RSH=…`` reaches a child
+    command the guard's leading-assignment capture never sees. The guard cannot
+    follow that state across the rest of the script, so it fails closed when it
+    is switched on — matching ``set -o allexport`` and a single-dash cluster
+    containing ``a`` (``set -a``, ``set -ea``). ``set +a`` / ``set +o allexport``
+    turn it off and stay allowed.
+    """
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "-o":
+            if i + 1 < len(args) and args[i + 1] == "allexport":
+                return True
+            i += 2
+            continue
+        if a.startswith("-") and not a.startswith("--") and len(a) > 1 and "a" in a[1:]:
+            return True
+        i += 1
+    return False
 
 
 def _copy_destinations(prog, args):
@@ -445,7 +532,7 @@ def _copy_destinations(prog, args):
     return positionals[-1:]
 
 
-def _check_redirect_targets(targets):
+def _check_redirect_targets(targets, cwd):
     """Hold a command's output-redirection targets to the copy-destination rules.
 
     A shell redirection (``> f``, ``>> f``, ``&> f``, …) writes the command's
@@ -453,7 +540,8 @@ def _check_redirect_targets(targets):
     ``cat secret > /Volumes/USB/out`` is an upload no differently from
     ``cp secret /Volumes/USB/out``. The same three tests apply: a computed
     (``$DEST``) or glob/brace target cannot be checked and fails closed, and a
-    cloud-synced folder or mounted volume is refused.
+    cloud-synced folder or mounted volume — reached directly or through a
+    symlink that resolves into one — is refused.
     """
     for target in targets:
         if is_shell_expanded(target):
@@ -464,7 +552,7 @@ def _check_redirect_targets(targets):
             raise _GuardError(f"a redirection writes to {target!r}, a destination the shell "
                               f"expands at run time; the guard cannot tell where it points, so "
                               f"write it out literally")
-        if SYNCED_FOLDER_PATTERNS.search(target) or target.startswith("/Volumes/"):
+        if _points_into_protected(target, cwd):
             raise _GuardError("a redirection writes into a cloud-synced folder or mounted volume; "
                               "copying data there is an upload")
 
@@ -526,7 +614,12 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if not argv:
         return ""
     if os.path.basename(argv[0]) == "find":
-        argv = _unwrap(_find_exec(argv))
+        # ``find … -exec env GIT_DIR=… git push \;`` runs its command with its
+        # own leading ``VAR=value`` assignments; unwrap them the same way the
+        # top-level command's env was captured and merge them, so the git/tar
+        # checks downstream see the smuggled environment.
+        argv, inner_env = unwrap_with_env(_find_exec(argv))
+        env = env + inner_env
         if not argv:
             return "find"
     prog = os.path.basename(argv[0])
@@ -556,6 +649,10 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if prog in BLOCKED_SUBCOMMANDS and any(a in BLOCKED_SUBCOMMANDS[prog] for a in argv[1:]):
         raise _GuardError(f"{prog} {' '.join(a for a in argv[1:] if a in BLOCKED_SUBCOMMANDS[prog])} "
                           f"publishes or uploads; denied")
+    if prog == "set" and _enables_allexport(argv[1:]):
+        raise _GuardError("set -a / set -o allexport exports every later assignment, so a "
+                          "subsequent GIT_DIR=… or RSYNC_RSH=… would reach a child command the "
+                          "guard never inspects; denied (set +a stays allowed)")
     if prog in ("export", "declare", "typeset"):
         _check_exported_env(argv[1:])
     if (prog in SHELLS or prog in INTERPRETERS) and env:
@@ -564,6 +661,11 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
         if prog == "tar":
             _check_tar_filter(argv[1:])
             _check_tar_options_env(env)
+        if prog == "rsync":
+            for name, _value in env:
+                if is_rsync_transport_env(name):
+                    raise _GuardError(f"rsync with {name} set runs an arbitrary remote shell, "
+                                      f"which can route the copy off the host; denied")
         destinations = _copy_destinations(prog, argv[1:])
         # When the destination cannot be identified — an option the guard does
         # not know, or a tool whose operands it does not enumerate (gzip, xz,
@@ -580,7 +682,7 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
             raise _GuardError(f"{prog} writes to {globbed[0]!r}, a destination the shell expands "
                               f"at run time; the guard cannot tell where it points, so write it "
                               f"out literally")
-        if any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/") for a in suspects):
+        if any(_points_into_protected(a, ctx.command_cwd) for a in suspects):
             raise _GuardError(f"{prog} writes into a cloud-synced folder or mounted volume; "
                               f"copying data there is an upload")
     if prog in UPLOAD_TOOLS:
@@ -664,7 +766,7 @@ def analyze_command(command, ctx, depth=0):
                 cwd = open_groups.pop()[1]
             for group in subshells[shared:]:
                 open_groups.append((group, cwd))
-            _check_redirect_targets(redirects)
+            _check_redirect_targets(redirects, cwd)
             if not argv:
                 # A redirection-only command (`> /Volumes/USB/out`): its target
                 # has just been checked and there is no program to dispatch.

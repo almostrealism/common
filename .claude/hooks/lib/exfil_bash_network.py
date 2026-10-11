@@ -299,6 +299,17 @@ def _check_upload_tool(prog, argv, piped, ctx):
 _SSH_VALUE_FLAGS = frozenset({"-p", "-l", "-i", "-o", "-F", "-J", "-L", "-R", "-D", "-W",
                               "-b", "-c", "-e", "-m", "-O", "-Q", "-S", "-E", "-B", "-I", "-P"})
 
+# ``RSYNC_RSH`` names the remote shell rsync runs, exactly like the ``-e``
+# flag the guard already refuses: it can point rsync at an arbitrary program
+# (``ssh -oProxyCommand=…``, or any command at all) and so route a copy off
+# the host. It is refused inline, exported, and through a wrapper.
+_RSYNC_TRANSPORT_ENV = frozenset({"RSYNC_RSH"})
+
+
+def is_rsync_transport_env(name):
+    """Whether ``name`` sets rsync's remote shell (the env form of ``-e``)."""
+    return name in _RSYNC_TRANSPORT_ENV
+
 
 def _ssh_positionals(argv, value_flags):
     """Positional arguments and the option values that matter for routing."""
