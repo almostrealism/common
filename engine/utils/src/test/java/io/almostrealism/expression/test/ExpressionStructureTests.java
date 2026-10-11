@@ -311,6 +311,26 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * Two calls to the same function on the same member with the same arguments are still
+	 * different terms when they declare different result types, since they are rendered
+	 * and evaluated as values of different types. {@link Method#compare(Expression)} and
+	 * {@link Method#matches(Expression)} must agree on this.
+	 */
+	@Test(timeout = 30000)
+	public void methodsWithDifferentResultTypesAreDifferentTerms() {
+		Expression<Double> d = new StaticReference<>(Double.class, "d");
+
+		assertAttributesDistinguish(
+				new Method<>(Double.class, "f", d),
+				new Method<>(Integer.class, "f", d),
+				new Method<>(Double.class, "f", d));
+		assertAttributesDistinguish(
+				new Method<>(Long.class, "a", "f", d),
+				new Method<>(Double.class, "a", "f", d),
+				new Method<>(Long.class, "a", "f", d));
+	}
+
+	/**
 	 * {@link Greater#of(Expression, Expression, boolean)} and
 	 * {@link Less#of(Expression, Expression, boolean)} fold two constant operands into the
 	 * {@link BooleanConstant} the comparison evaluates to, honouring the strict/inclusive

@@ -242,12 +242,12 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Two {@link Method} expressions are equal when they have the same name, member
-	 * qualifier, and argument list.</p>
+	 * <p>Two {@link Method} expressions are equal when they have the same result type, name,
+	 * member qualifier, and argument list.</p>
 	 */
 	@Override
 	public boolean compare(Expression e) {
-		return e instanceof Method && compareAttributes(e) &&
+		return isSameOperation(e) &&
 				((Method) e).getArguments().equals(getArguments());
 	}
 

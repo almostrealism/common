@@ -1357,7 +1357,7 @@ public abstract class Expression<T> implements
 	 * @param other the expression to compare with
 	 * @return {@code true} if both nodes apply the same operation
 	 */
-	private boolean isSameOperation(Expression<?> other) {
+	protected boolean isSameOperation(Expression<?> other) {
 		return type == other.getType() && getClass() == other.getClass() && compareAttributes(other);
 	}
 
