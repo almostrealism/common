@@ -50,7 +50,8 @@ import java.util.stream.Collectors;
  * that made no progress. A class counts as reviewed only once its verdict is in that file. At
  * most {@link #MAX_CLASSES} classes are reviewed per job.</p>
  *
- * <p>Active whenever review is enabled ({@link CodingAgentJob#isReviewEnabled()}); a job that
+ * <p>Active only when the job opts in ({@link CodingAgentJob#isObjectOrientedReviewEnabled()},
+ * off by default) and review is enabled ({@link CodingAgentJob#isReviewEnabled()}); a job that
  * changes no production Java class has nothing for it to review. It runs after the
  * content-protection rules and before the staging and commit-message checks, so that its
  * sessions cannot exhaust the job's total enforcement budget before those rules run.</p>

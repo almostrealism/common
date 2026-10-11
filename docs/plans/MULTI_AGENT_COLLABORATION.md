@@ -323,7 +323,7 @@ lives on the job and travels with it. The full path, all of it in this change:
 10. `FlowTreeApiEndpoint#handleSubmit` reads the field onto the factory, and the
     submit response reports it back so a caller can confirm what it got.
 11. `CodingAgentJobFactory` field, accessors, and decode case;
-    `CodingAgentJobConfigurer` propagates it to the job; `CodingAgentJob` field
+    `CodingAgentJobFactory#configure` propagates it to the job; `CodingAgentJob` field
     and accessors; `CodingAgentJobCodec` encode/decode.
 12. `InstructionPromptBuilder#setCollaborative` emits the Collaboration Protocol
     section — the four things an agent cannot infer.

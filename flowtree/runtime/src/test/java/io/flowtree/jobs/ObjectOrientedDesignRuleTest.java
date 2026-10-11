@@ -36,7 +36,9 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests of {@link ObjectOrientedDesignRule}: one review session per changed production class,
  * in order, with deleted files, tests and non-Java files skipped, and a prompt that names the
- * class under review and asks for fixes rather than deferral.
+ * class under review and asks for fixes rather than deferral. Also covers the per-job
+ * {@link CodingAgentJob#isObjectOrientedReviewEnabled()} switch that activates the rule, which
+ * is off by default and travels over the wire.
  */
 public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 
@@ -220,5 +222,87 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		assertTrue(prompt.contains("Do not defer"));
 		assertTrue(prompt.contains(ObjectOrientedDesignRule.VERDICT_PATH));
 		assertTrue(prompt.contains(target + ": CLEAN"));
+	}
+
+	/**
+	 * Reports whether the runner for the given job assembles an {@link ObjectOrientedDesignRule}.
+	 *
+	 * @param job the job whose active rules are inspected
+	 * @return {@code true} if the rule is among the job's active enforcement rules
+	 */
+	private static boolean hasObjectOrientedRule(CodingAgentJob job) {
+		return new EnforcementRunner(job).buildActiveRules().stream()
+				.anyMatch(rule -> rule instanceof ObjectOrientedDesignRule);
+	}
+
+	/** With review enabled and the flag left at its default, the rule is not assembled. */
+	@Test(timeout = 30000)
+	public void ruleAbsentByDefaultWithReviewEnabled() {
+		CodingAgentJob job = new CodingAgentJob("t1", "p");
+		assertTrue(job.isReviewEnabled());
+		assertFalse(job.isObjectOrientedReviewEnabled());
+		assertFalse(hasObjectOrientedRule(job));
+	}
+
+	/** Opting in while review is enabled assembles the rule after the content rules, before staging checks. */
+	@Test(timeout = 30000)
+	public void rulePresentWhenFlagSetAndReviewEnabled() {
+		CodingAgentJob job = new CodingAgentJob("t1", "p");
+		job.setTargetBranch("feature/test");
+		job.setObjectOrientedReviewEnabled(true);
+
+		List<EnforcementRule> rules = new EnforcementRunner(job).buildActiveRules();
+		int review = -1;
+		int oop = -1;
+		int staging = -1;
+		for (int i = 0; i < rules.size(); i++) {
+			if (rules.get(i) instanceof ReviewRule) review = i;
+			if (rules.get(i) instanceof ObjectOrientedDesignRule) oop = i;
+			if (rules.get(i) instanceof StagingSkipRule) staging = i;
+		}
+		assertTrue("Expected ObjectOrientedDesignRule in " + rules, oop >= 0);
+		assertTrue("ObjectOrientedDesignRule must follow ReviewRule", review >= 0 && review < oop);
+		assertTrue("ObjectOrientedDesignRule must precede StagingSkipRule", oop < staging);
+	}
+
+	/** Opting in has no effect when review is disabled. */
+	@Test(timeout = 30000)
+	public void ruleAbsentWhenFlagSetButReviewDisabled() {
+		CodingAgentJob job = new CodingAgentJob("t1", "p");
+		job.setObjectOrientedReviewEnabled(true);
+		job.setReviewEnabled(false);
+		assertFalse(hasObjectOrientedRule(job));
+	}
+
+	/** The job codec round-trips the opt-in and omits the key when the flag is at its default. */
+	@Test(timeout = 30000)
+	public void jobCodecRoundTripsFlag() {
+		CodingAgentJob job = new CodingAgentJob("t1", "p");
+		assertFalse(job.encode().contains("objectOrientedReviewEnabled"));
+		assertFalse(GitManagedJobSerializationTest.roundTrip(job).isObjectOrientedReviewEnabled());
+
+		job.setObjectOrientedReviewEnabled(true);
+		assertTrue(job.encode().contains("::objectOrientedReviewEnabled:=true"));
+		assertTrue(GitManagedJobSerializationTest.roundTrip(job).isObjectOrientedReviewEnabled());
+	}
+
+	/** A factory decoded without the field, as from an older submission, leaves the rule off. */
+	@Test(timeout = 30000)
+	public void missingFieldDecodesAsOff() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		assertFalse(factory.encode().contains("objectOrientedReviewEnabled"));
+		CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
+		assertFalse(decoded.isObjectOrientedReviewEnabled());
+		assertFalse(((CodingAgentJob) decoded.nextJob()).isObjectOrientedReviewEnabled());
+	}
+
+	/** A factory that opts in survives the wire and hands the opt-in to the jobs it creates. */
+	@Test(timeout = 30000)
+	public void factoryOptInRoundTripsAndPropagates() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.setObjectOrientedReviewEnabled(true);
+		CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
+		assertTrue(decoded.isObjectOrientedReviewEnabled());
+		assertTrue(((CodingAgentJob) decoded.nextJob()).isObjectOrientedReviewEnabled());
 	}
 }

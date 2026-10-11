@@ -21,7 +21,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.flowtree.jobs.agent.PhaseConfig;
-import io.flowtree.jobs.agent.PhaseConfigBundle;
+import io.flowtree.jobs.agent.PhaseConfigContainer;
 import io.flowtree.submission.SubmissionRunnerResolver;
 
 import java.util.ArrayList;
@@ -45,7 +45,7 @@ import java.util.Map;
  * {@code appToken}) only have effect when {@code slackTeamId} is set.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class WorkspaceEntry {
+public class WorkspaceEntry implements PhaseConfigContainer {
     /**
      * Operator-chosen workspace identifier. For legacy {@code slackWorkspaces:}
      * entries the YAML key {@code workspaceId} is accepted via
@@ -222,43 +222,37 @@ public class WorkspaceEntry {
 
     /** Returns the workspace-level default agent runner, or {@code null} when none is configured. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Override
     public String getDefaultRunner() { return defaultRunner; }
     /** Sets the workspace-level default agent runner. */
+    @Override
     public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
 
     /** Returns the workspace-level per-phase runner overrides (keyed by phase wire name); never {@code null}. */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @Override
     public Map<String, String> getRunners() { return runners; }
     /** Replaces the workspace-level per-phase runner override map; {@code null} is treated as empty. */
+    @Override
     public void setRunners(Map<String, String> runners) {
         this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
     }
 
     /** Returns the workspace-level default {@link PhaseConfig}, or {@code null}. */
+    @Override
     public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
     /** Sets the workspace-level default {@link PhaseConfig}. */
+    @Override
     public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
         this.defaultPhaseConfig = defaultPhaseConfig;
     }
 
     /** Returns the workspace-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+    @Override
     public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
     /** Replaces the workspace-level per-phase {@link PhaseConfig} overrides. */
+    @Override
     public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
         this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
-    }
-
-    /**
-     * Builds the effective {@link PhaseConfigBundle} for this workspace,
-     * merging the new {@code defaultPhaseConfig}/{@code phaseConfigs}
-     * fields with the legacy {@code defaultRunner}/{@code runners} fields.
-     * The new fields take precedence field-by-field when both are
-     * supplied; legacy fields fill in {@code null} positions.
-     *
-     * @return the merged bundle; never {@code null}
-     */
-    public PhaseConfigBundle toPhaseConfigBundle() {
-        return PhaseConfigBundle.mergeLegacyWithNew(defaultRunner, runners,
-                defaultPhaseConfig, phaseConfigs);
     }
 }

@@ -374,6 +374,28 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_object_oriented_review_omitted_by_default(self, mock_post):
+        """object_oriented_review_enabled is opt-in (default false), so the
+        wire payload must omit objectOrientedReviewEnabled when the caller did
+        not pass it -- including when review itself stays enabled."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-oo1"}
+        server.workstream_submit_task(prompt="Task", review_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("objectOrientedReviewEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_object_oriented_review_true_forwarded(self, mock_post):
+        """object_oriented_review_enabled=True must reach the controller as
+        objectOrientedReviewEnabled=True."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-oo2"}
+        server.workstream_submit_task(prompt="Task",
+                                      object_oriented_review_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["objectOrientedReviewEnabled"], True)
+
+    @patch.object(server, "_controller_post")
     def test_submit_falsification_enabled_omitted_by_default(self, mock_post):
         """falsification_enabled is opt-in (default false), so the wire payload
         must omit falsificationEnabled when the caller did not pass it."""

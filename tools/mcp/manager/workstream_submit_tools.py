@@ -34,6 +34,7 @@ def workstream_submit_task(
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
+    object_oriented_review_enabled: bool = False,
     retrospective_enabled: bool = False,
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
@@ -171,6 +172,12 @@ def workstream_submit_task(
             level of the module hierarchy. Disabled by default to keep routine
             exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
             where placement correctness matters.
+        object_oriented_review_enabled: When ``True``, activates the
+            object-oriented design review after the content rules: one
+            dedicated agent session per changed production class, mandated to
+            fix design violations. Only takes effect while ``review_enabled``
+            is also ``True``. Disabled by default because it runs a session
+            per class and is costly on review-heavy branches.
         retrospective_enabled: When ``True``, activates the retrospective phase
             after all other phases. A separate agent session analyzes the
             primary phase transcript for tool-use and context-efficiency
@@ -682,6 +689,8 @@ def workstream_submit_task(
         payload["maxDeduplicationPasses"] = max_deduplication_passes
     if organizational_placement_enabled:
         payload["enforceOrganizationalPlacement"] = True
+    if object_oriented_review_enabled:
+        payload["objectOrientedReviewEnabled"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:

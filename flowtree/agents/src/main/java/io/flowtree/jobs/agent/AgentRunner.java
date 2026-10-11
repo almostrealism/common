@@ -19,7 +19,6 @@ package io.flowtree.jobs.agent;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,12 +26,11 @@ import java.util.concurrent.TimeUnit;
  * the resulting metrics. Implementations are stateless across calls; the
  * orchestrator threads all context through {@link AgentRunRequest}.
  *
- * <p>Phase 1 of the pluggable-agents refactor introduces this contract so the
- * job orchestrator no longer mentions Claude-specific flags, subprocess
- * construction, or NDJSON parsing in its body. The single concrete
- * implementation shipped today is
- * {@link io.flowtree.jobs.agent.ClaudeCodeRunner}; later phases add other
- * runners (e.g. opencode) without changing the orchestrator.</p>
+ * <p>This contract keeps the job orchestrator free of runner-specific flags,
+ * subprocess construction, and output parsing. The implementations are
+ * {@link io.flowtree.jobs.agent.ClaudeCodeRunner} and
+ * {@link io.flowtree.jobs.agent.OpencodeRunner}; further runners are added
+ * without changing the orchestrator.</p>
  *
  * @author Michael Murray
  */
@@ -99,7 +97,7 @@ public interface AgentRunner extends Named {
      * run (see {@link ClaudeCodeRunner#isModelSupported(String)}).</p>
      *
      * <p>The default keeps the historical behaviour: membership in the
-     * advertised set, with an empty set meaning "unconstrained". A null or
+     * advertised set ({@link AgentCapabilities#advertisesModel(String)}). A null or
      * empty model is always accepted — it means no {@code --model} flag is
      * passed and the runner's own default applies.</p>
      *
@@ -108,8 +106,7 @@ public interface AgentRunner extends Named {
      */
     default boolean isModelSupported(String model) {
         if (model == null || model.isEmpty()) return true;
-        Set<String> advertised = capabilities().supportedModels();
-        return advertised.isEmpty() || advertised.contains(model);
+        return capabilities().advertisesModel(model);
     }
 
     /**

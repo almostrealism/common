@@ -36,8 +36,7 @@ import java.util.List;
  * <p>The accumulator is owned by a single {@link CodingAgentJob} and is not
  * thread-safe. It is populated by
  * {@link CodingAgentJob#absorbResult(AgentRunResult)} after each session run
- * and read by {@link CodingAgentJobEvent#forJob} and
- * {@link CodingAgentJobEvent#populateFrom} at job completion.</p>
+ * and read by {@link CodingAgentJobEvent#forJob} at job completion.</p>
  *
  * @author Michael Murray
  * @see CodingAgentJob

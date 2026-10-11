@@ -16,9 +16,6 @@
 
 package io.flowtree.jobs;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -135,7 +132,7 @@ class ReviewRule implements EnforcementRule {
      * @param job the job whose working tree is being reviewed
      */
     void captureBefore(CodingAgentJob job) {
-        beforeSnapshot = snapshotChangedFiles(job);
+        beforeSnapshot = new LinkedHashSet<>(job.extractChangedFilePaths());
     }
 
     /**
@@ -146,7 +143,7 @@ class ReviewRule implements EnforcementRule {
      * @param job the job whose review session just completed
      */
     void recordOutcome(CodingAgentJob job) {
-        Set<String> after = snapshotChangedFiles(job);
+        Set<String> after = new LinkedHashSet<>(job.extractChangedFilePaths());
         Set<String> symDiff = new LinkedHashSet<>(beforeSnapshot != null
                 ? beforeSnapshot : new LinkedHashSet<>());
         symDiff.addAll(after);
@@ -171,40 +168,6 @@ class ReviewRule implements EnforcementRule {
 
     /** Returns whether the review session exited with code 0. */
     boolean isExitedCleanly() { return exitedCleanly; }
-
-    /**
-     * Returns the set of paths that differ between the working tree
-     * (including uncommitted changes) and the base branch.
-     *
-     * @param job the job providing working directory and base branch
-     * @return the changed-file set; never {@code null}
-     */
-    static Set<String> snapshotChangedFiles(CodingAgentJob job) {
-        Set<String> set = new LinkedHashSet<>();
-        String base = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
-        set.addAll(GitOperations.extractNewFilePaths(job.getWorkingDirectory(), base, job::warn));
-        try {
-            ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(),
-                    "diff", "--name-only", "origin/" + base);
-            pb.directory(new File(job.getWorkingDirectory() != null
-                    ? job.getWorkingDirectory() : "."));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String line : listing.split("\n")) {
-                String trimmed = line.trim();
-                if (!trimmed.isEmpty() && !GitOperations.isExcludedPath(trimmed)) set.add(trimmed);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            job.warn("Review snapshot: failed to list changed files: " + e.getMessage());
-        } catch (IOException e) {
-            job.warn("Review snapshot: failed to list changed files: " + e.getMessage());
-        }
-        return set;
-    }
 
     /**
      * Counts {@code memory_store} tool-use events in {@code rawOutput}.

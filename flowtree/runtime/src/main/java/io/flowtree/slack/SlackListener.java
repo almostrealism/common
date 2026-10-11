@@ -567,42 +567,11 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
-        // Create job factory with workstream settings
-        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
-        factory.setAllowedTools(workstream.getAllowedTools());
-        factory.setAgentEnv(workstream.getAgentEnv());
-        factory.setMaxTurns(workstream.getMaxTurns());
-        factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
-
-        if (workstream.getDefaultBranch() != null) {
-            factory.setTargetBranch(workstream.getDefaultBranch());
-            factory.setPushToOrigin(workstream.isPushToOrigin());
-        }
-
-        if (workstream.getBaseBranch() != null) {
-            factory.setBaseBranch(workstream.getBaseBranch());
-        }
-
-        if (workstream.getWorkingDirectory() != null) {
-            factory.setWorkingDirectory(workstream.getWorkingDirectory());
-        }
-
-        // Repository URL for automatic checkout
-        if (workstream.getRepoUrl() != null) {
-            factory.setRepoUrl(workstream.getRepoUrl());
-        }
+        CodingAgentJob.Factory factory = workstream.newJobFactory(prompt);
 
         // Default workspace path for repo checkouts
         if (defaultWorkspacePath != null) {
             factory.setDefaultWorkspacePath(defaultWorkspacePath);
-        }
-
-        // Git identity
-        if (workstream.getGitUserName() != null) {
-            factory.setGitUserName(workstream.getGitUserName());
-        }
-        if (workstream.getGitUserEmail() != null) {
-            factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
         // ar-manager config: generate temporary HMAC token for this job
@@ -617,28 +586,11 @@ public class SlackListener implements ConsoleFeatures {
             }
         }
         workstream.applyCapabilities(factory, factory.getTargetBranch());
-        // Workstream-level default for tmux-backed agent launches. The
-        // Slack path has no per-job use_tmux override (Slack submissions
-        // always come from the workstream owner), so the workstream
-        // default flows through directly to the factory. The runner
-        // additionally honours AR_AGENT_USE_TMUX, which is unaffected
-        // by this flag.
-        factory.setUseTmux(workstream.isUseTmux());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
             warn("no pushedToolsConfig to forward to " + factory.getTaskId()
                 + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
-        }
-
-        // Dependent repos
-        if (workstream.getDependentRepos() != null) {
-            factory.setDependentRepos(workstream.getDependentRepos());
-        }
-
-        // Planning document
-        if (workstream.getPlanningDocument() != null) {
-            factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
         // GitHub organization is now handled via ar-manager's workstream resolution
@@ -659,11 +611,9 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Build workstream URL for status reporting and Slack messaging
-        if (apiPort > 0) {
-            String baseUrl = "http://0.0.0.0:" + apiPort
-                + "/api/workstreams/" + workstream.getWorkstreamId()
-                + "/jobs/" + factory.getTaskId();
-            factory.setWorkstreamUrl(baseUrl);
+        String jobUrl = workstream.jobUrl(apiPort, factory.getTaskId());
+        if (jobUrl != null) {
+            factory.setWorkstreamUrl(jobUrl);
         }
 
         // Notify that the job has been submitted (locally, before it leaves).
@@ -671,8 +621,7 @@ public class SlackListener implements ConsoleFeatures {
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
 
-        String displaySummary = CodingAgentJob.summarizePrompt(prompt);
-        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), factory.getDisplaySummary());
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
         wsNotifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent, replyTo);
