@@ -373,8 +373,35 @@ def _check_exported_env(args):
         if is_repo_selecting_or_transport_env(name):
             raise _GuardError(f"export of {name} points a later git command at another repository "
                               f"or overrides its configuration or transport; denied")
-        # TODO(review): a bare `export TAR_OPTIONS` (value set by a prior standalone `TAR_OPTIONS=...` command, then exported here with no value) reaches a later tar unchecked — only an inline `TAR_OPTIONS=value` export is verified (the `and eq`).
-        if name == "TAR_OPTIONS" and eq:
+        if name == "TAR_OPTIONS":
+            if eq:
+                _check_tar_options_value(value)
+            else:
+                raise _GuardError("export of TAR_OPTIONS with no value carries a value the guard "
+                                  "cannot read to a later tar, which prepends it to its options; "
+                                  "export it with the value written out literally")
+
+
+def _check_wrapper_env(env):
+    """Refuse a dangerous environment variable handed to a shell or interpreter wrapper.
+
+    ``unwrap_with_env`` captures the leading ``VAR=value`` assignments of a
+    command, but they are consumed only in the ``git`` and ``tar`` branches. A
+    shell or interpreter wrapper (``GIT_DIR=/tmp/other.git sh -c 'git push'``,
+    ``TAR_OPTIONS=… python -c '…'``) re-analyses its nested command without that
+    env, so a repository-selecting or transport git variable — or a
+    program-running ``TAR_OPTIONS`` — would be inherited by the child and reach a
+    later ``git``/``tar`` unchecked. Each captured assignment is held here: a
+    git repository-selecting or transport variable is refused on the name alone,
+    and ``TAR_OPTIONS`` runs through the same tar-filter check. Benign variables
+    (``GIT_PAGER``, unrelated names) stay allowed.
+    """
+    for name, value in env:
+        if is_repo_selecting_or_transport_env(name):
+            raise _GuardError(f"{name} is set for a shell or interpreter that runs another "
+                              f"command, which inherits it and can point git at another "
+                              f"repository or override its configuration or transport; denied")
+        if name == "TAR_OPTIONS":
             _check_tar_options_value(value)
 
 
@@ -531,6 +558,8 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
                           f"publishes or uploads; denied")
     if prog in ("export", "declare", "typeset"):
         _check_exported_env(argv[1:])
+    if (prog in SHELLS or prog in INTERPRETERS) and env:
+        _check_wrapper_env(env)
     if prog in COPY_TOOLS:
         if prog == "tar":
             _check_tar_filter(argv[1:])
