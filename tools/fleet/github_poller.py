@@ -202,6 +202,25 @@ def compute_job_metrics(
     }
 
 
+def is_carried_over(job: Dict) -> bool:
+    """Whether *job* is a re-run attempt's copy of a job an earlier attempt already ran.
+
+    Re-running a workflow run (e.g. "re-run failed jobs") gives the new
+    attempt a fresh job, under a new ``id``, for every job that is not
+    re-executed, stamped ``created_at`` at the moment of the re-run but
+    carrying the earlier attempt's ``started_at``/``completed_at``
+    unchanged. Such a job did not run: its execution is already recorded
+    under the earlier attempt's job id, and recording it again would count
+    the same runner time twice and give it a negative wait (it "started"
+    before it was created). A job that genuinely ran cannot start before it
+    was created, so ``started_at < created_at`` identifies the copy; a job
+    missing either timestamp is never a copy.
+    """
+    created_at = _parse_github_timestamp(job.get("created_at"))
+    started_at = _parse_github_timestamp(job.get("started_at"))
+    return created_at is not None and started_at is not None and started_at < created_at
+
+
 def _is_retryable_rate_limit(exc: "urllib.error.HTTPError") -> bool:
     """Whether *exc* is a rate limit that should be retried, not a hard failure.
 
@@ -577,6 +596,12 @@ def poll_and_store(
     already stored, and the previous cycle's ``runner_state`` rows are left
     as the most recent complete inventory until a cycle succeeds.
 
+    A job a re-run attempt carried over from an earlier attempt (see
+    :func:`is_carried_over`) is not stored: it did not run, and the earlier
+    attempt's own job already records the execution. It stays in the
+    ``run_jobs`` list handed to *resolve_dependency_completed_at*, since its
+    ``completed_at`` is still when that dependency actually finished.
+
     Every call re-fetches and re-upserts recent runs/jobs (idempotent, since
     every write here is a natural-key upsert), rather than tracking what
     changed since the last poll — a periodic poller re-reading a bounded
@@ -618,7 +643,8 @@ def poll_and_store(
         run_id = str(run.get("id"))
         run_jobs = fetch_run_jobs(repo, run_id, token, per_page=job_per_page, max_pages=job_max_pages)
         for job in run_jobs:
-            fetched.append((run, run_id, job, run_jobs))
+            if not is_carried_over(job):
+                fetched.append((run, run_id, job, run_jobs))
 
     # Dependency resolution runs here, before `store.transaction()` opens
     # below, for the same reason the run/job fetches above do: a resolver
