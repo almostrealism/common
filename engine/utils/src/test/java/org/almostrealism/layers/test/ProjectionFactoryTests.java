@@ -224,6 +224,7 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 		List<LoRALinear> loraLayers = new ArrayList<>();
 		ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
 
+		List<CellularLayer> untargetedLayers = new ArrayList<>();
 		try (PackedCollection weights = randomWeights(32, 64)) {
 			CellularLayer targeted = factory.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_QKV);
 			Assert.assertTrue("Targeted projection should be LoRALinear", targeted instanceof LoRALinear);
@@ -231,10 +232,12 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 			Assert.assertSame(targeted, loraLayers.get(0));
 
 			CellularLayer untargeted = factory.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_OUT);
+			untargetedLayers.add(untargeted);
 			Assert.assertFalse("Untargeted projection should not be LoRALinear", untargeted instanceof LoRALinear);
 			Assert.assertEquals("List should be untouched for untargeted", 1, loraLayers.size());
 		} finally {
 			loraLayers.forEach(LoRALinear::destroy);
+			untargetedLayers.forEach(CellularLayer::destroy);
 		}
 
 		log("lora wraps targeted and tracks - passed");
@@ -246,18 +249,22 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 60000)
 	public void loraNullContracts() {
+		List<CellularLayer> created = new ArrayList<>();
 		try (PackedCollection weights = randomWeights(32, 64)) {
 			List<LoRALinear> loraLayers = new ArrayList<>();
 			ProjectionFactory nullConfig = ProjectionFactory.lora(null, loraLayers);
 			CellularLayer layer = nullConfig.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_QKV);
+			created.add(layer);
 			Assert.assertFalse("Null config should never adapt", layer instanceof LoRALinear);
 			Assert.assertEquals("Null config should track nothing", 0, loraLayers.size());
 
 			ProjectionFactory nullList = ProjectionFactory.lora(
 					new AdapterConfig().targets(TargetLayer.SELF_ATTENTION_QKV), null);
 			CellularLayer adapted = nullList.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_QKV);
+			created.add(adapted);
 			Assert.assertTrue("Null list should still adapt targeted layers", adapted instanceof LoRALinear);
-			((LoRALinear) adapted).destroy();
+		} finally {
+			created.forEach(CellularLayer::destroy);
 		}
 
 		log("lora null contracts - passed");
@@ -287,11 +294,14 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 
 		List<LoRALinear> created = new ArrayList<>();
 		LoRAProjectionFactory nullConfig = new LoRAProjectionFactory(null, created::add, fallback);
+		CellularLayer layer = null;
 		try (PackedCollection weights = randomWeights(32, 64)) {
-			CellularLayer layer = nullConfig.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_QKV);
+			layer = nullConfig.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_QKV);
 			Assert.assertFalse("Null config delegates every projection to the fallback",
 					layer instanceof LoRALinear);
 			Assert.assertEquals("Null config creates no adapters", 0, created.size());
+		} finally {
+			if (layer != null) layer.destroy();
 		}
 
 		log("constructor contract - passed");
@@ -306,10 +316,12 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 	@Test(timeout = 60000)
 	public void loraRoutesUntargetedToFallback() {
 		List<LoRALinear> created = new ArrayList<>();
+		List<CellularLayer> denseLayers = new ArrayList<>();
 		try (PackedCollection weights = randomWeights(32, 64);
 			 PackedCollection bias = new PackedCollection(shape(32))) {
 			TraversalPolicy inputShape = shape(2, 64);
 			CellularLayer fallbackLayer = dense(inputShape, weights, bias, false);
+			denseLayers.add(fallbackLayer);
 
 			List<TargetLayer> fallbackTargets = new ArrayList<>();
 			ProjectionFactory fallback = (shape, w, b, target) -> {
@@ -341,6 +353,7 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 			Assert.assertEquals(List.of(adapter), created);
 		} finally {
 			created.forEach(LoRALinear::destroy);
+			denseLayers.forEach(CellularLayer::destroy);
 		}
 
 		log("lora routes untargeted to fallback - passed");
@@ -402,17 +415,21 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 		RecordingSupport support = new RecordingSupport(
 				new AdapterConfig().targets(TargetLayer.SELF_ATTENTION_QKV));
 
+		List<CellularLayer> denseLayers = new ArrayList<>();
 		try (PackedCollection weights = randomWeights(32, 64)) {
-			support.getProjectionFactory().create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_OUT);
+			denseLayers.add(support.getProjectionFactory()
+					.create(shape(2, 64), weights, null, TargetLayer.SELF_ATTENTION_OUT));
 			Assert.assertEquals("getProjectionFactory fallback should use the implementor's dense()",
 					1, support.denseCalls);
 
-			support.loraOrDense(shape(2, 64), weights, TargetLayer.SELF_ATTENTION_OUT);
+			denseLayers.add(support.loraOrDense(shape(2, 64), weights, TargetLayer.SELF_ATTENTION_OUT));
 			Assert.assertEquals("loraOrDense fallback should use the implementor's dense()",
 					2, support.denseCalls);
 
 			Assert.assertTrue("No adapters should be created for untargeted projections",
 					support.getLoraLayers().isEmpty());
+		} finally {
+			denseLayers.forEach(CellularLayer::destroy);
 		}
 
 		log("untargeted projections use implementor dense - passed");
