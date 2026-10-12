@@ -409,13 +409,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Starts closing out claimed tracker tasks when their branch's pull request
      * merges or is closed (see {@link TaskCloseOutReconciler}). Requires the
-     * tracker service and the listener that holds the workstreams; does nothing
-     * without them or when already started. Stopped by {@link #stop()}.
+     * tracker service and the listener (its absence means no workstreams have
+     * been registered); resolves each workstream by its persistent id through
+     * {@link NotifierRegistry#workstreamFor(String)} rather than the listener's
+     * channel-keyed map, which omits workstreams without a channel. Does nothing
+     * without the tracker and listener or when already started. Stopped by
+     * {@link #stop()}.
      */
     public synchronized void startTaskCloseOut() {
         if (taskCloseOut != null || tracker == null || listener == null) return;
         taskCloseOut = new TaskCloseOutReconciler(tracker,
-                id -> listener.getWorkstreams().get(id),
+                notifiers::workstreamFor,
                 githubProxyHandler::listPullRequestsForBranch);
         taskCloseOut.start();
     }
