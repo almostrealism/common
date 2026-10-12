@@ -140,8 +140,22 @@ public class LoRAProjectionFactory implements ProjectionFactory {
   only `ProjectionFactory.lora(...)`, whose callers pass a list. `LowRankAdapterSupport`
   registers through its abstract `addLoraLayer(LoRALinear)`, which a `Consumer` covers
   directly (`this::addLoraLayer`).
-- A null `AdapterConfig` means "never adapt". This matches the current `config != null`
-  guard in both copies.
+- The `registry` and `fallback` hooks are required: the constructor rejects a null
+  `registry` or `fallback` with `Objects.requireNonNull`. `create(...)` calls
+  `registry.accept(layer)` for every targeted projection and `fallback.create(...)` for
+  every untargeted one, so neither has a sensible default when null. "Skip registration" is
+  a caller intent, expressed by passing an explicit no-op (`layer -> { }`), not by passing
+  null. The one caller that has a nullable registration target —
+  `ProjectionFactory.lora(config, loraLayers)` with a null list — performs that substitution
+  itself (see "`ProjectionFactory` statics"), so the null-list contract stays at the
+  convenience method that owns it rather than being silently absorbed by the factory. The
+  other caller, `loraProjectionFactory()`, always supplies a non-null `this::addLoraLayer`
+  hook and a non-null fallback lambda.
+- `config`, by contrast, is nullable: a null `AdapterConfig` means "never adapt", and
+  `create(...)` handles it with the `config == null` guard shown above, which delegates
+  every projection to the fallback. This matches the current `config != null` guard in both
+  copies and keeps the `ProjectionFactory.lora(null, loraLayers)` contract (forward the null
+  config; adapt nothing) working unchanged.
 
 ### `ProjectionFactory` statics
 
@@ -257,6 +271,11 @@ its name says" rule.
   - `lora(config, list)` returns a `LoRALinear` for a targeted layer and adds it to the
     list, and returns a non-LoRA layer for an untargeted one without touching the list;
   - `lora(null, list)` and `lora(config, null)` follow the current null contracts;
+  - the `LoRAProjectionFactory` constructor contract: direct construction with a null
+    `registry` or null `fallback` is rejected (`NullPointerException` from
+    `Objects.requireNonNull`), while a null `config` is accepted and makes every projection
+    untargeted (delegated to the fallback). This records the decision that "skip
+    registration" is expressed by an explicit no-op hook, not by a null;
   - `LowRankAdapterSupport.getProjectionFactory()` registers adapters via `addLoraLayer`;
   - `loraOrDense(...)` still creates and registers a `LoRALinear` for a targeted layer when
     the implementor overrides `getProjectionFactory()` to return `ProjectionFactory.dense()`
@@ -327,8 +346,10 @@ No `pom.xml` changes are needed: `engine/utils` tests already compile against
    plan had `loraOrDense` call `getProjectionFactory().create(...)`. That would change
    behaviour for any implementor whose `getProjectionFactory()` resolves to something
    other than the interface default (see Approach), so the plan now has `loraOrDense`
-   construct its own `LoRAProjectionFactory` through the private, non-overridable
-   `loraProjectionFactory()`. If the approver would rather `loraOrDense`
+   build its own `LoRAProjectionFactory` through the shared `loraProjectionFactory()`
+   helper instead of calling `getProjectionFactory()` — that is what keeps it independent.
+   The helper being private is a separate guarantee that stops an implementor overriding
+   the shared construction itself. If the approver would rather `loraOrDense`
    follow an overridden `getProjectionFactory()` on purpose, that is a behaviour change
    and should be stated as one.
 5. **Is `loraOrDense` still needed?** Its only caller is `AdapterConfigTests`; no
