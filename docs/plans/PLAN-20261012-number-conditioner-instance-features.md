@@ -2,7 +2,10 @@
 
 **Tracker task:** `2bf3efde-6a4f-4636-8a08-71c0e9463f1c` — "NumberConditioner: static expo()
 factory and constructor use anonymous DiffusionTransformerFeatures although the class implements it"
-**Release:** Common 0.76
+**Release:** the release this task is assigned to in tracker project "Common" (see the tracker
+task; no version is recorded here because version numbers go stale)
+**Status:** proposal only. This document is the whole change on its branch; `NumberConditioner.java`
+and `NumberConditionerTest.java` are untouched until the plan is approved and implemented separately.
 
 ## Motivation
 
@@ -36,10 +39,13 @@ Changes only `NumberConditioner.java` and adds coverage for the expo path in
 4. The public constructors keep their signatures (callers: `NumberConditionerTest`).
 
 Out of scope (noted, not touched): other anonymous Features instances in `engine/ml`
-(`AutoregressiveModel.DIST`, the anonymous-instance accessors in `RotationFeatures` and
-`AttentionFeatures`).
-These are in classes that are themselves Features interfaces or have no instance to call through,
-so they are a different question from this task's — see Open Questions.
+(`AutoregressiveModel.DIST`; the static `getInstance()` accessors of `RotationFeatures` and
+`AttentionFeatures`; the local `new RotationFeatures() {}` inside the static
+`RotationFeatures.computeRopeFreqs(double, int, int)`; and, in test code,
+`OobleckLayerValidationTest`'s local `RotationFeatures`).
+These are in classes that are themselves Features interfaces, or in a class (`AutoregressiveModel`,
+the test) that does not implement the interface it instantiates, so they are a different question
+from this task's — see Open Questions.
 
 ## Approach
 
@@ -85,6 +91,17 @@ Notes on the design:
 - `learnedFourierDim(...)` stays a `private static` helper in the `this(...)` argument list. It
   does shape arithmetic on a method argument and uses no Features method, so the static context is
   legitimate and needs no anonymous instance.
+- The null discriminator cannot leak in through the public API: the public learned constructor
+  still runs `learnedFourierDim(fourierWeights)` first, and that helper already rejects a `null`
+  `fourierWeights` with `IllegalArgumentException`. Only `expo(...)` passes `null`, deliberately.
+- In the learned path, `minFreq`/`maxFreq` are placeholders (`0.0, 0.0`) the constructor ignores.
+  The canonical constructor's javadoc must say so (see Open Question 1).
+- Validation order shifts slightly on the expo path. Today `expo(...)` calls
+  `expoFourierFrequencies(...)` before the constructor runs, so an odd `fourierDim` fails with
+  "Output features must be even for Fourier features". After the change the constructor's existing
+  validation runs first, so when an argument is wrong in both respects the `projWeight` shape error
+  is reported instead of the evenness error. Both are `IllegalArgumentException`, and no test
+  asserts on either message.
 - The null-vs-non-null switch is confined to one private constructor and documented in its javadoc.
   The alternative — two public constructors each assigning every field — would duplicate the seven
   field assignments and the validation block, which the code rules forbid.
@@ -109,9 +126,12 @@ Notes on the design:
    - `ExpoFourierFeaturesTest` (the frequency ladder the expo path builds)
 4. A new test method in `NumberConditionerTest`, e.g. `expoEmbeddingMatchesReference`, constructs a
    conditioner through `NumberConditioner.expo(...)` and checks `embed(value)` element-wise against a
-   reference computed from the geometric ladder (`f_k = exp(log(minFreq) + k * step)`), the
-   `[cos(2πtf), sin(2πtf)]` features and the projection — so the expo path has direct, standalone
-   coverage rather than only coverage through the Stable Audio 3 conditioner.
+   reference computed from the geometric ladder (`f_k = exp(log(minFreq) + k * step)` with
+   `step = (log(maxFreq) - log(minFreq)) / (fourierDim/2 - 1)`, or `0` when `fourierDim/2 == 1`,
+   as `expoFourierFrequencies` computes it), the features `concat(cos(2πtf), sin(2πtf))` (all
+   cosines first, then all sines, as `DiffusionTransformerFeatures.fourierFeatures` builds them)
+   and the projection (plus bias) — so the expo path has direct, standalone coverage rather than
+   only coverage through the Stable Audio 3 conditioner.
 5. `mvn clean install -DskipTests` succeeds and the build validator (`checkstyle`, `code_policy`,
    `test_timeouts`, `duplicate_code`) reports no violations.
 
@@ -127,7 +147,10 @@ any backend, so no workstream settings file is required.
    self-describing alternative, the canonical constructor could instead take a small
    `Function<DiffusionTransformerFeatures, Producer<PackedCollection>>` supplied by each public entry
    point and applied to `this`. That adds indirection for two cases and is not recommended, but it is
-   the option if the null switch is judged unclear.
+   the option if the null switch is judged unclear. A related cost of the null switch: the learned
+   path must pass meaningless `minFreq`/`maxFreq` placeholders (`0.0, 0.0`) through the canonical
+   constructor. The reviewer should decide whether that is acceptable or tips the balance toward
+   the function-valued alternative.
 2. **Other anonymous Features instances in `engine/ml`.** `RotationFeatures` and `AttentionFeatures`
    expose `static` accessors returning an anonymous instance of themselves, and
    `AutoregressiveModel` holds a `static final DistributionFeatures DIST`. Those classes do not
