@@ -40,7 +40,7 @@ layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsil
  * Gated-linear-unit feed-forward body — the fused-projection sibling of swiglu_ffn, shared by
  * the diffusion-transformer and T5Gemma feed-forward sub-layers.
  *
- * This file replaces the Java assembly that used to live in
+ * This layer replaces the Java assembly that used to live in
  * FeedForwardFeatures.gatedLinearFeedForward(...), which built this same gating as a
  * SequentialBlock: a fused gate+linear projection, a split of its output into two equal halves,
  * an activation on the gate half, the element-wise product of the two halves and a down
@@ -52,8 +52,9 @@ layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsil
  * The pre-normalization is NOT a stage of this body: the adaLN variant inserts a per-channel
  * modulation (scale * x + shift, driven by a runtime conditioning vector) between the norm and the
  * gate projection, and the language has no construct for that runtime modulation, so the norm and
- * the modulation are composed by the loader before this body runs. Keeping both out lets the plain
- * and modulated feed-forwards share this single gating definition rather than duplicating it.
+ * the modulation are composed in Java by FeedForwardFeatures.gatedLinearFeedForward(...), ahead of
+ * this body. Keeping both out lets the plain and modulated feed-forwards share this single gating
+ * definition rather than duplicating it.
  *
  * in_projection and out_projection arrive as projection layers — a plain dense projection, or an
  * adapter-wrapped one when the model is being fine-tuned. The adapter decision belongs to the
