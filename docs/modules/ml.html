@@ -764,7 +764,7 @@ loraModel.saveAdaptersBundle(outputPath, "base-model-id", metrics);</code></pre>
                 </table>
 
                 <h3>ProjectionFactory</h3>
-                <p><code>ProjectionFactory</code> is a functional interface that abstracts the creation of projection layers, enabling conditional LoRA vs dense layer selection:</p>
+                <p><code>ProjectionFactory</code> is a functional interface that abstracts the creation of projection layers, enabling conditional LoRA vs dense layer selection. Its static factories return the named <code>DenseProjectionFactory</code> and <code>LoRAProjectionFactory</code> implementations (both in <code>org.almostrealism.layers</code>):</p>
                 <pre><code class="language-java">import org.almostrealism.layers.ProjectionFactory;
 
 // Standard dense projections
