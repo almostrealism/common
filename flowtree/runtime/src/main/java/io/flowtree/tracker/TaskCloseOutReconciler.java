@@ -117,7 +117,10 @@ public class TaskCloseOutReconciler implements ConsoleFeatures {
             Workstream ws = workstreams.apply(workstreamId);
             if (ws == null || !"feature".equals(ws.getKind())) continue;
             String branch = ws.getDefaultBranch();
-            if (branch == null || branch.equals(ws.getBaseBranch())) continue;
+            // TODO(review): the "master" default duplicates a pervasive idiom; hoist onto
+            // Workstream as getEffectiveBaseBranch() once that file is under its length cap.
+            String base = ws.getBaseBranch() != null ? ws.getBaseBranch() : "master";
+            if (branch == null || branch.equals(base)) continue;
 
             List<PullRequest> prs = pullRequests.apply(
                     GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl()), branch);

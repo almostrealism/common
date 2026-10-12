@@ -143,6 +143,27 @@ public class TaskCloseOutReconcilerTest extends TestSuiteBase {
         assertEquals(List.of(), closeOuts);
     }
 
+    /**
+     * A workstream whose branch is the trunk is skipped even when its base
+     * branch is left unset: an unset base defaults to {@code master}, so a
+     * workstream on {@code master} is its own base and a merged trunk pull
+     * request must not close a task linked to it.
+     */
+    @Test(timeout = 30000)
+    public void branchThatIsItsOwnDefaultedBaseIsSkipped() throws IOException {
+        Workstream ws = new Workstream("ws-trunk", "C_ws-trunk", "#ws-trunk");
+        ws.setRepoUrl("https://github.com/almostrealism/common.git");
+        ws.setDefaultBranch("master");
+        workstreams.put("ws-trunk", ws);
+        awaiting.add("ws-trunk");
+        pullRequests.put("master", List.of(pr(3, "closed", "2026-10-12T05:00:00Z")));
+
+        reconciler().reconcileOnce();
+
+        assertEquals(List.of(), lookedUp);
+        assertEquals(List.of(), closeOuts);
+    }
+
     /** Builds a reconciler over the stub tracker, the known workstreams and the pull-request map. */
     private TaskCloseOutReconciler reconciler() {
         TrackerService service = new TrackerService(
