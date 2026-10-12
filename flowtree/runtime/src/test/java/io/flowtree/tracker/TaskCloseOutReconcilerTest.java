@@ -164,6 +164,27 @@ public class TaskCloseOutReconcilerTest extends TestSuiteBase {
         assertEquals(List.of(), closeOuts);
     }
 
+    /**
+     * A workstream whose repository is not hosted on GitHub is never looked
+     * up: its branch would otherwise be queried against a same-named GitHub
+     * repository, letting an unrelated pull request close its task.
+     */
+    @Test(timeout = 30000)
+    public void nonGitHubWorkstreamIsSkipped() throws IOException {
+        Workstream ws = new Workstream("ws-gitlab", "C_ws-gitlab", "#ws-gitlab");
+        ws.setRepoUrl("https://gitlab.com/almostrealism/common.git");
+        ws.setDefaultBranch("project/task-1");
+        ws.setBaseBranch("master");
+        workstreams.put("ws-gitlab", ws);
+        awaiting.add("ws-gitlab");
+        pullRequests.put("project/task-1", List.of(pr(8, "closed", "2026-10-12T05:00:00Z")));
+
+        reconciler().reconcileOnce();
+
+        assertEquals(List.of(), lookedUp);
+        assertEquals(List.of(), closeOuts);
+    }
+
     /** Builds a reconciler over the stub tracker, the known workstreams and the pull-request map. */
     private TaskCloseOutReconciler reconciler() {
         TrackerService service = new TrackerService(

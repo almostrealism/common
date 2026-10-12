@@ -18,6 +18,7 @@ package io.flowtree.tracker;
 
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.github.PullRequest;
+import io.flowtree.jobs.GitOperations;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -59,7 +60,10 @@ import java.util.function.Function;
  * those still open and ready, so a task a person has moved in the meantime is
  * left alone and a repeated pass changes nothing. Standing and orchestrator
  * workstreams are skipped: their branch is long-lived, and one of its pull
- * requests merging says nothing about any one task linked to it.</p>
+ * requests merging says nothing about any one task linked to it. A workstream
+ * not hosted on GitHub is skipped too: its branch is looked up by the
+ * repository slug, which drops the host, so querying it against GitHub could
+ * match an unrelated same-named repository.</p>
  */
 public class TaskCloseOutReconciler implements ConsoleFeatures {
 
@@ -121,6 +125,10 @@ public class TaskCloseOutReconciler implements ConsoleFeatures {
             // Workstream as getEffectiveBaseBranch() once that file is under its length cap.
             String base = ws.getBaseBranch() != null ? ws.getBaseBranch() : "master";
             if (branch == null || branch.equals(base)) continue;
+
+            // Exact host, not a substring: a look-alike such as github.com.evil.example
+            // must not be treated as GitHub.
+            if (!"github.com".equalsIgnoreCase(GitOperations.repositoryHost(ws.getRepoUrl()))) continue;
 
             List<PullRequest> prs = pullRequests.apply(
                     GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl()), branch);
