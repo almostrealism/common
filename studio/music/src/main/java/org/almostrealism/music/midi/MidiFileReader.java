@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Reads and writes standard MIDI files, converting between the
@@ -67,11 +68,22 @@ public class MidiFileReader {
 	/** Instrument number assigned to drum channel notes. */
 	private static final int DRUM_INSTRUMENT = 128;
 
+	/** MIDI Set Tempo meta-message type. */
+	private static final int SET_TEMPO = 0x51;
+
+	/** Tempo assumed by MIDI until the first Set Tempo event (120 BPM). */
+	private static final int DEFAULT_MICROSECONDS_PER_BEAT = 500_000;
+
+	/** Microseconds per second, which is also the tempo of 60 BPM in microseconds per beat. */
+	private static final int MICROSECONDS_PER_SECOND = 1_000_000;
+
 	/**
 	 * Read a standard MIDI file and extract all note events.
 	 *
 	 * <p>Tick times are normalized to {@link MidiNoteEvent#TIME_RESOLUTION}
-	 * ticks per second regardless of the file's native resolution.</p>
+	 * ticks per second regardless of the file's native resolution. For PPQ
+	 * files the conversion follows the file's tempo map (Set Tempo meta events
+	 * on any track, 120 BPM until the first one), as a MIDI player would.</p>
 	 *
 	 * @param midiFile the MIDI file to read
 	 * @return sorted list of note events
@@ -80,7 +92,7 @@ public class MidiFileReader {
 	 */
 	public List<MidiNoteEvent> read(File midiFile) throws IOException, InvalidMidiDataException {
 		Sequence sequence = MidiSystem.getSequence(midiFile);
-		double tickScale = computeTickScale(sequence);
+		TempoMap tempoMap = new TempoMap(sequence);
 
 		Map<Integer, Integer> channelPrograms = new HashMap<>();
 		List<MidiNoteEvent> events = new ArrayList<>();
@@ -110,10 +122,11 @@ public class MidiFileReader {
 					MidiEvent onEvent = pendingNotes.remove(noteKey);
 					if (onEvent != null) {
 						ShortMessage onMsg = (ShortMessage) onEvent.getMessage();
-						long onsetTick = Math.round(onEvent.getTick() * tickScale);
-						long offTick = Math.round(midiEvent.getTick() * tickScale);
+						long onsetTick = tempoMap.toTimeTicks(onEvent.getTick());
+						long offTick = tempoMap.toTimeTicks(midiEvent.getTick());
 						long duration = Math.max(1, offTick - onsetTick);
 
+						// TODO(review): program is resolved at NOTE_OFF; a PROGRAM_CHANGE mid-note re-labels the note
 						int instrument = channel == DRUM_CHANNEL
 								? DRUM_INSTRUMENT
 								: channelPrograms.getOrDefault(channel, 0);
@@ -134,8 +147,9 @@ public class MidiFileReader {
 	 * Write a list of note events to a standard MIDI file.
 	 *
 	 * <p>Events are written at {@link MidiNoteEvent#TIME_RESOLUTION} ticks
-	 * per beat (assuming 120 BPM, so ticks map directly to centiseconds).
-	 * Each distinct non-drum instrument is assigned its own MIDI channel
+	 * per beat with a 60 BPM tempo, so one beat lasts one second and event
+	 * ticks map directly to {@link MidiNoteEvent#TIME_RESOLUTION} ticks per
+	 * second when the file is played or read back. Each distinct non-drum instrument is assigned its own MIDI channel
 	 * (0-8, 10-15), with drum events always on channel 9. Up to 15
 	 * non-drum instruments are supported; overflow instruments fall back
 	 * to channel 0.</p>
@@ -149,6 +163,7 @@ public class MidiFileReader {
 			throws IOException, InvalidMidiDataException {
 		Sequence sequence = new Sequence(Sequence.PPQ, MidiNoteEvent.TIME_RESOLUTION);
 		Track track = sequence.createTrack();
+		track.add(new MidiEvent(tempoMessage(MICROSECONDS_PER_SECOND), 0));
 
 		Map<Integer, Integer> instrumentToChannel = new HashMap<>();
 		int nextChannel = 0;
@@ -254,13 +269,8 @@ public class MidiFileReader {
 				case SET_TEMPO: {
 					int microsPerBeat = event.getBpm() > 0
 							? 60_000_000 / event.getBpm()
-							: 500_000;  // default 120 BPM
-					byte[] data = {
-							(byte) (microsPerBeat >> 16 & 0xFF),
-							(byte) (microsPerBeat >> 8 & 0xFF),
-							(byte) (microsPerBeat & 0xFF)
-					};
-					track.add(new MidiEvent(new MetaMessage(0x51, data, 3), tick));
+							: DEFAULT_MICROSECONDS_PER_BEAT;
+					track.add(new MidiEvent(tempoMessage(microsPerBeat), tick));
 					break;
 				}
 				case TIME_SIGNATURE: {
@@ -309,15 +319,91 @@ public class MidiFileReader {
 	}
 
 	/**
-	 * Compute the scale factor to normalize ticks to {@link MidiNoteEvent#TIME_RESOLUTION}.
+	 * Create a Set Tempo meta message (type 0x51) for the given tempo.
 	 */
-	private double computeTickScale(Sequence sequence) {
-		if (sequence.getDivisionType() == Sequence.PPQ) {
-			int resolution = sequence.getResolution();
-			return (double) MidiNoteEvent.TIME_RESOLUTION / resolution;
+	private static MetaMessage tempoMessage(int microsPerBeat) throws InvalidMidiDataException {
+		byte[] data = {
+				(byte) (microsPerBeat >> 16 & 0xFF),
+				(byte) (microsPerBeat >> 8 & 0xFF),
+				(byte) (microsPerBeat & 0xFF)
+		};
+		return new MetaMessage(SET_TEMPO, data, 3);
+	}
+
+	/**
+	 * The tempo map of a {@link Sequence}, converting MIDI ticks to
+	 * {@link MidiNoteEvent#TIME_RESOLUTION} ticks per second.
+	 *
+	 * <p>For PPQ sequences the duration of a tick depends on the tempo in
+	 * effect, which Set Tempo meta events may change at any point on any
+	 * track; until the first one the MIDI default of 120 BPM applies. SMPTE
+	 * sequences have a fixed number of ticks per second.</p>
+	 */
+	private static final class TempoMap {
+		/** Elapsed microseconds at each tempo change, keyed by MIDI tick. */
+		private final TreeMap<Long, Double> microsAtChange = new TreeMap<>();
+
+		/** Microseconds per beat in effect from each tempo change, keyed by MIDI tick. */
+		private final TreeMap<Long, Integer> tempoAtChange = new TreeMap<>();
+
+		/** Ticks per beat (PPQ) or ticks per frame (SMPTE). */
+		private final int resolution;
+
+		/** Ticks per second for SMPTE sequences; zero for PPQ sequences. */
+		private final double smpteTicksPerSecond;
+
+		/**
+		 * Build the tempo map from the Set Tempo meta events of every track.
+		 */
+		TempoMap(Sequence sequence) {
+			this.resolution = sequence.getResolution();
+			this.smpteTicksPerSecond = sequence.getDivisionType() == Sequence.PPQ
+					? 0 : sequence.getDivisionType() * resolution;
+
+			tempoAtChange.put(0L, DEFAULT_MICROSECONDS_PER_BEAT);
+			for (Track track : sequence.getTracks()) {
+				for (int i = 0; i < track.size(); i++) {
+					MidiEvent event = track.get(i);
+					if (event.getMessage() instanceof MetaMessage meta
+							&& meta.getType() == SET_TEMPO && meta.getData().length >= 3) {
+						byte[] data = meta.getData();
+						tempoAtChange.put(event.getTick(),
+								(data[0] & 0xFF) << 16 | (data[1] & 0xFF) << 8 | data[2] & 0xFF);
+					}
+				}
+			}
+
+			long previousTick = 0;
+			double micros = 0;
+			int previousTempo = DEFAULT_MICROSECONDS_PER_BEAT;
+			for (Map.Entry<Long, Integer> change : tempoAtChange.entrySet()) {
+				micros += (change.getKey() - previousTick) * (double) previousTempo / resolution;
+				microsAtChange.put(change.getKey(), micros);
+				previousTick = change.getKey();
+				previousTempo = change.getValue();
+			}
 		}
-		double ticksPerSecond = sequence.getDivisionType() * sequence.getResolution();
-		return MidiNoteEvent.TIME_RESOLUTION / ticksPerSecond;
+
+		/**
+		 * Convert a MIDI tick to elapsed microseconds from the start of the sequence.
+		 */
+		double toMicroseconds(long tick) {
+			if (smpteTicksPerSecond > 0) {
+				return tick * MICROSECONDS_PER_SECOND / smpteTicksPerSecond;
+			}
+
+			Map.Entry<Long, Integer> tempo = tempoAtChange.floorEntry(tick);
+			return microsAtChange.get(tempo.getKey())
+					+ (tick - tempo.getKey()) * (double) tempo.getValue() / resolution;
+		}
+
+		/**
+		 * Convert a MIDI tick to {@link MidiNoteEvent#TIME_RESOLUTION} ticks per second.
+		 */
+		long toTimeTicks(long tick) {
+			return Math.round(toMicroseconds(tick) * MidiNoteEvent.TIME_RESOLUTION
+					/ MICROSECONDS_PER_SECOND);
+		}
 	}
 
 	/**

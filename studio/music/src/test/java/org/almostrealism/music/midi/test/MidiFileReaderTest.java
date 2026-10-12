@@ -21,6 +21,13 @@ import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MetaMessage;
+import javax.sound.midi.MidiEvent;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.Sequence;
+import javax.sound.midi.ShortMessage;
+import javax.sound.midi.Track;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -248,5 +255,97 @@ public class MidiFileReaderTest extends TestSuiteBase {
 		assertEquals("Melodic pitch", melodicPitch, readBack.get(1).getPitch());
 		assertEquals("Melodic note should keep its program",
 				melodicPatch, readBack.get(1).getInstrument());
+	}
+
+	/**
+	 * Verify that {@link MidiFileReader#read(File)} normalizes PPQ ticks to
+	 * {@link MidiNoteEvent#TIME_RESOLUTION} ticks per <em>second</em> using the
+	 * file's tempo. At 120 BPM with 480 ticks per beat, tick 960 is exactly one
+	 * second into the file and a 480-tick note lasts half a second, so the note
+	 * must be read back with onset 100 and duration 50.
+	 */
+	@Test(timeout = 60000)
+	public void readNormalizesTicksToSecondsUsingTempo() throws Exception {
+		Sequence sequence = new Sequence(Sequence.PPQ, 480);
+		Track track = sequence.createTrack();
+		track.add(tempoEvent(500_000, 0));
+		addNote(track, 60, 960, 480);
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-tempo-"));
+
+		assertEquals("Event count", 1, readBack.size());
+		assertEquals("Onset of a note one second in", 100L, readBack.get(0).getOnset());
+		assertEquals("Duration of a half-second note", 50L, readBack.get(0).getDuration());
+	}
+
+	/**
+	 * Verify that a tempo change partway through a file is honored. The first
+	 * 960 ticks run at 120 BPM (one second); the tempo then drops to 60 BPM, so
+	 * a note starting 480 ticks later begins at two seconds and a 480-tick note
+	 * after the change lasts one full second.
+	 */
+	@Test(timeout = 60000)
+	public void readHonorsTempoChanges() throws Exception {
+		Sequence sequence = new Sequence(Sequence.PPQ, 480);
+		Track conductor = sequence.createTrack();
+		conductor.add(tempoEvent(500_000, 0));
+		conductor.add(tempoEvent(1_000_000, 960));
+		Track notes = sequence.createTrack();
+		addNote(notes, 60, 0, 480);
+		addNote(notes, 64, 1440, 480);
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-tempo-change-"));
+
+		assertEquals("Event count", 2, readBack.size());
+		assertEquals("Onset before the tempo change", 0L, readBack.get(0).getOnset());
+		assertEquals("Duration before the tempo change", 50L, readBack.get(0).getDuration());
+		assertEquals("Onset after the tempo change", 200L, readBack.get(1).getOnset());
+		assertEquals("Duration after the tempo change", 100L, readBack.get(1).getDuration());
+	}
+
+	/**
+	 * Verify that a file produced by {@link MidiFileReader#write(List, File)}
+	 * plays its events at {@link MidiNoteEvent#TIME_RESOLUTION} ticks per second
+	 * when interpreted by a standard MIDI consumer: an event list spanning two
+	 * seconds must produce a sequence two seconds long.
+	 */
+	@Test(timeout = 60000)
+	public void writtenFileDurationMatchesEventTimes() throws Exception {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		events.add(new MidiNoteEvent(60, 0, 100, 80, 0));
+		events.add(new MidiNoteEvent(64, 100, 100, 80, 0));
+
+		File tempFile = File.createTempFile("midi-written-length-", ".mid");
+		tempFile.deleteOnExit();
+		new MidiFileReader().write(events, tempFile);
+
+		Sequence sequence = MidiSystem.getSequence(tempFile);
+		assertEquals("Length in microseconds of a two-second event list",
+				2_000_000L, sequence.getMicrosecondLength());
+	}
+
+	/** Creates a Set Tempo meta event with the given microseconds per quarter note. */
+	private static MidiEvent tempoEvent(int microsPerBeat, long tick) throws InvalidMidiDataException {
+		byte[] data = {
+				(byte) (microsPerBeat >> 16 & 0xFF),
+				(byte) (microsPerBeat >> 8 & 0xFF),
+				(byte) (microsPerBeat & 0xFF)
+		};
+		return new MidiEvent(new MetaMessage(0x51, data, 3), tick);
+	}
+
+	/** Adds a NOTE_ON/NOTE_OFF pair on channel 0 to the given track. */
+	private static void addNote(Track track, int pitch, long tick, long duration)
+			throws InvalidMidiDataException {
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON, 0, pitch, 80), tick));
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF, 0, pitch, 0), tick + duration));
+	}
+
+	/** Writes the sequence to a temporary type-1 MIDI file. */
+	private static File writeTemp(Sequence sequence, String prefix) throws Exception {
+		File tempFile = File.createTempFile(prefix, ".mid");
+		tempFile.deleteOnExit();
+		MidiSystem.write(sequence, 1, tempFile);
+		return tempFile;
 	}
 }
