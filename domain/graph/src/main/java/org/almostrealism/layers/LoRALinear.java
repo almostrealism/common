@@ -368,4 +368,18 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	public String describe() {
 		return name + " " + inputShape + "->" + outputShape;
 	}
+
+	/**
+	 * Releases the resources this layer owns.
+	 *
+	 * <p>The trainable {@code loraA} and {@code loraB} matrices are allocated by this layer
+	 * and held by its delegate as that delegate's weights, so destroying the delegate frees
+	 * them along with the delegate's forward, backward and setup operations. The frozen base
+	 * weights and bias are supplied by the caller and are not owned here, so they are left
+	 * untouched. After this call the layer is no longer usable.</p>
+	 */
+	@Override
+	public void destroy() {
+		delegate.destroy();
+	}
 }
