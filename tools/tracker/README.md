@@ -104,6 +104,15 @@ and not blocked by an open task. That definition lives in one place
 (`_CLAIMABLE` in `store.py`) and is used by both `/v1/claimable` and
 `/v1/claim`, so asking "is there work?" and taking it never disagree.
 
+A claimed task is **closed out** when its workstream's branch finishes. The
+FlowTree controller checks the branch's pull requests every few minutes
+(`TaskCloseOutReconciler`): when one merged, the task is closed; when one was
+closed without merging and none is open, the task becomes `declined` and is
+unlinked, so making it `ready` again puts it back in the queue. Only tasks that
+are open, `ready` and linked change (`_AWAITING_CLOSE_OUT` in `store.py`), so a
+task a person kept in `backlog`, or moved while the branch was in review, is
+left as they left it.
+
 ### Agent roles
 
 Agents cannot use the general write tools. The three tools above are granted
@@ -234,6 +243,9 @@ GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
 GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
 POST   /v1/claim                        Claim the next one for a workstream
                                         ({"project", "release", "workstream_id"})
+GET    /v1/close-out                    Workstreams with a claimed task awaiting close-out
+POST   /v1/close-out                    Apply a branch outcome to its claimed tasks
+                                        ({"workstream_id", "outcome": "merged"|"closed"})
 POST   /v1/goal-tasks                   Ensure the release and create/update a goal task
                                         in one transaction (a failed write leaves no
                                         orphan release; a body "task_id" updates only

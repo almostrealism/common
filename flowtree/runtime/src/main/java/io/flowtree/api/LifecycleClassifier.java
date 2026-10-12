@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.flowtree.github.PullRequest;
 import io.flowtree.workstream.Workstream;
 
 /**
@@ -127,20 +128,17 @@ final class LifecycleClassifier {
         Integer mergedPrNumber = null;
         Integer closedPrNumber = null;
         if (branchPrs != null) {
-            for (JsonNode pr : branchPrs) {
-                String state = pr.path("state").asText("");
-                boolean merged = !pr.path("merged_at").isMissingNode()
-                        && !pr.path("merged_at").isNull()
-                        && !pr.path("merged_at").asText().isEmpty();
-                if (merged) {
+            for (JsonNode json : branchPrs) {
+                PullRequest pr = new PullRequest(json);
+                if (pr.isMerged()) {
                     hasMergedPr = true;
-                    if (mergedPrNumber == null) mergedPrNumber = pr.path("number").asInt();
-                } else if ("open".equals(state)) {
+                    if (mergedPrNumber == null) mergedPrNumber = pr.number();
+                } else if (pr.isOpen()) {
                     hasOpenPr = true;
-                    if (openPrNumber == null) openPrNumber = pr.path("number").asInt();
-                } else if ("closed".equals(state)) {
+                    if (openPrNumber == null) openPrNumber = pr.number();
+                } else if (pr.isClosedUnmerged()) {
                     hasClosedUnmergedPr = true;
-                    if (closedPrNumber == null) closedPrNumber = pr.path("number").asInt();
+                    if (closedPrNumber == null) closedPrNumber = pr.number();
                 }
             }
         }
