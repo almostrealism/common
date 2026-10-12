@@ -72,6 +72,18 @@ public class LoRAProjectionFactory implements ProjectionFactory {
 		this.fallback = Objects.requireNonNull(fallback, "fallback");
 	}
 
+	/**
+	 * Creates a projection layer, wrapping it with a LoRA adapter when targeted.
+	 *
+	 * <p>When the configured {@link AdapterConfig} targets {@code targetLayer},
+	 * this builds a {@link LoRALinear} adapter and registers it through the
+	 * registration {@link Consumer} supplied at construction. Otherwise &mdash;
+	 * including when the config is {@code null} &mdash; it delegates to the
+	 * fallback {@link ProjectionFactory}. The shared parameter contract is
+	 * documented on {@link ProjectionFactory#create(TraversalPolicy, PackedCollection, PackedCollection, AdapterConfig.TargetLayer)}.</p>
+	 *
+	 * @return A {@link LoRALinear} for a targeted projection, otherwise the fallback factory's layer
+	 */
 	@Override
 	public CellularLayer create(TraversalPolicy inputShape,
 								PackedCollection weights,

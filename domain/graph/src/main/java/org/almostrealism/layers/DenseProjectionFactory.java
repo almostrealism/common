@@ -36,6 +36,16 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class DenseProjectionFactory implements ProjectionFactory {
 
+	/**
+	 * Creates a dense (linear) projection layer, ignoring {@code targetLayer}.
+	 *
+	 * <p>The {@code targetLayer} parameter is accepted to satisfy the
+	 * {@link ProjectionFactory} contract but has no effect here: this factory
+	 * always builds a plain dense layer. The shared parameter contract is
+	 * documented on {@link ProjectionFactory#create(TraversalPolicy, PackedCollection, PackedCollection, AdapterConfig.TargetLayer)}.</p>
+	 *
+	 * @return A dense layer projecting {@code inputShape} through {@code weights} and {@code bias}
+	 */
 	@Override
 	public CellularLayer create(TraversalPolicy inputShape,
 								PackedCollection weights,
