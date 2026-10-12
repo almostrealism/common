@@ -29,6 +29,7 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    auto_create_pr: bool = False,
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
@@ -140,6 +141,11 @@ def workstream_submit_task(
             test-integrity-check, which allows editing a test but not
             weakening it.
         enforce_changes: If true, require the agent to produce code changes.
+        auto_create_pr: If true, the controller opens a pull request for the
+            job's branch against its base branch when the job succeeds, using
+            the job's commit message as the title and description — what the
+            CI-submitted planning and QA rounds do. Leave it off for work that
+            continues on a branch which already has a pull request.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
@@ -677,6 +683,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if auto_create_pr:
+        payload["autoCreatePr"] = True
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:

@@ -142,6 +142,19 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       # The shared cadence gate answers "is a planning round already in
       # progress?": an open project/plan-* PR, or a project/plan-* branch
       # created within PR_GRACE_HOURS that has not opened one yet. No
@@ -151,6 +164,7 @@ jobs:
       # tools/tests/test_master_agent_dispatch.py do not claim this job.
       - name: Check for a planning round in progress
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: "project/plan-"
           MIN_INTERVAL_DAYS: "0"
@@ -291,6 +305,7 @@ jobs:
         run: |
           echo "## Project Manager" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Round in progress check:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }} (limit ${{ steps.branches.outputs.max_open_prs }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -305,7 +320,11 @@ jobs:
               echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ steps.intake.outputs.open }}" != "true" ]; then
+              echo "No new branch — the controller is not accepting automated jobs, or could not be asked." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi
 
 
@@ -371,10 +390,24 @@ jobs:
           echo "release=${TRACKER_PROJECT} ${VERSION}" >> "$GITHUB_OUTPUT"
           echo "::notice::Planning tasks of release '${TRACKER_PROJECT} ${VERSION}'"
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       # BRANCH_PREFIX is set on this step rather than the job so the QA-job
       # checks in tools/tests/test_master_agent_dispatch.py do not claim it.
       - name: Check for a task-planning round in progress
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: "project/task-"
           MIN_INTERVAL_DAYS: "0"
@@ -476,6 +509,7 @@ jobs:
         if: always()
         env:
           RELEASE: ${{ steps.release.outputs.release }}
+          INTAKE: ${{ steps.intake.outputs.open }}
           DECIDE: ${{ steps.decide.outputs.reason }}
           OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
           CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
@@ -485,12 +519,15 @@ jobs:
             echo "## Task Planning"
             echo ""
             echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Automated intake open:** ${INTAKE:-not checked}"
             echo "**Round in progress check:** ${DECIDE:-not run}"
             echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
             echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
             echo ""
             if [ -n "$BRANCH" ]; then
               echo "Created \`$BRANCH\` and submitted an agent job to claim and plan the next task."
+            elif [ "$INTAKE" != "true" ]; then
+              echo "No task-planning round started: the controller is not accepting automated jobs, or could not be asked."
             else
               echo "No task-planning round started."
             fi
@@ -548,8 +585,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -637,6 +688,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Documentation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "**Review window:** ${{ env.REVIEW_SINCE }}" >> "$GITHUB_STEP_SUMMARY"
@@ -646,6 +698,7 @@ jobs:
             echo "coding agent job to review documentation for staleness and open a PR with any fixes." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous documentation QA PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last review is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -698,8 +751,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -797,6 +864,7 @@ jobs:
         run: |
           echo "## Defect Hunt" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -805,6 +873,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -871,8 +940,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -1087,6 +1170,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Test Coverage" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
             if [ -n "${{ steps.select.outputs.target }}" ]; then
@@ -1099,6 +1183,7 @@ jobs:
             fi
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous coverage-qa PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last coverage round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1156,8 +1241,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -1252,6 +1351,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Consolidation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1260,6 +1360,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous consolidation PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last consolidation round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1329,8 +1430,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -1425,6 +1540,7 @@ jobs:
         run: |
           echo "## Quality Assurance — Performance" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1434,6 +1550,7 @@ jobs:
             echo "routed to a macOS Node (\`platform=macos\`) so the agent measures on Metal." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous performance PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last performance round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1509,8 +1626,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
       - name: Decide whether to submit
         id: decide
+        if: steps.intake.outputs.open == 'true'
         env:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
@@ -1596,6 +1727,7 @@ jobs:
         run: |
           echo "## Quality Assurance — PDSL Migration" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
           echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1604,6 +1736,7 @@ jobs:
             echo "with the primary phase pinned to claude/opus at max effort (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous PDSL migration PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last PDSL migration round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
