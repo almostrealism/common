@@ -1248,6 +1248,7 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setMemoryServerUrl(memoryUrl);
             apiEndpoint.setArManagerUrl(arManagerUrl);
             apiEndpoint.setTrackerService(trackerUrl, SystemUtils.getProperty("AR_TRACKER_AUTH_TOKEN"));
+            apiEndpoint.startTaskCloseOut();
             log("Memory server URL: " + memoryUrl);
             log("AR Manager URL: " + arManagerUrl);
             log("Tracker URL: " + trackerUrl);
