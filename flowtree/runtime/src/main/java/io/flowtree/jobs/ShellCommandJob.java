@@ -19,6 +19,7 @@ package io.flowtree.jobs;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
+import org.almostrealism.io.Truncation;
 
 import java.io.File;
 import java.io.IOException;
@@ -88,8 +89,8 @@ public class ShellCommandJob extends GitManagedJob {
 	 */
 	private static final int MAX_CAPTURE_BYTES = 65536;
 
-	/** Suffix appended to truncated strings. */
-	private static final String TRUNCATION_MARKER = " [truncated]";
+	/** How command text and captured output are shortened for status messages. */
+	private static final Truncation TRUNCATION = new Truncation(" [truncated]");
 
 	/** The shell command to execute. */
 	private String command;
@@ -433,23 +434,16 @@ public class ShellCommandJob extends GitManagedJob {
 	}
 
 	/**
-	 * Truncates a string to at most {@code maxLength} characters, appending
-	 * {@link #TRUNCATION_MARKER} when shortened. Small or non-positive limits are
-	 * handled without overflow: a non-positive limit yields an empty string, and
-	 * a limit too small to hold the marker yields a bare prefix of the input.
+	 * Truncates a string to at most {@code maxLength} characters with
+	 * {@link #TRUNCATION}, which marks a shortened string with {@code " [truncated]"}.
 	 *
 	 * @param s         the string to truncate, or {@code null}
 	 * @param maxLength maximum number of characters to retain
 	 * @return the (possibly truncated) string
+	 * @see Truncation#apply(String, int)
 	 */
 	static String truncate(String s, int maxLength) {
-		if (s == null) return "";
-		if (maxLength <= 0) return "";
-		if (s.length() <= maxLength) return s;
-		if (maxLength <= TRUNCATION_MARKER.length()) {
-			return s.substring(0, maxLength);
-		}
-		return s.substring(0, maxLength - TRUNCATION_MARKER.length()) + TRUNCATION_MARKER;
+		return TRUNCATION.apply(s, maxLength);
 	}
 
 	/**
