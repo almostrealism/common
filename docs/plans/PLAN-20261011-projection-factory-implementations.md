@@ -5,8 +5,11 @@ dense()/lora() create throwaway new LayerFeatures(){} although the interface ext
 LayerFeatures"
 **Release:** the release this task is assigned to in tracker project "Common" (see the
 tracker task; the version itself is not repeated here because it changes)
-**Status:** Proposal, awaiting approval. Nothing below is implemented yet: neither class
-exists, and `ProjectionFactory` and `LowRankAdapterSupport` are unchanged.
+**Status:** Implemented, following option (b) of Open Question 6. `DenseProjectionFactory`
+and `LoRAProjectionFactory` exist in `org.almostrealism.layers`, the `ProjectionFactory`
+statics return them, `LowRankAdapterSupport` builds its factory through a private
+`loraProjectionFactory()`, and `ProjectionFactoryTests` (module `engine/utils`) covers the
+Success Criteria. The Motivation section describes the code as it stood before this work.
 
 ## Motivation
 

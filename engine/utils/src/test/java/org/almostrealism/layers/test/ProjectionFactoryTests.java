@@ -161,22 +161,23 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 		int inputSize = 64;
 		int outputSize = 32;
 
-		PackedCollection weights = randomWeights(outputSize, inputSize);
-		PackedCollection bias = new PackedCollection(shape(outputSize));
-		randn(bias.getShape(), random).multiply(0.1).into(bias.traverseEach()).evaluate();
-
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.randnFill(random);
-
 		ProjectionFactory factory = ProjectionFactory.dense();
 
-		assertSameOutput(input,
-				dense(shape(batchSize, inputSize), weights, null, false),
-				factory.create(shape(batchSize, inputSize), weights, null, TargetLayer.SELF_ATTENTION_QKV));
+		try (PackedCollection input = new PackedCollection(shape(batchSize, inputSize))) {
+			input.randnFill(random);
 
-		assertSameOutput(input,
-				dense(shape(batchSize, inputSize), weights, bias, false),
-				factory.create(shape(batchSize, inputSize), weights, bias, TargetLayer.SELF_ATTENTION_QKV));
+			PackedCollection unbiasedWeights = randomWeights(outputSize, inputSize);
+			assertSameOutput(input,
+					dense(shape(batchSize, inputSize), unbiasedWeights, null, false),
+					factory.create(shape(batchSize, inputSize), unbiasedWeights, null, TargetLayer.SELF_ATTENTION_QKV));
+
+			PackedCollection biasedWeights = randomWeights(outputSize, inputSize);
+			PackedCollection bias = new PackedCollection(shape(outputSize));
+			randn(bias.getShape(), random).multiply(0.1).into(bias.traverseEach()).evaluate();
+			assertSameOutput(input,
+					dense(shape(batchSize, inputSize), biasedWeights, bias, false),
+					factory.create(shape(batchSize, inputSize), biasedWeights, bias, TargetLayer.SELF_ATTENTION_QKV));
+		}
 
 		log("dense matches LayerFeatures.dense - passed");
 	}
@@ -184,26 +185,32 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 	/**
 	 * Compiles two single-layer models and asserts their forward outputs match element-wise.
 	 *
-	 * @param input Input to feed both models
-	 * @param expected Reference layer
-	 * @param actual Layer under test
+	 * <p>Both models and their compiled forms are destroyed before this method returns,
+	 * including when an assertion fails. Destroying a model releases its layers' weights,
+	 * so the caller must not reuse the weights passed to {@code expected} or {@code actual}
+	 * after this call.</p>
+	 *
+	 * @param input Input to feed both models; not destroyed by this method
+	 * @param expected Reference layer, owned by this method from this call on
+	 * @param actual Layer under test, owned by this method from this call on
 	 */
 	private void assertSameOutput(PackedCollection input, CellularLayer expected, CellularLayer actual) {
-		Model expectedModel = new Model(input.getShape());
-		expectedModel.add(expected);
-		CompiledModel expectedCompiled = expectedModel.compile();
+		try (Model expectedModel = new Model(input.getShape());
+			 Model actualModel = new Model(input.getShape())) {
+			expectedModel.add(expected);
+			actualModel.add(actual);
 
-		Model actualModel = new Model(input.getShape());
-		actualModel.add(actual);
-		CompiledModel actualCompiled = actualModel.compile();
+			try (CompiledModel expectedCompiled = expectedModel.compile();
+				 CompiledModel actualCompiled = actualModel.compile()) {
+				double[] expectedOutput = expectedCompiled.forward(input).toArray();
+				double[] actualOutput = actualCompiled.forward(input).toArray();
 
-		PackedCollection expectedOutput = expectedCompiled.forward(input);
-		PackedCollection actualOutput = actualCompiled.forward(input);
-
-		Assert.assertEquals(expectedOutput.getShape().getTotalSize(), actualOutput.getShape().getTotalSize());
-		for (int i = 0; i < expectedOutput.getShape().getTotalSize(); i++) {
-			Assert.assertEquals("Output should match at index " + i,
-					expectedOutput.toDouble(i), actualOutput.toDouble(i), TOLERANCE);
+				Assert.assertEquals(expectedOutput.length, actualOutput.length);
+				for (int i = 0; i < expectedOutput.length; i++) {
+					Assert.assertEquals("Output should match at index " + i,
+							expectedOutput[i], actualOutput[i], TOLERANCE);
+				}
+			}
 		}
 	}
 
@@ -284,6 +291,52 @@ public class ProjectionFactoryTests extends TestSuiteBase implements LayerFeatur
 		Assert.assertEquals("Null config creates no adapters", 0, created.size());
 
 		log("constructor contract - passed");
+	}
+
+	/**
+	 * A {@link LoRAProjectionFactory} hands each untargeted projection, with its exact
+	 * arguments, to the supplied fallback and returns the fallback's layer unchanged; a
+	 * targeted projection never reaches the fallback and carries the configured rank,
+	 * alpha and base weights.
+	 */
+	@Test(timeout = 60000)
+	public void loraRoutesUntargetedToFallback() {
+		PackedCollection weights = randomWeights(32, 64);
+		PackedCollection bias = new PackedCollection(shape(32));
+		TraversalPolicy inputShape = shape(2, 64);
+		CellularLayer fallbackLayer = dense(inputShape, weights, bias, false);
+
+		List<TargetLayer> fallbackTargets = new ArrayList<>();
+		ProjectionFactory fallback = (shape, w, b, target) -> {
+			Assert.assertSame("Fallback should receive the input shape", inputShape, shape);
+			Assert.assertSame("Fallback should receive the weights", weights, w);
+			Assert.assertSame("Fallback should receive the bias", bias, b);
+			fallbackTargets.add(target);
+			return fallbackLayer;
+		};
+
+		AdapterConfig config = new AdapterConfig().rank(4).alpha(8.0)
+				.targets(TargetLayer.SELF_ATTENTION_QKV);
+		List<LoRALinear> created = new ArrayList<>();
+		LoRAProjectionFactory factory = new LoRAProjectionFactory(config, created::add, fallback);
+
+		CellularLayer untargeted = factory.create(inputShape, weights, bias, TargetLayer.FFN_GATE);
+		Assert.assertSame("Untargeted projection should be the fallback's layer", fallbackLayer, untargeted);
+		Assert.assertEquals(List.of(TargetLayer.FFN_GATE), fallbackTargets);
+		Assert.assertTrue("Untargeted projection should create no adapter", created.isEmpty());
+
+		CellularLayer targeted = factory.create(inputShape, weights, bias, TargetLayer.SELF_ATTENTION_QKV);
+		Assert.assertTrue("Targeted projection should be LoRALinear", targeted instanceof LoRALinear);
+		Assert.assertEquals("Targeted projection should not reach the fallback", 1, fallbackTargets.size());
+
+		LoRALinear adapter = (LoRALinear) targeted;
+		Assert.assertEquals(4, adapter.getRank());
+		Assert.assertEquals(8.0, adapter.getAlpha(), 0.0);
+		Assert.assertSame(weights, adapter.getBaseWeights());
+		Assert.assertSame(bias, adapter.getBaseBias());
+		Assert.assertEquals(List.of(adapter), created);
+
+		log("lora routes untargeted to fallback - passed");
 	}
 
 	/**
