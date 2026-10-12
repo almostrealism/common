@@ -292,6 +292,15 @@ do this deterministically:
 
 That is preferable to asking an agent to reconcile state as a side task.
 
+As built (`TaskCloseOutReconciler`, tracker `/v1/close-out`):
+- It applies only to tasks that are open, `ready` and linked. A task a person
+  left in `backlog` while linking it to a workstream is never closed for them.
+- A decline also unlinks the task, so a person returning it to `ready` makes it
+  claimable again.
+- A branch with a closed pull request and an open one is left alone.
+- Standing and orchestrator workstreams, and a branch that is its own base, are
+  skipped.
+
 ### 6. Parallel planning
 
 Task rounds never write the manager log, so nothing forces them to one at a time
