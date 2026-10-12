@@ -324,6 +324,50 @@ public class MidiFileReaderTest extends TestSuiteBase {
 				2_000_000L, sequence.getMicrosecondLength());
 	}
 
+	/**
+	 * Verify that a note is labeled with the instrument program in effect on its
+	 * channel at NOTE_ON, not with a later PROGRAM_CHANGE that arrives while the
+	 * note is still sounding. Program 24 is selected before the note begins and
+	 * program 48 is selected midway through it; the sounding note must keep
+	 * program 24.
+	 */
+	@Test(timeout = 60000)
+	public void readResolvesInstrumentAtNoteOn() throws Exception {
+		Sequence sequence = new Sequence(Sequence.PPQ, 480);
+		Track track = sequence.createTrack();
+		track.add(tempoEvent(500_000, 0));
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE, 0, 24, 0), 0));
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON, 0, 60, 80), 0));
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE, 0, 48, 0), 240));
+		track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF, 0, 60, 0), 480));
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-prog-midnote-"));
+
+		assertEquals("Event count", 1, readBack.size());
+		assertEquals("Instrument must be the program at NOTE_ON, not the mid-note change",
+				24, readBack.get(0).getInstrument());
+	}
+
+	/**
+	 * Verify that {@link MidiFileReader#read(File)} normalizes SMPTE ticks to
+	 * {@link MidiNoteEvent#TIME_RESOLUTION} ticks per <em>second</em> using the
+	 * fixed ticks-per-second of the division. SMPTE_25 with 40 ticks per frame is
+	 * 1000 ticks per second, so tick 1000 is one second in and a 500-tick note
+	 * lasts half a second, giving onset 100 and duration 50.
+	 */
+	@Test(timeout = 60000)
+	public void readNormalizesSmpteTicksToSeconds() throws Exception {
+		Sequence sequence = new Sequence(Sequence.SMPTE_25, 40);
+		Track track = sequence.createTrack();
+		addNote(track, 60, 1000, 500);
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-smpte-"));
+
+		assertEquals("Event count", 1, readBack.size());
+		assertEquals("Onset of a note one second into an SMPTE file", 100L, readBack.get(0).getOnset());
+		assertEquals("Duration of a half-second note in an SMPTE file", 50L, readBack.get(0).getDuration());
+	}
+
 	/** Creates a Set Tempo meta event with the given microseconds per quarter note. */
 	private static MidiEvent tempoEvent(int microsPerBeat, long tick) throws InvalidMidiDataException {
 		byte[] data = {

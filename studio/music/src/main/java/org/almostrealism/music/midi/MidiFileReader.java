@@ -39,7 +39,8 @@ import java.util.TreeMap;
  *
  * <p>MIDI tick resolution is normalized to {@link MidiNoteEvent#TIME_RESOLUTION}
  * ticks per second. The reader tracks NOTE_ON/NOTE_OFF pairs and PROGRAM_CHANGE
- * messages to associate each note with its instrument.</p>
+ * messages to associate each note with the instrument in effect on its channel
+ * at the moment the note began.</p>
  *
  * <p>All six standard MIDI event types are supported for writing:
  * {@link MidiNoteEvent.EventType#NOTE}, {@link MidiNoteEvent.EventType#PATCH_CHANGE},
@@ -98,7 +99,7 @@ public class MidiFileReader {
 		List<MidiNoteEvent> events = new ArrayList<>();
 
 		for (Track track : sequence.getTracks()) {
-			Map<Long, MidiEvent> pendingNotes = new HashMap<>();
+			Map<Long, PendingNote> pendingNotes = new HashMap<>();
 			channelPrograms.clear();
 
 			for (int i = 0; i < track.size(); i++) {
@@ -115,25 +116,23 @@ public class MidiFileReader {
 					channelPrograms.put(channel, sm.getData1());
 				} else if (command == NOTE_ON && sm.getData2() > 0) {
 					long noteKey = packNoteKey(channel, sm.getData1());
-					pendingNotes.put(noteKey, midiEvent);
+					int instrument = channel == DRUM_CHANNEL
+							? DRUM_INSTRUMENT
+							: channelPrograms.getOrDefault(channel, 0);
+					pendingNotes.put(noteKey, new PendingNote(midiEvent, instrument));
 				} else if (command == NOTE_OFF ||
 						(command == NOTE_ON && sm.getData2() == 0)) {
 					long noteKey = packNoteKey(channel, sm.getData1());
-					MidiEvent onEvent = pendingNotes.remove(noteKey);
-					if (onEvent != null) {
-						ShortMessage onMsg = (ShortMessage) onEvent.getMessage();
-						long onsetTick = tempoMap.toTimeTicks(onEvent.getTick());
+					PendingNote pending = pendingNotes.remove(noteKey);
+					if (pending != null) {
+						ShortMessage onMsg = (ShortMessage) pending.onEvent.getMessage();
+						long onsetTick = tempoMap.toTimeTicks(pending.onEvent.getTick());
 						long offTick = tempoMap.toTimeTicks(midiEvent.getTick());
 						long duration = Math.max(1, offTick - onsetTick);
 
-						// TODO(review): program is resolved at NOTE_OFF; a PROGRAM_CHANGE mid-note re-labels the note
-						int instrument = channel == DRUM_CHANNEL
-								? DRUM_INSTRUMENT
-								: channelPrograms.getOrDefault(channel, 0);
-
 						events.add(new MidiNoteEvent(
 								onMsg.getData1(), onsetTick, duration,
-								onMsg.getData2(), instrument));
+								onMsg.getData2(), pending.instrument));
 					}
 				}
 			}
@@ -411,5 +410,28 @@ public class MidiFileReader {
 	 */
 	private static long packNoteKey(int channel, int note) {
 		return ((long) channel << 8) | note;
+	}
+
+	/**
+	 * A NOTE_ON awaiting its matching NOTE_OFF, carrying the instrument program
+	 * in effect on the note's channel at the moment the note began. Capturing
+	 * the instrument at NOTE_ON ensures a PROGRAM_CHANGE that arrives while the
+	 * note is still sounding does not re-label the already-started note.
+	 */
+	private static final class PendingNote {
+		/** The NOTE_ON event that started the note. */
+		private final MidiEvent onEvent;
+
+		/** The instrument program in effect when the note began. */
+		private final int instrument;
+
+		/**
+		 * @param onEvent    the NOTE_ON event that started the note
+		 * @param instrument the instrument program in effect when the note began
+		 */
+		PendingNote(MidiEvent onEvent, int instrument) {
+			this.onEvent = onEvent;
+			this.instrument = instrument;
+		}
 	}
 }
