@@ -394,7 +394,7 @@
       "id": 6,
       "title": "Wait for a runner, by lane",
       "type": "timeseries",
-      "description": "Median (p50, solid) and 90th-percentile (p90, dashed) queue_wait_seconds of jobs created in each hour, per lane. Percentiles rather than a mean, because most jobs start within seconds and a mean is set by the few that wait long. Only jobs whose dependency graph was resolved contribute (see 'Wait measured'). A sustained rise in p50 means a typical job is waiting; a rise in p90 alone means a tail of jobs is. Either, on a lane whose runners below are all busy, is the signal to add hardware to that lane.",
+      "description": "Median (p50, solid) and 90th-percentile (p90, dashed) queue_wait_seconds of jobs created within each time bucket, per lane. Percentiles rather than a mean, because most jobs start within seconds and a mean is set by the few that wait long. Only jobs whose dependency graph was resolved contribute (see 'Wait measured'). A sustained rise in p50 means a typical job is waiting; a rise in p90 alone means a tail of jobs is. Either, on a lane whose runners below are all busy, is the signal to add hardware to that lane.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
