@@ -330,7 +330,9 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 	 * @param projectionFactory Factory for creating projection layers
 	 * @param requirements Compute requirements
 	 * @return Gated linear feed-forward block
-	 * @throws IllegalArgumentException if exactly one of {@code modScale}/{@code modShift} is supplied
+	 * @throws IllegalArgumentException if exactly one of {@code modScale}/{@code modShift} is supplied,
+	 *                                  if {@code inputShape} is not rank 3, or if the fused projection
+	 *                                  produces an odd number of features
 	 */
 	default Block gatedLinearFeedForward(TraversalPolicy inputShape, NormalizationType normType,
 										 PackedCollection normWeights, PackedCollection normBiases,
@@ -347,6 +349,10 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 					"modScale and modShift must both be supplied to enable adaLN modulation, " +
 					"or both be null to disable it");
 		}
+		if (inputShape.getDimensions() != 3) {
+			throw new IllegalArgumentException("gatedLinearFeedForward requires a [batch, seq_len, dim] " +
+					"input, but was given " + inputShape);
+		}
 
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
 		feedForward.add(norm(normType, normWeights, normBiases, requirements));
@@ -357,8 +363,13 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 		TraversalPolicy normedShape = feedForward.getOutputShape();
 		CellularLayer inProjection = projectionFactory.create(normedShape, weightIn, biasIn,
 				AdapterConfig.TargetLayer.FFN_GATE);
-		int innerDim = inProjection.getOutputShape().length(
-				inProjection.getOutputShape().getDimensions() - 1) / 2;
+		int fusedDim = inProjection.getOutputShape().length(
+				inProjection.getOutputShape().getDimensions() - 1);
+		if (fusedDim % 2 != 0) {
+			throw new IllegalArgumentException("The fused gate+linear projection must produce an even " +
+					"number of features to split into two halves, but produces " + fusedDim);
+		}
+		int innerDim = fusedDim / 2;
 		TraversalPolicy gatedShape = shape(normedShape.length(0), normedShape.length(1), innerDim);
 		CellularLayer outProjection = projectionFactory.create(gatedShape, weightOut, biasOut,
 				AdapterConfig.TargetLayer.FFN_OUT);
@@ -371,7 +382,6 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 		gatingArguments.put("seq_len", normedShape.length(1));
 		gatingArguments.put("inner_dim", innerDim);
 
-		// TODO(review): re-parses the asset on every call; cache the parsed Program (as in transformerLayer)
 		PdslLoader loader = new PdslLoader();
 		feedForward.add(loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET),
 				GLU_FEED_FORWARD_LAYER, normedShape, gatingArguments, requirements));

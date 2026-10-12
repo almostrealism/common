@@ -54,6 +54,9 @@ public class GluFeedForwardAssetTest extends TestSuiteBase implements AttentionF
 	/** Batch dimension of the test activations. */
 	private static final int BATCH = 1;
 
+	/** Batch dimension of the multi-batch test activations (the slices must span real batches). */
+	private static final int MULTI_BATCH = 2;
+
 	/** Sequence length of the test activations (more than one, so the split spans real rows). */
 	private static final int SEQ_LEN = 3;
 
@@ -95,6 +98,54 @@ public class GluFeedForwardAssetTest extends TestSuiteBase implements AttentionF
 	}
 
 	/**
+	 * With more than one batch the slices of the fused projection must still select the right halves
+	 * of every batch row, and the per-batch adaLN modulation must reach the right batch, so the asset
+	 * agrees with the reference assembly for a batch of two.
+	 */
+	@Test(timeout = 120000)
+	public void multiBatchModulatedMatchesReference() {
+		assertParity(MULTI_BATCH, NormalizationType.LAYER, silu(), true);
+	}
+
+	/**
+	 * The asset body binds {@code batch} and {@code seq_len} from the first two input axes, so an input
+	 * that is not {@code [batch, seq_len, dim]} is rejected rather than silently mis-sliced.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInputThatIsNotRankThree() {
+		PackedCollection normWeights = new PackedCollection(shape(DIM)).randnFill();
+		PackedCollection weightIn = new PackedCollection(shape(2 * INNER, DIM)).randnFill();
+		PackedCollection weightOut = new PackedCollection(shape(DIM, INNER)).randnFill();
+
+		try {
+			gatedLinearFeedForward(shape(SEQ_LEN, DIM), NormalizationType.RMS, normWeights, null,
+					weightIn, null, weightOut, null, null, null, gelu(), ProjectionFactory.dense());
+			throw new AssertionError("A rank-two input must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("[batch, seq_len, dim]"));
+		}
+	}
+
+	/**
+	 * A fused projection with an odd number of output features cannot be split into equal linear and
+	 * gate halves, so it is rejected rather than having its last feature silently dropped.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsOddFusedProjectionWidth() {
+		PackedCollection normWeights = new PackedCollection(shape(DIM)).randnFill();
+		PackedCollection weightIn = new PackedCollection(shape(2 * INNER + 1, DIM)).randnFill();
+		PackedCollection weightOut = new PackedCollection(shape(DIM, INNER)).randnFill();
+
+		try {
+			gatedLinearFeedForward(shape(BATCH, SEQ_LEN, DIM), NormalizationType.RMS, normWeights, null,
+					weightIn, null, weightOut, null, null, null, gelu(), ProjectionFactory.dense());
+			throw new AssertionError("An odd fused projection width must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(2 * INNER + 1)));
+		}
+	}
+
+	/**
 	 * Builds the gated-linear feed-forward both through the asset path and through the reference
 	 * assembly with identical weights and input, runs both, and asserts the outputs agree.
 	 *
@@ -104,7 +155,22 @@ public class GluFeedForwardAssetTest extends TestSuiteBase implements AttentionF
 	 */
 	private void assertParity(NormalizationType normType,
 							  Function<TraversalPolicy, CellularLayer> activation, boolean modulated) {
-		TraversalPolicy inputShape = shape(BATCH, SEQ_LEN, DIM);
+		assertParity(BATCH, normType, activation, modulated);
+	}
+
+	/**
+	 * Builds the gated-linear feed-forward both through the asset path and through the reference
+	 * assembly with identical weights and input of the given batch size, runs both, and asserts the
+	 * outputs agree.
+	 *
+	 * @param batch      the batch dimension of the input
+	 * @param normType   the pre-normalization family
+	 * @param activation the gate-half activation
+	 * @param modulated  whether to apply adaLN modulation after the norm
+	 */
+	private void assertParity(int batch, NormalizationType normType,
+							  Function<TraversalPolicy, CellularLayer> activation, boolean modulated) {
+		TraversalPolicy inputShape = shape(batch, SEQ_LEN, DIM);
 
 		PackedCollection normWeights = new PackedCollection(shape(DIM)).randnFill();
 		PackedCollection normBiases = new PackedCollection(shape(DIM)).randnFill();
@@ -112,8 +178,8 @@ public class GluFeedForwardAssetTest extends TestSuiteBase implements AttentionF
 		PackedCollection biasIn = new PackedCollection(shape(2 * INNER)).randnFill();
 		PackedCollection weightOut = new PackedCollection(shape(DIM, INNER)).randnFill();
 		PackedCollection biasOut = new PackedCollection(shape(DIM)).randnFill();
-		PackedCollection modScale = modulated ? new PackedCollection(shape(BATCH, DIM)).randnFill() : null;
-		PackedCollection modShift = modulated ? new PackedCollection(shape(BATCH, DIM)).randnFill() : null;
+		PackedCollection modScale = modulated ? new PackedCollection(shape(batch, DIM)).randnFill() : null;
+		PackedCollection modShift = modulated ? new PackedCollection(shape(batch, DIM)).randnFill() : null;
 		PackedCollection input = new PackedCollection(inputShape).randnFill();
 
 		Producer<PackedCollection> scale = modScale == null ? null : cp(modScale);
@@ -128,7 +194,7 @@ public class GluFeedForwardAssetTest extends TestSuiteBase implements AttentionF
 		double[] referenceOut = run(inputShape, referenceBlock, input);
 
 		double maxDiff = maxAbsDiff(assetOut, referenceOut);
-		log("glu_feed_forward parity: normType=" + normType + ", modulated=" + modulated
+		log("glu_feed_forward parity: batch=" + batch + ", normType=" + normType + ", modulated=" + modulated
 				+ ", maxAbsDiff=" + maxDiff);
 		assertTrue("glu_feed_forward asset diverges from the reference assembly (maxAbsDiff="
 				+ maxDiff + ")", maxDiff < TOLERANCE);
