@@ -98,8 +98,10 @@ audio-domain assumption:
 `cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `sequence_rope`,
 `mra_rope_rotation`, `attention_scores`, `causal_mask`, `sequence_causal_mask`, `key_mask`,
 `weighted_values`, `scaled_dot_product`, `sqrt`, `attention`, `shape`, `zeros`, `rope_freqs`
-— usable in the same layer bodies. `shape([dims...])` builds a `TraversalPolicy` from integer
-dimensions; `zeros([rows, size])` allocates a fresh zero-filled state collection (the per-layer
+— usable in the same layer bodies. `shape(dim1, dim2, ...)` builds a `TraversalPolicy` from a
+variadic list of integer dimensions (each argument is an integer, as in `shape(channels, signal_size)` —
+not the `[dim1, dim2]` shape literal that `zeros` and `reshape` take); `zeros([rows, size])`
+allocates a fresh zero-filled state collection (the per-layer
 storage a stateful layer writes on one forward pass and reads on later ones, such as the KV
 caches of autoregressive attention); and `rope_freqs(theta, head_size, seq_len)` builds the
 RoPE `freq_cis` table (shape `[seq_len, head_size / 2, 2]`) that `rope_rotation` reads. `engine/ml/src/main/resources/pdsl/attention.pdsl`
