@@ -179,9 +179,11 @@ private LoRAProjectionFactory loraProjectionFactory() {
 }
 ```
 
-The private interface method holds the one construction both defaults share. Because it
-is private, it cannot be overridden, which is what keeps `loraOrDense` independent of an
-overridden `getProjectionFactory()` (see below).
+The private interface method holds the one construction both defaults share. What keeps
+`loraOrDense` independent of an overridden `getProjectionFactory()` is that it builds its
+own factory through this shared helper instead of calling `getProjectionFactory()` (see
+below). The helper being private is a separate guarantee: it stops an implementor from
+overriding the shared construction itself.
 
 `getAdapterConfig()` is read when the factory is created, which is when it is read today.
 `loraOrDense` keeps reading the config per call, because it builds a fresh factory each time.
