@@ -25,6 +25,16 @@ then passed into the private canonical constructor
 (`NumberConditioner(double, double, int, int, Producer<PackedCollection>, PackedCollection, PackedCollection)`). The fix is to move that construction into the instance, where the class's own
 `cp(...)` and `expoFourierFrequencies(...)` apply, as the task asks.
 
+This is the same anti-pattern that `docs/plans/PLAN-20261011-projection-factory-implementations.md`
+(tracker task `7881b11f-127d-42fb-842f-35afd654c97e`, already implemented) removed from
+`ProjectionFactory`: a static factory or constructor minting a throwaway anonymous Features instance
+to reach a mixin method the class already inherits. The two changes share no code — that one is in
+`ProjectionFactory`/`LowRankAdapterSupport` (`domain/graph`), this one in `NumberConditioner`
+(`engine/ml`) — so there is no overlap to coordinate, but the resolution is structurally the same:
+give the behaviour a real `this` to run against (there, named factory classes; here, the instance
+context of the canonical constructor) instead of an anonymous mixin. The precedent is worth the
+reviewer's attention because it shows how this class of tracker task has already been resolved once.
+
 ## Scope
 
 Changes only `NumberConditioner.java` and adds coverage for the expo path in
