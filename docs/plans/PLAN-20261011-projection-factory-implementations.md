@@ -77,6 +77,15 @@ In scope:
      in the `graph.html` class list, so the pages do not drift from the READMEs.
    - `docs/internals/ml-inference-pipeline.md` mentions `ProjectionFactory` only as a
      parameter of `sequenceAttention` and needs no change.
+6. (Added during implementation, in response to a PR review.) Give `LoRALinear` a
+   `destroy()` override that frees its trainable `loraA`/`loraB` matrices through its
+   delegate, and document on the six-argument constructor that `existingLoraWeights`
+   ownership transfers to the layer (they become its trainable weights, are returned by
+   `getWeights()`, trained, and released by `destroy()`). This closes a native-buffer leak
+   the new `ProjectionFactoryTests` would otherwise accumulate (every `dense(...)` layer
+   allocates an output tracking buffer at construction, freed only by the layer's
+   `destroy()`), and the tests now capture and destroy their fallback dense layers. It is a
+   cleanup/documentation change, not a change to how `LoRALinear` computes.
 
 Out of scope:
 
@@ -88,7 +97,11 @@ Out of scope:
 - `LoRADiffusionTransformer.getProjectionFactory()`. It already delegates to
   `LowRankAdapterSupport.super.getProjectionFactory()` and picks up the new implementation
   automatically.
-- Any change to `LoRALinear`, `AdapterConfig` or `LayerFeatures.dense(...)`.
+- Any change to `AdapterConfig` or `LayerFeatures.dense(...)`.
+- No behavioural change to `LoRALinear`. (A PR review of the implementation did add a
+  `LoRALinear.destroy()` override and ownership Javadoc; see Scope item 6 below. That is a
+  resource-cleanup and documentation change surfaced by review, not a change to how the
+  layer computes, so it does not alter the refactor this plan describes.)
 
 ## Approach
 
@@ -316,8 +329,10 @@ None. The task has no blockers. The full set of files the work touches:
 
 - Production code, all in `ar-graph` (`domain/graph`, package `org.almostrealism.layers`):
   new `DenseProjectionFactory.java` and `LoRAProjectionFactory.java`; edits to
-  `ProjectionFactory.java` and `LowRankAdapterSupport.java`. No production code in any
-  other module changes.
+  `ProjectionFactory.java` and `LowRankAdapterSupport.java`; and the resource-cleanup and
+  documentation edit to `LoRALinear.java` added during implementation (Scope item 6:
+  a `destroy()` override and ownership Javadoc on the checkpoint constructor). No
+  production code in any other module changes.
 - Tests, in `ar-utils` (`engine/utils`, package `org.almostrealism.layers.test`, where
   `LoRALinearTests` and `AdapterConfigTests` already live): new `ProjectionFactoryTests.java`.
 - Documentation: the `ProjectionFactory` javadoc (in the production file above),
