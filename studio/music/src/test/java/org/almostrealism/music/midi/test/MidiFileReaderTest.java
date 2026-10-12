@@ -368,6 +368,50 @@ public class MidiFileReaderTest extends TestSuiteBase {
 		assertEquals("Duration of a half-second note in an SMPTE file", 50L, readBack.get(0).getDuration());
 	}
 
+	/**
+	 * Verify that a PROGRAM_CHANGE on one track of a type-1 file applies to notes
+	 * on the same channel in another track, in tick order, as it would during
+	 * playback. A conductor track selects program 24 at tick 0 and program 48 at
+	 * tick 960; the note track's note at tick 0 must use 24 and its note at tick
+	 * 1440 must use 48.
+	 */
+	@Test(timeout = 60000)
+	public void readAppliesProgramChangesAcrossTracks() throws Exception {
+		Sequence sequence = new Sequence(Sequence.PPQ, 480);
+		Track programs = sequence.createTrack();
+		programs.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE, 0, 24, 0), 0));
+		programs.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE, 0, 48, 0), 960));
+		Track notes = sequence.createTrack();
+		addNote(notes, 60, 0, 480);
+		addNote(notes, 64, 1440, 480);
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-prog-tracks-"));
+
+		assertEquals("Event count", 2, readBack.size());
+		assertEquals("Program selected on another track before the first note",
+				24, readBack.get(0).getInstrument());
+		assertEquals("Program selected on another track before the second note",
+				48, readBack.get(1).getInstrument());
+	}
+
+	/**
+	 * Verify that a PPQ file with no Set Tempo event is read at the MIDI default
+	 * of 120 BPM. At 480 ticks per beat, tick 480 is half a second in and a
+	 * 960-tick note lasts one second, giving onset 50 and duration 100.
+	 */
+	@Test(timeout = 60000)
+	public void readUsesDefaultTempoWithoutTempoEvents() throws Exception {
+		Sequence sequence = new Sequence(Sequence.PPQ, 480);
+		Track track = sequence.createTrack();
+		addNote(track, 60, 480, 960);
+
+		List<MidiNoteEvent> readBack = new MidiFileReader().read(writeTemp(sequence, "midi-default-tempo-"));
+
+		assertEquals("Event count", 1, readBack.size());
+		assertEquals("Onset at the default tempo", 50L, readBack.get(0).getOnset());
+		assertEquals("Duration at the default tempo", 100L, readBack.get(0).getDuration());
+	}
+
 	/** Creates a Set Tempo meta event with the given microseconds per quarter note. */
 	private static MidiEvent tempoEvent(int microsPerBeat, long tick) throws InvalidMidiDataException {
 		byte[] data = {

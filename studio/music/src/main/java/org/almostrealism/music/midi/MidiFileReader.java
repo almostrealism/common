@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,45 +96,56 @@ public class MidiFileReader {
 		Sequence sequence = MidiSystem.getSequence(midiFile);
 		TempoMap tempoMap = new TempoMap(sequence);
 
+		Track[] tracks = sequence.getTracks();
+		List<Map<Long, PendingNote>> pendingNotes = new ArrayList<>();
+		List<TrackEvent> merged = new ArrayList<>();
+		for (int t = 0; t < tracks.length; t++) {
+			pendingNotes.add(new HashMap<>());
+			for (int i = 0; i < tracks[t].size(); i++) {
+				merged.add(new TrackEvent(t, tracks[t].get(i)));
+			}
+		}
+
+		// Channel state is shared by all tracks, as on playback, so events are
+		// visited in tick order; the sort is stable, preserving same-tick order
+		// within a track and track order between tracks
+		merged.sort(Comparator.comparingLong(e -> e.event().getTick()));
+
 		Map<Integer, Integer> channelPrograms = new HashMap<>();
 		List<MidiNoteEvent> events = new ArrayList<>();
 
-		for (Track track : sequence.getTracks()) {
-			Map<Long, PendingNote> pendingNotes = new HashMap<>();
-			channelPrograms.clear();
+		for (TrackEvent trackEvent : merged) {
+			MidiEvent midiEvent = trackEvent.event();
+			MidiMessage message = midiEvent.getMessage();
 
-			for (int i = 0; i < track.size(); i++) {
-				MidiEvent midiEvent = track.get(i);
-				MidiMessage message = midiEvent.getMessage();
+			if (!(message instanceof ShortMessage)) continue;
+			ShortMessage sm = (ShortMessage) message;
 
-				if (!(message instanceof ShortMessage)) continue;
-				ShortMessage sm = (ShortMessage) message;
+			int command = sm.getCommand();
+			int channel = sm.getChannel();
+			Map<Long, PendingNote> trackPending = pendingNotes.get(trackEvent.track());
 
-				int command = sm.getCommand();
-				int channel = sm.getChannel();
+			if (command == PROGRAM_CHANGE) {
+				channelPrograms.put(channel, sm.getData1());
+			} else if (command == NOTE_ON && sm.getData2() > 0) {
+				long noteKey = packNoteKey(channel, sm.getData1());
+				int instrument = channel == DRUM_CHANNEL
+						? DRUM_INSTRUMENT
+						: channelPrograms.getOrDefault(channel, 0);
+				trackPending.put(noteKey, new PendingNote(midiEvent, instrument));
+			} else if (command == NOTE_OFF ||
+					(command == NOTE_ON && sm.getData2() == 0)) {
+				long noteKey = packNoteKey(channel, sm.getData1());
+				PendingNote pending = trackPending.remove(noteKey);
+				if (pending != null) {
+					ShortMessage onMsg = (ShortMessage) pending.onEvent.getMessage();
+					long onsetTick = tempoMap.toTimeTicks(pending.onEvent.getTick());
+					long offTick = tempoMap.toTimeTicks(midiEvent.getTick());
+					long duration = Math.max(1, offTick - onsetTick);
 
-				if (command == PROGRAM_CHANGE) {
-					channelPrograms.put(channel, sm.getData1());
-				} else if (command == NOTE_ON && sm.getData2() > 0) {
-					long noteKey = packNoteKey(channel, sm.getData1());
-					int instrument = channel == DRUM_CHANNEL
-							? DRUM_INSTRUMENT
-							: channelPrograms.getOrDefault(channel, 0);
-					pendingNotes.put(noteKey, new PendingNote(midiEvent, instrument));
-				} else if (command == NOTE_OFF ||
-						(command == NOTE_ON && sm.getData2() == 0)) {
-					long noteKey = packNoteKey(channel, sm.getData1());
-					PendingNote pending = pendingNotes.remove(noteKey);
-					if (pending != null) {
-						ShortMessage onMsg = (ShortMessage) pending.onEvent.getMessage();
-						long onsetTick = tempoMap.toTimeTicks(pending.onEvent.getTick());
-						long offTick = tempoMap.toTimeTicks(midiEvent.getTick());
-						long duration = Math.max(1, offTick - onsetTick);
-
-						events.add(new MidiNoteEvent(
-								onMsg.getData1(), onsetTick, duration,
-								onMsg.getData2(), pending.instrument));
-					}
+					events.add(new MidiNoteEvent(
+							onMsg.getData1(), onsetTick, duration,
+							onMsg.getData2(), pending.instrument));
 				}
 			}
 		}
@@ -410,6 +422,17 @@ public class MidiFileReader {
 	 */
 	private static long packNoteKey(int channel, int note) {
 		return ((long) channel << 8) | note;
+	}
+
+	/**
+	 * A MIDI event together with the index of the track it belongs to, so that
+	 * events from all tracks can be visited in a single tick-ordered pass while
+	 * NOTE_ON/NOTE_OFF pairing stays within each track.
+	 *
+	 * @param track the index of the track containing the event
+	 * @param event the MIDI event
+	 */
+	private record TrackEvent(int track, MidiEvent event) {
 	}
 
 	/**
