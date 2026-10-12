@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from store import GOAL_SOURCE_PREFIX, UNSET
+from store import CLOSE_OUT_OUTCOMES, GOAL_SOURCE_PREFIX, UNSET
 
 log = logging.getLogger(__name__)
 
@@ -851,6 +851,41 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         task = store.claim_next(release["id"], workstream_id) if release else None
         return JSONResponse({"ok": True, "task": task})
 
+    async def close_out_pending(request: Request) -> JSONResponse:
+        """GET /v1/close-out
+
+        Lists the workstreams that have a claimed task still open and ready,
+        i.e. the branches whose pull-request outcome is yet to be applied.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        return JSONResponse({"ok": True,
+                             "workstream_ids": store.workstreams_awaiting_close_out()})
+
+    async def close_out(request: Request) -> JSONResponse:
+        """POST /v1/close-out  {"workstream_id", "outcome"}
+
+        Applies a branch's pull-request outcome to the claimed tasks linked to
+        the workstream: ``merged`` closes them, ``closed`` declines and unlinks
+        them. Tasks no longer open and ready are left alone, so a repeated
+        call changes nothing. Returns the ids of the tasks changed.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        workstream_id = _text_field(body, "workstream_id")
+        if not workstream_id:
+            return _bad_request("workstream_id is required")
+        outcome = body.get("outcome")
+        if not _one_of(outcome, set(CLOSE_OUT_OUTCOMES)):
+            return _bad_request(f"outcome must be one of: {sorted(CLOSE_OUT_OUTCOMES)}")
+        changed = store.close_out(workstream_id, outcome)
+        return JSONResponse({"ok": True, "outcome": outcome, "task_ids": changed})
+
     async def upsert_goal_task(request: Request) -> JSONResponse:
         """POST /v1/goal-tasks
 
@@ -953,6 +988,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/search/tasks", search_tasks, methods=["GET"]),
         Route("/v1/claimable", claimable, methods=["GET"]),
         Route("/v1/claim", claim, methods=["POST"]),
+        Route("/v1/close-out", close_out_pending, methods=["GET"]),
+        Route("/v1/close-out", close_out, methods=["POST"]),
         Route("/v1/goal-tasks", upsert_goal_task, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]
