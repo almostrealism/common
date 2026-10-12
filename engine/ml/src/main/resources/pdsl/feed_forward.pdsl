@@ -35,3 +35,54 @@ layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsil
     )
     dense(w2)
 }
+
+/**
+ * Gated-linear-unit feed-forward body — the fused-projection sibling of swiglu_ffn, shared by
+ * the diffusion-transformer and T5Gemma feed-forward sub-layers.
+ *
+ * This file replaces the Java assembly that used to live in
+ * FeedForwardFeatures.gatedLinearFeedForward(...), which built this same gating as a
+ * SequentialBlock: a fused gate+linear projection, a split of its output into two equal halves,
+ * an activation on the gate half, the element-wise product of the two halves and a down
+ * projection. The Java gatedLinearFeedForward(...) methods now only build the pre-normalization
+ * (and, for the adaptive-layernorm variant, the conditioning modulation that must sit between the
+ * norm and the gate projection), bind the two projections and the gate activation, and load this
+ * layer — so the gating composition has one definition and it is here.
+ *
+ * The pre-normalization is NOT a stage of this body: the adaLN variant inserts a per-channel
+ * modulation (scale * x + shift, driven by a runtime conditioning vector) between the norm and the
+ * gate projection, and the language has no construct for that runtime modulation, so the norm and
+ * the modulation are composed by the loader before this body runs. Keeping both out lets the plain
+ * and modulated feed-forwards share this single gating definition rather than duplicating it.
+ *
+ * in_projection and out_projection arrive as projection layers — a plain dense projection, or an
+ * adapter-wrapped one when the model is being fine-tuned. The adapter decision belongs to the
+ * training setup, not to the gating structure, and the language has no construct for a projection
+ * the host may adapt, so the projections arrive as layers, exactly as in sequence_attention.pdsl.
+ * gate_activation is the activation of the gate half — SiLU for a SwiGLU, GELU for a GeGLU —
+ * likewise a bound layer, since the language names neither a norm family nor an activation as a
+ * value a stage can select.
+ *
+ * Data flow of one forward pass over an already-normalized [batch, seq_len, dim] activation:
+ *
+ *   in_projection                             the fused projection      [batch, seq_len, 2 * inner_dim]
+ *   product(                                  (element-wise, one multiply)
+ *     { slice linear half }                   the first inner_dim       [batch, seq_len, inner_dim]
+ *     { slice gate half; gate_activation }    the next inner_dim, activated
+ *   )                                                                   [batch, seq_len, inner_dim]
+ *   out_projection                            the down projection       [batch, seq_len, dim]
+ *
+ * GLU(x) = out_projection( x_linear ⊙ gate_activation(x_gate) ), where [x_linear | x_gate] is the
+ * fused projection of the input: its first inner_dim features are the linear half and the next
+ * inner_dim the gate half.
+ */
+layer glu_feed_forward(in_projection: projection, out_projection: projection,
+                       gate_activation: activation,
+                       batch: int, seq_len: int, inner_dim: int) {
+    in_projection
+    product(
+        { slice([batch, seq_len, inner_dim], 0, 0, 0) },
+        { slice([batch, seq_len, inner_dim], 0, 0, inner_dim); gate_activation }
+    )
+    out_projection
+}

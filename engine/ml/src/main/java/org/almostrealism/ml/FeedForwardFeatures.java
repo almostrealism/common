@@ -60,9 +60,20 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 	 * {@code swiglu_ffn} layer is what the {@link #feedForward} methods build; the asset is the
 	 * single definition of how the residual-stream vector flows through the pre-FFN
 	 * normalization, the gate and up projections, the SiLU gate, the element-wise product and
-	 * the down projection.
+	 * the down projection. The same asset's {@code glu_feed_forward} layer (see
+	 * {@link #GLU_FEED_FORWARD_LAYER}) defines the fused-projection gated-linear feed-forward body
+	 * that {@link #gatedLinearFeedForward} builds.
 	 */
 	String FEED_FORWARD_ASSET = "/pdsl/feed_forward.pdsl";
+
+	/**
+	 * Name of the {@link #FEED_FORWARD_ASSET} layer describing the gated-linear feed-forward body:
+	 * the fused gate+linear projection, the split of its output into two halves, the gate half's
+	 * activation, the element-wise product of the halves and the down projection. It is the single
+	 * definition of the gating {@link #gatedLinearFeedForward} composes the pre-normalization (and,
+	 * for the adaptive-layernorm variant, the modulation) around.
+	 */
+	String GLU_FEED_FORWARD_LAYER = "glu_feed_forward";
 
 	/**
 	 * Binds the arguments the {@code swiglu_ffn} layer of {@link #FEED_FORWARD_ASSET} takes: the
@@ -293,6 +304,17 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 	 * <p>This is the fully specified overload; every other {@code gatedLinearFeedForward} routes
 	 * here with {@link NormalizationType#LAYER}, which keeps their normalization unchanged.</p>
 	 *
+	 * <p>The gating composition — the fused gate+linear projection, the split into two halves, the
+	 * gate half's activation, their element-wise product and the down projection — is not assembled
+	 * here: it is the {@link #GLU_FEED_FORWARD_LAYER} layer of {@link #FEED_FORWARD_ASSET}, and this
+	 * method binds the two projections (built through {@code projectionFactory}, so a dense model and
+	 * an adapter-wrapped one share the one gating body) and the gate activation, then loads it. Only
+	 * the pre-normalization and the optional adaLN modulation are composed in Java, around the loaded
+	 * body: the modulation ({@code modScale * x + modShift}) is driven by a runtime conditioning
+	 * vector the language cannot yet express as a stage, and it must sit between the norm and the gate
+	 * projection, so keeping both out of the asset lets the plain and modulated feed-forwards share a
+	 * single gating definition. The input is a {@code [batch, seq_len, dim]} activation.</p>
+	 *
 	 * @param inputShape Input/output shape
 	 * @param normType Family of the pre-normalization
 	 * @param normWeights Normalization weights
@@ -318,33 +340,41 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 										 Function<TraversalPolicy, CellularLayer> gateActivation,
 										 ProjectionFactory projectionFactory,
 										 ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(inputShape);
-		feedForward.add(norm(normType, normWeights, normBiases, requirements));
-
-		// adaLN modulation of the normalized activations: enabled when both modScale and modShift are
-		// supplied, disabled when both are null. Supplying exactly one is a misconfiguration.
+		// adaLN modulation is enabled only when both modScale and modShift are supplied; exactly one
+		// is a misconfiguration.
 		if ((modScale == null) != (modShift == null)) {
 			throw new IllegalArgumentException(
 					"modScale and modShift must both be supplied to enable adaLN modulation, " +
 					"or both be null to disable it");
 		}
+
+		SequentialBlock feedForward = new SequentialBlock(inputShape);
+		feedForward.add(norm(normType, normWeights, normBiases, requirements));
 		if (modScale != null) {
 			feedForward.add(adaptiveModulate(feedForward.getOutputShape(), modScale, modShift));
 		}
 
-		// Gate projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightIn, biasIn,
-				AdapterConfig.TargetLayer.FFN_GATE));
+		TraversalPolicy normedShape = feedForward.getOutputShape();
+		CellularLayer inProjection = projectionFactory.create(normedShape, weightIn, biasIn,
+				AdapterConfig.TargetLayer.FFN_GATE);
+		int innerDim = inProjection.getOutputShape().length(
+				inProjection.getOutputShape().getDimensions() - 1) / 2;
+		TraversalPolicy gatedShape = shape(normedShape.length(0), normedShape.length(1), innerDim);
+		CellularLayer outProjection = projectionFactory.create(gatedShape, weightOut, biasOut,
+				AdapterConfig.TargetLayer.FFN_OUT);
 
-		// Split into the linear half and the gate half; the activated gate multiplies the linear half
-		List<Block> split = feedForward.split(2, feedForward.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(gateActivation);
+		Map<String, Object> gatingArguments = new HashMap<>();
+		gatingArguments.put("in_projection", inProjection);
+		gatingArguments.put("out_projection", outProjection);
+		gatingArguments.put("gate_activation", gateActivation.apply(gatedShape));
+		gatingArguments.put("batch", normedShape.length(0));
+		gatingArguments.put("seq_len", normedShape.length(1));
+		gatingArguments.put("inner_dim", innerDim);
 
-		feedForward.add(product(gate));
-
-		// Output projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightOut, biasOut,
-				AdapterConfig.TargetLayer.FFN_OUT));
+		// TODO(review): re-parses the asset on every call; cache the parsed Program (as in transformerLayer)
+		PdslLoader loader = new PdslLoader();
+		feedForward.add(loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET),
+				GLU_FEED_FORWARD_LAYER, normedShape, gatingArguments, requirements));
 
 		return feedForward;
 	}
