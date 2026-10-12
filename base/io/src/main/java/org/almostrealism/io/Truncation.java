@@ -31,7 +31,6 @@ package org.almostrealism.io;
  * new Truncation(" [truncated]").apply(output, 4000);
  * }</pre>
  */
-// TODO(review): add a base/io unit test for Truncation; it is currently tested only via flowtree call sites
 public class Truncation {
 	/** Cuts the text at the limit with no marker. */
 	public static final Truncation CUT = new Truncation("");
@@ -45,10 +44,11 @@ public class Truncation {
 	/**
 	 * Creates a truncation style that ends shortened text with {@code marker}.
 	 *
-	 * @param marker the text appended in place of the removed tail; empty for a hard cut
+	 * @param marker the text appended in place of the removed tail; empty or
+	 *               {@code null} for a hard cut
 	 */
 	public Truncation(String marker) {
-		this.marker = marker;
+		this.marker = marker == null ? "" : marker;
 	}
 
 	/**
