@@ -175,6 +175,13 @@ public class NumberConditionerTest extends TestSuiteBase {
 	 * computes the same ladder, the {@code concat(cos, sin)} Fourier features and the learned
 	 * projection, giving the expo path direct coverage rather than only coverage through the Stable
 	 * Audio 3 conditioner.
+	 *
+	 * <p>The Fourier features are {@code cos}/{@code sin} of arguments as large as
+	 * {@code 2*PI*MAX_FREQ}, and a backend without full fp64 precision carries the rounding error of
+	 * those arguments into the embedding. The comparison therefore uses the hardware-precision-aware
+	 * {@link #assertSimilar(String, double, double, double, double)} with that argument scale as the
+	 * magnitude, so the epsilon floor scales with the backend precision, rather than a fixed absolute
+	 * delta that only a full-precision backend can meet.</p>
 	 */
 	@Test(timeout = 120000)
 	public void expoEmbeddingMatchesReference() {
@@ -186,9 +193,10 @@ public class NumberConditionerTest extends TestSuiteBase {
 		double[] expected = referenceFromFrequencies(value, MIN_VAL, MAX_VAL, expoFrequencies(), true);
 		double[] actual = out.toArray();
 
+		double magnitude = 2.0 * Math.PI * MAX_FREQ;
 		assertEquals(OUT_DIM, actual.length);
 		for (int i = 0; i < OUT_DIM; i++) {
-			assertEquals(expected[i], actual[i], 1e-4);
+			assertSimilar("expo embedding element " + i, expected[i], actual[i], 1e-3, magnitude);
 		}
 	}
 
