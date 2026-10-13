@@ -13,7 +13,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from store import CLOSE_OUT_OUTCOMES, GOAL_SOURCE_PREFIX, UNSET
+from store import (
+    CLOSE_OUT_OUTCOMES,
+    FOLLOW_UP_SOURCE_PREFIX,
+    GOAL_SOURCE_PREFIX,
+    UNSET,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,16 +37,18 @@ _PERSON_SOURCE = "person"
 def _valid_source(value: object) -> bool:
     """Return True when *value* is a recognised task provenance.
 
-    A source is either the literal ``person`` or ``goals:<document>`` naming a
-    non-empty document. Bare ``goals:`` and free-form strings are rejected.
+    A source is the literal ``person``, ``goals:<document>`` naming a non-empty
+    document, or ``follow-up:<...>`` naming a non-empty filing job. A bare
+    prefix and free-form strings are rejected. This mirrors the database CHECK
+    constraint (see ``migrate._SCHEMA_V3`` and ``migrate._SCHEMA_V4``).
     """
     if not isinstance(value, str):
         return False
     source = value.strip()
     if source == _PERSON_SOURCE:
         return True
-    return (source.startswith(GOAL_SOURCE_PREFIX)
-            and len(source) > len(GOAL_SOURCE_PREFIX))
+    return any(source.startswith(prefix) and len(source) > len(prefix)
+               for prefix in (GOAL_SOURCE_PREFIX, FOLLOW_UP_SOURCE_PREFIX))
 
 # Refusal of a goal-only update of a task a person wrote.
 _NOT_GOAL_DERIVED = "Task was not derived from goal documents; only a person may change it"
@@ -141,7 +148,7 @@ def _task_field_error(store, body: dict, task_id: Optional[str] = None,
     if "stage" in body and not _one_of(body["stage"], _VALID_STAGES):
         return f"stage must be one of: {sorted(_VALID_STAGES)}"
     if "source" in body and not _valid_source(body["source"]):
-        return "source must be 'person' or 'goals:<document>'"
+        return "source must be 'person', 'goals:<document>' or 'follow-up:<...>'"
     for key in _NULLABLE_TEXT_FIELDS:
         if key in body and body[key] is not None and not isinstance(body[key], str):
             return f"{key} must be a string or null"
@@ -962,6 +969,63 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             status_code=201 if task_id is None else 200,
         )
 
+    async def file_follow_up_task(request: Request) -> JSONResponse:
+        """POST /v1/follow-up-tasks
+
+        Body: ``{"project_id", "title", "source", "description", "release_id"}``.
+
+        Files a coding agent's follow-up task into the project's backlog. The
+        task is always open, in stage ``backlog``, with no workstream link and
+        priority 0, so it is never claimable and survives the merge of the
+        branch that raised it. ``source`` must start with ``follow-up:``; it is
+        the filing job's provenance and the count of the job's existing
+        follow-up tasks is capped. The project must exist; the release, when
+        given, is used as-is.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        project_id = _text_field(body, "project_id")
+        if not project_id:
+            return _bad_request("project_id is required")
+        title = _text_field(body, "title")
+        if not title:
+            return _bad_request("title is required")
+        source = _text_field(body, "source") or ""
+        if (not source.startswith(FOLLOW_UP_SOURCE_PREFIX)
+                or len(source) <= len(FOLLOW_UP_SOURCE_PREFIX)):
+            return _bad_request("source must be 'follow-up:<...>'")
+        # Validate the optional free-text/id fields as the other task endpoints
+        # do, so a non-string value is refused with a 400 rather than binding
+        # straight to sqlite and surfacing as a 500.
+        for key in ("description", "release_id"):
+            if key in body and body[key] is not None and not isinstance(body[key], str):
+                return _bad_request(f"{key} must be a string or null")
+        result = store.file_follow_up_task(
+            title=title,
+            source=source,
+            project_id=project_id,
+            description=(body.get("description") or None),
+            release_id=(body.get("release_id") or None),
+        )
+        status = result["status"]
+        if status == "project_not_found":
+            return JSONResponse({"ok": False, "error": "Project not found"}, status_code=404)
+        if status == "cap_reached":
+            return JSONResponse(
+                {"ok": False,
+                 "error": f"This job has already filed its maximum of {result['cap']} "
+                          "follow-up tasks",
+                 "count": result["count"], "cap": result["cap"]},
+                status_code=429,
+            )
+        if status == "db_error":
+            return _bad_request(f"write rejected by the database: {result['error']}")
+        return JSONResponse({"ok": True, "task": result["task"]}, status_code=201)
+
     routes = [
         Route("/api/health", health),
         Route("/v1/projects", list_projects, methods=["GET"]),
@@ -991,6 +1055,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/close-out", close_out_pending, methods=["GET"]),
         Route("/v1/close-out", close_out, methods=["POST"]),
         Route("/v1/goal-tasks", upsert_goal_task, methods=["POST"]),
+        Route("/v1/follow-up-tasks", file_follow_up_task, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]
 

@@ -59,6 +59,18 @@ CLOSE_OUT_OUTCOMES = ("merged", "closed")
 # ("goals:<document>"); any other task was written by a person.
 GOAL_SOURCE_PREFIX = "goals:"
 
+# Source prefix of a task a coding agent filed as a follow-up while working a
+# branch ("follow-up:<workstream>/<job>"). Distinct from GOAL_SOURCE_PREFIX so
+# a follow-up can never be confused with goal-decomposition work, and from
+# 'person' so a person's task is never attributed to an agent. The suffix is
+# the filing job's provenance, taken from its token rather than caller input.
+FOLLOW_UP_SOURCE_PREFIX = "follow-up:"
+
+# The most follow-up tasks one job may file, counted by its provenance source.
+# A small ceiling so a looping agent answering review rounds cannot flood the
+# tracker; a person promotes the useful ones out of the backlog.
+MAX_FOLLOW_UP_TASKS_PER_JOB = 5
+
 
 def _normalized_source(source: object) -> object:
     """Strip surrounding whitespace from a task ``source`` before it is stored.
@@ -629,6 +641,98 @@ class TrackerStore:
 
         return {"status": "ok", "_task_id": written_id,
                 "release": release, "created_release": created_release}
+
+    # ------------------------------------------------------------------
+    # Agent follow-up tasks
+    # ------------------------------------------------------------------
+
+    def file_follow_up_task(
+        self,
+        title: str,
+        source: str,
+        project_id: str,
+        description: Optional[str] = None,
+        release_id: Optional[str] = None,
+        per_job_cap: int = MAX_FOLLOW_UP_TASKS_PER_JOB,
+    ) -> dict:
+        """File an agent follow-up task into a project's backlog.
+
+        The task is always created ``open``, in stage ``backlog``, with no
+        workstream link and priority 0: an agent never creates claimable work,
+        and a follow-up survives the merge of the branch that raised it so a
+        person can promote it later. ``source`` is the filing job's provenance
+        (:data:`FOLLOW_UP_SOURCE_PREFIX`); the caller derives it from its token,
+        not from input.
+
+        The count of the job's existing follow-up tasks and the insert run as
+        one transaction under the store lock, so a looping caller cannot race
+        past ``per_job_cap``. The project must exist; the release, when given,
+        is used as-is and not created.
+
+        Returns a dict whose ``status`` is one of:
+            ``ok`` — with ``task``;
+            ``project_not_found`` — no project has ``project_id``;
+            ``cap_reached`` — the job already filed ``per_job_cap`` tasks, with
+                ``count`` and ``cap``;
+            ``db_error`` — the database refused the write (e.g. an unknown
+                release id, or a source the CHECK rejects), with ``error``.
+        """
+        with self._lock:
+            try:
+                result = self._file_follow_up_task_locked(
+                    title, source, project_id, description, release_id, per_job_cap)
+            except sqlite3.Error as e:
+                self._conn.rollback()
+                return {"status": "db_error", "error": str(e)}
+            except BaseException:
+                self._conn.rollback()
+                raise
+            if result["status"] == "ok":
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+        if result["status"] == "ok":
+            result["task"] = self.get_task(result.pop("_task_id"))
+        return result
+
+    def _file_follow_up_task_locked(
+        self,
+        title: str,
+        source: str,
+        project_id: str,
+        description: Optional[str],
+        release_id: Optional[str],
+        per_job_cap: int,
+    ) -> dict:
+        """Do the work of :meth:`file_follow_up_task`. The caller holds the
+        store lock and commits on an ``ok`` status, rolling back otherwise, so
+        this never commits or rolls back itself.
+
+        On the ``ok`` path the result carries ``_task_id`` for the caller to
+        resolve into a full task after the commit.
+        """
+        project = self._conn.execute(
+            "SELECT id FROM projects WHERE id = ?", (project_id,)
+        ).fetchone()
+        if not project:
+            return {"status": "project_not_found"}
+        normalized = _normalized_source(source)
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE source = ?", (normalized,)
+        ).fetchone()[0]
+        if count >= per_job_cap:
+            return {"status": "cap_reached", "count": count, "cap": per_job_cap}
+        task_id = str(uuid.uuid4())
+        now = _now()
+        self._conn.execute(
+            "INSERT INTO tasks "
+            "(id, title, description, status, priority, stage, source, "
+            " project_id, release_id, workstream_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'open', 0, 'backlog', ?, ?, ?, NULL, ?, ?)",
+            (task_id, title, description, normalized, project_id,
+             release_id or None, now, now),
+        )
+        return {"status": "ok", "_task_id": task_id}
 
     # ------------------------------------------------------------------
     # Claiming work
