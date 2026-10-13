@@ -204,6 +204,7 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 * @param target Target memory data
 	 */
 	public MemoryDataCopy(String name, MemoryData source, MemoryData target) {
+		// TODO(review): fixed operands become raw Suppliers, so Runner treats them as unordered and host-waits dependsOn
 		this(name, () -> source, () -> target, 0, 0, source.getMemLength());
 	}
 
